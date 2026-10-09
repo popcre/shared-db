@@ -21,6 +21,22 @@
 // An assignment is not an approval and an approval at an older head is not an
 // approval of these bytes. Both are required, both pinned to the same exact SHA.
 //
+// MERGED-PR AUDIT (#2839): an OPT-IN read path, selected only by
+// APPROVAL_AUDIT=merged. Without it this gate is the live reviewer check for
+// every caller, merged or not -- the automatic-promotion re-proof runs it on a
+// merged source PR and must keep its durable exact-head verdict re-proof. In
+// audit mode it passes only if the newest merge-authorization status on the
+// exact head, at or before merged_at, is the guarded lane's success (or, for a
+// PR the documents-only lane's own classifier admits, that lane's success). It
+// does NOT re-read reviewer records, so a later refusal or archived verdict does
+// not rewrite a lawful merge. It proves an unrevoked authorization existed at
+// merge time -- not that the guarded lane itself performed the merge (a
+// cancelled run can leave a success standing), not which pull request it was
+// posted for when two share a head SHA, and it never observes a post-merge
+// revocation. merge_commit_sha is shape-checked and reported only; it is not
+// bound to the head. An unknown PR state or unreadable PR refuses.
+// Usage: APPROVAL_AUDIT=merged PR_NUMBER=<n> node scripts/check-exact-head-approval.mjs
+//
 // WHAT THIS GATE DOES NOT CHECK -- stated here so nobody reads more into a pass
 // than it carries. It enforces `an assignment exists at this head` AND `an approval
 // exists at this head`, not `the assigned reviewer approved`. Assignment refs record
@@ -50,10 +66,13 @@ import { execFileSync } from 'node:child_process'
 import { runGitHubCommand } from './lib/github-transport.mjs'
 import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { REPO, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_RETURN_REF_PREFIX, parseAssignmentRef, parseReviewCursor, parseReviewReturn, reviewReturnRef, reviewerReadsRepository } from './manage-migration-author-lanes.mjs'
+import { REPO, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_RETURN_REF_PREFIX, parseAssignmentRef, parseReviewCursor, parseReviewReturn, reviewReturnRef, reviewerReadsRepository, selectNewestCommitStatus } from './manage-migration-author-lanes.mjs'
 import { approvalLine, evidenceTiedToHead, refusalLine, trustedVerdictEvidence, unambiguouslyTiedToHead } from './lib/review-verdict.mjs'
-import { REVIEW_VERDICT_REF_PREFIX, REVIEW_VERDICT_REPLACEMENT_REF_PREFIX, isValidatedVerdictArtifact, parseVerdictCommit, parseVerdictRef, validateVerdictArtifact } from './lib/review-verdict-artifact.mjs'
-import { changedPathsFromPullRequestFiles, classifyChangedPaths } from './lib/documents-only-change.mjs'
+import { REVIEW_VERDICT_REF_PREFIX, REVIEW_VERDICT_REPLACEMENT_REF_PREFIX, archivedVerdictMirrorPrefix, mergeArchivedVerdictRows, isValidatedVerdictArtifact, parseVerdictCommit, parseVerdictRef, validateVerdictArtifact } from './lib/review-verdict-artifact.mjs'
+import { changedPathsFromPullRequestFiles, classifyChangedPaths, classifyLightweightMergePullRequestFiles } from './lib/documents-only-change.mjs'
+import { isContentPreservingRefresh } from './lib/pr-content-equivalence.mjs'
+import { resolveBaseRef, gitProbe } from './lib/resolve-base-ref.mjs'
+import { MERGE_SELF_CONTEXT } from './lib/merge-self-context.mjs'
 
 export class ApprovalCheckError extends Error {}
 
@@ -198,8 +217,13 @@ export function evaluateExactHeadApproval(input) {
   const pinned = atThisHead.filter((row) => !returnedShas.has(String(row.sha ?? '').toLowerCase()))
   const liveBySlot = new Map()
   for (const assignment of pinned) {
-    const prior = liveBySlot.get(assignment.slot)
-    if (!prior || Number(assignment.replacementSequence ?? 0) > Number(prior.replacementSequence ?? 0)) liveBySlot.set(assignment.slot, assignment)
+    // A ref without a `-slot<N>` suffix IS slot 1 (`parseAssignmentRef` defaults
+    // it), and rows built by callers that predate slots may omit the field. A
+    // slot read as `undefined` is as invisible as one never drawn (#2837), so it
+    // is normalized to the same default the ref parser applies.
+    const slot = Number.isInteger(assignment.slot) && assignment.slot >= 1 ? assignment.slot : 1
+    const prior = liveBySlot.get(slot)
+    if (!prior || Number(assignment.replacementSequence ?? 0) > Number(prior.replacementSequence ?? 0)) liveBySlot.set(slot, { ...assignment, slot })
   }
   const sequenceOf = (row, label) => { const value = Number(row?.sequence); if (!Number.isInteger(value) || value < 1) throw new ApprovalCheckError(`${label} has no readable reviewer sequence`); return value }
   const newestReturned = new Map()
@@ -209,6 +233,32 @@ export function evaluateExactHeadApproval(input) {
     if (!live || sequenceOf(live, `assignment ${live.ref ?? live.sha}`) <= sequence) throw new ApprovalCheckError(`review slot ${slot} was durably returned for head ${headSha} and has no live exact-head assignment newer than the returned one; it cannot be satisfied by another slot, nor by a record the returned one had already superseded. Draw a new reviewer for this exact head and slot and have that assignment record its own APPROVE.`)
   }
   if (!pinned.length) throw new ApprovalCheckError(`every reviewer assignment pinned to head ${headSha} was durably returned; a returned slot is an unapproved slot`)
+
+  // THE MINIMUM SLOT COUNT (issue #2837). The loop below demands an APPROVE for
+  // every slot it can SEE from pinned assignments -- but a slot that was never
+  // drawn is a slot it cannot see, so "every visible slot approved" equals two
+  // independent reviews only when two were drawn. PR #2746 (issue #2478) merged
+  // production-bound bytes on a single slot-1 verdict because slot 2 was never
+  // drawn across all nine heads, nothing required it, and the log line read like
+  // success. This file already names the failure class for a RETURNED slot; a
+  // never-drawn slot reaches the identical blind spot from the other side.
+  //
+  // The required minimum comes from the same source AGENTS.md 6.x section 4
+  // uses: a change that touches supabase/migrations/ needs TWO independent
+  // reviews; every other change (scripts, docs, CI) needs ONE. It is judged from
+  // the pull request's own changed files -- the same list the documents-only
+  // lane reads above, renames carrying their previous name -- and, exactly like
+  // that lane, `changedFiles` absent entirely means every caller that predates
+  // the rule behaves as before (one slot). An undrawn required slot is a refusal
+  // naming the slot number, so it fails loudly instead of being invisible.
+  const migrationsTouched = (input.changedFiles ?? []).some((file) => String(file ?? '').replace(/\\/g, '/').startsWith('supabase/migrations/'))
+  const requiredSlots = Object.prototype.hasOwnProperty.call(input, 'changedFiles') && migrationsTouched ? 2 : 1
+  const undrawnSlots = []
+  for (let slot = 1; slot <= requiredSlots; slot += 1) if (!liveBySlot.has(slot)) undrawnSlots.push(slot)
+  if (undrawnSlots.length) {
+    throw new ApprovalCheckError(`head ${headSha} owes required review slot(s) ${undrawnSlots.join(', ')} that no assignment ever drew: this pull request's change requires ${requiredSlots} independent review slot(s) (AGENTS.md 6.x: migrations need two, scripts/docs/CI one), and a slot this gate cannot see is a slot it cannot require. Draw the owed slot pinned to this exact head (--assign-reviewer, slot 2 only after slot 1 is assigned) and have that assignment record its own APPROVE.`)
+  }
+
 
   if (Object.prototype.hasOwnProperty.call(input, 'verdicts')) {
     const all = (verdicts ?? []).filter((row) => Number(row.pr) === Number(pr) && String(row.head_sha).toLowerCase() === String(headSha).toLowerCase())
@@ -234,7 +284,14 @@ export function evaluateExactHeadApproval(input) {
     if (!approvals.length) throw new ApprovalCheckError(`head ${headSha} has no durable APPROVE artifact; a review that wrote no artifact never authorizes a merge${disregardedNote}`)
     const latestBySlot = liveBySlot
     for (const assignment of latestBySlot.values()) if (!approvals.some((row) => row.assignment_sha === assignment.sha)) throw new ApprovalCheckError(`review slot ${assignment.slot} has no durable APPROVE for its latest exact-head assignment${disregardedNote}`)
-    return { approved: true, head_sha: headSha, pr: Number(pr), assignments: latestBySlot.size, approvals: new Set(approvals.map((row) => row.ref)).size }
+    const providers = new Set()
+    for (const assignment of latestBySlot.values()) {
+      const reviewer = approvals.find((row) => row.assignment_sha === assignment.sha)?.reviewer
+      if (!reviewer) throw new ApprovalCheckError(`review slot ${assignment.slot} has no verified reviewer identity`)
+      if (providers.has(reviewer) && input.mergedAtHead !== true) throw new ApprovalCheckError(`review slots at exact head ${headSha} share reviewer ${reviewer}; independent approval refused`)
+      providers.add(reviewer)
+    }
+    return { approved: true, head_sha: headSha, pr: Number(pr), assignments: latestBySlot.size, approvals: new Set(approvals.map((row) => row.ref)).size, required_slots: requiredSlots }
   }
 
   // COMMENT TEXT IS NOT A VERDICT IN PRODUCTION (issue #2075).
@@ -254,7 +311,7 @@ export function evaluateExactHeadApproval(input) {
     .filter((row) => approvalLine(row.body) || state(row) === 'APPROVED')
   if (!approvals.length) throw new ApprovalCheckError(`head ${headSha} has no APPROVE tied to it; an approval of an earlier head never approves these bytes`)
 
-  return { approved: true, head_sha: headSha, pr: Number(pr), assignments: pinned.length, approvals: approvals.length }
+  return { approved: true, head_sha: headSha, pr: Number(pr), assignments: pinned.length, approvals: approvals.length, required_slots: requiredSlots }
 }
 
 // Issue #2342: shared transport, identical refusal.
@@ -279,11 +336,106 @@ export { parseAssignmentRef }
 // where the same class of defect has now hidden twice repo-wide: a conversion layer
 // whose test-time shape diverges from the one production produces. Nothing is
 // stubbed in production; the defaults are the real readers.
+// #2839 review H1: the description literal is posted by
+// `.github/workflows/guarded-migration-merge.yml`; the test suite reads that
+// workflow and fails if the two ever differ, so this copy is bound, not re-typed.
+// GitHub truncates status descriptions at 140 characters; the test also keeps
+// this under that limit so an exact match stays possible.
+export const MERGE_AUTHORIZED_DESCRIPTION = 'Exclusive merge lock held and exact head revalidated'
+// The second lawful producer of the same context (#2102/#2715): a prose-only pull
+// request never dispatches the guarded merge, so its merge-time authorization is
+// the one `.github/workflows/documents-only-merge-authorization.yml` posts. It is
+// bound to that workflow by test, like the guarded one, and is accepted ONLY when
+// the merged pull request's own changed files still classify documents-only. A
+// prose-only PR that also touched a plan or routing pointer (which that lane's
+// adapter admits) is refused here -- fail closed, never guessed.
+export const DOCUMENTS_ONLY_AUTHORIZED_DESCRIPTION = 'Prose-only head verified under the coordination/production-freeze mutex'
+// #2839 audit: the verdict at merge time is the NEWEST guarded-merge status on
+// the exact head at or before merged_at. Ordering, identity and state checks are
+// the lane's own `selectNewestCommitStatus` (one reader, not a second copy).
+// Rows whose server timestamp is after the merge are dropped before selection;
+// a row whose timestamp is unreadable is kept, so the shared reader refuses it
+// rather than this file guessing which side of the merge it fell on.
+export function selectMergeAuthorizationAtMerge(statuses, mergeCutoffMs, pr, mergedAt, { isDocumentsOnly = () => false } = {}) {
+  if (!Array.isArray(statuses)) throw new ApprovalCheckError(`pull request #${pr} guarded-merge status history is unreadable`)
+  const preMerge = statuses.filter((row) => {
+    if (row?.context !== MERGE_SELF_CONTEXT) return false
+    const ms = Date.parse(String(row?.created_at ?? ''))
+    return !Number.isFinite(ms) || ms <= mergeCutoffMs
+  }).map((row) => ({ ...row, created_at: String(row?.created_at ?? '') })) // null must not read as 1970
+  let row
+  try { row = selectNewestCommitStatus(preMerge, MERGE_SELF_CONTEXT) } catch (error) {
+    throw new ApprovalCheckError(`pull request #${pr} guarded-merge status history refused: ${error.message}`)
+  }
+  if (!row) throw new ApprovalCheckError(`pull request #${pr} has no guarded-merge authorization status at or before its merge time ${mergedAt}`)
+  // #2839 review H2: name the predicate that actually failed.
+  const where = `pull request #${pr} newest guarded-merge status ${row.id} at or before merge time ${mergedAt}`
+  if (row.state !== 'success') throw new ApprovalCheckError(`${where} is not a lawful authorization: state is ${row.state}, not success`)
+  if (row.description === DOCUMENTS_ONLY_AUTHORIZED_DESCRIPTION) {
+    if (row?.creator?.login !== 'github-actions[bot]') throw new ApprovalCheckError(`${where} is not a lawful authorization: created by ${JSON.stringify(row?.creator?.login ?? null)}, not github-actions[bot]`)
+    if (isDocumentsOnly() !== true) throw new ApprovalCheckError(`${where} is not a lawful authorization: it is the documents-only lane's status, but this pull request's changed files do not classify documents-only`)
+    return row
+  }
+  if (row.description !== MERGE_AUTHORIZED_DESCRIPTION) throw new ApprovalCheckError(`${where} is not a lawful authorization: description ${JSON.stringify(row.description)} is not the guarded lane's`)
+  if (row?.creator?.login !== 'github-actions[bot]') throw new ApprovalCheckError(`${where} is not a lawful authorization: created by ${JSON.stringify(row?.creator?.login ?? null)}, not github-actions[bot]`)
+  return row
+}
+
+export const MERGED_AUDIT_MODE = 'merged'
+
+function gatherMergedAuditInput(env, pr, readJson, readPages) {
+  const livePr = readJson(['api', `repos/${REPO}/pulls/${pr}`])
+  const prState = String(livePr?.state ?? '').toLowerCase()
+  const merged = livePr?.merged === true || Boolean(livePr?.merged_at)
+  if (prState === 'open' && merged) throw new ApprovalCheckError(`pull request #${pr} reports an inconsistent open-and-merged state; approval timing cannot be audited safely`)
+  if (prState !== 'closed') throw new ApprovalCheckError(`merged audit requires a closed, merged pull request; #${pr} reports state '${prState || 'unreadable'}' -- use the live gate (unset APPROVAL_AUDIT) for an open pull request`)
+  if (!merged) throw new ApprovalCheckError(`pull request #${pr} is closed without merge; there is no merge authorization event to audit`)
+  const mergedAt = String(livePr?.merged_at ?? '')
+  const mergeCutoffMs = Date.parse(mergedAt)
+  const mergeCommitSha = String(livePr?.merge_commit_sha ?? '').toLowerCase()
+  if (!Number.isFinite(mergeCutoffMs)) throw new ApprovalCheckError(`pull request #${pr} is merged but has no readable merge timestamp for its approval audit`)
+  if (!/^[0-9a-f]{40}$/.test(mergeCommitSha)) throw new ApprovalCheckError(`pull request #${pr} is merged but has no exact merge commit for its approval audit`)
+  const liveHead = String(livePr?.head?.sha ?? '').toLowerCase()
+  const headSha = String(env.REQUESTED_SHA || liveHead).toLowerCase()
+  if (!/^[0-9a-f]{40}$/.test(headSha) || liveHead !== headSha) throw new ApprovalCheckError(`pull request #${pr} merge audit requires its exact merged head SHA`)
+  // The guarded merge writes this server-timestamped status only after it has
+  // re-proved the exact-head approval while holding the exclusive merge lock.
+  // Status history preserves the rule and evidence actually used for the merge.
+  const statuses = readPages(`repos/${REPO}/commits/${headSha}/statuses?per_page=100`)
+  // Bound to the producer's own classifier (documents-only-merge-authorization
+  // uses classifyLightweightMergePullRequestFiles), so a PR that lane lawfully
+  // authorized is never refused here by a stricter rule.
+  const isDocumentsOnly = () => classifyLightweightMergePullRequestFiles(readPages(`repos/${REPO}/pulls/${pr}/files?per_page=100`)).documentsOnly
+  const authorization = selectMergeAuthorizationAtMerge(statuses, mergeCutoffMs, pr, mergedAt, { isDocumentsOnly })
+  return { pr, headSha, mergeAudit: { mergedAt, mergeCommitSha, headSha, authorizedAt: authorization.created_at, statusId: Number(authorization.id) } }
+}
+
 export function gatherApprovalInput(env = process.env, deps = { json, pages }) {
   const { json: readJson = json, pages: readPages = pages } = deps
   let event = {}; if (env.GITHUB_EVENT_PATH) event = JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, 'utf8'))
   const pr = Number(env.PR_NUMBER || event.pull_request?.number); if (!pr) throw new ApprovalCheckError('PR number is unavailable')
-  const headSha = String(env.REQUESTED_SHA || readJson(['api', `repos/${REPO}/pulls/${pr}`])?.head?.sha || '')
+  // #2839: the same predicate has two valid time horizons. The DEFAULT path is
+  // always the live gate, merged or not: every existing caller (the guarded
+  // merge, the merge queue, and the automatic-promotion re-proof, whose source
+  // PR is merged by construction) keeps its live exact-head verdict re-proof.
+  // Only an explicit APPROVAL_AUDIT=merged opts in to the separate audit read
+  // path, which judges a merged PR by the records as they stood at merge time so
+  // later reviewer records cannot rewrite a lawful merge into a refusal.
+  if (env.APPROVAL_AUDIT !== undefined && env.APPROVAL_AUDIT !== '' && env.APPROVAL_AUDIT !== MERGED_AUDIT_MODE) throw new ApprovalCheckError(`APPROVAL_AUDIT must be '${MERGED_AUDIT_MODE}' or unset; got '${env.APPROVAL_AUDIT}'`)
+  if (env.APPROVAL_AUDIT === MERGED_AUDIT_MODE) return gatherMergedAuditInput(env, pr, readJson, readPages)
+  const livePr = readJson(['api', `repos/${REPO}/pulls/${pr}`])
+  const headSha = String(env.REQUESTED_SHA || livePr?.head?.sha || '')
+  // OWNER RULING 2026-10-02 (docs/owner-rulings.md §6.26, "using one reviewer
+  // twice"): only a pull request that is already MERGED at exactly this head may
+  // carry a slot >= 2 reviewer that also holds another slot. The allocator draws
+  // that state only through the verified merged-PR issue binding, and every verdict
+  // counted here was recorded through it: recordReviewVerdict refuses any verdict on a merged PR unless
+  // reviewTargetIsRecordable passes (scripts/manage-migration-author-lanes.mjs, the
+  // `if(!reviewTargetIsRecordable(live,{pr,issue,headSha},io))throw` line), which for a
+  // merged PR requires io.mergedPrReviewTarget(pr,issue) === true -- the verified
+  // merged-PR issue binding. Pinned by scripts/merged-pr-issue-binding.test.mjs.
+  // Open PRs stay strict. The predicate matches mergedPrLive in the lanes script.
+  const mergedAtHead = Boolean(livePr?.merged_at) && String(livePr?.state ?? '').toLowerCase() !== 'open' && /^[0-9a-f]{40}$/i.test(headSha) && String(livePr?.head?.sha ?? '').toLowerCase() === headSha.toLowerCase()
   const issueNumbers = new Set([pr])
   // Slot 2 assignments are suffixed `-slot<N>`, and a reviewer replaced after a
   // failure keeps its own ref under the replacement namespace, pinned to the SAME
@@ -318,7 +470,28 @@ export function gatherApprovalInput(env = process.env, deps = { json, pages }) {
   // when this pull request has no returns -- but the ref name only SELECTS. What
   // is trusted is the commit, checked back against the name it is stored under,
   // because a ref name is a label and this answer decides whether bytes merge.
-  const returnRows = (() => { const rows = readJson(['api', `repos/${REPO}/git/matching-refs/${REVIEW_RETURN_REF_PREFIX.replace(/^refs\//, '')}/`]); return Array.isArray(rows) ? rows : [] })()
+  const allReturnRows = (() => { const rows = readJson(['api', `repos/${REPO}/git/matching-refs/${REVIEW_RETURN_REF_PREFIX.replace(/^refs\//, '')}/`]); return Array.isArray(rows) ? rows : [] })()
+  const liveVerdictRows = [REVIEW_VERDICT_REF_PREFIX, REVIEW_VERDICT_REPLACEMENT_REF_PREFIX].flatMap((prefix) => {
+    const rows = readJson(['api', `repos/${REPO}/git/matching-refs/${prefix.replace(/^refs\//, '')}/`])
+    return Array.isArray(rows) ? rows : []
+  })
+  // Issue #3806. A merged pull request's verdicts may have been archived (moved,
+  // never rewritten) to refs/db-review-archived-verdicts/. Production promotion
+  // re-proves a merged source pull request here, so for a closed pull request the
+  // archive mirror is read for each exact `<issue>-<pr>-` prefix and its rows count
+  // under their original names. An open pull request is never archived, so the live
+  // gate spends no extra request. An unreadable mirror refuses; it is never skipped.
+  const archivedVerdictRows = String(livePr?.state ?? '').toLowerCase() === 'open' ? [] : [...issueNumbers].flatMap((issue) => [REVIEW_VERDICT_REF_PREFIX, REVIEW_VERDICT_REPLACEMENT_REF_PREFIX].flatMap((prefix) => {
+    const mirror = archivedVerdictMirrorPrefix(`${prefix}/${issue}-${pr}-`)
+    const rows = readJson(['api', `repos/${REPO}/git/matching-refs/${mirror.replace(/^refs\//, '')}`])
+    if (!Array.isArray(rows)) throw new ApprovalCheckError(`archived verdict mirror ${mirror} is unreadable; refusing an incomplete reviewer audit`)
+    return rows
+  }))
+  let allVerdictRows
+  try { allVerdictRows = mergeArchivedVerdictRows(liveVerdictRows, archivedVerdictRows, (row) => row.ref, (row) => row.object?.sha) } catch (error) { throw new ApprovalCheckError(error.message) }
+  const recordsAt = (recordHead) => {
+  const headSha = recordHead
+  const returnRows = allReturnRows
     .filter((row) => new RegExp('^' + REVIEW_RETURN_REF_PREFIX + '/\\d+-' + pr + '-' + headSha.toLowerCase() + '(?:-slot\\d+)?-[0-9a-f]{40}$').test(String(row.ref ?? '')))
   const returns = returnRows.map((row) => {
     let parsed
@@ -334,10 +507,7 @@ export function gatherApprovalInput(env = process.env, deps = { json, pages }) {
   // for it, so the per-assignment commit reads are spent only when there is a
   // return to order against.
   if (returns.length) for (const assignment of assignments) assignment.sequence = Number(parseReviewCursor(commitOf(assignment.sha))?.sequence)
-  const verdictRows = [REVIEW_VERDICT_REF_PREFIX, REVIEW_VERDICT_REPLACEMENT_REF_PREFIX].flatMap((prefix) => {
-    const rows = readJson(['api', `repos/${REPO}/git/matching-refs/${prefix.replace(/^refs\//, '')}/`])
-    return Array.isArray(rows) ? rows : []
-  }).filter((row)=>{const parsed=parseVerdictRef(row.ref);return parsed?.pr===pr&&parsed.headSha===headSha.toLowerCase()})
+  const verdictRows = allVerdictRows.filter((row)=>{const parsed=parseVerdictRef(row.ref);return parsed?.pr===pr&&parsed.headSha===headSha.toLowerCase()})
   const verdicts=verdictRows.map((row)=>{
     const named=parseVerdictRef(row.ref),sha=row.object?.sha
     const commit=readJson(['api',`repos/${REPO}/git/commits/${sha}`]),record=parseVerdictCommit(commit)
@@ -354,6 +524,26 @@ export function gatherApprovalInput(env = process.env, deps = { json, pages }) {
     try{return validateVerdictArtifact({ref:row.ref,sha,commit,findingsBody,assignment:{sha:assignment.sha,reviewer:cursor.reviewer}})}
     catch(error){throw new ApprovalCheckError(`verdict ${row.ref} is invalid: ${error.message}`)}
   })
+  return { returns, verdicts }
+  }
+  const { returns, verdicts } = recordsAt(headSha)
+  // Earlier heads of this pull request that a reviewer was assigned to. Their
+  // records are read so a merge-from-main refresh can carry an APPROVE forward
+  // (see `evaluateApprovalWithRefresh`); whether any of them may is decided there,
+  // against git, never here.
+  // Discovered from verdicts and returns as well as assignments: an exclusion
+  // clears a refused head's assignment but leaves its verdict, and that refusal
+  // must still be found (grok review of PR #2780). A head whose records cannot be
+  // read is kept, marked unreadable, so the carry step refuses rather than skips.
+  const returnHeadPattern = new RegExp('^' + REVIEW_RETURN_REF_PREFIX + '/\\d+-' + pr + '-([0-9a-f]{40})')
+  const recordHeads = [
+    ...assignments.map((row) => row.headSha),
+    ...allVerdictRows.map((row) => { const parsed = parseVerdictRef(row.ref); return parsed?.pr === pr ? parsed.headSha : null }),
+    ...allReturnRows.map((row) => returnHeadPattern.exec(String(row.ref ?? ''))?.[1]),
+  ]
+  const priorHeads = [...new Set(recordHeads.map((sha) => String(sha ?? '').toLowerCase()))]
+    .filter((sha) => /^[0-9a-f]{40}$/.test(sha) && sha !== headSha.toLowerCase())
+    .map((sha) => { try { return { headSha: sha, ...recordsAt(sha) } } catch (error) { if (!(error instanceof ApprovalCheckError)) throw error; return { headSha: sha, unreadable: error.message } } })
   const evidence = [
     ...[...issueNumbers].flatMap((number) => readPages(`repos/${REPO}/issues/${number}/comments?per_page=100`)),
     ...readPages(`repos/${REPO}/pulls/${pr}/reviews?per_page=100`),
@@ -364,7 +554,60 @@ export function gatherApprovalInput(env = process.env, deps = { json, pages }) {
   // carry their previous name too, so a migration renamed to a `.md` is still a
   // migration change. Unreadable input yields a list the classifier refuses.
   const changedFiles = changedPathsFromPullRequestFiles(readPages(`repos/${REPO}/pulls/${pr}/files?per_page=100`))
-  return { pr, headSha, evidence, assignments, returns, verdicts, changedFiles }
+  return { pr, headSha, evidence, assignments, returns, verdicts, changedFiles, priorHeads, mergeAudit: null, mergedAtHead }
+}
+
+// A MERGE FROM MAIN DOES NOT VOID AN APPROVAL (orchestrator marker #2758, 2026-09-11).
+//
+// Every merge to main forced every other open pull request to merge main, and the
+// new head voided its APPROVE, so each needed a fresh draw and review after every
+// refresh. An APPROVE recorded for an earlier head A now satisfies this gate at
+// head B when A is an ancestor of B and the pull request's own diff against its
+// merge base with main is IDENTICAL at A and B (`.agent/` evidence aside). Any
+// change of the author's own -- one migration line -- still needs a new review.
+// A refusal is never carried past: a durable refusal at B, or at ANY earlier head
+// whose content is identical to B, still blocks. Head A must pass the full
+// exact-head evaluation on its own records (every slot, returns, non-reading
+// reviewers), so nothing is weaker than approving A was.
+function durableRefusalsAt(records, pr, head) {
+  return (records ?? []).filter((row) => Number(row.pr) === Number(pr) && String(row.head_sha).toLowerCase() === String(head).toLowerCase() && reviewerReadsRepository(row.reviewer) && row.verdict !== 'APPROVE')
+}
+
+export function evaluateApprovalWithRefresh(input, { contentPreservingRefresh }) {
+  let exactError
+  try { return evaluateExactHeadApproval(input) } catch (error) { if (!(error instanceof ApprovalCheckError)) throw error; exactError = error }
+  if (!Array.isArray(input?.verdicts) || typeof contentPreservingRefresh !== 'function') throw exactError
+  if (input.verdicts.some((row) => !isValidatedVerdictArtifact(row))) throw exactError
+  if (durableRefusalsAt(input.verdicts, input.pr, input.headSha).length) throw exactError
+  // A head with reviewer records of its own -- an assignment, a replacement, a
+  // return or any verdict -- is judged on those records alone. Carrying a prior
+  // head's sign-off past them would bypass a slot returned or newly drawn at this
+  // head (muse review of PR #2780).
+  const head = String(input.headSha).toLowerCase()
+  const ownAssignments = (input.assignments ?? []).filter((row) => String(row.headSha ?? '').toLowerCase() === head)
+  if (ownAssignments.length || (input.returns ?? []).length || input.verdicts.length) throw new ApprovalCheckError(`${exactError.message}; an APPROVE cannot be carried forward because this head has reviewer records of its own (assignment, return or verdict), so it is judged on those alone`)
+  const equivalent = [], digests = new Map()
+  for (const prior of input.priorHeads ?? []) {
+    const proof = contentPreservingRefresh(prior?.headSha, input.headSha)
+    // #2728: a carry must record the approved implementation digest; a proof
+    // without one is not a proof.
+    if (proof?.ok !== true || !/^[0-9a-f]{64}$/.test(String(proof.implementation_digest ?? ''))) continue
+    // An equivalent head whose records cannot be trusted may hide a refusal.
+    if (prior.unreadable || !Array.isArray(prior.verdicts) || prior.verdicts.some((row) => !isValidatedVerdictArtifact(row))) throw new ApprovalCheckError(`${exactError.message}; an APPROVE cannot be carried forward because the reviewer records at head ${prior.headSha}, whose pull request diff is identical to this head, could not be read${prior.unreadable ? `: ${prior.unreadable}` : ''}`)
+    equivalent.push(prior)
+    digests.set(prior, proof.implementation_digest)
+  }
+  const refusedPrior = equivalent.find((prior) => durableRefusalsAt(prior.verdicts, input.pr, prior.headSha).length)
+  if (refusedPrior) throw new ApprovalCheckError(`${exactError.message}; an APPROVE cannot be carried forward because head ${refusedPrior.headSha}, whose pull request diff is identical to this head, carries a durable reviewer refusal`)
+  for (const prior of equivalent) {
+    try {
+      // mergedAtHead describes the CURRENT head only; a carried prior head is judged strictly.
+      const result = evaluateExactHeadApproval({ ...input, headSha: prior.headSha, returns: prior.returns ?? [], verdicts: prior.verdicts, mergedAtHead: false })
+      if (result.documents_only) continue
+      return { ...result, head_sha: input.headSha, carried_from: prior.headSha, implementation_digest: digests.get(prior) }
+    } catch (error) { if (!(error instanceof ApprovalCheckError)) throw error }
+  }
+  throw exactError
 }
 
 // A merge is authorized by create-only verdict artifacts, never by comment prose.
@@ -377,11 +620,41 @@ export function requireDurableVerdictInput(input) {
   return input
 }
 
-export function main(env = process.env) {
+// WHICH MAIN THE PULL REQUEST'S DIFF IS TAKEN AGAINST (#3146). Before the merge
+// that is current main. After it -- the automatic production qualifier re-proves
+// a merged pull request -- current main contains the head, every earlier head's
+// diff is empty, and a superseded refusal looked identical to the approved head.
+// A merged pull request is therefore judged against its merge commit's first
+// parent: main exactly as the guarded merge saw it. An unreadable answer refuses.
+export function resolveApprovalMainRef(env = process.env, pr, readJson = json, runGit = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })) {
+  if (env.APPROVAL_MAIN_REF) return env.APPROVAL_MAIN_REF
+  const live = readJson(['api', `repos/${REPO}/pulls/${pr}`])
+  // Issue #3280 governed review round 2: this ref is consumed by local
+  // `git merge-base`/`git show`, and this guard runs on the merge_group path,
+  // where origin/main does not exist. Resolve it through the shared resolver,
+  // which fetches the branch when the ref is absent and throws when it cannot.
+  // A merged pull request is judged against `<merge>^1`, a revision that needs
+  // no fetch and passes straight through.
+  if (live?.merged !== true) return resolveBaseRef('origin/main', { git: gitProbe(runGit) })
+  const merge = String(live.merge_commit_sha ?? '').toLowerCase()
+  if (!/^[0-9a-f]{40}$/.test(merge)) throw new ApprovalCheckError(`pull request #${pr} is merged but has no exact merge commit to judge its diff against`)
+  return `${merge}^1`
+}
+
+export function main(env = process.env, deps = {}) {
   try {
-    const result = evaluateExactHeadApproval(requireDurableVerdictInput(gatherApprovalInput(env)))
-    if (result.documents_only) console.log(`Documents-only pull request: PR #${result.pr} head ${result.head_sha} draws no database reviewer (${result.reason}). Every other check and the guarded merge lane still apply (#2102).`)
-    else console.log(`Exact-head approval verified: PR #${result.pr} head ${result.head_sha} (${result.approvals} approval(s), ${result.assignments} pinned assignment(s)).`)
+    const { gather = gatherApprovalInput, evaluate = evaluateApprovalWithRefresh } = deps ?? {}
+    const input = gather(env)
+    if (input.mergeAudit) {
+      console.log(`Merged pull request approval audit verified: PR #${input.pr} head ${input.headSha} carried successful guarded-merge authorization status ${input.mergeAudit.statusId} at ${input.mergeAudit.authorizedAt}, before merge ${input.mergeAudit.mergedAt} (merge commit ${input.mergeAudit.mergeCommitSha}). Later reviewer activity and later gate-rule changes do not rewrite that merge-time decision.`)
+      return 0
+    }
+    requireDurableVerdictInput(input)
+    const mainRef = resolveApprovalMainRef(env, input.pr)
+    const result = evaluate(input, { contentPreservingRefresh: (approvedHead, head) => isContentPreservingRefresh({ approvedHead, head, mainRef }) })
+    if (result.carried_from) console.log(`Exact-head approval carried forward: PR #${result.pr} head ${result.head_sha} has the same pull request diff as approved head ${result.carried_from}, so its evidence-only or merge-from-main refresh needs no new review; approved implementation digest ${result.implementation_digest} (${result.approvals} approval(s), ${result.assignments} pinned assignment(s)).`)
+    else if (result.documents_only) console.log(`Documents-only pull request: PR #${result.pr} head ${result.head_sha} draws no database reviewer (${result.reason}). Every other check and the guarded merge lane still apply (#2102).`)
+    else console.log(`Exact-head approval verified: PR #${result.pr} head ${result.head_sha} (${result.approvals} approval(s), ${result.assignments} pinned assignment(s), required slot(s) ${result.required_slots}).`)
     return 0
   } catch (e) { console.error(`REFUSED: ${e.message}`); return 2 }
 }

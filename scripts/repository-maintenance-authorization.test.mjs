@@ -1,6 +1,10 @@
 import test from 'node:test'
+import { currentRepository, expectedOperatorAssociation } from './lib/repository-identity.mjs'
+// Fixtures follow the resolved repository identity and its operator association (#3255).
+const THIS_REPO = currentRepository(), OPERATOR_ASSOCIATION = expectedOperatorAssociation()
 import assert from 'node:assert/strict'
-import { authorizeRepositoryMaintenanceStatus, EXCLUSIVE_REFS, MUTEX_REF, selectNewestCommitStatus } from './manage-migration-author-lanes.mjs'
+import { authorizeRepositoryMaintenanceStatus, EXCLUSIVE_REFS, MUTEX_REF, selectNewestCommitStatus, MERGE_ADVISORY_CONTEXT } from './manage-migration-author-lanes.mjs'
+import { MERGE_SELF_CONTEXT } from './lib/merge-self-context.mjs'
 
 const head='a'.repeat(40),owner='b'.repeat(40),base='c'.repeat(40)
 const options={pr:2715,headSha:head,description:'prose verified',targetUrl:'https://github.com/u2giants/shared-db/actions/runs/7'}
@@ -24,7 +28,7 @@ function fakeIo({files=prose,liveHead=head,production=null,releaseFails=false,pr
     readRef:(ref)=>refs.get(ref)??null,
     createRef:(ref,sha)=>{if(refs.has(ref))return false;refs.set(ref,sha);return true},
     deleteRef:(ref)=>{if(releaseFails&&ref===MUTEX_REF)throw new Error('release failed');refs.delete(ref)},
-    getPr:()=>prSequence?.shift()??({base:{sha:base,ref:'main',repo:{full_name:'u2giants/shared-db'}},head:{sha:liveHead}}),
+    getPr:()=>prSequence?.shift()??({base:{sha:base,ref:'main',repo:{full_name:THIS_REPO}},head:{sha:liveHead}}),
     comparePullRequestFiles:(seenBase,seenHead)=>{assert.equal(seenBase,base);assert.equal(seenHead,head);return files},
     postCommitStatus:(sha,status)=>{statuses.push({sha,...status});return status},
     getCommitStatus:()=>existingStatus,
@@ -43,16 +47,28 @@ test('authorizes prose under only the global mutex and releases it',()=>{
   for(const ref of Object.values(EXCLUSIVE_REFS))assert.equal(io.readRef(ref),null)
 })
 
-test('production, a moved head, or any executable hunk fails closed and routes to guarded checks',()=>{
+test('an ordinary code change reports not applicable, never red, and routes to guarded checks (#2838)',()=>{
+  const io=fakeIo({files:[{filename:'scripts/change.mjs',status:'modified',patch:'@@ -1 +1 @@\n-a\n+b'}]})
+  const result=authorizeRepositoryMaintenanceStatus(options,io)
+  assert.equal(result.documentsOnly,false)
+  assert.equal(result.notApplicable,true)
+  assert.deepEqual(io.statuses.map((row)=>[row.context,row.state]),[[MERGE_ADVISORY_CONTEXT,'success']])
+  assert.match(io.statuses[0].description,/^Not applicable/)
+  assert.match(io.statuses[0].description,/guarded code checks required/)
+  assert.equal(io.readRef(MUTEX_REF),null)
+  // #3505: the advisory must never share a context with the real grant.
+  assert.notEqual(io.statuses[0].context, MERGE_SELF_CONTEXT)
+})
+
+test('production or a moved head fails closed and routes to guarded checks',()=>{
   for(const io of [
     fakeIo({production:'c'.repeat(40)}),
     fakeIo({liveHead:'d'.repeat(40)}),
-    fakeIo({files:[{filename:'scripts/change.mjs',status:'modified',patch:'@@ -1 +1 @@\n-a\n+b'}]}),
   ]){
     assert.throws(()=>authorizeRepositoryMaintenanceStatus(options,io))
     assert.deepEqual(io.statuses.map((row)=>row.state),['failure'])
     assert.match(io.statuses[0].description,/guarded code checks required/)
-    assert.equal(io.statuses[0].context,'Documents-only merge authorization')
+    assert.equal(io.statuses[0].context,MERGE_ADVISORY_CONTEXT)
     assert.equal(io.readRef(MUTEX_REF),null)
   }
 })
@@ -68,8 +84,8 @@ test('a base retarget revokes stale required authorization explicitly',()=>{
 test('a reused commit revokes only an earlier lightweight success',()=>{
   const executable=[{filename:'scripts/change.mjs',status:'modified',patch:'@@ -1 +1 @@\n-a\n+b'}]
   const guarded=fakeIo({files:executable,existingStatus:{state:'success',description:'Guarded merge authorized'}})
-  assert.throws(()=>authorizeRepositoryMaintenanceStatus(options,guarded))
-  assert.equal(guarded.statuses[0].context,'Documents-only merge authorization')
+  assert.equal(authorizeRepositoryMaintenanceStatus(options,guarded).notApplicable,true)
+  assert.deepEqual(guarded.statuses.map((row)=>[row.context,row.state]),[[MERGE_ADVISORY_CONTEXT,'success']])
   const lightweight=fakeIo({files:executable,existingStatus:{state:'success',description:options.description}})
   assert.throws(()=>authorizeRepositoryMaintenanceStatus(options,lightweight))
   assert.equal(lightweight.statuses[0].context,'Migration guarded merge authorization')
@@ -82,7 +98,7 @@ test('a reused commit revokes only an earlier lightweight success',()=>{
 
 test('an untrusted or moved base repository and branch cannot authorize',()=>{
   for(const untrustedBase of [
-    {sha:base,ref:'release/shared-db',repo:{full_name:'u2giants/shared-db'}},
+    {sha:base,ref:'release/shared-db',repo:{full_name:THIS_REPO}},
     {sha:base,ref:'main',repo:{full_name:'attacker/shared-db'}},
   ]){
     const io=fakeIo({prSequence:[{base:untrustedBase,head:{sha:head}}]})
@@ -95,12 +111,15 @@ test('an ABA push cannot lend prose files to an executable status SHA',()=>{
   const io=fakeIo({
     files:[{filename:'scripts/change.mjs',status:'modified',patch:'@@ -1 +1 @@\n-a\n+b'}],
     prSequence:[
-      {base:{sha:base,ref:'main',repo:{full_name:'u2giants/shared-db'}},head:{sha:head}},
-      {base:{sha:base,ref:'main',repo:{full_name:'u2giants/shared-db'}},head:{sha:head}},
+      {base:{sha:base,ref:'main',repo:{full_name:THIS_REPO}},head:{sha:head}},
+      {base:{sha:base,ref:'main',repo:{full_name:THIS_REPO}},head:{sha:head}},
     ],
   })
-  assert.throws(()=>authorizeRepositoryMaintenanceStatus(options,io),/non-lightweight file/)
-  assert.deepEqual(io.statuses.map((row)=>row.state),['failure'])
+  const result=authorizeRepositoryMaintenanceStatus(options,io)
+  assert.equal(result.documentsOnly,false)
+  assert.match(result.reason,/non-lightweight file/)
+  assert.deepEqual(io.statuses.map((row)=>[row.context,row.state]),[[MERGE_ADVISORY_CONTEXT,'success']])
+  assert.match(io.statuses[0].description,/^Not applicable/)
 })
 
 test('a failed mutex release revokes a status and never acquires a stage',()=>{

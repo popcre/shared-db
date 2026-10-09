@@ -2,6 +2,16 @@
 set -euo pipefail
 
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source_dir="$root_dir"
+if [[ "$#" -gt 0 ]]; then
+  [[ "$#" = 6 && "$1" = --data-root && "$3" = --head-sha && "$5" = --source-sha ]] || { echo 'Explicit data root/head/source identity required' >&2; exit 2; }
+  root_dir="$(node "$source_dir/scripts/lib/agent-evidence-paths.mjs" --data-root "$2" --head-sha "$4" --source-root "$source_dir" --source-sha "$6")"
+  # Guard seams cannot override a security-bound actual PR data inventory.
+  for boundary_var in CHECK_SQL_MIGRATION_DIR CHECK_SQL_MAIN_NEWEST CHECK_SQL_MIGRATIONS_ONLY CHECK_SQL_EOL_DIFF_FILE; do
+    [[ -z "${!boundary_var:-}" ]] || { echo 'Data boundary forbids test overrides' >&2; exit 2; }
+  done
+  cd "$root_dir"
+fi
 # CHECK_SQL_MIGRATION_DIR / CHECK_SQL_MAIN_NEWEST / CHECK_SQL_MIGRATIONS_ONLY are
 # test seams only, used by scripts/check-sql.test.mjs to drive the migration
 # guards against a throwaway fixture directory. CI and a developer's plain
@@ -26,10 +36,22 @@ check_eol_combined_table_references() {
   if [[ -z "$diff_file" ]]; then
     # Fixture-driven migration-guard tests have no meaningful repository diff.
     [[ -n "${CHECK_SQL_MIGRATION_DIR:-}" ]] && return 0
-    local eol_base="origin/${GITHUB_BASE_REF:-main}"
+    # Issue #3280 governed review (grok-4.6): on a merge_group run the checkout
+    # action is handed the queue group commit SHA, so no origin/<base> remote
+    # tracking ref is created even at fetch-depth: 0. Guard B below already
+    # fetches the base branch explicitly in that case; this guard must do the
+    # same or it hard-fails on every queue run. It still fails CLOSED (return 2)
+    # when the base genuinely cannot be resolved -- it is never skipped.
+    local eol_base_ref="${GITHUB_BASE_REF:-main}"
+    local eol_base="origin/${eol_base_ref}"
     if ! git -C "$root_dir" rev-parse --verify --quiet "$eol_base" >/dev/null; then
-      echo "ERROR: issue #1684 EOL guard cannot resolve base $eol_base." >&2
-      return 2
+      if git -C "$root_dir" fetch --quiet --no-tags origin "$eol_base_ref" >/dev/null 2>&1         && git -C "$root_dir" rev-parse --verify --quiet FETCH_HEAD >/dev/null 2>&1; then
+        eol_base="FETCH_HEAD"
+      else
+        echo "ERROR: issue #1684 EOL guard cannot resolve base $eol_base, and an" >&2
+        echo "explicit fetch of origin/${eol_base_ref} did not produce one." >&2
+        return 2
+      fi
     fi
     diff_file="$(mktemp)"
     remove_diff=1
@@ -39,10 +61,53 @@ check_eol_combined_table_references() {
   node - "$diff_file" <<'NODE'
 const fs = require('node:fs')
 const diff = fs.readFileSync(process.argv[2], 'utf8')
+// #3907: these exact new assets only inspect catalog metadata for the
+// already-reviewed legacy dflow catalog. This is a byte-bound addition,
+// never an exemption for arbitrary proofs, runtime references, or later edits.
+const proofHashes = {
+  'scripts/proofs/3882-contract.json': '22ee55499288d95abf3b1e01314232f514a1011725085cdfe6a053f5b1c01419',
+  'scripts/proofs/3882-production.sql': '59b2c915cf2a8d0e9d0687c8a988accc03fc9b2a9b20dd579a055db86f4c2dbd',
+  'scripts/proofs/3882-sandbox.sql': 'e76702725e5c283b0da7f95cd4da96b8b7df764db756f68d385bf6775788c90d',
+}
+const exactProofAdditions = new Set()
+for (const block of diff.split(/(?=^diff --git )/m)) {
+  const filename = block.match(/^diff --git a\/.+ b\/(.+)$/m)?.[1]
+  if (!proofHashes[filename] || !/^new file mode /m.test(block)) continue
+  const content = block.split(/\r?\n/).filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1)).join('\n') + '\n'
+  if (require('node:crypto').createHash('sha256').update(content).digest('hex') === proofHashes[filename]) exactProofAdditions.add(filename)
+}
 const allowed = new Set([
   'supabase/migrations/20260827222039_eol_core_properties_and_characters.sql',
   'supabase/migrations/20260829004145_separate_property_and_character.sql',
 ])
+// #3890 removes the misplaced sandbox relation; it introduces no runtime
+// dependency. Accept only the exact reviewed transition bytes, plus its
+// exact non-runtime contract/catalog evidence. No other path is exempted.
+const sandboxTransitions = new Map([
+  ['supabase/migrations/20261006203846_move_designflow_sandbox_properties_to_dflow.sql', '08fdfbfd6a5a10ace41265d87d06df9fb13d0f2ddb20fbfd0e1a5fb55e714584'],
+  ['supabase/migrations/20261007000937_reissue_designflow_legacy_namespace_transition.sql', 'bf59f9fd5b81458ae61d0214799ec1809e3d1220e7b2cdc4e2c0fd967f827a8d'],
+])
+const sandboxEvidence = new Set([
+  '.agent/work/3890/1/contract.json', '.agent/work/3890/2/contract.json',
+  '.agent/work/3890/4/contract.json', '.agent/work/3890/4/completion.json',
+  '.agent/work/3890/6/contract.json', '.agent/work/3890/6/completion.json',
+  '.agent/work/3890/9/contract.json', '.agent/work/3890/9/completion.json',
+  '.github/live-proofs/3890.sql',
+  'scripts/production-verification-sidecars/20261006203846.json',
+  'scripts/production-verification-sidecars/20261007000937.json',
+])
+for (const [sandboxTransition, transitionHash] of sandboxTransitions) {
+  const transitionChunk = diff.split(/(?=^diff --git )/m).find(chunk => chunk.startsWith(`diff --git a/${sandboxTransition} b/${sandboxTransition}\n`))
+  if (transitionChunk) {
+    const completeAddition = /^new file mode 100644$/m.test(transitionChunk) && /^--- \/dev\/null$/m.test(transitionChunk)
+    const bytes = transitionChunk.split(/\r?\n/).filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1)).join('\n') + '\n'
+    const hash = require('node:crypto').createHash('sha256').update(bytes).digest('hex')
+    if (completeAddition && hash === transitionHash) {
+      allowed.add(sandboxTransition)
+      for (const file of sandboxEvidence) allowed.add(file)
+    }
+  }
+}
 const deltas = new Map()
 const maintenanceAllowed = new Set([
   'api.db_data_admin_licensor_property_tree',
@@ -73,7 +138,7 @@ for (const line of diff.split(/\r?\n/)) {
     maintenance.set(current, { declared: new Set(), completed: new Set(), active: null, tag: null })
     continue
   }
-  if (allowed.has(current) || current === 'scripts/check-sql.sh') continue
+  if (allowed.has(current) || exactProofAdditions.has(current) || current === 'scripts/check-sql.sh') continue
   if (current.endsWith('.md')) continue
   if (current.startsWith('supabase/tests/') || /\.test\.[cm]?js$/.test(current)) continue
   if (line.startsWith('+') && !line.startsWith('+++')) {
@@ -243,7 +308,7 @@ else
       continue
     fi
     if [[ "$version" < "$main_newest_version" ]]; then
-      if node scripts/historical-migration-restorations.mjs --allows-backdated "supabase/migrations/$name"; then
+      if node "$source_dir/scripts/historical-migration-restorations.mjs" --allows-backdated "supabase/migrations/$name"; then
         echo "Guard B historical restoration: exact governed version $version is allowed to sort before main."
         continue
       fi
@@ -365,6 +430,157 @@ check_ledger() {
   return 0
 }
 
+# Percent-decode a single URI component (user, password, dbname) per RFC 3986:
+# '+' is literal in userinfo/path (only %XX sequences are decoded).
+_pct_decode() {
+  local s="$1"
+  # Decode %XX sequences only; fail-closed on malformed ones.
+  local out="" i=0 len=${#s}
+  while (( i < len )); do
+    local c="${s:i:1}"
+    if [[ "$c" == "%" ]]; then
+      local hex="${s:i+1:2}"
+      if [[ "$hex" =~ ^[0-9A-Fa-f]{2}$ ]]; then
+        if [[ "$hex" == "00" ]]; then
+          echo "ERROR: NUL byte (percent-encoded %00) is refused in URI components" >&2
+          return 1
+        fi
+        printf -v c "\\x$hex"
+        (( i += 2 ))
+      else
+        echo "ERROR: malformed percent-encoding in URI component" >&2
+        return 1
+      fi
+    fi
+    out+="$c"
+    (( i += 1 ))
+  done
+  printf '%s' "$out"
+}
+
+# Parse a PostgreSQL URI into PG* environment variables — the URI is NEVER
+# placed in process argv (2026-10-02 leak class; same PG* transport as
+# tools/runSql after PR #3938). ALL ambient PG* values are swept first so
+# they cannot override the declared target. PGSSLMODE is the one exception:
+# a stricter ambient value survives when the URI declares none (never the
+# other way around — the sweep must not downgrade TLS). Fails closed on
+# shapes we cannot safely represent.
+pg_url_to_env() {
+  local url="$1"
+  # Save ambient PGSSLMODE before the sweep (PR #3938 pattern: a stricter
+  # operator-exported PGSSLMODE survives when the URL declares none).
+  local ambient_sslmode="${PGSSLMODE:-}"
+  # Sweep ALL ambient libpq PG* vars — including PGHOSTADDR (host bypass),
+  # PGOPTIONS (server GUC injection), PGSERVICE/PGSERVICEFILE (alternate
+  # target), PGPASSFILE (alternate credential source). They must never
+  # override the declared target (muse review 2026-10-06, H2). Use an
+  # explicit list to avoid over-matching non-libpq vars like PAGER (L10).
+  local _pg_var
+  for _pg_var in PGHOST PGHOSTADDR PGPORT PGDATABASE PGUSER PGPASSWORD \
+    PGPASSFILE PGSERVICE PGSERVICEFILE PGSYSCONFDIR PGOPTIONS PGAPPNAME \
+    PGSSLMODE PGSSLCERT PGSSLKEY PGSSLROOTCERT PGSSLCRL PGSSLPASSWORD \
+    PGSSLCERTMODE PGSSLMINPROTOCOLVERSION PGSSLMAXPROTOCOLVERSION \
+    PGCONNECT_TIMEOUT PGTARGETSESSIONATTRS PGCHANNELBINDING \
+    PGLOADBALANCEHOSTS PGGSSENCMODE PGSSLNEGOTIATION PGREQUIREAUTH \
+    PGCLIENTENCODING PGKRBSRVNAME PGREALM PGGSSLIB; do
+    unset "$_pg_var"
+  done
+  # Strip fragment (not representable in PG*).
+  url="${url%%#*}"
+  # Strip query string; recover sslmode if present.
+  local query=""
+  if [[ "$url" == *\?* ]]; then
+    query="${url#*\?}"
+    url="${url%%\?*}"
+  fi
+  # postgres(ql)://user:pass@host:port/dbname (host may be empty for unix sockets)
+  # BASH_REMATCH groups: 4=user 6=pass 7=host 9=port 11=dbname
+  local re='^(postgres(ql)?://)?(([^:/@]*)(:([^@/]*))?@)?([[][^]]+[]]|[^:/@]*)(:([0-9]+))?(/(.*))?$'
+  if [[ ! "$url" =~ $re ]]; then
+    echo "ERROR: not a PostgreSQL URI: $(printf '%s' "$url" | sed 's|[^/]*@|[redacted]@|')" >&2
+    return 1
+  fi
+  local user pass host port dbname
+  user="$(_pct_decode "${BASH_REMATCH[4]}")" || return 1
+  pass="$(_pct_decode "${BASH_REMATCH[6]}")" || return 1
+  host="${BASH_REMATCH[7]}"
+  port="${BASH_REMATCH[9]}"
+  dbname="$(_pct_decode "${BASH_REMATCH[11]}")" || return 1
+  # Strip IPv6 brackets for PGHOST (libpq wants bare form in PGHOST).
+  host="${host#\[}"
+  host="${host%\]}"
+  PGHOST="$host"
+  [[ -n "$port" ]] && PGPORT="$port"
+  [[ -n "$user" ]] && PGUSER="$user"
+  [[ -n "$pass" ]] && PGPASSWORD="$pass"
+  [[ -n "$dbname" ]] && PGDATABASE="$dbname"
+  # Query string: recover sslmode; refuse params that redirect the target
+  # or change server semantics (muse review 2026-10-06, M4/M6).
+  local url_declares_sslmode=0
+  if [[ -n "$query" ]]; then
+    local kv k v
+    local old_ifs="$IFS"
+    IFS='&'
+    # Use read -a to avoid globbing (muse review M5).
+    local -a _params
+    read -ra _params <<< "$query"
+    IFS="$old_ifs"
+    for kv in "${_params[@]}"; do
+      [[ -z "$kv" ]] && continue
+      k="$(_pct_decode "${kv%%=*}")" || return 1
+      v="$(_pct_decode "${kv#*=}")" || return 1
+      case "${k,,}" in
+        sslmode)
+          url_declares_sslmode=1
+          # Refuse weak TLS modes (muse review 2026-10-06 #2): disable/allow
+          # can end in cleartext; prefer silently falls back under MITM.
+          case "$v" in
+            disable|allow|prefer)
+              echo "ERROR: sslmode=$v is rejected (it can send credentials in cleartext)" >&2
+              return 1
+              ;;
+            require|verify-ca|verify-full)
+              PGSSLMODE="$v"
+              ;;
+            *)
+              echo "ERROR: unrecognized sslmode='$v' (accepted: require, verify-ca, verify-full)" >&2
+              return 1
+              ;;
+          esac
+          ;;
+        ssl)
+          # Legacy boolean alias (muse review M6): map true→require, refuse false.
+          url_declares_sslmode=1
+          if [[ "$v" == "true" || "$v" == "1" ]]; then
+            PGSSLMODE="require"
+          else
+            echo "ERROR: ssl=false/0 is rejected (would disable encryption)" >&2
+            return 1
+          fi
+          ;;
+        host|hostaddr|port|options|target_session_attrs|load_balance_hosts|user|password|dbname|service|passfile|sslcert|sslkey|sslrootcert|sslcrl|sslpassword|requiressl|gssencmode|krbsrvname|channel_binding|sslnegotiation|sslcertmode|require_auth)
+          echo "ERROR: PostgreSQL URI query parameter '$k' can redirect the target, change credentials, or alter TLS; refusing it" >&2
+          return 1
+          ;;
+        # Other query params (application_name, connect_timeout, etc.) are
+        # accepted and ignored — they do not redirect the target.
+      esac
+    done
+  fi
+  # TLS floor: URL-declared sslmode wins (with weak modes refused above);
+  # otherwise ambient survives only if stricter than 'require'. When neither
+  # URL nor ambient says anything, leave PGSSLMODE unset — libpq's default
+  # 'prefer' works against both TLS and plaintext servers, which is what the
+  # disposable-DB local-rehearsal flow needs (muse review 2026-10-06 #1).
+  if [[ "$url_declares_sslmode" -eq 0 && -n "$ambient_sslmode" ]]; then
+    case "$ambient_sslmode" in
+      verify-full|verify-ca|require) PGSSLMODE="$ambient_sslmode" ;;
+    esac
+  fi
+  export PGHOST ${PGPORT:+PGPORT} ${PGUSER:+PGUSER} ${PGPASSWORD:+PGPASSWORD} ${PGDATABASE:+PGDATABASE} PGSSLMODE
+  return 0
+}
+
 # Resolve a ledger to a file, either from a pre-fetched path or by querying the
 # database directly. Prints the path on stdout; empty means "not configured".
 resolve_ledger_file() {
@@ -385,10 +601,16 @@ resolve_ledger_file() {
       echo "NOPSQL:"
       return 0
     fi
+    # PG* env transport — the URL is NEVER passed in argv (2026-10-02 leak
+    # class; matches tools/runSql PG* approach after PR #3938).
+    if ! pg_url_to_env "$ledger_url"; then
+      echo "QUERYFAILED:"
+      return 0
+    fi
     out="$(mktemp)"
     # Read-only. `ON_ERROR_STOP` so a failed query is an empty file AND a
     # non-zero status, never a silently truncated ledger.
-    if psql "$ledger_url" --set ON_ERROR_STOP=1 -At \
+    if psql --set ON_ERROR_STOP=1 -At \
       -c 'select version from supabase_migrations.schema_migrations order by version' \
       > "$out"; then
       echo "$out"
@@ -482,8 +704,8 @@ if [[ "$guard_b2_ran" -eq 0 && "$guard_b2_failed" -eq 0 ]]; then
   fi
 fi
 
-node "$root_dir/scripts/check-expected-count-patterns.mjs" "$migration_dir" "$added_versions_file"
-node "$root_dir/scripts/check-migration-verify-cost.mjs" "$migration_dir" "$added_versions_file"
+node "$source_dir/scripts/check-expected-count-patterns.mjs" "$migration_dir" "$added_versions_file"
+node "$source_dir/scripts/check-migration-verify-cost.mjs" "$migration_dir" "$added_versions_file"
 
 rm -f "$added_versions_file" "$migration_names_file"
 
@@ -521,8 +743,14 @@ grep -qF "enable row level security" "$migration_dir/20260621151155_api_rls_real
 
 if [[ -n "${DATABASE_URL:-}" ]]; then
   command -v psql >/dev/null
+  # PG* env transport — the URL is NEVER passed in argv (2026-10-02 leak class;
+  # matches tools/runSql PG* approach after PR #3938).
+  if ! pg_url_to_env "$DATABASE_URL"; then
+    echo "ERROR: DATABASE_URL could not be parsed into PG* environment variables." >&2
+    exit 1
+  fi
   for file in "${required_files[@]}"; do
-    psql "$DATABASE_URL" --set ON_ERROR_STOP=1 --single-transaction --file "$migration_dir/$file"
+    psql --set ON_ERROR_STOP=1 --single-transaction --file "$migration_dir/$file"
   done
 else
   echo "Static checks passed. Set DATABASE_URL to run migrations against a disposable database."

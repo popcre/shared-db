@@ -1,15 +1,27 @@
 #!/usr/bin/env node
-import { spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { readFileSync, mkdirSync, mkdtempSync, lstatSync, realpathSync, writeFileSync } from 'node:fs'
+import { tmpdir, homedir } from 'node:os'
+import { join, resolve as resolvePath } from 'node:path'
+import { createHash, randomUUID } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
-import { recordReviewVerdict, reviewerExecutionPreflight, resolveCommandPath } from './manage-migration-author-lanes.mjs'
+import { REPO, REVIEW_REPLACEMENT_REF_PREFIX, parseReviewCursor, reviewSlotSuffix, REVIEW_STARTED_REF_PREFIX, reviewStartedMarkerRef, reviewLeaseStillHeld, recordReviewVerdict, reviewerExecutionPreflight, resolveCommandPath, githubIo, withMergedPrIssueBinding } from './manage-migration-author-lanes.mjs'
 import { lineOpensWithVerdictWord, isVerdictFor } from './lib/review-verdict.mjs'
 // Issue #2342: one shared transport owns the never-replay-a-write policy.
-import { spawnGitHub } from './lib/github-transport.mjs'
+import { runGitHubCommand, spawnGitHub } from './lib/github-transport.mjs'
+// Issue #2729 Step 7: one lifecycle source of truth decides retry versus reroute.
+import { reviewerStartDecision, NON_VERDICT_TERMINAL_REASONS } from './orchestrator-flow/start-reroute.mjs'
+// Issue #2492: size the reviewer's turn budget to the migration it must read.
+import { withTurnBudget, changedMigrationLines, turnBudgetDiagnostic } from './lib/reviewer-turn-budget.mjs'
+import { REVIEW_CALLER_VARIABLES, reviewCallerEnvironment } from './lib/reviewer-caller-env.mjs'
+import { loadReviewBrief, storeReviewBrief } from './lib/review-packet.mjs'
+import { GOVERNED_VERDICT_WRAPPERS, VERDICT_CONTRACT_FLAG_WRAPPERS, forbiddenGovernedSubcommand, wrapperBaseName } from './lib/reviewer-capabilities.mjs'
 
+export const GOVERNED_REVIEW_OPTIONS=Object.freeze(['issue','pr','headSha','reviewer','wrapper','worktree','reviewSlot','replacementSequence','assignmentId','skipDoctor'])
 export function parseArgs(argv){
   const split=argv.indexOf('--'),own=split<0?argv:argv.slice(0,split),wrapperArgs=split<0?[]:argv.slice(split+1),out={wrapperArgs,slot:1}
-  for(let i=0;i<own.length;i+=2){const key=own[i]?.replace(/^--/,'').replace(/-([a-z])/g,(_,c)=>c.toUpperCase());if(!key||i+1>=own.length)throw new Error('governed review arguments must be --name value pairs followed by -- and wrapper arguments');out[key]=own[i+1]}
+  for(let i=0;i<own.length;i+=2){const raw=own[i];if(typeof raw==='string'&&raw.startsWith('--')){const name=raw.slice(2).replace(/-([a-z])/g,(_,c)=>c.toUpperCase());if(!GOVERNED_REVIEW_OPTIONS.includes(name))throw new Error(`unknown governed review argument ${raw}${name==='slot'?' (use --review-slot)':''}; supported: ${GOVERNED_REVIEW_OPTIONS.map((k)=>`--${k.replace(/[A-Z]/g,(c)=>`-${c.toLowerCase()}`)}`).join(', ')}`)}else throw new Error('governed review arguments must be --name value pairs followed by -- and wrapper arguments')
+    const key=raw.slice(2).replace(/-([a-z])/g,(_,c)=>c.toUpperCase());if(!key||i+1>=own.length)throw new Error('governed review arguments must be --name value pairs followed by -- and wrapper arguments');out[key]=own[i+1]}
   out.issue=Number(out.issue);out.pr=Number(out.pr);out.slot=Number(out.reviewSlot??1)
   return out
 }
@@ -94,8 +106,164 @@ export function neutraliseVerdictLine(body,reason){
 // standard output. The caller must not have to remember that, and a caller that
 // passes the wrong head must not be silently accepted, so the flag is injected
 // here from the head this review is actually recording against.
-export function wrapperBaseName(wrapper){
-  return String(wrapper??'').split(/[\\/]/).pop().replace(/\.(cmd|bat|exe)$/i,'').toLowerCase()
+export { wrapperBaseName }
+
+// Source authority is the live PR, never a caller's remembered branch name.
+// No fetch, ref update, lease change, or provider invocation happens here.
+function readReviewSourceDigest(worktree){
+  const executable=resolveCommandPath('ai-review-sandbox')
+  if(!executable)throw new Error('trusted review source digest tool is unavailable')
+  const plan=wrapperSpawnPlan(executable,['digest',worktree])
+  const result=spawnSync(plan.file,plan.args,{cwd:worktree,encoding:'utf8',maxBuffer:64*1024,stdio:['ignore','pipe','pipe']})
+  if(result.error||result.status!==0)throw new Error('trusted review source digest is unavailable')
+  return String(result.stdout??'').trim()
+}
+function readGitHub(args){
+  try{return {status:0,stdout:runGitHubCommand(args,{executor:execFileSync})}}
+  catch(error){return {status:1,error,stderr:String(error?.stderr??'')}}
+}
+export function resolveReviewSource(options,{git=spawnSync,github=readGitHub,digest=readReviewSourceDigest,io=githubIo,env=process.env}={}){
+  if(!Number.isSafeInteger(Number(options.pr))||Number(options.pr)<1)throw new Error('source identity requires a pull request number')
+  const head=String(options.headSha??'').toLowerCase()
+  if(!/^[0-9a-f]{40}$/.test(head)||!options.worktree)throw new Error('source identity requires an exact head and worktree')
+  const response=github(['api',`repos/${REPO}/pulls/${Number(options.pr)}`])
+  if(response.error||response.status!==0)throw new Error('could not resolve live pull request source identity')
+  let pr
+  try{pr=JSON.parse(response.stdout)}catch{throw new Error('live pull request source identity is unreadable')}
+  if(pr.number!==Number(options.pr)||pr.base?.repo?.full_name?.toLowerCase()!==REPO.toLowerCase())throw new Error('pull request source repository or state does not match this review')
+  // Mirror reviewTargetIsRecordable: an open PR at the exact head is unchanged. A
+  // merged PR is accepted only at its exact merged head through the same verified
+  // merged-PR issue binding the lane CLI and verdict recording already trust; a
+  // closed unmerged PR, or a merged PR without that binding, still refuses. The
+  // digest and exact file-comparison checks below apply to every accepted source.
+  if(String(pr.state??'').toLowerCase()==='open'){
+    if(pr.merged)throw new Error('pull request source repository or state does not match this review')
+  }else{
+    const value=String(env.SHARED_DB_MERGED_PR_ISSUE_BINDING??'').trim()
+    const bound=value?withMergedPrIssueBinding(io,value):null
+    if(!pr.merged_at||typeof bound?.mergedPrReviewTarget!=='function'||bound.mergedPrReviewTarget(Number(options.pr),Number(options.issue))!==true)throw new Error('pull request source repository or state does not match this review')
+  }
+  const target=String(pr.base?.sha??'').toLowerCase(),baseRef=String(pr.base?.ref??'')
+  if(pr.head?.sha?.toLowerCase()!==head)throw new Error('live pull request head differs from the assigned review head')
+  if(!/^[0-9a-f]{40}$/.test(target)||!baseRef)throw new Error('live pull request target is missing or invalid')
+  const local=(args)=>{
+    const result=git('git',['-C',options.worktree,...args],{encoding:'utf8',maxBuffer:4*1024*1024})
+    if(result.error||result.status!==0)throw new Error('local source identity is unavailable; fetch the exact PR target and head before review')
+    return String(result.stdout??'').trim()
+  }
+  const remote=local(['remote','get-url','origin']).replace(/\\/g,'/').replace(/\.git\/?$/i,'').replace(/\/$/,'').toLowerCase()
+    .replace(/^git@([^:]+):/,'ssh://$1/').replace(/^ssh:\/\/git@/,'ssh://')
+  if(![`https://github.com/${REPO}`,`ssh://github.com/${REPO}`].map((x)=>x.toLowerCase()).includes(remote))throw new Error('review worktree origin is not the pull request repository')
+  if(local(['rev-parse','--verify','HEAD^{commit}']).toLowerCase()!==head)throw new Error('local review head differs from the assigned review head')
+  if(local(['status','--porcelain']))throw new Error('review source worktree is dirty')
+  local(['cat-file','-e',`${target}^{commit}`])
+  const mergeBase=local(['merge-base','--all',target,head]).toLowerCase()
+  if(!/^[0-9a-f]{40}$/.test(mergeBase))throw new Error('review source has no unique merge-base')
+  const compared=github(['api',`repos/${REPO}/compare/${mergeBase}...${head}`])
+  if(compared.error||compared.status!==0)throw new Error('could not resolve exact pull request changed files')
+  let comparison
+  try{comparison=JSON.parse(compared.stdout)}catch{throw new Error('exact pull request changed files are unreadable')}
+  if(comparison.base_commit?.sha!==mergeBase||comparison.merge_base_commit?.sha!==mergeBase||!Array.isArray(comparison.files)||comparison.files.length>=300)throw new Error('exact pull request file comparison is missing, mismatched, or truncated')
+  const statuses={A:'added',M:'modified',D:'removed',R:'renamed',C:'copied',T:'changed'},localFiles=[]
+  const fields=local(['diff','--name-status','-z','--find-renames',mergeBase,head]).split('\0')
+  if(fields.pop()!=='')throw new Error('local changed-file comparison is truncated')
+  while(fields.length){
+    const code=fields.shift(),status=statuses[code?.[0]],previous=fields.shift()
+    if(!status||!previous)throw new Error('local changed-file comparison is malformed')
+    const filename=['renamed','copied'].includes(status)?fields.shift():previous
+    if(!filename)throw new Error('local changed-file comparison is truncated')
+    localFiles.push({filename,status,...(['renamed','copied'].includes(status)?{previous_filename:previous}:{})})
+  }
+  const normalize=(files)=>{
+    const seen=new Set()
+    return files.map((file)=>{
+      if(typeof file?.filename!=='string'||!file.filename||file.filename.includes('\0')||!Object.values(statuses).includes(file.status)||seen.has(file.filename))throw new Error('exact changed-file manifest is malformed')
+      seen.add(file.filename)
+      const renamed=['renamed','copied'].includes(file.status)
+      if(renamed&&(typeof file.previous_filename!=='string'||!file.previous_filename||file.previous_filename.includes('\0')))throw new Error('exact changed-file manifest is missing rename evidence')
+      return {filename:file.filename,status:file.status,...(renamed?{previous_filename:file.previous_filename}:{})}
+    }).sort((a,b)=>a.filename<b.filename?-1:a.filename>b.filename?1:0)
+  }
+  const files=normalize(comparison.files),encoded=JSON.stringify(files)
+  if(encoded!==JSON.stringify(normalize(localFiles)))throw new Error('local changed-file manifest differs from exact GitHub comparison')
+  const sourceDigest=digest(options.worktree)
+  if(!/^[0-9a-f]{64}$/.test(sourceDigest))throw new Error('trusted review source digest is malformed')
+  return {repository:REPO,pr:Number(options.pr),baseRef,targetSha:target,headSha:head,mergeBase,files,fileSetSha256:createHash('sha256').update(encoded).digest('hex'),sourceDigest}
+}
+
+const SOURCE_WRAPPERS=new Set(GOVERNED_VERDICT_WRAPPERS)
+const OPAQUE_VALUE_OPTIONS=new Set(['--prompt','--prompt-file','--decision','--tests','--system','--file','--model','--timeout','--review-kind','--governed-verdict'])
+function canonicalSourcePath(value,platform=process.platform){
+  let path=String(value)
+  if(platform==='win32')path=path.replace(/\\/g,'/').replace(/^\/([a-z])\//i,'$1:/').toLowerCase()
+  path=path.replace(/\/$/,'')
+  return path
+}
+function physicalSourcePath(value,{realpath=realpathSync.native,lstat=lstatSync,platform=process.platform}={}){
+  if(typeof value!=='string'||!value)throw new Error('wrapper source receipt repository is unavailable or unsafe')
+  const path=platform==='win32'?value.replace(/^\/([a-z])\//i,'$1:/'):value
+  try{
+    const stat=lstat(path)
+    if(stat.isSymbolicLink()||!stat.isDirectory())throw new Error('unsafe repository')
+    return canonicalSourcePath(realpath(path),platform)
+  }catch{throw new Error('wrapper source receipt repository is unavailable or unsafe')}
+}
+export function reserveReviewReceipt(options,{git=spawnSync}={}){
+  const root=realpathSync(options.worktree)
+  const ensureDirectory=(path)=>{
+    try{mkdirSync(path,{mode:0o700})}catch(error){if(error.code!=='EEXIST')throw error}
+    const stat=lstatSync(path)
+    if(stat.isSymbolicLink()||!stat.isDirectory()||canonicalSourcePath(realpathSync(path))!==canonicalSourcePath(resolvePath(path)))throw new Error('source receipt directory is linked or unsafe')
+  }
+  ensureDirectory(join(root,'.ai'));ensureDirectory(join(root,'.ai','reviews'))
+  const path=join(root,'.ai','reviews',`governed-source-${randomUUID()}.json`),bindingPath=`${path}.binding.json`
+  const guarded=()=>{
+    ensureDirectory(join(root,'.ai'));ensureDirectory(join(root,'.ai','reviews'))
+    for(const file of [path,bindingPath]){
+      const ignored=git('git',['-C',root,'check-ignore','--no-index','-q','--',file],{encoding:'utf8'})
+      const tracked=git('git',['-C',root,'ls-files','--error-unmatch','--',file],{encoding:'utf8'})
+      if(ignored.error||ignored.status!==0||tracked.error||tracked.status!==1)throw new Error('source receipt destination is not private untracked evidence')
+    }
+  }
+  guarded()
+  for(const file of [path,bindingPath]){try{lstatSync(file);throw new Error('source receipt destination already exists')}catch(error){if(error.code!=='ENOENT')throw error}}
+  return {path,read(){
+    guarded()
+    const stat=lstatSync(path)
+    if(!stat.isFile()||stat.isSymbolicLink()||stat.size>128*1024)throw new Error('source receipt is not a bounded regular file')
+    return JSON.parse(readFileSync(path,'utf8'))
+  },bind(sourceEvidence){guarded();writeFileSync(bindingPath,`${JSON.stringify(sourceEvidence,null,2)}\n`,{flag:'wx',mode:0o600});return bindingPath}}
+}
+export function validateSourceReceipt(receipt,source,worktree,pathOptions){
+  if(receipt?.schema_version!==1||!/^[0-9a-f]{64}$/.test(receipt.packet_sha256??''))throw new Error('wrapper source receipt is missing a complete packet digest')
+  const identity=receipt.identity
+  if(identity?.head!==source.headSha||identity?.base!==source.mergeBase||physicalSourcePath(identity?.repository,pathOptions)!==physicalSourcePath(worktree,pathOptions)||!/^[0-9a-f]{64}$/.test(identity?.source_digest??'')||identity.source_digest!==source.sourceDigest)throw new Error('wrapper source receipt differs from trusted PR source')
+  return {...source,packetSha256:receipt.packet_sha256,sourceDigest:identity.source_digest}
+}
+export function wrapperSourceContractArgs(wrapper,args,source){
+  if(!SOURCE_WRAPPERS.has(wrapperBaseName(wrapper)))throw new Error('review wrapper has no qualified source identity contract')
+  if(wrapperBaseName(wrapper)==='ai-deepseek-agent'){
+    let formal=false
+    for(let i=1;i<args.length;i++){
+      if(OPAQUE_VALUE_OPTIONS.has(args[i])){i++;continue}
+      if(args[i]==='--review')formal=true
+    }
+    if(!['send','reply'].includes(args[0])||!formal)throw new Error('governed DeepSeek requires a formal send or reply with --review')
+  }
+  const expected={'--base':source.mergeBase,'--assert-head':source.headSha},seen=new Set(),out=[]
+  for(let i=0;i<args.length;i++){
+    const token=String(args[i]),key=token.split('=')[0]
+    if(Object.hasOwn(expected,key)){
+      const value=token.includes('=')?token.slice(key.length+1):String(args[++i]??'')
+      if(seen.has(key))throw new Error(`duplicate wrapper ${key} source option`)
+      if(value.toLowerCase()!==expected[key])throw new Error(`wrapper ${key} does not match the trusted pull request source`)
+      seen.add(key)
+      continue
+    }
+    out.push(args[i])
+    if(OPAQUE_VALUE_OPTIONS.has(token)&&i+1<args.length)out.push(args[++i])
+  }
+  return [...out,'--base',source.mergeBase,'--assert-head',source.headSha]
 }
 
 // `ai-codex-review` (issue #2244) speaks a verdict grammar this runner cannot
@@ -169,7 +337,10 @@ export function codexGovernedBody(report,headSha,reportName='the codex report'){
 
 export function wrapperVerdictContractArgs(wrapper,args,headSha){
   const name=wrapperBaseName(wrapper)
-  if(!['ai-gemini','ai-qwen'].includes(name))return args
+  // #2831: a subcommand that forces a non-governed verdict grammar can never be recorded.
+  const forbidden=forbiddenGovernedSubcommand(wrapper,args,OPAQUE_VALUE_OPTIONS)
+  if(forbidden)throw new Error(`the ${name} ${forbidden} subcommand is not one that takes the governed prompt as written, so it cannot end with a recordable VERDICT line. Rerun through an allowed subcommand, or draw another reviewer with --replace-failed-reviewer --failure-code reviewer_cannot_emit_governed_verdict --confirm-no-verdict --confirm-no-artifact`)
+  if(!VERDICT_CONTRACT_FLAG_WRAPPERS.includes(name))return args
   const list=[...args],head=String(headSha??'').toLowerCase()
   // EVERY spelling of the flag is checked, not the first one found: `--x value`,
   // `--x=value`, and a repeat later in the argument list. A single unchecked
@@ -186,37 +357,202 @@ export function wrapperVerdictContractArgs(wrapper,args,headSha){
     supplied=true
   }
   if(supplied)return list
-  if(!['new','ask'].includes(String(list[0]??'')))throw new Error(`${name} governed reviews must start with the new or ask subcommand`)
-  list.splice(1,0,'--governed-verdict',String(headSha))
+  const commands=name==='ai-deepseek-agent'?['send','reply']:['new','ask']
+  // Say exactly what is absent and the shape that works (#498 item 13).
+  const usage=name==='ai-deepseek-agent'?`-- send "<prompt>" --review  |  -- reply <session-name> "<prompt>" --review`:`-- new <session-name> --prompt-file <file>  |  -- ask <session-name> --prompt-file <file>`
+  if(!commands.includes(String(list[0]??'')))throw new Error(`${name} governed reviews must start with the ${commands.join(' or ')} subcommand; got ${list.length?`"${String(list[0])}"`:'no wrapper arguments'}. Usage after the runner options: ${usage}`)
+  const sessionName=String(list[1]??'')
+  if((name!=='ai-deepseek-agent'||list[0]==='reply')&&(!sessionName||sessionName.startsWith('-')))throw new Error(`${name} ${list[0]} has no <session-name>. Usage after the runner options: ${usage}`)
+  list.splice(name==='ai-deepseek-agent'&&list[0]==='reply'?2:1,0,'--governed-verdict',String(headSha))
   return list
 }
 export function wrapperSpawnPlan(resolved,args,platform=process.platform){
   if(platform==='win32'&&/\.(cmd|bat)$/i.test(resolved))return{file:process.env.ComSpec||'cmd.exe',args:['/d','/s','/c',resolved,...args]}
   return{file:resolved,args}
 }
+// OUT OF CREDIT (owner requirement, 2026-09-24): a session whose reviewer failed
+// because the provider account ran out of credit must know that, and tell Albert in
+// the same reply. The ai-devops rotation wrappers exit 92 and print two stderr lines:
+//   AI_REVIEWER_OUT_OF_CREDIT provider=<grok|muse|qwen|gemini|deepseek|stepfun> code=insufficient_quota
+//   OUT OF CREDIT: <plain-English sentence naming the provider and where to add credit>
+export const OUT_OF_CREDIT_MACHINE_LINE=/^AI_REVIEWER_OUT_OF_CREDIT provider=(grok|muse|qwen|gemini|deepseek|stepfun) code=insufficient_quota$/
+export const OUT_OF_CREDIT_HUMAN_LINE=/^OUT OF CREDIT: [ -~]{10,300}$/
+const OUT_OF_CREDIT_PROVIDER_NAMES=Object.freeze({grok:'xAI (Grok)',muse:'Meta (Muse)',qwen:'Alibaba Model Studio (Qwen)',gemini:'Google Gemini',deepseek:'DeepSeek',stepfun:'StepFun (Step 5)'})
+// Raw provider billing text, from a wrapper that predates the contract above. It is
+// recognized but NEVER echoed: only the fixed sentence below crosses into the refusal.
+const RAW_BILLING_EXHAUSTION=/used all available credits|monthly spending limit|insufficient balance|arrearage|prepayment credits are depleted/i
+export function outOfCreditReason(stderr){
+  const lines=String(stderr??'').split(/\r?\n/)
+  const machine=lines.map((line)=>OUT_OF_CREDIT_MACHINE_LINE.exec(line)).find(Boolean)
+  if(machine){
+    const human=lines.find((line)=>OUT_OF_CREDIT_HUMAN_LINE.test(line))
+    return `insufficient_quota: ${human??`OUT OF CREDIT: the ${OUT_OF_CREDIT_PROVIDER_NAMES[machine[1]]} reviewer account has run out of credits or hit its spending limit`}`
+  }
+  if(RAW_BILLING_EXHAUSTION.test(String(stderr??'')))return 'insufficient_quota: the provider reported that its account is out of credit or over its spending limit'
+  return null
+}
 // Provider diagnostics may contain credentials or private repository text. Only
-// fixed, recognized reasons cross into the refusal; never echo raw stderr.
+// fixed, recognized reasons cross into the refusal; never echo raw stderr. The ONE
+// deliberate exception is the wrapper's `OUT OF CREDIT:` sentence, and only when the
+// anchored machine line is also present: it is copied verbatim so the session can tell
+// Albert which account needs credit. It must match OUT_OF_CREDIT_HUMAN_LINE exactly --
+// one whole line, printable ASCII only, 10-300 characters -- so no control character,
+// multi-line payload, or unbounded provider text can ride along with it.
 export function wrapperFailureReason(run){
   const stderr=String(run.stderr??'')
   const reasons=[]
+  const outOfCredit=outOfCreditReason(stderr)
+  if(outOfCredit)reasons.push(outOfCredit)
+  const hasReason=(reason)=>new RegExp(`(?:^|[^A-Za-z0-9_-])${reason}(?=$|[^A-Za-z0-9_-])`,'i').test(stderr)
   if(run.error)reasons.push('the wrapper process could not complete')
   if(run.signal)reasons.push('the wrapper process was terminated by a signal')
   if(/unknown option/i.test(stderr))reasons.push('the wrapper rejected an unsupported option; check its --help')
-  if(/cancelled without a final answer/i.test(stderr))reasons.push('the provider cancelled without a final answer')
+  if(hasReason('turn_limit_cancelled'))reasons.push('turn_limit_cancelled: the provider exhausted its declared turn budget')
+  else if(hasReason('provider_cancelled')||/cancelled without a final answer/i.test(stderr))reasons.push('provider_cancelled: the provider cancelled without a final answer')
+  if(hasReason('unknown_terminal_reason'))reasons.push('unknown_terminal_reason: the provider returned an unrecognized terminal state')
+  if(hasReason('start_failed')){
+    reasons.push(hasReason('caller_identity_missing')||hasReason('invalid_caller_identity')
+      ?'start_failed: the wrapper caller identity is missing or invalid'
+      :'start_failed: the wrapper refused before the provider turn started')
+  }
   if(/timed-out|timed out|deadline|time limit/i.test(stderr))reasons.push('the wrapper reported a timeout')
   if(/local_dependency_unavailable/i.test(stderr))reasons.push('a local reviewer dependency is unavailable')
+  // A live-qualified wrapper (ai-gemini, ai-qwen) refuses when its local runtime no
+  // longer matches the bytes its last live safety qualification proved -- for example
+  // the runtime updated itself between reviewer draw and run (PR #3727, 2026-10-06).
+  // That is an intended LOCAL quarantine, not a provider fault and not a verdict.
+  if(/reviews are quarantined until live safety qualification|qualification no longer matches the exact wrapper|quarantine restored/i.test(stderr))reasons.push('reviewer_quarantined: the local reviewer runtime is not live-qualified (local_dependency_unavailable); requalify it with ai-review-preflight, or replace this reviewer with --replace-failed-reviewer --failure-code local_dependency_unavailable')
+  // A wrapper that finds the reviewed checkout changed during the turn refuses the
+  // verdict. The writer is usually the calling session itself (a log redirected
+  // into the checkout, or a parallel slot's output), not the reviewer.
+  if(/changed the protected source checkout|source checkout changed|checkout files changed between turns/i.test(stderr))reasons.push('source_drift: the reviewed checkout changed during the reviewer turn; keep caller logs and scratch outside the checkout (or in a git-ignored root .tmp-* path) and rerun')
+  if(/headless runtime denied a tool/i.test(stderr))reasons.push('tool_denied: the reviewer runtime denied a tool call and ended the turn without a verdict')
   if(/execution-context-denied/i.test(stderr))reasons.push('the wrapper reported execution-context-denied')
-  if(/usage-limit|insufficient.quota|quota exceeded|usage limit/i.test(stderr))reasons.push('the wrapper reported a usage limit')
-  if(/already active|already in progress|held for reconciliation|retained/i.test(stderr))reasons.push('the wrapper reported retained or active work; inspect that exact session')
+  if(hasReason('content-filter')||hasReason('DataInspectionFailed'))reasons.push('provider_unavailable: content-filter rejected the request')
+  else if(hasReason('provider-unavailable'))reasons.push('provider_unavailable: the provider refused the request')
+  if(!outOfCredit&&/usage-limit|insufficient.quota|quota exceeded|usage limit/i.test(stderr))reasons.push('the wrapper reported a usage limit')
+  // Only a wrapper LOCK refusal is "retained or active work". Wrappers also say
+  // "evidence retained" / "report ... retained" after an ordinary failed turn (for
+  // example Grok's turn_limit_cancelled), which is diagnostic preservation, not a
+  // held session; matching a bare "retained" mislabelled every such failure.
+  if(/already active|already in progress|held for reconciliation|active or retained|retained (?:lock|exact-work|protection)|protection for this exact session is retained|reconcile the retained lock/i.test(stderr))reasons.push('the wrapper reported retained or active work; inspect that exact session')
   return reasons.join('; ')||(stderr?'wrapper stderr was present but its reason was not recognized; inspect the exact wrapper session':'the wrapper supplied no recognized diagnostic')
 }
+// ISSUE #3810 -- an unrecognized wrapper failure was undiagnosable because stderr was
+// discarded. Save a bounded, redacted stderr tail plus the exit details to a private file
+// OUTSIDE the worktree (so worktree retirement cannot lose it) and name that path in the
+// refusal. Diagnostic only: it never feeds any verdict, reroute, or approval decision.
+const FAILURE_LOG_TAIL_BYTES=8192
+const SECRET_PATTERNS=[
+  /\b(?:sk|pk|rk|xai|gsk|ghp|gho|ghs|ghu|ghr|glpat|op)[-_][A-Za-z0-9_\-]{12,}/g,
+  /\bgithub_pat_[A-Za-z0-9_]{20,}/g,
+  /\bAIza[0-9A-Za-z_\-]{20,}/g,
+  /\beyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{5,}/g,
+  /\b(Bearer|Basic|token)\s+[A-Za-z0-9._~+\/=\-]{12,}/gi,
+  /\b([A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|AUTH)[A-Za-z0-9_]*)\s*[:=]\s*["']?[^\s"']{4,}/gi,
+  /\b[A-Za-z0-9+\/_\-]{40,}={0,2}(?![0-9a-f])/g
+]
+export function redactWrapperStderr(text){
+  let out=String(text??'')
+  out=out.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g,'')
+  for(const pattern of SECRET_PATTERNS)out=out.replace(pattern,(match,label)=>typeof label==='string'&&/[A-Za-z]/.test(label)&&match.startsWith(label)?`${label}=[REDACTED]`:'[REDACTED]')
+  return out
+}
+export function wrapperFailureLogText(run,{wrapper,pr,headSha,reason,at=new Date().toISOString()}={}){
+  const stderr=String(run?.stderr??'')
+  const tail=stderr.length>FAILURE_LOG_TAIL_BYTES?stderr.slice(-FAILURE_LOG_TAIL_BYTES):stderr
+  return [
+    `time: ${at}`,`wrapper: ${wrapperBaseName(String(wrapper??'unknown'))}`,`pr: ${Number(pr)||'unknown'}`,`head: ${/^[0-9a-f]{40}$/.test(String(headSha))?headSha:'unknown'}`,
+    `exit_status: ${run?.status??'none'}`,`signal: ${run?.signal??'none'}`,`spawn_error: ${run?.error?redactWrapperStderr(run.error.code??run.error.message??'error'):'none'}`,
+    `recognized_reason: ${reason}`,`stderr_bytes: ${stderr.length}`,`stderr_tail (last ${FAILURE_LOG_TAIL_BYTES} chars, redacted):`,redactWrapperStderr(tail),''
+  ].join('\n')
+}
+export function wrapperFailureLogDir(env=process.env){
+  return env.SHARED_DB_REVIEW_FAILURE_LOG_DIR||join(homedir(),'.cache','shared-db','review-wrapper-failures')
+}
+export function writeWrapperFailureLog(text,{dir=wrapperFailureLogDir(),pr,headSha}={}){
+  mkdirSync(dir,{recursive:true,mode:0o700})
+  const file=join(dir,`pr${Number(pr)||0}-${String(headSha??'').slice(0,7)||'nohead'}-${new Date().toISOString().replace(/[:.]/g,'-')}-${randomUUID().slice(0,8)}.log`)
+  writeFileSync(file,text,{mode:0o600,flag:'wx'})
+  return file
+}
+// ISSUE #2729 STEP 7 -- RETRY ONCE, THEN REROUTE, DECIDED BY THE LIFECYCLE.
+// The manager's preflight throws `doctor did not answer within 60s` when the local
+// reviewer service hangs. That says nothing about the provider, so the SAME reviewer
+// is retried once (after an optional local repair hook). A second timeout is handed
+// to `reviewerStartDecision`, which returns a governed return-and-reroute. A wrapper
+// that ends with a recognised non-verdict terminal (turn_limit_cancelled) is also
+// handed over: the assignment is finished without a verdict and may be replaced at
+// the same head. The runner never draws or releases a reviewer itself; it attaches
+// the decision to its refusal so the lane manager can act on it.
+export const DOCTOR_TIMEOUT=/doctor did not answer within/i
+export class GovernedReviewRerouteError extends Error{
+  constructor(message,{startDecision,lifecycle}){super(message);this.name='GovernedReviewRerouteError';this.startDecision=startDecision;this.lifecycle=lifecycle}
+}
+export function reviewAssignmentIdentity(options){
+  const head=String(options.headSha??'').toLowerCase()
+  return {id:String(options.assignmentId??`review-${Number(options.issue)}-${Number(options.pr)}-slot${Number(options.slot??1)}-${head.slice(0,12)}`),head_sha:head}
+}
+const nowOf=(deps)=>(deps.now??(()=>new Date().toISOString()))()
+function lifecycleEvent(deps,assignment,type,extra={}){
+  const event={assignment_id:assignment.id,type,at:nowOf(deps),source:'governed-review-runner',...extra}
+  deps.appendLifecycle?.(event)
+  return event
+}
+function startDecisionFor(assignment,lifecycle,deps){
+  const at=nowOf(deps)
+  return reviewerStartDecision({...assignment,assigned_at:at},{now:at,provider_state:'confirmed-not-started',lifecycle})
+}
+export function preflightWithTimeoutRetry(args,assignment,deps,lifecycle=[]){
+  for(;;){
+    try{deps.preflight(args);return lifecycle}
+    catch(error){
+      if(!DOCTOR_TIMEOUT.test(String(error?.message??'')))throw error
+      lifecycle.push(lifecycleEvent(deps,assignment,'preflight_timeout'))
+      const decision=startDecisionFor(assignment,lifecycle,deps)
+      if(decision.action==='retry-same-reviewer'){deps.repairLocalService?.(args);continue}
+      const count=lifecycle.filter((e)=>e.type==='preflight_timeout').length
+      throw new GovernedReviewRerouteError(`reviewer preflight timed out ${count} times at ${assignment.head_sha}; the same reviewer was retried once and this assignment must now be returned and rerouted (${sanitizeVoidReason(error.message)})`,{startDecision:decision,lifecycle:[...lifecycle]})
+    }
+  }
+}
 export function runGovernedReview(options,deps={spawn:spawnSync,preflight:reviewerExecutionPreflight,record:recordReviewVerdict,resolve:resolveCommandPath,readReport:(path)=>readFileSync(path,'utf8')}){
+  const resolveSource=deps.sourceResolver??resolveReviewSource
+  const sourceIdentity=resolveSource(options)
+  const brief=(deps.briefPreparer??prepareCompleteReviewBrief)(options,sourceIdentity)
+  const contractArgs=wrapperSourceContractArgs(options.wrapper,wrapperVerdictContractArgs(options.wrapper,brief.wrapperArgs,options.headSha),sourceIdentity)
+  // ISSUE #2492 — SIZE THE TURN BUDGET BEFORE THE REVIEWER IS LAUNCHED.
+  // A large migration exhausts the wrapper's 20-turn default and ends with no
+  // verdict at all, which spends a reviewer slot, a release and a replacement.
+  // The measurement never throws and never lowers the budget; see the module.
+  // The brief and both argument contracts above run FIRST, so they never see a
+  // `--max-turns` they were not written to understand.
+  let measuredLines=null
+  try{measuredLines=(deps.measureReviewSize??changedMigrationLines)({worktree:options.worktree},deps.spawnSync??execFileSync)}catch{measuredLines=null}
+  const turnBudget=withTurnBudget(options.wrapper,contractArgs,measuredLines)
+  const wrapperArgs=turnBudget.args
   const skipDoctor=options.skipDoctor===true||options.skipDoctor==='true'
-  deps.preflight({reviewer:options.reviewer,wrapper:options.wrapper,worktree:options.worktree,headSha:options.headSha,skipDoctor})
+  const assignment=reviewAssignmentIdentity(options),lifecycle=[]
+  preflightWithTimeoutRetry({reviewer:options.reviewer,wrapper:options.wrapper,worktree:options.worktree,headSha:options.headSha,skipDoctor},assignment,deps,lifecycle)
   const resolved=(deps.resolve??resolveCommandPath)(options.wrapper)
   if(!resolved)throw new Error(`review wrapper ${options.wrapper} is not executable`)
-  const plan=wrapperSpawnPlan(resolved,wrapperVerdictContractArgs(options.wrapper,options.wrapperArgs,options.headSha))
-  const run=deps.spawn(plan.file,plan.args,{cwd:options.worktree,encoding:'utf8',maxBuffer:64*1024*1024,stdio:['ignore','pipe','pipe']})
+  const receipt=(deps.receiptFactory??reserveReviewReceipt)(options)
+  const plan=wrapperSpawnPlan(resolved,wrapperArgs)
+  // Issue #3027 Step 7: the durable start marker the reviewer start watcher reads. It is
+  // written BEFORE the provider is launched and fails closed: a review whose start cannot be
+  // recorded is not started, so the watcher can never reroute a review that is running.
+  if(typeof deps.recordStart!=='function')throw new Error('review start recorder is required; no reviewer was started')
+  lifecycle.push(lifecycleEvent(deps,assignment,'review_started',{marker:deps.recordStart(options)}))
+  // Issue #2678: the wrapper is told WHO is calling it in the environment this
+  // runner spawns, not left to whatever an operator happened to export first. A
+  // programmatic caller of this function now gets the same environment the CLI does.
+  // `required:false`: the CLI path already refused up front, in
+  // `prepareGovernedReview`, when the caller could not be determined. Refusing a
+  // SECOND time here -- after the start marker is written and the reviewer is
+  // committed -- would turn an environment question into a started-but-failed
+  // review, so this only carries the caller through when there is one to carry.
+  const callerEnv=reviewCallerEnvironment(options.wrapper,process.env,{required:false})
+  const run=deps.spawn(plan.file,plan.args,{cwd:options.worktree,env:{...process.env,...callerEnv,...brief.env,AI_REVIEW_SOURCE_RECEIPT_FILE:receipt.path},encoding:'utf8',maxBuffer:64*1024*1024,stdio:['ignore','pipe','pipe']})
   let rawBody=String(run.stdout??'').trim()
   // Issue #2244: the codex wrapper's verdict lives in its published report, not on
   // standard output. Transcribe it into this runner's grammar BEFORE parsing, and
@@ -230,7 +566,29 @@ export function runGovernedReview(options,deps={spawn:spawnSync,preflight:review
     }catch(error){throw new Error(`review wrapper did not produce a recordable terminal verdict (exit ${run.status??'unknown'}): ${sanitizeVoidReason(error.message)}`)}
   }
   const verdict=verdictFromOutput(rawBody,options.headSha)
-  if(run.error||run.status!==0||!verdict)throw new Error(`review wrapper did not produce a recordable terminal verdict (exit ${run.status??'unknown'}): ${wrapperFailureReason(run)}`)
+  if(run.error||run.status!==0||!verdict){
+    // Issue #2492: a refusal that says only "no verdict" costs a fresh hand
+    // investigation every time. Name the budget the reviewer was actually given.
+    const reason=wrapperFailureReason(run)
+    let logNote=''
+    if(typeof deps.writeFailureLog==='function'){
+      try{
+        const saved=deps.writeFailureLog(wrapperFailureLogText(run,{wrapper:options.wrapper,pr:options.pr,headSha:options.headSha,reason}),{pr:options.pr,headSha:options.headSha})
+        if(saved)logNote=` Wrapper diagnostics (redacted stderr tail and exit details) saved to ${saved}.`
+      }catch{logNote=' Wrapper diagnostics could not be saved.'}
+    }
+    const message=`review wrapper did not produce a recordable terminal verdict (exit ${run.status??'unknown'}): ${reason}.${turnBudgetDiagnostic(turnBudget)}${logNote}`.trimEnd()
+    const terminal=NON_VERDICT_TERMINAL_REASONS.find((code)=>reason.split('; ').some((part)=>part.startsWith(`${code}:`)))
+    if(terminal){
+      lifecycle.push(lifecycleEvent(deps,assignment,'terminal_non_verdict',{reason:terminal,head_sha:assignment.head_sha}))
+      throw new GovernedReviewRerouteError(`${message}; this is a terminal non-verdict, so the assignment is eligible for a same-head replacement`,{startDecision:startDecisionFor(assignment,lifecycle,deps),lifecycle:[...lifecycle]})
+    }
+    throw new Error(message)
+  }
+  if(JSON.stringify(resolveSource(options))!==JSON.stringify(sourceIdentity))throw new Error('pull request source changed during review; no verdict was published or recorded')
+  const sourceEvidence=validateSourceReceipt(receipt.read(),sourceIdentity,options.worktree,deps.sourcePathOptions)
+  sourceEvidence.receiptPath=receipt.path
+  sourceEvidence.bindingPath=receipt.bind(sourceEvidence)
   // CLOSE THE ORDERING HOLE AT THE ONLY POINT WHERE IT CAN BE CLOSED.
   // Recording BEFORE posting is impossible: `recordReviewVerdict` binds the
   // artifact to `findings_ref` (a durable comment URL on this exact PR) and to
@@ -285,7 +643,7 @@ export function runGovernedReview(options,deps={spawn:spawnSync,preflight:review
       preserved=candidate
     }catch{preserved=null}
     if(preserved===null)throw new Error(`${detail}; nothing was posted because the findings could not be made inert`)
-    const kept=spawnGitHub(['api','-X','POST',`repos/u2giants/shared-db/issues/${options.pr}/comments`,'--input','-'],{executor:deps.spawn,input:JSON.stringify({body:preserved})})
+    const kept=spawnGitHub(['api','-X','POST',`repos/${REPO}/issues/${options.pr}/comments`,'--input','-'],{executor:deps.spawn,input:JSON.stringify({body:preserved})})
     if(kept.error||kept.status!==0)throw new Error(`${detail}; the findings could not be preserved durably either`)
     let keptUrl=null
     try{keptUrl=JSON.parse(kept.stdout).html_url}catch{keptUrl=null}
@@ -293,12 +651,12 @@ export function runGovernedReview(options,deps={spawn:spawnSync,preflight:review
   }
   const preflightNote=skipDoctor?'REVIEW PREFLIGHT: automated doctor skipped; the caller must retain the fresh external doctor proof that justified this exception.\n\n':''
   const body=`GOVERNED REVIEW FINDINGS — NON-AUTHORIZING UNLESS THE MATCHING CREATE-ONLY VERDICT ARTIFACT EXISTS\n\n${preflightNote}${rawBody}`
-  const posted=spawnGitHub(['api','-X','POST',`repos/u2giants/shared-db/issues/${options.pr}/comments`,'--input','-'],{executor:deps.spawn,input:JSON.stringify({body})})
+  const posted=spawnGitHub(['api','-X','POST',`repos/${REPO}/issues/${options.pr}/comments`,'--input','-'],{executor:deps.spawn,input:JSON.stringify({body})})
   if(posted.error||posted.status!==0)throw new Error('review findings could not be posted durably; no verdict was recorded')
   let comment
   try{comment=JSON.parse(posted.stdout)}catch{throw new Error('durable findings response was unreadable; no verdict was recorded')}
   let artifact
-  try{artifact=deps.record({...options,verdict,findingsRef:comment.html_url,replacementSequence:options.replacementSequence??null})}
+  try{artifact=deps.record({...options,sourceIdentity,sourceEvidence,verdict,findingsRef:comment.html_url,replacementSequence:options.replacementSequence??null})}
   catch(error){
     // DEFENCE IN DEPTH, NOT THE FIX. The cause of issue #2075 was that the lane
     // tooling read a decision word in comment PROSE as a verdict; that is now
@@ -323,7 +681,7 @@ export function runGovernedReview(options,deps={spawn:spawnSync,preflight:review
       // not voiding is not, but the notice must not claim more than was proved.
       const {ref,sha,confirmed}=error.verdictArtifactCreated
       const state=confirmed===false?'MAY HAVE BEEN CREATED':'WAS CREATED AND IS LEFT INTACT'
-      spawnGitHub(['api','-X','POST',`repos/u2giants/shared-db/issues/${options.pr}/comments`,'--input','-'],{executor:deps.spawn,input:JSON.stringify({body:`REVIEW RECORDING INCOMPLETE — THE DURABLE VERDICT ARTIFACT ${state}.
+      spawnGitHub(['api','-X','POST',`repos/${REPO}/issues/${options.pr}/comments`,'--input','-'],{executor:deps.spawn,input:JSON.stringify({body:`REVIEW RECORDING INCOMPLETE — THE DURABLE VERDICT ARTIFACT ${state}.
 
 Artifact: \`${ref}\` = \`${sha}\`
 
@@ -331,7 +689,7 @@ The step AFTER the create failed: ${error.message}
 
 The preceding findings comment (${comment.html_url}) has been left UNTOUCHED on purpose. Its body is what ${confirmed===false?'any artifact recorded by this round would have computed its findings_digest over, so editing it could permanently invalidate a verdict that may already exist':"the artifact's recorded findings_digest was computed over, so editing it would permanently invalidate a verdict that already exists"} and cannot be rewritten. Do not re-run this review at this head and do not edit that comment. Confirm the artifact with:
 
-    gh api repos/u2giants/shared-db/git/ref/${ref.replace(/^refs\//,'')}
+    gh api repos/${REPO}/git/ref/${ref.replace(/^refs\//,'')}
 `})})
       throw new Error(`${error.message} — the durable verdict artifact ${ref} = ${sha} ${confirmed===false?'MAY have been created and could not be read back':'WAS created'}; the findings comment ${comment.id} was deliberately left untouched so ${confirmed===false?'any digest recorded over it stays valid':'its digest stays valid'}. Nothing was voided.`)
     }
@@ -345,20 +703,240 @@ The preceding findings comment (${comment.html_url}) has been left UNTOUCHED on 
       // head: those are exactly the conditions under which the lane tooling reads
       // a comment, so they are the conditions the void has to survive.
       if(isVerdictFor({author_association:'OWNER',body:edited},options.headSha))throw new Error('the neutralised body is still read as a verdict by the shared verdict predicate')
-      const patch=spawnGitHub(['api','-X','PATCH',`repos/u2giants/shared-db/issues/comments/${comment.id}`,'--input','-'],{executor:deps.spawn,input:JSON.stringify({body:edited})})
+      const patch=spawnGitHub(['api','-X','PATCH',`repos/${REPO}/issues/comments/${comment.id}`,'--input','-'],{executor:deps.spawn,input:JSON.stringify({body:edited})})
       if(patch.error||patch.status!==0)throw new Error(`gh exited ${patch.status??'unknown'}${patch.error?` (${patch.error.message})`:''}`)
     }catch(voidError){voidStatus=`FAILED: ${voidError.message}`}
     const stillLive=voidStatus!=='voided'
     const note=stillLive
       ? `\n\nTHE VOIDING EDIT ITSELF ${voidStatus}. A PARSEABLE VERDICT LINE IS STILL LIVE ON COMMENT ${comment.id} (${comment.html_url}). Lane tooling will read it as a real verdict at ${options.headSha} and deadlock this pull request. That line must be neutralised BY HAND on comment ${comment.id} before this pull request can proceed.`
       : `\n\nEvery parseable verdict line on comment ${comment.id} was voided so no tool can read it as a verdict at ${options.headSha}. The reviewer's findings were left intact.`
-    spawnGitHub(['api','-X','POST',`repos/u2giants/shared-db/issues/${options.pr}/comments`,'--input','-'],{executor:deps.spawn,input:JSON.stringify({body:`REVIEW RECORDING FAILED — the preceding findings comment is non-authorizing and no verdict artifact was recorded. Reason: ${error.message}${note}`})})
+    spawnGitHub(['api','-X','POST',`repos/${REPO}/issues/${options.pr}/comments`,'--input','-'],{executor:deps.spawn,input:JSON.stringify({body:`REVIEW RECORDING FAILED — the preceding findings comment is non-authorizing and no verdict artifact was recorded. Reason: ${error.message}${note}`})})
     if(stillLive)throw new Error(`${error.message} — and the voiding edit ${voidStatus}; a parseable verdict line is still live on comment ${comment.id} and must be neutralised by hand`)
     throw error
   }
-  return {artifact,body}
+  return {artifact,body,sourceIdentity,sourceEvidence}
+}
+export function reviewStartedRef(options,sequence){
+  return reviewStartedMarkerRef({issue:options.issue,pr:options.pr,headSha:options.headSha,slot:options.slot??1,sequence})
+}
+// The marker is keyed by the exact held lease's draw sequence. It is created create-only; an
+// existing ref is accepted only when it is this runner's own earlier start marker (a retry).
+// Any other occupant is the unstarted reclaim's release commit: the slot was returned and no
+// provider may start. After the write the same lease must still be held.
+export function recordReviewStart(options,io,at=Date.now(),leaseHeld=reviewLeaseStillHeld){
+  const request={issue:options.issue,pr:options.pr,headSha:String(options.headSha??'').toLowerCase(),slot:options.slot??1,reviewer:options.reviewer}
+  if(!Number.isInteger(Number(request.issue))||!Number.isInteger(Number(request.pr))||!/^[0-9a-f]{40}$/.test(request.headSha))throw new Error('review start marker requires exact issue, PR, and head; no reviewer was started')
+  const lease=leaseHeld(request,io)
+  if(!lease)throw new Error('no held reviewer lease matches this review; no reviewer was started')
+  const ref=reviewStartedRef(request,lease.sequence)
+  if(!ref.startsWith(`${REVIEW_STARTED_REF_PREFIX}/`))throw new Error('review start marker is outside its namespace')
+  const prefix='db-coordination review-started '
+  const sha=io.makeOwnerCommit(`${prefix}issue=${Number(request.issue)} pr=${Number(request.pr)} head=${request.headSha} slot=${Number(request.slot)} sequence=${Number(lease.sequence)} reviewer=${request.reviewer??'unknown'} at=${new Date(at).toISOString()}`)
+  if(!io.createRef(ref,sha)){
+    const existing=io.readRef(ref),message=existing?String(io.getCommit(existing)?.message??io.getCommit(existing)?.commit?.message??''):''
+    if(!existing||!message.startsWith(prefix))throw new Error('review start marker is occupied by a reclaim of this lease; no reviewer was started')
+  }else if(io.readRef(ref)!==sha)throw new Error('review start marker could not be recorded; no reviewer was started')
+  if(!leaseHeld({...request,sequence:lease.sequence},io))throw new Error('review lease was reclaimed before the provider launched; no reviewer was started')
+  return ref
+}
+// The lane CLI applies SHARED_DB_MERGED_PR_ISSUE_BINDING to its io; verdict recording
+// here runs in-process, so it must see the same verified binding or it refuses a merged
+// pull request that reviewer assignment accepted.
+export function governedReviewDeps(env=process.env){
+  const value=String(env.SHARED_DB_MERGED_PR_ISSUE_BINDING??'').trim()
+  const io=value?withMergedPrIssueBinding(githubIo,value):githubIo
+  return {spawn:spawnSync,preflight:(o)=>reviewerExecutionPreflight(o,io),recordStart:(o)=>recordReviewStart(o,io),record:(o)=>recordReviewVerdict(o,io),resolve:resolveCommandPath,readReport:(path)=>readFileSync(path,'utf8'),writeFailureLog:(text,meta)=>writeWrapperFailureLog(text,{...meta,dir:wrapperFailureLogDir(env)}),io}
+}
+// #498 items 16-17 (popcre/ai-devops): refuse or repair paperwork faults BEFORE any
+// reviewer starts, so no review round is spent without a recordable verdict.
+// Issue #2678: the mapping and the caller decision now live in
+// `lib/reviewer-caller-env.mjs`, so the author-lane `doctor` probe answers to the
+// very same rule instead of spawning a credentialed wrapper with no caller at
+// all. Re-exported from here because callers and tests already import them from
+// this module.
+export { REVIEW_CALLER_VARIABLES, reviewCallerEnvironment }
+export function readLivePullRequestHead(pr,github=readGitHub){
+  const response=github(['api',`repos/${REPO}/pulls/${Number(pr)}`])
+  if(response.error||response.status!==0)throw new Error(`could not read the live head of pull request #${Number(pr)}; no reviewer was started`)
+  let body
+  try{body=JSON.parse(response.stdout)}catch{throw new Error(`the live head of pull request #${Number(pr)} is unreadable; no reviewer was started`)}
+  const head=String(body?.head?.sha??'').toLowerCase()
+  if(!/^[0-9a-f]{40}$/.test(head))throw new Error(`pull request #${Number(pr)} has no valid live head; no reviewer was started`)
+  return head
+}
+// ISSUE #2923 -- the reviewer brief, not the reviewer, was the throughput problem.
+//
+// Observed 2026-09-14 on the #2922 live-proof probe: each governed review round
+// surfaced exactly ONE more gap, so a small read-only probe needed three rounds. Grok
+// returned REVISE twice for loose index / function-volatility / exact-object checks in
+// the probe SQL -- each fixed, each re-reviewed. Grok was not broken; the brief never
+// said those were things to check, so they could only be found one at a time.
+//
+// Front-loading the checklist makes one round find all three classes of gap instead of
+// one per round. This ADDS to what a reviewer must check. It removes nothing, makes
+// nothing optional, and lowers no bar -- the reviewer still reaches their own verdict
+// and REVISE/REJECT still mean exactly what they meant before. Fewer rounds here comes
+// from asking for everything up front, never from asking for less.
+export const PROBE_REVIEW_CHECKLIST = `
+Check all of the following in this single round, and report every gap you find at once.
+Do not stop at the first problem -- a partial list costs another full review round.
+
+1. Index usage. Does every predicate and join the change relies on have an index that
+   actually serves it? Call out loose or unused index assumptions explicitly, including
+   an index that exists but cannot be used as written.
+2. Function volatility. Is every function's volatility marker (IMMUTABLE / STABLE /
+   VOLATILE) correct for what its body actually does? A body that reads tables is not
+   IMMUTABLE; a marker looser than the body is a correctness bug, not a style note.
+3. Exact object checks. Does the change assert the exact objects it depends on --
+   schema, table, view, function signature, column -- rather than inferring existence?
+   A check that a name merely exists is not a check that the right object exists.
+
+These three are mandatory and additional to your normal review. Report everything else
+you would normally raise as well; this list is a floor, never a ceiling.
+`
+export const DEEPSEEK_GOVERNED_MESSAGE='Review the attached governed brief completely and follow its final VERDICT instruction.'
+export function promptHeadContract(wrapperArgs,head,{readFile=(path)=>readFileSync(path,'utf8'),writeFile=writeFileSync,tempDir=()=>mkdtempSync(join(tmpdir(),'governed-review-'))}={},wrapper=null,brief=''){
+  const list=[...wrapperArgs]
+  let carried=false
+  const instruction=`
+${brief}
+${PROBE_REVIEW_CHECKLIST}
+Authoritative pull request head (injected by the governed review runner): ${head}
+Your final line must be exactly one of: VERDICT: APPROVE ${head} | VERDICT: REVISE ${head} | VERDICT: REJECT ${head}
+`
+  const stale=(text)=>{
+    for(const match of String(text).matchAll(/VERDICT:\s*[A-Z_]+[ \t]+([0-9a-f]{7,40})\b/gi)){
+      const named=match[1].toLowerCase()
+      if(!head.startsWith(named))throw new Error(`the review prompt names head ${named} in a VERDICT line, but the live pull request head is ${head}. No reviewer was started. Remove the head from the prompt (the runner injects the live head) or update it.`)
+    }
+  }
+  // ISSUE #3479 -- ai-deepseek-agent takes its brief as the POSITIONAL message after
+  // `send` (or after `reply <session-id>`) and has no --prompt / --prompt-file flag. Its
+  // parser folds any unknown token into the message, so a forwarded `--prompt-file x`
+  // would send the literal path text, never the brief. For this wrapper the brief (a
+  // positional message and/or --prompt / --prompt-file, in command-line order) plus the
+  // checklist and head-bound VERDICT instruction is written to one private file passed
+  // with --file, which the wrapper appends to the message. The positional message stays
+  // a short fixed line, so argv never carries the unbounded brief (the Windows
+  // command-line budget run-deepseek-evidence-review.mjs guards). Value flags are the
+  // module's canonical OPAQUE_VALUE_OPTIONS, so a flag value is never taken for the brief.
+  // The stale-head check applies exactly as for the flag forms.
+  if(wrapperBaseName(wrapper)==='ai-deepseek-agent'&&(list[0]==='send'||(list[0]==='reply'&&list.length>=2&&!String(list[1]).startsWith('-')))){
+    const valued=new Set([...OPAQUE_VALUE_OPTIONS,'--base','--assert-head'])
+    const start=list[0]==='reply'?2:1,out=list.slice(0,start),texts=[]
+    let ended=false
+    for(let i=start;i<list.length;i++){
+      const arg=list[i]
+      if(ended||!/^--/.test(arg)){texts.push(arg);continue}
+      if(arg==='--'){ended=true;continue}
+      if(arg==='--prompt-file'&&i+1<list.length){texts.push(readFile(list[++i]));continue}
+      if(/^--prompt-file=/.test(arg)){texts.push(readFile(arg.slice('--prompt-file='.length)));continue}
+      if(arg==='--prompt'&&i+1<list.length){texts.push(list[++i]);continue}
+      if(/^--prompt=/.test(arg)){texts.push(arg.slice('--prompt='.length));continue}
+      out.push(arg)
+      if(valued.has(arg)&&i+1<list.length)out.push(list[++i])
+    }
+    if(texts.length){
+      const text=texts.join('\n\n');stale(text)
+      const copy=join(tempDir(),'governed-brief.md');writeFile(copy,`${text}${instruction}`)
+      out.splice(start,0,DEEPSEEK_GOVERNED_MESSAGE,'--file',copy)
+      return out
+    }
+  }
+  // Both spellings of each flag are handled. The governed review of PR #3338 found the
+  // equals form unrecognised: `--prompt=x` fell through the exact-token match, so the
+  // brief silently carried no checklist and no verdict contract. That is the same
+  // defect as the missing-prompt case, so it is closed the same way rather than left
+  // to the refusal below.
+  for(let i=0;i<list.length;i++){
+    const arg=list[i]
+    const inlineFile=/^--prompt-file=/.test(arg),inlinePrompt=/^--prompt=/.test(arg)
+    if(inlineFile){
+      const text=readFile(arg.slice('--prompt-file='.length));stale(text)
+      const copy=join(tempDir(),'prompt.md');writeFile(copy,`${text}${instruction}`);list[i]=`--prompt-file=${copy}`;carried=true
+    }else if(inlinePrompt){
+      const text=arg.slice('--prompt='.length);stale(text);list[i]=`--prompt=${text}${instruction}`;carried=true
+    }else if(arg==='--prompt-file'&&i+1<list.length){
+      const text=readFile(list[i+1]);stale(text)
+      const copy=join(tempDir(),'prompt.md');writeFile(copy,`${text}${instruction}`);list[i+1]=copy;i++;carried=true
+    }else if(arg==='--prompt'&&i+1<list.length){stale(list[i+1]);list[i+1]=`${list[i+1]}${instruction}`;i++;carried=true}
+  }
+  // ISSUE #2998 item 1 -- validate the terminal VERDICT instruction BEFORE a reviewer
+  // draw is consumed.
+  //
+  // Observed: an approval was given TWICE and could not be recorded either time,
+  // because the prompt that was actually sent never carried the terminal VERDICT line.
+  // The reviewer did the work, said yes, and the verdict was unrecordable. Two draws
+  // spent for zero recorded verdicts.
+  //
+  // The injection loop above only rewrites `--prompt` / `--prompt-file`. If the wrapper
+  // args carry NEITHER, nothing is injected and the contract silently rides on a prompt
+  // that does not exist -- which is precisely the observed failure. This refuses that
+  // handoff here, before anything irreversible, instead of discovering it afterwards.
+  //
+  // This makes no verdict optional and weakens no gate: it turns a silent, unrecordable
+  // review into a named refusal with no reviewer started and no capacity spent.
+  // `ai-codex-review` TAKES NO PROMPT ARGUMENT BY DESIGN (issue #2244, see CODEX_WRAPPER
+  // above): its recordable decision is transcribed from the report it publishes, not
+  // injected into a prompt. Requiring an injected contract from it would refuse a
+  // supported wrapper for failing to accept an argument it never accepted -- a
+  // regression the governed review of PR #3338 caught. Exempting it relaxes NOTHING:
+  // the transcription bridge still restates the decision as this runner's own terminal
+  // verdict line bound to the head the runner pinned, and every other wrapper must
+  // still carry the contract.
+  if(!carried&&wrapperBaseName(wrapper)!==CODEX_WRAPPER)throw new Error('the outbound reviewer prompt carries no terminal VERDICT instruction, because the wrapper arguments contain neither --prompt nor --prompt-file. No reviewer was started and no reviewer capacity was spent. A reviewer sent a prompt without the terminal "VERDICT: <DECISION> <head>" line can approve the work and still leave nothing recordable. Pass the brief with --prompt or --prompt-file so the runner can bind it to the live head.')
+  return list
+}
+export function prepareCompleteReviewBrief(options,source,{github=readGitHub,files,store=storeReviewBrief}={}){
+  const text=loadReviewBrief(options,source,{github})
+  if(wrapperBaseName(options.wrapper)===CODEX_WRAPPER){
+    // The canonical Codex adapter consumes this existing interface into its sealed
+    // packet. It does not accept --prompt and keeps its qualified report parser.
+    return {wrapperArgs:options.wrapperArgs,env:{AI_REVIEW_BRIEF_FILE:store(`${text}\n${PROBE_REVIEW_CHECKLIST}`)}}
+  }
+  const args=promptHeadContract(options.wrapperArgs,source.headSha,files,options.wrapper,text)
+  // Complete context can exceed Windows' argument limit. Reuse the supported
+  // prompt-file flag; do not truncate evidence or send it through shell text.
+  for(let i=0;i<args.length;i++){
+    if(args[i]==='--prompt'){args[i]='--prompt-file';args[i+1]=store(args[i+1]);i++}
+    else if(args[i].startsWith('--prompt='))args[i]=`--prompt-file=${store(args[i].slice('--prompt='.length))}`
+  }
+  return {wrapperArgs:args,env:{}}
+}
+export function prepareGovernedReview(options,{env=process.env,github=readGitHub,files}={}){
+  const live=readLivePullRequestHead(options.pr,github)
+  const named=String(options.headSha??'').trim().toLowerCase()
+  if(named&&named!==live)throw new Error(`--head-sha ${named} is stale: pull request #${Number(options.pr)} is now at ${live}. No reviewer was started. Omit --head-sha to use the live head, after the reviewer assignment is moved to it.`)
+  const callerEnv=reviewCallerEnvironment(options.wrapper,env)
+  return {options:{...options,headSha:live,wrapperArgs:promptHeadContract(options.wrapperArgs??[],live,files,options.wrapper)},callerEnv}
+}
+// Issue #3799. A replacement assignment is recorded under the REPLACED reviewer's
+// sequence (refs/db-review-replacements/<issue>-<pr>-<head><slot>-<failedSequence>),
+// but the allocator prints the replacement's own draw sequence too, so callers pass
+// either. Resolve both forms to the one ref key, bound to the exact issue, PR, head,
+// slot and named reviewer. Two different refs matching the two readings is refused
+// as ambiguous; no match is passed through unchanged so the recorder still refuses.
+export function resolveReplacementSequence(options,io){
+  if(options.replacementSequence==null||options.replacementSequence==='')return options
+  const given=Number(options.replacementSequence)
+  if(!Number.isInteger(given)||given<1)return options
+  const issue=Number(options.issue),pr=Number(options.pr),slot=Number(options.slot??options.reviewSlot??1),head=String(options.headSha??'').toLowerCase()
+  const base=`${REVIEW_REPLACEMENT_REF_PREFIX}/${issue}-${pr}-${head}${reviewSlotSuffix(slot)}-`
+  const matches=new Map()
+  for(const row of io.listRefs(base)??[]){
+    const tail=String(row.ref??'').slice(base.length)
+    if(!String(row.ref??'').startsWith(base)||!/^\d+$/.test(tail))continue
+    let parsed
+    try{parsed=parseReviewCursor(io.getCommit(row.sha))}catch{continue}
+    if(!parsed||parsed.issue!==issue||parsed.pr!==pr||!head.startsWith(String(parsed.headSha).toLowerCase())||(parsed.slot!==null&&parsed.slot!==slot))continue
+    if(options.reviewer&&parsed.reviewer!==options.reviewer)continue
+    if(Number(tail)===given||parsed.sequence===given)matches.set(row.ref,Number(tail))
+  }
+  if(matches.size>1)throw new Error(`replacement sequence ${given} is ambiguous: it names more than one replacement assignment (${[...matches.keys()].join(', ')}); no reviewer was started`)
+  if(matches.size===0)return options
+  return {...options,replacementSequence:[...matches.values()][0]}
 }
 export function main(argv=process.argv.slice(2)){
-  try{const result=runGovernedReview(parseArgs(argv));process.stdout.write(`${result.body}\n\nDURABLE VERDICT: ${result.artifact.ref} ${result.artifact.sha}\n`);return 0}catch(error){process.stderr.write(`REFUSED: ${error.message}\n`);return 2}
+  try{const prepared=prepareGovernedReview(parseArgs(argv));Object.assign(process.env,prepared.callerEnv);const deps=governedReviewDeps();const result=runGovernedReview(resolveReplacementSequence(prepared.options,deps.io),deps);process.stdout.write(`${result.body}\n\nDURABLE VERDICT: ${result.artifact.ref} ${result.artifact.sha}\nSOURCE EVIDENCE: ${JSON.stringify(result.sourceEvidence)}\n`);return 0}catch(error){if(error?.startDecision)process.stderr.write(`REROUTE: ${JSON.stringify(error.startDecision)}\n`);process.stderr.write(`REFUSED: ${error.message}\n`);return 2}
 }
 if(import.meta.url===pathToFileURL(process.argv[1]??'').href)process.exitCode=main()

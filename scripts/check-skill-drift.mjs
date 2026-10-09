@@ -50,7 +50,11 @@ const ORCHESTRATOR_REQUIREMENTS = [
   // five look like skill drift, and the fix for that must never be to delete the
   // requirement. It also has to accept a skill copy that has not been re-synced
   // yet, so both the old numeric wording and the constant-referencing wording pass.
-  ['author-cap', /(?:the|one of the|three)\s+fixed\s+author slots|at most (?:`?MAX_AUTHOR_LANES`?|three|four|five|six|\d+) migration authors/i],
+  // Owner ruling 2026-09-11 (AGENTS.md section 4 rule 1, issue #2775) removed the
+  // numeric author cap, and ai-devops #531 (plan #401 Step 7A) re-synced the skill to
+  // say so. The skill must still STATE the author-admission rule: either the current
+  // no-ceiling wording or the older cap wording from a copy not yet re-synced.
+  ['author-cap', /no numeric ceiling on concurrent authors|(?:the|one of the|three)\s+fixed\s+author slots|at most (?:`?MAX_AUTHOR_LANES`?|three|four|five|six|\d+) migration authors/i],
   ['github-object-locks', /GitHub-backed(?: exact-)?object locks/i],
   ['exclusive-preview', /exclusive GitHub-backed preview lock/i],
   ['exclusive-merge', /exclusive merge lock/i],
@@ -94,10 +98,13 @@ const CONTRADICTIONS = [
     why: 'COORDINATOR_INTAKE.md is a 37-line pointer. Work goes in GitHub issues, and a required check fails any PR that regrows the file.',
   },
   {
-    id: 'stale-marker-label',
-    pattern: /--label\s+coordinator-marker/,
-    agents: 'the marker label was renamed to `orchestrator-marker` on 2026-08-07',
-    why: 'Querying the old label returns EMPTY, and step 0 treats empty as permission to start. That would let a second orchestrator start while one is already live.',
+    id: 'retired-orchestrator-routing',
+    // The orchestrator role was retired (owner ruling 2026-10-02, AGENTS.md §0.0-D,
+    // issue #3874). A skill that still tells a session to stop because it is not the
+    // orchestrator, or to resolve the orchestrator marker before routing, is drift.
+    pattern: /not started as the orchestrator|check-orchestrator-marker\.mjs\s+--resolve|--label\s+coordinator-marker/i,
+    agents: 'AGENTS.md §0.0-D — there is no orchestrator; structural work is claim-first',
+    why: 'Sessions following orchestrator routing stop and wait for a role that no longer exists, so structural work never starts.',
   },
   {
     id: 'marker-query-without-repo',
@@ -106,8 +113,8 @@ const CONTRADICTIONS = [
     // purpose: these commands are written on one line, and letting it span newlines would
     // match a --repo belonging to a DIFFERENT command further down.
     pattern: /gh issue list(?![^\n]*--repo)[^\n]*--label\s+(orchestrator-marker|db-claim|db-work)/,
-    agents: 'AGENTS.md §2 — the orchestrator marker is an issue in u2giants/shared-db specifically',
-    why: 'These skills load into sessions working in OTHER repositories. Without --repo, gh queries whatever repo you are standing in, EXITS 0, and returns zero markers — indistinguishable from a clear board. The session then opens a SECOND orchestrator while one is live, defeating the single-orchestrator lock. Found 2026-08-11 by an independent Codex review (#530).',
+    agents: 'AGENTS.md §2 — coordination issues (claims, db-work, and the still-live orchestrator-marker label used by tooling) live in popcre/shared-db specifically',
+    why: 'These skills load into sessions working in OTHER repositories. Without --repo, gh queries whatever repo you are standing in, EXITS 0, and returns zero claims — indistinguishable from a clear board, so a session can take objects another session already claimed. Found 2026-08-11 by an independent Codex review (#530).',
   },
   {
     id: 'prune-false',

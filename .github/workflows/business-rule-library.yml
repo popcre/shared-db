@@ -27,8 +27,18 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Runner router (edge-dev3-linux self-hosted when online and idle, else the
+  # hosted label below). A failed router never skips a check: callers run on
+  # !cancelled() and keep the literal hosted fallback. See runner-route.yml.
+  route:
+    uses: ./.github/workflows/runner-route.yml
+    with:
+      fallback: blacksmith-2vcpu-ubuntu-2404
+
   validate:
-    runs-on: ubuntu-latest
+    needs: route
+    if: ${{ !cancelled() }}
+    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"blacksmith-2vcpu-ubuntu-2404"') }}
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     steps:

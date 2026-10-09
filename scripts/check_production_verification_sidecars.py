@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from production_business_risk_gate import RiskGateError, SIDECAR_REGISTRY_PATH, load_sidecar_registry
 from production_catalog_verification import (
     BEHAVIOR_SIDECAR_DIR, GuardError, dynamic_execution_marker_lines,
     load_behavior_sidecars,
+    strip_sql,
 )
 
 
@@ -24,6 +27,38 @@ def migrations(repo: Path) -> dict[str, Path]:
     return result
 
 
+def check_registry(repo: Path, sidecar_versions: list[str]) -> None:
+    """Every sidecar file needs exactly one declaration, and every declaration its file (#3028)."""
+    try:
+        declared = set(load_sidecar_registry(repo))
+    except RiskGateError as exc:
+        raise GuardError(str(exc)) from exc
+    undeclared = sorted(set(sidecar_versions) - declared)
+    if undeclared:
+        raise GuardError(
+            f"sidecars {undeclared} are not declared in {SIDECAR_REGISTRY_PATH}. "
+            "Add one {\"version\": ..., \"issue\": ...} entry per sidecar; that single "
+            "declaration pins it as a preview producer."
+        )
+    fileless = sorted(declared - set(sidecar_versions))
+    if fileless:
+        raise GuardError(f"{SIDECAR_REGISTRY_PATH} declares sidecars {fileless} whose files do not exist")
+
+
+def has_guarded_static_table_ddl(sql: str) -> bool:
+    """Read DO bodies separately; ignore comments, literals and routine bodies."""
+    outer = strip_sql(sql, keep_dollar=True, keep_regclass=False)
+    pattern = (r"\bdo\s+(?:language\s+[a-z_][a-z0-9_]*\s+)?(?P<do_tag>\$[a-z0-9_]*\$)(?P<body>[\s\S]*?)(?P=do_tag)"
+               r"|(?P<skip_tag>\$[a-z0-9_]*\$)[\s\S]*?(?P=skip_tag)")
+    for block in re.finditer(pattern, outer):
+        if block.group('body') is None:
+            continue
+        body = strip_sql(block.group('body'), keep_regclass=False)
+        if re.search(r"\balter\s+table\b", body):
+            return True
+    return False
+
+
 def check(repo: Path, scan_versions: list[str]) -> dict:
     migration_map = migrations(repo)
     store = repo / BEHAVIOR_SIDECAR_DIR
@@ -34,6 +69,7 @@ def check(repo: Path, scan_versions: list[str]) -> dict:
             raise GuardError(f"orphan sidecar {path}: migration {version} is missing")
         sidecar_versions.append(version)
     load_behavior_sidecars(repo, migration_map, sidecar_versions)
+    check_registry(repo, sidecar_versions)
     rows = []
     for version in sorted(set(scan_versions)):
         migration = migration_map.get(version)
@@ -47,6 +83,10 @@ def check(repo: Path, scan_versions: list[str]) -> dict:
                 "Add a hash-bound sidecar; record durable checks by hand or a "
                 "reviewed-empty declaration covering every marker line."
             )
+        if has_guarded_static_table_ddl(migration.read_text(encoding="utf-8")):
+            checks = load_behavior_sidecars(repo, migration_map, [version]) if sidecar.exists() else []
+            if not any(check.get("kind") == "catalog_contract" for check in checks):
+                raise GuardError(f"{migration}: guarded static ALTER TABLE requires a hash-bound named catalog contract before apply")
         rows.append({"version": version, "markers": markers, "sidecar": sidecar.exists()})
     return {"status": "OK", "sidecars": len(sidecar_versions), "scans": rows}
 

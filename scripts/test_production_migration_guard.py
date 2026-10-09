@@ -27,6 +27,9 @@ from production_migration_guard import (  # noqa: E402
     assert_bounded,
     compute_content_manifest,
     classify_pending_version,
+    FOREIGN_TARGET_MIGRATIONS,
+    KNOWN_MIGRATION_TARGETS,
+    foreign_target_entry,
     created_objects,
     local_migrations,
     manifest_path,
@@ -204,6 +207,18 @@ def _run_block_commands(step: str) -> list[str]:
     return commands
 
 
+class RemainingUsersStrandedOriginalTests(unittest.TestCase):
+    def test_stranded_original_refuses_even_if_recorded_remotely(self):
+        for remote in (set(), {"20261006221530"}):
+            with self.assertRaisesRegex(GuardError, "general production lane blocks"):
+                parse_allowlist("20261006221530", remote)
+        self.assertIn("20261007002113", production_migration_guard.RETIRED_VERSION_REASONS["20261006221530"])
+
+    def test_forward_remains_eligible(self):
+        self.assertEqual(parse_allowlist("20261007002113"), ["20261007002113"])
+
+
+
 class GuardTests(unittest.TestCase):
     def test_preview_only_historical_restoration_is_never_production_allowlisted(self):
         self.assertEqual(
@@ -214,6 +229,11 @@ class GuardTests(unittest.TestCase):
             parse_allowlist("20260817150944")
         with self.assertRaisesRegex(GuardError, "preview-only historical restoration"):
             parse_allowlist("20260824150630")
+
+    def test_empty_allowlist_entries_require_the_exact_empty_refusal(self):
+        for raw in ("", " ", "20260907131728,", "20260907131728, ,20260907152838"):
+            with self.subTest(raw=raw), self.assertRaisesRegex(GuardError, "production allowlist is empty"):
+                parse_allowlist(raw)
 
     def test_issue_2509_historical_restoration_remains_production_eligible(self):
         self.assertEqual(parse_allowlist("20260907131728"), ["20260907131728"])
@@ -229,6 +249,9 @@ class GuardTests(unittest.TestCase):
 
     def test_issue_2580_historical_restoration_remains_production_eligible(self):
         self.assertEqual(parse_allowlist("20260909084253"), ["20260909084253"])
+
+    def test_issue_2535_historical_restoration_remains_production_eligible(self):
+        self.assertEqual(parse_allowlist("20260908202651"), ["20260908202651"])
 
     def test_bad_allowlists_are_blocked(self) -> None:
         values = [
@@ -248,6 +271,11 @@ class GuardTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(GuardError):
                 parse_allowlist(value)
 
+    def test_allowlist_rejects_whitespace_entries_and_non_version_text(self) -> None:
+        for value in (" ", "20260727010000, ", "not-a-version"):
+            with self.subTest(value=value), self.assertRaises(GuardError):
+                parse_allowlist(value)
+
     def test_the_block_list_matches_the_governed_retirements(self) -> None:
         # Three kinds, deliberately together. 20260726190000/20260726200000 are the
         # already-applied Master Data pair. 20260729120000 is the third kind:
@@ -258,6 +286,17 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(
             HARD_BLOCKED,
             {
+                "20261007232712",
+                "20261006203846",
+                "20261006211240",
+                "20261002204050",
+                "20261007020907",
+                "20261007190954",
+                "20261008001142",
+                "20261008014009",
+                "20261008022846",
+                "20260911212849",
+                "20260917112129",
                 "20260906222338",
                 "20260814170749",
                 "20260726190000",
@@ -281,6 +320,10 @@ class GuardTests(unittest.TestCase):
                 "20260830195655",
                 "20260903200951",
                 "20260908195056",
+                "20260915015414",
+                "20260928003740",
+                "20260929040458",
+                "20261006221530",
             },
         )
 
@@ -292,6 +335,113 @@ class GuardTests(unittest.TestCase):
         with self.assertRaisesRegex(GuardError, "20260903200951"):
             parse_allowlist("20260903200951,20260905024139")
         self.assertEqual(parse_allowlist("20260905024139"), ["20260905024139"])
+
+    def test_issue_2478_stranded_originals_remain_retired(self) -> None:
+        for version in ("20260911212849", "20260917112129"):
+            for allowlist in (version, f"{version},20260907031246"):
+                with self.subTest(version=version, allowlist=allowlist):
+                    with self.assertRaisesRegex(GuardError, version):
+                        parse_allowlist(allowlist)
+            for applied in (set(), {version}):
+                with self.subTest(version=version, applied=applied):
+                    self.assertEqual(classify_pending_version(version, applied, REPO)["kind"], "retired")
+
+    def test_issue_2478_retirement_preserves_historical_sql(self) -> None:
+        import hashlib
+        hashes = {'20260911212849': '78391d7d8e3b803c0998a407876872fa8006030742edce9a45c0724a3c75ecdf', '20260917112129': '33f1c60ca671be24bde8c78dfa218821398d73c5c1011025a434aff52111470e'}
+        for version, digest in hashes.items():
+            with self.subTest(version=version):
+                original = REPO / "supabase/migrations" / f"{version}_shared_style_group_sku_key.sql"
+                self.assertEqual(hashlib.sha256(original.read_text(encoding="utf-8").encode()).hexdigest(), digest)
+
+    def test_issue_2478_reissue_is_byte_identical_to_original(self) -> None:
+        """The reissue is only safe because it is the SAME executable SQL.
+
+        Nothing else in the suite pins that. If a later edit touches either
+        file, the hard block on 20260917112129 would be retiring a version
+        whose replacement no longer matches it.  Comparison excludes the
+        version-header line and normalises newlines, matching the contract's
+        "after newline normalization" caveat.
+        """
+        migrations = REPO / "supabase" / "migrations"
+        original = (
+            migrations / "20260917112129_shared_style_group_sku_key.sql"
+        ).read_bytes().replace(b"\r\n", b"\n")
+        reissue = (
+            migrations / "20260925061508_shared_style_group_sku_key.sql"
+        ).read_bytes().replace(b"\r\n", b"\n")
+        self.assertEqual(original.split(b"\n", 1)[1], reissue.split(b"\n", 1)[1])
+
+    def test_rich_extraction_stranded_original_is_retired(self) -> None:
+        for allowlist in ("20261002204050", "20261002204050,20261002222102"):
+            with self.subTest(allowlist=allowlist), self.assertRaisesRegex(GuardError, "20261002204050"):
+                parse_allowlist(allowlist)
+        self.assertEqual(parse_allowlist("20261002222102"), ["20261002222102"])
+        for applied in (set(), {"20261002204050"}):
+            self.assertEqual(classify_pending_version("20261002204050", applied, REPO)["kind"], "retired")
+
+    def test_workflow_parity_refused_original_is_retired(self) -> None:
+        for allowlist in ("20261006211240", "20261006211240,20261006235109"):
+            with self.subTest(allowlist=allowlist), self.assertRaisesRegex(GuardError, "20261006211240"):
+                parse_allowlist(allowlist)
+        self.assertEqual(parse_allowlist("20261006235109"), ["20261006235109"])
+        for applied in (set(), {"20261006211240"}):
+            self.assertEqual(classify_pending_version("20261006211240", applied, REPO)["kind"], "retired")
+
+    def test_scraped_dedupe_stranded_original_is_retired(self) -> None:
+        for allowlist in ("20261007020907", "20261007020907,20261008005647"):
+            with self.subTest(allowlist=allowlist), self.assertRaisesRegex(GuardError, "20261007020907"):
+                parse_allowlist(allowlist)
+        self.assertEqual(parse_allowlist("20261008005647"), ["20261008005647"])
+        for applied in (set(), {"20261007020907"}):
+            self.assertEqual(classify_pending_version("20261007020907", applied, REPO)["kind"], "retired")
+
+    def test_scraped_dedupe_first_forward_replacement_is_retired(self) -> None:
+        for allowlist in ("20261007190954", "20261007190954,20261008005647"):
+            with self.subTest(allowlist=allowlist), self.assertRaisesRegex(GuardError, "20261007190954"):
+                parse_allowlist(allowlist)
+        self.assertEqual(parse_allowlist("20261008005647"), ["20261008005647"])
+        for applied in (set(), {"20261007190954"}):
+            self.assertEqual(classify_pending_version("20261007190954", applied, REPO)["kind"], "retired")
+
+    def test_scraped_dedupe_second_forward_replacement_is_retired(self) -> None:
+        for allowlist in ("20261008001142", "20261008001142,20261008005647"):
+            with self.subTest(allowlist=allowlist), self.assertRaisesRegex(GuardError, "20261008001142"):
+                parse_allowlist(allowlist)
+        for applied in (set(), {"20261008001142"}):
+            self.assertEqual(classify_pending_version("20261008001142", applied, REPO)["kind"], "retired")
+
+    def test_service_identities_stranded_original_is_retired(self) -> None:
+        for allowlist in ("20261008014009", "20261008014009,20261008025618", "20261008022846"):
+            with self.subTest(allowlist=allowlist), self.assertRaisesRegex(GuardError, "2026100801400|20261008022846"):
+                parse_allowlist(allowlist)
+        self.assertEqual(parse_allowlist("20261008025618"), ["20261008025618"])
+        for version in ("20261008014009", "20261008022846"):
+            for applied in (set(), {version}):
+                self.assertEqual(classify_pending_version(version, applied, REPO)["kind"], "retired")
+
+    def test_scraped_dedupe_forward_replacements_share_executable_body(self) -> None:
+        migrations = REPO / "supabase" / "migrations"
+
+        def executable(version: str) -> str:
+            (path,) = migrations.glob(f"{version}_*.sql")
+            lines = path.read_text(encoding="utf-8").splitlines()
+            start = next(i for i, line in enumerate(lines) if line.strip() and not line.lstrip().startswith("--"))
+            # Everything after the leading comment header, byte for byte
+            # (comments and blank lines included), must match.
+            return "\n".join(lines[start:])
+
+        body = executable("20261008005647")
+        self.assertEqual(body, executable("20261008001142"))
+        self.assertEqual(body, executable("20261007190954"))
+        self.assertEqual(body, executable("20261007020907"))
+        lowered = " ".join(body.lower().split()).replace("( ", "(").replace(" )", ")")
+        self.assertIn("create or replace function api.db_data_admin_scraped_source_inventory(p_entity_kind text, p_search text default null, p_cursor text default null, p_page_size integer default null)", lowered)
+        self.assertIn("returns jsonb", lowered)
+        self.assertIn("language plpgsql stable security definer", lowered)
+        self.assertIn("security definer", lowered)
+        self.assertIn("set search_path to 'app', 'public'", lowered)
+
     def test_character_alias_mismatched_original_is_retired(self) -> None:
         for allowlist in ("20260906222338", "20260906222338,20260911152203"):
             with self.subTest(allowlist=allowlist), self.assertRaisesRegex(GuardError, "20260906222338"):
@@ -321,6 +471,81 @@ class GuardTests(unittest.TestCase):
             / "20260905024139_reissue_coldlion_division_reference_table.sql"
         ).read_bytes()
         self.assertEqual(original, reissue)
+
+    def test_issue_3458_reissue_has_identical_executable_sql(self) -> None:
+        """20260929040458 retires 20260928003740 only because it runs the SAME SQL.
+
+        The reissue adds header comments only, so compare every non-comment
+        line. A later edit to either file must fail here.
+        """
+        migrations = REPO / "supabase" / "migrations"
+
+        def executable(name: str) -> list[str]:
+            text = (migrations / name).read_text(encoding="utf-8")
+            return [line for line in text.splitlines() if not line.startswith("--")]
+
+        self.assertEqual(
+            executable("20260928003740_popsg_refresh_steps_under_ceiling.sql"),
+            executable("20260929040458_popsg_refresh_steps_reissue.sql"),
+        )
+
+    def test_issue_3458_original_is_blocked_but_reissue_is_allowed(self) -> None:
+        with self.assertRaisesRegex(GuardError, "20260928003740"):
+            parse_allowlist("20260928003740")
+        with self.assertRaisesRegex(GuardError, "20260928003740"):
+            parse_allowlist("20260928003740,20260929040458")
+        self.assertEqual(parse_allowlist("20260930185929"), ["20260930185929"])
+        for applied in (set(), {"20260928003740"}):
+            with self.subTest(applied=applied):
+                result = classify_pending_version("20260928003740", applied, REPO)
+                self.assertEqual(result["kind"], "retired")
+                self.assertIn("20260929040458", result["reason"])
+        self.assertNotEqual(
+            classify_pending_version("20260930185929", set(), REPO)["kind"], "retired"
+        )
+
+    def test_issue_3458_reissue_declares_only_the_production_base(self) -> None:
+        """The comment-blind SQL identity test cannot see `-- derived-from:`.
+
+        The reissue must derive from 20260917005221 (live in production) and
+        never from the retired 20260928003740, which production will never hold.
+        """
+        from migration_derivation import declared_bases
+
+        path = (
+            REPO / "supabase" / "migrations"
+            / "20260929040458_popsg_refresh_steps_reissue.sql"
+        )
+        self.assertEqual(
+            declared_bases("20260929040458", path=path), frozenset({"20260917005221"})
+        )
+
+    def test_issue_3458_second_reissue_has_identical_executable_sql(self) -> None:
+        """20260930185929 retires 20260929040458 only because it runs the SAME SQL."""
+        migrations = REPO / "supabase" / "migrations"
+
+        def executable(name: str) -> list[str]:
+            text = (migrations / name).read_text(encoding="utf-8")
+            return [line for line in text.splitlines() if not line.startswith("--")]
+
+        self.assertEqual(
+            executable("20260929040458_popsg_refresh_steps_reissue.sql"),
+            executable("20260930185929_popsg_refresh_steps_reissue2.sql"),
+        )
+
+    def test_issue_3458_second_reissue_blocks_original_and_keeps_base(self) -> None:
+        from migration_derivation import declared_bases
+
+        with self.assertRaisesRegex(GuardError, "20260929040458"):
+            parse_allowlist("20260929040458")
+        self.assertEqual(parse_allowlist("20260930185929"), ["20260930185929"])
+        path = (
+            REPO / "supabase" / "migrations"
+            / "20260930185929_popsg_refresh_steps_reissue2.sql"
+        )
+        self.assertEqual(
+            declared_bases("20260930185929", path=path), frozenset({"20260917005221"})
+        )
 
     def test_stranded_bulk_operation_history_original_is_blocked_but_reissue_is_allowed(
         self,
@@ -546,6 +771,22 @@ class GuardTests(unittest.TestCase):
                         parse_allowlist(",".join(subset))
                     self.assertIn("6.5", str(caught.exception))
 
+    def test_fr_ship_set_is_unassemblable_when_no_removal_version_exists(self) -> None:
+        held = sorted(FR_SHIP_SET_HOLD)[0]
+        with patch("production_migration_guard.FR_REMOVAL_VERSIONS", set()):
+            with self.assertRaises(GuardError) as caught:
+                parse_allowlist(held)
+        self.assertIn("No FR removal migration exists yet", str(caught.exception))
+
+    def test_local_migrations_rejects_a_non_version_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            migrations = repo / "supabase" / "migrations"
+            migrations.mkdir(parents=True)
+            (migrations / "not-a-version.sql").write_text("select 1;", encoding="utf-8")
+            with self.assertRaisesRegex(GuardError, "invalid migration filename"):
+                local_migrations(repo)
+
     def test_the_real_fr_removal_version_is_registered_by_name(self) -> None:
         """Issue #1339: the hold releases by DATA, and this is that data.
 
@@ -605,6 +846,59 @@ class GuardTests(unittest.TestCase):
             validate_candidates(
                 migrations, ["20260727010000"], {"20260727010000"}
             )
+
+    def test_applied_refusal_names_the_ledger_it_read(self) -> None:
+        """Issue #3193: the preview job reads PREVIEW's ledger, so say so."""
+        migrations = {"20260727010000": Path("one.sql")}
+        with self.assertRaises(GuardError) as default:
+            validate_candidates(migrations, ["20260727010000"], {"20260727010000"})
+        self.assertIn("already applied on production: 20260727010000", str(default.exception))
+        self.assertNotIn("historical", str(default.exception))
+        with self.assertRaises(GuardError) as preview:
+            validate_candidates(
+                migrations, ["20260727010000"], {"20260727010000"}, None, "preview"
+            )
+        text = str(preview.exception)
+        self.assertIn("already applied on preview: 20260727010000", text)
+        self.assertNotIn("production", text)
+        self.assertIn("historical_preview_original_run_map", text)
+        with self.assertRaises(GuardError) as unknown:
+            validate_candidates(migrations, [], set(), None, "staging")
+        self.assertIn("unknown ledger name", str(unknown.exception))
+
+    def test_preflight_cli_passes_the_ledger_name_through(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            ledger = Path(directory) / "ledger.txt"
+            ledger.write_text(
+                "Local | Remote | Time\n20260727010000 | 20260727010000 | x\n",
+                encoding="utf-8",
+            )
+            migrations = {"20260727010000": Path("one.sql")}
+            for name, expected in ((None, "production"), ("preview", "preview")):
+                argv = ["guard", "preflight", "--repo", directory,
+                        "--allowlist", "20260727010000", "--remote-ledger", str(ledger)]
+                if name:
+                    argv += ["--ledger-name", name]
+                with patch.object(sys, "argv", argv), patch.object(
+                    production_migration_guard, "local_migrations", return_value=migrations
+                ), patch("sys.stderr") as stderr:
+                    self.assertEqual(production_migration_guard.main(), 1)
+                written = "".join(call.args[0] for call in stderr.write.call_args_list)
+                self.assertIn(f"already applied on {expected}: 20260727010000", written)
+
+    def test_preview_job_guard_calls_name_the_preview_ledger(self) -> None:
+        workflow = (REPO / ".github/workflows/shared-supabase-migrations.yml").read_text(encoding="utf-8")
+        calls = re.findall(
+            r"production_migration_guard\.py (?:preflight|prepare) \\\n(?:.*\\\n)*.*",
+            workflow,
+        )
+        preview = [call for call in calls if "preview-ledger-before.txt" in call]
+        production = [call for call in calls if "production-ledger-before.txt" in call]
+        self.assertEqual(len(preview), 2, calls)
+        for call in preview:
+            self.assertIn("--ledger-name preview", call)
+        for call in production:
+            self.assertNotIn("--ledger-name preview", call)
 
     def test_dry_run_requires_exact_list(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -808,6 +1102,54 @@ class GuardTests(unittest.TestCase):
                     "20260727020000_approved.sql",
                 ],
             )
+
+    def test_prepare_refuses_an_existing_output_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "already-there"
+            output.mkdir()
+            ledger = root / "ledger.txt"
+            ledger.write_text("Local | Remote | Time\n", encoding="utf-8")
+            with (
+                patch("production_migration_guard.parse_remote_versions", return_value=set()),
+                patch("production_migration_guard.parse_allowlist", return_value=["20260727020000"]),
+                patch("production_migration_guard.local_migrations", return_value={"20260727020000": root / "migration.sql"}),
+                patch("production_migration_guard.validate_candidates"),
+                patch("production_migration_guard.preflight_batch"),
+                self.assertRaisesRegex(GuardError, "bounded checkout already exists"),
+            ):
+                prepare(root, output, "a" * 40, "20260727020000", ledger)
+
+    def test_prepare_refuses_a_pruned_checkout_with_the_wrong_file_set(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            output = root / "bounded"
+            migrations = repo / "supabase" / "migrations"
+            migrations.mkdir(parents=True)
+            for name in (
+                "20260727010000_applied.sql",
+                "20260727020000_approved.sql",
+                "20260727030000_unapproved.sql",
+            ):
+                (migrations / name).write_text("select 1;\n", encoding="utf-8")
+            ledger = root / "ledger.txt"
+            ledger.write_text(
+                "Local | Remote | Time\n"
+                "20260727010000 | 20260727010000 | x\n",
+                encoding="utf-8",
+            )
+
+            def fake_worktree(*_args, **_kwargs):
+                import shutil
+                shutil.copytree(repo, output)
+
+            with (
+                patch("production_migration_guard.subprocess.run", side_effect=fake_worktree),
+                patch.object(Path, "unlink", autospec=True),
+                self.assertRaisesRegex(GuardError, "does not match the approved file set"),
+            ):
+                prepare(repo, output, "a" * 40, "20260727020000", ledger)
 
 
 class AssertBoundedTests(unittest.TestCase):
@@ -1058,6 +1400,14 @@ class ContentManifestTests(unittest.TestCase):
             with self.assertRaises(GuardError) as caught:
                 assert_bounded(root, "20260727020000", ledger)
             self.assertIn("unreadable/corrupt", str(caught.exception))
+
+    def test_a_non_object_manifest_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._prepared(root, ("20260727010000_applied.sql",))
+            manifest_path(root).write_text("[]", encoding="utf-8")
+            with self.assertRaisesRegex(GuardError, "not a JSON object"):
+                assert_content_manifest(root)
 
     def test_compute_content_manifest_is_byte_precise(self) -> None:
         # A line-ending change is real byte drift and must register as one.
@@ -2052,17 +2402,74 @@ def _job(name: str) -> str:
     return "\n".join(lines)
 
 
+def _effective_permission(workflow: str, job_name: str, permission: str) -> str | None:
+    header = workflow.split("\njobs:", 1)[0]
+    top = re.search(rf"(?m)^  {re.escape(permission)}:\s*(\w+)", header)
+    job = _job(job_name) if workflow is WORKFLOW_TEXT else workflow.split(f"\n  {job_name}:\n", 1)[1]
+    job_header = job.split("\n    steps:", 1)[0]
+    override = re.search(rf"(?m)^      {re.escape(permission)}:\s*(\w+)", job_header)
+    return (override or top).group(1) if (override or top) else None
+
+
 class ApplyLaneTests(unittest.TestCase):
     def test_phase_2_preserves_shared_workflow_dispatch_and_serialization_contract(self) -> None:
         header = WORKFLOW_TEXT.split("\njobs:", 1)[0]
         self.assertIn("pull_request:", header)
         self.assertIn("workflow_dispatch:", header)
-        for required_input in ("target", "mode", "production_allowlist", "preview_allowlist", "claim_pr", "claim_head_sha", "commit_sha", "confirmation"):
+        for required_input in ("target", "mode", "production_allowlist", "derivation_override", "preview_allowlist", "claim_pr", "claim_head_sha", "commit_sha", "confirmation"):
             self.assertRegex(header, rf"(?m)^      {re.escape(required_input)}:$")
         self.assertIn("permissions:\n  contents: read", header)
+        self.assertIn("issues: read", header)
         self.assertIn("github.event_name == 'pull_request'", header)
-        self.assertIn("|| 'shared-supabase-migrations'", header)
+        self.assertIn("github.event_name == 'merge_group'", header)
+        # Step 10 (#3781): dispatch queues are target-qualified from a CLOSED
+        # two-branch map so preview and production no longer share one
+        # workflow-wide queue, and unknown/empty target collapses to preview
+        # instead of minting a new queue via API/CLI dispatch.
+        self.assertIn("inputs.target == 'production' && 'shared-supabase-migrations-production'", header)
+        self.assertIn("|| 'shared-supabase-migrations-preview'", header)
+        self.assertNotIn("format('shared-supabase-migrations-{0}', inputs.target)", header)
+        self.assertNotIn("|| 'shared-supabase-migrations'", header)
         self.assertIn("cancel-in-progress: false", header)
+
+    def test_derivation_override_is_recorded_and_rechecked_at_every_production_choke_point(self) -> None:
+        """An absent-base exception must reach every guard, or fail closed before a push."""
+        for job_name, expected_calls in (
+            ("production-dry-run", 2),
+            ("production-apply-review", 1),
+            ("production-apply", 2),
+        ):
+            job = _job(job_name)
+            self.assertIn("DERIVATION_OVERRIDE: ${{ inputs.derivation_override }}", job)
+            self.assertEqual(job.count('DERIVATION_ARGS+=(--derivation-override "$DERIVATION_OVERRIDE")'), expected_calls)
+            self.assertEqual(job.count('"${DERIVATION_ARGS[@]}"'), expected_calls)
+
+        automatic = _job("automatic-production-promotion")
+        dispatch = next(
+            step
+            for step in _steps(automatic)
+            if "Dispatch the existing serial production lane" in step
+        )
+        self.assertIn("DERIVATION_OVERRIDE: ${{ inputs.derivation_override }}", dispatch)
+        self.assertIn("--arg derivation_override", dispatch)
+        self.assertIn("derivation_override:$derivation_override", dispatch)
+
+    def test_admission_workflows_can_reopen_only_the_validated_linked_issue(self) -> None:
+        for workflow, job in (("guarded-migration-merge.yml", "merge"), ("preview-ledger-orphan-reconciliation.yml", "reconcile")):
+            text = (REPO / ".github" / "workflows" / workflow).read_text(encoding="utf-8")
+            self.assertEqual(_effective_permission(text, job, "issues"), "write", workflow)
+            if workflow == "guarded-migration-merge.yml":
+                self.assertIn("--acquire-merge", text)
+                self.assertNotIn("--admit-issue", text)
+            else:
+                self.assertIn("--admit-issue", text, workflow)
+        self.assertIn("--resolve-admitted-issue-for-pr", WORKFLOW_TEXT)
+        for job_name in ("preview", "production-apply"):
+            self.assertEqual(_effective_permission(WORKFLOW_TEXT, job_name, "issues"), "write", job_name)
+        for job_name in ("validate", "production-dry-run", "production-apply-review"):
+            self.assertEqual(_effective_permission(WORKFLOW_TEXT, job_name, "issues"), "read", job_name)
+        overridden = "permissions:\n  issues: write\njobs:\n  preview:\n    permissions:\n      issues: read\n    steps:\n      - run: true\n"
+        self.assertEqual(_effective_permission(overridden, "preview", "issues"), "read")
 
     def test_phase_2_preserves_required_job_graph_and_deliberately_first_checks(self) -> None:
         self.assertIn("needs: validate", _job("preview"))
@@ -2146,6 +2553,15 @@ class ApplyLaneTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("return 1", script)
+
+    def test_automatic_review_digest_is_canonicalized_before_dispatch(self) -> None:
+        """upload-artifact@v4 emits bare hex; the verifier requires sha256:<hex> (#2883)."""
+        text = WORKFLOW_TEXT
+        start = text.index("- name: Dispatch the existing serial production lane")
+        step = text[start:text.index("gh api --method POST", start)]
+        prefix = step.index('REVIEW_DIGEST="sha256:${REVIEW_DIGEST}"')
+        refuse = step.index("automatic review evidence has no canonical artifact digest")
+        self.assertLess(prefix, refuse)
 
     def test_the_recorded_review_is_not_the_only_gate(self) -> None:
         """Belt and braces: the environment and deterministic gates remain."""
@@ -2668,6 +3084,50 @@ class LexerFalseAcceptDefects(unittest.TestCase):
             # allowlist can bring a dropped object back.
             self.assertIn("Adding versions to the allowlist cannot fix this", message)
 
+    def test_2809_archiving_a_table_does_not_self_flag(self) -> None:
+        """#2809. The move statement NAMES the table it moves, and that name is
+        a hard reference. Booking the removal at the start of the statement
+        withdrew the table before its own reference was judged, so every
+        archive-a-table migration refused itself."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "supabase" / "migrations"
+            root.mkdir(parents=True)
+            (root / "20260101000000_a.sql").write_text(
+                "create table public.t (id uuid);\n", encoding="utf-8"
+            )
+            (root / "20260102000000_b.sql").write_text(
+                "create schema archive;\n"
+                "alter table public.t set schema archive;\n"
+                "revoke all on archive.t from public, anon, authenticated;\n",
+                encoding="utf-8",
+            )
+            migrations = local_migrations(Path(tmp))
+            # Must not raise.
+            preflight_batch(migrations, ["20260102000000"], {"20260101000000"})
+
+    def test_2809_the_OLD_name_after_a_move_is_still_REFUSED(self) -> None:
+        """The capability the guard exists for must survive the fix: once the
+        table has moved, touching its former name is still a real missing
+        reference."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "supabase" / "migrations"
+            root.mkdir(parents=True)
+            (root / "20260101000000_a.sql").write_text(
+                "create table public.t (id uuid);\n", encoding="utf-8"
+            )
+            (root / "20260102000000_b.sql").write_text(
+                "create schema archive;\n"
+                "alter table public.t set schema archive;\n"
+                "alter table public.t add column x uuid;\n",
+                encoding="utf-8",
+            )
+            migrations = local_migrations(Path(tmp))
+            with self.assertRaises(GuardError) as ctx:
+                preflight_batch(migrations, ["20260102000000"], {"20260101000000"})
+            message = str(ctx.exception)
+            self.assertIn("public.t", message)
+            self.assertIn("DROPPED (or renamed away) by 20260102000000", message)
+
     def test_f5_a_drop_in_the_APPLIED_LEDGER_is_honoured_too(self) -> None:
         """The removal need not be in the batch. If production already dropped
         it, the batch still aborts."""
@@ -2734,6 +3194,14 @@ class LexerFalseAcceptDefects(unittest.TestCase):
             ),
             {"core.character"},
         )
+
+    def test_f5_duplicate_restoration_declaration_is_rejected(self) -> None:
+        raw = (
+            "-- restores-retired-object: core.character dropped-by: 20260102000000\n"
+            "-- restores-retired-object: core.character dropped-by: 20260102000000\n"
+        )
+        with self.assertRaisesRegex(GuardError, "duplicate retired-object restoration"):
+            retired_object_restorations(raw)
 
     def test_f5_restoration_declaration_requires_the_exact_prior_drop(self) -> None:
         raw = (
@@ -3485,6 +3953,531 @@ class PendingVersionClassifierTest(unittest.TestCase):
         row = classify_pending_version("20260824135515", {"20260811030000"}, REPO, paths)
         self.assertEqual(row["kind"], "base-absent")
         self.assertIn("20260814223552", row["reason"])
+
+
+class ForeignTargetScopeTest(unittest.TestCase):
+    """Issue #2820 -- a migration authored for another database is not promotable here.
+
+    THE POSITIVE CONTROL IS THE POINT. An exclusion mechanism that quietly
+    swallows everything looks identical to one that works, and this repository
+    has repeatedly been burned by checks whose own predicate was inverted and
+    reported confident absence. Every test here that proves something IS excluded
+    is paired with a probe proving an in-scope migration is STILL reported.
+    """
+
+    IN_SCOPE_CONTROL = "20260911210844"
+    # The control declares `-- derived-from` bases. Supply them, exactly as the
+    # live production ledger does, so the control reaches the classifier as
+    # ordinary pending work rather than `base-absent` for an unrelated reason.
+    IN_SCOPE_APPLIED = {"20260816110750", "20260909220101"}
+
+    def test_hts_rag_split_is_out_of_scope_but_in_scope_work_is_still_pending(self) -> None:
+        paths = local_migrations(REPO)
+        row = classify_pending_version("20260909121403", set(), REPO, paths, "production")
+        self.assertEqual(row["kind"], "foreign-target")
+        self.assertIn("DesignFlow", row["reason"])
+        self.assertIn("#2403", row["reason"])
+
+        # POSITIVE CONTROL: the mechanism must not swallow ordinary work.
+        control = classify_pending_version(
+            self.IN_SCOPE_CONTROL, self.IN_SCOPE_APPLIED, REPO, paths, "production"
+        )
+        self.assertEqual(control["kind"], "genuinely-pending")
+
+    def test_scope_is_derived_from_the_target_not_hard_coded_per_version(self) -> None:
+        """A preview-targeted migration must STILL be reported on preview.
+
+        This is what makes the registry a target model rather than a skip list:
+        the same version gets different answers for different targets.
+        """
+        paths = local_migrations(REPO)
+        fixture = {
+            self.IN_SCOPE_CONTROL: {
+                "target": "preview",
+                "project": "the shared-db-schema-rehearsal preview branch",
+                "issue": "#0000",
+                "note": "Test fixture.",
+            }
+        }
+        with patch.dict(production_migration_guard.FOREIGN_TARGET_MIGRATIONS, fixture, clear=False):
+            excluded = classify_pending_version(
+                self.IN_SCOPE_CONTROL, self.IN_SCOPE_APPLIED, REPO, paths, "production"
+            )
+            self.assertEqual(excluded["kind"], "foreign-target")
+            still_reported = classify_pending_version(
+                self.IN_SCOPE_CONTROL, self.IN_SCOPE_APPLIED, REPO, paths, "preview"
+            )
+            self.assertEqual(still_reported["kind"], "genuinely-pending")
+
+    def test_unregistered_migration_is_in_scope_everywhere(self) -> None:
+        """Forgetting to register something must OVER-report, never hide work."""
+        for target in sorted(KNOWN_MIGRATION_TARGETS):
+            self.assertIsNone(foreign_target_entry(self.IN_SCOPE_CONTROL, target))
+
+    def test_every_registry_entry_names_a_known_target_and_cites_an_issue(self) -> None:
+        for version, entry in FOREIGN_TARGET_MIGRATIONS.items():
+            self.assertRegex(version, r"^\d{14}$")
+            self.assertIn(entry["target"], KNOWN_MIGRATION_TARGETS)
+            self.assertTrue(entry["issue"].startswith("#"), entry["issue"])
+            self.assertTrue(entry["project"].strip())
+
+    def test_an_unknown_target_is_refused_rather_than_silently_excluding(self) -> None:
+        paths = local_migrations(REPO)
+        with self.assertRaises(GuardError):
+            classify_pending_version("20260909121403", set(), REPO, paths, "not-a-database")
+
+    def test_a_foreign_target_migration_can_never_enter_a_production_allowlist(self) -> None:
+        with self.assertRaises(GuardError) as caught:
+            parse_allowlist("20260909121403")
+        self.assertIn("another database", str(caught.exception))
+
+        # POSITIVE CONTROL: the choke point still accepts in-scope work.
+        self.assertEqual(parse_allowlist(self.IN_SCOPE_CONTROL), [self.IN_SCOPE_CONTROL])
+
+
+# ===========================================================================
+# THE HOURLY READ-ONLY ABANDONMENT AUDIT (issue #2301, Step 5)
+#
+# This workflow's whole value is that it is SAFE to run unattended every hour
+# against the live repository. That safety is a property of its declaration --
+# what it is triggered by, what token it is handed, how long it may run, and
+# which command it invokes -- so it is the declaration that is tested here, in
+# the repository's canonical workflow-policy test, rather than left to review.
+#
+# The mutating counterpart, `--reconcile-flow`, is a real command that a human
+# runs deliberately while holding a sole-orchestrator marker. The one thing that
+# must never happen is a SCHEDULED run reaching it, so the absence of every
+# mutating flag from every scheduled workflow is asserted, not assumed.
+# ===========================================================================
+ABANDONMENT_AUDIT_WORKFLOW = (
+    REPO / ".github" / "workflows" / "author-lane-abandonment-audit.yml"
+)
+
+# Flags that change state. A scheduled workflow naming any of these is the
+# failure this plan step exists to make impossible.
+MUTATING_LANE_FLAGS = (
+    "--reconcile-flow",
+    "--relinquish-author-lease",
+    "--resume-author-lease",
+    "--recover-expired-claim",
+    "--renew-claim",
+    "--release-claim",
+    "--recover-mutex",
+    "--complete-work",
+    "--cleanup-stale",
+)
+
+
+class AbandonmentAuditWorkflowPolicyTests(unittest.TestCase):
+    """Prove the hourly audit's declaration, not merely its intent."""
+
+    def setUp(self) -> None:
+        self.text = ABANDONMENT_AUDIT_WORKFLOW.read_text(encoding="utf-8")
+        self.header = self.text.split("\njobs:", 1)[0]
+        self.jobs = self.text.split("\njobs:", 1)[1]
+
+    def test_the_audit_runs_hourly_and_on_demand_and_on_nothing_else(self) -> None:
+        # Hourly: a lease is measured in hours, so a daily job would let a queue
+        # wait most of a day behind a lane whose author is gone.
+        cron = re.search(r'(?m)^\s*- cron: "([^"]+)"', self.header)
+        self.assertIsNotNone(cron, "the audit has no schedule at all")
+        minute, hour = cron.group(1).split()[:2]
+        self.assertEqual(hour, "*", f"the audit is not hourly: {cron.group(1)}")
+        self.assertNotEqual(minute, "*", "a cron running every minute is not an hourly audit")
+        self.assertIn("workflow_dispatch:", self.header)
+        # Time passing changes no file, so no commit-shaped trigger could catch
+        # expiry; one present would mean somebody misunderstood what this checks.
+        # Prose naming a trigger to explain why it is absent is not a trigger.
+        declared = [
+            line.strip()
+            for line in self.header.splitlines()
+            if line.startswith("  ") and not line.lstrip().startswith("#")
+        ]
+        for trigger in ("push:", "pull_request:", "pull_request_target:"):
+            self.assertNotIn(trigger, declared, f"{trigger} cannot detect a lease expiring")
+        self.assertIn("schedule:", declared, "the positive control failed; nothing was scanned")
+
+    def test_the_audit_is_handed_a_token_that_cannot_write(self) -> None:
+        # The promise "this job never files an issue or a comment" is only worth
+        # something if the job COULD not, whatever a future step tries to do.
+        permissions = re.search(r"(?m)^permissions:\n((?:^ +\S+: \w+\n)+)", self.text)
+        self.assertIsNotNone(permissions, "the audit inherits default permissions")
+        granted = dict(
+            re.findall(r"(?m)^\s+(\S+):\s*(\w+)$", permissions.group(1))
+        )
+        self.assertEqual(
+            sorted(granted),
+            ["contents", "issues", "pull-requests"],
+            "the audit's permission set changed; every entry must stay read-only",
+        )
+        for scope, level in granted.items():
+            self.assertEqual(level, "read", f"{scope} is not read-only")
+        # A job-level block could silently widen the header's grant.
+        self.assertNotIn("\n    permissions:", self.jobs)
+
+    def test_the_audit_is_bounded_and_cancels_its_own_overlap(self) -> None:
+        timeout = re.search(r"(?m)^\s+timeout-minutes:\s*(\d+)$", self.jobs)
+        self.assertIsNotNone(timeout, "an unbounded hourly job can stack up forever")
+        self.assertLessEqual(int(timeout.group(1)), 15)
+        self.assertRegex(self.header + self.jobs, r"(?m)^concurrency:\n\s+group: \S+")
+        self.assertRegex(self.header + self.jobs, r"(?m)^\s+cancel-in-progress: true$")
+
+    def test_the_audit_pins_its_runtime_and_actions(self) -> None:
+        # An hourly job on a floating action or Node version is an hourly job
+        # whose behaviour can change without anyone changing this repository.
+        for action in ("actions/checkout@v4", "actions/setup-node@v4"):
+            self.assertIn(action, self.jobs, f"{action} is unpinned or absent")
+        self.assertRegex(self.jobs, r"(?m)^\s+node-version:\s*\d+$")
+        self.assertNotRegex(self.jobs, r"uses: [^\s@]+\s*$")
+
+    def test_the_audit_calls_the_read_only_command_and_no_mutating_one(self) -> None:
+        self.assertIn(
+            "node scripts/manage-migration-author-lanes.mjs --abandonment-audit",
+            self.jobs,
+        )
+        for flag in MUTATING_LANE_FLAGS:
+            self.assertNotIn(flag, self.text, f"a scheduled workflow names {flag}")
+        # Filing is the duplicate-generating failure mode this job must not have.
+        for writer in ("gh issue create", "gh issue comment", "gh pr comment"):
+            self.assertNotIn(writer, self.text, f"the hourly audit calls {writer}")
+
+    def test_no_scheduled_workflow_anywhere_calls_a_mutating_lane_command(self) -> None:
+        # The rule is about SCHEDULED runs, not about this one file, so it is
+        # enforced across the whole directory. A positive control first: the
+        # scan must actually be looking at scheduled workflows.
+        scheduled = [
+            path
+            for path in sorted((REPO / ".github" / "workflows").glob("*.yml"))
+            if re.search(r"(?m)^\s*schedule:\s*$", path.read_text(encoding="utf-8"))
+        ]
+        self.assertIn(
+            ABANDONMENT_AUDIT_WORKFLOW,
+            scheduled,
+            "the scan did not even find the audit; it proves nothing",
+        )
+        for path in scheduled:
+            text = path.read_text(encoding="utf-8")
+            for line in text.splitlines():
+                # Prose explaining WHY a command must not be called is not a call.
+                if line.lstrip().startswith("#"):
+                    continue
+                if "--reconcile-flow" in line:
+                    self.fail(f"{path.name} calls --reconcile-flow on a schedule: {line.strip()}")
+
+    def test_the_audit_runs_the_guards_own_tests_before_trusting_it(self) -> None:
+        self.assertIn(
+            "node --test scripts/orchestrator-flow/reconcile.test.mjs", self.jobs
+        )
+
+    def test_the_audit_distinguishes_unreadable_from_expired(self) -> None:
+        # Exit 2 and exit 3 must reach the operator as different sentences. An
+        # hourly job that reports "something is wrong" for both trains its reader
+        # to ignore both.
+        self.assertRegex(self.jobs, r"(?m)^\s+2\)\s*echo \"::error::")
+        self.assertRegex(self.jobs, r"(?m)^\s+\*\)\s*echo \"::error::")
+        self.assertIn("COULD NOT RUN", self.jobs)
+        self.assertIn('exit "$CODE"', self.jobs)
+
+
+# ---------------------------------------------------------------------------
+# #2301 Step 6: the rules, the template and the tool must say the same thing.
+#
+# Documentation drifts silently. A rule that lives in four files is really four
+# rules the moment one of them is edited alone, and the reader who follows the
+# stale copy has no way to know which one he read. These tests make that drift a
+# red build rather than a discovery made during an incident.
+#
+# They assert AGREEMENT, not wording: each one names a fact that must appear in
+# every place the fact is operative, so a fact can be rephrased freely but never
+# deleted from one venue while the others still promise it. The canonical
+# ai-devops skill is the fifth venue and is checked by scripts/check-skill-drift.mjs,
+# which reads a path outside this repository and so cannot be asserted here.
+# ---------------------------------------------------------------------------
+ABANDONMENT_ISSUE_TEMPLATE = (
+    REPO / ".github" / "ISSUE_TEMPLATE" / "author-lane-abandonment.md"
+)
+
+# Every field the abandonment record must carry, as its required heading.
+ABANDONMENT_RECORD_HEADINGS = (
+    "## Claim",
+    "## Pull request and exact head",
+    "## Migration version",
+    "## Last known worktree and machine",
+    "## Expiry",
+    "## Audit output",
+    "## Evidence the author is terminal or unreachable",
+    "## Observed worktree state",
+    "## Decision and authority",
+    "## Recovery or successor references",
+)
+
+
+class AbandonmentDocumentationAgreementTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        # AGENTS.md is a router since #3481; its section text moved verbatim
+        # into docs/agents/. The "AGENTS.md" venue is the router plus the files
+        # it routes to, excluding the separate long-form section 4 venue below.
+        cls.agents = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in [REPO / "AGENTS.md"]
+            + sorted(
+                p
+                for p in (REPO / "docs" / "agents").glob("*.md")
+                if p.name != "section-4-anti-collision-rules.md"
+            )
+        )
+        cls.rules = (
+            REPO / "docs" / "agents" / "section-4-anti-collision-rules.md"
+        ).read_text(encoding="utf-8")
+        cls.template = ABANDONMENT_ISSUE_TEMPLATE.read_text(encoding="utf-8")
+        cls.workflow = ABANDONMENT_AUDIT_WORKFLOW.read_text(encoding="utf-8")
+        cls.cli = (REPO / "scripts" / "manage-migration-author-lanes.mjs").read_text(
+            encoding="utf-8"
+        )
+        cls.reconcile = (
+            REPO / "scripts" / "orchestrator-flow" / "reconcile.mjs"
+        ).read_text(encoding="utf-8")
+        # SCOPE THE SEARCH, OR THE TEST IS A LOTTERY. AGENTS.md is ~1750 lines and
+        # section 4 is ~1100; the bare words "clean", "dirty", "remote", "3" and
+        # "schedul" all occur in them for reasons that have nothing to do with
+        # abandonment. A venue could lose the entire lifecycle paragraph and every
+        # substring assertion would still pass. So each rulebook is reduced to the
+        # passage that actually carries this promise, and the assertions run
+        # against that passage only.
+        cls.agents_passage = cls._passage(
+            cls.agents, "Author-lane abandonment lifecycle (issue #2301)"
+        )
+        cls.rules_passage = cls._passage(
+            cls.rules, "An expired lease is not an abandoned lane"
+        )
+
+    @staticmethod
+    def _passage(text: str, marker: str) -> str:
+        """The block of prose that begins at ``marker``.
+
+        AGENTS.md carries the lifecycle as one bullet, so the passage ends at the
+        next top-level bullet. Section 4 carries it as several indented
+        paragraphs, so the passage ends at the next unindented line, which is the
+        next numbered rule. Either way the result is the text an editor would
+        have to delete to lose the promise.
+        """
+        start = text.find(marker)
+        if start < 0:
+            raise AssertionError(f"the abandonment passage {marker!r} is gone")
+        rest = text[start:]
+        for line_start in re.finditer(r"(?m)^(?:- \*\*|\d+\. |## )", rest):
+            if line_start.start() > 0:
+                return rest[: line_start.start()]
+        return rest
+
+    def _rulebook_passages(self):
+        return (
+            ("AGENTS.md", self.agents_passage),
+            ("section 4", self.rules_passage),
+        )
+
+    def test_the_read_only_command_is_named_everywhere_it_is_operative(self) -> None:
+        # A procedure that names no command is not a procedure. If the flag is
+        # ever renamed, every venue that tells an operator to run it must move
+        # with it.
+        for name, text in (
+            ("AGENTS.md", self.agents),
+            ("section 4", self.rules),
+            ("the issue template", self.template),
+            ("the workflow", self.workflow),
+        ):
+            self.assertIn("--abandonment-audit", text, f"{name} lost the command")
+        self.assertIn(
+            "'--abandonment-audit'",
+            self.cli,
+            "the CLI no longer defines the flag the documentation promises",
+        )
+
+    def test_all_three_exit_codes_are_documented_where_the_command_is(self) -> None:
+        # Two of the three codes are not a usable signal. An operator who is told
+        # only "0 or not 0" cannot tell a queue that needs a decision from an
+        # instrument that could not read the state.
+        for name, text in self._rulebook_passages():
+            for token in ("`0`", "`2`", "`3`"):
+                self.assertIn(token, text, f"{name} lost exit code {token}")
+            self.assertIn("unverifiable", text.lower(), f"{name} lost the 3 meaning")
+            self.assertIn(
+                "outrank", text.lower(), f"{name} lost the precedence of 3 over 2"
+            )
+
+    def test_the_expiry_is_not_abandonment_rule_survives_in_the_rules(self) -> None:
+        # This is the whole premise of the lifecycle. If it is ever edited out,
+        # the next reader is one step from releasing a lane on a clock.
+        for name, text in (
+            ("AGENTS.md", self.agents),
+            ("section 4", self.rules),
+            ("the issue template", self.template),
+        ):
+            self.assertIn(
+                "expired lease is not an abandoned lane",
+                text,
+                f"{name} lost the premise of the lifecycle",
+            )
+
+    def test_the_authority_boundary_is_stated_identically_in_both_rulebooks(
+        self,
+    ) -> None:
+        # The boundary decides who may destroy potentially recoverable work. It
+        # is the one fact here that cannot be paraphrased loosely in one venue
+        # and precisely in another.
+        for name, text in (
+            *self._rulebook_passages(),
+            ("the issue template", self.template),
+        ):
+            lowered = text.lower()
+            for state in ("clean", "absent", "dirty", "remote"):
+                self.assertIn(state, lowered, f"{name} lost worktree state {state}")
+            # #3675 (owner ruling 2026-09-28: never ask a human to approve):
+            # the dirty/remote side is decided by the allocator-assigned AI
+            # reviewer's APPROVE on a preserved copy, never by a human.
+            self.assertIn("approve", lowered, f"{name} lost who decides")
+            self.assertIn("preserv", lowered, f"{name} lost the preservation requirement")
+            self.assertNotIn("albert alone decides", lowered, f"{name} still routes the decision to a human")
+            # The boundary is only a boundary if the venue says which side the
+            # orchestrator may act on alone and which side it may not.
+            self.assertRegex(
+                lowered,
+                r"dirty|remote",
+                f"{name} lost the owner-only side of the boundary",
+            )
+            self.assertIn("retire", lowered, f"{name} lost what the boundary governs")
+
+    def test_the_scheduled_job_prohibition_is_written_down(self) -> None:
+        # The workflow-policy tests above enforce this mechanically. This asserts
+        # the operator is also TOLD, so a person writing the next scheduled job
+        # does not have to discover the rule from a failing build.
+        for name, text in self._rulebook_passages():
+            self.assertIn("--reconcile-flow", text, f"{name} lost the prohibition")
+            self.assertIn("schedul", text.lower(), f"{name} lost the scheduled context")
+            self.assertRegex(
+                text,
+                r"[Nn]ever (run|call)",
+                f"{name} softened the prohibition into advice",
+            )
+
+    def test_the_template_carries_every_required_record_field(self) -> None:
+        # The record is the evidence a decision was made on facts. A missing
+        # heading is a fact nobody was asked for.
+        for heading in ABANDONMENT_RECORD_HEADINGS:
+            self.assertIn(heading, self.template, f"the template lost {heading!r}")
+
+    def test_the_template_is_privacy_safe_and_claims_no_object(self) -> None:
+        # An abandonment audit that claimed a database object would collide with
+        # the very claim it is investigating, and a record that invites pasted
+        # paths and account names turns an audit trail into a disclosure.
+        self.assertIn("db-work-scope", self.template)
+        self.assertRegex(self.template, r"(?m)^writes:\s*$")
+        self.assertRegex(self.template, r"(?m)^reads:\s*$")
+        # repo-maintenance work may not take the orchestrator route; the lane CLI
+        # refuses that pair outright, so a template that shipped it would hand
+        # every operator a fence that cannot be admitted.
+        self.assertRegex(self.template, r"(?m)^route: repo-maintenance\s*$")
+        self.assertRegex(self.template, r"(?m)^work_type: repo-maintenance\s*$")
+        self.assertIn("PRIVACY", self.template)
+        for forbidden in ("credential", "token"):
+            self.assertIn(forbidden, self.template.lower())
+
+    def test_the_rules_point_at_the_template_that_exists(self) -> None:
+        # A dangling pointer reads exactly like a procedure until it is followed.
+        self.assertTrue(ABANDONMENT_ISSUE_TEMPLATE.is_file())
+        self.assertIn("author-lane-abandonment.md", self.rules)
+        self.assertIn("author-lane-abandonment.md", self.agents)
+
+    def test_both_procedures_are_written_out_not_merely_referenced(self) -> None:
+        # A fresh reader must be able to follow either path without chat context.
+        # Naming a procedure is not documenting it, so require the steps that
+        # distinguish them: the blocked-on relinquish and the atomic resume on one
+        # side, the tombstoning release and the fresh successor version on the
+        # other.
+        for token in (
+            "--relinquish-author-lease",
+            "--resume-author-lease",
+            "--release-claim",
+            "tombstone",
+            "fresh migration version",
+        ):
+            self.assertIn(token, self.rules, f"section 4 lost {token!r}")
+        self.assertIn("Never delete a ref", self.rules)
+
+    def test_no_printed_lane_command_uses_the_boolean_claim_flag(self) -> None:
+        # A printed command that dies in the argument parser is worse than no
+        # command: the operator believes the procedure is broken rather than the
+        # documentation. `--claim` is the BOOLEAN that claims a lane; the value
+        # flag is `--claim-number`. This is the defect that shipped in the first
+        # draft of this step and was caught only by a reviewer reading the parser.
+        # Scoped to the abandonment passages and the template: older rules
+        # elsewhere in these files print the same mistake and are not this
+        # change's to rewrite, but nothing this lifecycle tells an operator to
+        # run may carry it.
+        for name, text in (
+            *self._rulebook_passages(),
+            ("the issue template", self.template),
+        ):
+            self.assertNotRegex(
+                text,
+                r"--claim [<\d]",
+                f"{name} prints --claim with a value; the value flag is "
+                "--claim-number and a bare --claim is a boolean",
+            )
+
+    def test_the_relinquish_procedure_demands_an_explicit_worktree_state(
+        self,
+    ) -> None:
+        # assertAbandonmentEvidence refuses without --worktree-state, because the
+        # observation is the operator's own and may never be inferred from a
+        # stale audit. A procedure that omits it hands the operator a refusal.
+        self.assertIn("--worktree-state", self.rules_passage)
+        self.assertIn(
+            "--worktree-state",
+            self.agents_passage,
+            "AGENTS.md describes a looser relinquish than the code enforces",
+        )
+        self.assertIn(
+            "requires an explicit --worktree-state",
+            self.cli,
+            "the CLI no longer enforces what the procedure promises",
+        )
+
+    def test_the_template_carries_the_machine_readable_audit_fence(self) -> None:
+        # The prose half of the record persuades a human; the fence is what the
+        # reconciler and the guarded relinquish actually read. Without it
+        # parseAbandonmentAudit returns null, abandonmentEvidenceFor returns null,
+        # no guarded command is ever suggested, and a relinquish falls through to
+        # the ordinary-blocker path with none of the exact-tuple revalidation --
+        # silently, because a missing fence is indistinguishable from no evidence.
+        self.assertIn("```abandonment-audit", self.template)
+        for field in ("claim:", "pr:", "head_sha:", "owner:"):
+            self.assertIn(
+                field,
+                self.template.split("```abandonment-audit", 1)[1],
+                f"the audit fence lost {field!r}",
+            )
+        # Exactly the four fields parseAbandonmentAudit requires, and no more.
+        self.assertIn("head_sha:String(fields.get('head_sha')", self.reconcile)
+        for name, text in self._rulebook_passages():
+            self.assertIn(
+                "abandonment-audit",
+                text,
+                f"{name} tells an operator to open the record without its fence",
+            )
+
+
+
+class DesignFlowNamespaceStrandedOriginalTests(unittest.TestCase):
+    def test_stranded_original_is_blocked_even_when_remote_records_it(self):
+        for remote in (set(), {"20261006203846"}):
+            with self.assertRaisesRegex(GuardError, "general production lane blocks"):
+                parse_allowlist("20261006203846", remote)
+        self.assertIn("20261007000937", production_migration_guard.RETIRED_VERSION_REASONS["20261006203846"])
+
+    def test_forward_version_remains_eligible_without_stranded_dependency(self):
+        self.assertEqual(parse_allowlist("20261007000937"), ["20261007000937"])
 
 
 if __name__ == "__main__":

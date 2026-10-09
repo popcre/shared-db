@@ -68,12 +68,14 @@
 // NO DATABASE CONTACT: reads GitHub metadata and committed .sql text only.
 // It needs no database credentials and must never be given any.
 
+import { normalizeRoleClaim } from './lib/sql-role-operations.mjs'
 import { execFileSync } from 'node:child_process'
 import { runGitHubCommand } from './lib/github-transport.mjs'
 import { createTreeReader } from './lib/github-tree.mjs'
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { resolveRepositoryIdentity } from './lib/repository-identity.mjs'
 
 // The DISPATCH policy's parser, not the merge guard's (plan step 3b). Same
 // file, deliberately broader reading: `describeCoverage`/`extractObjects` model
@@ -85,6 +87,7 @@ import {
   canonicalIdentifier,
   describeDispatchCoverage,
   dispatchObjectKeys,
+  roleReadKeys,
 } from './check-pr-object-collisions.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -171,6 +174,7 @@ export function parseClaimBlock(body) {
  * regardless of spacing or case.
  */
 export function normalizeObject(text) {
+  if (/^role\s/i.test(String(text).trim())) return normalizeRoleClaim(text)
   const compact = String(text).trim().replace(/\s+/g, ' ')
   const match = /^(materialized view|storage bucket|[a-z]+)\s+(.+)$/i.exec(compact)
   if (!match) return compact.toLowerCase()
@@ -214,13 +218,15 @@ export function normalizeObject(text) {
  */
 export function findDispatchConflicts(proposed, inFlight) {
   const wanted = new Set((proposed.objects ?? []).map(normalizeObject))
+  const wantedReads = new Set((proposed.reads ?? []).map(normalizeObject))
   const objectConflicts = []
   const versionConflicts = []
 
   for (const holder of inFlight) {
     const overlap = (holder.objects ?? [])
       .map(normalizeObject)
-      .filter((object) => wanted.has(object))
+      .filter((object) => wanted.has(object) || wantedReads.has(object))
+    overlap.push(...(holder.reads ?? []).map(normalizeObject).filter((object) => wanted.has(object)))
     if (overlap.length > 0) {
       objectConflicts.push({
         label: holder.label,
@@ -529,6 +535,7 @@ export function gatherClaims(repo) {
         label: `claim #${issue.number} "${issue.title}"`,
         url: issue.html_url,
         objects: parsed.objects,
+        ...(parsed.reads.length ? { reads: parsed.reads } : {}),
         versions: parsed.version ? [parsed.version] : [],
       }
     })
@@ -558,14 +565,19 @@ export function gatherOpenPrObjects(repo, io = defaultIo) {
   const open = io.listPulls(repo)
   const sources = []
   for (const listed of open) {
-    const pr = io.getPull(repo, listed.number)
+    // A listing that already carries changed_files and head (the GraphQL listing)
+    // needs no per-PR detail read; the REST listing omits changed_files, so it does.
+    const pr = Number.isInteger(listed.changed_files) && listed.head?.sha ? listed : io.getPull(repo, listed.number)
     if (!pr || pr.number !== listed.number) throw new Unknown(`PR #${listed.number} returned unreadable detail metadata`)
-    const files = io.listPullFiles(repo, pr.number)
+    // Files embedded in the listing are used when present; a PR whose files did
+    // not fit the listing page is read in full. The count proof below still applies.
+    const files = Array.isArray(listed.files) ? listed.files : io.listPullFiles(repo, pr.number)
     if (!Array.isArray(files)) throw new Unknown(`PR #${pr.number} returned an unreadable file list`)
     if (!Number.isInteger(pr.changed_files) || pr.changed_files < 0) throw new Unknown(`PR #${pr.number} has no trustworthy changed_files count`)
     if (pr.changed_files >= 3000) throw new Unknown(`PR #${pr.number} reaches GitHub's 3000-file limit; refusing incomplete coverage`)
     if (files.length !== pr.changed_files) throw new Unknown(`PR #${pr.number} returned ${files.length} of ${pr.changed_files} changed files`)
     const objects = new Set()
+    const reads = new Set()
     const versions = new Set()
     for (const file of files) {
       if (!file.filename.startsWith(`${MIGRATIONS_DIR}/`)) continue
@@ -584,6 +596,7 @@ export function gatherOpenPrObjects(repo, io = defaultIo) {
         )
       }
       for (const object of dispatchObjectKeys(sql)) objects.add(object)
+      for (const object of roleReadKeys(sql)) reads.add(object)
     }
     if (objects.size === 0 && versions.size === 0) continue
     sources.push({
@@ -592,6 +605,7 @@ export function gatherOpenPrObjects(repo, io = defaultIo) {
       draft: Boolean(pr.draft),
       branch: pr.head?.ref ?? null,
       objects: [...objects].sort(),
+      ...(reads.size ? { reads: [...reads].filter((key) => !objects.has(key)).sort() } : {}),
       versions: [...versions].sort(),
     })
   }
@@ -607,7 +621,35 @@ export function gatherOpenPrObjects(repo, io = defaultIo) {
  * such mode.
  */
 export const defaultIo = {
-  listPulls: (repo) => ghJson(['api', '--paginate', `repos/${repo}/pulls?state=open&per_page=100`]),
+  // One GraphQL listing returns every open PR with changed_files and up to 100
+  // files each, replacing a detail read plus a file-list read per PR. A PR with
+  // more files than one page carries no `files`, so the full REST list is read.
+  listPulls: (repo) => {
+    const [owner, name] = repo.split('/')
+    const query = 'query($owner:String!,$name:String!,$after:String){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:50,after:$after){pageInfo{hasNextPage endCursor} nodes{number title url isDraft headRefOid headRefName changedFiles files(first:100){pageInfo{hasNextPage} nodes{path changeType}}}}}}'
+    const pulls = []
+    let after = null
+    do {
+      const args = ['api', 'graphql', '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `name=${name}`]
+      if (after) args.push('-f', `after=${after}`)
+      const connection = ghJson(args)?.data?.repository?.pullRequests
+      if (!connection || !Array.isArray(connection.nodes)) throw new Unknown(`open pull request listing for ${repo} is unreadable`)
+      for (const node of connection.nodes) {
+        const complete = node.files && !node.files.pageInfo?.hasNextPage && Array.isArray(node.files.nodes)
+        pulls.push({
+          number: node.number,
+          title: node.title,
+          html_url: node.url,
+          draft: Boolean(node.isDraft),
+          head: { sha: node.headRefOid, ref: node.headRefName },
+          changed_files: node.changedFiles,
+          ...(complete ? { files: node.files.nodes.map((file) => ({ filename: file.path, status: file.changeType === 'DELETED' ? 'removed' : String(file.changeType).toLowerCase() })) } : {}),
+        })
+      }
+      after = connection.pageInfo?.hasNextPage ? connection.pageInfo.endCursor : null
+    } while (after)
+    return pulls
+  },
   getPull: (repo, number) => ghJson(['api', `repos/${repo}/pulls/${number}`]),
   listPullFiles: (repo, number) =>
     ghJson(['api', '--paginate', `repos/${repo}/pulls/${number}/files?per_page=100`]),
@@ -813,7 +855,7 @@ A task that cannot declare its objects must be dispatched READ-ONLY.
  * in this script that MUTATES anything; everything else is read-only.
  */
 function runReserveVersion(options, io = defaultIo) {
-  const repo = process.env.GITHUB_REPOSITORY || 'u2giants/shared-db'
+  const repo = resolveRepositoryIdentity()
   let reservation
   try {
     const start = options.version ? String(options.version) : utcStamp()
@@ -905,7 +947,7 @@ function main(argv) {
 
   if (options.reserve) return runReserveVersion(options)
 
-  const repo = process.env.GITHUB_REPOSITORY || 'u2giants/shared-db'
+  const repo = resolveRepositoryIdentity()
 
   let objects = options.objects.map(normalizeObject)
   if (options.sql) {

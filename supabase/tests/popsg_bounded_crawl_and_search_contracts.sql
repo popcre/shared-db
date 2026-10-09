@@ -54,8 +54,6 @@ declare
   v_total integer;
   v_iterations integer;
   v_ok boolean;
-  v_sqlstate text;
-  v_claim record;
   v_claim_count integer;
   v_identity text;
   v_result jsonb;
@@ -63,7 +61,6 @@ declare
   v_page2 jsonb;
   v_page3 jsonb;
   v_ids uuid[];
-  v_text text;
 begin
 
   -- =========================================================================
@@ -100,26 +97,11 @@ begin
   end if;
 
   -- =========================================================================
-  -- verify 3: the SECURITY DEFINER function is no longer reachable by
-  -- `authenticated` (or `anon`, or PUBLIC)
+  -- verify 3: the retired SECURITY DEFINER wrapper is gone (#2934), and every
+  -- continuation RPC is service-role only
   -- =========================================================================
-  if has_function_privilege('authenticated', 'public.deactivate_stale_sg_files(text,uuid)', 'execute') then
-    raise exception 'contract 3: authenticated can still execute deactivate_stale_sg_files';
-  end if;
-  if has_function_privilege('anon', 'public.deactivate_stale_sg_files(text,uuid)', 'execute') then
-    raise exception 'contract 3: anon can still execute deactivate_stale_sg_files';
-  end if;
-  -- PUBLIC is not a role, so it is read straight out of the ACL: a PUBLIC grant
-  -- is spelled with an empty grantee, `=X/owner`.
-  if exists (
-    select 1
-      from pg_proc p, unnest(coalesce(p.proacl, acldefault('f', p.proowner))) a
-     where p.oid = 'public.deactivate_stale_sg_files(text,uuid)'::regprocedure
-       and a::text like '=%') then
-    raise exception 'contract 3: PUBLIC can still execute deactivate_stale_sg_files';
-  end if;
-  if not has_function_privilege('service_role', 'public.deactivate_stale_sg_files(text,uuid)', 'execute') then
-    raise exception 'contract 3: service_role lost EXECUTE on deactivate_stale_sg_files';
+  if to_regprocedure('public.deactivate_stale_sg_files(text,uuid)') is not null then
+    raise exception 'contract 3: the retired wrapper deactivate_stale_sg_files still exists';
   end if;
   -- every continuation RPC is service-role only
   if has_function_privilege('authenticated', 'public.reconcile_stale_sg_files_batch(text,uuid,integer,numeric)', 'execute')
@@ -362,17 +344,6 @@ begin
   end if;
   if v_before <> v_after then
     raise exception 'contract 10: the inaccessible-root guard inactivated rows (% -> %)', v_before, v_after;
-  end if;
-
-  -- the compatibility wrapper refuses too, rather than silently doing nothing
-  v_ok := false;
-  begin
-    perform public.deactivate_stale_sg_files('ROOT_C', v_file);
-  exception when others then
-    v_ok := true;
-  end;
-  if not v_ok then
-    raise exception 'contract 10: deactivate_stale_sg_files did not refuse a guarded root';
   end if;
 
   -- =========================================================================
@@ -656,7 +627,52 @@ begin
     raise exception 'contract 15: the completed run lost its reconciliation stamp';
   end if;
 
-  raise notice 'issue #2212 PopSG contracts: all 15 checks passed';
+  -- =========================================================================
+  -- verify 16 (issue #3023): identity changes enqueue search sync; nothing else does
+  -- =========================================================================
+  declare
+    v_q uuid;
+    v_q_run uuid;
+  begin
+    insert into public.style_guide_crawl_runs (status, files_found) values ('pending', 1) returning id into v_q_run;
+    v_q := pg_temp.mk_file('ROOT_Q', v_q_run, 'q1.pdf');
+    if not exists (select 1 from public.style_guide_search_sync_queue where style_guide_file_id = v_q) then
+      raise exception 'contract 16: inserting an active file did not enqueue it for search sync';
+    end if;
+
+    delete from public.style_guide_search_sync_queue where style_guide_file_id = v_q;
+    update public.style_guide_files set thumbnail_url = 'https://example.invalid/t.png', crawl_run_id = v_q_run where id = v_q;
+    if exists (select 1 from public.style_guide_search_sync_queue where style_guide_file_id = v_q) then
+      raise exception 'contract 16: an update that changes no identity input enqueued the file';
+    end if;
+
+    update public.style_guide_files set size_bytes = coalesce(size_bytes, 0) + 1 where id = v_q;
+    if not exists (select 1 from public.style_guide_search_sync_queue where style_guide_file_id = v_q) then
+      raise exception 'contract 16: an identity change did not enqueue the file';
+    end if;
+
+    delete from public.style_guide_search_sync_queue where style_guide_file_id = v_q;
+    update public.style_guide_files set is_active = false where id = v_q;
+    if exists (select 1 from public.style_guide_search_sync_queue where style_guide_file_id = v_q) then
+      raise exception 'contract 16: deactivating a file enqueued it';
+    end if;
+    update public.style_guide_files set is_active = true where id = v_q;
+    if not exists (select 1 from public.style_guide_search_sync_queue where style_guide_file_id = v_q) then
+      raise exception 'contract 16: re-activating a file did not enqueue it';
+    end if;
+  end;
+
+  if not (select relrowsecurity from pg_class where oid = 'public.style_guide_search_sync_queue'::regclass)
+     or has_table_privilege('authenticated', 'public.style_guide_search_sync_queue', 'select')
+     or has_table_privilege('anon', 'public.style_guide_search_sync_queue', 'select') then
+    raise exception 'contract 16: the search sync queue is exposed to API roles';
+  end if;
+  if position('from public.style_guide_search_sync_queue q' in
+              pg_get_functiondef('public.refresh_style_guide_matviews(uuid,integer)'::regprocedure)) = 0 then
+    raise exception 'contract 16: refresh_style_guide_matviews still scans every file for search sync';
+  end if;
+
+  raise notice 'issue #2212 PopSG contracts: all 16 checks passed';
 end
 $contracts$;
 

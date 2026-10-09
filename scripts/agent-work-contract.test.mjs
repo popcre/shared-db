@@ -1,5 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   ContractError, CONTRACT_SCHEMA_VERSION, CONTRACT_REF_PREFIX,
   validateContract, assertSafePath, canonicalize, contractHash, contractRef,
@@ -277,6 +282,53 @@ test('reading a contract that was never published is an error, not an empty cont
 
 // --- CLI -------------------------------------------------------------------
 
+function runCompletionCli(overrides = {}, expectedPr = 7) {
+  const directory = mkdtempSync(join(tmpdir(), 'agent-contract-cli-'))
+  const contractFile = join(directory, 'contract.json')
+  const reportFile = join(directory, 'completion.json')
+  const head = 'a'.repeat(40)
+  const input = report({ outcome: 'ready-for-merge', head_sha: head, merge_sha: undefined, ...overrides })
+  try {
+    writeFileSync(contractFile, JSON.stringify(contract()))
+    writeFileSync(reportFile, JSON.stringify(input))
+    return spawnSync(process.execPath, [
+      fileURLToPath(new URL('./agent-work-contract.mjs', import.meta.url)),
+      '--validate-completion', '--contract-file', contractFile,
+      '--report-file', reportFile, '--expected-pr', String(expectedPr),
+      '--expected-head-sha', head,
+    ], { encoding: 'utf8', timeout: 10000 })
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+}
+
+test('actual completion CLI succeeds without a circular top-level-await exit', () => {
+  const result = runCompletionCli()
+  assert.equal(result.error, undefined)
+  assert.equal(result.signal, null)
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /Completion report satisfies its contract/)
+  assert.doesNotMatch(result.stderr, /unsettled top-level await/)
+})
+
+test('actual completion CLI still refuses failed required checks', () => {
+  const result = runCompletionCli({ checks: [{ command: 'node --test scripts/*.test.mjs', exit_code: 1, evidence: 'failed' }] })
+  assert.equal(result.status, 1, result.stderr)
+  assert.match(result.stderr, /Completion report does NOT satisfy its contract/)
+})
+
+test('actual completion CLI still refuses a mismatched pull request', () => {
+  const result = runCompletionCli({}, 8)
+  assert.equal(result.status, 1, result.stderr)
+  assert.match(result.stderr, /pull request|PR|pr/)
+})
+
+test('actual completion CLI still refuses a malformed completion schema', () => {
+  const result = runCompletionCli({ schema_version: 0 })
+  assert.equal(result.status, 1, result.stderr)
+  assert.match(result.stderr, /schema_version/)
+})
+
 test('parseArgs refuses two modes and unknown arguments', () => {
   assert.throws(() => parseArgs(['--validate-contract', '--publish-contract']), /exactly one mode/)
   assert.throws(() => parseArgs(['--nope']), /unknown argument/)
@@ -293,4 +345,130 @@ test('main exits 2 on usage errors and 0 on --help', async () => {
 test('ContractError is the single error type callers catch', () => {
   assert.throws(() => validateContract(null), ContractError)
   assert.throws(() => assertSafePath('**'), ContractError)
+})
+
+// --- v2 / evidence_parent ---------------------------------------------------
+
+const parentDigest = 'a'.repeat(64)
+
+test('a v2 contract with a well-formed evidence_parent validates', () => {
+  const c = contract({ schema_version: 2, generation: 2, evidence_parent: { work_issue: 42, generation: 1, contract_sha256: parentDigest } })
+  assert.doesNotThrow(() => validateContract(c))
+})
+
+test('a v2 contract with null evidence_parent and generation 1 is the chain root', () => {
+  const c = contract({ schema_version: 2, generation: 1, evidence_parent: null })
+  assert.doesNotThrow(() => validateContract(c))
+})
+
+test('a v2 generation > 1 with null evidence_parent is refused, matching validateGenerationLineage', () => {
+  // Present-but-null must not be enough for a successor. validateGenerationLineage
+  // already refuses this; validateContract must agree before the ref is created.
+  assert.throws(
+    () => validateContract(contract({ schema_version: 2, generation: 2, evidence_parent: null })),
+    /must name its predecessor in evidence_parent/,
+  )
+  assert.throws(
+    () => validateContract(contract({ schema_version: 2, generation: 3, evidence_parent: null })),
+    /must name its predecessor in evidence_parent/,
+  )
+})
+
+test('a v2 evidence_parent must be null or the right object', () => {
+  assert.throws(() => validateContract(contract({ schema_version: 2, generation: 2, evidence_parent: 'not-an-object' })), /must be null or an object/)
+  assert.throws(() => validateContract(contract({ schema_version: 2, generation: 2, evidence_parent: [1, 2] })), /must be null or an object/)
+})
+
+test('a v2 evidence_parent with unknown fields is refused', () => {
+  const c = contract({ schema_version: 2, generation: 2, evidence_parent: { work_issue: 42, generation: 1, contract_sha256: parentDigest, extra: 'smuggled' } })
+  assert.throws(() => validateContract(c), /unknown field extra/)
+})
+
+test('a v2 evidence_parent naming a different issue is refused', () => {
+  const c = contract({ schema_version: 2, generation: 2, evidence_parent: { work_issue: 99, generation: 1, contract_sha256: parentDigest } })
+  assert.throws(() => validateContract(c), /names issue #99 but this chain is issue #42/)
+})
+
+test('a v2 evidence_parent generation must be strictly earlier', () => {
+  assert.throws(() => validateContract(contract({ schema_version: 2, generation: 2, evidence_parent: { work_issue: 42, generation: 2, contract_sha256: parentDigest } })), /strictly before generation 2/)
+  assert.throws(() => validateContract(contract({ schema_version: 2, generation: 2, evidence_parent: { work_issue: 42, generation: 3, contract_sha256: parentDigest } })), /strictly before generation 2/)
+})
+
+test('a v2 evidence_parent digest must be a 64-hex sha256', () => {
+  assert.throws(() => validateContract(contract({ schema_version: 2, generation: 2, evidence_parent: { work_issue: 42, generation: 1, contract_sha256: 'short' } })), /64-character lowercase hex sha256/)
+  assert.throws(() => validateContract(contract({ schema_version: 2, generation: 2, evidence_parent: { work_issue: 42, generation: 1, contract_sha256: 'G'.repeat(64) } })), /64-character lowercase hex sha256/)
+})
+
+test('a v2 evidence_parent with a missing or invalid work_issue/generation is refused', () => {
+  assert.throws(() => validateContract(contract({ schema_version: 2, generation: 2, evidence_parent: { generation: 1, contract_sha256: parentDigest } })), /work_issue must be a positive issue number/)
+  assert.throws(() => validateContract(contract({ schema_version: 2, generation: 2, evidence_parent: { work_issue: 42, contract_sha256: parentDigest } })), /generation must be a positive integer/)
+})
+
+test('publishContract refuses a v2 contract whose evidence_parent is malformed', () => {
+  const io = publishIo()
+  const bad = contract({ schema_version: 2, generation: 2, evidence_parent: { work_issue: 42, generation: 1, contract_sha256: 'nope' } })
+  assert.throws(() => publishContract(bad, io), /64-character lowercase hex sha256/)
+  // The ref was never created — the generation is not burned by a malformed publish.
+  assert.equal(io.refs.size, 0)
+})
+
+test('publishContract refuses a v2 successor when the predecessor is not published', () => {
+  const io = publishIo()
+  const orphan = contract({ schema_version: 2, generation: 2, evidence_parent: { work_issue: 42, generation: 1, contract_sha256: parentDigest } })
+  assert.throws(() => publishContract(orphan, io), /predecessor contract is not published/)
+  assert.equal(io.refs.size, 0)
+})
+
+test('publishContract accepts a v2 successor whose evidence_parent digest matches the published parent', () => {
+  const io = publishIo()
+  const parent = contract({ schema_version: 2, generation: 1, evidence_parent: null })
+  publishContract(parent, io)
+  const evidence_parent = {
+    work_issue: 42,
+    generation: 1,
+    contract_sha256: contractHash(parent),
+  }
+  const child = contract({ schema_version: 2, generation: 2, evidence_parent })
+  const published = publishContract(child, io)
+  assert.equal(published.ref, `${CONTRACT_REF_PREFIX}/42/2`)
+  assert.equal(io.refs.size, 2)
+})
+
+test('publishContract refuses a v2 successor whose evidence_parent digest does not match the published parent', () => {
+  const io = publishIo()
+  const parent = contract({ schema_version: 2, generation: 1, evidence_parent: null })
+  publishContract(parent, io)
+  const forged = contract({
+    schema_version: 2,
+    generation: 2,
+    evidence_parent: { work_issue: 42, generation: 1, contract_sha256: '0'.repeat(64) },
+  })
+  assert.throws(() => publishContract(forged, io), /does not match the predecessor|forged parent/)
+  assert.equal(io.refs.size, 1, 'the successor ref is never created')
+})
+
+test('publishContract distinguishes a missing parent ref from a wrong object and a transport failure', () => {
+  // Missing ref → "not published".
+  const missing = publishIo()
+  assert.throws(
+    () => publishContract(contract({ schema_version: 2, generation: 2, evidence_parent: { work_issue: 42, generation: 1, contract_sha256: parentDigest } }), missing),
+    /predecessor contract is not published/,
+  )
+
+  // Wrong object (ref exists, commit is not a contract) → distinct message.
+  const wrongObject = publishIo()
+  wrongObject.refs.set(`${CONTRACT_REF_PREFIX}/42/1`, 'badsha')
+  wrongObject.commits.set('badsha', 'db-agent-contract issue=42 generation=1 sha256=x\n\nnot json at all')
+  assert.throws(
+    () => publishContract(contract({ schema_version: 2, generation: 2, evidence_parent: { work_issue: 42, generation: 1, contract_sha256: parentDigest } }), wrongObject),
+    /does not carry a readable contract object/,
+  )
+
+  // Transport failure → distinct message, never "not published".
+  const transport = publishIo()
+  transport.readRef = () => { throw new ContractError('GitHub command failed: connection reset') }
+  assert.throws(
+    () => publishContract(contract({ schema_version: 2, generation: 2, evidence_parent: { work_issue: 42, generation: 1, contract_sha256: parentDigest } }), transport),
+    /could not read .* to verify evidence_parent/,
+  )
 })

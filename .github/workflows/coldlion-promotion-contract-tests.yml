@@ -29,29 +29,107 @@ name: ColdLion Promotion Contract Tests
 
 on:
   pull_request:
+  merge_group:
+    types: [checks_requested]
   push:
     branches: [main]
   workflow_dispatch:
+    # Replacement lane for a run no runner picked up (#2729). Leave empty for the default lane.
+    # Options must equal scripts/orchestrator-flow/runner-lanes.json (enforced by its tests).
+    inputs:
+      lane:
+        description: Free standard GitHub-hosted runner lane for a replacement run
+        required: false
+        type: choice
+        default: ''
+        options:
+          - ''
+          - ubuntu-latest
+          - ubuntu-24.04
+          - ubuntu-22.04
+          - ubuntu-24.04-arm
+          - ubuntu-22.04-arm
 
 permissions:
   contents: read
 
 concurrency:
-  group: coldlion-promotion-contract-tests-${{ github.ref }}
-  cancel-in-progress: true
+  group: coldlion-promotion-contract-tests-${{ github.ref }}-${{ inputs.lane || 'default' }}
+  # Never cancel a merge_group run (#2530).
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
+  # Runner router (edge-dev3-linux self-hosted when online and idle, else the
+  # hosted label below). A failed router never skips a check: callers run on
+  # !cancelled() and keep the literal hosted fallback. See runner-route.yml.
+  route:
+    uses: ./.github/workflows/runner-route.yml
+    with:
+      fallback: ubuntu-latest
+
   contract-tests:
-    name: Promotion contract tests (offline)
-    runs-on: ubuntu-latest
+    needs: route
+    if: ${{ !cancelled() }}
+    # The default name stays the stable required context; a lane run reports a distinct name
+    # that the "Queue-sensitive checks (aggregate)" job counts exactly once.
+    name: ${{ inputs.lane && format('Promotion contract tests (offline) [lane {0}]', inputs.lane) || 'Promotion contract tests (offline)' }}
+    runs-on: ${{ inputs.lane || fromJSON(needs.route.outputs.runs_on || '"ubuntu-latest"') }}
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     steps:
+      - name: Refuse an unregistered runner lane
+        # Defence in depth beyond the choice list: the lane must be one registered in runner-lanes.json.
+        env:
+          LANE: ${{ inputs.lane }}
+        run: |
+          case "$LANE" in
+            ''|ubuntu-latest|ubuntu-24.04|ubuntu-22.04|ubuntu-24.04-arm|ubuntu-22.04-arm) ;;
+            *) echo "::error::Unregistered runner lane: $LANE"; exit 1 ;;
+          esac
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      # TRUSTED PURE-PROSE FAST CI ROUTE (issue #3383).
+      #
+      # A proven pure-prose change skips the contract tests below. The proof is
+      # an exact base/head git inventory including file modes, computed by the
+      # classifier taken from the PROTECTED BASE, never from the pull request
+      # head. Fail closed: every other outcome keeps the full suite. The
+      # required context name is unchanged; this step only decides whether the
+      # suite needs to run.
+      - name: Decide the CI route from a trusted pure-prose inventory
+        id: route
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head.sha }}
+        run: |
+          set -euo pipefail
+          echo 'pure_prose=false' >> "$GITHUB_OUTPUT"
+          if [ -z "${BASE_SHA:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
+            echo 'Full engineering path: no base/head pair to prove an inventory against.'
+            exit 0
+          fi
+          if ! git fetch --no-tags --depth=1 origin "$BASE_SHA" "$HEAD_SHA"; then
+            echo 'Full engineering path: base/head objects could not be fetched.'
+            exit 0
+          fi
+          scratch="$(mktemp -d)"
+          if ! git archive "$BASE_SHA" scripts/check-documents-ci-route.mjs scripts/lib/documents-only-change.mjs | tar -x -C "$scratch"; then
+            echo 'Full engineering path: the protected base does not carry the route classifier.'
+            exit 0
+          fi
+          if node "$scratch/scripts/check-documents-ci-route.mjs" "$BASE_SHA" "$HEAD_SHA"; then
+            echo 'pure_prose=true' >> "$GITHUB_OUTPUT"
+            echo 'Pure-prose fast route proven; the contract tests are skipped.'
+            echo '::notice::Pure-prose fast route proven from a trusted inventory; the contract tests below are skipped.'
+          else
+            echo 'Full engineering path: the change is not proven pure prose.'
+          fi
+
       - name: Run the ColdLion promotion contract tests
+        if: steps.route.outputs.pure_prose != 'true'
         run: |
           node --test \
             tools/coldlion-recurring-promotion.test.mjs \

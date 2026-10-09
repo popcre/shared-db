@@ -65,6 +65,50 @@ MIGRATION_LINE_RE = re.compile(r"^\s*(?:[•*\-]\s*)?(\d{14})_[^\s]+\.sql\s*$")
 # ever turns out NOT to be applied, that changes the count in AGENTS.md 6.8 and
 # this set must be revisited before anything is promoted.
 HARD_BLOCKED = {
+    # #4060: merged PR4063 carries no PR-owned evidence pair, so its production
+    # risk review cannot bind. Preview applied it. Claim4062 was reissued; only
+    # forward replacement 20261008160444 may apply.
+    "20261007232712",
+    # #3890: preserve applied historical ledgers; only the governed forward release may promote.
+    "20261006203846",
+    # #2874: merged PR3707 has an immutable production-risk REVISE; preview
+    # applied the original. Claim3704 was atomically reissued, retaining this
+    # file and preview ledger. Only complete replay-safe 20261006235109 may apply.
+    "20261006211240",
+    # #3911: PR #3913 merged-stranded original. Preview applied it, but its
+    # production risk sign-off review recorded a durable refusal on the merged
+    # head. Never apply it; promote only forward replacement 20261002222102.
+    "20261002204050",
+    # #3947: PR #3957 merged-stranded original. Preview applied it, but its
+    # merged head f8b8b321 carries two immutable DeepSeek REVISE verdicts
+    # (slots 12 and 13) and no disregard path exists for readsRepository:true
+    # verdicts, so it can never be promoted. Never apply it; promote only
+    # forward replacement 20261007190954.
+    "20261007020907",
+    # #3947: PR #4047 merged-stranded first forward replacement. Its merged head
+    # e35c1ecde901b55e7ed3a343da685d5f2c4c7a37 carries a durable StepFun REVISE
+    # (slot 3) that a merged head cannot answer. Never apply it; promote only
+    # second forward replacement 20261008001142 (itself retired;
+    # promote third forward replacement 20261008005647).
+    "20261007190954",
+    # #3947: PR #4061 merged second forward replacement. Its PR carries no
+    # PR-owned agent work contract evidence pair, so the production-risk fence
+    # review can never be recorded on it. Never applied anywhere; promote only
+    # third forward replacement 20261008005647.
+    "20261008001142",
+    # #2873: PR #4077 merged-stranded original. Preview applied it, but its
+    # merged head ff27e2ed carries a durable DeepSeek slot-3 REVISE on its
+    # production-risk sign-off. Never apply it; promote only re-runnable
+    # forward replacement 20261008025618 (20261008022846 is itself retired).
+    "20261008014009",
+    # #2873: PR #4079 merged first forward replacement. Its post-check refuses
+    # Supabase's implicit creator membership, so it rolled back on preview and
+    # never applied anywhere. Promote only 20261008025618.
+    "20261008022846",
+    # Issue #2478: retain both historical files and any applied preview ledger.
+    # Only a fresh governed claim-2745 reissue may promote these definitions.
+    "20260911212849",
+    "20260917112129",
     # #2741: preview applied an older body under this timestamp. Preserve that
     # ledger/file history, but promote only the complete forward replacement.
     "20260906222338",
@@ -76,6 +120,25 @@ HARD_BLOCKED = {
     # 20260909202801 carries the exact same Git blob under the atomic claim
     # reissue for #2443. Never apply this original.
     "20260908195056",
+    # #2792 stranded preview-only original. Preview apply run 34920902290
+    # applied it at unmerged PR #2930 head a119760e; a later derived-from header
+    # changed the bytes, so the applied version can never be re-bound. Never
+    # merged, never applied to production. Reissued with the same function
+    # bodies plus the derived-from header as 20260915023506 under claim #2931.
+    # Never apply this original.
+    "20260915015414",
+    # #3458 merged-stranded original (claim #3483). Its only preview apply
+    # (run 36427442828) ran at PR #3487 head b38c082a before PR #3641 changed
+    # the migrations workflow, so that evidence can never bind merge commit
+    # 4b451fb0, and preview already holds the version. Reissued with identical
+    # executable SQL as 20260929040458. Never apply this original.
+    "20260928003740",
+    # #3458 second merged-stranded reissue (claim #3483). Preview holds
+    # 20260929040458 only through ledger reconciliation run 36546629950 (a
+    # rename of 20260928145444), so no preview run recorded evidence for it and
+    # the merged-main rehearsal refuses it (run 36760878045). Reissued with
+    # identical executable SQL as 20260930185929. Never apply this original.
+    "20260929040458",
     # #505 merged-stranded original. Its first preview apply refused and rolled
     # back transactionally after live app drift invalidated an over-broad
     # licensor_id-is-null assumption. 20260830204711 carries the preserved
@@ -219,14 +282,30 @@ HARD_BLOCKED = {
     # Superseded by the governed two-transaction recovery beginning at
     # prerequisite 20260825041343.
     "20260825031841",
+    # #3907: original preview producer differs from authoring merge; immutable forward reissue only.
+    "20261006221530",
 }
 
 # One authority for versions that must never be applied. The post-batch
 # verifier imports these names from here; pending-status policy must not import
 # that application verifier back into the production guard's execution closure.
 RETIRED_VERSION_REASONS = {
+    "20261007232712": "merged-stranded: PR4063 head e42418b1b9dfcb271f81c06a058cb53567302de3 merged without a PR-owned evidence pair, so the post-merge production-risk review cannot bind; preview applied it in run37706126189; production never applied it; retain source and preview ledger, never apply this version; claim4062 reissued through immutable retirement589067baf4bdabe95b09dcedbe1e3f87106ee3f5 to replacement20261008011444 under issue4060",
+    "20261006203846": "unpromotable original preview provenance: apply37534728189 at b8905b9a187133cb0e6ff1b13c62298920ed6ac3 used a different production-verification-sidecar registry than source PR4009 merge432994be78e0237d56361f0b0f284e5b7a55efc6; automatic qualification37549451859 refused. Preserve original SQL and preview/Sandbox ledgers; production never recorded it. Use governed forward reissue20261007000937 under issue3890, claim4003.",
+    "20261006211240": "merged-stranded: PR3707 head72f7383311ce293d3e5f714aca2c3f954ac8fa12 carries durable DeepSeek slot3 REVISE 84d6eda318f36dae6aa800d002e439dd3d64ee4b; preview applied it in run37544787251; production inspection at7:49PM EDT October6 proved it unapplied; retain source and preview ledger, never apply this version; claim3704 reissued through immutable retirement05d88f65c84653806fe75f99665f70c817d510d9 to complete replay-safe replacement20261006235109 under issue2874",
+    "20261002204050": "merged-stranded: PR 3913 head a564ec1b2b9a424679fa1b42749351e00ba48332 carries a durable reviewer refusal on its production risk sign-off, so it can never be automatically promoted; preview applied it (run 37069288545); retain historical file and preview ledger, never apply, use re-runnable forward replacement 20261002222102 under issue 3911 (claim 3912 reissued)",
+    "20261008022846": "merged, never applied: PR 4079 (merge fdb81f025a5087973b417c6d82e5c5fc4732a70a) post-check refused Supabase's PostgreSQL 16+ implicit creator membership (member postgres, ADMIN only) and rolled back on preview run 37720079597; never apply this version, use re-runnable second forward replacement 20261008025618 under issue 2873 (claim 4076 reissued through immutable retirement 26340ebe642f255ced25fc32ddeea3508ce0344c)",
+    "20261008014009": "merged-stranded: PR 4077 (merge 66123f6024e64746abcd946076911197ce86a8c1, head ff27e2ed7e312f347154a01b665faae3900bf04a) carries a durable DeepSeek slot-3 REVISE (sequence 5830) on its production-risk sign-off that a merged head cannot answer; preview applied it (run 37717030043); retain historical file and preview ledger, never apply this version, use re-runnable forward replacement 20261008022846 under issue 2873 (claim 4076 reissued through immutable retirement d4076b1cee9c5ad320799b0b070510f956eb1bc7)",
+    "20261008001142": "merged-stranded: PR 4061 (merge c493cfdd005a2668f1409a1bdb0b8f888a09855f, head 2573f194d9b1bbe6fbfc653b3394c8ea6275c0b2) carries no PR-owned agent work contract evidence pair, so the merged-PR issue binding refuses and the required production-risk fence review can never be recorded; never applied to preview or production; retain historical file, never apply this version, use re-runnable third forward replacement 20261008005647 under issue 3947 (claim 3955 reissued through immutable retirement 4961d63a426d2c4ecdaae75a95b1e3e3469cc403)",
+    "20261007190954": "merged-stranded: PR 4047 head e35c1ecde901b55e7ed3a343da685d5f2c4c7a37 carries a durable StepFun REVISE verdict (slot 3, findings comment 6048262075) recorded by a reviewer whose host could not read the repository; a merged head cannot take a new commit to answer it, so it can never clear production risk sign-off; retain historical file and any preview ledger, never apply this version, use re-runnable second forward replacement 20261008001142 under issue 3947 (claim 3955 reissued through immutable retirement 82aa37fb83c98fbcb35db26dd1931d3ac8b5a3bd)",
+    "20261007020907": "merged-stranded: PR 3957 head f8b8b32139380911c315001238e63a149af5fda9 carries two immutable DeepSeek REVISE verdicts (slots 12 and 13, findings 6a7732994f46b7aff8240a16d99d34fa61df77947313fdcaa2159fb1159221fe and 4fd0d7c22ac09262a0bbcab93431916f953768ec06c3d02ba226b366176da2a6) and no disregard path exists for readsRepository:true verdicts, so it can never clear production risk sign-off; preview applied it; retain historical file and preview ledger, never apply this version, use re-runnable forward replacement 20261007190954 under issue 3947 (claim 3955 reissued through immutable retirement 17b73daac7315345194b6eac26ed5a21748b9cb0)",
+    "20260911212849": "issue 2478 original already superseded through claim 2745; retain its SQL and permanent reservation, never apply this original; use the fresh governed SKU-helper reissue",
+    "20260917112129": "issue 2478 preview-only reissue has no qualifying original migration-content manifest; retain original SQL and preview ledger, never apply this version to production; use the fresh governed claim-2745 reissue with new exact-head review and rehearsal",
     "20260906222338": "preview run 34066470075 applied SHA256 67dc237a6968ad1a63a8d446e7bd0b1a2cb6efc52a9685dc9c5eb753008f204e, while final reviewed PR2415/main holds cb7bf087c6fd2eb2c21faaee786bdf8103ca8cf9f7bed37af0da2367f8c9d438 under the same timestamp; retain historical file and preview ledger, never apply the mismatched original, use complete forward replacement 20260911152203 under issue2741",
     "20260908195056": "unpromotable producer provenance (preview apply run 34273765771 checked out 53937748ee2b8fdba2ada40a79219f4d62d02f77 with lane-manager bytes different from current main) and preview already holds the version, so no fresh qualifying ledger delta can be produced; reissued with identical migration content as 20260909202801 under issue 2439 and claim 2443",
+    "20260915015414": "stranded preview-only version (preview apply run 34920902290 at unmerged PR 2930 head a119760e, never merged, never applied to production) and preview already holds the version, so its bytes can never change; reissued with the same function bodies plus derived-from header as 20260915023506 under issue 2792 and claim 2931",
+    "20260928003740": "unpromotable producer provenance (only preview apply run 36427442828 was dispatched at PR 3487 head b38c082a before PR 3641 changed .github/workflows/shared-supabase-migrations.yml, so its evidence cannot bind merge commit 4b451fb0961ecc074ad24487c5d1b8df87cf1d78) and preview already holds the version, so no qualifying evidence can ever be produced; reissued with identical executable SQL as 20260929040458 under issue 3458 and claim 3483",
+    "20260929040458": "unpromotable preview provenance (preview holds it only through ledger reconciliation run 36546629950, a rename of 20260928145444 whose sole apply was run 36456516739; no preview run recorded evidence for this version and merged-main rehearsal run 36760878045 refused it as already applied) and production never held it; reissued with identical executable SQL as 20260930185929 under issue 3458 and claim 3483",
     "20260814170749": "stranded without qualifying preview evidence after the preview project replacement; reissued with identical executable SQL as 20260825201330 under issue 1517, applied to production 2026-08-25 (PR 1541, run 32901820150)",
     "20260819011639": "unpromotable producer provenance; replaced byte-for-byte by 20260820142402, applied to production 2026-08-20 (issue 1171)",
     "20260819151536": "production verification times out and rolls the migration back; replaced by 20260820004338, applied to production 2026-08-20 (issue 1280)",
@@ -242,6 +321,7 @@ RETIRED_VERSION_REASONS = {
     "20260825025154": "preview-only historical #1427 accelerator; its later version cannot precede the earlier production-pending contract, and 20260825031841 supersedes both",
     "20260903200951": "unpromotable producer provenance (original apply run 33754529571 was a pre-merge branch rehearsal whose producer files differ from PR 2199 merge commit 477ef03cd516c79188d81b6c21260575a43a9239) and preview already holds the version after orphan reconciliation run 33821298999, so no qualifying evidence can ever be produced; replaced byte-for-byte by 20260905024139 under issue 2349",
     "20260825031841": "preview-only historical #1471 forward; production timed out and rolled back because its full reconciliation remained one statement; use prerequisite 20260825041343 and its governed dependent recovery",
+    "20261006221530": "Original preview37542145935 at fd62f194fb9ca8fed3513d589a26c5ed9384f60d differs in session-authority producer from authoring merge74e4ee847d3e960af5cfbcddfe2e0ae9aaafb248. Qualification37550480001 refused before production dispatch. Preserve original migration and preview history; governed replacement20261007002113 under issue3907 claim4004 only.",
 }
 RETIRED_VERSIONS = frozenset(RETIRED_VERSION_REASONS)
 HELD_VERSIONS = frozenset({"20260802170000", "20260802171000"})
@@ -253,6 +333,82 @@ PREVIEW_ONLY_HISTORICAL_RESTORATIONS = {
     "20260817150944",
     "20260824150630",
 }
+
+# ---------------------------------------------------------------------------
+# MIGRATION TARGET SCOPE (issue #2820)
+#
+# THE GAP THIS CLOSES. Until now nothing in this repository recorded WHICH
+# DATABASE a merged migration is for. Every merged file was implicitly "for the
+# shared Supabase projects", so a migration authored against a DIFFERENT
+# database appeared in the ledger-drift report as ordinary promotable work: it
+# is absent from the production ledger for a legitimate reason, but the checker
+# could not tell that apart from a genuinely overdue migration. Acting on one
+# would apply schema to a database it was never reviewed against.
+#
+# THIS IS A TARGET REGISTRY, NOT A SKIP LIST. Each entry names the migration's
+# ACTUAL target. Exclusion is DERIVED by comparing that target with the target
+# being checked -- it is not asserted per version. A future migration aimed at
+# `preview` would therefore still be reported as outstanding on `preview` and
+# excluded only on `production`. A bare "skip this version" list would leave the
+# next cross-project migration in exactly the same trap.
+#
+# NEVER SILENT. `classify_pending_version` returns the kind `foreign-target`
+# with a reason naming the real target and the issue, and the drift checker
+# prints those entries in their own clearly-labelled section. A reader must be
+# able to SEE the claim and challenge it; an invisible exclusion is its own
+# hazard.
+#
+# ADDING AN ENTRY IS A SCOPE CLAIM. Record it only when the migration's own
+# header and its issue both say so, and cite the issue here.
+# ---------------------------------------------------------------------------
+
+# Every target name the repository knows. A registry entry naming anything else
+# is a typo or an invented database, and fails closed rather than silently
+# excluding a version from a target that does not exist.
+KNOWN_MIGRATION_TARGETS = frozenset({"production", "preview", "designflow-nonprod"})
+
+FOREIGN_TARGET_MIGRATIONS = {
+    "20260909121403": {
+        "target": "designflow-nonprod",
+        "project": (
+            "the DesignFlow consolidated non-production Supabase project "
+            "(reached by the DB_*_SANDBOX settings in GCP project "
+            "lithe-breaker-323913) -- neither shared production nor the "
+            "shared-db-schema-rehearsal preview branch"
+        ),
+        "issue": "#2403",
+        "note": (
+            "Creates the empty, isolated `hts_rag_split` schema transcribed from the "
+            "read-only structure dump of the live DesignFlow non-production database, "
+            "as the second physical target for the designflow-backend "
+            "HTS_RAG_DB_ENABLED pilot. It was never reviewed against shared production."
+        ),
+    },
+}
+
+for _version, _entry in FOREIGN_TARGET_MIGRATIONS.items():
+    # ValueError, not GuardError: this runs at IMPORT time and GuardError is
+    # defined further down the module. A bad entry must fail loudly on import.
+    if _entry["target"] not in KNOWN_MIGRATION_TARGETS:
+        raise ValueError(
+            f"migration {_version} declares unknown target {_entry['target']!r}; "
+            f"known targets: {', '.join(sorted(KNOWN_MIGRATION_TARGETS))}"
+        )
+del _version, _entry
+
+
+def foreign_target_entry(version: str, target: str) -> dict[str, str] | None:
+    """The scope record for ``version`` when it is NOT meant for ``target``.
+
+    Returns ``None`` when the version has no recorded target (the normal case --
+    an unregistered migration is treated as in scope, so forgetting to register
+    something can only ever OVER-report, never hide work) or when its recorded
+    target IS the one being checked.
+    """
+    entry = FOREIGN_TARGET_MIGRATIONS.get(version)
+    if entry is None or entry["target"] == target:
+        return None
+    return entry
 
 # The four unblocked above. This is ENFORCED, not documentary: `parse_allowlist`
 # requires an allowlist to contain either ALL FOUR or NONE of them. AGENTS.md
@@ -974,6 +1130,23 @@ def parse_allowlist(raw: str, remote: set[str] | frozenset[str] = frozenset()) -
             "preview-only historical restoration may never enter a production allowlist: "
             + ", ".join(preview_only)
         )
+    # Issue #2820: a migration whose recorded target is a DIFFERENT database may
+    # never enter a production allowlist by any route. Enforced in the same
+    # single choke point every promotion subcommand must call, so no subcommand
+    # can route around it. Derived from the registry, never a version literal.
+    foreign = sorted(
+        value for value in values if foreign_target_entry(value, "production") is not None
+    )
+    if foreign:
+        details = "; ".join(
+            f"{value} targets {FOREIGN_TARGET_MIGRATIONS[value]['project']} "
+            f"(issue {FOREIGN_TARGET_MIGRATIONS[value]['issue']})"
+            for value in foreign
+        )
+        raise GuardError(
+            "migration authored for another database may never enter a production allowlist: "
+            + details
+        )
     if values != sorted(values):
         raise GuardError("production allowlist must be in migration order")
     # AGENTS.md section 6.8: all four or none. Enforced here, in the one function
@@ -1167,12 +1340,23 @@ def classify_pending_version(
     applied_versions: set[str] | frozenset[str],
     repo: Path,
     migration_paths: dict[str, Path] | None = None,
+    target: str = "production",
 ) -> dict[str, str]:
     """Return the one authoritative pending-status classification.
 
     Keep every registry behind this function. Callers in other languages must
     consume its answer rather than importing the sets and rebuilding policy.
+
+    ``target`` is the database being CHECKED (see ``KNOWN_MIGRATION_TARGETS``).
+    It defaults to ``production`` so every existing caller keeps the strictest
+    behaviour. It exists so scope can be DERIVED from a comparison against each
+    migration's recorded target rather than asserted per version.
     """
+    if target not in KNOWN_MIGRATION_TARGETS:
+        raise GuardError(
+            f"unknown migration target {target!r}; known targets: "
+            f"{', '.join(sorted(KNOWN_MIGRATION_TARGETS))}"
+        )
     applied = set(applied_versions)
     if version in RETIRED_VERSIONS:
         reason = RETIRED_VERSION_REASONS.get(
@@ -1192,6 +1376,26 @@ def classify_pending_version(
         return {
             "kind": "retired",
             "reason": "production_migration_guard.HARD_BLOCKED: the general production lane refuses this version outright. Do not apply it.",
+        }
+    # SCOPE IS CHECKED AFTER the two never-apply branches on purpose. "Retired"
+    # and "hard-blocked" are the stricter statements -- they mean "never apply
+    # this anywhere" -- and a strictly-true sentence must win over "not for this
+    # database". Both outcomes are excluded from actionable drift either way, so
+    # only the sentence a human reads differs. Scope is checked BEFORE the hold,
+    # batch and base-absent branches below, because those all reason about THIS
+    # database's ledger and none of them is meaningful for a migration whose
+    # target is a different database entirely.
+    foreign = foreign_target_entry(version, target)
+    if foreign is not None:
+        return {
+            "kind": "foreign-target",
+            "reason": (
+                f"NOT IN SCOPE FOR {target.upper()}. This migration targets {foreign['project']}. "
+                f"{foreign['note']} Recorded under issue {foreign['issue']}. Its absence from this "
+                "database's ledger is the intended end state, not overdue work: do not promote it "
+                "here. If this scope claim is wrong, correct FOREIGN_TARGET_MIGRATIONS in "
+                "scripts/production_migration_guard.py rather than promoting it by hand."
+            ),
         }
     if version in HELD_VERSIONS or version in FR_SHIP_SET_HOLD or version in FR_REMOVAL_VERSIONS:
         suffix = (
@@ -1367,18 +1571,39 @@ def assert_content_manifest(directory: Path) -> None:
     )
 
 
+# The ledgers the shared guard can be pointed at. Only used to word refusals
+# truthfully; every check runs identically whichever ledger was read.
+LEDGER_NAMES = ("production", "preview", "sandbox")
+
+
 def validate_candidates(
     migrations: dict[str, Path],
     allowlist: list[str],
     remote: set[str],
     derivation_overrides: dict[tuple[str, str], str] | None = None,
+    ledger_name: str = "production",
 ) -> None:
+    if ledger_name not in LEDGER_NAMES:
+        raise GuardError(f"unknown ledger name: {ledger_name!r}")
     unknown = [version for version in allowlist if version not in migrations]
     if unknown:
         raise GuardError(f"unknown migration version: {', '.join(unknown)}")
     applied = [version for version in allowlist if version in remote]
     if applied:
-        raise GuardError(f"already applied on production: {', '.join(applied)}")
+        # Issue #3193: the guard is shared, so name the ledger it actually read.
+        # The preview job passes its OWN ledger, and the old fixed wording
+        # ("already applied on production") sent operators the wrong way.
+        message = f"already applied on {ledger_name}: {', '.join(applied)}"
+        if ledger_name == "preview":
+            message += (
+                ". An applied version is never applied again. To produce fresh "
+                "evidence at exact main, dispatch the historical-recovery lane "
+                "(mode=apply with historical_preview_source_pr or "
+                "historical_preview_source_pr_map, plus "
+                "historical_preview_original_run_map naming the run that "
+                "originally applied each version); never weaken this guard"
+            )
+        raise GuardError(message)
     # Contract section 5 / section 10: B1, B3, B7 and B9 are ATOMIC. Enforced
     # here rather than in `parse_allowlist` because the check needs the real
     # production ledger to stay resumable (see the ATOMIC_BATCHES header).
@@ -1960,8 +2185,15 @@ def object_events(raw: str) -> list[tuple[int, str, bool]]:
         events.append((match.start() + 1, f"{schema}.{new}", True))
     for match in SET_SCHEMA_RE.finditer(text):
         schema, obj, new_schema = match.group(1), match.group(2), match.group(3)
-        events.append((match.start(), f"{schema}.{obj}", False))
-        events.append((match.start() + 1, f"{new_schema}.{obj}", True))
+        # #2809. The move must be booked at the END of its own statement. The
+        # statement names the table it is moving, and `hard_reference_events`
+        # records that name at `match.start(1)` -- INSIDE this match. Booking
+        # the removal at `match.start()` therefore withdrew the table from
+        # `available` before `preflight_batch` reached the very reference that
+        # performs the move, so every archive-a-table migration self-flagged as
+        # "references missing <table>; it was DROPPED (or renamed away)".
+        events.append((match.end(), f"{schema}.{obj}", False))
+        events.append((match.end() + 1, f"{new_schema}.{obj}", True))
     events.sort(key=lambda item: item[0])
     return events
 
@@ -2211,11 +2443,12 @@ def preflight(
     raw_allowlist: str,
     ledger: Path,
     derivation_overrides: dict[tuple[str, str], str] | None = None,
+    ledger_name: str = "production",
 ) -> None:
     remote = parse_remote_versions(ledger)
     allowlist = parse_allowlist(raw_allowlist, remote)
     migrations = local_migrations(repo)
-    validate_candidates(migrations, allowlist, remote, derivation_overrides)
+    validate_candidates(migrations, allowlist, remote, derivation_overrides, ledger_name)
     preflight_batch(migrations, allowlist, remote)
     print(
         f"PREFLIGHT OK: {len(allowlist)} migrations, no missing non-deferrable "
@@ -2231,11 +2464,12 @@ def prepare(
     raw_allowlist: str,
     ledger: Path,
     derivation_overrides: dict[tuple[str, str], str] | None = None,
+    ledger_name: str = "production",
 ) -> None:
     remote = parse_remote_versions(ledger)
     allowlist = parse_allowlist(raw_allowlist, remote)
     migrations = local_migrations(repo)
-    validate_candidates(migrations, allowlist, remote, derivation_overrides)
+    validate_candidates(migrations, allowlist, remote, derivation_overrides, ledger_name)
     # AGENTS.md section 6.8: the whole batch must be proven runnable end to end
     # before anything is applied, never one migration at a time.
     preflight_batch(migrations, allowlist, remote)
@@ -2362,11 +2596,13 @@ def main() -> int:
     prep.add_argument("--commit-sha", required=True)
     prep.add_argument("--allowlist", required=True)
     prep.add_argument("--remote-ledger", type=Path, required=True)
+    prep.add_argument("--ledger-name", choices=LEDGER_NAMES, default="production")
     _add_derivation_override(prep)
     pre = subs.add_parser("preflight")
     pre.add_argument("--repo", type=Path, required=True)
     pre.add_argument("--allowlist", required=True)
     pre.add_argument("--remote-ledger", type=Path, required=True)
+    pre.add_argument("--ledger-name", choices=LEDGER_NAMES, default="production")
     _add_derivation_override(pre)
     bounded = subs.add_parser("assert-bounded")
     bounded.add_argument("--dir", dest="directory", type=Path, required=True)
@@ -2395,10 +2631,12 @@ def main() -> int:
                 args.allowlist,
                 args.remote_ledger,
                 overrides,
+                args.ledger_name,
             )
         elif args.command == "preflight":
             preflight(
-                args.repo.resolve(), args.allowlist, args.remote_ledger, overrides
+                args.repo.resolve(), args.allowlist, args.remote_ledger, overrides,
+                args.ledger_name,
             )
         elif args.command == "assert-bounded":
             assert_bounded(

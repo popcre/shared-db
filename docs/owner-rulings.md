@@ -39,6 +39,11 @@
 | [6.18](#618-owner-ruling-albert-does-not-sign-off-on-technical-risk-never-gate-on-a-judgement-he-cannot-make-albert-hazan-2026-08-18) | OWNER RULING — Albert does not sign off on technical risk; never gate on a judgement he cannot make (Albert Hazan, 2026-08-18) |
 | [6.19](#619-owner-ruling-contact-information-does-not-belong-in-this-system-at-all-except-popcrm-routing-email-albert-hazan-2026-09-06) | OWNER RULING — contact information does not belong in this system at all, except PopCRM routing email (Albert Hazan, 2026-09-06) |
 | [6.20](#620-owner-ruling-the-peanuts-property-is-the-art-program-not-the-retailer-initiative-and-wildbrains-era-and-creative-group-are-two-axes-not-a-choice-albert-hazan-2026-09-07) | OWNER RULING — the Peanuts property is the ART PROGRAM, not the retailer initiative; and WildBrain's era and creative group are two axes, not a choice (Albert Hazan, 2026-09-07) |
+| [6.21](#621-owner-ruling-no-new-direct-database-logins-albert-hazan-2026-09-23) | OWNER RULING — no new direct database logins (Albert Hazan, 2026-09-23) |
+| [6.23](#623-owner-ruling-albert-is-not-a-technical-reviewer-production-risk-classes-are-accepted-by-the-ai-reviewer-albert-hazan-2026-09-30) | OWNER RULING — Albert is not a technical reviewer; production risk classes are accepted by the AI reviewer (Albert Hazan, 2026-09-30) |
+| [6.24](#624-owner-ruling-documentation-only-changes-skip-checks-albert-hazan-2026-10-02) | OWNER RULING — documentation-only changes skip checks (Albert Hazan, 2026-10-02) |
+| [6.25](#625-owner-ruling-ai-sessions-launch-the-merged-preview-run-that-starts-automatic-promotion-albert-hazan-2026-10-02) | OWNER RULING — AI sessions launch the merged-preview run that starts automatic promotion (Albert Hazan, 2026-10-02) |
+| [6.26](#626-owner-ruling-one-reviewer-may-be-used-twice-and-merges-pause-during-production-runs-albert-hazan-2026-10-02) | OWNER RULING — one reviewer may be used twice, and merges pause during production runs (Albert Hazan, 2026-10-02) |
 
 ---
 
@@ -2013,3 +2018,109 @@ first real Sesame load. Do not put it to the owner before then.
 The remaining #1275 decisions — snapshot-row identity, join-row lifecycle meaning, DCP
 metadata-run baselines, Warner chunk-addressed baselines, and the bulk-withdrawal coverage
 contract — are engineering decisions and are **not** owner decisions (§6.18).
+
+### 6.21 OWNER RULING — no new direct database logins (Albert Hazan, 2026-09-23)
+
+No new database LOGIN roles, except for trusted in-house server services. Everything else reaches
+the database through the Data API with row-level security, or through edge functions. The full
+rule, Supabase's refusal to change the managed `net` schema, and the reviewed exception for the
+four DesignFlow services (issue #2873) are in
+[`docs/security/pg-net-direct-login-rule.md`](security/pg-net-direct-login-rule.md).
+Per §6.18, the technical risk judgement behind the exception is an engineering review
+(Qwen 3.8 Max, APPROVE, 2026-09-23), not an owner sign-off.
+
+### 6.22 OWNER RULING — no independent production reviewer identity (Albert Hazan, 2026-09-28)
+
+Verbatim from Albert's chat (about 11:00 AM EDT, 2026-09-28, recorded on #3656): "i don't need
+an independent production reviewer. remove that requirement". The separately registered
+independent reviewer identity for manual production recovery (the roster, workflow and v3 record
+added by #3641) is removed. This supersedes, for this repository, the 2026-09-16 rule that routed
+every technical production approval to a separate independent reviewer. Still required: the
+allocator-assigned exact-head AI review APPROVE on the source pull request, exact-main binding,
+ordered allowlist, preview proof, target proof, business-risk evidence and the production
+environment boundary. See `docs/production-promotion-procedure.md` step 2.
+
+### 6.23 OWNER RULING — Albert is not a technical reviewer; production risk classes are accepted by the AI reviewer (Albert Hazan, 2026-09-30)
+
+Verbatim from Albert's chat (2026-09-30): "i am non-technical and unqualified to answer technical
+questions. as a reviewer. now and in the future". Read with the 2026-09-28 ruling "never ask a
+human to approve".
+
+Consequence for the automatic production promotion lane: the risk classes the business-risk gate
+derives from SQL text (`material_access_change`, `permanent_data_rewrite_or_loss`,
+`expected_downtime`) are no longer accepted through a `production-owner-decision` block from
+Albert (precedent #3282 is retired for new use). They are accepted only by the allocator-assigned
+AI reviewer's durable exact-head APPROVE on the source PR whose findings contain one
+`production-risk-assessment` block naming the exact promoted main SHA, the exact ordered versions,
+the source PR, and a written assessment of every flagged class
+(`scripts/prove-production-risk-acceptance.mjs`). `recovery_unproven` and
+`unresolved_material_objection` are never accepted by anyone. Every other gate is unchanged: exact
+main, ordered allowlist, preview or ephemeral evidence, hard blocks, production lock, target proof
+and post-apply verification. Never ask Albert a technical question, and never author or forge a
+comment in his name.
+
+### 6.24 OWNER RULING — documentation-only changes skip checks (Albert Hazan, 2026-10-02)
+
+Verbatim from Albert's chat (2026-10-02), answering "should documentation-only changes in the
+database repository be allowed to skip checks?": "yes, let doc-only changes skip checks." His
+standing rule: "if every changed file is prose, merge immediately; any code, test, script,
+workflow, or config file means normal checks."
+
+How it is honoured here: no `--admin` merge and no weakening of branch protection. A prose-only
+pull request goes through the merge queue like any other, and every required context reports
+success within seconds because the trusted base-only classifier
+(`scripts/lib/documents-only-change.mjs`, `Documents fast CI route`, `Documents-only merge
+authorization`) proves the exact base/head inventory is pure prose and the heavy jobs
+short-circuit under their unchanged check names. Anything not positively proven prose — code,
+tests, scripts, workflows, config, `.json`/`.yml`/`.sql`, and agent rulebooks such as `AGENTS.md`
+or skills — takes the full engineering path. `enforce_admins` stays on.
+
+### 6.25 OWNER RULING — AI sessions launch the merged-preview run that starts automatic promotion (Albert Hazan, 2026-10-02)
+
+Verbatim from Albert's chat (2026-10-02): "let AI launch it and remove that rule permanently."
+
+Guarded merge does not start the merged-main preview rehearsal, and the automatic production
+promotion only starts from that run. The earlier standing rule barred any "session-made workflow
+dispatch", so an approved, merged change could sit unpromoted. That bar is removed permanently
+(popcre/ai-devops#1255). Any AI session may, for an approved and merged change, run
+`ai-task-gates check --before shared-db-promotion` in this checkout and then dispatch
+`shared-supabase-migrations.yml` on `main` with `target=preview`, `mode=apply` and
+`merged_preview_source_pr=<merged PR>`. Every gate the run and the production job apply is unchanged:
+exact-head durable verdict, guarded-merge status, single admitted work issue, preview evidence,
+the business-risk gate with the reviewer `production-risk-assessment` block (§6.23), the production
+lock, the fresh dry-run and post-apply verification. A refusal is fixed at its cause, never
+bypassed. This ruling authorizes no manual production dispatch or command.
+
+### 6.26 OWNER RULING — one reviewer may be used twice, and merges pause during production runs (Albert Hazan, 2026-10-02)
+
+Verbatim from Albert's chat (2026-10-02):
+
+> "there are more than 2 reviewers working on this machine. find another one. and if you can't
+> then you'll have to be ok with using one reviewer twice. we can't just sit here doing nothing.
+> you need to be much more aggressive about moving everything forward"
+
+> "assign someone to pause merges during production runs"
+
+**Reviewer reuse.** Only for review slot 2 or higher on a pull request that is already **merged**
+at the exact reviewed head (the post-merge production-risk-assessment slot), with that merged
+state proven through the verified merged-PR issue binding (`SHARED_DB_MERGED_PR_ISSUE_BINDING`).
+The allocator still prefers any independent reviewer; only when none is left may
+`--assign-reviewer` or `--replace-failed-reviewer` draw one that already holds another slot on
+that head, in the ordinary rotation order. It never draws a reviewer that failed on this head, is
+unusable or preflight-excluded, conflicts with the implementing engine, or is retired. Both
+approval gates, `assertDurableReviewApproval` and `scripts/check-exact-head-approval.mjs` (the
+automatic-promotion re-proof), accept that shared reviewer only when the pull request is merged
+(not open) at the exact head. Once every independent reviewer is used, a reviewer may be reused
+for more than one later slot; slot 1 is not kept independent of slots 2 and above collectively. Open pull requests keep strict slot independence. Code:
+`mergedPrReviewerReuseAllowed` in `scripts/manage-migration-author-lanes.mjs`.
+
+**Promotion merge freeze.** `--acquire-promotion-freeze --issue <n> --pr <n> --owner <text>
+--ttl-minutes <1-180>` sets the create-only ref `refs/db-coordination/promotion-freeze` before the
+risk assessment is drawn. While it is live, `--acquire-merge` (guarded merge and merge-queue gate)
+and repository-maintenance authorization refuse, naming the holder and expiry. It never blocks
+preview or production. It expires by TTL, so it cannot wedge merges (a corrupt, unreadable freeze record
+fails closed until someone releases it with `--release-promotion-freeze --pr <n>`; any positive PR
+number releases an unreadable record, by design, so it can never wedge merges); `--release-promotion-freeze
+--owner <text>` (or `--pr <n>`) ends it, and the production job's always() cleanup releases the
+freeze for its source PR. Release ownership is an accident guard, not a security boundary: the production
+job must be able to release a freeze it did not set.

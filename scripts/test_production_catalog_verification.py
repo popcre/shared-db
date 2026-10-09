@@ -34,6 +34,7 @@ from production_catalog_verification import (  # noqa: E402
     PrivilegeExpectation,
     Targets,
     _objtype_array,
+    _strict_keys,
     assert_privileges,
     build_catalog_sql,
     build_behavior_sql,
@@ -47,6 +48,7 @@ from production_catalog_verification import (  # noqa: E402
     render_report,
     split_statements,
     verify,
+    _validate_marker_reviews,
 )
 from production_migration_guard import GuardError, strip_sql  # noqa: E402
 
@@ -176,6 +178,27 @@ PUBLIC_GRANTEE_EXPR = (
     "'grantee', case when a.grantee = 0 then 'PUBLIC' else a.grantee::regrole::text end"
 )
 PUBLIC_GRANTEE_BLOCKS = 3
+
+
+class StructuralInputGuardTests(unittest.TestCase):
+    """Focused falsification coverage for issue #2373's surviving guards."""
+
+    def test_privilege_expectation_refuses_an_unknown_kind(self):
+        with self.assertRaisesRegex(GuardError, "unknown privilege expectation kind"):
+            PrivilegeExpectation(
+                "sequence",
+                "plm.widget_id_seq",
+                "anon",
+                ("USAGE",),
+                False,
+                "test",
+            )
+
+    def test_strict_keys_refuses_a_non_object_with_the_exact_allowed_keys(self):
+        # Matching the allowed-key set is deliberate: if the type guard is
+        # disabled, the remaining key checks accept and return this list.
+        with self.assertRaisesRegex(GuardError, "contract must be a JSON object"):
+            _strict_keys(["required"], {"required"}, "contract")
 
 
 class DeriveTargetsTests(unittest.TestCase):
@@ -640,6 +663,18 @@ class SqlBuildTests(unittest.TestCase):
         self.assertIn("from plm.a", sql)
         self.assertIn("from plm.b", sql)
         self.assertIn("union all", sql)
+
+    def test_row_count_sql_orders_composite_rows_by_their_name_field(self):
+        # The derived-table alias is a PostgreSQL composite record, not JSON.
+        # `x->>'name'` failed production run 34807646359 with SQLSTATE 42883
+        # ("operator does not exist: record ->> unknown"), taking the row-count
+        # report down. Composite field access is the valid deterministic shape.
+        for relations in (["plm.a"], ["plm.b", "plm.a"]):
+            with self.subTest(relations=relations):
+                sql = build_row_count_sql(relations)
+                self.assertIn("jsonb_agg(x order by x.name) as report", sql)
+                self.assertNotIn("->>", sql)
+                self.assertNotIn("order by x)", sql)
 
     def test_unsafe_identifiers_are_refused_not_interpolated(self):
         bad = Targets({"plm.widget'; drop table x --"}, set(), set(), set(), set(), set())
@@ -1630,6 +1665,54 @@ class BehavioralSidecarTests(unittest.TestCase):
             self.assertIn(term, sql)
         self.assertTrue(sql.lower().startswith("select "))
 
+    def test_popsg_production_performance_catalog_binds_forward_body(self):
+        def change(sidecar):
+            sidecar["checks"] = [{"id": "popsg_perf", "kind": "catalog_contract", "contract": "popsg_search_v2_production_performance_v1", "expected_count": 1}]
+        temp, root, migration = self.fixture(change)
+        with temp:
+            sql = build_behavior_sql(self.load(root, migration))
+        forward = Path(__file__).resolve().parents[1] / "supabase/migrations/20260911213429_popsg_search_v2_production_performance.sql"
+        import hashlib
+        body = forward.read_bytes().replace(b"\r\n", b"\n").decode().split("$function$")
+        self.assertEqual(len(body), 3, "forward migration must define exactly one $function$ body")
+        expected = hashlib.md5(body[1].encode()).hexdigest()
+        self.assertIn("md5(p.prosrc)='" + expected + "'", sql)
+        for term in ["p.prosecdef", "p.provolatile='s'", "search_path=pg_catalog, auth", "not has_function_privilege('anon'", "has_function_privilege('authenticated'", "has_function_privilege('service_role'"]:
+            self.assertIn(term, sql)
+        self.assertTrue(sql.lower().startswith("select "))
+
+    def test_popsg_default_timeout_catalog_binds_forward_body(self):
+        def change(sidecar):
+            sidecar["checks"] = [{"id": "popsg_perf", "kind": "catalog_contract", "contract": "popsg_search_v2_default_timeout_v1", "expected_count": 1}]
+        temp, root, migration = self.fixture(change)
+        with temp:
+            sql = build_behavior_sql(self.load(root, migration))
+        forward = Path(__file__).resolve().parents[1] / "supabase/migrations/20260915111626_popsg_search_v2_default_timeout.sql"
+        import hashlib
+        body = forward.read_bytes().replace(b"\r\n", b"\n").decode().split("$function$")
+        self.assertEqual(len(body), 3, "forward migration must define exactly one $function$ body")
+        expected = hashlib.md5(body[1].encode()).hexdigest()
+        self.assertIn("md5(p.prosrc)='" + expected + "'", sql)
+        for term in ["p.prosecdef", "p.provolatile='s'", "search_path=pg_catalog, auth", "work_mem=64MB", "not has_function_privilege('anon'", "has_function_privilege('authenticated'", "has_function_privilege('service_role'"]:
+            self.assertIn(term, sql)
+        self.assertTrue(sql.lower().startswith("select "))
+
+    def test_popsg_refresh_search_sync_queue_binds_forward_bodies(self):
+        def change(sidecar):
+            sidecar["checks"] = [{"id": "popsg_queue", "kind": "catalog_contract", "contract": "popsg_refresh_search_sync_queue_v1", "expected_count": 1}]
+        temp, root, migration = self.fixture(change)
+        with temp:
+            sql = build_behavior_sql(self.load(root, migration))
+        forward = Path(__file__).resolve().parents[1] / "supabase/migrations/20260917005221_popsg_refresh_search_sync_queue.sql"
+        import hashlib
+        body = forward.read_bytes().replace(b"\r\n", b"\n").decode().split("$function$")
+        self.assertEqual(len(body), 5, "forward migration must define exactly two $function$ bodies")
+        for index in (1, 3):
+            self.assertIn("md5(p.prosrc)='" + hashlib.md5(body[index].encode()).hexdigest() + "'", sql)
+        for term in ["style_guide_search_sync_queue", "c.relrowsecurity", "trg_style_guide_files_queue_search_sync", "not has_table_privilege('authenticated'", "has_function_privilege('service_role'"]:
+            self.assertIn(term, sql)
+        self.assertTrue(sql.lower().startswith("select "))
+
     def test_unknown_catalog_contract_and_extra_sql_fail_closed(self):
         def unknown(sidecar):
             sidecar["checks"] = [{
@@ -2086,7 +2169,7 @@ class SupersededContractBatchTests(unittest.TestCase):
                 by_id[early]["superseded_objects"],
                 [
                     "routine:public.search_dam_documents("
-                    "text,jsonb,integer,integer,text[],extensions.vector,real)"
+                    "text,jsonb,integer,integer,text[],extensions.vector,real,real)"
                 ],
             )
         self.assertNotIn("superseded_by", by_id[self.FORWARD_8])
@@ -2225,7 +2308,7 @@ class SupersededContractBatchTests(unittest.TestCase):
             ),
             {
                 "routine:public.search_dam_documents("
-                "text,jsonb,integer,integer,text[],extensions.vector,real)",
+                "text,jsonb,integer,integer,text[],extensions.vector,real,real)",
             },
         )
         # Overload precision: a different argument signature is a different
@@ -2387,7 +2470,7 @@ class CatalogAbsenceCheckTests(unittest.TestCase):
             ("20260101000002", "do $ begin perform 1; end $;\n", [{
                 "id": "helper_is_gone", "kind": "catalog_absence",
                 "object": "public.search_dam_documents(text,jsonb,integer,integer,"
-                          "text[],extensions.vector,real)",
+                          "text[],extensions.vector,real,real)",
                 "expected_count": 1,
             }]),
         ]
@@ -2401,7 +2484,7 @@ class CatalogAbsenceCheckTests(unittest.TestCase):
         self.assertNotIn("helper_is_present", sql)
         self.assertIn("helper_is_gone", sql)
         self.assertIn("to_regprocedure('public.search_dam_documents(text,jsonb,"
-                      "integer,integer,text[],extensions.vector,real)') is null", sql)
+                      "integer,integer,text[],extensions.vector,real,real)') is null", sql)
 
 
 class NetAclTests(unittest.TestCase):
@@ -3007,6 +3090,481 @@ class AbsenceNamesAreRevalidatedAtSqlBuildTime(unittest.TestCase):
     def test_an_unqualified_name_is_refused_at_build_time(self):
         with self.assertRaises(GuardError):
             build_behavior_sql([self.check("widget")])
+
+
+class CatalogMarkerReviewMutationCoverageTests(unittest.TestCase):
+    """Focused falsification for every marker-review guard from issue #2374."""
+
+    VERSION = "20260101000000"
+    REASON = (
+        "This marker is tied to the named durable verification contract and "
+        "cannot be accepted as unreviewed dynamic SQL."
+    )
+
+    def fixture(self, mutate=None, sql="execute dynamic_catalog_change;\n"):
+        import hashlib
+
+        temp = tempfile.TemporaryDirectory()
+        root = Path(temp.name)
+        migrations = root / "supabase" / "migrations"
+        sidecars = root / "scripts" / "production-verification-sidecars"
+        migrations.mkdir(parents=True)
+        sidecars.mkdir(parents=True)
+        migration = migrations / f"{self.VERSION}_marker.sql"
+        migration.write_text(sql, encoding="utf-8")
+        sidecar = {
+            "schema_version": 1,
+            "migration_version": self.VERSION,
+            "migration_sha256": hashlib.sha256(
+                migration.read_bytes().replace(b"\r\n", b"\n")
+            ).hexdigest(),
+            "checks": [{
+                "id": "dynamic_contract",
+                "kind": "catalog_contract",
+                "contract": "popdam_1427_active_marker_v1",
+                "expected_count": 1,
+            }],
+            "marker_schema_version": 1,
+            "marker_reviews": [{
+                "line_start": 1,
+                "line_end": 1,
+                "disposition": "checks",
+                "check_ids": ["dynamic_contract"],
+                "reason": self.REASON,
+            }],
+        }
+        if mutate:
+            mutate(sidecar)
+        (sidecars / f"{self.VERSION}.json").write_text(
+            json.dumps(sidecar), encoding="utf-8"
+        )
+        return temp, root, migration
+
+    def assert_rejected(self, mutate, message, sql="execute dynamic_catalog_change;\n"):
+        temp, root, migration = self.fixture(mutate, sql)
+        with temp, self.assertRaisesRegex(GuardError, message):
+            load_behavior_sidecars(root, {self.VERSION: migration}, [self.VERSION])
+
+    def test_marker_schema_version_must_be_exact(self):
+        self.assert_rejected(
+            lambda sidecar: sidecar.update(marker_schema_version=2),
+            "marker_schema_version must be exactly 1",
+        )
+
+    def test_marker_reviews_must_be_a_non_empty_array(self):
+        self.assert_rejected(
+            lambda sidecar: sidecar.update(marker_reviews=[]),
+            "marker_reviews must be a non-empty array",
+        )
+
+    def test_each_marker_review_must_be_an_object(self):
+        self.assert_rejected(
+            lambda sidecar: sidecar.update(marker_reviews=["not-an-object"]),
+            "marker review 0 must be an object",
+        )
+
+    def test_marker_disposition_is_closed_to_the_two_supported_values(self):
+        def mutate(sidecar):
+            sidecar["marker_reviews"][0]["disposition"] = "ignore"
+
+        self.assert_rejected(mutate, "invalid marker disposition")
+
+    def test_marker_review_range_must_be_positive_and_ordered(self):
+        def mutate(sidecar):
+            sidecar["marker_reviews"][0].update(line_start=2, line_end=1)
+
+        self.assert_rejected(mutate, "invalid marker review range")
+
+    def test_marker_review_ranges_cannot_overlap(self):
+        def mutate(sidecar):
+            first = sidecar["marker_reviews"][0]
+            first.update(line_start=1, line_end=1)
+            second = dict(first, line_start=1, line_end=2)
+            sidecar["marker_reviews"] = [first, second]
+
+        self.assert_rejected(
+            mutate,
+            "marker review ranges overlap or are not strictly ordered",
+            "execute first_dynamic_change;\nexecute second_dynamic_change;\n",
+        )
+
+    def test_checks_disposition_must_name_a_present_check(self):
+        def mutate(sidecar):
+            sidecar["marker_reviews"][0]["check_ids"] = ["absent_check"]
+
+        self.assert_rejected(mutate, "marker review cites an absent check")
+
+    def test_checks_disposition_requires_substantive_reason(self):
+        def mutate(sidecar):
+            sidecar["marker_reviews"][0]["reason"] = "too short"
+
+        self.assert_rejected(
+            mutate, "checks disposition requires a substantive marker-to-contract rationale"
+        )
+
+    def test_no_target_disposition_requires_substantive_reason(self):
+        def mutate(sidecar):
+            sidecar["marker_reviews"][0] = {
+                "line_start": 1,
+                "line_end": 1,
+                "disposition": "no_durable_target",
+                "reason": "too short",
+            }
+
+        self.assert_rejected(
+            mutate, "no_durable_target reason must contain 40 non-whitespace characters"
+        )
+
+    def test_marker_reviews_must_cover_every_marker_exactly_once(self):
+        self.assert_rejected(
+            None,
+            "marker reviews must cover every marker line exactly once",
+            "execute first_dynamic_change;\nexecute second_dynamic_change;\n",
+        )
+
+    def test_empty_checks_cannot_claim_a_checks_disposition(self):
+        # The loader normally derives check_ids from item["checks"]. Drive the
+        # validator directly so its final consistency boundary is independently
+        # load-bearing instead of being masked by the earlier absent-id refusal.
+        item = {
+            "checks": [],
+            "marker_schema_version": 1,
+            "marker_reviews": [{
+                "line_start": 1,
+                "line_end": 1,
+                "disposition": "checks",
+                "check_ids": ["externally_supplied_check"],
+                "reason": self.REASON,
+            }],
+        }
+        with self.assertRaisesRegex(
+            GuardError, "empty checks require only no_durable_target reviews"
+        ):
+            _validate_marker_reviews(
+                item,
+                Path("marker.json"),
+                "execute dynamic_catalog_change;\n",
+                {"externally_supplied_check"},
+            )
+
+
+class CatalogSidecarLoadingMutationCoverageTests(unittest.TestCase):
+    """Focused falsification for every surviving loader guard from issue #2375."""
+
+    VERSION = "20260101000000"
+
+    def base_check(self):
+        return {
+            "id": "typed_row_check",
+            "kind": "exact_row_count",
+            "relation": "core.property",
+            "filters": [{"column": "name", "type": "text", "equals": "Alice"}],
+            "expected_count": 1,
+        }
+
+    def fixture(self, mutate=None, raw=None):
+        import hashlib
+
+        temp = tempfile.TemporaryDirectory()
+        root = Path(temp.name)
+        migrations = root / "supabase" / "migrations"
+        sidecars = root / "scripts" / "production-verification-sidecars"
+        migrations.mkdir(parents=True)
+        sidecars.mkdir(parents=True)
+        migration = migrations / f"{self.VERSION}_data.sql"
+        migration.write_text("update core.property set name = name;\n", encoding="utf-8")
+        sidecar = raw if raw is not None else {
+            "schema_version": 1,
+            "migration_version": self.VERSION,
+            "migration_sha256": hashlib.sha256(
+                migration.read_bytes().replace(b"\r\n", b"\n")
+            ).hexdigest(),
+            "checks": [self.base_check()],
+        }
+        if mutate:
+            mutate(sidecar)
+        (sidecars / f"{self.VERSION}.json").write_text(
+            json.dumps(sidecar), encoding="utf-8"
+        )
+        return temp, root, migration
+
+    def assert_rejected(self, mutate, message, raw=None, migrations=True):
+        temp, root, migration = self.fixture(mutate, raw)
+        index = {self.VERSION: migration} if migrations else {}
+        with temp, self.assertRaisesRegex(GuardError, message):
+            load_behavior_sidecars(root, index, [self.VERSION])
+
+    def test_sidecar_top_level_must_be_an_object(self):
+        self.assert_rejected(None, "sidecar must be an object", raw=[])
+
+    def test_sidecar_schema_version_is_exact(self):
+        self.assert_rejected(
+            lambda sidecar: sidecar.update(schema_version=2),
+            "schema_version must be exactly 1",
+        )
+
+    def test_sidecar_migration_version_matches_filename(self):
+        self.assert_rejected(
+            lambda sidecar: sidecar.update(migration_version="20260101000001"),
+            f"migration_version must equal {self.VERSION}",
+        )
+
+    def test_sidecar_requires_the_migration_in_repository_index(self):
+        self.assert_rejected(
+            None, f"migration {self.VERSION} is missing from the repository", migrations=False
+        )
+
+    def test_sidecar_hash_must_be_lowercase_sha256(self):
+        self.assert_rejected(
+            lambda sidecar: sidecar.update(migration_sha256="NOT-A-SHA"),
+            "migration_sha256 must be lowercase SHA-256",
+        )
+
+    def test_checks_must_be_an_array(self):
+        self.assert_rejected(
+            lambda sidecar: sidecar.update(checks={}), "checks must be an array"
+        )
+
+    def test_each_check_must_be_an_object(self):
+        self.assert_rejected(
+            lambda sidecar: sidecar.update(checks=["not-an-object"]),
+            "check 0 must be an object",
+        )
+
+    def test_check_id_has_closed_lowercase_shape(self):
+        def mutate(sidecar):
+            sidecar["checks"][0]["id"] = "Bad-ID"
+
+        self.assert_rejected(mutate, "invalid check id")
+
+    def test_check_ids_are_unique_across_sidecars(self):
+        def mutate(sidecar):
+            sidecar["checks"].append(dict(sidecar["checks"][0]))
+
+        self.assert_rejected(mutate, "duplicate behavioral check id")
+
+    def test_expected_count_is_a_non_negative_integer_not_boolean(self):
+        def mutate(sidecar):
+            sidecar["checks"][0]["expected_count"] = True
+
+        self.assert_rejected(mutate, "expected_count must be a non-negative integer")
+
+    def test_catalog_contract_count_is_exactly_one(self):
+        def mutate(sidecar):
+            sidecar["checks"] = [{
+                "id": "catalog_contract_check",
+                "kind": "catalog_contract",
+                "contract": "popdam_1427_active_marker_v1",
+                "expected_count": 0,
+            }]
+
+        self.assert_rejected(mutate, "catalog contract expected_count must be 1")
+
+    def test_row_count_filters_are_a_non_empty_array(self):
+        def mutate(sidecar):
+            sidecar["checks"][0]["filters"] = []
+
+        self.assert_rejected(mutate, "filters must be a non-empty array")
+
+    def test_row_count_filter_columns_are_unique(self):
+        def mutate(sidecar):
+            filt = sidecar["checks"][0]["filters"][0]
+            sidecar["checks"][0]["filters"].append(dict(filt))
+
+        self.assert_rejected(mutate, "duplicate filter column")
+
+    def test_filter_scalar_type_is_allowlisted(self):
+        def mutate(sidecar):
+            sidecar["checks"][0]["filters"][0]["type"] = "decimal"
+
+        self.assert_rejected(mutate, "unsupported scalar type")
+
+    def test_text_filter_value_must_be_a_string(self):
+        def mutate(sidecar):
+            sidecar["checks"][0]["filters"][0]["equals"] = 7
+
+        self.assert_rejected(mutate, "text value must be a string")
+
+    def test_integer_filter_rejects_booleans(self):
+        def mutate(sidecar):
+            sidecar["checks"][0]["filters"][0].update(type="integer", equals=True)
+
+        self.assert_rejected(mutate, "integer value must be an integer")
+
+    def test_boolean_filter_requires_a_boolean(self):
+        def mutate(sidecar):
+            sidecar["checks"][0]["filters"][0].update(type="boolean", equals="true")
+
+        self.assert_rejected(mutate, "boolean value must be true or false")
+
+    def test_empty_checks_require_reviewed_marker_declaration(self):
+        self.assert_rejected(
+            lambda sidecar: sidecar.update(checks=[]),
+            "empty checks require a reviewed marker declaration",
+        )
+
+
+class CatalogBehaviorSqlMutationCoverageTests(unittest.TestCase):
+    """Focused falsification for every SQL-builder guard from issue #2376."""
+
+    def row_check(self):
+        return {
+            "id": "row_check",
+            "kind": "exact_row_count",
+            "relation": "core.property",
+            "filters": [{"column": "name", "type": "text", "equals": "Alice"}],
+            "expected_count": 1,
+            "migration_version": "20260101000000",
+        }
+
+    def test_builder_refuses_an_empty_check_list(self):
+        with self.assertRaisesRegex(GuardError, "without checks"):
+            build_behavior_sql([])
+
+    def test_builder_refuses_an_unknown_catalog_contract(self):
+        check = {
+            "id": "unknown_contract",
+            "kind": "catalog_contract",
+            "contract": "not_registered",
+            "expected_count": 1,
+            "migration_version": "20260101000000",
+        }
+        with self.assertRaisesRegex(GuardError, "unknown catalog contract"):
+            build_behavior_sql([check])
+
+    def test_builder_revalidates_row_relation(self):
+        check = self.row_check()
+        check["relation"] = "core.property; drop table core.property"
+        with self.assertRaisesRegex(GuardError, "unsafe behavioral relation"):
+            build_behavior_sql([check])
+
+    def test_builder_revalidates_row_filter_column(self):
+        check = self.row_check()
+        check["filters"][0]["column"] = "name) or true --"
+        with self.assertRaisesRegex(GuardError, "unsafe behavioral column"):
+            build_behavior_sql([check])
+
+    def test_builder_refuses_when_every_check_is_superseded(self):
+        check = self.row_check()
+        check["superseded_by"] = "20260102000000"
+        with self.assertRaisesRegex(GuardError, "every check is superseded"):
+            build_behavior_sql([check])
+
+
+class HtsProductPhraseContractTests(unittest.TestCase):
+    """Issue #2986: the phrase migration's own post-apply evidence."""
+
+    VERSION = "20260928182014"
+
+    def migration(self):
+        return next((REPO / "supabase" / "migrations").glob(f"{self.VERSION}_*.sql"))
+
+    def test_phrase_contract_is_registered_and_schema_conditioned(self):
+        sql = CATALOG_CONTRACTS["hts_product_phrase_columns_v1"]
+        self.assertIn("table_schema = 'plm'", sql)
+        # The dflow_prod half is owed only where the schema exists, mirroring the
+        # sandbox conditioning lane; the plm half is owed everywhere.
+        self.assertIn("not exists (select 1 from pg_namespace where nspname = 'dflow_prod')", sql)
+        self.assertIn("table_schema = 'dflow_prod'", sql)
+        self.assertEqual(sql.count("'hts_product_phrase_at'"), 4)
+        self.assertEqual(sql.count("'RFQItem'"), 6)
+        self.assertIn("is_nullable = 'YES'", sql)
+        self.assertIn("column_default is null", sql)
+        self.assertNotRegex(sql.lower(), r";.*(insert|update|delete|drop table|create table|alter table)")
+
+    def test_phrase_sidecar_binds_the_contract_to_the_real_file(self):
+        checks = load_behavior_sidecars(REPO, {self.VERSION: self.migration()}, [self.VERSION])
+        self.assertEqual([check["id"] for check in checks], ["hts_product_phrase_columns_contract"])
+        self.assertEqual(checks[0]["kind"], "catalog_contract")
+        self.assertEqual(checks[0]["contract"], "hts_product_phrase_columns_v1")
+        self.assertEqual(checks[0]["expected_count"], 1)
+        sql = build_behavior_sql(checks)
+        self.assertIn("hts_product_phrase_columns_contract", sql)
+        self.assertIn("hts_product_phrase_columns_v1", CATALOG_CONTRACTS)
+
+    def test_phrase_migration_derives_no_lexer_target_so_the_sidecar_is_the_only_evidence(self):
+        # The quoted mixed-case identifiers are invisible to the statement lexer,
+        # so without the sidecar a phrase-only allowlist verifies NOTHING and
+        # enforcing mode refuses. This pin keeps that reason honest.
+        self.assertTrue(derive_targets({self.VERSION: self.migration()}, [self.VERSION]).is_empty())
+
+
+
+class LegacyPropertiesSchemaMoveContractTests(unittest.TestCase):
+    VERSION = "20261006203846"
+
+    def checks(self):
+        migrations = {p.name[:14]: p for p in (REPO / "supabase" / "migrations").glob("*.sql")}
+        return migrations, load_behavior_sidecars(REPO, migrations, [self.VERSION])
+
+    def test_real_schema_move_keeps_every_existing_check_and_adds_exact_contract(self):
+        migrations, checks = self.checks()
+        self.assertEqual(len(checks), 12)
+        named = [c for c in checks if c["kind"] == "catalog_contract"]
+        self.assertEqual({c["contract"] for c in named}, {"designflow_legacy_properties_dflow_shape_v1", "designflow_legacy_properties_id_primary_key_v1"})
+        self.assertTrue(all(c["expected_count"] == 1 for c in named))
+        self.assertTrue(derive_targets(migrations, [self.VERSION]).is_empty())
+        expression = CATALOG_CONTRACTS["designflow_legacy_properties_dflow_shape_v1"]
+        for text in ["relkind='r'", "dflow.properties_and_characters", "character varying(255)", "character varying(50)", "character varying(100)", "timestamp with time zone", "c.contype='p'", "c.conkey=array[a.attnum]"]:
+            self.assertIn(text, expression)
+
+    def test_contract_column_names_match_the_applied_migration(self):
+        import re
+        migrations, checks = self.checks()
+        expression = CATALOG_CONTRACTS["designflow_legacy_properties_dflow_shape_v1"]
+        actual = re.findall(r"\('([^']+)'\s*,\s*'[^']+'\s*,\s*(?:true|false)\)", expression)
+        expected = ["id", "name", "type", "licensor_id", "source_licensed_property_id", "source_character_id", "created_at", "updated_at"]
+        self.assertEqual(actual, expected)
+        migration = migrations[self.VERSION].read_text()
+        for name in expected:
+            self.assertIn(name, migration)
+        absence = [c for c in checks if c["kind"] == "catalog_absence"]
+        self.assertEqual(len(absence), 1)
+        self.assertIn("core", json.dumps(absence))
+
+    def test_primary_key_check_preserves_its_identity_and_proves_validated_id_key(self):
+        _, checks = self.checks()
+        pk = next(c for c in checks if c["id"] == "legacy_properties_primary_key")
+        self.assertEqual(pk["kind"], "catalog_contract")
+        expression = CATALOG_CONTRACTS[pk["contract"]]
+        for clause in ["pg_constraint", "pg_attribute", "a.attname='id'", "c.contype='p'", "c.convalidated", "c.conkey=array[a.attnum]"]:
+            self.assertIn(clause, expression)
+        self.assertNotIn("information_schema", expression)
+
+    def test_full_enforcing_entrypoint_accepts_only_all_matching_checks(self):
+        from production_catalog_verification import verify
+        migrations, _ = self.checks()
+        eligible_version = "20261007000937"
+        checks = load_behavior_sidecars(REPO, migrations, [eligible_version])
+        for index, mode, expected in [(-1, "pass", 0)] + [(i, mode, 1) for i in range(len(checks)) for mode in ("missing", "wrong")]:
+            rows = [{"id": c["id"], "actual_count": c["expected_count"], "expected_count": c["expected_count"]} for c in checks]
+            if mode == "missing":
+                rows.pop(index)
+            if mode == "wrong":
+                rows[index]["actual_count"] = 0
+            with tempfile.TemporaryDirectory() as tmp, mock.patch("production_catalog_verification.run_query", return_value=[{"report": {"behavior_checks": rows}}]), mock.patch("sys.stdout", new=io.StringIO()):
+                result = verify(REPO, eligible_version, Path(tmp), "synthetic-project", "synthetic-token", True)
+                self.assertEqual(result, expected)
+                payload = json.loads((Path(tmp) / "production-catalog-verification.json").read_text())
+                self.assertEqual(len(payload["behavior_checks"]), 12)
+                self.assertEqual(payload["errors"], [])
+
+    def test_retired_original_refuses_before_any_catalog_query(self):
+        from production_catalog_verification import verify
+        from production_migration_guard import GuardError
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("production_catalog_verification.run_query") as query:
+            with self.assertRaisesRegex(GuardError, "general production lane blocks"):
+                verify(REPO, self.VERSION, Path(tmp), "synthetic-project", "synthetic-token", True)
+            query.assert_not_called()
+
+    def test_forward_preserves_all_original_conditions_and_unique_check_ids(self):
+        migrations, original = self.checks()
+        forward = load_behavior_sidecars(REPO, migrations, ["20261007000937"])
+        self.assertEqual(len(forward), 12)
+        self.assertEqual({c["id"] for c in original} & {c["id"] for c in forward}, set())
+        def conditions(checks):
+            return [{k: v for k, v in c.items() if k not in ("id", "migration_version", "version", "migration_sha256")} for c in checks]
+        self.assertEqual(conditions(original), conditions(forward))
 
 
 if __name__ == "__main__":

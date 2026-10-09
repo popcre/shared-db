@@ -13,6 +13,9 @@ import { fileURLToPath } from 'node:url'
 import {
   baseCompareSpec,
   extractObjects,
+  extractOperations,
+  dispatchObjectKeys,
+  roleReadKeys,
   findCollisions,
   formatReport,
   normalizeSql,
@@ -152,12 +155,13 @@ test('the base-branch compare uses the MERGE BASE, not pull_request.base.sha', (
 })
 
 test('compare and fallback must name the exact same complete file set', () => {
+  const fallback = [{ filename: 'docs/x.md' }, { filename: 'supabase/migrations/a.sql' }]
   assert.deepEqual(
     validateBaseFileAgreement(
       [{ filename: 'supabase/migrations/a.sql' }, { filename: 'docs/x.md' }],
-      [{ filename: 'docs/x.md' }, { filename: 'supabase/migrations/a.sql' }],
+      fallback,
     ),
-    ['docs/x.md', 'supabase/migrations/a.sql'],
+    fallback,
   )
 })
 
@@ -166,6 +170,29 @@ test('fails closed when fallback is incomplete or mismatched', () => {
     [{ filename: 'supabase/migrations/a.sql' }, { filename: 'supabase/migrations/b.sql' }],
     [{ filename: 'supabase/migrations/a.sql' }],
   ), /disagree/)
+})
+
+// GitHub Compare silently truncates `files` at 300. A stale pull request whose
+// base has moved past that cap used to fail closed with "disagree" and then
+// perform NO collision checking at all (PR #2835). The proven-complete
+// commit-graph fallback must win in that case.
+test('a Compare list truncated at the file cap defers to the complete fallback', () => {
+  const fallback = Array.from({ length: 301 }, (_, i) => ({ filename: `f${i}.md` }))
+  const truncatedCompare = fallback.slice(0, 300) // GitHub's silent cap
+  assert.deepEqual(validateBaseFileAgreement(truncatedCompare, fallback), fallback)
+})
+
+test('under-cap subset is still a real disagreement, not truncation', () => {
+  assert.throws(() => validateBaseFileAgreement(
+    [{ filename: 'a.md' }],
+    [{ filename: 'a.md' }, { filename: 'b.md' }],
+  ), /disagree/)
+})
+
+test('at-cap non-subset is still a real disagreement', () => {
+  const compare = Array.from({ length: 300 }, (_, i) => ({ filename: `c${i}.md` }))
+  const fallback = [...Array.from({ length: 299 }, (_, i) => ({ filename: `c${i}.md` })), { filename: 'other.md' }]
+  assert.throws(() => validateBaseFileAgreement(compare, fallback), /disagree/)
 })
 
 test('fallback binds the exact pull request, base, and head identities', () => {
@@ -372,4 +399,133 @@ test('merge collisions use broad claim identities for create/alter table', () =>
     { label: 'B', files: [{ path: 'b.sql', sql: 'alter table core.thing add column x int;' }] },
   ])
   assert.deepEqual(result.collisions.map((x) => x.object), ['table core.thing'])
+})
+
+// --- issue #3183: real PR #2835 statement shapes ---------------------------
+test('#3183: "--" inside a comment literal does not hide the grants after it', async () => {
+  const { extractOperations } = await import('./check-pr-object-collisions.mjs')
+  const sql = `create view api.licensing_resolution_queue with (security_invoker = true) as select 1 as n;
+
+comment on view api.licensing_resolution_queue is
+  'Audited licensing resolution backlog. '
+  'Aggregate only -- it exposes no source identifier and no row content, so it stays readable '
+  'policies, so the counts a caller sees are the counts that caller is entitled to see.';
+
+revoke all on api.licensing_resolution_queue from public, anon;
+grant select on api.licensing_resolution_queue to authenticated, service_role;
+`
+  const ops = extractOperations(sql).map((o) => `${o.action} ${o.kind} ${o.target}`)
+  assert.ok(ops.includes('grant view api.licensing_resolution_queue'), ops.join('\n'))
+  // The migration creates the name as a view, so the table half is dropped.
+  assert.ok(!ops.includes('grant table api.licensing_resolution_queue'), ops.join('\n'))
+})
+
+test('#3183: a keyword-less grant on a view collides with the view key', async () => {
+  const { extractOperations } = await import('./check-pr-object-collisions.mjs')
+  const sql = `create view api.licensing_entity_candidates with (security_invoker = true) as select 1 as n;
+grant select on api.licensing_entity_candidates to authenticated, service_role;`
+  const ops = extractOperations(sql).map((o) => `${o.action} ${o.kind} ${o.target}`)
+  assert.ok(ops.includes('grant view api.licensing_entity_candidates'), ops.join('\n'))
+  // explicit non-table keywords keep their own kind only
+  const schemaOps = extractOperations('grant usage on schema api to anon;').map((o) => o.kind)
+  assert.deepEqual(schemaOps, ['schema'])
+})
+
+test('grant on a table created in the same migration is keyed as table only (PR #3190)', async () => {
+  const { extractOperations, dispatchObjectKeys } = await import('./check-pr-object-collisions.mjs')
+  const sql = `create table if not exists plm.sesame_submission_property_option (id bigint primary key);
+grant select on plm.sesame_submission_property_option to authenticated;
+grant insert on table plm.sesame_submission_property_option to service_role;`
+  const keys = dispatchObjectKeys(sql)
+  assert.ok(keys.includes('table plm.sesame_submission_property_option'), keys.join('\n'))
+  assert.ok(!keys.includes('view plm.sesame_submission_property_option'), keys.join('\n'))
+  assert.ok(extractOperations(sql).every((o) => !('relationGuess' in o)))
+})
+
+test('grant on a view created in the same migration stays a view write, not a table', async () => {
+  const { dispatchObjectKeys } = await import('./check-pr-object-collisions.mjs')
+  for (const create of ['create or replace view', 'create materialized view']) {
+    const keys = dispatchObjectKeys(`${create} api.v1 as select 1;
+grant select on api.v1 to anon;
+grant select on table api.v1 to authenticated;`)
+    assert.ok(keys.includes('view api.v1'), keys.join('\n'))
+    assert.ok(!keys.includes('table api.v1'), keys.join('\n'))
+  }
+  // with no CREATE in the migration the kind stays unknown: both keys remain
+  const bare = dispatchObjectKeys('grant select on api.unknown_rel to anon;')
+  assert.ok(bare.includes('view api.unknown_rel') && bare.includes('table api.unknown_rel'), bare.join('\n'))
+})
+
+test('#3183: comment stripping still removes real comments and keeps literals', async () => {
+  const { normalizeSql } = await import('./check-pr-object-collisions.mjs')
+  assert.equal(normalizeSql("select 'a -- b' -- gone\n/* x */ , 'it''s';").trim(), "select 'a -- b' , 'it''s';")
+  assert.equal(normalizeSql("do $$ begin -- don't\n perform 1; end $$;").includes("don't"), false)
+})
+
+
+test('role writes collide across CREATE ALTER DROP rename and membership in the real parser', () => {
+  const source = (label, sql) => ({label, files:[{path: `${label}.sql`, sql}]})
+  for (const sql of ['ALTER ROLE worker NOLOGIN;', 'DROP ROLE worker;', 'ALTER ROLE other RENAME TO worker;', 'GRANT worker TO recipient;', 'REVOKE worker FROM recipient;']) {
+    assert.equal(findCollisions([source('A', 'CREATE ROLE worker;'), source('B', sql)]).collisions.some((item) => item.object === 'role worker'), true, sql)
+  }
+  assert.deepEqual(dispatchObjectKeys('GRANT a TO b;'), ['role a', 'role b'])
+  assert.deepEqual(extractObjects('CREATE ROLE "Case";'), ['role "Case"'])
+  assert.ok(extractOperations('DROP ROLE worker;').some((op) => op.kind === 'role' && op.action === 'drop' && op.target === 'worker'))
+  assert.equal(findCollisions([source('A', 'CREATE ROLE "Case";'), source('B', 'CREATE ROLE case;')]).collisions.length, 0)
+})
+
+test('role ownership is a read dependency: reader pairs proceed and any competing role write blocks', () => {
+  const source = (label, sql) => ({label, files:[{path:`${label}.sql`, sql}]})
+  const first = source('A', 'ALTER FUNCTION core.first() OWNER TO "Shared Role";')
+  const second = source('B', 'ALTER FUNCTION core.second() OWNER TO "Shared Role";')
+  assert.deepEqual(roleReadKeys(first.files[0].sql), ['role "Shared Role"'])
+  assert.ok(!dispatchObjectKeys(first.files[0].sql).includes('role "Shared Role"'))
+  assert.equal(findCollisions([first, second]).collisions.length, 0)
+  const third = source('C', 'DROP ROLE "Shared Role";')
+  assert.equal(findCollisions([first, second, third], 'A').collisions[0].object, 'role "Shared Role"')
+  assert.equal(findCollisions([first, third], 'unrelated').collisions.length, 0)
+  assert.equal(findCollisions([first, third], 'unrelated').bystanderCollisions.length, 1)
+})
+
+test('membership grantor reads block competing role writes while separate grant pairs proceed', () => {
+  const source = (label, sql) => ({ label, files: [{ path: `${label}.sql`, sql }] })
+  const first = source('A', 'GRANT a TO b WITH SET FALSE GRANTED BY "Grantor Role";')
+  const second = source('B', 'REVOKE c FROM d GRANTED BY "Grantor Role";')
+  assert.deepEqual(roleReadKeys(first.files[0].sql), ['role "Grantor Role"'])
+  assert.deepEqual(dispatchObjectKeys(first.files[0].sql), ['role a', 'role b'])
+  assert.equal(findCollisions([first, second]).collisions.length, 0)
+  assert.equal(findCollisions([first, source('C', 'DROP ROLE "Grantor Role";')]).collisions[0].object, 'role "Grantor Role"')
+  assert.deepEqual(roleReadKeys(`DO $$ BEGIN EXECUTE '${first.files[0].sql}'; END $$;`), ['role "Grantor Role"'])
+})
+
+test('integrated role parser refuses unsupported full names and preserves quoted command words', () => {
+  for (const sql of ['GRANT a TO bé;', 'ALTER GROUP a ADD USER bé;', 'CREATE SCHEMA s AUTHORIZATION bé;']) {
+    assert.throws(() => dispatchObjectKeys(sql), /exact supported identifier/)
+    assert.throws(() => roleReadKeys(sql), /exact supported identifier/)
+  }
+  assert.deepEqual(dispatchObjectKeys('CREATE ROLE "ALTER ROLE ALL";'), ['role "ALTER ROLE ALL"'])
+  const sources = ['CREATE ROLE "ALTER ROLE ALL";', 'DROP ROLE "ALTER ROLE ALL";'].map((sql, i) => ({ label: String(i), files: [{ path: `${i}.sql`, sql }] }))
+  assert.equal(findCollisions(sources).collisions[0].object, 'role "ALTER ROLE ALL"')
+})
+
+test('real collision extraction refuses unresolved dynamic role statements', () => {
+  assert.throws(() => dispatchObjectKeys("DO $$ BEGIN EXECUTE format('CREATE ROLE %I', name); END $$;"), /dynamic role/)
+  assert.throws(() => findCollisions([{label:'A',files:[{path:'A.sql',sql:"DO $$ BEGIN EXECUTE 'alter ' || 'role ' || name; END $$;"}]}]), /dynamic role/)
+})
+
+
+test('quoted keyword role identities survive the whole-object keyword filter', () => {
+  for (const role of ['all','table','if','view','only']) {
+    assert.deepEqual(dispatchObjectKeys(`CREATE ROLE "${role}";`), [`role ${role}`])
+    assert.deepEqual(dispatchObjectKeys(`ALTER ROLE "${role}" NOLOGIN;`), [`role ${role}`])
+    assert.equal(findCollisions([{label:'A',files:[{path:'A.sql',sql:`CREATE ROLE "${role}";`}]},{label:'B',files:[{path:'B.sql',sql:`DROP ROLE "${role}";`}]}]).collisions[0].object, `role ${role}`)
+  }
+})
+
+test('integrated collision extraction refuses membership between implicit actors', () => {
+  for (const sql of ['GRANT CURRENT_USER TO SESSION_USER;', 'REVOKE CURRENT_ROLE FROM SESSION_USER;', "DO $$ BEGIN EXECUTE 'GRANT CURRENT_USER TO SESSION_USER;'; END $$;"]) {
+    assert.throws(() => dispatchObjectKeys(sql), /implicit or reserved/)
+    assert.throws(() => roleReadKeys(sql), /implicit or reserved/)
+    assert.throws(() => findCollisions([{label: 'A', files: [{path: 'A.sql', sql}]}]), /implicit or reserved/)
+  }
 })

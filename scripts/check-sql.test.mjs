@@ -14,7 +14,7 @@
 
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -1039,4 +1039,382 @@ test('verify-cost guard sees a quoted LANGUAGE name on a DO block', () => {
     assert.notEqual(result.status, 0)
     assert.match(result.stderr, /reads a plm object/)
   })
+})
+
+// Issue #3280 governed review (grok-4.6): a merge_group run checks out the queue
+// group commit SHA, so no origin/<base> remote tracking ref is created even at
+// fetch-depth: 0. The EOL guard used to hard-fail there. It must now fetch the
+// base branch explicitly, and must still fail closed when nothing can resolve it.
+function makeDetachedCheckoutRepo() {
+  const dir = mkdtempSync(path.join(tmpdir(), 'check-sql-mq-'))
+  const upstream = path.join(dir, 'upstream.git')
+  const work = path.join(dir, 'work')
+  const git = (cwd, ...args) => spawnSync('git', args, { cwd, encoding: 'utf8' })
+  spawnSync('git', ['init', '--bare', '-b', 'main', upstream], { encoding: 'utf8' })
+  spawnSync('git', ['init', '-b', 'main', work], { encoding: 'utf8' })
+  mkdirSync(path.join(work, 'scripts'), { recursive: true })
+  mkdirSync(path.join(work, 'supabase', 'migrations'), { recursive: true })
+  writeFileSync(path.join(work, 'supabase/migrations/20260101000000_seed.sql'), ['-- seed','select 1;',''].join(String.fromCharCode(10)))
+  cpSync(path.join(repoRoot, 'scripts'), path.join(work, 'scripts'), { recursive: true })
+  git(work, 'config', 'user.email', 'test@example.com')
+  git(work, 'config', 'user.name', 'test')
+  git(work, 'add', '-A')
+  git(work, 'commit', '-m', 'seed')
+  git(work, 'remote', 'add', 'origin', toBashPath(upstream))
+  git(work, 'push', 'origin', 'main')
+  const head = git(work, 'rev-parse', 'HEAD').stdout.trim()
+  // Reproduce the merge_group checkout: detached at a SHA, with every
+  // origin/* remote tracking ref removed. The objects are present; the ref is not.
+  git(work, 'checkout', '--detach', head)
+  git(work, 'branch', '-D', 'main')
+  git(work, 'update-ref', '-d', 'refs/remotes/origin/main')
+  return { dir, work }
+}
+
+function runEolGuardIn(work, env = {}) {
+  return spawnSync(bashCommand, ['scripts/check-sql.sh'], {
+    cwd: work,
+    encoding: 'utf8',
+    env: { ...process.env, CHECK_SQL_MIGRATIONS_ONLY: '1', GITHUB_BASE_REF: '', ...env },
+  })
+}
+
+test('issue 3280 EOL guard fetches the base branch when no origin/main ref exists', () => {
+  const { dir, work } = makeDetachedCheckoutRepo()
+  try {
+    const result = runEolGuardIn(work)
+    assert.ok(
+      !String(result.stderr).includes('EOL guard cannot resolve base'),
+      `EOL guard should have fetched the base branch, stderr was: ${result.stderr}`,
+    )
+    // Round 2 (muse-spark-1.3-contributor): asserting only the ABSENCE of the
+    // error string would pass if the guard died for some other reason. Assert
+    // the run actually succeeded.
+    assert.equal(result.status, 0, `guards should have passed, stderr was: ${result.stderr}`)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('issue 3280 EOL guard still fails closed when the base cannot be fetched at all', () => {
+  const { dir, work } = makeDetachedCheckoutRepo()
+  try {
+    spawnSync('git', ['remote', 'remove', 'origin'], { cwd: work, encoding: 'utf8' })
+    const result = runEolGuardIn(work)
+    assert.ok(
+      String(result.stderr).includes('EOL guard cannot resolve base'),
+      `EOL guard should have failed closed, stderr was: ${result.stderr}`,
+    )
+    assert.notEqual(result.status, 0)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// PG* env transport (issue #3944): the connection URI must NEVER appear in
+// psql's process argv.  These tests stub psql on PATH and capture its argv +
+// environment to prove the URL stays out of argv and the PG* variables carry
+// the connection target instead.
+// ---------------------------------------------------------------------------
+
+function makePsqlStubDir() {
+  const dir = mkdtempSync(path.join(tmpdir(), 'psql-stub-'))
+  const capture = path.join(dir, 'capture.txt')
+  // A shell stub (works under Git Bash on Windows and plain bash on Linux)
+  // that records its argv and the PG* environment, then succeeds.
+  const stub = `#!/usr/bin/env bash
+{
+  echo "ARGV: $*"
+  echo "PGHOST=\${PGHOST:-}"
+  echo "PGPORT=\${PGPORT:-}"
+  echo "PGUSER=\${PGUSER:-}"
+  echo "PGPASSWORD=\${PGPASSWORD:-}"
+  echo "PGDATABASE=\${PGDATABASE:-}"
+  echo "PGSSLMODE=\${PGSSLMODE:-}"
+} > "${toBashPath(capture)}"
+exit 0
+`
+  writeFileSync(path.join(dir, 'psql'), stub, { mode: 0o755 })
+  return { dir, capture }
+}
+
+function runGuardsWithPsqlStub(migrationsDir, env) {
+  const { dir: stubDir, capture } = makePsqlStubDir()
+  try {
+    const childEnv = {
+      ...process.env,
+      CHECK_SQL_MIGRATIONS_ONLY: '1',
+      PATH: `${stubDir}${path.delimiter}${process.env.PATH}`,
+      ...env,
+    }
+    if (migrationsDir) childEnv.CHECK_SQL_MIGRATION_DIR = toBashPath(migrationsDir)
+    // Provide a fake base-versions file so Guard B2 scope is known and the
+    // ledger query path is exercised.
+    const baseFile = path.join(stubDir, 'base-versions.txt')
+    writeFileSync(baseFile, '20260101000000\n')
+    childEnv.CHECK_SQL_BASE_VERSIONS = toBashPath(baseFile)
+    childEnv.CHECK_SQL_MAIN_NEWEST = '20260101000000'
+
+    const result = spawnSync(bashCommand, ['scripts/check-sql.sh'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      env: childEnv,
+    })
+    const captured = existsSync(capture) ? readFileSync(capture, 'utf8') : ''
+    return { status: result.status, stderr: result.stderr ?? '', captured }
+  } finally {
+    rmSync(stubDir, { recursive: true, force: true })
+  }
+}
+
+test('pg_url_to_env: URL never appears in psql argv; PG* env carries the target', () => {
+  withFixture(
+    ['20260301120000_a.sql', '20260301130000_b.sql'],
+    (dir) => {
+      const secretUrl = 'postgresql://admin:s3cretpass@db.example.com:5432/ledgerdb'
+      const { captured, status, stderr } = runGuardsWithPsqlStub(dir, {
+        CHECK_SQL_PREVIEW_DB_URL: secretUrl,
+      })
+      assert.ok(captured.length > 0, `psql stub should have been invoked. stderr:\n${stderr}`)
+      // Split capture: ARGV line vs PG* env lines.
+      const argvLine = captured.split('\n').find(l => l.startsWith('ARGV:')) ?? ''
+      assert.ok(
+        !argvLine.includes('s3cretpass'),
+        `password must never appear in psql argv:\n${argvLine}`,
+      )
+      assert.ok(
+        !argvLine.includes('postgresql://'),
+        `connection URI must never appear in psql argv:\n${argvLine}`,
+      )
+      assert.ok(
+        !argvLine.includes('db.example.com'),
+        `host must not appear in psql argv (use PGHOST env):\n${argvLine}`,
+      )
+      // PG* env must carry the full connection target.
+      assert.match(captured, /PGHOST=db\.example\.com/)
+      assert.match(captured, /PGPORT=5432/)
+      assert.match(captured, /PGUSER=admin/)
+      assert.match(captured, /PGPASSWORD=s3cretpass/)
+      assert.match(captured, /PGDATABASE=ledgerdb/)
+    },
+  )
+})
+
+test('pg_url_to_env: DATABASE_URL migration path uses PG* env, not argv', () => {
+  const { dir: stubDir, capture } = makePsqlStubDir()
+  try {
+    // Build a minimal fixture with the four required files.
+    const migDir = path.join(stubDir, 'migrations')
+    mkdirSync(migDir, { recursive: true })
+    const required = [
+      '20260621150714_foundation.sql',
+      '20260621150815_app_core.sql',
+      '20260621151024_domain_tables.sql',
+      '20260621151155_api_rls_realtime.sql',
+    ]
+    writeFileSync(path.join(migDir, required[0]), 'create schema if not exists app;\n')
+    writeFileSync(path.join(migDir, required[1]), 'create table core.company (id int);\n')
+    writeFileSync(path.join(migDir, required[2]), 'create table pim.product (id int);\n')
+    writeFileSync(path.join(migDir, required[3]), [
+      'create or replace view api.pm_product_board as select 1;',
+      'enable row level security;',
+    ].join('\n'))
+
+    const baseFile = path.join(stubDir, 'base-versions.txt')
+    writeFileSync(baseFile, '20260101000000\n')
+
+    const childEnv = {
+      ...process.env,
+      PATH: `${stubDir}${path.delimiter}${process.env.PATH}`,
+      CHECK_SQL_MIGRATION_DIR: toBashPath(migDir),
+      CHECK_SQL_BASE_VERSIONS: toBashPath(baseFile),
+      CHECK_SQL_MAIN_NEWEST: '20260101000000',
+      DATABASE_URL: 'postgresql://migrator:hunter2@disposable-db.test:6543/testdb',
+    }
+    const result = spawnSync(bashCommand, ['scripts/check-sql.sh'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      env: childEnv,
+    })
+    const captured = existsSync(capture) ? readFileSync(capture, 'utf8') : ''
+    assert.ok(captured.length > 0, `psql stub should have been invoked. stderr:\n${result.stderr}`)
+    const argvLine = captured.split('\n').find(l => l.startsWith('ARGV:')) ?? ''
+    assert.ok(
+      !argvLine.includes('hunter2'),
+      `password must never appear in psql argv:\n${argvLine}`,
+    )
+    assert.ok(
+      !argvLine.includes('postgresql://'),
+      `connection URI must never appear in psql argv:\n${argvLine}`,
+    )
+    // PG* env carries the connection target.
+    assert.match(captured, /PGHOST=disposable-db\.test/)
+    assert.match(captured, /PGPORT=6543/)
+    assert.match(captured, /PGUSER=migrator/)
+    assert.match(captured, /PGPASSWORD=hunter2/)
+    assert.match(captured, /PGDATABASE=testdb/)
+  } finally {
+    rmSync(stubDir, { recursive: true, force: true })
+  }
+})
+
+test('pg_url_to_env: ambient PGHOST is swept before applying the URL target', () => {
+  withFixture(
+    ['20260401120000_a.sql', '20260401130000_b.sql'],
+    (dir) => {
+      const { captured } = runGuardsWithPsqlStub(dir, {
+        CHECK_SQL_PREVIEW_DB_URL: 'postgresql://u:p@realhost:5432/db',
+        PGHOST: 'attacker-host',
+        PGPORT: '9999',
+      })
+      assert.ok(captured.length > 0, 'psql stub should have been invoked')
+      // The URL-declared target must win — ambient PG* must not redirect.
+      assert.match(captured, /PGHOST=realhost/)
+      assert.match(captured, /PGPORT=5432/)
+      assert.ok(!captured.includes('attacker-host'), `ambient PGHOST leaked through:\n${captured}`)
+    },
+  )
+})
+
+test('pg_url_to_env: stricter ambient PGSSLMODE survives when URL declares none', () => {
+  withFixture(
+    ['20260501120000_a.sql', '20260501130000_b.sql'],
+    (dir) => {
+      const { captured } = runGuardsWithPsqlStub(dir, {
+        CHECK_SQL_PREVIEW_DB_URL: 'postgresql://u:p@host:5432/db',
+        PGSSLMODE: 'verify-full',
+      })
+      assert.ok(captured.length > 0, 'psql stub should have been invoked')
+      assert.match(captured, /PGSSLMODE=verify-full/)
+    },
+  )
+})
+
+test('pg_url_to_env: URL-declared sslmode wins over ambient', () => {
+  withFixture(
+    ['20260601120000_a.sql', '20260601130000_b.sql'],
+    (dir) => {
+      const { captured } = runGuardsWithPsqlStub(dir, {
+        CHECK_SQL_PREVIEW_DB_URL: 'postgresql://u:p@host:5432/db?sslmode=require',
+        PGSSLMODE: 'verify-full',
+      })
+      assert.ok(captured.length > 0, 'psql stub should have been invoked')
+      assert.match(captured, /PGSSLMODE=require/)
+    },
+  )
+})
+
+test('pg_url_to_env: uppercase sslmode retains the declared TLS setting', () => {
+  withFixture(['20260601120000_a.sql', '20260601130000_b.sql'], (dir) => {
+    const { captured } = runGuardsWithPsqlStub(dir, {
+      CHECK_SQL_PREVIEW_DB_URL: 'postgresql://u:p@host:5432/db?SSLMODE=verify-full',
+    })
+    assert.match(captured, /PGSSLMODE=verify-full/)
+  })
+})
+
+test('pg_url_to_env: bracketed IPv6 host reaches PGHOST without brackets', () => {
+  withFixture(['20260601120000_a.sql', '20260601130000_b.sql'], (dir) => {
+    const { captured } = runGuardsWithPsqlStub(dir, {
+      CHECK_SQL_PREVIEW_DB_URL: 'postgresql://u:p@[::1]:5432/db',
+    })
+    assert.match(captured, /PGHOST=::1/)
+  })
+})
+
+test('pg_url_to_env: percent-encoded password is decoded', () => {
+  withFixture(
+    ['20260701120000_a.sql', '20260701130000_b.sql'],
+    (dir) => {
+      const { captured } = runGuardsWithPsqlStub(dir, {
+        CHECK_SQL_PREVIEW_DB_URL: 'postgresql://user:p%40ss@host:5432/db',
+      })
+      assert.ok(captured.length > 0, 'psql stub should have been invoked')
+      // p%40ss decodes to p@ss
+      assert.match(captured, /PGPASSWORD=p@ss/)
+    },
+  )
+})
+
+// #3907 exact byte-bound catalog proof additions retain the runtime EOL guard.
+test('3882 catalog evidence allowance accepts only exact new proof bytes', () => {
+  const assets = ['scripts/proofs/3882-contract.json','scripts/proofs/3882-production.sql','scripts/proofs/3882-sandbox.sql']
+  const blocks = assets.map(file => addedFileDiffText(file, readFileSync(path.join(repoRoot,file),'utf8').trimEnd().split('\n')).replace('\n--- /dev/null', '\nnew file mode 100644\n--- /dev/null'))
+  withFixture(['20260801120000_fixture.sql'], dir => {
+    const run = chunks => runGuards(dir,{mainNewest:'20260801100000',env:{CHECK_SQL_EOL_DIFF_FILE:toBashPath(makeMultiFileDiff(chunks))}})
+    assert.equal(run(blocks).status,0)
+    for (let i=0;i<blocks.length;i++) {
+      const changed = [...blocks];changed[i] += '+select * from core.properties_and_characters;\n'
+      assert.notEqual(run(changed).status,0,'altered proof bytes must refuse')
+      const existing = [...blocks];existing[i]=existing[i].replace('new file mode 100644\n','')
+      assert.notEqual(run(existing).status,0,'later edits must refuse')
+    }
+    assert.notEqual(run([...blocks,addedFileDiffText('apps/example/query.ts',['select * from core.properties_and_characters;'])]).status,0)
+  })
+})
+
+// The removal-only sandbox correction must never become a filename-only bypass.
+test('3890 exact removal transition permits its evidence but rejects changed bytes and unrelated dependencies', () => {
+  const file = 'supabase/migrations/20261006203846_move_designflow_sandbox_properties_to_dflow.sql'
+  const lines = readFileSync(path.join(repoRoot, file), 'utf8').trimEnd().split('\n')
+  withFixture(['20260801120000_fixture.sql'], dir => {
+    const transition = addedFileDiffText(file, lines).replace("\n--- /dev/null", "\nnew file mode 100644\n--- /dev/null")
+    const evidence = addedFileDiffText('.agent/work/3890/4/contract.json', ['{"db_writes":["table core.properties_and_characters"]}'])
+    const valid = runGuards(dir, {mainNewest:'20260801100000', env:{CHECK_SQL_EOL_DIFF_FILE:toBashPath(makeMultiFileDiff([transition,evidence]))}})
+    assert.equal(valid.status, 0, valid.stderr)
+    for (const chunks of [
+      [addedFileDiffText(file, [...lines, 'select * from core.properties_and_characters;']), evidence],
+      [transition, addedFileDiffText('apps/example/query.sql', ['select * from core.properties_and_characters;'])],
+      [evidence],
+    ]) {
+      const refused = runGuards(dir, {mainNewest:'20260801100000', env:{CHECK_SQL_EOL_DIFF_FILE:toBashPath(makeMultiFileDiff(chunks))}})
+      assert.notEqual(refused.status, 0)
+    }
+  })
+})
+
+// Forward reissue retains the exact-byte and complete-addition boundary.
+test('3890 forward transition admits exact new bytes only, preserving retired-reference refusal', () => {
+  const file = 'supabase/migrations/20261007000937_reissue_designflow_legacy_namespace_transition.sql'
+  const lines = readFileSync(path.join(repoRoot, file), 'utf8').trimEnd().split('\n')
+  const original = readFileSync(path.join(repoRoot, 'supabase/migrations/20261006203846_move_designflow_sandbox_properties_to_dflow.sql'), 'utf8')
+  assert.equal(lines.slice(2).join('\n') + '\n', original, 'executable transition must remain unchanged')
+  withFixture(['20260801120000_fixture.sql'], dir => {
+    const transition = addedFileDiffText(file, lines).replace("\n--- /dev/null", "\nnew file mode 100644\n--- /dev/null")
+    const evidence = addedFileDiffText('.agent/work/3890/6/contract.json', ['{"db_writes":["table core.properties_and_characters"]}'])
+    const run = chunks => runGuards(dir, {mainNewest:'20260801100000', env:{CHECK_SQL_EOL_DIFF_FILE:toBashPath(makeMultiFileDiff(chunks))}})
+    assert.equal(run([transition,evidence]).status, 0)
+    for (const chunks of [
+      [addedFileDiffText(file, [...lines, 'select * from core.properties_and_characters;']),evidence],
+      [transition.replace('new file mode 100644\n',''),evidence],
+      [transition.replace('--- /dev/null','--- a/'+file),evidence],
+      [transition,addedFileDiffText('apps/example/query.sql',['select * from core.properties_and_characters;'])],
+      [evidence],
+    ]) assert.notEqual(run(chunks).status, 0)
+  })
+})
+
+import { execFileSync } from 'node:child_process'
+test('protected SQL source validates actual PR SQL and never executes PR helper scripts',()=>{
+ const directory=mkdtempSync(path.join(process.env.TMPDIR??'/tmp','protected-sql-data-'))
+ const source=path.join(directory,'source'),data=path.join(directory,'data'),marker=path.join(directory,'executed')
+ const git=(root,args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim()
+ const init=root=>{mkdirSync(root,{recursive:true});git(root,['init','-q']);git(root,['config','user.name','Test']);git(root,['config','user.email','test@example.invalid'])}
+ try {
+  init(source);cpSync(path.join(repoRoot,'scripts'),path.join(source,'scripts'),{recursive:true});git(source,['add','scripts']);git(source,['commit','-qm','trusted source']);const sourceSha=git(source,['rev-parse','HEAD'])
+  init(data);mkdirSync(path.join(data,'supabase/migrations'),{recursive:true});writeFileSync(path.join(data,'supabase/migrations/20260101000000_initial.sql'),'select 1;');for(const name of ['20260621150714_foundation.sql','20260621150815_app_core.sql','20260621151024_domain_tables.sql','20260621151155_api_rls_realtime.sql'])cpSync(path.join(repoRoot,'supabase/migrations',name),path.join(data,'supabase/migrations',name));git(data,['add','.']);git(data,['commit','-qm','base']);git(data,['update-ref','refs/remotes/origin/main','HEAD'])
+  mkdirSync(path.join(data,'scripts'));for(const name of ['check-expected-count-patterns.mjs','check-migration-verify-cost.mjs','historical-migration-restorations.mjs'])writeFileSync(path.join(data,'scripts',name),`require('node:fs').writeFileSync(${JSON.stringify(marker)},'executed')`)
+  writeFileSync(path.join(data,'supabase/migrations/20271101000000_bad.sql'),"select (v_expected_counts ->> 'rows')::integer;\n");git(data,['add','.']);git(data,['commit','-qm','bad PR data'])
+  const result=spawnSync(bashCommand,[path.join(source,'scripts/check-sql.sh'),'--data-root',data,'--head-sha',git(data,['rev-parse','HEAD']),'--source-sha',sourceSha],{cwd:data,encoding:'utf8',env:{...process.env,GITHUB_BASE_REF:'main',DATABASE_URL:''}})
+  assert.notEqual(result.status,0,result.stdout+result.stderr)
+  assert.match(result.stdout+result.stderr,/expected_counts text is cast directly to an integer/)
+  assert.equal(existsSync(marker),false,'PR executable was run')
+  writeFileSync(path.join(data,'supabase/migrations/20271101000000_bad.sql'),'select 1;\n');git(data,['add','.']);git(data,['commit','-qm','valid PR SQL'])
+  const valid=spawnSync(bashCommand,[path.join(source,'scripts/check-sql.sh'),'--data-root',data,'--head-sha',git(data,['rev-parse','HEAD']),'--source-sha',sourceSha],{cwd:data,encoding:'utf8',env:{...process.env,GITHUB_BASE_REF:'main',DATABASE_URL:''}})
+  assert.equal(valid.status,0,valid.stdout+valid.stderr)
+  assert.equal(existsSync(marker),false,'PR executable was run for valid data')
+  assert.equal(git(source,['status','--porcelain']),'','protected source was mutated')
+  assert.equal(git(source,['rev-parse','HEAD']),sourceSha)
+ } finally {rmSync(directory,{recursive:true,force:true})}
 })

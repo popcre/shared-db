@@ -98,6 +98,7 @@
 //     lines (`create or\nreplace function`) is handled by whitespace
 //     normalisation, but a determined author can still hide DDL from it.
 
+import { extractRoleOperations, roleCollisionKeys } from './lib/sql-role-operations.mjs'
 import { execFileSync } from 'node:child_process'
 import { runGitHubCommand } from './lib/github-transport.mjs'
 import { createTreeReader } from './lib/github-tree.mjs'
@@ -127,13 +128,61 @@ function pathPrefix(env = process.env) {
  * Note the deliberate absence of a `$` anchor in the line-comment regex.
  */
 export function normalizeSql(sql) {
-  return String(sql)
-    .replace(/\r\n?/g, '\n') // CRLF -> LF first (backlog item B1)
-    .replace(/\/\*[\s\S]*?\*\//g, ' ') // block comments
-    .split('\n')
-    .map((line) => line.replace(/--.*/, '')) // line comments, unanchored
-    .join('\n')
+  return stripSqlComments(String(sql).replace(/\r\n?/g, '\n')) // CRLF -> LF first (backlog item B1)
     .replace(/\s+/g, ' ')
+}
+
+/**
+ * Remove `--` and block comments, but never inside a single-quoted literal
+ * (issue #3183). Stripping `--` blindly cut the closing quote off
+ * `comment on view ... is '... Aggregate only -- it exposes ...'`, which
+ * unbalanced quote pairing and hid the grants that followed. Inside a
+ * dollar-quoted body comments are still stripped (an apostrophe in a body
+ * comment must not unbalance quotes either) and quotes are not tracked.
+ */
+function stripSqlComments(sql) {
+  let out = ''
+  let i = 0
+  let dollarTag = null
+  while (i < sql.length) {
+    const ch = sql[i]
+    if (ch === '-' && sql[i + 1] === '-') {
+      const nl = sql.indexOf('\n', i)
+      i = nl === -1 ? sql.length : nl
+      continue
+    }
+    if (ch === '/' && sql[i + 1] === '*') {
+      const end = sql.indexOf('*/', i + 2)
+      out += ' '
+      i = end === -1 ? sql.length : end + 2
+      continue
+    }
+    if (ch === '$') {
+      const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(i, i + 64))
+      if (m && (dollarTag === null || m[0] === dollarTag)) {
+        dollarTag = dollarTag === null ? m[0] : null
+        out += m[0]
+        i += m[0].length
+        continue
+      }
+    }
+    if (ch === "'" && dollarTag === null) {
+      let j = i + 1
+      while (j < sql.length) {
+        if (sql[j] === "'") {
+          if (sql[j + 1] === "'") { j += 2; continue }
+          break
+        }
+        j++
+      }
+      out += sql.slice(i, j + 1)
+      i = j + 1
+      continue
+    }
+    out += ch
+    i++
+  }
+  return out
 }
 
 const IDENT = String.raw`(?:"(?:[^"]|"")+"|[A-Za-z_][A-Za-z0-9_$]*)`
@@ -331,6 +380,7 @@ export function extractObjects(sql) {
       }
     }
   }
+  for (const key of roleCollisionKeys(sql)) found.add(key)
   return [...found].sort()
 }
 
@@ -406,10 +456,10 @@ const DISPATCH_PATTERNS = [
   {
     kinds: ['table'],
     re: new RegExp(
-      String.raw`\bdrop\s+table\s+(?:if\s+exists\s+)?(${QUALIFIED})`,
+      String.raw`\bdrop\s+table\s+(?:if\s+exists\s+)?(${QUALIFIED}(?:\s*,\s*${QUALIFIED})*)`,
       'gi',
     ),
-    map: (m) => [{ action: 'drop', kind: 'table', target: canonical(m[1]) }],
+    map: (m) => [...m[1].matchAll(new RegExp(QUALIFIED,'g'))].map((target) => ({ action:'drop', kind:'table', target:canonical(target[0]) })),
   },
   {
     // `alter table` in ALL its forms. Per plan D9 this is TABLE-level: every
@@ -502,7 +552,7 @@ const DISPATCH_PATTERNS = [
     // TABLE, so its absence means table -- but `on schema`, `on sequence`,
     // `on function` must keep their own kind or a grant on a schema would
     // collide with a table of the same name.
-    kinds: ['grant', 'table', 'sequence', 'schema', 'function', 'procedure', 'type'],
+    kinds: ['grant', 'table', 'view', 'sequence', 'schema', 'function', 'procedure', 'type'],
     re: new RegExp(
       // The two negative lookaheads are both real defects found by replaying
       // this parser over 400 merged pull requests:
@@ -530,8 +580,14 @@ const DISPATCH_PATTERNS = [
       const raw = (m[1] || 'table').toLowerCase()
       // `routine` is Postgres's umbrella for function+procedure; a grant
       // written either way must collide with the other.
-      const kinds = raw === 'routine' ? ['function', 'procedure'] : [raw === 'domain' ? 'type' : raw]
-      return kinds.map((kind) => ({ action: 'grant', kind, target }))
+      // With no keyword Postgres applies the grant to a table OR a view (issue
+      // #3183), so key it as both or it never collides with work on the view.
+      const kinds = raw === 'routine' ? ['function', 'procedure']
+        : !m[1] || raw === 'table' ? ['table', 'view']
+          : [raw === 'domain' ? 'type' : raw]
+      // `relationGuess` marks the table-or-view pair so extractOperations can
+      // drop the half the same migration's own CREATE rules out (see there).
+      return kinds.map((kind) => ({ action: 'grant', kind, target, ...(kinds.length === 2 && kind !== 'function' ? { relationGuess: true } : {}) }))
     },
   },
   {
@@ -702,9 +758,11 @@ export function extractOperations(sql) {
   while ((temporaryMatch = temporaryCreate.exec(text)) !== null) {
     temporaryEvents.push({ offset: temporaryMatch.index, action: 'create', target: canonical(temporaryMatch[1]) })
   }
-  const tableDrop = new RegExp(String.raw`\bdrop\s+table\s+(?:if\s+exists\s+)?(${QUALIFIED})`, 'gi')
+  const tableDrop = new RegExp(String.raw`\bdrop\s+table\s+(?:if\s+exists\s+)?(${QUALIFIED}(?:\s*,\s*${QUALIFIED})*)`, 'gi')
   while ((temporaryMatch = tableDrop.exec(text)) !== null) {
-    temporaryEvents.push({ offset: temporaryMatch.index, action: 'drop', target: canonical(temporaryMatch[1]) })
+    for(const target of temporaryMatch[1].matchAll(new RegExp(QUALIFIED,'g'))){
+      temporaryEvents.push({ offset:temporaryMatch.index, action:'drop', target:canonical(target[0]) })
+    }
   }
   temporaryEvents.sort((a,b)=>a.offset-b.offset)
   const liveTemporaryTables=new Set(),temporaryCleanupOffsets=new Set()
@@ -719,7 +777,7 @@ export function extractOperations(sql) {
     'sequence', 'sequences', 'view', 'schema', 'index', 'if', 'as', 'only', 'exists', 'all'])
   const add = (op, sourceOffset = -1) => {
     if (!op.target) return
-    if (KEYWORDS.has(op.target)) return
+    if (op.kind !== 'role' && KEYWORDS.has(op.target)) return
     // PostgreSQL spells cleanup as plain `DROP TABLE`; there is no DROP TEMP
     // form. When the same migration created that name as a temporary table
     // earlier, the drop removes session-local scratch rather than a shared
@@ -745,10 +803,65 @@ export function extractOperations(sql) {
     }
   }
 
+  const multiDrop = new RegExp(String.raw`\bdrop\s+(materialized\s+view|function|procedure|view|index|type|domain|schema|sequence)\s+(?:concurrently\s+)?(?:if\s+exists\s+)?([^;]+)`, 'gi')
+  const splitTargets = (value) => {
+    const targets=[];let start=0,depth=0,quoted=false
+    for(let index=0;index<value.length;index++){
+      const char=value[index]
+      if(char==='"')quoted=!quoted
+      else if(!quoted&&char==='(')depth++
+      else if(!quoted&&char===')')depth=Math.max(0,depth-1)
+      else if(!quoted&&depth===0&&char===','){targets.push(value.slice(start,index));start=index+1}
+    }
+    targets.push(value.slice(start));return targets
+  }
+  let multiMatch
+  while((multiMatch=multiDrop.exec(text))!==null){
+    const parts=splitTargets(multiMatch[2].replace(/\s+(?:cascade|restrict)\s*$/i,''))
+    if(parts.length<2)continue
+    const rawKind=multiMatch[1].toLowerCase().replace(/\s+/g,' '),kind=rawKind==='domain'?'type':rawKind
+    for(const part of parts){
+      const target=new RegExp(String.raw`^\s*(${QUALIFIED})`,'i').exec(part)
+      if(target)add({action:'drop',kind,target:canonical(target[1])},multiMatch.index)
+    }
+  }
+
   for (const { re, map } of DISPATCH_PATTERNS) {
     re.lastIndex = 0
     let m
     while ((m = re.exec(text)) !== null) for (const op of map(m)) add(op, m.index)
+  }
+
+  // A keyword-less (or `on table`) grant is keyed as BOTH table and view
+  // (#3183) because the text alone cannot say which the name is. When this
+  // same migration CREATES the name, its kind is known: keep only that half,
+  // or a claim that correctly declares `table x` is refused for an undeclared
+  // `view x`. With no CREATE here (or a name created as both), keep both.
+  const createdKinds = new Map()
+  const noteCreated = (re, kind) => {
+    re.lastIndex = 0
+    let c
+    while ((c = re.exec(text)) !== null) {
+      const target = canonical(c[1])
+      if (!createdKinds.has(target)) createdKinds.set(target, new Set())
+      createdKinds.get(target).add(kind)
+    }
+  }
+  noteCreated(new RegExp(String.raw`\bcreate\s+(?:global\s+|local\s+|unlogged\s+)*table\s+(?:if\s+not\s+exists\s+)?(${QUALIFIED})`, 'gi'), 'table')
+  noteCreated(new RegExp(String.raw`\bcreate\s+(?:or\s+replace\s+)?(?:temp\s+|temporary\s+)?(?:recursive\s+)?(?:materialized\s+)?view\s+(?:if\s+not\s+exists\s+)?(${QUALIFIED})`, 'gi'), 'view')
+  for (const op of [...seen.values()]) {
+    if (!op.relationGuess) continue
+    const kinds = createdKinds.get(op.target)
+    if (!kinds || kinds.size !== 1) continue
+    const other = kinds.has('table') ? 'view' : 'table'
+    seen.delete(`grant|${other}|${op.target}`)
+  }
+  for (const op of seen.values()) delete op.relationGuess
+  const roleResult = extractRoleOperations(sql)
+  for (const key of roleCollisionKeys(sql)) {
+    const target = key.slice(5)
+    const actions = roleResult.operations.filter((op) => op.target === target || op.from === target || op.to === target || op.members?.includes(target) || op.grantees?.includes(target))
+    for (const op of actions) add({ action: op.action, kind: 'role', target })
   }
 
   return [...seen.values()].sort((a, b) =>
@@ -764,6 +877,11 @@ export function extractOperations(sql) {
  * to a target collides with any other write to it, so `alter table core.x` and
  * `create table core.x` must produce the identical key `table core.x`.
  */
+export function roleReadKeys(sql) {
+  const { operations, ownershipDependencies } = extractRoleOperations(sql)
+  return [...new Set([...ownershipDependencies.map((dep) => `role ${dep.role}`), ...operations.filter((op) => op.grantor).map((op) => `role ${op.grantor}`)])].sort()
+}
+
 export function dispatchObjectKeys(sql) {
   return [...new Set(extractOperations(sql).map((op) => `${op.kind} ${op.target}`))].sort()
 }
@@ -775,7 +893,7 @@ export function dispatchObjectKeys(sql) {
  * @returns {{checked: string[], notChecked: string[], alterModelled: boolean}}
  */
 export function describeDispatchCoverage() {
-  const checked = new Set(PATTERNS.map((p) => p.kind))
+  const checked = new Set([...PATTERNS.map((p) => p.kind), 'role'])
   for (const entry of DISPATCH_PATTERNS) for (const kind of entry.kinds) checked.add(kind)
   return {
     checked: [...checked].sort(),
@@ -849,7 +967,7 @@ export function inventoryDdlVerbs(sqlTexts) {
 }
 
 /** Statement forms the patterns above DO handle but whose noun is not a kind name. */
-const DISPATCH_MODELLED_EXTRA_FORMS = new Set(['alter default privileges'])
+const DISPATCH_MODELLED_EXTRA_FORMS = new Set(['alter default privileges', 'create user', 'alter user', 'drop user', 'create group', 'alter group', 'drop group'])
 
 /**
  * Statement forms this parser knowingly does NOT model, each with the reason.
@@ -876,12 +994,6 @@ export const DISPATCH_UNMODELLED_FORMS = {
   'create publication':
     'Database-global Supabase realtime plumbing, created once. Two agents creating ' +
     'the same publication is a hard error at apply time, not a silent overwrite.',
-  'alter role':
-    'Roles are cluster-global and managed by Supabase, not by this repo. A migration ' +
-    'touching one is already outside the object model this tool compares.',
-  'create role':
-    'Roles are cluster-global and provisioned by Supabase, not owned by this repo. ' +
-    'A migration creating one is outside the schema-object model compared here.',
   'create event': 'Event triggers are database-global, not schema objects.',
   'drop event':
     'Event triggers are database-global rather than schema objects, and the two in ' +
@@ -910,9 +1022,11 @@ export function findCollisions(sources, primaryLabel) {
   /** @type {Map<string, Map<string, Set<string>>>} object -> label -> files */
   const index = new Map()
   const objectsBySource = {}
+  const readsBySource = new Map()
 
   for (const source of sources) {
     const seen = new Set()
+    const reads = new Map()
     for (const file of source.files ?? []) {
       for (const object of dispatchObjectKeys(file.sql)) {
         seen.add(object)
@@ -921,10 +1035,26 @@ export function findCollisions(sources, primaryLabel) {
         if (!bySource.has(source.label)) bySource.set(source.label, new Set())
         bySource.get(source.label).add(file.path)
       }
+      for (const object of roleReadKeys(file.sql)) {
+        if (!reads.has(object)) reads.set(object, new Set())
+        reads.get(object).add(file.path)
+      }
     }
+    readsBySource.set(source.label, reads)
     objectsBySource[source.label] = [...seen].sort()
   }
 
+  // Readers never conflict with one another. Add a reader only where another
+  // source actually writes its role, preserving the existing write/read matrix.
+  for (const [label, reads] of readsBySource) {
+    for (const [object, files] of reads) {
+      const writers = index.get(object)
+      if (writers && [...writers.keys()].some((writer) => writer !== label)) {
+        if (!writers.has(label)) writers.set(label, new Set())
+        for (const file of files) writers.get(label).add(file)
+      }
+    }
+  }
   const collisions = []
   const bystanderCollisions = []
   for (const [object, bySource] of [...index.entries()].sort()) {
@@ -1026,14 +1156,39 @@ function ghJson(args) {
   }
 }
 
+// GitHub's Compare REST API silently truncates `files` (observed cap: 300)
+// and `commits` (observed cap: 250) with no truncation flag, and pagination
+// does not recover the rest (`?page=2` returns zero files). Confirmed live
+// 2026-09-25 on popcre/shared-db: `<stale-pr-head>...main` returned exactly
+// 300 files while `git diff --name-only <merge-base> main` listed 384.
+//
+// Requiring exact agreement with a list GitHub has silently cut off makes this
+// guard fail closed on every pull request whose base has moved by more than the
+// cap -- which is every stale pull request -- and then it performs NO collision
+// checking at all. That is the opposite of the capability we need. When Compare
+// is a strict subset of the proven-complete commit-graph fallback, Compare is
+// incomplete and the fallback is the complete list; anything else is a real
+// disagreement and still fails closed.
+export const COMPARE_FILES_CAP = 300
+
 export function validateBaseFileAgreement(compareFiles, fallbackFiles) {
   const names = (files) => [...new Set(files.map((file) => file.filename ?? file.path))].sort()
   const primary = names(compareFiles)
   const fallback = names(fallbackFiles)
-  if (JSON.stringify(primary) !== JSON.stringify(fallback)) {
-    throw new Skip(`Compare and commit-graph fallback disagree (${primary.join(', ')} != ${fallback.join(', ')})`)
-  }
-  return fallback
+  if (JSON.stringify(primary) === JSON.stringify(fallback)) return fallbackFiles
+  const fallbackSet = new Set(fallback)
+  const primarySet = new Set(primary)
+  const compareOnly = primary.filter((name) => !fallbackSet.has(name))
+  const fallbackOnly = fallback.filter((name) => !primarySet.has(name))
+  // Compare silently truncated at its file cap: it is at the cap, it only ever
+  // names files the complete fallback also names, and the fallback names more.
+  // Anything else is a real disagreement and must fail closed.
+  const compareTruncated =
+    primary.length >= COMPARE_FILES_CAP && compareOnly.length === 0 && fallbackOnly.length > 0
+  if (compareTruncated) return fallbackFiles
+  throw new Skip(
+    `Compare and commit-graph fallback disagree (Compare-only: ${compareOnly.join(', ') || 'none'}; commit-graph-only: ${fallbackOnly.join(', ') || 'none'})`,
+  )
 }
 
 export function validateFallbackIdentity(pr, liveBase, number, baseRef, headSha) {
@@ -1160,8 +1315,10 @@ function baseBranchSource(repo, number, baseRef, headSha) {
     compareFailed = true
   }
   const fallback = baseFilesFromCommitGraph(repo, number, baseRef, headSha)
-  if (!compareFailed) validateBaseFileAgreement(compare.files, fallback.files)
-  const files = (compareFailed ? fallback.files : compare.files).filter(isMigration)
+  // validateBaseFileAgreement returns the COMPLETE file list: Compare's when the
+  // two agree, the proven-complete commit-graph fallback when Compare is
+  // silently truncated at its file cap. It throws on real disagreement.
+  const files = (compareFailed ? fallback.files : validateBaseFileAgreement(compare.files, fallback.files)).filter(isMigration)
   if (files.length === 0) return null
   return {
     label: `${baseRef} (merged since this PR branched)`,

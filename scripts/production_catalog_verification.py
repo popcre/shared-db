@@ -565,6 +565,13 @@ def _shape_contract(*, relations=(), indexes=(), constraints=(), routines=(), po
     checks += ["(select count(*) from pg_policies where schemaname='%s' and tablename='%s')=%d" % (*table.split('.',1),sum(1 for owner,_ in policies if owner==table)) for table in policy_tables]
     checks += ["exists (select 1 from pg_trigger where tgrelid=to_regclass('%s') and tgname='%s' and not tgisinternal and tgenabled<>'D')" % row for row in triggers]
     return " and ".join(checks)
+# Issue #2794: the retired DesignFlow PLM import is dropped; the licensing write
+# guard it sat beside must survive, with its triggers on their own relations.
+PLM_IMPORT_RETIREMENT_GUARD_CONTRACT = _shape_contract(
+    relations=('plm.licensing_write_authorization','plm.licensing_write_guard_audit'),
+    routines=('app.enforce_licensing_write_authority()',),
+    triggers=(('core.licensor','licensor_licensing_write_guard'),('core.property','property_licensing_write_guard')),
+) + " and not exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='plm' and p.proname='import_master_data')"
 STYLE_TRACKER_TABLES_CONTRACT = _shape_contract(
     relations=('public.style_tracker_rows','plm.style_tracker_value_resolution','plm.style_tracker_item_bridge','public.style_tracker_audit_log','public.style_tracker_user_views','public.style_tracker_audit_log_with_user','public.style_tracker_rows_with_bridge'),
     indexes=tuple('public.'+name for name in ('idx_style_tracker_audit_log_changed_at','idx_style_tracker_audit_log_row','idx_style_tracker_audit_log_sheet','idx_style_tracker_rows_group_id','idx_style_tracker_rows_row_data_gin','idx_style_tracker_rows_sku','idx_style_tracker_rows_source_sheet'))+tuple('plm.'+name for name in ('idx_style_tracker_item_bridge_company','idx_style_tracker_item_bridge_creative_designer','idx_style_tracker_item_bridge_erp_item','idx_style_tracker_item_bridge_match_status','idx_style_tracker_item_bridge_row','idx_style_tracker_item_bridge_sku','idx_style_tracker_item_bridge_style_group','idx_style_tracker_value_resolution_field_value')),
@@ -994,8 +1001,76 @@ POPDAM_FORWARD_RECOVERY_CONTRACT = _shape_contract(
     policies=(('public.style_group_tags','Authenticated read style_group_tags'),('public.style_group_tags','Admin manage style_group_tags')),
     triggers=(('public.asset_tags','asset_tags_sync_assets_tags'),('public.asset_tags','asset_tags_dam_search_refresh'),('public.style_group_tags','style_group_tags_dam_search_refresh'),('public.asset_characters','asset_characters_dam_search_refresh')),
 )
+def designflow_fk_contract(expected: tuple[tuple[str, str, str, str, str], ...]) -> str:
+    """Closed, verifier-owned exact foreign-key inventory; no external inputs."""
+    values = ",".join("(" + ",".join("'" + value.replace("'", "''") + "'" for value in row) + ")" for row in expected)
+    return """
+      not exists (select 1 from (values """ + values + """) expected(child_relation, constraint_name, child_column, parent_relation, parent_column)
+      where not exists (select 1 from pg_constraint c
+        join pg_attribute child on child.attrelid=c.conrelid and child.attname=expected.child_column
+        join pg_attribute parent on parent.attrelid=c.confrelid and parent.attname=expected.parent_column
+        where c.conrelid=to_regclass(expected.child_relation)
+          and c.conname=expected.constraint_name and c.contype='f'
+          and c.confrelid=to_regclass(expected.parent_relation)
+          and c.conkey=array[child.attnum] and c.confkey=array[parent.attnum]
+          and not child.attisdropped and not parent.attisdropped
+          and child.atttypid=parent.atttypid and child.atttypmod=parent.atttypmod
+          and c.convalidated and not c.condeferrable and not c.condeferred
+          and c.confmatchtype='s' and c.confupdtype='a' and c.confdeltype='a'
+          and exists (select 1 from pg_constraint parent_key
+            where parent_key.conrelid=c.confrelid and parent_key.contype in ('p','u')
+              and parent_key.convalidated and not parent_key.condeferrable
+              and parent_key.conkey=array[parent.attnum])))
+    """
+
+
 CATALOG_CONTRACTS = {
+    # #3907/#4010: guarded ALTER statements inside DO blocks are opaque to the
+    # statement-head lexer. Hash-bound sidecars require these exact inventories.
+    "designflow_remaining_user_fks_v1": designflow_fk_contract((
+        ('app."RolePermissions"', 'RolePermissions_UserId_fkey', 'UserId', 'dflow.users', 'id'),
+        ('plm.art_piece_attachment', 'art_piece_attachment_created_by_fkey', 'created_by', 'dflow.users', 'id'),
+        ('plm.art_piece_attachment', 'art_piece_attachment_updated_by_fkey', 'updated_by', 'dflow.users', 'id'),
+    )),
+    "designflow_artist_parent_fks_v1": designflow_fk_contract((
+        ('dflow.artists', 'artists_art_source_id_fkey', 'art_source_id', 'core."merchGroup"', 'mg_id'),
+        ('dflow.artists', 'artists_artist_type_id_fkey', 'artist_type_id', 'core.artist_types', 'id'),
+        ('dflow.artists', 'artists_divisioncode_id_fkey', 'divisioncode_id', 'plm."divisionCode"', 'divCode_id'),
+    )),
+
+    # Issue #2986 / #3400. 20260928182014 adds the same six nullable, no-default
+    # phrase columns to plm."itemHeader"/plm."RFQItem" and to their dflow_prod
+    # counterparts. The quoted mixed-case identifiers are invisible to the
+    # statement lexer, so without this contract a phrase-only allowlist verifies
+    # nothing. The dflow_prod half is schema-conditioned, mirroring the sandbox
+    # conditioning lane exactly: on any database that carries the schema the six
+    # columns must be there; on one that does not carry it (the DesignFlow
+    # sandbox until the structural route creates it) the plm half is the whole
+    # obligation.
+    "hts_product_phrase_columns_v1": """
+      (select count(*) from information_schema.columns
+         where table_schema = 'plm' and is_nullable = 'YES' and column_default is null
+           and (table_name, column_name, data_type) in (
+             ('itemHeader', 'hts_product_phrase', 'text'),
+             ('itemHeader', 'hts_product_phrase_source', 'text'),
+             ('itemHeader', 'hts_product_phrase_at', 'timestamp with time zone'),
+             ('RFQItem', 'hts_product_phrase', 'text'),
+             ('RFQItem', 'hts_product_phrase_source', 'text'),
+             ('RFQItem', 'hts_product_phrase_at', 'timestamp with time zone'))) = 6
+      and (not exists (select 1 from pg_namespace where nspname = 'dflow_prod')
+           or (select count(*) from information_schema.columns
+                 where table_schema = 'dflow_prod' and is_nullable = 'YES' and column_default is null
+                   and (table_name, column_name, data_type) in (
+                     ('itemHeader', 'hts_product_phrase', 'text'),
+                     ('itemHeader', 'hts_product_phrase_source', 'text'),
+                     ('itemHeader', 'hts_product_phrase_at', 'timestamp with time zone'),
+                     ('RFQItem', 'hts_product_phrase', 'text'),
+                     ('RFQItem', 'hts_product_phrase_source', 'text'),
+                     ('RFQItem', 'hts_product_phrase_at', 'timestamp with time zone'))) = 6)
+    """,
     "popsg_search_v2_bounded_paging_v1": """exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)') and p.prorettype='jsonb'::regtype and p.prosecdef and p.provolatile='s' and p.proconfig=array['search_path=pg_catalog, auth']::text[] and md5(p.prosrc)='4fdbef747897eb7d834b3b23858902ac' and not has_function_privilege('anon',p.oid,'EXECUTE') and has_function_privilege('authenticated',p.oid,'EXECUTE') and has_function_privilege('service_role',p.oid,'EXECUTE'))""",
+    "popsg_search_v2_production_performance_v1": """exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)') and p.prorettype='jsonb'::regtype and p.prosecdef and p.provolatile='s' and p.proconfig=array['search_path=pg_catalog, auth']::text[] and md5(p.prosrc)='83b8190bca2ff2b7e08a5e87651785b3' and not has_function_privilege('anon',p.oid,'EXECUTE') and has_function_privilege('authenticated',p.oid,'EXECUTE') and has_function_privilege('service_role',p.oid,'EXECUTE'))""",
+    "popsg_search_v2_default_timeout_v1": """exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)') and p.prorettype='jsonb'::regtype and p.prosecdef and p.provolatile='s' and p.proconfig=array['search_path=pg_catalog, auth','work_mem=64MB']::text[] and md5(p.prosrc)='719d560bf41d61c8441aa806eb9406fa' and not has_function_privilege('anon',p.oid,'EXECUTE') and has_function_privilege('authenticated',p.oid,'EXECUTE') and has_function_privilege('service_role',p.oid,'EXECUTE'))""",
     "api_rls_realtime_v1": API_RLS_REALTIME_CONTRACT,
     "core_person_role_lookups_v1": """
       not exists (
@@ -1024,6 +1099,7 @@ CATALOG_CONTRACTS = {
     "scraped_properties_targeted_submission_label_v1": SCRAPED_PROPERTIES_TARGETED_SUBMISSION_LABEL_CONTRACT,
     "dflow_sequence_ceilings_v1": DFLOW_SEQUENCE_CEILINGS_CONTRACT,
     "popdam_forward_recovery_v1": POPDAM_FORWARD_RECOVERY_CONTRACT,
+    "plm_import_retirement_guard_v1": PLM_IMPORT_RETIREMENT_GUARD_CONTRACT,
     "popdam_query_expansion_rows_v1": """
       (select p.prorows = 32
         from pg_proc p
@@ -1042,7 +1118,7 @@ CATALOG_CONTRACTS = {
         and position('select distinct a.*' in pg_get_functiondef(p.oid)) = 0
         and 'statement_timeout=8s' = any(coalesce(p.proconfig, '{}'))
         from pg_proc p
-        where p.oid = to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real)'))
+        where p.oid = to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)'))
       and (select
         position('require_dam_access' in pg_get_functiondef(p.oid)) > 0
         and (length(pg_get_functiondef(p.oid)) - length(replace(pg_get_functiondef(p.oid),
@@ -1053,9 +1129,9 @@ CATALOG_CONTRACTS = {
         from pg_proc p
         where p.oid = to_regprocedure('public.get_filter_counts(jsonb)'))
       and not has_function_privilege('anon',
-        'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real)', 'EXECUTE')
+        'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)', 'EXECUTE')
       and has_function_privilege('authenticated',
-        'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real)', 'EXECUTE')
+        'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)', 'EXECUTE')
       and not has_function_privilege('anon', 'public.get_filter_counts(jsonb)', 'EXECUTE')
       and has_function_privilege('authenticated', 'public.get_filter_counts(jsonb)', 'EXECUTE')
 """,
@@ -1071,7 +1147,7 @@ CATALOG_CONTRACTS = {
         and position('select distinct a.*' in pg_get_functiondef(p.oid)) = 0
         and 'statement_timeout=8s' = any(coalesce(p.proconfig, '{}'))
         from pg_proc p
-        where p.oid = to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real)'))
+        where p.oid = to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)'))
       and (select
         position('authorized as materialized' in pg_get_functiondef(p.oid)) > 0
         and position('require_dam_access' in pg_get_functiondef(p.oid)) > 0
@@ -1164,11 +1240,11 @@ CATALOG_CONTRACTS = {
         and 'statement_timeout=8s' = any(coalesce(p.proconfig, '{}'))
         from pg_proc p
         where p.oid = to_regprocedure(
-          'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real)'))
+          'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)'))
       and not has_function_privilege('anon',
-        'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real)', 'EXECUTE')
+        'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)', 'EXECUTE')
       and has_function_privilege('authenticated',
-        'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real)', 'EXECUTE')
+        'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)', 'EXECUTE')
 """,
     "popdam_ranked_search_rank_keys_through_visibility_v4": """
       (select
@@ -1187,11 +1263,11 @@ CATALOG_CONTRACTS = {
         and position('require_dam_access' in pg_get_functiondef(p.oid)) > 0
         and 'statement_timeout=8s' = any(coalesce(p.proconfig, '{}'))
         from pg_proc p where p.oid = to_regprocedure(
-          'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real)'))
+          'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)'))
       and not has_function_privilege('anon',
-        'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real)', 'EXECUTE')
+        'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)', 'EXECUTE')
       and has_function_privilege('authenticated',
-        'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real)', 'EXECUTE')
+        'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)', 'EXECUTE')
 """,
     "coco_owner_ruling_v1": """
       case when to_regclass('core.taxonomy_owner_ruling') is null then true else
@@ -2956,7 +3032,7 @@ def build_row_count_sql(seeded: list[str]) -> str:
         f"select '{name}'::text as name, (select count(*) from {name})::bigint as rows"
         for name in seeded
     )
-    return f"select jsonb_agg(x order by x->>'name') as report from ({branches}) x"
+    return f"select jsonb_agg(x order by x.name) as report from ({branches}) x"
 
 
 def run_query(project_ref: str, token: str, sql: str, api: str = MANAGEMENT_API):
@@ -4387,6 +4463,345 @@ CATALOG_CONTRACTS["all_licensor_property_source_coverage_v1"] = (
     ALL_LICENSOR_PROPERTY_SOURCE_COVERAGE_CONTRACT
 )
 
+
+# Issue #2879. Two DCP families predate the source-inventory classifier and
+# must never fall through to `other` in either its exact or browser-safe form.
+DCP_INVENTORY_FAMILY_CLASSIFICATION_CONTRACT = (
+    ALL_LICENSOR_PROPERTY_SOURCE_COVERAGE_CONTRACT
+    + r" and position('lucasfilm\_dcp\_%%' in %s)>0" % _INVENTORY_EXACT_DEF
+    + r" and position('twentieth_century\_dcp\_%%' in %s)>0" % _INVENTORY_EXACT_DEF
+    + r" and position('lucasfilm_dcpvault' in %s)>0" % _INVENTORY_EXACT_DEF
+    + r" and position('twentieth_century_dcpvault' in %s)>0" % _INVENTORY_EXACT_DEF
+    + r" and (select count(*) from api.source_capture_inventory where source_system='lucasfilm_dcpvault' and table_name like 'lucasfilm\_dcp\_%')=20"
+    + r" and (select count(*) from api.source_capture_inventory where source_system='twentieth_century_dcpvault' and table_name like 'twentieth_century\_dcp\_%')=20"
+    + r" and not exists (select 1 from api.source_capture_inventory where source_system='other' and (table_name like 'lucasfilm\_dcp\_%' or table_name like 'twentieth_century\_dcp\_%'))"
+)
+CATALOG_CONTRACTS["dcp_inventory_family_classification_v1"] = (
+    DCP_INVENTORY_FAMILY_CLASSIFICATION_CONTRACT
+)
+
+
+# Issue #2744. The unfiltered DB Data Admin Scraped Properties listing.
+#
+# Migration 20260911222514 rewrites api.db_data_admin_scraped_properties in
+# place with pg_get_functiondef, so the reviewed migration text does not restate
+# the body and derive_targets() -- which reads only plainly written CREATE
+# statements -- names no catalog object for it. This contract reads the durable
+# post-apply outcome of that EXECUTE out of the catalog instead.
+#
+# The regression it guards: the style-guide join hashed the FULL plm.dcp_asset
+# row, so a 61 MB build side spilled work_mem to temp and the default page ran
+# over the 8 s authenticated statement_timeout. Projecting the asset to
+# (id, style_guide_id) before the hash build is the whole fix, so the contract
+# asserts the narrow maps are present AND the wide joins are gone -- a partial
+# rewrite that left either wide join behind would otherwise still pass.
+#
+# It is a strict SUPERSET of all_licensor_property_source_coverage_v1, so every
+# assertion #2579, #2576 and #2449 made about this routine is carried forward
+# when this later version supersedes theirs within one ordered batch.
+DCP_NARROW_ASSET_STYLE_MAP_CONTRACT = (
+    ALL_LICENSOR_PROPERTY_SOURCE_COVERAGE_CONTRACT
+    # Both narrow (id, style_guide_id) asset maps are installed and materialized.
+    + " and position('dcp_asset_style as materialized' in %s)>0" % _SCRAPED_PROPERTIES_DEF
+    + " and position('lucasfilm_dcp_asset_style as materialized' in %s)>0" % _SCRAPED_PROPERTIES_DEF
+    + " and position('select a.id,a.style_guide_id from plm.dcp_asset a' in %s)>0" % _SCRAPED_PROPERTIES_DEF
+    + " and position('select a.id,a.style_guide_id from plm.lucasfilm_dcp_asset a' in %s)>0" % _SCRAPED_PROPERTIES_DEF
+    # Both style joins read the narrow map, and neither wide asset join survives.
+    + " and position('join dcp_asset_style a on a.id=r.asset_id' in %s)>0" % _SCRAPED_PROPERTIES_DEF
+    + " and position('join lucasfilm_dcp_asset_style a on a.id=r.asset_id' in %s)>0" % _SCRAPED_PROPERTIES_DEF
+    + " and position('join plm.dcp_asset a on a.id=r.asset_id' in %s)=0" % _SCRAPED_PROPERTIES_DEF
+    + " and position('join plm.lucasfilm_dcp_asset a on a.id=r.asset_id' in %s)=0" % _SCRAPED_PROPERTIES_DEF
+    # Each page's retained-asset set is evaluated once, not twice.
+    + " and position('page_dcp_retained_assets as materialized' in %s)>0" % _SCRAPED_PROPERTIES_DEF
+    + " and position('page_lucasfilm_dcp_retained_assets as materialized' in %s)>0" % _SCRAPED_PROPERTIES_DEF
+    # The superseded wide asset-context shape is gone entirely.
+    + " and position('dcp_asset_context' in %s)=0" % _SCRAPED_PROPERTIES_DEF
+    # Style-guide NAMES still resolve, so the narrow map did not cost the label.
+    + " and position('left join plm.dcp_style_guide g on g.id=s.style_guide_id' in %s)>0" % _SCRAPED_PROPERTIES_DEF
+    # The authorization boundary and the keyset page ordering survived the rewrite.
+    + " and position('app.require_licensing_manager_access()' in %s)>0" % _SCRAPED_PROPERTIES_DEF
+    + ' and position(\'l.row_key collate "C" > v_cursor_key collate "C"\' in %s)>0' % _SCRAPED_PROPERTIES_DEF
+)
+CATALOG_CONTRACTS["dcp_narrow_asset_style_map_v1"] = (
+    DCP_NARROW_ASSET_STYLE_MAP_CONTRACT
+)
+
+
+
+# Issue #2863. ColdLion landing unit 5b: the /prepackDetail and /proddetails
+# detail tables.
+#
+# Structure only -- the migration loads no rows and creates no loader -- so what
+# is verified post-apply is the grain. Both keys were proven over a live 2026-09-15
+# sample with ZERO duplicate collapse (docs/coldlion-unit-5b-grain-proof-20260915.md),
+# and /proddetails proved TWO independent identities: the vendor row id pkey and
+# (prodOrderNo, prodLineSeq). Both are asserted here, because a production catalog
+# that carried only the primary key would let a future change drop the second one
+# silently and start collapsing two order lines into one.
+#
+# The landing layer is also unreachable by any application role, so the contract
+# asserts row level security on both tables and the absence of any anon or
+# authenticated grant -- the rule the whole coldlion schema depends on.
+# Shared, unchanged lockdown/field-disposition half of the coldlion unit 5b contracts.
+_COLDLION_UNIT_5B_LANDING_COMMON = (
+    ""
+    # Complete field disposition: 18 source + 5 provenance, and 21 source plus the
+    # request-stamped company_code + 5 provenance. No field dropped, none invented.
+    # information_schema views are role-filtered the same way role_table_grants is:
+    # under supabase_read_only_user they return nothing for coldlion, so a column
+    # census there would be unfalsifiable. pg_attribute is the unfiltered catalog.
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.prepack_detail') and a.attnum>0 and not a.attisdropped)=23"
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.prod_detail') and a.attnum>0 and not a.attisdropped)=27"
+    # ColdLion emits BOTH itemPrice and ItemPrice; folding them would lose a field.
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.prepack_detail') and a.attnum>0 and not a.attisdropped and a.attname in ('item_price','item_price_capitalized'))=2"
+    # No application role may reach the landing layer, and RLS is on.
+    #
+    # The grant half deliberately does NOT read information_schema.role_table_grants.
+    # That view is filtered to grants the CURRENT role granted or holds, and the
+    # governed verification connects as supabase_read_only_user, for which it returns
+    # no rows at all -- so a "no rows" test there would be unconditionally true and
+    # could never fail. has_table_privilege() is a catalog function with no such
+    # role-visibility filter and answers the real question on any connection.
+    #
+    # Checking anon and authenticated also covers PUBLIC: has_table_privilege() folds
+    # a privilege held via PUBLIC into every role's answer, and PUBLIC is not a role
+    # name the function accepts.
+    + " and (select bool_and(relrowsecurity) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='coldlion' and c.relname in ('prepack_detail','prod_detail'))"
+    + " and (select count(*) from unnest(array['anon','authenticated']) g(r) cross join unnest(array['coldlion.prepack_detail','coldlion.prod_detail']) t(n) cross join unnest(array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) p(v) where has_table_privilege(g.r,t.n,p.v))=0"
+    # RLS with no policy is the second half of the lockdown: a policy added later
+    # would open a path the grant check alone does not describe.
+    + " and (select count(*) from pg_policies where schemaname='coldlion' and tablename in ('prepack_detail','prod_detail'))=0"
+    # D5: no per-row raw archive, and no FK out of the landing schema.
+    + " and (select count(*) from pg_attribute a where a.attrelid in (to_regclass('coldlion.prepack_detail'),to_regclass('coldlion.prod_detail')) and a.attnum>0 and not a.attisdropped and a.attname='raw')=0"
+    + " and (select count(*) from pg_constraint c join pg_class t on t.oid=c.conrelid join pg_namespace n on n.oid=t.relnamespace join pg_class rt on rt.oid=c.confrelid join pg_namespace rn on rn.oid=rt.relnamespace where c.contype='f' and n.nspname='coldlion' and t.relname in ('prepack_detail','prod_detail') and rn.nspname<>'coldlion')=0"
+)
+
+COLDLION_UNIT_5B_LANDING_CONTRACT = (
+    _shape_contract(
+        relations=('coldlion.prepack_detail','coldlion.prod_detail'),
+        constraints=(
+            ('coldlion.prepack_detail','prepack_detail_pkey'),
+            ('coldlion.prod_detail','prod_detail_pkey'),
+            ('coldlion.prod_detail','prod_detail_company_code_prod_order_no_prod_line_seq_key'),
+            ('coldlion.prepack_detail','prepack_detail_run_id_fkey'),
+            ('coldlion.prod_detail','prod_detail_run_id_fkey'),
+        ),
+    )
+    # The proven grain, stated exactly, on both tables.
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prepack_detail') and contype='p')='PRIMARY KEY (company_code, prepack_code, sequence_no)'"
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prod_detail') and contype='p')='PRIMARY KEY (company_code, pkey)'"
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prod_detail') and contype='u')='UNIQUE (company_code, prod_order_no, prod_line_seq)'"
+    + _COLDLION_UNIT_5B_LANDING_COMMON
+)
+CATALOG_CONTRACTS["coldlion_unit_5b_landing_v1"] = (
+    COLDLION_UNIT_5B_LANDING_CONTRACT
+)
+
+# Issue #3234, migration 20260930212107. ColdLion reuses prod_line_seq inside one
+# production order, so the (company_code, prod_order_no, prod_line_seq) unique key
+# was dropped; the vendor row id pkey stays the only identity. This contract is
+# v1 with that key replaced by an assertion that prod_detail carries NO unique
+# constraint at all. It reads pg_constraint (not information_schema, which is
+# role-filtered for coldlion under supabase_read_only_user), and as a
+# catalog_contract over the same relations it supersedes v1 in any batch that
+# carries both versions.
+COLDLION_UNIT_5B_LANDING_CONTRACT_V2 = (
+    _shape_contract(
+        relations=('coldlion.prepack_detail','coldlion.prod_detail'),
+        constraints=(
+            ('coldlion.prepack_detail','prepack_detail_pkey'),
+            ('coldlion.prod_detail','prod_detail_pkey'),
+            ('coldlion.prepack_detail','prepack_detail_run_id_fkey'),
+            ('coldlion.prod_detail','prod_detail_run_id_fkey'),
+        ),
+    )
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prepack_detail') and contype='p')='PRIMARY KEY (company_code, prepack_code, sequence_no)'"
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.prod_detail') and contype='p')='PRIMARY KEY (company_code, pkey)'"
+    + " and (select count(*) from pg_constraint where conrelid=to_regclass('coldlion.prod_detail') and contype='u')=0"
+    + _COLDLION_UNIT_5B_LANDING_COMMON
+)
+CATALOG_CONTRACTS["coldlion_unit_5b_landing_v2"] = (
+    COLDLION_UNIT_5B_LANDING_CONTRACT_V2
+)
+
+
+# Issue #2988. api.dam_order_list must keep invoker semantics while reading the
+# two party display names through narrow authenticated-only directories, so a
+# signed-in PopDAM user with no app.user_role row stops paying a per-row
+# core.customer / core.factory policy evaluation on every bounded page.
+DAM_ORDER_LIST_ROLE_FREE_PARTY_NAMES_CONTRACT = (
+    "exists (select 1 from pg_class c where c.oid=to_regclass('api.dam_order_list')"
+    " and c.relkind='v'"
+    " and c.reloptions @> array['security_invoker=true']::text[]"
+    " and position('dam_order_list_customer_directory' in pg_get_viewdef(c.oid,true))>0"
+    " and position('dam_order_list_vendor_directory' in pg_get_viewdef(c.oid,true))>0"
+    " and position('core.customer' in pg_get_viewdef(c.oid,true))=0"
+    " and position('core.factory' in pg_get_viewdef(c.oid,true))=0"
+    " and has_table_privilege('authenticated',c.oid,'SELECT')"
+    # The roles that read this view today must still be able to read it. The
+    # first shape of this repair raised insufficient_privilege from a joined
+    # SECURITY DEFINER helper, which a LEFT JOIN does not swallow, so
+    # service_role and every no-JWT session got 42501 instead of rows. Nothing
+    # in the catalog caught that, so it is pinned here.
+    " and has_table_privilege('service_role',c.oid,'SELECT')"
+    " and not has_table_privilege('anon',c.oid,'SELECT'))"
+    # Both directories are OWNER-evaluated views, never invoker views and never
+    # functions: a view cannot raise, so it cannot abort the order list.
+    " and exists (select 1 from pg_class c"
+    " where c.oid=to_regclass('dam.dam_order_list_customer_directory')"
+    " and c.relkind='v' and c.relowner::regrole::text='postgres'"
+    " and coalesce(c.reloptions,array[]::text[])"
+    " @> array['security_invoker=false']::text[]"
+    " and position('customer_id' in pg_get_viewdef(c.oid,true))>0"
+    " and position('customer_name' in pg_get_viewdef(c.oid,true))>0"
+    " and position('core.customer' in pg_get_viewdef(c.oid,true))>0"
+    " and position('has_any_role' in pg_get_viewdef(c.oid,true))=0"
+    " and (select count(*) from pg_attribute a where a.attrelid=c.oid"
+    " and a.attnum>0 and not a.attisdropped)=2"
+    " and has_table_privilege('authenticated',c.oid,'SELECT')"
+    " and has_table_privilege('service_role',c.oid,'SELECT')"
+    " and not has_table_privilege('anon',c.oid,'SELECT'))"
+    " and exists (select 1 from pg_class c"
+    " where c.oid=to_regclass('dam.dam_order_list_vendor_directory')"
+    " and c.relkind='v' and c.relowner::regrole::text='postgres'"
+    " and coalesce(c.reloptions,array[]::text[])"
+    " @> array['security_invoker=false']::text[]"
+    " and position('vendor_id' in pg_get_viewdef(c.oid,true))>0"
+    " and position('vendor_name' in pg_get_viewdef(c.oid,true))>0"
+    " and position('core.factory' in pg_get_viewdef(c.oid,true))>0"
+    " and position('has_any_role' in pg_get_viewdef(c.oid,true))=0"
+    " and (select count(*) from pg_attribute a where a.attrelid=c.oid"
+    " and a.attnum>0 and not a.attisdropped)=2"
+    " and has_table_privilege('authenticated',c.oid,'SELECT')"
+    " and has_table_privilege('service_role',c.oid,'SELECT')"
+    " and not has_table_privilege('anon',c.oid,'SELECT'))"
+    # The owner reading is only safe while neither source table forces RLS on
+    # its owner, and the repair must not have been bought by widening either
+    # table: both keep exactly the two policies they carry today.
+    " and (select count(*) from pg_class c join pg_namespace n"
+    " on n.oid=c.relnamespace where n.nspname='core'"
+    " and c.relname in ('customer','factory')"
+    " and c.relrowsecurity and not c.relforcerowsecurity"
+    " and c.relowner::regrole::text='postgres')=2"
+    " and (select count(*) from pg_policies where schemaname='core'"
+    " and tablename in ('customer','factory')"
+    " and policyname in ('shared_read','admin_write'))=4"
+    " and not exists (select 1 from pg_policies where schemaname='core'"
+    " and tablename in ('customer','factory')"
+    " and policyname not in ('shared_read','admin_write'))"
+    # No SECURITY DEFINER helper of the abandoned first shape may survive.
+    " and to_regprocedure('dam.dam_order_list_customer_directory()') is null"
+    " and to_regprocedure('dam.dam_order_list_vendor_directory()') is null"
+    " and to_regprocedure('app.dam_order_list_customer_directory()') is null"
+    " and to_regprocedure('app.dam_order_list_vendor_directory()') is null"
+)
+CATALOG_CONTRACTS["dam_order_list_role_free_party_names_v1"] = (
+    DAM_ORDER_LIST_ROLE_FREE_PARTY_NAMES_CONTRACT
+)
+
+
+POPSG_REFRESH_SEARCH_SYNC_QUEUE_CONTRACT = (
+    # Issue #3023. The refresh reads search-sync candidates from a narrow queue
+    # fed by a trigger instead of scanning every style guide file.
+    "exists (select 1 from pg_class c where c.oid=to_regclass('public.style_guide_search_sync_queue')"
+    " and c.relkind='r' and c.relrowsecurity"
+    " and not has_table_privilege('anon',c.oid,'SELECT')"
+    " and not has_table_privilege('authenticated',c.oid,'SELECT')"
+    " and has_table_privilege('service_role',c.oid,'SELECT'))"
+    " and exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.style_guide_files_queue_search_sync()')"
+    " and p.prosecdef and md5(p.prosrc)='2b082d5e84238234f3d20669b2931f0c'"
+    " and not has_function_privilege('authenticated',p.oid,'EXECUTE'))"
+    " and exists (select 1 from pg_trigger t where t.tgrelid=to_regclass('public.style_guide_files')"
+    " and t.tgname='trg_style_guide_files_queue_search_sync' and not t.tgisinternal and t.tgenabled='O'"
+    " and t.tgfoid=to_regprocedure('public.style_guide_files_queue_search_sync()'))"
+    " and exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.refresh_style_guide_matviews(uuid,integer)')"
+    " and p.prosecdef and md5(p.prosrc)='52b676f90e4500dc323c2f9e6e6f3c97'"
+    " and not has_function_privilege('authenticated',p.oid,'EXECUTE')"
+    " and has_function_privilege('service_role',p.oid,'EXECUTE'))"
+)
+CATALOG_CONTRACTS["popsg_refresh_search_sync_queue_v1"] = (
+    POPSG_REFRESH_SEARCH_SYNC_QUEUE_CONTRACT
+)
+
+# Issue #2179. ColdLion /itemImages METADATA landing table. Structure only; the
+# post-apply check is the proven grain (company_code, pkey), the complete owner
+# field disposition (14 ingested source fields + 5 provenance), NO image-content
+# column, and the landing-layer lockdown (RLS on, no policy, no anon/authenticated
+# privilege). pg_attribute and has_table_privilege are used because
+# information_schema is role-filtered under supabase_read_only_user.
+COLDLION_ITEM_IMAGE_METADATA_CONTRACT = (
+    _shape_contract(
+        relations=('coldlion.item_image_metadata',),
+        constraints=(
+            ('coldlion.item_image_metadata','item_image_metadata_pkey'),
+            ('coldlion.item_image_metadata','item_image_metadata_run_id_fkey'),
+        ),
+    )
+    + " and (select pg_get_constraintdef(oid) from pg_constraint where conrelid=to_regclass('coldlion.item_image_metadata') and contype='p')='PRIMARY KEY (company_code, pkey)'"
+    + " and (select count(*) from pg_constraint where conrelid=to_regclass('coldlion.item_image_metadata') and contype='u')=0"
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.item_image_metadata') and a.attnum>0 and not a.attisdropped)=19"
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.item_image_metadata') and a.attnum>0 and not a.attisdropped and a.attname in ('company_code','pkey','resource_id','division_code','item_no','color_code','label_code','file_name','file_type','item_image_desc','created_time','created_user','mod_time','mod_user','run_id','fetched_at','source_hash','first_seen_at','last_seen_at'))=19"
+    + " and (select relkind from pg_class where oid=to_regclass('coldlion.item_image_metadata'))='r'"
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.item_image_metadata') and a.attnum>0 and not a.attisdropped and ((a.attname='company_code' and a.atttypid='text'::regtype) or (a.attname='pkey' and a.atttypid='int8'::regtype) or (a.attname='resource_id' and a.atttypid='int8'::regtype) or (a.attname='division_code' and a.atttypid='text'::regtype) or (a.attname='item_no' and a.atttypid='text'::regtype) or (a.attname='color_code' and a.atttypid='text'::regtype) or (a.attname='label_code' and a.atttypid='text'::regtype) or (a.attname='file_name' and a.atttypid='text'::regtype) or (a.attname='file_type' and a.atttypid='text'::regtype) or (a.attname='item_image_desc' and a.atttypid='text'::regtype) or (a.attname='created_time' and a.atttypid='timestamptz'::regtype) or (a.attname='created_user' and a.atttypid='text'::regtype) or (a.attname='mod_time' and a.atttypid='timestamptz'::regtype) or (a.attname='mod_user' and a.atttypid='text'::regtype) or (a.attname='run_id' and a.atttypid='uuid'::regtype) or (a.attname='fetched_at' and a.atttypid='timestamptz'::regtype) or (a.attname='source_hash' and a.atttypid='text'::regtype) or (a.attname='first_seen_at' and a.atttypid='timestamptz'::regtype) or (a.attname='last_seen_at' and a.atttypid='timestamptz'::regtype)))=19"
+    + " and (select count(*) from pg_constraint c where c.conrelid=to_regclass('coldlion.item_image_metadata') and c.contype='c')=2"
+    + " and (select count(*) from pg_constraint c where c.conrelid=to_regclass('coldlion.item_image_metadata') and c.contype='c' and position('^[0-9a-f]{64}$' in pg_get_constraintdef(c.oid))>0)=1"
+    + " and (select count(*) from pg_constraint c where c.conrelid=to_regclass('coldlion.item_image_metadata') and c.contype='c' and pg_get_constraintdef(c.oid) ~ 'last_seen_at.*first_seen_at')=1"
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.item_image_metadata') and a.attnum>0 and not a.attisdropped and a.attnotnull and a.attname in ('company_code','pkey','run_id','fetched_at','source_hash','first_seen_at','last_seen_at'))=7"
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.item_image_metadata') and a.attnum>0 and not a.attisdropped and not a.attnotnull and a.attname in ('resource_id','division_code','item_no','color_code','label_code','file_name','file_type','item_image_desc','created_time','created_user','mod_time','mod_user'))=12"
+    + " and (select count(*) from pg_constraint c where c.conrelid=to_regclass('coldlion.item_image_metadata') and c.contype='f' and pg_get_constraintdef(c.oid) ~ 'FOREIGN KEY [(]run_id[)] REFERENCES coldlion[.]sync_run[(]id[)]')=1"
+    + " and (select count(*) from pg_constraint c where c.conrelid=to_regclass('coldlion.item_image_metadata') and c.contype='f' and pg_get_constraintdef(c.oid) !~* 'ON (DELETE|UPDATE)')=1"
+    + " and (select count(*) from pg_class i join pg_index x on x.indexrelid=i.oid where i.relname='item_image_metadata_pkey_idx' and x.indrelid=to_regclass('coldlion.item_image_metadata') and pg_get_indexdef(i.oid) ~ '[(]pkey[)]')=1"
+    + " and (select count(*) from pg_class i join pg_index x on x.indexrelid=i.oid where i.relname='item_image_metadata_run_id_idx' and x.indrelid=to_regclass('coldlion.item_image_metadata') and pg_get_indexdef(i.oid) ~ '[(]run_id[)]')=1"
+    + " and has_table_privilege('service_role','coldlion.item_image_metadata','SELECT')"
+    + " and (select count(*) from pg_attribute a where a.attrelid=to_regclass('coldlion.item_image_metadata') and a.attnum>0 and not a.attisdropped and (a.attname in ('resource_content','thumbnail128','thumbnail_128','raw') or a.atttypid='bytea'::regtype))=0"
+    + " and (select relrowsecurity from pg_class where oid=to_regclass('coldlion.item_image_metadata'))"
+    + " and (select count(*) from unnest(array['anon','authenticated']) g(r) cross join unnest(array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) p(v) where has_table_privilege(g.r,'coldlion.item_image_metadata',p.v))=0"
+    + " and (select count(*) from pg_policies where schemaname='coldlion' and tablename='item_image_metadata')=0"
+    + " and (select count(*) from pg_constraint c join pg_class rt on rt.oid=c.confrelid join pg_namespace rn on rn.oid=rt.relnamespace where c.conrelid=to_regclass('coldlion.item_image_metadata') and c.contype='f' and (rn.nspname<>'coldlion' or rt.relname<>'sync_run'))=0"
+    + " and (select count(*) from pg_constraint c join pg_class rt on rt.oid=c.confrelid join pg_namespace rn on rn.oid=rt.relnamespace where c.conrelid=to_regclass('coldlion.item_image_metadata') and c.contype='f' and rn.nspname='coldlion' and rt.relname='sync_run')=1"
+    + " and (select count(*) from pg_constraint c where c.conrelid=to_regclass('coldlion.item_image_metadata') and c.contype='f' and pg_get_constraintdef(c.oid) ilike 'FOREIGN KEY (run_id) REFERENCES%sync_run(id)%')=1"
+)
+CATALOG_CONTRACTS["coldlion_item_image_metadata_v1"] = (
+    COLDLION_ITEM_IMAGE_METADATA_CONTRACT
+)
+
+WB_VALIDATE_NORMALIZED_ROW_STABLE_CONTRACT = (
+    # Issue #3725. ALTER-only migration 20260928183916 marks the validator STABLE
+    # (it casts text to timestamptz, which depends on TimeZone) and must leave the
+    # body, search_path, security mode, return type and grants unchanged.
+    "exists (select 1 from pg_proc p where p.oid=to_regprocedure('plm.wb_validate_normalized_row(text,jsonb)')"
+    " and p.provolatile='s' and not p.prosecdef and p.prorettype='void'::regtype"
+    " and p.proconfig=array['search_path=pg_catalog']"
+    " and md5(p.prosrc)='e28fedd3c0534399a3d890f5cf69a9ec'"
+    " and not has_function_privilege('anon',p.oid,'EXECUTE')"
+    " and not has_function_privilege('authenticated',p.oid,'EXECUTE')"
+    " and has_function_privilege('service_role',p.oid,'EXECUTE'))"
+)
+CATALOG_CONTRACTS["wb_validate_normalized_row_stable_v1"] = (
+    WB_VALIDATE_NORMALIZED_ROW_STABLE_CONTRACT
+)
+
+
+
+# #4015 / #3890. Exact schema-only relocation: both production and sandbox
+# must carry the same legacy eight-column integer shape. No row/access assertion
+# is replaced by this contract; the eleven original checks remain hash-bound.
+CATALOG_CONTRACTS["designflow_legacy_properties_dflow_shape_v1"] = """
+exists (select 1 from pg_class where oid=to_regclass('dflow.properties_and_characters') and relkind='r')
+and (select count(*) from pg_attribute where attrelid=to_regclass('dflow.properties_and_characters') and attnum>0 and not attisdropped)=8
+and (select count(*) from (values
+ ('id','integer',true),('name','character varying(255)',true),('type','character varying(50)',true),('licensor_id','integer',true),
+ ('source_licensed_property_id','character varying(100)',false),('source_character_id','character varying(100)',false),('created_at','timestamp with time zone',true),('updated_at','timestamp with time zone',true)
+) expected(name,type,not_null) join pg_attribute a on a.attrelid=to_regclass('dflow.properties_and_characters') and a.attname=expected.name and a.attnum>0 and not a.attisdropped and format_type(a.atttypid,a.atttypmod)=expected.type and a.attnotnull=expected.not_null)=8
+and exists (select 1 from pg_constraint c join pg_attribute a on a.attrelid=c.conrelid and a.attname='id' where c.conrelid=to_regclass('dflow.properties_and_characters') and c.contype='p' and c.conkey=array[a.attnum])
+"""
+
+# #4015: information_schema.table_constraints hides constraints from a
+# SELECT-only verification role. Indexed pg_catalog proves the actual validated
+# id key without requiring ownership or write privileges.
+CATALOG_CONTRACTS["designflow_legacy_properties_id_primary_key_v1"] = """
+exists (select 1 from pg_constraint c join pg_attribute a on a.attrelid=c.conrelid and a.attname='id' and a.attnum>0 and not a.attisdropped where c.conrelid=to_regclass('dflow.properties_and_characters') and c.contype='p' and c.convalidated and c.conkey=array[a.attnum])
+"""
 
 if __name__ == "__main__":
     raise SystemExit(main())

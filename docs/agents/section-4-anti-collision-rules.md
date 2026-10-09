@@ -1,5 +1,14 @@
 # AGENTS.md §4 — the five anti-collision rules, full text
 
+> **Orchestrator role retired (owner ruling, Albert Hazan, 2026-10-02: "there is no longer an
+> orchestrator"; AGENTS.md §0.0-D).** Structural work is claim-first. Wherever this file says
+> "the orchestrator", read "the session doing the structural work". Instructions to resolve a
+> marker, route or hand over to an orchestrator, or wait for dispatch are historical. Text that
+> describes what current automation does (the `route: shared-db-orchestrator` value, marker reads,
+> engine exclusion) describes code, not a role; retiring that code is open on #3874.
+
+- [current-workflow.md](current-workflow.md)
+
 > **Active hardening plan:** [`../../plan_multi_agent_database_coordination_hardening.md`](../../plan_multi_agent_database_coordination_hardening.md), issue #1366. Read its STATUS table first. It preserves the rules below while adding read/write dependencies, proven prerequisites, provider-neutral work contracts, lifecycle traces, recoverable fenced stage leases, and an opt-in Supabase branch pilot. Its implementation is repository maintenance outside the structure/schema orchestrator.
 >
 > **Completed reviewer API-budget plan:** [`../../plan_reviewer_assignment_api_budget.md`](../../plan_reviewer_assignment_api_budget.md), issue #1767. Read its STATUS table and verification link before changing reviewer assignment. It replaced historical availability scans with a bounded active-reviewer index, strict pre-lock quota/request checks, cached PR/verdict reads, and exhaustive mutex-cleanup tests. The current fixed per-operation ceiling is 25 requests; see the dated re-derivations and #2550 repair in the verification record.
@@ -8,7 +17,7 @@ Reviewer availability is the bounded active-lease index. Before the parallel-rev
 
 An exact-head verdict, terminal failure/replacement, moved head, merged PR, or closed PR makes a lease stale; a verdict additionally releases the lease it was recorded against, so the stale classification is the fallback for leases no verdict path reclaimed. Stale leases are deleted only while the global mutex is owned and the fixed ref still matches its expected SHA. If release cannot be proved, preserve the named ref/SHA and use the guarded `recover-author-mutex.yml` procedure.
 
-Phase 2 rules: protected object claims and active-author capacity are separate; relinquishment never releases a claim. The follow-on abandonment/recovery lifecycle is planned in [`../../plan_author_lane_abandonment_lifecycle.md`](../../plan_author_lane_abandonment_lifecycle.md); read its STATUS table before changing author-capacity behavior. Preview dependencies produce `PREVIEW_WAIT`, never a successful workflow. Immediately before manual preview dispatch, resolve the live marker, run `node scripts/manage-migration-author-lanes.mjs --prepare-preview-dispatch <issue>`, rerun the read-only selector/fresh-ledger check, and dispatch only its matching stored instruction. Historical recovery is `mode=apply` only; historical dry-run proves nothing. Use `--repair-preview-ready <ready-id> --issue <n>` only for a v2-bound stale wrong digest; a corrupt live digest requires an owner decision and no mutation. Reviewer reservations serialize approved provider/wrapper execution keys and create an ordered durable `review-wait` when all eligible keys are busy. The live orchestrator engine is excluded from review; Gemini 3.8 Flash High re-entered the active rotation on 2026-09-06 (PR #2438, ai-devops issue #285) after a recorded live re-qualification, Kimi K3 was unpaused on 2026-09-07 (PR #2483) and is drawable again, and Codex GPT-5.6 Sol was retired on 2026-09-06 (issue #2485) by owner instruction so it is not drawable. **With zero open orchestrator markers (`state: none`) the exclusion list is empty and the whole rotation stays drawable** (issue #2127): the exclusion is a same-engine conflict guard, and with no live engine there is no conflict, so closing a marker must not freeze merging repository-wide. `ambiguous`, `invalid` and `unsafe` marker states still refuse. The marker resolver exits non-zero for answers it is certain of (3 for `none`, 1 for the refusing states), so a non-zero exit carrying parseable JSON is an ANSWER; only unreadable output is a resolver fault, and the refusal names which it was.
+Phase 2 rules: protected object claims and active-author capacity are separate; relinquishment never releases a claim. The follow-on abandonment/recovery lifecycle is planned in [`../../plan_author_lane_abandonment_lifecycle.md`](../../plan_author_lane_abandonment_lifecycle.md); read its STATUS table before changing author-capacity behavior. Preview dependencies produce `PREVIEW_WAIT`, never a successful workflow. Immediately before manual preview dispatch, run `node scripts/manage-migration-author-lanes.mjs --prepare-preview-dispatch <issue>`, rerun the read-only selector/fresh-ledger check, and dispatch only its matching stored instruction. Historical recovery is `mode=apply` only; historical dry-run proves nothing. Use `--repair-preview-ready <ready-id> --issue <n>` only for a v2-bound stale wrong digest; a corrupt live digest requires an owner decision and no mutation. Reviewer reservations are per exact review, never per provider: one reviewer may run any number of reviews at once and there is no busy state or `review-wait` (issue #3130). The live orchestrator engine is excluded from review; Gemini 3.8 Flash High re-entered the active rotation on 2026-09-06 (PR #2438, ai-devops issue #285) after a recorded live re-qualification, Kimi K3 was unpaused on 2026-09-07 (PR #2483) but is paused again as of 2026-09-22 (issue #3423), and Codex GPT-5.6 Sol was retired on 2026-09-06 (issue #2485) by owner instruction so it is not drawable. **With zero open orchestrator markers (`state: none`) the exclusion list is empty and the whole rotation stays drawable** (issue #2127): the exclusion is a same-engine conflict guard, and with no live engine there is no conflict, so closing a marker must not freeze merging repository-wide. `ambiguous`, `invalid` and `unsafe` marker states still refuse. The marker resolver exits non-zero for answers it is certain of (3 for `none`, 1 for the refusing states), so a non-zero exit carrying parseable JSON is an ANSWER; only unreadable output is a resolver fault, and the refusal names which it was.
 
 Relocated from `AGENTS.md` on 2026-08-20 (issue #1331, PR #1212) so the router stays under its
 80 KB ceiling. **Text unchanged, section number unchanged.** `AGENTS.md` §4 carries the operative
@@ -24,8 +33,9 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    issue #2775), and the cap was removed. Concurrent authors must use isolated
    worktrees, exact object claims and centrally reserved versions. Protected
    blocked claims continue blocking every overlapping object and version.
-   Reviewer draws have no global queue: any pull request draws any free usable
-   reviewer immediately.
+   Reviewer draws have no global queue: any pull request draws any usable
+   reviewer immediately; a reviewer holding other live leases is not busy and
+   is never a reason to wait (no per-reviewer concurrency limit).
 
    Isolation never depended on a lane count. It comes from the exact object
    claim, the global acquisition mutex, the permanent version reservation and
@@ -52,9 +62,140 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    The created issue body is authoritative and machine-readable. Never hand-edit
    its fenced blocks. The permanent version ref prevents reuse even after a lease
    ends. Clock expiry releases neither protection nor capacity. When durable
-   external evidence blocks clean work, use `--relinquish-author-lease --claim
-   <n> --owner <owner> --blocked-on issue:#<n>`; after the blocker clears, use
-   `--resume-author-lease --claim <n> --owner <owner> --lease-hours <hours>`.
+   external evidence blocks clean work, use `--relinquish-author-lease
+   --claim-number <n> --owner <owner> --blocked-on issue:#<n>`; after the blocker
+   clears, use `--resume-author-lease --claim-number <n> --owner <owner>
+   --lease-hours <hours>`. The value flag is `--claim-number` on both: a bare
+   `--claim` is the boolean that claims a lane. If a resumed claim still carries
+   `blocked_on`, `worktree_state` or `recovery` (refused as unreadable), repair it
+   with `--repair-resumed-claim --claim-number <n> --owner <owner>`; it only
+   removes that residue, and only after a recorded `author_capacity_resumed`
+   event (issue #3170).
+
+   **An expired lease is not an abandoned lane (issue #2301).** Expiry is
+   created by time passing. It proves that nobody renewed a claim; it does not
+   prove the author is gone, and it never releases either the object protection
+   or the capacity slot. Detection and decision are therefore separate steps,
+   and nothing in this repository transitions a claim because a clock ran out.
+
+   Detect with the read-only audit:
+
+   ```bash
+   node scripts/manage-migration-author-lanes.mjs --abandonment-audit
+   ```
+
+   It prints the same report as `--reconcile-flow` but cannot write: the
+   sole-orchestrator marker reads as gone and every mutation hook throws before
+   the reconciler can reach it, so a regression fails loudly instead of writing.
+   Its exit code is the answer — `0` no expired lane, `2` at least one expired
+   lane needs a decision, `3` unverifiable — author-capacity state could not be read and
+   nothing may be concluded from the run. `3` outranks `2` within that domain: an audit
+   that could not read every claim is not trusted to have seen the expiry either.
+   Preview readiness is NOT_EVALUATED here; it remains a separate full-reconciliation
+   gate for preview preparation and is never treated as passed by this audit. The same report
+   runs hourly as the `Author Lane Abandonment Audit` workflow, which holds only
+   `read` scopes and files no issue and no comment; the failing run and its job
+   summary are the report. Never run `--reconcile-flow` from a scheduled job.
+
+   **The abandonment record.** Before any lane is touched, open an abandonment
+   audit issue using
+   [`.github/ISSUE_TEMPLATE/author-lane-abandonment.md`](../../.github/ISSUE_TEMPLATE/author-lane-abandonment.md).
+   It must identify the claim, the pull request and its exact head, the recorded
+   owner, the branch, the migration version, the last known worktree and
+   machine, the expiry, the evidence that the author is terminal or unreachable,
+   the observed worktree state, and the recovery or successor references. Record
+   the machine and worktree as their recorded identifiers only; never paste
+   personal paths, account names, tokens, or message contents into the issue.
+   The issue carries its own `db-work-scope` fence so the queue can order it:
+
+   ````text
+   ```db-work-scope
+   status: ready
+   work_type: repo-maintenance
+   route: repo-maintenance
+   change_type: repo-maintenance
+   priority: 100
+   depends_on:
+   writes:
+   reads:
+   ```
+   ````
+
+   `writes:` and `reads:` are empty on purpose. An abandonment audit claims no
+   database object; claiming one would collide with the very claim it is
+   investigating. It is `repo-maintenance` work on the `repo-maintenance` route,
+   not orchestrator structural work: it changes no database structure, and
+   `route: shared-db-orchestrator` is refused for this work type.
+
+   The issue also carries a second, REQUIRED fence — the machine-readable half of
+   the record:
+
+   ````text
+   ```abandonment-audit
+   claim: <claim issue number>
+   pr: <pull request number>
+   head_sha: <the full 40-character head SHA>
+   owner: <the claim's recorded owner>
+   ```
+   ````
+
+   Without it the record is prose only. The reconciler that suggests the guarded
+   relinquish command and the guarded command that revalidates the evidence both
+   read this one fence, and a fence that is absent, incomplete or malformed is
+   read as no evidence at all: no command is suggested, and a relinquish falls
+   through to the ordinary-blocker path with none of the exact-tuple, head,
+   marker and worktree-state revalidation the abandonment path exists to
+   perform. The four values must match the live claim exactly.
+
+   **Procedure 1 — quarantine and recovery** (the work may still come back):
+
+   1. Open the durable abandonment audit issue above and let the audit output
+      stand as its first evidence.
+   2. Relinquish capacity with the observed worktree state:
+      `--relinquish-author-lease --claim-number <n> --owner <owner> --blocked-on issue:#<audit issue> --worktree-state <clean|dirty|absent|remote>`.
+      The value flag is `--claim-number`; the CLI parses a bare `--claim` as the
+      boolean that claims a lane, so giving it a value dies in the parser on the
+      bare number.
+      `--worktree-state` is not optional on this path — acting on abandonment
+      evidence is refused without it, because the observation is the operator's
+      own and may never be inferred from a stale audit. The reconciler prints
+      this exact command for you; prefer its printed line to a hand-typed one.
+   3. Change nothing else. The pull request, the claim, the object locks, the
+      version reservation, the branch and the worktree all stay exactly as they
+      are. Never delete a ref, a branch, a claim or a worktree to free a lane.
+   4. Recover the work when the author or a successor returns, and record the
+      recovery evidence on the audit issue.
+   5. Resume atomically with
+      `--resume-author-lease --claim-number <n> --owner <owner> --lease-hours <hours>`,
+      which re-runs every current collision, capacity and version check.
+
+   **Procedure 2 — terminal retirement** (the work cannot or should not return):
+
+   1. Record the evidence that the work is terminal on the audit issue.
+   2. For potentially recoverable work, preserve a rescue branch or patch backup,
+      leave the claim protective, and retire it only with `--preservation` plus the
+      allocator-assigned AI reviewer's APPROVE — see the authority boundary below.
+   3. Close the pull request through the normal authenticated operator flow.
+      Never delete its branch or its refs.
+   4. Retire the claim with the tombstoning `--release-claim`, which writes an
+      immutable tombstone and reads it back before the claim closes.
+   5. A successor takes a fresh claim tuple and a fresh migration version. The
+      retired version can never be reissued, and a retired claim is refused on
+      every reactivation path.
+
+   **Authority boundary (settled).** The session doing the structural work may retire work on its own
+   evidence where the worktree is `clean`, or `absent` with its absence proven
+   and its durable branch and pull-request evidence complete — in both cases
+   nothing unrecoverable is being discarded. Potentially recoverable uncommitted
+   work (any worktree observed `dirty` or
+   `remote`) is never abandoned as-is and never sent to Albert (owner ruling
+   2026-09-28): preserve a rescue branch or patch backup, leave the claim
+   protective, and report it `Blocked —` until retired as follows.
+   A terminal retirement from `dirty`/`remote` takes `--preservation artifact:<rescue commit or patch object>`
+   (dereferenced before anything is written) plus the allocator-assigned AI reviewer's durable
+   exact-head APPROVE for `--pr`/`--head-sha`, read automatically; `--owner-decision` is refused
+   (#3675). An `ambiguous` observation
+   is not a state; re-observe, or treat it as `3` and stop.
 
    Audit lanes with `node scripts/manage-migration-author-lanes.mjs --audit`.
    Audit and refill the dynamic queues with
@@ -153,6 +294,84 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    Completion is immutable. A second record on one issue is an error, not
    latest-wins.
 
+   **THE REPORT FILE (issue #2824).** `--complete-work` is the only publishing
+   path for a `db-work-completion` record, and a missing record is what stalled
+   #2357 for a day. Sessions used to reach the end of merged work, find no
+   schema here, and write prose where the record belonged. The schema is:
+
+   | Field | Required | Meaning |
+   | --- | --- | --- |
+   | `schema_version` | always, must be `1` | the record schema |
+   | `work_issue` | always | the issue number; must equal `--issue` |
+   | `outcome` | always | one of `merged`, `live_verified`, `ready-for-merge`, `owner-ruling-recorded`, `returned`, `cancelled`, `superseded`, `failed` |
+   | `pr` | `merged`, `live_verified`, `ready-for-merge` | the pull request number |
+   | `merge_sha` | `merged`, `live_verified` | GitHub's `merge_commit_sha` |
+   | `migration_versions` | `merged`, `ready-for-merge` | the 14-digit versions the PR added; `[]` when it added none |
+   | `application_repository`, `application_commit_sha`, `live_evidence` | `live_verified` | where the outcome was proved live |
+   | `ruling_url`, `resolved_by` | `owner-ruling-recorded` | the durable ruling, and the commit or issue-comment URL that resolved it |
+   | `reason` | `returned`, `cancelled`, `superseded`, `failed` | free text; downstream work is told this exact wording |
+   | `invalidates`, `supersedes` | optional | advisory issue-number lists; they surface in an audit and never auto-block anything |
+
+   Three rules the schema alone does not tell you:
+
+   - **Only `merged` and `owner-ruling-recorded` RELEASE a dependent.** Every
+     other outcome is a legitimate ending that releases nothing.
+   - **`ready-for-merge` must NOT carry a `merge_sha`.** GitHub has not created
+     one yet, so naming it is refused rather than accepted and ignored.
+   - **`merge_sha` is GitHub's `merge_commit_sha`**, which is the squash commit.
+     The source branch head is NOT what lands on `main`, and a branch head here
+     is refused against the live pull request.
+
+   A worked example, for merged repository-maintenance work that shipped no
+   migration:
+
+   ```json
+   {
+     "schema_version": 1,
+     "work_issue": 2824,
+     "outcome": "merged",
+     "pr": 3321,
+     "merge_sha": "0f5d93e8c1a24b6f7e8d9a0b1c2d3e4f5a6b7c8d",
+     "migration_versions": []
+   }
+   ```
+
+   Record it, confirm the read-back, then close:
+
+   ```bash
+   node scripts/manage-migration-author-lanes.mjs --complete-work --issue 2824 --report-file report.json
+   ```
+
+   #### Changing a scope `status:` — `--set-scope-status` (issue #2824)
+
+   Moving a db-work issue from `blocked` to `ready` is the single most
+   consequential edit in the queue: it is what makes the work dispatchable. It
+   used to be an unaudited hand edit through `gh issue edit --body-file`, which
+   took no mutex, got no read-back, and left no machine-readable trail. It was
+   also error-prone — the recorded #2212 attempt lost its multiline body to
+   PowerShell argument splitting, a follow-up `gh api` attempt sent an array
+   instead of a string, and the remote never changed with nothing to say so.
+
+   Hand editing a scope block is no longer the sanctioned route. Use:
+
+   ```bash
+   node scripts/manage-migration-author-lanes.mjs --set-scope-status --issue <n> --status <ready|blocked|owner-decision> --reason "<one line>"
+   ```
+
+   It takes the author mutex, re-parses the block, writes exactly the one
+   `status:` line (a rewrite that moves any other line is refused), reads the
+   body back from GitHub, and comments an audit line naming the old status, the
+   new status, the reason, and its mutex owner commit.
+
+   **It cannot mark work complete.** It writes one queue field and nothing else:
+   it publishes no completion record, closes no issue, touches no lease, and
+   releases no dependent. A `ready` transition is refused unless every
+   `depends_on` entry satisfies the same `classifyDependencies` gate the queue
+   itself uses — so a dependency that is still open, or closed with no
+   `db-work-completion` record, refuses the write. A dependency that could not be
+   read refuses it too: "I could not check" is never "nothing to check".
+
+
    Dependencies closed before **2026-08-23** are GRANDFATHERED: they could not have
    carried a record, so they are accepted and listed under
    `GRANDFATHERED DEPENDENCIES` to stay countable. The cutoff never rescues a
@@ -176,11 +395,11 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
 
    | work type | exit | who does it |
    |---|---|---|
-   | `structural` | `accept` | this orchestrator, via a migration-author lane |
-   | `curated-master-data` | `fork` | a fresh session **dispatched by this orchestrator**, under §6.4 |
+   | `structural` | `accept` | the claiming session, via a migration-author lane |
+   | `curated-master-data` | `fork` | a claiming session, under §6.4 |
    | `application-data`, `source-data` | `reject` | the owning application repository, after being forwarded |
    | `repo-maintenance`, `documentation` | `repo-session` | a **separately started** repository session — not an orchestrator assignment at all |
-   | `security-settings` | `return-to-owner` | Albert |
+   | `security-settings` | `repo-session` | a **separately started** AI session that obtains the needed access itself (owner ruling 2026-09-28, #3675: never ask a human to approve) |
 
    **Owner ruling, 2026-08-21 (issue #1366).** The orchestrator does database
    structure and schema only. `repo-maintenance` and `documentation` are not
@@ -248,10 +467,27 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
      --issue <issue> --pr <pr> --head-sha <exact-head>
    ```
 
-   For new assignments, the machine-independent cursor rotates Grok 4.6 → GLM
-   5.3 → Kimi K3 → Qwen 3.8 Max → Muse Spark 1.3 Contributor → Gemini 3.8
-   Flash High → repeat, skipping any reviewer whose engine matches the live
-   orchestrator.
+   When the owner restricts one workstream to named reviewers, add
+   `--reviewer-allowlist <canonical-name,...>` to assignment and replacement.
+   The canonical set is stored with the durable assignment: an omitted retry
+   inherits it and an explicit mismatch refuses. Later slots inherit slot one's
+   set, and returning an assignment never erases
+   its permission restriction when that slot is redrawn.
+   The set grants permission only: live preflight, quarantine, orchestrator independence, per-PR exclusions and
+   slot independence still decide who is usable. It creates no concurrency cap.
+
+   For new assignments, the shared cursor (the sequence counter is shared; which
+   reviewer a draw lands on depends on what the drawing machine can run) rotates GLM
+   5.3 → Qwen 3.8 Max → Muse Spark 1.3 Contributor → Gemini 3.8 Flash High → DeepSeek
+   V4.1 Flash → StepFun Step 5 → repeat, with Grok 4.6 kept active as the fallback drawn
+   only when none of those preferred reviewers can take the exact review (owner
+   preference 2026-09-27, #3592; applies to slot 2 and failed-reviewer replacements too),
+   skipping any reviewer whose engine matches the live orchestrator, and on a
+   non-Linux machine skipping StepFun (its preflight is `unsupported-platform`). GLM 5.3
+   was restored on 2026-09-30 (owner instruction: "add GLM back into the
+   reviewer rotation") after its 2026-09-18 weekly-usage pause. Kimi K3
+   (paused 2026-09-22, account out of credit, issue #3423) is not drawable
+   until removed from `RETIRED_REVIEWERS`.
    Codex GPT-5.6 Sol was retired from the rotation on 2026-09-06 (issue #2485)
    by owner instruction and is no longer drawable.
    That is exactly `ACTIVE_REVIEWERS` in
@@ -260,7 +496,15 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    the code is the truth and this sentence must be re-derived from it, never the
    other way round.
    Codex cannot review when Codex orchestrates; Claude cannot review when Claude
-   orchestrates. Albert approved Codex on 2026-08-28 after its wrapper
+   orchestrates; and GLM cannot review when a ZCode orchestrator runs, because
+   ZCode's engine is GLM-5.3 — the exclusion follows the model engine behind the
+   harness, not the harness name (owner ruling 2026-09-17, "I never want GLM
+   reviewing GLM code", enforced by PR #3232: the glm rows carry
+   `orchestratorEngine:'glm'`, a marker may declare `engine: zcode` with a
+   `sess_<uuid>` id, and `ENGINE_REVIEWER_EXCLUSION` maps zcode → glm before the
+   draw, while codex and claude map to themselves unchanged). ZCode is not a
+   reviewer; adding it as one was permanently rejected by the same ruling.
+   Albert approved Codex on 2026-08-28 after its wrapper
    qualified.
 
    **Gemini 3.8 Flash High is ACTIVE again as of 2026-09-06** (PR #2438,
@@ -270,10 +514,12 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    review of merged commit `99fbefcb` that returned a well-formed verdict line
    above real analysis citing specific lines.
 
-   **Kimi K3 was UNPAUSED on 2026-09-07 (PR #2483) and is drawable again.** It
+   **Kimi K3 is PAUSED again as of 2026-09-22 (issue #3423) and is not drawable.**
+   History: it was unpaused on 2026-09-07 (PR #2483). It
    had been paused 2026-09-03T16:55Z by owner instruction after a confirmed
    account-wide weekly usage cap (403, not retryable); the cap lifted and the
-   name was removed from `RETIRED_REVIEWERS`, so `ACTIVE_REVIEWERS` includes it.
+   name was removed from `RETIRED_REVIEWERS` at that time; it is back in that
+   list since 2026-09-22.
    **Codex GPT-5.6 Sol was RETIRED on 2026-09-06 (issue #2485) and is not
    drawable.** The owner retired the account permanently once five other
    reviewers were working; it is carried in `RETIRED_REVIEWERS`. This is a
@@ -284,8 +530,27 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    `QUARANTINED_REVIEWERS` is empty. The retired `glm-5.2` label is paused until
    an explicit owner instruction restores it.
 
-   **DeepSeek was RETIRED on 2026-09-01 (issue #2078) and is not drawable.**
-   `ai-deepseek-agent` is a conversational API client with no filesystem, no
+   **DeepSeek V4.1 Flash (`deepseek-v4.1-flash`) is ACTIVE as of 2026-09-23**
+   (owner instruction, issue #3468). `ai-deepseek-agent --review` gained
+   read-only repository tools (`list_dir`, `read_file`, `grep`; ai-devops PR
+   #730), so its row carries `readsRepository: true`. Re-entry followed the
+   Gemini precedent: a live qualification and a live governed review of merged
+   commit `e2e41104` returning `VERDICT: REVISE e2e41104735a0c3e1981dabccbdc9089f109d970`
+   above a report citing specific lines.
+
+   **StepFun Step 5 (`stepfun-step-5-preview`) is ACTIVE as of 2026-09-25,
+   Ubuntu/Linux only** (owner instruction). `ai-stepfun review` (ai-devops PR
+   #849) runs StepCode `step/step-5-preview` with only read/grep/find/ls under
+   strict approval inside bubblewrap, over the shared sealed evidence packet, and
+   ends in a head-bound `VERDICT:` line; a live review of `94bf83c6` returned
+   `VERDICT: REVISE 94bf83c64889c2c29e229a2faa66d8ee183e911c` above a report
+   citing specific lines. The allocator has no platform field: on Windows,
+   `ai-review-preflight usable` reports stepfun `unsupported-platform`, so that
+   machine never draws it.
+
+   **The text-only `deepseek-chat` row was RETIRED on 2026-09-01 (issue #2078)
+   and stays retired.** At that time
+   `ai-deepseek-agent` was a conversational API client with no filesystem, no
    diff and no tools, so it can only review a change as *described* in the
    brief, never as *written*. On PR #1989 it produced a complete, confidently
    ranked review of a file, five functions, two tables and two columns that do
@@ -293,24 +558,33 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    roster now records `readsRepository` per reviewer, and `recordReviewVerdict`
    refuses outright — before any commit or ref is created — to record a
    code-review verdict from a reviewer whose wrapper cannot read the repository.
-   Every drawable reviewer is given a real checkout: Grok via `--cwd`, GLM and
-   Muse via an `ai-review-sandbox` clone, Gemini via a disposable sandbox copy of
-   the checkout under `--sandbox`, and Kimi via a read-only agent profile. The
-   retired Codex reviewer was equipped the same way, via `codex exec --sandbox
+   Every drawable reviewer is given a real checkout: Grok via `--cwd`, Muse via
+   an `ai-review-sandbox` clone (as is GLM), Qwen via a sealed
+   evidence-packet checkout, Gemini via a disposable sandbox copy of
+   the checkout under `--sandbox`, paused Kimi via a read-only agent profile, and
+   DeepSeek V4.1 Flash via `ai-deepseek-agent --review` read-only repository
+   tools (`list_dir`, `read_file`, `grep`) confined to the checkout root, and
+   StepFun Step 5 (Linux machines only) via `ai-stepfun review`: read/grep/find/ls
+   inside bubblewrap over a read-only disposable copy with the sealed evidence
+   packet. The retired Codex reviewer was equipped the same way, via `codex exec --sandbox
    read-only`, but is no longer drawable.
 
-   No reviewer is overflow. If every eligible
-   reviewer is busy, the allocator records an ordered
-   `review-wait`; it does not duplicate an assignment or invent availability.
+   No reviewer is overflow. **No reviewer is ever "busy" (owner ruling,
+   2026-09-16).** One reviewer provider may run any number of independent
+   reviews at the same time; each exact review (issue, PR, head, slot) holds its
+   own lease ref, so a live review never makes its provider wait, reroute, or
+   queue. Independence still applies per head (slot 2 never draws slot 1's
+   provider), a reviewer never reviews its own orchestrator engine, and a
+   provider `ai-review-preflight` does not report `usable` is not drawn.
 
    A reviewer that is truthfully unusable for one pull request is excluded with
    `--exclude-reviewer --issue <issue> --pr <pr> --reviewer <name> --reason
-   <already-reviewed|independence-conflict|terminal-unavailable> --evidence-sha
+   <independence-conflict|terminal-unavailable> --evidence-sha
    <durable-assignment-or-replacement-sha>`. The exclusion is immutable,
    PR-local, requires an existing assignment or replacement for the same
    reviewer, and releases that exact active lease when present. It does not
-   create a failure record. New heads skip the reviewer; if exclusions and live
-   leases consume the roster, assignment refuses loudly and names each durable
+   create a failure record. New heads skip the reviewer; if exclusions consume the
+   roster, assignment refuses loudly and names each durable
    reason. Never use this to shop for a preferred verdict.
 
    The exclusion also RETURNS every assignment AND every replacement of that
@@ -356,9 +630,14 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
 
    ONE exclusion reason, and only one, can be lifted:
    `--reinstate-reviewer-exclusion --issue <issue> --pr <pr> --reviewer <name>`.
-   `already-reviewed` and `independence-conflict` are INDEPENDENCE guarantees --
-   a provider that already judged these bytes, or that is the orchestrating
-   engine, is never re-drawn, and no later evidence changes that. Those two are
+   NO LIMIT ON REUSING A REVIEWER (owner ruling, marker #2893, 2026-09-14): the
+   `already-reviewed` reason is retired. A new exclusion with it is refused, and a
+   historical record of it still parses but never bars a draw -- the same
+   reviewer may review the same pull request any number of times. Slot 2 of one
+   exact head must still be a different provider from slot 1 (two approvals).
+   `independence-conflict` is an INDEPENDENCE guarantee -- a provider that is the
+   orchestrating or authoring engine is never drawn, and no later evidence
+   changes that. It is
    refused before any provider is probed. `terminal-unavailable` is different:
    it is a claim about the WORLD, and a misdiagnosis of it used to be permanent.
    Issue #2224 is the incident -- three of five reviewers carried
@@ -381,9 +660,8 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
 
    A LIFT DOES NOT SPEND THE SLOT. An exclusion ref is create-only, so a
    reinstatement used to occupy the reviewer's only exclusion record for that
-   pull request forever: a later `already-reviewed` or `independence-conflict`
-   exclusion -- the record that enforces "a provider that already judged these
-   bytes is never re-drawn" -- was refused as a different durable exclusion, and
+   pull request forever: a later `independence-conflict`
+   exclusion -- was refused as a different durable exclusion, and
    the independence rule became unenforceable for that reviewer on that pull
    request. A later exclusion is now written to the NEXT GENERATION ref,
    `refs/db-review-exclusions/<issue>-<pr>-<reviewer>-gen<N>` (generation 1 keeps
@@ -410,11 +688,11 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    The re-run rebuilds the returned records from the return namespace and
    completes the re-filing, recording no second exclusion and no second return.
 
-   **Grok's in-flight lock is PER REPOSITORY, not global.** `ai-grok-review`
-   allows one live Grok review at a time *in shared-db*; it does not cap Grok
-   across repositories. Five repositories with work can run five Grok reviews
-   simultaneously. Never treat a Grok review running in another repository as a
-   reason to skip Grok here, and never treat a busy Grok here as a Grok outage. Historical Qwen assignments, failures, and
+   **No reviewer wrapper serializes reviews by provider (owner ruling,
+   2026-09-16; popcre/ai-devops#401 Step 7A).** Any number of reviews by any provider in the active
+   rotation (currently Grok, Qwen, Muse or Gemini) may run at once, in this repository or any other,
+   each in its own session and sandbox. Never treat another live review by the
+   same provider as a reason to skip, wait for, or replace it. Historical Qwen assignments, failures, and
    replacement evidence remain readable and must be recovered or replaced
    through `scripts/manage-migration-author-lanes.mjs`, never hand-edited. Use
    only the wrapper returned by the manager and its fixed model settings. Reuse
@@ -422,8 +700,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    a current exact-head re-read and `APPROVE` or `REVISE` with evidence. Verify
    every claim independently. Relay disagreements with
    `templates/delegation/debate-turn.md`, stopping at agreement or the initial
-   review plus three rebuttals. If material disagreement remains, stop the merge
-   and ask Albert one concise decision. Never send secrets or licensed rows.
+   review plus three rebuttals. If material disagreement remains, stop the merge and route it to a third allocator-assigned reviewer or an engineer; never ask Albert to decide a technical dispute (owner ruling 2026-09-28). Never send secrets or licensed rows.
    Do not impose a fixed hard-kill timer on a reviewer that is still making progress.
 
    Run the returned wrapper only through `scripts/run-governed-review.mjs`. The
@@ -475,6 +752,15 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    write its own state. A real `REVISE` verdict is not a transport failure and
    must never be replaced.
 
+   **Out of credit: tell Albert in the same reply (owner requirement,
+   2026-09-24).** When `REFUSED:` contains `insufficient_quota: OUT OF CREDIT:`,
+   the reviewer's provider account has run out of credit. In that same reply,
+   tell Albert in plain words which provider needs credits and where, quoting
+   the `OUT OF CREDIT:` text as printed. Never make him open another session to
+   learn it. Then replace the reviewer with `--replace-failed-reviewer
+   --failure-code insufficient_quota --confirm-no-verdict --confirm-no-artifact`
+   and continue with the replacement.
+
    **`--replace-failed-reviewer` is slot-aware, and the slot must be named.** It
    defaults to `--review-slot 1`. Pass `--review-slot 2` to replace a failed
    second reviewer; the request is then resolved only against slot 2's own
@@ -496,6 +782,8 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    adherence, continuity, latency, turns, and only metrics the wrapper reports.
    Kimi headless metrics and returned model are unavailable; never invent them.
    **The exact-head approval rule is ENFORCED at the merge gate, not merely documented (#1816, 2026-08-29).** Until then `guarded-migration-merge` proved head identity, base currency, object collisions and the author lease, but never asked whether the bytes being merged had been approved -- and under merge-first the preview gate that does ask only runs AFTER the merge. So `REJECT` at head A, a new commit B answering it, then merging B put unapproved bytes on `main`. That happened on PR #1809 (issue #1769): grok-4.6 REJECTed `b494401`, commit `8d3c31a` answered it, and `8d3c31a` merged as `2b68e7e` with zero approvals tied to it. `scripts/check-exact-head-approval.mjs` now runs twice in that workflow -- once up front and once re-proven under the merge lock -- and refuses unless a reviewer assignment AND an `APPROVE` are both pinned to the exact head being merged, with no unanswered refusal at that head. **An assignment is not an approval, and an approval of an earlier head is not an approval of these bytes.** A new commit answering a review always needs a fresh exact-head review before it can merge. A reviewer *replacement* does not change any of this: replacement exists for a reviewer that produced **silence** (the TERMINAL_FAILURE_CODES -- quota, provider unavailable, dependency unavailable, wrapper failure, turn-limit cancellation), not for one that produced a verdict. Replacing a reviewer who timed out mid-review is legitimate, but if that reviewer had already emitted a refusal, the refusal survives the replacement -- the distinction is verdict-vs-silence, not reviewer identity. Conversely, a replacement reviewer's assignment (and a slot 2 assignment, suffixed `-slot<N>`) counts as a genuine assignment at that head, so the gate reads both the assignment and the replacement ref namespaces. **What that gate still does NOT check:** free-text verdicts are now unauthorized by default and count only when GitHub reports an `OWNER`, `MEMBER` or `COLLABORATOR` association. This closes public-comment forgery in both the merge and lane gates. It still does not prove the assigned provider authored the verdict, because assignment refs carry no provider-to-GitHub-author binding. "Independent" describes the rotation process and must not be inferred from the commenter identity. A fenced or indented verdict line still counts. **The approval head tie is asymmetric, and the asymmetry closed a live fail-open (codex-gpt-5.6-sol, 2026-08-30).** An earlier draft tied approvals to a head by finding the SHA anywhere in the body, and recorded that as a deliberate limit. It was not a limit, it was #1809 rebuilt inside the tool meant to close it: a comment approving head A that merely *mentions* head B is tied to B and opens a line with `APPROVE`, so it authorized B — bytes nobody had looked at. Confirmed by probe before it was fixed. An **approval** now requires an unambiguous reference: either GitHub's own `commit_id` binding, which is structured data rather than prose, or a body that names this head and no other commit-length SHA at all. Two SHAs in one body means the reader cannot tell which the verdict is about, and an ambiguous authorization is refused. Requiring the SHA on the verdict line was rejected instead, because genuine wrapper reviews name the head in a header and some end with a bare `VERDICT: APPROVE`, so that rule would refuse real approvals. A **refusal** deliberately keeps the permissive tie: over-counting a refusal locks a head that may not have needed locking and costs a re-review, while over-counting an approval merges unreviewed bytes, so when a tie is uncertain both errors must fall on the side of not merging. The gate authenticates repository permission, not reviewer identity, and must never be cited as proof that the assigned provider authored the verdict. **Verdict recognition is on the claim, not the token (grok-4.6, 2026-08-30).** Markdown emphasis is stripped on both sides of the `VERDICT:` label, because `## VERDICT: **APPROVED**` is a genuine archived approval form (`.ai/reviews/phase6-glm-review.md`) that an earlier draft refused; a conditional approval is detected by the phrase "with condition(s)" anywhere on the verdict line or the line after it, rather than by `WITH` sitting next to `APPROVE`, which both missed `APPROVE ONLY WITH CONDITIONS` and wrongly refused `APPROVE WITH confidence`; and `REQUEST CHANGES` with a space refuses exactly as `REQUEST_CHANGES` does. Of the two failure directions, **refusing valid input is the more dangerous one**: it presents as reviewers not returning verdicts, so the wrappers get blamed and re-run while the gate is never suspected. **Measure the endpoint before calling a read broken.** The same review flagged the unpaginated assignment-ref listing as a defect that would make the gate impossible to pass, reasoning from the ~370-ref namespace and GitHub's usual 30/100 page sizes. Measured live on 2026-08-30, `git/matching-refs` is not a paged collection: unpaginated and `--paginate` both returned all 421 assignment refs and all 114 replacement refs. The listing stays unpaginated deliberately, and the extra requests would count against the per-process wire budget (#1767).
+
+   **Merged-PR audit mode (#2839, PR #3375, 2026-09).** Re-running the live gate on a pull request that has already merged re-evaluates today's reviewer records, so a refusal posted after the merge, or an archived verdict, could make a lawful merge look unauthorized. Setting `APPROVAL_AUDIT=merged PR_NUMBER=<n>` selects an opt-in audit path instead. It reads the pull request's merge time and exact merged head, keeps only `Migration guarded merge authorization` statuses on that head whose server timestamp is at or before `merged_at` (a status with an unreadable timestamp is kept so the shared reader refuses it rather than guessing), and takes the newest. It passes only when that status is `success`, was created by `github-actions[bot]`, and carries either the guarded lane's description or the documents-only lane's description; the documents-only form is accepted only when the merged PR's own changed files still classify documents-only. It reports the merge time, merge commit, head, authorization time and status id. It refuses an open PR (use the live gate), a closed-unmerged PR (nothing to audit), an inconsistent open-and-merged state, and a PR with no readable merge time, merge commit or head. Without the variable the gate is unchanged for every caller, merged or not -- the automatic-promotion re-proof still runs the live verdict check on a merged source PR. **What the audit does not prove:** that the guarded lane itself performed the merge (a cancelled run can leave a success standing), which PR a status was posted for when two share a head SHA, or any post-merge revocation. **Known limit: the merge commit SHA is shape-checked and reported only; it is not bound to the authorized head.**
 
    **What a verdict is worth depends on how it was obtained (#1816, #1824, 2026-08-30).**
    Six failures in two days shared one shape: a claim that was true when made,
@@ -617,11 +905,12 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    material objection. Ambiguous SQL stops for Albert. Ask him one plain
    business-risk question. Never ask him to approve migration numbers, project
    identifiers, SQL, or other technical details. This policy cannot authorize
-   its own rollout. `config/production-risk-policy-activation.json` remains
-   inactive, and the older exact-approval rule remains binding, until #1015 is
-   independently reviewed, both PRs are merged, the installed skill hash matches
-   canonical ai-devops, and the forward-test proof hash is recorded. The gate
-   verifies those facts again before it can permit automatic promotion.
+   its own rollout. The current activation record is active; the completed
+   rollout evidence is recorded in `config/production-risk-policy-activation.json`.
+   The gate still verifies that record, its immutable forward-test proof,
+   canonical skill hashes and the qualified delivery evidence before allowing
+   automatic promotion. Historical pre-activation requirements are evidence of
+   that rollout, not an instruction to repeat it or disable the active route.
    Record Qwen High as requested, but never override the wrapper's qualified
    fixed configuration.
 
@@ -644,7 +933,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    `preview` or `merge` lease. Instructions in chat are not a lock. Fetch `origin/main`, update the branch
    from newly merged `main`, and re-run the version/object checks and all existing
    SQL/cross-PR guards. A clean author lane does not grant access to preview.
-   The orchestrator grants the single preview lane, then the single merge lane.
+   The lane tooling grants the single preview lane, then the single merge lane.
    Release each stage lease explicitly when that stage ends. Required CI rejects
    a migration PR unless its exact version and normalized objects match a live,
    branch-bound author claim; merge CI also requires that PR's merge lease.
@@ -740,24 +1029,19 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    claimed the exclusion existed, and it never did. Promotions are serialised
    among themselves by the workflow `concurrency` group, not by this lock.
 
-   **Every pull request enters through that guarded merge lane, including
-   documentation-only and other non-migration changes.** A pull request that
-   changes no migration needs no migration-author claim, but the lease workflow
-   does not auto-authorize it: the guarded merge still proves the exact head,
-   current-main relationship, collision result, and governed review while it
-   holds the merge lock.
+   **Code and executable instructions use the guarded merge lane.** A change with
+   no migration needs no migration-author claim; its applicable exact-head review,
+   current-main relationship and collision protections remain enforced.
 
-   **One exemption, 2026-09-02 (#2102): a documents-only pull request draws no
-   database reviewer, and the merge gate requires no verdict for it.** It still
-   enters this same lane and still runs every other check; only the external
-   reviewer draw is skipped, because PR #2034 and PR #2070 spent migration
-   reviewer capacity on prose. Rulebook files — `AGENTS.md`, anything under
-   `.claude/skills/` or `skills/`, and `plan_*.md` — are **not** documents for
-   this purpose, and one non-document file of any kind removes the exemption from
-   the whole pull request. The classifier is
-   `scripts/lib/documents-only-change.mjs`; it fails closed on an empty,
-   unreadable or absent file list, and a refusal already recorded at the exact
-   head still blocks the merge.
+   **Documentation-only changes use the lightweight route** (owner ruling
+   2026-09-20), including standalone `plan_*.md` files. Prove the complete change
+   with the base-owned classifier in `scripts/lib/documents-only-change.mjs`;
+   empty, unreadable or incomplete inventory cannot qualify. Full engineering
+   CI and external reviewer waits are not required. `AGENTS.md`, `CLAUDE.md`,
+   skill/agent/command instructions and any mixed executable change retain
+   engineering protection. The existing narrow link-only routing-pointer
+   classifier does not exempt behavior-changing instructions. Exact-head
+   refusals remain binding. See the current workflow for the route map.
 
    When production acquires its lock, the production
    workflow revokes every open pull request's earlier merge authorization before
@@ -905,8 +1189,9 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    describe was built in the first place (#1194, #1208). Open an issue instead.
 3. **Additive by default (expand, then contract).** Adding a column or table
    cannot break another app. **Renaming or dropping** one that another app reads
-   *will*. Default to additive changes. Only rename/drop after explicit owner
-   sign-off and a checked deprecation across all dependent apps.
+   *will*. Default to additive changes. Only rename/drop after the allocator-assigned AI reviewer's exact-head
+   APPROVE and a checked deprecation across all dependent apps (owner ruling
+   2026-09-28: never ask a human to approve).
 4. **New timestamped migration files only.** Each change is a new
    `YYYYMMDDHHMMSS_*.sql` file. Never edit a migration that has already been
    applied anywhere — that is how two sessions silently clobber each other.

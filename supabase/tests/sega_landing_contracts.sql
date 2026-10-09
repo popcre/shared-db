@@ -1626,7 +1626,7 @@ begin
   end if;
 
   if has_table_privilege('anon', 'api.source_capture_inventory', 'SELECT')
-     or not has_table_privilege('authenticated', 'api.source_capture_inventory', 'SELECT')
+     or has_table_privilege('authenticated', 'api.source_capture_inventory', 'SELECT')
      or not has_table_privilege('service_role', 'api.source_capture_inventory', 'SELECT') then
     raise exception 'F FAILED: the view read grants changed';
   end if;
@@ -1677,6 +1677,8 @@ declare
     ['wildbrain\_%', 'wildbrain'],
     ['sesame\_%',    'sesame'],
     ['coke\_%',      'coca-cola'],
+    ['lucasfilm\_dcp\_%', 'lucasfilm_dcpvault'],
+    ['twentieth_century\_dcp\_%', 'twentieth_century_dcpvault'],
     -- 2026-09-10: added by the author of #2579 with migration 20260910155753,
     -- which classified the plm.marvel_* and plm.wwe_* families that landed after
     -- the inventory was written and were still reported as 'other'. Two rows, and

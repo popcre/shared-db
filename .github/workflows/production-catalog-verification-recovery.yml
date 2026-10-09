@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   verify-only:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     steps:
@@ -45,6 +45,14 @@ jobs:
           test "$(jq -r .conclusion <<<"$run")" = failure
           test "$(jq -r .head_sha <<<"$run")" = "$APPLY_MAIN_SHA"
           test "$(jq -r .path <<<"$run")" = .github/workflows/shared-supabase-migrations.yml
+          node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" api "repos/$GITHUB_REPOSITORY/actions/runs/$APPLY_RUN_ID/jobs?per_page=100" > "$RUNNER_TEMP/apply-jobs.json"
+          python - <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path.cwd() / "scripts"))
+          from production_catalog_recovery_evidence import validate_jobs
+          validate_jobs(json.loads(Path(os.environ["RUNNER_TEMP"], "apply-jobs.json").read_text()))
+          PY
           artifacts="$(node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" api "repos/$GITHUB_REPOSITORY/actions/runs/$APPLY_RUN_ID/artifacts?per_page=100")"
           name="production-migration-apply-$APPLY_MAIN_SHA"
           count="$(jq --arg n "$name" '[.artifacts[] | select(.name == $n)] | length' <<<"$artifacts")"
@@ -52,6 +60,7 @@ jobs:
           digest="$(jq -r --arg n "$name" '.artifacts[] | select(.name == $n) | .digest' <<<"$artifacts")"
           test "$digest" = "$APPLY_ARTIFACT_DIGEST"
           test "$(jq -r --arg n "$name" '.artifacts[] | select(.name == $n) | .expired' <<<"$artifacts")" = false
+          echo "APPLY_ARTIFACT_ID=$(jq -r --arg n "$name" '.artifacts[] | select(.name == $n) | .id' <<<"$artifacts")" >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/apply-evidence"
           gh run download "$APPLY_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$name" --dir "$RUNNER_TEMP/apply-evidence"
       - uses: supabase/setup-cli@v1
@@ -92,6 +101,14 @@ jobs:
             --project-ref qsllyeztdwjgirsysgai \
             --remote-ledger "$RUNNER_TEMP/apply-evidence/production-ledger-before.txt" \
             --mode enforce | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Bind successful verification to exact original apply
+        env:
+          MAIN_SHA: ${{ inputs.main_sha }}
+          APPLY_MAIN_SHA: ${{ inputs.apply_main_sha }}
+          APPLY_RUN_ID: ${{ inputs.apply_run_id }}
+          APPLY_ARTIFACT_DIGEST: ${{ inputs.apply_artifact_digest }}
+          ALLOWLIST: ${{ inputs.ordered_allowlist }}
+        run: python scripts/production_catalog_recovery_evidence.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -100,5 +117,6 @@ jobs:
             ${{ runner.temp }}/production-ledger-recovery.txt
             ${{ runner.temp }}/catalog-verification/production-catalog-verification.md
             ${{ runner.temp }}/catalog-verification/production-catalog-verification.json
+            ${{ runner.temp }}/production-catalog-recovery-binding.json
           if-no-files-found: error
           retention-days: 90

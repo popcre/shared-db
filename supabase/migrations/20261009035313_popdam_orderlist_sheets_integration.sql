@@ -131,7 +131,7 @@ grant all on dam.orderlist_customer_settings to service_role;
 create table if not exists dam.order_tracking_ext (
   order_id uuid primary key references plm.production_order(id) on delete cascade,
   agent text, cbm numeric check (cbm >= 0), comment text, vessel text,
-  sent_to_coldlion boolean, worksheet_done boolean, inspection_passed boolean,
+  sent_to_coldlion boolean, worksheet_done boolean, inspection_passed date, inspection_note text,
   document_invoice boolean, document_packing_list boolean, document_bill_of_lading boolean,
   document_tsca boolean, document_lacey_act boolean, document_telex boolean,
   request_wire boolean, payment_note text,
@@ -180,7 +180,7 @@ declare
   v_key text;
   v_type text;
   v_header_keys text[] := array['sent_po_date','vendor_delivery_date','booking_state','etd','eta','container_booking_group','mbl','close_tracking'];
-  v_extra_keys text[] := array['agent','cbm','comment','vessel','sent_to_coldlion','worksheet_done','inspection_passed','document_invoice','document_packing_list','document_bill_of_lading','document_tsca','document_lacey_act','document_telex','request_wire','payment_note'];
+  v_extra_keys text[] := array['agent','cbm','comment','vessel','sent_to_coldlion','worksheet_done','inspection_passed','inspection_note','document_invoice','document_packing_list','document_bill_of_lading','document_tsca','document_lacey_act','document_telex','request_wire','payment_note'];
 begin
   if auth.uid() is null or app.has_role('administrator'::app.app_role) is not true then
     raise exception 'Administrator access required' using errcode='42501';
@@ -200,9 +200,9 @@ begin
   -- Identifier formatting is safe only after the closed allowlist check above.
   -- Values are parameters. Absent keys leave existing facts untouched.
   for v_key in select jsonb_object_keys(p_patch) loop
-    v_type := case when v_key=any(array['sent_po_date','vendor_delivery_date','etd','eta']) then 'date'
+    v_type := case when v_key=any(array['sent_po_date','vendor_delivery_date','etd','eta','inspection_passed']) then 'date'
       when v_key='cbm' then 'numeric'
-      when v_key=any(array['close_tracking','sent_to_coldlion','worksheet_done','inspection_passed','document_invoice','document_packing_list','document_bill_of_lading','document_tsca','document_lacey_act','document_telex','request_wire']) then 'boolean'
+      when v_key=any(array['close_tracking','sent_to_coldlion','worksheet_done','document_invoice','document_packing_list','document_bill_of_lading','document_tsca','document_lacey_act','document_telex','request_wire']) then 'boolean'
       else 'text' end;
     if v_key=any(v_header_keys) then
       execute format('update plm.production_order set %I=$1::%s,updated_at=now() where id=$2',v_key,v_type)
@@ -352,9 +352,15 @@ select po.id as order_id,po.production_order_number,po.order_date,po.voided_at a
   case when lines.order_type='POE' and coalesce(cust.customer_name,nullif(po.metadata->>'customer_name',''))='Burlington' and ext.worksheet_done is not true
     then po.eta-current_date-5 end as worksheet_days_remaining,
   po.container_booking_group,po.mbl,po.close_tracking,
-  ext.agent,ext.cbm,ext.comment,ext.vessel,ext.sent_to_coldlion,ext.worksheet_done,ext.inspection_passed,
+  ext.agent,ext.cbm,ext.comment,ext.vessel,ext.sent_to_coldlion,ext.worksheet_done,ext.inspection_passed,ext.inspection_note,
   ext.document_invoice,ext.document_packing_list,ext.document_bill_of_lading,ext.document_tsca,ext.document_lacey_act,
-  ext.document_telex,ext.request_wire,ext.payment_note,ext.updated_at as tracking_updated_at
+  ext.document_telex,ext.request_wire,ext.payment_note,ext.updated_at as tracking_updated_at,
+  case when ext.inspection_passed is not null then 'S'||(ext.inspection_passed-date '1899-12-30')::text||'-'||substring(po.production_order_number from 2) end as svn_number,
+  case when left(po.container_booking_group,2)='BN' then po.container_booking_group||','||po.production_order_number end as booking_string,
+  case when lines.order_type='FOB' then 'FOB' when lines.order_type='POE' and po.eta is null then 'no ETA'
+    when lines.order_type is not null and lines.cancel_date is null then 'no cancel date'
+    when lines.order_type is not null and po.eta is null then 'no WHS Date' end as days_delay_status,
+  case when lines.order_type is not null and po.vendor_delivery_date is null then 'No date' end as seal_container_forecast_status
 from plm.production_order po
 left join lines on lines.order_id=po.id
 left join dam.dam_order_list_customer_directory cust on cust.customer_id=po.company_id

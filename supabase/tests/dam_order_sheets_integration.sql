@@ -130,10 +130,13 @@ set local request.jwt.claims='{"sub":"00000000-0000-4000-8000-000000000001","app
 do $tests$
 declare v_order_id uuid := (select id from integration_ids where key='order'); r record;
 begin
-  perform public.update_dam_order_tracking(v_order_id,'{"sent_po_date":"2026-03-01","vendor_delivery_date":"2026-03-15","booking_state":"Booked","etd":"2026-03-20","comment":"Reviewed fixture","worksheet_done":true}');
+  perform public.update_dam_order_tracking(v_order_id,'{"sent_po_date":"2026-03-01","vendor_delivery_date":"2026-03-15","booking_state":"Booked","etd":"2026-03-20","comment":"Reviewed fixture","worksheet_done":true,"inspection_passed":"2026-04-01","container_booking_group":"BN-TEST"}');
   select * into strict r from api.dam_order_tracking where api.dam_order_tracking.order_id=v_order_id;
   if r.sent_po_date<>date '2026-03-01' or r.comment<>'Reviewed fixture' or r.worksheet_done is distinct from true then
     raise exception 'Administrator tracking edit did not persist atomically';
+  end if;
+  if r.inspection_passed<>date '2026-04-01' or r.svn_number<>'S'||(date '2026-04-01'-date '1899-12-30')::text||'-EST-INTEGRATION-PO' or r.booking_string<>'BN-TEST,TEST-INTEGRATION-PO' then
+    raise exception 'Inspection date and derived SVN/booking references differ from Sheets';
   end if;
   perform public.update_dam_order_tracking(v_order_id,'{"comment":null}');
   select * into strict r from api.dam_order_tracking where api.dam_order_tracking.order_id=v_order_id;

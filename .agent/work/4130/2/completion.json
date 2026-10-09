@@ -32,7 +32,7 @@
       "evidence": "70 existing sidecars verified; all mandatory scans passed with regenerated exact detector hash."
     },
     {
-      "command": "PATH=<session python3 venv>/bin:$PATH node --test scripts/throughput-guard/*.test.mjs",
+      "command": "node --test scripts/throughput-guard/*.test.mjs",
       "exit_code": 0,
       "evidence": "All72 passed. Initial11 local failures were absent python executable; isolated Python3 virtualenv restored test runtime without changing OS tools."
     }

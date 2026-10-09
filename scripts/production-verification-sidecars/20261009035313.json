@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "migration_version": "20261009035313",
+  "migration_sha256": "e618fa1cb6e14e6e4ef5c82b873307bc479f4f21391ff31db67015fc3caedca6",
+  "checks": [
+    {
+      "id": "order_tracking_ext_serving_column",
+      "kind": "exact_row_count",
+      "relation": "information_schema.columns",
+      "filters": [
+        {
+          "column": "table_schema",
+          "type": "text",
+          "equals": "dam"
+        },
+        {
+          "column": "table_name",
+          "type": "text",
+          "equals": "order_tracking_ext"
+        },
+        {
+          "column": "column_name",
+          "type": "text",
+          "equals": "order_id"
+        }
+      ],
+      "expected_count": 1
+    },
+    {
+      "id": "orderlist_sample_depth_serving_column",
+      "kind": "exact_row_count",
+      "relation": "information_schema.columns",
+      "filters": [
+        {
+          "column": "table_schema",
+          "type": "text",
+          "equals": "dam"
+        },
+        {
+          "column": "table_name",
+          "type": "text",
+          "equals": "orderlist_sample_depth"
+        },
+        {
+          "column": "column_name",
+          "type": "text",
+          "equals": "depth_inches"
+        }
+      ],
+      "expected_count": 1
+    },
+    {
+      "id": "orderlist_customer_settings_serving_column",
+      "kind": "exact_row_count",
+      "relation": "information_schema.columns",
+      "filters": [
+        {
+          "column": "table_schema",
+          "type": "text",
+          "equals": "dam"
+        },
+        {
+          "column": "table_name",
+          "type": "text",
+          "equals": "orderlist_customer_settings"
+        },
+        {
+          "column": "column_name",
+          "type": "text",
+          "equals": "suffix"
+        }
+      ],
+      "expected_count": 1
+    }
+  ],
+  "marker_schema_version": 1,
+  "marker_reviews": [
+    {
+      "line_start": 208,
+      "line_end": 208,
+      "disposition": "no_durable_target",
+      "reason": "Parameterized UPDATE inside a runtime administrator-only RPC, limited to a closed static field/type allowlist. It creates no dynamic catalog target; all DDL is static and catalog-verified."
+    },
+    {
+      "line_start": 211,
+      "line_end": 211,
+      "disposition": "no_durable_target",
+      "reason": "Parameterized UPDATE inside a runtime administrator-only RPC, limited to a closed static field/type allowlist. It creates no dynamic catalog target; all DDL is static and catalog-verified."
+    }
+  ]
+}

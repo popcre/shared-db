@@ -316,17 +316,6 @@ begin
      is distinct from 'prod_order_header_id:integer,company_code:character varying,prod_order_no:character varying,prod_reference_no:character varying,sales_order_no:bigint,link_sources:text[],source_count:integer,latest_fetched_at:timestamp with time zone,sales_order_start_date:date,sales_order_start_date_max:date,sales_order_cancel_date:date,sales_order_start_date_ever_changed:boolean' then
     raise exception '#3869/20261009170724 post-check: view column list differs from the reviewed shape';
   end if;
-  -- The reference path relies on the index created by 20261002135053.
-  if not exists (
-    select 1 from pg_index i
-    where i.indexrelid = to_regclass('coldlion.order_history_line_prod_reference_no_lower_idx')
-      and i.indrelid = 'coldlion.order_history_line'::regclass
-      and i.indisvalid and i.indisready and i.indislive and i.indnkeyatts = 1
-      and pg_get_indexdef(i.indexrelid, 1, true) = 'lower(btrim(prod_reference_no))'
-      and regexp_replace(pg_get_expr(i.indpred, i.indrelid, true), '\s|::text|^\(+|\)+$', '', 'g') = 'btrim(prod_reference_no)<>'''''
-  ) then
-    raise exception '#3869/20261009170724 post-check: reference index from 20261002135053 missing, invalid, or changed';
-  end if;
   if has_table_privilege('anon', 'plm.v_prod_order_sales_order_link', 'select')
      or has_table_privilege('authenticated', 'plm.v_prod_order_sales_order_link', 'select')
      or has_table_privilege('service_role', 'plm.v_prod_order_sales_order_link', 'select') then

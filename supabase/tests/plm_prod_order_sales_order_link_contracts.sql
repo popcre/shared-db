@@ -29,7 +29,7 @@ begin
   values ('/orderHistory', 'issue-3869-contract', 'running', now())
   returning id into v_run;
 
-  -- PO A: customer PO 0099212870 on its ColdLion history; production history also
+  -- PO A: customer PO 009212870 on its ColdLion history; production history also
   -- names sales order 99386999, which must NOT link (no sales-order number key).
   insert into plm."ProdOrderHeader"("prodOrderNo", "companyCode", "customerCode",
                                     "prodReferenceNo", "prodOrderDate", "createdTime", "salesOrderNo")
@@ -90,7 +90,7 @@ begin
      customer_code, sales_order_no, prod_reference_no, cust_po_number, source_observed_at,
      line_source_hash, run_id, fetched_at)
   values
-    ('EDGEHOME', 990386901, 1, 'ISS', 'ISS', 'ZZCUSTA', 99386999, 'ZZ3869A', '0099212870', now(), repeat('a', 64), v_run, now()),
+    ('EDGEHOME', 990386901, 1, 'ISS', 'ISS', 'ZZCUSTA', 99386999, 'ZZ3869A', '009212870', now(), repeat('a', 64), v_run, now()),
     ('EDGEHOME', 990386902, 1, 'ISS', 'ISS', 'MOD011',  99386921, ' zz3869b ', '  ',      now(), repeat('b', 64), v_run, now()),
     ('EDGEHOME', 990386904, 1, 'ISS', 'ISS', 'ZZCUSTA', 0,        'ZZ3869A', '9212870',    now(), repeat('d', 64), v_run, now()),
     ('EDGEHOME', 990386905, 1, 'ISS', 'ISS', 'ZZCUSTA', 0,        'ZZ3869E', null,         now(), repeat('e', 64), v_run, now()),

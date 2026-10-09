@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "work_issue": 4060,
+  "outcome": "ready-for-merge",
+  "pr": 4119,
+  "migration_versions": [
+    "20261009040550"
+  ],
+  "contract_ref": "refs/db-contracts/4060/8",
+  "contract_sha256": "ca59f5dc9a70947ee27b0ceba8ed4e0762127eeeea361effa47eb37d07537eae",
+  "head_sha": "d5d5e0243710b1eca94fb8c8aea6d881450a96e6",
+  "base_sha": "28863cad532050a29718f435db7c83941b2ce288",
+  "files_changed": [
+    "scripts/production_migration_guard.py",
+    "scripts/test_dflow_users_email_ci_unique_forward.py",
+    "scripts/test_post_batch_app_verification.py",
+    "scripts/test_production_migration_guard.py",
+    "supabase/migrations/20261009040550_dflow_users_email_ci_unique_forward.sql",
+    "supabase/tests/dflow_users_email_ci_unique_contracts.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "index dflow.users_email_lower_uidx",
+    "table dflow.users"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "SQL static checks passed against28863 origin/main newest20261008212538. Live ledger guard NOT_EVALUATED; no credentials/production."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "git diff --check exited0 with no whitespace errors."
+    },
+    {
+      "command": "python3 -m unittest test_production_migration_guard test_post_batch_app_verification",
+      "exit_code": 0,
+      "evidence": "445 guard/app unit tests OK; combined with10 PG16 tests final455 tests OK."
+    },
+    {
+      "command": "PG16 isolated positive and negative exact-index/migration tests",
+      "exit_code": 0,
+      "evidence": "RUN_4060_PG16=1 PYTHONPATH=scripts python3 -m unittest test_dflow_users_email_ci_unique_forward test_production_migration_guard test_post_batch_app_verification:455 tests OK (10 owned isolated PG16,445 guard/app). Text and varchar255 historical replay preserved indexOID/definition/comment, users and sequence; wrongindex and unsupported-domain refusals proved. Containers removed; no live database proof claimed."
+    },
+    {
+      "command": "PG16 historical20261007232712 then new20261009040550 replay keeps exact indexOID/definition, users/sequence; all mismatched-index variants refuse",
+      "exit_code": 0,
+      "evidence": "RUN_4060_PG16=1 PYTHONPATH=scripts python3 -m unittest test_dflow_users_email_ci_unique_forward test_production_migration_guard test_post_batch_app_verification:455 tests OK (10 owned isolated PG16,445 guard/app). Text and varchar255 historical replay preserved indexOID/definition/comment, users and sequence; wrongindex and unsupported-domain refusals proved. Containers removed; no live database proof claimed."
+    }
+  ],
+  "assumptions_resolved": [
+    "Audit4116 and clean source retirementd3fa4a2e7573abb5904b10f8e713a8b04880357e preceded freshclaim4117/version20261009040550 on original4060. Original4075 immutable REVISE preserved; old SQL and historicalgeneration5 untouched.",
+    "Gen6/7/8 prospectively published and read back before their respective changes; immutable parent bindings preserved. Only own uncommittedgen6/7 pair cancellation scoped.",
+    "Preview metadata rootverified builtin varchar255/defaultcollation; exact type-aware text/varchar expression/predicate checks, builtinheap/btree/indexflags/opclass/collation/options/inheritance remain failclosed.",
+    "Existing exact index replay preserves indexOID/definition/comment, rows/sequence; absent path plainCREATE; all wrongindex variants refuse. No name-only IF NOT EXISTS.",
+    "Initial138e included own contract. Supported ordinary evidence correction d5d5 removes only own unmergedcontract so actual implementationdiff is6sourcefiles.138e remainsancestor; source bytes unchanged. Tail re-adds byteidentical publishedcontract plus completion; no amend/force/false selfSHA.",
+    "Fresh mainc0ade adds unrelatedhandoff; report base28863 is actual measured PRmergebase, no ordinarymerge authorized. Assigned source/current-main risk review, preview qualification, producer/backend exactsource pin rebinding and production/application proof still required. Ready-for-merge records source preparation, never merged/live acceptance."
+  ],
+  "stop_conditions_hit": []
+}

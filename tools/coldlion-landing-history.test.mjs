@@ -320,21 +320,30 @@ test("vendor wall-clock stamps are read as UTC, never in the machine zone", () =
   assert.throws(() => wallClockTimestamp("27/03/2026"), /not an ISO timestamp/);
 });
 
-test("the stamp backfill folds rows per order/item/label and updates only the four columns", () => {
-  const stamps = aggregateStamps([
+test("the stamp backfill folds and matches on the loader's line identity for each table shape", () => {
+  const rows = [
     orderRow({ labelCode: "", createdTime: "2026-03-27 11:00:00.000", modTime: "2026-03-28 11:00:00.000" }),
     orderRow({ labelCode: "", createdTime: "2026-03-25 11:00:00.000", modTime: "2026-03-29 11:00:00.000", modUser: "M" }),
+    orderRow({ labelCode: "", salesOrderLineNo: "2", createdTime: "2026-03-20 11:00:00.000" }),
     orderRow({ itemNo: "NO-STAMPS" }),
-  ]);
-  assert.deepEqual(stamps, [{ sales_order_no: 1001, item_no: "PARENT-A", label_code: null,
-    created_time: "2026-03-25T11:00:00.000Z", created_user: null, mod_time: "2026-03-29T11:00:00.000Z", mod_user: "M" }]);
-  const sql = buildStampUpdateSql(stamps, "master_item_no");
+  ];
+  const current = aggregateStamps(rows, "current");
+  assert.deepEqual(current.map((s) => [s.sales_order_line_no, s.created_time, s.mod_user]), [
+    [1, "2026-03-25T11:00:00.000Z", "M"],
+    [2, "2026-03-20T11:00:00.000Z", null],
+  ], "two order lines sharing order/item/label are never folded together");
+  const sql = buildStampUpdateSql(current, "current");
   assert.match(sql, /^begin;/);
   assert.match(sql, /set created_time = s\.created_time, created_user = s\.created_user,\s+mod_time = s\.mod_time, mod_user = s\.mod_user/);
-  assert.match(sql, /t\.master_item_no = s\.item_no/);
+  assert.match(sql, /t\.sales_order_line_no = s\.sales_order_line_no\s+and t\.master_item_no = s\.item_no/);
+  assert.doesNotMatch(sql, /label_code is not distinct/);
   assert.doesNotMatch(sql, /insert into coldlion/);
-  assert.equal(buildStampUpdateSql([], "item_no"), null);
-  assert.throws(() => buildStampUpdateSql(stamps, "x; drop"), /unexpected item column/);
+  const legacy = aggregateStamps(rows, "legacy");
+  assert.equal(legacy.length, 1, "the line-number-less shape keys on order/item/label, its own identity");
+  assert.equal(legacy[0].created_time, "2026-03-20T11:00:00.000Z");
+  assert.match(buildStampUpdateSql(legacy, "legacy"), /t\.item_no = s\.item_no\s+and t\.label_code is not distinct from s\.label_code/);
+  assert.equal(buildStampUpdateSql([], "legacy"), null);
+  assert.throws(() => buildStampUpdateSql(current, "x; drop"), /unexpected table shape/);
 });
 
 test("EP001 rows are excluded and the exclusion is counted, not silent", () => {

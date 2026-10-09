@@ -307,7 +307,7 @@ SELECT pol.id AS order_line_id,
      LEFT JOIN dam.dam_order_list_customer_directory cust ON cust.customer_id = po.company_id
      LEFT JOIN dam.dam_order_list_vendor_directory fact ON fact.vendor_id = po.factory_id
      LEFT JOIN plm.item item ON item.id = pol.item_id
-     LEFT JOIN LATERAL (select dam.orderlist_product_facts(pol.item_id,pol.source_style_type) AS facts) product ON true
+     LEFT JOIN LATERAL (select dam.orderlist_product_facts(pol.item_id,pol.source_style_type) AS facts offset 0) product ON true
      LEFT JOIN dam.orderlist_sample_depth sample ON sample.sku_normalized=pol.sku_normalized AND sample.customer_normalized=lower(btrim(coalesce(cust.customer_name,nullif(po.metadata->>'customer_name',''))))
      LEFT JOIN dam.orderlist_customer_settings customer_settings ON customer_settings.customer_normalized=lower(btrim(coalesce(cust.customer_name,nullif(po.metadata->>'customer_name',''))))
      LEFT JOIN plm.production_order_line_source_ref google_ref ON google_ref.production_order_line_id = pol.id AND google_ref.source_system = 'google_order_list'::text

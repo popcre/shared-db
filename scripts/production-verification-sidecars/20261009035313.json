@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "migration_version": "20261009035313",
-  "migration_sha256": "1e59a4d2e78e472349f36a756baead8e23f651dbcfcda81a059b25b70784287b",
+  "migration_sha256": "9d9b3230e80f53c5c847dc310f5413fa4f2c4d8a6d45d1e832b2138e54fed99e",
   "checks": [
     {
       "id": "order_tracking_ext_serving_column",

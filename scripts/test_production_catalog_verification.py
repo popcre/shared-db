@@ -3567,5 +3567,20 @@ class LegacyPropertiesSchemaMoveContractTests(unittest.TestCase):
         self.assertEqual(conditions(original), conditions(forward))
 
 
+class OrderSheetsIntegrationContractTests(unittest.TestCase):
+    def test_named_contract_builds_exact_serving_and_security_checks(self):
+        name = "dam_order_sheets_integration_v1"
+        expression = CATALOG_CONTRACTS[name]
+        import re
+        columns = re.findall(r"\('([^']+)','([^']+)','([^']+)'\)", expression)
+        self.assertEqual(len(columns), 268)
+        self.assertEqual(len(set(columns)), 268)
+        for text in ("snapshot_test_report", "snapshot_professional_photos", "snapshot_contractual_sample_reorder", "relrowsecurity", "security_invoker=true", "has_function_privilege('anon'", "unknown_case_groups"):
+            self.assertIn(text, expression)
+        check = {"id": "sheets_exact_shape", "kind": "catalog_contract", "contract": name, "expected_count": 1, "migration_version": "20261009054834"}
+        sql = build_behavior_sql([check])
+        self.assertIn(expression.strip(), sql)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/4130/2",
   "contract_sha256": "b77cc308e490f2c1ccbe973516e8ef916f31115da58eca0de94384da6bad16e6",
-  "head_sha": "d3089f5b33a8944e01bb8bd59297fe877490f631",
+  "head_sha": "c01bfea67fda8398a2355f94b270dec2963aee67",
   "base_sha": "23e3901ddbd4d60f565602ef09ec6014baa4d9bf",
   "files_changed": [
     "docs/verification/throughput-guard-truth-baseline-20260828.json",
@@ -19,7 +19,7 @@
     {
       "command": "python3 -m unittest discover -s scripts -p test_production_catalog_verification.py",
       "exit_code": 0,
-      "evidence": "All 238 tests passed; new regression proves 268 unique exact column/type checks, required security assertions, and named-contract SQL generation."
+      "evidence": "All239 catalog verification tests passed, including registered-sidecar loader acceptance, unknown-contract refusal and exact named-contract builder checks."
     },
     {
       "command": "git diff --check",
@@ -34,13 +34,14 @@
     {
       "command": "node --test scripts/throughput-guard/*.test.mjs",
       "exit_code": 0,
-      "evidence": "All72 passed. Initial11 local failures were absent python executable; isolated Python3 virtualenv restored test runtime without changing OS tools."
+      "evidence": "All72throughput tests passed again with isolated Python3 venv on PATH."
     }
   ],
   "assumptions_resolved": [
     "Copied the already independently reviewed exact verifier expression from structural PR4118 without changing its bytes; no migrations, schemas or rows changed.",
     "Contract published prospectively before implementation commit.",
-    "Generation2 prospectively declared baseline regeneration; all historical marker rows retained exactly. No initial failed CI or local results are claimed passed."
+    "Generation2 prospectively declared baseline regeneration; all historical marker rows retained exactly. No initial failed CI or local results are claimed passed.",
+    "All three mandatory DeepSeek REVISE findings addressed: twelve exact pg_proc attributes, exact table/view kinds, and actual loader-path regression. Real local PostgreSQL15 contract evaluated true; wrong volatility, definer state and writer search_path each evaluated false in rolled-back transactions, then restored true."
   ],
   "stop_conditions_hit": []
 }

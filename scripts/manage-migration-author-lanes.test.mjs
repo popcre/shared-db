@@ -28,6 +28,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assertUnambiguousClaimTitle, claimCoversObject, renewalIssueScope, CLAIM_CLOSE_REASONS, RECORDABLE_EXCLUSION_REASONS, RETIRED_EXCLUSION_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, LEGACY_GUARDED_CLEANUP_CLOSE_REASON, ACTIVE_REVIEWERS, OVERFLOW_REVIEWERS, reviewersForOrchestrator, findBusyReviewers, reviewerCapacityReport, reviewLeaseAgeHours, activityFingerprintForLease, probeSilentReviewer, reclaimSilentReviewer, SILENCE_MIN_AGE_HOURS, SILENCE_CONFIRM_HOURS, REVIEW_SILENCE_PROBE_REF_PREFIX, REVIEW_SILENCE_RELEASE_REF_PREFIX, REVIEW_QUEUE_REF_PREFIX, pickReviewer, addedMigrationVersions, assertMergeCommitInMainHistory, REVIEWERS, RETIRED_REVIEWERS, QUARANTINED_REVIEWERS, acquireAuthorLane, acquireExclusive, assertLaneAvailable, assignNextReviewer, assertDurableReviewApproval, buildDynamicQueues, claimBody, closedClaimAuthoredOnMain, currentMainMaxVersion, queueExit, NON_STRUCTURAL_EXITS, OUTSIDE_ORCHESTRATOR_EXITS, conflicts, completeWork, requiresReturnAddress, returnIssueToOwner, RETURNED_MARKER, createRefWithReadback, deleteRefWithReadback, expandActiveClaimFromIssue, expandActiveClaimFromPr, EXCLUSIVE_REFS, githubIo, isConfirmedRefAbsence, LaneError, main, MUTEX_RECOVERY_ACTIVE_REF, MUTEX_REF, parseAuthorLease, parseQueueScope, parseReviewCursor, readPrAfterPush, readRefAfterWrite, recoverExpiredClaimFromPr, recoverSameOwnerSplit, recoverStaleAuthorMutex, reissueMergedStrandedClaim, releaseOwnedRef, releaseFailedReviewer, replaceFailedReviewer, failedReviewerReleaseCommand, requireOwnedRef, renewExpiredClaim, reviewerExecutionPreflight, reversionActiveClaim, runGitHubCommand, withReviewRequestBudget, supersedeActiveClaimVersion, REVIEW_CURSOR_REF, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_FAILURE_REF_PREFIX, validateClaimObjects, parseDoctorFailures, TERMINAL_FAILURE_CODES, doctorSpawnPlan, doctorTimeoutFailingChecks, resolveCommandPath, summarizeDoctorOutput, pickExecutableCandidate, REVIEWER_DOCTOR_TIMEOUT_MS, REVIEWER_PREFLIGHT_TIMEOUT_MS, findPrReviewAssignments, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_ACTIVE_REF_PREFIX, REVIEW_ACTIVE_CUTOVER_REF, reviewActiveRef, parseReviewLease, EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, deriveLivePreviewCandidate, validateOriginalPreviewApplyEvidence, projectReviewPr, projectReviewerOperationRouteSnapshot, reviewStateGraphqlFields, REVIEW_OPERATION_REQUEST_LIMIT, REVIEW_MUTEX_SECTION_RESERVE, REVIEW_SILENT_RECLAIM_REQUEST_LIMIT, REVIEW_SILENT_RECLAIM_MUTEX_SECTION_RESERVE, inReviewReplacementNamespace, activateReviewCutover, REVIEW_REF_ROW_LIMIT, parseGhIncludeResponse, hasNextPageLink, parseLinkHeader, excludeReviewerForPr, parseReviewExclusion, REVIEW_EXCLUSION_REF_PREFIX, reinstateReviewerExclusion, parseReviewReinstatement, REVIEW_REINSTATEMENT_REF_PREFIX, REINSTATABLE_EXCLUSION_REASONS, reviewExclusionRef, reviewReinstatementRef, REVIEW_EXCLUSION_GENERATION_LIMIT, countDoctorPassLines, REVIEW_RETURN_REF_PREFIX, parseReviewReturn, readReviewReturns, reviewReturnRef, reviewRecordRefs, retiredVerdictRef, REVIEW_RETIRED_VERDICT_REF_PREFIX, reviewerReadsRepository, reviewerEmitsGovernedVerdict, readReviewVerdicts, nonReadingReviewerReplacementCommand, hasVerdictForHead, headVerdictBlocksReplacement, reviewerKnownNonReading, DURABLE_VERDICT_REF_NAMESPACE, recordReviewVerdict, markReviewRefListingRefusal, isReviewRefListingRefusal, markLeaseReadFailure, isLeaseReadFailure, REVIEW_TARGET_SUPERSEDED, reapAbandonedReviewLeases, withArchivedVerdictMirror, legacyLeaseTerminalReason, isCommandSizeFailure, archiveOldReviewVerdicts, classifyVerdictForArchive, archivedVerdictRef, REVIEW_ARCHIVED_VERDICT_REF_PREFIX, reviewStartedMarkerRef, reviewerStartWatchLeases, RETURNED_COPY_MARKER, returnedCopyProvenance, REPO } from './manage-migration-author-lanes.mjs'
 import { readDatabasePreviewClassificationFile, withDatabasePreviewClassificationFile, databasePreviewAdmission, buildDatabasePreviewFileSnapshot } from './manage-migration-author-lanes.mjs'
+import { withRequestCostBudget, currentRequestCost } from './lib/github-transport.mjs'
 
 function commandFailure(message){const error=new Error(message);error.stderr=message;return error}
 
@@ -1201,6 +1202,85 @@ test('wire-level request budget counts every retry and refuses the request past 
   attempts=0
   assert.throws(()=>withReviewRequestBudget(()=>runGitHubCommand(['api','endpoint'],{attempts:overLimit,wait:()=>{},executor:()=>{attempts++;const e=new Error('HTTP 502');e.stderr='HTTP 502';throw e},reportStderr:()=>{}})),new RegExp(`before request ${overLimit}`))
   assert.equal(attempts,REVIEW_OPERATION_REQUEST_LIMIT)
+})
+
+// Issue #3617: per-operation request-cost accounting (credential-free). Four
+// focused proofs — success, retry, refused admission, stale mutex — show the
+// counter is exact and that an over-budget operation fails closed rather than
+// skipping a marker, admission, claim, review, preview, or lock check.
+
+test('#3617 request-cost success records the exact gh call count',()=>{
+  let calls=0
+  const cost=withRequestCostBudget((budget)=>{
+    for(let n=0;n<3;n++)runGitHubCommand(['api',`repos/x/thing/${n}`],{executor:()=>{calls++;return '{}'}})
+    return budget
+  },10,'preview-ready-preparation')
+  assert.equal(calls,3)
+  assert.equal(cost.count,3)
+  assert.equal(cost.limit,10)
+  assert.equal(cost.operation,'preview-ready-preparation')
+  assert.equal(currentRequestCost(),null,'the cost scope must clear when the operation ends')
+})
+
+test('#3617 request-cost retry charges every attempt and fails closed past the budget',()=>{
+  let attempts=0,captured
+  assert.throws(()=>withRequestCostBudget((budget)=>{
+    captured=budget
+    runGitHubCommand(['api','endpoint'],{attempts:5,wait:()=>{},reportStderr:()=>{},executor:()=>{attempts++;throw commandFailure('HTTP 502: bad gateway')}})
+  },3,'preview-ready-preparation'),/exhausted its 3-request cost budget before request 4/)
+  assert.equal(attempts,3,'each retry attempt is one charged request')
+  assert.equal(captured.count,3)
+  attempts=0
+  const cost=withRequestCostBudget((budget)=>{
+    runGitHubCommand(['api','endpoint'],{attempts:4,wait:()=>{},reportStderr:()=>{},executor:()=>{attempts++;if(attempts<3)throw commandFailure('HTTP 502: bad gateway');return '{}'}})
+    return budget
+  },10,'preview-ready-preparation')
+  assert.equal(attempts,3,'two failures plus one success')
+  assert.equal(cost.count,3,'every attempt is charged, including the successful one')
+})
+
+test('#3617 request-cost stays exact when admission refuses, and over-budget fails closed rather than skipping the check',()=>{
+  const wire=()=>runGitHubCommand(['api','admission-read'],{executor:()=>'{}'})
+  let captured
+  assert.throws(()=>withRequestCostBudget((budget)=>{
+    captured=budget
+    wire();wire();wire();wire()
+    throw new LaneError('closed and cannot be admitted')
+  },10,'preview-ready-preparation'),/closed and cannot be admitted/)
+  assert.equal(captured.count,4,'a refused admission still records the requests it made')
+  let made=0
+  assert.throws(()=>withRequestCostBudget(()=>{
+    for(let n=0;n<5;n++){wire();made++}
+    throw new LaneError('closed and cannot be admitted')
+  },2,'preview-ready-preparation'),/exhausted its 2-request cost budget/)
+  assert.equal(made,2,'the third admission read is refused; the check is not skipped')
+})
+
+test('#3617 request-cost stays exact across stale-mutex recovery, and over-budget fails closed',()=>{
+  const io=memoryIo()
+  io.refs.set(MUTEX_REF,'4a69fbbc')
+  io.getCommit=()=>({message:'db-coordination preview-ready-preparation issue=0',committer:{date:'2026-08-14T19:55:00Z'}})
+  let captured
+  const charge=(fn)=>(...args)=>{runGitHubCommand(['api','mutex-recovery'],{executor:()=>'{}'});return fn(...args)}
+  io.createRef=charge(io.createRef);io.readRef=charge(io.readRef);io.getCommit=charge(io.getCommit);io.deleteRef=charge(io.deleteRef)
+  const result=withRequestCostBudget((budget)=>{
+    captured=budget
+    return recoverStaleAuthorMutex({expectedSha:'4a69fbbc',confirmStale:true,serializedRecovery:true,now:NOW,quietMs:0},io)
+  },20,'preview-ready-preparation')
+  assert.equal(result.released,'4a69fbbc')
+  assert.ok(captured.count>0,'stale-mutex recovery must record the requests it made')
+  assert.ok(captured.count<=20,`recovery used ${captured.count} requests`)
+  // Over-budget recovery fails closed; the lock check is not skipped.
+  const io2=memoryIo()
+  io2.refs.set(MUTEX_REF,'4a69fbbc')
+  io2.getCommit=()=>({message:'db-coordination preview-ready-preparation issue=0',committer:{date:'2026-08-14T19:55:00Z'}})
+  let made=0
+  const charge2=(fn)=>(...args)=>{runGitHubCommand(['api','mutex-recovery'],{executor:()=>{made++;return '{}'}});return fn(...args)}
+  io2.createRef=charge2(io2.createRef);io2.readRef=charge2(io2.readRef);io2.getCommit=charge2(io2.getCommit);io2.deleteRef=charge2(io2.deleteRef)
+  assert.throws(()=>withRequestCostBudget(()=>{
+    return recoverStaleAuthorMutex({expectedSha:'4a69fbbc',confirmStale:true,serializedRecovery:true,now:NOW,quietMs:0},io2)
+  },2,'preview-ready-preparation'),/exhausted its 2-request cost budget/)
+  assert.ok(made>=2,'the recovery was refused by the cost budget before it could skip the lock check')
 })
 
 test('10,000 historical assignments do not change bounded availability cost',()=>{

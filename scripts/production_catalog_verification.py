@@ -5065,6 +5065,7 @@ and exists(select 1 from pg_class c where c.oid=to_regclass('dam.dam_order_track
 and exists(select 1 from pg_class c where c.oid=to_regclass('api.dam_order_vendor_statistics') and c.reloptions @> array['security_invoker=true']::text[])
 and exists(select 1 from pg_class c where c.oid=to_regclass('api.dam_order_sample_depth') and c.reloptions @> array['security_invoker=true']::text[])
 and exists(select 1 from pg_class c where c.oid=to_regclass('api.dam_order_customer_settings') and c.reloptions @> array['security_invoker=true']::text[])
+and to_regprocedure('plm.assert_dam_order_keys(jsonb,text[],text)') is not null and to_regprocedure('app.has_role(app.app_role)') is not null and exists(select 1 from pg_type where oid=to_regtype('app.app_role') and typtype='e')
 """
 
 if __name__ == "__main__":

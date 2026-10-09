@@ -125,7 +125,9 @@ create table if not exists dam.orderlist_sample_depth (
   check (customer_normalized=lower(btrim(customer_normalized)) and customer_normalized<>'')
 );
 alter table dam.orderlist_sample_depth enable row level security;
+drop policy if exists orderlist_sample_depth_read on dam.orderlist_sample_depth;
 create policy orderlist_sample_depth_read on dam.orderlist_sample_depth for select to authenticated using (true);
+drop policy if exists orderlist_sample_depth_write on dam.orderlist_sample_depth;
 create policy orderlist_sample_depth_write on dam.orderlist_sample_depth for all to authenticated
   using (app.has_role('administrator'::app.app_role)) with check (app.has_role('administrator'::app.app_role));
 grant select on dam.orderlist_sample_depth to authenticated;
@@ -140,7 +142,9 @@ create table if not exists dam.orderlist_customer_settings (
   check (length(suffix) between 1 and 50)
 );
 alter table dam.orderlist_customer_settings enable row level security;
+drop policy if exists orderlist_customer_settings_read on dam.orderlist_customer_settings;
 create policy orderlist_customer_settings_read on dam.orderlist_customer_settings for select to authenticated using (true);
+drop policy if exists orderlist_customer_settings_write on dam.orderlist_customer_settings;
 create policy orderlist_customer_settings_write on dam.orderlist_customer_settings for all to authenticated
   using (app.has_role('administrator'::app.app_role)) with check (app.has_role('administrator'::app.app_role));
 grant select on dam.orderlist_customer_settings to authenticated;
@@ -158,7 +162,9 @@ create table if not exists dam.order_tracking_ext (
   updated_at timestamptz not null default now(), updated_by uuid
 );
 alter table dam.order_tracking_ext enable row level security;
+drop policy if exists order_tracking_ext_read on dam.order_tracking_ext;
 create policy order_tracking_ext_read on dam.order_tracking_ext for select to authenticated using (true);
+drop policy if exists order_tracking_ext_write on dam.order_tracking_ext;
 create policy order_tracking_ext_write on dam.order_tracking_ext for all to authenticated
   using (app.has_role('administrator'::app.app_role)) with check (app.has_role('administrator'::app.app_role));
 grant select on dam.order_tracking_ext to authenticated;
@@ -762,6 +768,7 @@ begin
       end if;
     end loop;
   end loop;
+  if not (to_regprocedure('plm.assert_dam_order_keys(jsonb,text[],text)') is not null and to_regprocedure('app.has_role(app.app_role)') is not null and exists(select 1 from pg_type where oid=to_regtype('app.app_role') and typtype='e')) then raise exception 'Order tracking guard dependency signature changed'; end if;
   foreach signature in array array['plm.dam_order_tracking_allowed_header_keys()','dam.orderlist_parse_number(text)','dam.orderlist_parse_boolean(text)','dam.orderlist_license_status(jsonb,boolean)',
     'dam.orderlist_po_status(text,text,text,numeric,numeric,boolean,text,date,date,date,text)','dam.orderlist_cargo_forecast(text,text,date)',
     'dam.orderlist_product_facts(uuid,text)','public.update_dam_order_tracking(uuid,jsonb)','public.upsert_dam_order_sample_depth(text,text,numeric)',

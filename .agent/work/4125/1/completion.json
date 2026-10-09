@@ -2,7 +2,7 @@
   "schema_version": 1,
   "work_issue": 4125,
   "outcome": "ready-for-merge",
-  "pr": 4126,
+  "pr": 4127,
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/4125/1",
   "contract_sha256": "7de0db6f7ae6c4f26fda43dd767b38f0cd757b3243871c1437b70ed6ff412bf0",

@@ -47,6 +47,21 @@ test('mergedPrReviewTarget trusts a real closing link without evidence-pair veri
     {filename:'supabase/migrations/20260911213429_popsg_search.sql',status:'added'},
   ],linked:[],completion:{work_issue:2506,pr:2726,migration_versions:['20260911213429']}})
   assert.throws(()=>reviewTargetIsRecordable(merged,{pr:2726,issue:2506,headSha:HEAD},withMergedPrIssueBinding(noLink.io,'2726:2506',()=>{})),/evidence is inherited/)
+  // A link-reported closed state refuses even when the live issue is open.
+  const closedLink=fixture({files:[
+    {filename:'supabase/migrations/20260911213429_popsg_search.sql',status:'added'},
+  ],linked:[{number:2506,state:'closed'}],completion:{work_issue:2506,pr:2726,migration_versions:['20260911213429']}})
+  assert.equal(reviewTargetIsRecordable(merged,{pr:2726,issue:2506,headSha:HEAD},withMergedPrIssueBinding(closedLink.io,'2726:2506',()=>{})),false)
+  // A live closed issue refuses even when the link reports open.
+  const liveClosed=fixture({files:[
+    {filename:'supabase/migrations/20260911213429_popsg_search.sql',status:'added'},
+  ],linked:[{number:2506,state:'open'}],issueState:'closed',completion:{work_issue:2506,pr:2726,migration_versions:['20260911213429']}})
+  assert.equal(reviewTargetIsRecordable(merged,{pr:2726,issue:2506,headSha:HEAD},withMergedPrIssueBinding(liveClosed.io,'2726:2506',()=>{})),false)
+  // A stateless link still checks the live issue state.
+  const stateless=fixture({files:[
+    {filename:'supabase/migrations/20260911213429_popsg_search.sql',status:'added'},
+  ],linked:[{number:2506}],issueState:'closed',completion:{work_issue:2506,pr:2726,migration_versions:['20260911213429']}})
+  assert.equal(reviewTargetIsRecordable(merged,{pr:2726,issue:2506,headSha:HEAD},withMergedPrIssueBinding(stateless.io,'2726:2506',()=>{})),false)
 })
 
 const HEAD='f'.repeat(40)

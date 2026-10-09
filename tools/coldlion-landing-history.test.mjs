@@ -15,10 +15,10 @@ import { assertPagesComplete, buildPageUrl, fetchPage, fetchWindowScope, isPerma
 import { assertExpectedTarget } from "./coldlion-landing/lib/db.mjs";
 import { bigint, canonical, date, num, sourceHash, splitTokens, sqlText, text } from "./coldlion-landing/lib/values.mjs";
 import { projectOrderHistoryWindow, splitInvoiceTokens, wallClockTimestamp } from "./coldlion-landing/lib/project-order-history.mjs";
-import { aggregateStamps, buildStampUpdateSql } from "./coldlion-landing/backfill-order-stamps.mjs";
+import { aggregateStamps, buildStampUpdateSql, parseArgs as parseStampArgs } from "./coldlion-landing/backfill-order-stamps.mjs";
 import { projectProdHistoryWindow, quantitiesAgree, selectLookup } from "./coldlion-landing/lib/project-prod-history.mjs";
 import { buildOrderHistoryLoadSql, buildProdHistoryLoadSql } from "./coldlion-landing/lib/load-window.mjs";
-import { loadedWindowsSql } from "./coldlion-landing/lib/run-history.mjs";
+import { hasOrderStampColumns, interpretOrderStampColumns, loadedWindowsSql, orderStampColumnsSql } from "./coldlion-landing/lib/run-history.mjs";
 import { parseArgs as parseBackfillArgs, selectScopes } from "./coldlion-landing/backfill-history.mjs";
 import { parseArgs as parseSyncArgs } from "./coldlion-landing/sync-history.mjs";
 
@@ -303,12 +303,39 @@ test("entry/edit stamps land on the line, earliest created and latest modified, 
   const bare = projectOrderHistoryWindow([orderRow()], { runId: ids(), fetchedAt: "2026-09-08T00:00:00Z", newId: ids });
   assert.equal(bare.lines[0].line_source_hash, line.line_source_hash, "stamps are not part of line_source_hash");
   assert.equal(bare.lines[0].created_time, null);
-  const sql = buildOrderHistoryLoadSql({
+  const loadArgs = {
     window: { from: "2026-09-07", to: "2026-09-13" }, scope: ORDER_HISTORY, runId: ids(), requestedBy: "t",
     companyCode: "TESTCO", pages: [{ pageNumber: 0, requestedPageSize: 200, returnedPageSize: 200, rowCount: 2, reportedTotalElements: 2, reportedTotalPages: 1, isLastPage: true, httpStatus: 200, bodyStatus: null, fetchedAt: "2026-09-08T00:00:00Z" }],
     completion: { rows: 2 }, projected, startedAt: "2026-09-08T00:00:00Z", finishedAt: "2026-09-08T00:00:01Z", durationMs: 1, notes: null,
-  });
-  assert.match(sql, /created_time, created_user, mod_time, mod_user/);
+  };
+  assert.match(buildOrderHistoryLoadSql({ ...loadArgs, stampColumns: true }), /created_time, created_user, mod_time, mod_user/);
+  assert.doesNotMatch(buildOrderHistoryLoadSql(loadArgs), /created_time/,
+    "a target without migration 20261009170724 is never sent the stamp columns");
+});
+
+test("the loader writes stamps only when the target has all four stamp columns", () => {
+  assert.equal(interpretOrderStampColumns([["4", "4"]]), true);
+  assert.equal(interpretOrderStampColumns([["0", "0"]]), false);
+  assert.throws(() => interpretOrderStampColumns([["1", "1"]]), /1 of the 4 ColdLion stamp columns/);
+  assert.throws(() => interpretOrderStampColumns([["3", "4"]]), /3 with the expected type/);
+  assert.match(orderStampColumnsSql(), /coldlion\.order_history_line/);
+  let probes = 0;
+  const query = () => { probes += 1; return [["4", "4"]]; };
+  assert.equal(hasOrderStampColumns({ url: "postgres://probe-test-a" }, query), true);
+  assert.equal(hasOrderStampColumns({ url: "postgres://probe-test-a" }, query), true);
+  assert.equal(probes, 1, "one probe per target per run");
+});
+
+test("the stamp backfill clamps --to to the newest closed window and skips EP001", () => {
+  const lastClosed = windowAtIndex(lastClosedWindowIndex(isoDate(new Date())));
+  assert.equal(parseStampArgs(["--from", "2026-01-01", "--to", "2999-01-01"]).to, lastClosed.to);
+  assert.equal(parseStampArgs(["--from", "2026-01-01"]).to, lastClosed.to);
+  assert.equal(parseStampArgs(["--from", "2020-01-01", "--to", "2020-02-01"]).to, "2020-02-01");
+  assert.throws(() => parseStampArgs([]), /--from is required/);
+  assert.deepEqual(aggregateStamps([orderRow({ divisionCode: "EP001", createdTime: "2026-03-27 11:00:00.000" })], "current"), []);
+  const many = Array.from({ length: 1201 }, (_, i) => orderRow({ salesOrderLineNo: String(i + 1), createdTime: "2026-03-27 11:00:00.000" }));
+  const sql = buildStampUpdateSql(aggregateStamps(many, "current"), "current");
+  assert.equal((sql.match(/insert into _stamps values/g) ?? []).length, 3, "batched 500 rows per statement");
 });
 
 test("vendor wall-clock stamps are read as UTC, never in the machine zone", () => {

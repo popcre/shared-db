@@ -70,7 +70,6 @@ begin
     into missing
   from (values
     ('plm."ProdOrderHeader"',        'id',                'integer'),
-    ('plm."ProdOrderHeader"',        'customerCode',      'character varying'),
     ('plm."ProdOrderHeader"',        'prodOrderDate',     'character varying'),
     ('plm."ProdOrderHeader"',        'companyCode',       'character varying'),
     ('plm."ProdOrderHeader"',        'prodOrderNo',       'character varying'),

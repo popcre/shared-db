@@ -68,6 +68,8 @@ begin
     ('EDGEHOME', 99386912, 1, 'ZZITEM', 'BC', 'ZZCUSTB', '9212870',    'OTHER',  date '2026-02-01', null,             null,                              repeat('3', 64), v_run, now()),
     -- PO A's D-number, same customer, other customer PO: PO A has customer-PO pairs, no link
     ('EDGEHOME', 99386913, 1, 'ZZITEM', 'BC', 'ZZCUSTA', '1111',       'ZZ3869A', date '2026-02-01', null,            v_po_created - interval '1 day',   repeat('4', 64), v_run, now()),
+    -- PO A's header salesOrderNo, same customer, PO A's D-number: must NOT link
+    ('EDGEHOME', 99386998, 1, 'ZZITEM', 'BC', 'ZZCUSTA', '3333',       'ZZ3869A', date '2026-02-01', null,            v_po_created - interval '2 days',  repeat('d', 64), v_run, now()),
     -- the sales order production history names for PO A: must NOT link
     ('EDGEHOME', 99386999, 1, 'ZZITEM', 'BC', 'ZZCUSTA', '2222',       'OTHER',  date '2026-02-01', null,             null,                              repeat('5', 64), v_run, now()),
     -- PO B fallback: MOD010 line, entered 10 days before the PO -> links
@@ -111,9 +113,12 @@ begin
     raise exception 'the sales-order start date (the promise) must be exposed';
   end if;
 
-  if (select array_agg(sales_order_no || ':' || array_to_string(link_sources, '+') order by sales_order_no)
+  if (select array_agg(array_to_string(link_sources, '+') || ':' || source_count || ':' ||
+             (latest_fetched_at is not null) || ':' || sales_order_no || ':' ||
+             sales_order_start_date || ':' || sales_order_start_date_max || ':' ||
+             sales_order_cancel_date || ':' || sales_order_start_date_ever_changed)
         from plm.v_prod_order_sales_order_link where prod_order_header_id = h_b)
-     is distinct from array['99386920:prod_reference_no'] then
+     is distinct from array['prod_reference_no:1:true:99386920:2026-02-01:2026-02-01:2026-03-01:false'] then
     raise exception 'PO B must fall back to its ColdLion D-number, same customer (MOD011 = MOD010), entered within the window, never by sales-order number: %',
       (select array_agg(sales_order_no order by sales_order_no)
          from plm.v_prod_order_sales_order_link where prod_order_header_id = h_b);

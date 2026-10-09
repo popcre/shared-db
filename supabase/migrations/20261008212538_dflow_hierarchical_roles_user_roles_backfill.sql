@@ -166,6 +166,40 @@ alter table dflow."Roles"
   add column if not exists parent_id integer,
   add column if not exists is_active boolean not null default true;
 
+-- Shape-assert the columns this migration adds (not just the pre-existing
+-- dependencies): a pre-existing wrong-typed column kept by IF NOT EXISTS must
+-- fail loudly, not silently corrupt the hierarchy.
+do $$
+declare
+  bad_shape text;
+begin
+  select string_agg(detail, '; ' order by detail)
+    into bad_shape
+  from (
+    select e.column_name
+           || ' expected ' || e.data_type || '/' || e.is_nullable
+           || ', found '
+           || coalesce(c.data_type || '/' || c.is_nullable, 'MISSING') as detail
+    from (values
+      ('kind',      'text',    'NO'),
+      ('parent_id', 'integer', 'YES'),
+      ('is_active', 'boolean', 'NO')
+    ) as e(column_name, data_type, is_nullable)
+    left join information_schema.columns c
+      on c.table_schema = 'dflow'
+     and c.table_name = 'Roles'
+     and c.column_name = e.column_name
+    where c.column_name is null
+       or c.data_type is distinct from e.data_type
+       or c.is_nullable is distinct from e.is_nullable
+  ) mismatches;
+
+  if bad_shape is not null then
+    raise exception 'ABORT: dflow."Roles" added-column shape mismatch: %', bad_shape;
+  end if;
+end
+$$;
+
 alter table dflow."Roles" drop constraint if exists roles_parent_id_fkey;
 alter table dflow."Roles"
   add constraint roles_parent_id_fkey

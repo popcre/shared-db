@@ -115,6 +115,7 @@ jobs:
           set -euo pipefail
           # Build the URL in-process so the password is never echoed or passed as an argument.
           ENCODED="$(node -e 'process.stdout.write(encodeURIComponent(process.env.SANDBOX_PASSWORD))')"
+          echo "::add-mask::$SANDBOX_PASSWORD"
           echo "::add-mask::$ENCODED"
           export DATABASE_URL="postgresql://postgres.${COLDLION_EXPECTED_PROJECT_REF}:${ENCODED}@aws-0-us-east-1.pooler.supabase.com:5432/postgres?sslmode=require"
           SYSID="$(PGHOST=aws-0-us-east-1.pooler.supabase.com PGPORT=5432 PGDATABASE=postgres \

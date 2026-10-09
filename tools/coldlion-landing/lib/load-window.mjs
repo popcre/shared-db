@@ -425,13 +425,28 @@ function unsealedEpilogue({ runId, finishedAt, durationMs, notes }) {
 commit;`;
 }
 
-// An unsealed forward load re-reads a window that is still open, night after night. Child
-// rows (components, invoice and pick-ticket tokens) are written ONLY under a line version
-// this load itself created. A line version that already exists keeps the children it was
-// first landed with, so a nightly re-read can never add a second set of components under
-// one line_id (consumers such as plm.coldlion_sales_history join line to component with no
-// version filter). The sealed load of the window, once it closes, behaves exactly as
-// before.
+// ONE COMPONENT SET PER LINE VERSION once forward loads exist. An unsealed forward load
+// re-reads a window that is still open, night after night, and line_source_hash excludes
+// component-grain facts (quantities, prices, taxonomy, document tokens). So:
+//   * an UNSEALED load writes child rows (components, invoice and pick-ticket tokens) only
+//     under a line version that load itself created;
+//   * a SEALED load writes no child rows under a line version that an unsealed forward load
+//     created first.
+// A line version therefore keeps the children it was first landed with, and consumers that
+// join line to component with no version filter (plm.coldlion_sales_history) can never see
+// two component sets under one line_id because of forward loads. A component-grain change
+// with no line-grain change after the first load is not recorded; a line-grain change lands
+// as a new version with its own children. Line versions created by sealed loads are not
+// affected: _old_line is empty for them, exactly as before forward loads existed.
+function forwardCreatedLinesSql() {
+  return `create temp table _old_line on commit drop as
+select m.local_id
+  from _map_line m
+  join coldlion.order_history_line l on l.id = m.id
+  join coldlion.sync_run r on r.id = l.run_id
+ where r.request_params ? 'unsealedForward';`;
+}
+
 function unsealedOldLinesSql(runId) {
   return `create temp table _old_line on commit drop as
 select m.local_id
@@ -613,9 +628,9 @@ export function buildOrderHistoryLoadSql({
       ["master_item_no", false],
       ["line_source_hash", false],
     ]),
-    sealed ? "" : unsealedOldLinesSql(runId),
+    sealed ? forwardCreatedLinesSql() : unsealedOldLinesSql(runId),
     stageSql("_stage_component", ORDER_COMPONENT_SPEC, LOCAL_AND_PARENT, components),
-    sealed ? "" : dropChildrenOfOldLinesSql("_stage_component"),
+    dropChildrenOfOldLinesSql("_stage_component"),
     insertSql({
       target: "coldlion.order_history_component",
       constraint: "coldlion_order_history_component_identity_unique",
@@ -637,7 +652,7 @@ export function buildOrderHistoryLoadSql({
       "t.line_id = (select m.id from _map_line m where m.local_id = s.line_local_id)",
     ),
     stageSql("_stage_invoice", INVOICE_REF_SPEC, CHILD_OF_COMPONENT, invoiceRefs),
-    sealed ? "" : dropChildrenOfOldLinesSql("_stage_invoice"),
+    dropChildrenOfOldLinesSql("_stage_invoice"),
     childRefSql({
       target: "coldlion.order_history_invoice_ref",
       constraint: "coldlion_order_history_invoice_ref_identity_unique",
@@ -646,7 +661,7 @@ export function buildOrderHistoryLoadSql({
       count: "order_history_invoice_ref",
     }),
     stageSql("_stage_pick", PICK_TICKET_REF_SPEC, CHILD_OF_COMPONENT, pickRefs),
-    sealed ? "" : dropChildrenOfOldLinesSql("_stage_pick"),
+    dropChildrenOfOldLinesSql("_stage_pick"),
     childRefSql({
       target: "coldlion.order_history_pick_ticket_ref",
       constraint: "coldlion_order_history_pick_ticket_ref_identity_unique",

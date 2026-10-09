@@ -93,13 +93,35 @@ export const HISTORY_SHAPE = Object.freeze([
   ["prod_history_line", "requested_stage_code"],
 ]);
 
+// The ON CONFLICT targets the load SQL names; a target without them would fail per window.
+export const HISTORY_CONSTRAINTS = Object.freeze([
+  ["order_history_line", "coldlion_order_history_line_identity_unique"],
+  ["order_history_component", "coldlion_order_history_component_identity_unique"],
+  ["order_history_invoice_ref", "coldlion_order_history_invoice_ref_identity_unique"],
+  ["order_history_pick_ticket_ref", "coldlion_order_history_pick_ticket_ref_identity_unique"],
+  ["window_ledger", "coldlion_window_ledger_identity_unique"],
+  ["history_page_ledger", "coldlion_history_page_ledger_identity_unique"],
+]);
+
 export function historyShapeSql() {
   const pairs = HISTORY_SHAPE.map(([table, column]) => `(${sqlText(table)}, ${sqlText(column)})`).join(", ");
+  const constraints = HISTORY_CONSTRAINTS.map(([table, name]) => `(${sqlText(table)}, ${sqlText(name)})`).join(", ");
   return `select t.table_name || '.' || t.column_name
     from (values ${pairs}) as t(table_name, column_name)
    where not exists (
-     select 1 from information_schema.columns c
-      where c.table_schema = 'coldlion' and c.table_name = t.table_name and c.column_name = t.column_name);`;
+     select 1 from pg_attribute a
+       join pg_class c on c.oid = a.attrelid
+      where c.relnamespace = 'coldlion'::regnamespace and c.relkind in ('r', 'p')
+        and c.relname = t.table_name and a.attname = t.column_name
+        and a.attnum > 0 and not a.attisdropped)
+  union all
+  select 'constraint ' || k.conname
+    from (values ${constraints}) as k(table_name, conname)
+   where not exists (
+     select 1 from pg_constraint x
+       join pg_class c on c.oid = x.conrelid
+      where c.relnamespace = 'coldlion'::regnamespace and c.relname = k.table_name
+        and x.conname = k.conname and x.contype = 'u');`;
 }
 
 export function assertHistoryShape(dbOptions = {}, query = queryRows) {

@@ -874,10 +874,23 @@ test("an unsealed forward load writes lines and a run record but never seals the
   assert.match(sql, /already loaded \(sealed\)/, "a sealed window is refused, never touched");
 });
 
-test("the sealed load is byte-identical to the pre-forward loader (golden hash)", () => {
-  // sha256 of orderSql() as built by origin/main e6a279c7, before forward mode existed.
-  const digest = createHash("sha256").update(orderSql({ sealed: true })).digest("hex");
-  assert.equal(digest, SEALED_ORDER_SQL_SHA256);
+test("the sealed load differs from the pre-forward loader ONLY by the forward-created-line child filter", () => {
+  // SEALED_ORDER_SQL_SHA256 is sha256 of orderSql() as built by origin/main e6a279c7, before
+  // forward mode existed. Removing exactly the three statements this PR adds to the sealed
+  // path must give back those bytes, so nothing else in the sealed load changed.
+  const sql = orderSql({ sealed: true });
+  const added = [
+    /\n\ncreate temp table _old_line on commit drop as\n[\s\S]*?where r\.request_params \? 'unsealedForward';/,
+    /\n\ndelete from _stage_component s using _old_line o where s\.line_local_id = o\.local_id;/,
+    /\n\ndelete from _stage_invoice s using _old_line o where s\.line_local_id = o\.local_id;/,
+    /\n\ndelete from _stage_pick s using _old_line o where s\.line_local_id = o\.local_id;/,
+  ];
+  let stripped = sql;
+  for (const pattern of added) {
+    assert.match(stripped, pattern);
+    stripped = stripped.replace(pattern, "");
+  }
+  assert.equal(createHash("sha256").update(stripped).digest("hex"), SEALED_ORDER_SQL_SHA256);
 });
 
 test("an unsealed load writes children only under line versions it created", () => {
@@ -886,12 +899,16 @@ test("an unsealed load writes children only under line versions it created", () 
   for (const stage of ["_stage_component", "_stage_invoice", "_stage_pick"]) {
     assert.match(sql, new RegExp(`delete from ${stage} s using _old_line o`));
   }
-  assert.doesNotMatch(orderSql(), /_old_line/, "the sealed path is untouched");
+  const sealed = orderSql();
+  assert.match(sealed, /join coldlion\.sync_run r on r\.id = l\.run_id/, "sealed loads skip children only under forward-created versions");
+  assert.doesNotMatch(sealed, /l\.run_id is distinct from/);
 });
 
 test("the loaders refuse a target that is not the canonical landing shape", () => {
   assert.match(historyShapeSql(), /'order_history_line', 'id'/);
   assert.match(historyShapeSql(), /'window_ledger', 'stage_code'/);
+  assert.match(historyShapeSql(), /coldlion_order_history_component_identity_unique/);
+  assert.match(historyShapeSql(), /relkind in \('r', 'p'\)/, "a view of the same name is not the table");
   assert.doesNotThrow(() => assertHistoryShape({}, () => []));
   assert.throws(() => assertHistoryShape({}, () => [["order_history_line.id"]]), /not the canonical landing shape/);
 });
@@ -988,7 +1005,8 @@ test("the sandbox sync runs the offline tests first, masks the password and boun
   assert.match(sandboxSync, /::add-mask::/);
   assert.match(sandboxSync, /SANDBOX_SYSTEM_IDENTIFIER: '7678069749886157684'/);
   assert.ok(sandboxSync.indexOf("system_identifier mismatch") < sandboxSync.indexOf("node tools/coldlion-landing/"), "the database is proven before any loader runs");
-  assert.doesNotMatch(sandboxSync, /echo[^\n]*\$SANDBOX_PASSWORD/);
+  const echoes = sandboxSync.match(/echo[^\n]*\$SANDBOX_PASSWORD[^\n]*/g) ?? [];
+  assert.deepEqual(echoes, ['echo "::add-mask::$SANDBOX_PASSWORD"'], "the raw password is only ever masked, never printed");
   assert.match(sandboxSync, /--from "\$FROM" --limit "\$LIMIT"/);
   assert.match(sandboxSync, /--windows "\$WINDOWS" --forward/);
 });

@@ -182,14 +182,23 @@ The scan stops after two consecutive start-date months that land no line (a fail
 never counts as empty), or at the 18-month horizon shared with the order-intake poll
 (`lib/order-intake-windows.mjs`). Production history is never forward-loaded.
 
-Child rows (components, invoice and pick-ticket tokens) are written by a forward load only
-under a line version that load created, so a nightly re-read of an open window can never add
-a second component set under one `line_id`. Because a forward-loaded line keeps its first
-`fetched_at`, `plm.v_prod_order_sales_order_link`'s `latest_fetched_at` and start-date
-change flags reflect the first forward read of that version until a changed version lands.
+One component set per line version. A forward load writes child rows (components, invoice
+and pick-ticket tokens) only under a line version it created, and a later sealed load writes
+none under a line version a forward load created first. A line version therefore keeps the
+children it was first landed with: a component-grain change (quantity, price, taxonomy,
+document tokens) with no line-grain change after that first load is not recorded, while a
+line-grain change lands as a new version with its own children. Line versions created by
+sealed loads behave exactly as before. Because a forward-loaded line keeps its first
+`fetched_at`, `plm.v_prod_order_sales_order_link`'s `latest_fetched_at` and start-date change
+flags reflect the first forward read of that version until a changed version lands.
+
+"Empty month" counts the order lines the vendor RETURNED for the month's windows, not new
+rows, so re-reading an unchanged month is not empty; in practice the scan usually runs to the
+horizon (about 78 windows a night), which is the cost the forward-scan rule accepts.
 
 The DesignFlow sandbox runs this nightly through `coldlion-landing-sync-sandbox.yml`
-(issue #3869); production scheduling stays in `coldlion-landing-sync.yml`.
+(issue #3869). Production's `coldlion-landing-sync.yml` does NOT pass `--forward` yet, so
+production still lands only closed windows; enabling it there is separate work.
 
 ## The vendor behaviours this is built around
 

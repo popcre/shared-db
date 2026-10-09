@@ -176,9 +176,17 @@ line lands as a new version; an identical one is absorbed by the identity constr
 keeps the `run_id`, `fetched_at` and ColdLion stamps (`created_time`, `mod_time`, ...) of the
 FIRST load that saw it, usually a forward one. Stamps are outside `line_source_hash`, so a
 change to the stamps alone does not create a new version. `--today YYYY-MM-DD` overrides the
-scan date for tests and rehearsal; no workflow passes it. The scan stops after two consecutive start-date months that land no line (a failed window never
-counts as empty), or at the 18-month horizon shared with the order-intake poll
+scan date for tests and rehearsal; no workflow passes it.
+
+The scan stops after two consecutive start-date months that land no line (a failed window
+never counts as empty), or at the 18-month horizon shared with the order-intake poll
 (`lib/order-intake-windows.mjs`). Production history is never forward-loaded.
+
+Child rows (components, invoice and pick-ticket tokens) are written by a forward load only
+under a line version that load created, so a nightly re-read of an open window can never add
+a second component set under one `line_id`. Because a forward-loaded line keeps its first
+`fetched_at`, `plm.v_prod_order_sales_order_link`'s `latest_fetched_at` and start-date
+change flags reflect the first forward read of that version until a changed version lands.
 
 The DesignFlow sandbox runs this nightly through `coldlion-landing-sync-sandbox.yml`
 (issue #3869); production scheduling stays in `coldlion-landing-sync.yml`.

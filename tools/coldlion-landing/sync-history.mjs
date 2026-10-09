@@ -35,7 +35,7 @@ import { readColdlionApiKey } from "../coldlion-sync-common.mjs";
 import { isoDate, lastClosedWindowIndex, windowAtIndex, windowsEndingAt } from "./lib/grid.mjs";
 import { proveTarget } from "./lib/db.mjs";
 import { COMPANY_CODE, PAGE_SIZE } from "./lib/scopes.mjs";
-import { allScopes, ledgerKey, loadWindowScope, loadedWindows, scopeLabel } from "./lib/run-history.mjs";
+import { allScopes, assertHistoryShape, ledgerKey, loadWindowScope, loadedWindows, scopeLabel } from "./lib/run-history.mjs";
 import { ORDER_HISTORY } from "./lib/scopes.mjs";
 import {
   closesStagedMonth,
@@ -84,6 +84,7 @@ export function parseArgs(argv) {
 export async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   const target = proveTarget();
+  assertHistoryShape();
   console.log(`target ${target.database} at ${target.host}`);
 
   // `--to` names the newest window to LOAD, already clamped to one that has closed, so it

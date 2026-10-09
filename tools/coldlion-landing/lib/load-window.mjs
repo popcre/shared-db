@@ -425,6 +425,25 @@ function unsealedEpilogue({ runId, finishedAt, durationMs, notes }) {
 commit;`;
 }
 
+// An unsealed forward load re-reads a window that is still open, night after night. Child
+// rows (components, invoice and pick-ticket tokens) are written ONLY under a line version
+// this load itself created. A line version that already exists keeps the children it was
+// first landed with, so a nightly re-read can never add a second set of components under
+// one line_id (consumers such as plm.coldlion_sales_history join line to component with no
+// version filter). The sealed load of the window, once it closes, behaves exactly as
+// before.
+function unsealedOldLinesSql(runId) {
+  return `create temp table _old_line on commit drop as
+select m.local_id
+  from _map_line m
+  join coldlion.order_history_line l on l.id = m.id
+ where l.run_id is distinct from ${sqlUuid(runId)};`;
+}
+
+function dropChildrenOfOldLinesSql(stageName) {
+  return `delete from ${stageName} s using _old_line o where s.line_local_id = o.local_id;`;
+}
+
 function pageLedgerSql({ scope, window, runId, companyCode, pages }) {
   const stage = scope.stage ? sqlText(scope.stage) : "null";
   const values = pages
@@ -594,7 +613,9 @@ export function buildOrderHistoryLoadSql({
       ["master_item_no", false],
       ["line_source_hash", false],
     ]),
+    sealed ? "" : unsealedOldLinesSql(runId),
     stageSql("_stage_component", ORDER_COMPONENT_SPEC, LOCAL_AND_PARENT, components),
+    sealed ? "" : dropChildrenOfOldLinesSql("_stage_component"),
     insertSql({
       target: "coldlion.order_history_component",
       constraint: "coldlion_order_history_component_identity_unique",
@@ -616,6 +637,7 @@ export function buildOrderHistoryLoadSql({
       "t.line_id = (select m.id from _map_line m where m.local_id = s.line_local_id)",
     ),
     stageSql("_stage_invoice", INVOICE_REF_SPEC, CHILD_OF_COMPONENT, invoiceRefs),
+    sealed ? "" : dropChildrenOfOldLinesSql("_stage_invoice"),
     childRefSql({
       target: "coldlion.order_history_invoice_ref",
       constraint: "coldlion_order_history_invoice_ref_identity_unique",
@@ -624,6 +646,7 @@ export function buildOrderHistoryLoadSql({
       count: "order_history_invoice_ref",
     }),
     stageSql("_stage_pick", PICK_TICKET_REF_SPEC, CHILD_OF_COMPONENT, pickRefs),
+    sealed ? "" : dropChildrenOfOldLinesSql("_stage_pick"),
     childRefSql({
       target: "coldlion.order_history_pick_ticket_ref",
       constraint: "coldlion_order_history_pick_ticket_ref_identity_unique",

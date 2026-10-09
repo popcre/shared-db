@@ -18,7 +18,8 @@ import { projectOrderHistoryWindow, splitInvoiceTokens, wallClockTimestamp } fro
 import { aggregateStamps, buildStampUpdateSql, parseArgs as parseStampArgs } from "./coldlion-landing/backfill-order-stamps.mjs";
 import { projectProdHistoryWindow, quantitiesAgree, selectLookup } from "./coldlion-landing/lib/project-prod-history.mjs";
 import { buildOrderHistoryLoadSql, buildProdHistoryLoadSql } from "./coldlion-landing/lib/load-window.mjs";
-import { hasOrderStampColumns, interpretOrderStampColumns, loadedWindowsSql, orderStampColumnsSql } from "./coldlion-landing/lib/run-history.mjs";
+import { assertHistoryShape, hasOrderStampColumns, historyShapeSql, interpretOrderStampColumns, loadedWindowsSql, orderStampColumnsSql } from "./coldlion-landing/lib/run-history.mjs";
+import { createHash } from "node:crypto";
 import { parseArgs as parseBackfillArgs, selectScopes } from "./coldlion-landing/backfill-history.mjs";
 import { forwardScan, parseArgs as parseSyncArgs } from "./coldlion-landing/sync-history.mjs";
 
@@ -499,6 +500,7 @@ test("the lookup selection prefers the newest dated copy and is stable", () => {
 
 // ---------------------------------------------------------------------------------
 // The generated transaction
+const SEALED_ORDER_SQL_SHA256 = "85506c8abc52818e0469f70bb3ba45b6dc73c58152d2f8977a81e56023d54d58";
 // ---------------------------------------------------------------------------------
 
 const page = (rowCount) => ({
@@ -872,8 +874,26 @@ test("an unsealed forward load writes lines and a run record but never seals the
   assert.match(sql, /already loaded \(sealed\)/, "a sealed window is refused, never touched");
 });
 
-test("the sealed load is unchanged by the forward option's default", () => {
-  assert.equal(orderSql(), orderSql({ sealed: true }));
+test("the sealed load is byte-identical to the pre-forward loader (golden hash)", () => {
+  // sha256 of orderSql() as built by origin/main e6a279c7, before forward mode existed.
+  const digest = createHash("sha256").update(orderSql({ sealed: true })).digest("hex");
+  assert.equal(digest, SEALED_ORDER_SQL_SHA256);
+});
+
+test("an unsealed load writes children only under line versions it created", () => {
+  const sql = orderSql({ sealed: false });
+  assert.match(sql, /create temp table _old_line/);
+  for (const stage of ["_stage_component", "_stage_invoice", "_stage_pick"]) {
+    assert.match(sql, new RegExp(`delete from ${stage} s using _old_line o`));
+  }
+  assert.doesNotMatch(orderSql(), /_old_line/, "the sealed path is untouched");
+});
+
+test("the loaders refuse a target that is not the canonical landing shape", () => {
+  assert.match(historyShapeSql(), /'order_history_line', 'id'/);
+  assert.match(historyShapeSql(), /'window_ledger', 'stage_code'/);
+  assert.doesNotThrow(() => assertHistoryShape({}, () => []));
+  assert.throws(() => assertHistoryShape({}, () => [["order_history_line.id"]]), /not the canonical landing shape/);
 });
 
 test("forward mode is /orderHistory only", () => {
@@ -912,9 +932,9 @@ test("the forward scan starts at the OPEN current window and stops after two emp
   assert.ok(seen.some((from) => from.startsWith("2026-12")), "a month with orders keeps the scan going");
   const months = [...new Set(seen.map((from) => from.slice(0, 7)))];
   assert.deepEqual(months.slice(-2), ["2027-01", "2027-02"], "two consecutive empty months end it");
-  assert.ok(result.stoppedAt.startsWith("2027-02") || result.stoppedAt.startsWith("2027-03"));
+  assert.equal(result.stoppedAt, "2027-03-01");
   const lastFeb = seen.filter((from) => from.startsWith("2027-02")).length;
-  assert.ok(lastFeb >= 4, "an empty month is judged only after ALL its windows were read");
+  assert.equal(lastFeb, 4, "an empty month is judged only after ALL its windows were read");
 });
 
 test("a failed forward window never counts as an empty month", async () => {
@@ -955,6 +975,8 @@ test("the sandbox sync shares the one sandbox writer lock and never cancels a ru
 test("the sandbox sync runs the offline tests first, masks the password and bounds the backfill", () => {
   assert.ok(sandboxSync.indexOf("node --test") < sandboxSync.indexOf("name: Sync"));
   assert.match(sandboxSync, /::add-mask::/);
+  assert.match(sandboxSync, /SANDBOX_SYSTEM_IDENTIFIER: '7678069749886157684'/);
+  assert.ok(sandboxSync.indexOf("system_identifier mismatch") < sandboxSync.indexOf("node tools/coldlion-landing/"), "the database is proven before any loader runs");
   assert.doesNotMatch(sandboxSync, /echo[^\n]*\$SANDBOX_PASSWORD/);
   assert.match(sandboxSync, /--from "\$FROM" --limit "\$LIMIT"/);
   assert.match(sandboxSync, /--windows "\$WINDOWS" --forward/);

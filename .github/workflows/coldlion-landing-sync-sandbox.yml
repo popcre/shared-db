@@ -74,6 +74,11 @@ jobs:
     environment: designflow-sandbox
     env:
       COLDLION_EXPECTED_PROJECT_REF: xupnyeifmpsacrqahwwm
+      PREVIEW_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
+      # pg_control_system().system_identifier of the DesignFlow sandbox, read 2026-10-09.
+      # The URL is built from the ref above, so the ref check alone is circular; this binds
+      # the run to the actual database before anything is written.
+      SANDBOX_SYSTEM_IDENTIFIER: '7678069749886157684'
       SANDBOX_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_DESIGNFLOW_SANDBOX }}
       COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
       OPERATION: ${{ inputs.operation || 'refresh' }}
@@ -95,6 +100,8 @@ jobs:
         run: |
           set -euo pipefail
           [ "$COLDLION_EXPECTED_PROJECT_REF" = "xupnyeifmpsacrqahwwm" ] || { echo "::error::target is not the DesignFlow sandbox"; exit 1; }
+          [ -n "${PREVIEW_PROJECT_REF// /}" ] || { echo "::error::repository variable PREVIEW_PROJECT_REF is unset; the sandbox cannot be proven distinct from preview"; exit 1; }
+          [ "$COLDLION_EXPECTED_PROJECT_REF" != "$PREVIEW_PROJECT_REF" ] || { echo "::error::target is the shared PREVIEW branch"; exit 1; }
           [ -n "${SANDBOX_PASSWORD:-}" ] || { echo "::error::SUPABASE_DB_PASSWORD_DESIGNFLOW_SANDBOX is not set."; exit 1; }
           [ -n "${COLDLION_API_KEY:-}" ] || { echo "::error::COLDLION_API_KEY is not set."; exit 1; }
           [[ "$WINDOWS" =~ ^[1-9][0-9]{0,2}$ ]] || { echo "::error::windows must be 1-999"; exit 1; }
@@ -108,6 +115,13 @@ jobs:
           ENCODED="$(node -e 'process.stdout.write(encodeURIComponent(process.env.SANDBOX_PASSWORD))')"
           echo "::add-mask::$ENCODED"
           export DATABASE_URL="postgresql://postgres.${COLDLION_EXPECTED_PROJECT_REF}:${ENCODED}@aws-0-us-east-1.pooler.supabase.com:5432/postgres?sslmode=require"
+          SYSID="$(PGHOST=aws-0-us-east-1.pooler.supabase.com PGPORT=5432 PGDATABASE=postgres \
+            PGUSER="postgres.${COLDLION_EXPECTED_PROJECT_REF}" PGPASSWORD="$SANDBOX_PASSWORD" PGSSLMODE=require \
+            psql -X -At -v ON_ERROR_STOP=1 -c 'select system_identifier from pg_control_system()')"
+          if [ "$SYSID" != "$SANDBOX_SYSTEM_IDENTIFIER" ]; then
+            echo "::error::connected database is not the DesignFlow sandbox (system_identifier mismatch)"; exit 1
+          fi
+          echo "target proof: system_identifier matches the DesignFlow sandbox"
           if [ "$OPERATION" = "backfill" ]; then
             ARGS=(--from "$FROM" --limit "$LIMIT")
             if [ -n "$TO" ]; then ARGS+=(--to "$TO"); fi

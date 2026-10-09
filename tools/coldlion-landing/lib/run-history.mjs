@@ -76,6 +76,41 @@ export function hasOrderStampColumns(dbOptions = {}, query = queryRows) {
   return stampColumnsByTarget.get(key);
 }
 
+/**
+ * The canonical landing shape the history loaders write. Checked before any write, so a
+ * target that still carries a non-canonical table copy (the DesignFlow sandbox before
+ * migration 20261009191951 and the landing migrations were applied) is refused up front
+ * with one clear message, instead of failing every window and writing failure rows into
+ * the wrong tables.
+ */
+export const HISTORY_SHAPE = Object.freeze([
+  ["order_history_line", "id"],
+  ["order_history_line", "sales_order_line_no"],
+  ["order_history_line", "master_item_no"],
+  ["order_history_component", "line_id"],
+  ["window_ledger", "stage_code"],
+  ["history_page_ledger", "window_id"],
+  ["prod_history_line", "requested_stage_code"],
+]);
+
+export function historyShapeSql() {
+  const pairs = HISTORY_SHAPE.map(([table, column]) => `(${sqlText(table)}, ${sqlText(column)})`).join(", ");
+  return `select t.table_name || '.' || t.column_name
+    from (values ${pairs}) as t(table_name, column_name)
+   where not exists (
+     select 1 from information_schema.columns c
+      where c.table_schema = 'coldlion' and c.table_name = t.table_name and c.column_name = t.column_name);`;
+}
+
+export function assertHistoryShape(dbOptions = {}, query = queryRows) {
+  const missing = query(historyShapeSql(), dbOptions).map(([name]) => name);
+  if (missing.length > 0) {
+    throw new Error(
+      `the target's coldlion schema is not the canonical landing shape (missing ${missing.join(", ")}); refusing to load`,
+    );
+  }
+}
+
 export async function loadWindowScope({
   scope,
   window,

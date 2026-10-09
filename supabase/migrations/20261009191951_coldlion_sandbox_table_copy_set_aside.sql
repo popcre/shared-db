@@ -14,6 +14,13 @@
 -- `stage_code` column -- the copy's shape. Shared production and shared preview carry the
 -- canonical landing tables (id and stage_code present), so they pass through untouched,
 -- as does any database built from the migrations in order.
+--
+-- NOTE FOR STATIC GUARDS AND REVIEWERS: the whole body is one DO block, so the repository's
+-- static migration scanners (production_migration_guard object events, SET SCHEMA and drop
+-- scanners, the unnamed-ACL risk gate) see no statements in this file. Its effect is
+-- guarded at RUN time instead: the copy-shape test, the exact 17-table list, the outside-
+-- dependency guards, and the post-check below. Any future edit must keep those runtime
+-- guards, because nothing static will notice a change inside the block.
 
 do $set_aside$
 declare
@@ -152,8 +159,11 @@ begin
   -- Read-only archive: no API role keeps any privilege on the moved tables.
   revoke all on all tables in schema coldlion_sandbox_copy_20260929 from public, anon, authenticated;
 
-  if exists (select 1 from pg_class where relnamespace = 'coldlion'::regnamespace and relkind in ('r', 'p', 'v', 'm')) then
-    raise exception '#3869/20261009191951 post-check: relations remain in coldlion after the move';
+  -- Nothing at all may remain: tables, their indexes, owned sequences and toast move
+  -- together, so any leftover relation (a free sequence included) is a refusal.
+  if exists (select 1 from pg_class where relnamespace = 'coldlion'::regnamespace) then
+    raise exception '#3869/20261009191951 post-check: relations remain in coldlion after the move: %',
+      (select string_agg(relkind::text || ' ' || relname, ', ') from pg_class where relnamespace = 'coldlion'::regnamespace);
   end if;
   raise notice '#3869/20261009191951: moved % coldlion copy tables to coldlion_sandbox_copy_20260929', array_length(v_expected, 1);
 end

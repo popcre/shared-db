@@ -44,4 +44,4 @@
     "When no real closing link exists, full verification (evidence pair, completion record, claims) must still run unchanged"
   ],
   "evidence_parent": null
-}
+} 

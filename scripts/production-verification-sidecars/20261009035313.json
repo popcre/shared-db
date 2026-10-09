@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "migration_version": "20261009035313",
-  "migration_sha256": "dcc5cecc856894df114c302a16e8f074c02ca29c9f538760e651f335d25b2aa4",
+  "migration_sha256": "e8ad3a31621601ec26ed611add8ddd53436b1efcf8f5e0899edcb8a1fe548582",
   "checks": [
     {
       "id": "order_tracking_ext_serving_column",
@@ -103,7 +103,7 @@
         {
           "column": "table_schema",
           "type": "text",
-          "equals": "api"
+          "equals": "dam"
         },
         {
           "column": "table_name",
@@ -188,107 +188,23 @@
       "expected_count": 1
     },
     {
-      "id": "get_dam_order_tracking_signature",
-      "kind": "exact_row_count",
-      "relation": "information_schema.routines",
-      "filters": [
-        {
-          "column": "routine_schema",
-          "type": "text",
-          "equals": "public"
-        },
-        {
-          "column": "routine_name",
-          "type": "text",
-          "equals": "get_dam_order_tracking"
-        }
-      ],
-      "expected_count": 1
-    },
-    {
-      "id": "get_dam_style_tracker_license_status_signature",
-      "kind": "exact_row_count",
-      "relation": "information_schema.routines",
-      "filters": [
-        {
-          "column": "routine_schema",
-          "type": "text",
-          "equals": "public"
-        },
-        {
-          "column": "routine_name",
-          "type": "text",
-          "equals": "get_dam_style_tracker_license_status"
-        }
-      ],
-      "expected_count": 1
-    },
-    {
-      "id": "update_dam_order_tracking_signature",
-      "kind": "exact_row_count",
-      "relation": "information_schema.routines",
-      "filters": [
-        {
-          "column": "routine_schema",
-          "type": "text",
-          "equals": "public"
-        },
-        {
-          "column": "routine_name",
-          "type": "text",
-          "equals": "update_dam_order_tracking"
-        }
-      ],
-      "expected_count": 1
-    },
-    {
-      "id": "upsert_dam_order_sample_depth_signature",
-      "kind": "exact_row_count",
-      "relation": "information_schema.routines",
-      "filters": [
-        {
-          "column": "routine_schema",
-          "type": "text",
-          "equals": "public"
-        },
-        {
-          "column": "routine_name",
-          "type": "text",
-          "equals": "upsert_dam_order_sample_depth"
-        }
-      ],
-      "expected_count": 1
-    },
-    {
-      "id": "upsert_dam_order_customer_settings_signature",
-      "kind": "exact_row_count",
-      "relation": "information_schema.routines",
-      "filters": [
-        {
-          "column": "routine_schema",
-          "type": "text",
-          "equals": "public"
-        },
-        {
-          "column": "routine_name",
-          "type": "text",
-          "equals": "upsert_dam_order_customer_settings"
-        }
-      ],
+      "id": "dam_order_sheets_exact_shape_and_signatures",
+      "kind": "catalog_contract",
+      "contract": "dam_order_sheets_integration_v1",
       "expected_count": 1
     }
   ],
   "marker_schema_version": 1,
   "marker_reviews": [
     {
-      "line_start": 220,
-      "line_end": 220,
+      "line_start": 236,
+      "line_end": 236,
       "disposition": "no_durable_target",
       "reason": "Parameterized UPDATE inside a runtime administrator-only RPC, limited to a closed static field/type allowlist. It creates no dynamic catalog target; all DDL is static and catalog-verified."
     },
     {
-      "line_start": 223,
-      "line_end": 223,
+      "line_start": 239,
+      "line_end": 239,
       "disposition": "no_durable_target",
       "reason": "Parameterized UPDATE inside a runtime administrator-only RPC, limited to a closed static field/type allowlist. It creates no dynamic catalog target; all DDL is static and catalog-verified."
     }

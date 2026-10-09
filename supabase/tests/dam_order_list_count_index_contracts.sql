@@ -86,7 +86,8 @@ begin
   end if;
 
   if v_plan ~ 'Seq Scan on (plm\.)?style_tracker_item_bridge'
-     or v_plan ~ 'Seq Scan on (plm\.)?production_order_line' then
+     or v_plan ~ 'Seq Scan on (plm\.)?production_order_line'
+     or v_plan ~ 'Seq Scan on (public\.)?style_tracker_rows' then
     raise exception 'OrderList count retained a target sequential scan: %', v_plan;
   end if;
 

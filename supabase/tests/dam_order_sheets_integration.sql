@@ -30,7 +30,7 @@ begin
   actual:=dam.orderlist_po_status('POE','TEST-SKU',null,12,6,true,'Booked','2026-01-01',null,null,'TEST-PO');
   if actual is distinct from 'Close tracking' then raise exception 'Closed tracking must outrank shipping states'; end if;
   if has_function_privilege('anon','public.update_dam_order_tracking(uuid,jsonb)','execute')
-    or has_table_privilege('anon','api.dam_order_tracking','select') then
+    or has_table_privilege('anon','dam.dam_order_tracking','select') then
     raise exception 'Anonymous access is forbidden';
   end if;
 end;
@@ -64,7 +64,7 @@ begin
     or r.master_data_license_status is distinct from 'Concept Approved' or r.test_report is distinct from 'false' or r.professional_photos is distinct from 'true'
     or r.master_data_sample_vendor is distinct from 'TEST-SAMPLE-VENDOR' or r.contractual_sample_reorder is distinct from true
     or r.cases_reported is distinct from 4 then raise exception 'Live Master Data outputs or computed cases failed'; end if;
-  select * into strict tracking from api.dam_order_tracking where order_id=r.order_id;
+  select * into strict tracking from dam.dam_order_tracking where order_id=r.order_id;
   if tracking.total_cases is distinct from 4 or tracking.line_count is distinct from 2 or tracking.missing_test_reports is distinct from 2
     or tracking.missing_photos is distinct from 1 or tracking.warehouse_date is distinct from date '2026-04-15' then
     raise exception 'PO aggregate duplicated components or lost missing-value warnings';
@@ -99,20 +99,33 @@ begin
 end;
 $tests$;
 
-insert into plm.production_order(id,production_order_number,source_system)
-select id,'coldlion/SO-TEST','coldlion' from integration_ids where key='coldlion-order';
+insert into plm.production_order(id,production_order_number,source_system,status)
+select id,'coldlion/SO-TEST','coldlion','confirmed' from integration_ids where key='coldlion-order';
 do $tests$
 begin
-  if exists(select 1 from api.dam_order_tracking where order_id=(select id from integration_ids where key='coldlion-order')) then
+  if exists(select 1 from dam.dam_order_tracking where order_id=(select id from integration_ids where key='coldlion-order')) then
     raise exception 'Sales-history placeholders are not production PO tracking records';
   end if;
 end;
 $tests$;
 
--- The write guards must actually fire, not merely be present in source text.
-set local request.jwt.claim.sub='00000000-0000-4000-8000-000000000001';
+insert into plm.production_order_line(id,production_order_id,sku,quantity_ordered,case_pack,order_type)
+select l.id,o.id,'TEST-SALES-SKU',12,6,'FOB' from integration_ids l cross join integration_ids o where l.key='coldlion-line' and o.key='coldlion-order';
 do $tests$
 begin
+  if (select order_status from api.dam_order_list where order_line_id=(select id from integration_ids where key='coldlion-line')) is distinct from 'confirmed' then
+    raise exception 'Sales-history status must remain the ERP status'; end if;
+end;
+$tests$;
+
+-- The write guards must actually fire, not merely be present in source text.
+insert into auth.users(id,email) values('00000000-0000-4000-8000-000000000001','order-integration-fixture@example.invalid') on conflict(id) do nothing;
+set local request.jwt.claim.sub='00000000-0000-4000-8000-000000000001';
+set local request.jwt.claims='{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated","app_metadata":{"roles":[]}}';
+do $tests$
+begin
+  if auth.uid() is distinct from '00000000-0000-4000-8000-000000000001'::uuid or app.has_role('administrator'::app.app_role) is true then
+    raise exception 'Non-administrator fixture is not an authenticated normal user'; end if;
   begin
     perform public.update_dam_order_tracking((select id from integration_ids where key='order'),'{}');
     raise exception 'A normal user unexpectedly changed PO tracking';
@@ -126,12 +139,12 @@ begin
 end;
 $tests$;
 
-set local request.jwt.claims='{"sub":"00000000-0000-4000-8000-000000000001","app_metadata":{"roles":["administrator"]}}';
+set local request.jwt.claims='{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated","app_metadata":{"roles":["administrator"]}}';
 do $tests$
 declare v_order_id uuid := (select id from integration_ids where key='order'); r record;
 begin
   perform public.update_dam_order_tracking(v_order_id,'{"sent_po_date":"2026-03-01","vendor_delivery_date":"2026-03-15","booking_state":"Booked","etd":"2026-03-20","comment":"Reviewed fixture","worksheet_done":true,"inspection_passed":"2026-04-01","container_booking_group":"BN-TEST"}');
-  select * into strict r from api.dam_order_tracking where api.dam_order_tracking.order_id=v_order_id;
+  select * into strict r from dam.dam_order_tracking where dam.dam_order_tracking.order_id=v_order_id;
   if r.sent_po_date is distinct from date '2026-03-01' or r.comment is distinct from 'Reviewed fixture' or r.worksheet_done is distinct from true then
     raise exception 'Administrator tracking edit did not persist atomically';
   end if;
@@ -139,7 +152,7 @@ begin
     raise exception 'Inspection date and derived SVN/booking references differ from Sheets';
   end if;
   perform public.update_dam_order_tracking(v_order_id,'{"comment":null}');
-  select * into strict r from api.dam_order_tracking where api.dam_order_tracking.order_id=v_order_id;
+  select * into strict r from dam.dam_order_tracking where dam.dam_order_tracking.order_id=v_order_id;
   if r.comment is not null or r.sent_po_date is distinct from date '2026-03-01' then
     raise exception 'Explicit clearing must preserve omitted fields';
   end if;
@@ -151,7 +164,7 @@ begin
     perform public.update_dam_order_tracking(v_order_id,'{"comment":"Must roll back","eta":"not-a-date"}');
     raise exception 'Invalid tracking date was accepted';
   exception when invalid_datetime_format then null; end;
-  if exists(select 1 from api.dam_order_tracking where api.dam_order_tracking.order_id=v_order_id and comment='Must roll back') then
+  if exists(select 1 from dam.dam_order_tracking where dam.dam_order_tracking.order_id=v_order_id and comment='Must roll back') then
     raise exception 'Failed tracking patch partially wrote other fields';
   end if;
   if (select license_status from public.get_dam_style_tracker_license_status(array[(select id from integration_ids where key='licensed')])) is distinct from 'Production Approved' then
@@ -176,13 +189,24 @@ begin
   end if;
   update plm.production_order set warehouse_date='2026-01-01' where id=v_order_id;
   perform public.update_dam_order_tracking(v_order_id,'{"eta":"2026-04-20"}');
-  if (select warehouse_date from api.dam_order_tracking where order_id=v_order_id) is distinct from date '2026-04-25' then
+  if (select warehouse_date from dam.dam_order_tracking where order_id=v_order_id) is distinct from date '2026-04-25' then
     raise exception 'Current ETA must drive warehouse forecast rather than a stale imported forecast';
   end if;
 
   if not exists(select 1 from api.dam_order_customer_settings where customer_normalized='test-customer' and suffix='TEST') then
     raise exception 'Customer suffix did not persist';
   end if;
+end;
+$tests$;
+
+-- Non-primary historical source identities must never multiply visible lines.
+insert into plm.production_order_line_source_ref(production_order_line_id,source_system,source_id,is_primary)
+select id,'google_order_list','integration-ref-'||n,n=1 from integration_ids cross join generate_series(1,3) n where key='line';
+do $tests$
+begin
+  if (select count(*) from api.dam_order_list where order_line_id=(select id from integration_ids where key='line')) is distinct from 1::bigint
+    or (select google_source_id from api.dam_order_list where order_line_id=(select id from integration_ids where key='line')) is distinct from 'integration-ref-1' then
+    raise exception 'Non-primary source identities multiplied an order line'; end if;
 end;
 $tests$;
 
@@ -198,23 +222,33 @@ from integration_ids l cross join integration_ids o where l.key in ('parent-a','
 do $tests$
 declare r record;
 begin
-  select * into strict r from api.dam_order_tracking where order_id=(select id from integration_ids where key='parent-order');
+  select * into strict r from dam.dam_order_tracking where order_id=(select id from integration_ids where key='parent-order');
   if r.total_cases is distinct from 8::numeric or r.line_count is distinct from 3::bigint or r.unknown_case_groups is distinct from 0::bigint
     or r.seal_container_forecast is distinct from date '2026-04-05' or r.seal_container_forecast_status is not null then
     raise exception 'Physical source parents must count once and CRD fallback must drive forecasts'; end if;
   if exists(select 1 from api.dam_order_list where order_id=r.order_id and quantity_ordered is not null) then
     raise exception 'Component quantities were invented from the assortment parent'; end if;
   update plm.production_order_line set case_pack=12 where id=(select id from integration_ids where key='parent-b');
-  select * into strict r from api.dam_order_tracking where order_id=r.order_id;
+  select * into strict r from dam.dam_order_tracking where order_id=r.order_id;
   if r.total_cases is not null or r.unknown_case_groups is distinct from 1::bigint then
     raise exception 'Conflicting component packs must not publish a complete physical case total'; end if;
+  perform public.update_dam_order_tracking(r.order_id,'{"vendor_delivery_date":null}');
+  select * into strict r from dam.dam_order_tracking where order_id=r.order_id;
+  if r.vendor_delivery_date is not null or r.seal_container_forecast is not null or r.seal_container_forecast_status is distinct from 'No date' then
+    raise exception 'Explicit CRD clearing resurrected a legacy date'; end if;
+  if (select seal_container_date from plm.production_order where id=r.order_id) is distinct from date '2026-03-15' then
+    raise exception 'Current clearing rewrote the original compatibility date'; end if;
+  update plm.production_order set warehouse_date='2026-02-20' where id=r.order_id;
+  perform public.update_dam_order_tracking(r.order_id,'{"eta":null}');
+  if (select warehouse_date from dam.dam_order_tracking where order_id=r.order_id) is not null then
+    raise exception 'Explicit ETA clearing resurrected a legacy warehouse forecast'; end if;
   if dam.orderlist_parse_number('NaN') is not null or dam.orderlist_parse_number('bad') is not null
     or dam.orderlist_parse_number('24') is distinct from 24::numeric then raise exception 'Unsafe source numeric parsing'; end if;
   if dam.orderlist_license_status('{"production_approval":null,"AC":"2026-01-01"}',false) is distinct from 'No Info' then
     raise exception 'An explicit current milestone clear resurrected an old spreadsheet letter'; end if;
   perform public.update_dam_order_tracking(r.order_id,'{"inspection_passed":"2026-01-01"}');
   perform public.update_dam_order_tracking(r.order_id,'{"inspection_passed":""}');
-  if (select inspection_passed from api.dam_order_tracking where order_id=r.order_id) is not null then
+  if (select inspection_passed from dam.dam_order_tracking where order_id=r.order_id) is not null then
     raise exception 'Blank date must clear without affecting other fields'; end if;
   if (select count(*) from public.get_dam_order_tracking(0,1,'TEST-PARENT-PO',false)) is distinct from 1::bigint then
     raise exception 'Bounded tracking page failed'; end if;
@@ -233,4 +267,36 @@ begin
 end;
 $tests$;
 
+insert into integration_ids(key) values('sample-only-order'),('sample-only-line');
+insert into plm.production_order(id,production_order_number)
+select id,'TEST-SAMPLE-ONLY-PO' from integration_ids where key='sample-only-order';
+insert into plm.production_order_line(id,production_order_id,sku,quantity_ordered,case_pack,order_type)
+select l.id,o.id,'TEST-SAMPLE-ONLY-SKU',6,6,'Contractual Sample' from integration_ids l cross join integration_ids o where l.key='sample-only-line' and o.key='sample-only-order';
+do $tests$
+begin
+  if (select total_cases from dam.dam_order_tracking where order_id=(select id from integration_ids where key='sample-only-order')) is distinct from 0::numeric then
+    raise exception 'An order with only excluded samples has zero production cases'; end if;
+  if exists(select 1 from public.get_dam_order_tracking(0,200,'TEST-%-LITERAL',false)) then
+    raise exception 'Tracking search treated a literal wildcard as a pattern'; end if;
+end;
+$tests$;
+
+grant select on integration_ids to authenticated;
+set local request.jwt.claims='{"sub":"00000000-0000-4000-8000-000000000001","role":"authenticated","app_metadata":{"roles":[]}}';
+set local role authenticated;
+do $viewer$
+declare r record;
+begin
+  select * into strict r from api.dam_order_list where order_line_id=(select id from integration_ids where key='line');
+  if r.item_description is distinct from 'Canonical Item Master description' then raise exception 'Authenticated item projection unavailable'; end if;
+  select * into strict r from dam.dam_order_tracking where order_id=(select id from integration_ids where key='order');
+  if r.line_count is distinct from 2::bigint then raise exception 'Authenticated PO view unavailable'; end if;
+  if (select count(*) from public.get_dam_order_tracking(0,1,'TEST-PARENT-PO',false)) is distinct from 1::bigint then raise exception 'Authenticated bounded RPC unavailable'; end if;
+  perform 1 from api.dam_order_vendor_statistics limit 1;
+  begin
+    perform public.update_dam_order_tracking(r.order_id,'{"comment":"DENIED"}'); raise exception 'Viewer tracking edit was accepted';
+  exception when insufficient_privilege then null; end;
+end;
+$viewer$;
+reset role;
 rollback;

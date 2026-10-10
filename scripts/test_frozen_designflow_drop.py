@@ -57,7 +57,7 @@ def test_drop_sequence_lists_all_nine():
     assert match, "No DROP SEQUENCE ... RESTRICT found"
     body = match.group(1)
     for s in SEQUENCES:
-        assert s in body, f"Sequence {s} not in DROP SEQUENCE list"
+        assert f'designflow_frozen_20260710.{s}' in body or f'designflow_frozen_20260710."{s}"' in body, f"Sequence {s} not schema-qualified in DROP SEQUENCE"
 
 def test_drop_schema_restrict():
     clean = strip_comments(read_migration())
@@ -97,9 +97,14 @@ def test_clean_already_applied_exit():
 
 def test_fk_definiton_pins_present():
     sql = read_migration()
-    for prop in ["convalidated", "array_length(con.conkey, 1) = 1", "array_length(con.confkey, 1) = 1",
-                 "confupdtype = 'a'", "confdeltype = 'a'", "confmatchtype = 's'"]:
-        assert prop in sql, f"Missing FK definition pin: {prop}"
+    # Both FK checks must contain full definition pins
+    fk_blocks = re.findall(r"art_piece_attachment_art_piece_id_fkey.*?RAISE EXCEPTION", sql, re.DOTALL)
+    fk_blocks += re.findall(r"RolePermissions_RoleId_fkey.*?RAISE EXCEPTION", sql, re.DOTALL)
+    assert len(fk_blocks) >= 2, "Expected 2 FK precondition blocks"
+    for block in fk_blocks:
+        for prop in ["convalidated", "array_length(con.conkey, 1) = 1", "array_length(con.confkey, 1) = 1",
+                     "confupdtype = 'a'", "confdeltype = 'a'", "confmatchtype = 's'"]:
+            assert prop in block, f"Missing FK pin in block: {prop}"
 
 def test_function_set_assertion():
     sql = read_migration()

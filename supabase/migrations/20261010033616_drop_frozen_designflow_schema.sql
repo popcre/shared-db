@@ -4,6 +4,10 @@
 -- FK repoints to dflow parents landed in PR #3893 (merged 2026-10-02, production-verified 2026-10-06).
 -- Backup: 1Password vault vibe_coding item zepc66j5xajdg4novzttmmrtg4 (SHA-256 916be84f...).
 -- derived-from: none
+-- Residuals: prokind<>'f' routines and base types uninventoried (fail-closed at DROP SCHEMA RESTRICT);
+--   dynamic/external consumers unguarded (catalog RESTRICT covers in-DB dependents only).
+-- Sidecar note: 6 mixed-case objects unrepresentable in catalog_absence (verifier charset);
+--   schema-level pg_catalog.pg_namespace check subsumes all nested objects.
 BEGIN;
 SET LOCAL lock_timeout = '10s';
 SET LOCAL statement_timeout = '120s';

@@ -4,11 +4,21 @@
 -- FK repoints to dflow parents landed in PR #3893 (merged 2026-10-02, production-verified 2026-10-06).
 -- Backup: 1Password vault vibe_coding item zepc66j5xajdg4novzttmmrtg4 (SHA-256 916be84f...).
 -- derived-from: none
+
+-- Clean already-applied exit: if the schema is gone, this is a no-op.
+DO $already_applied$
+BEGIN
+  IF to_regnamespace('designflow_frozen_20260710') IS NULL THEN
+    RAISE NOTICE '2110: frozen schema already absent; nothing to do';
+    RETURN;
+  END IF;
+END
+$already_applied$;
+
 BEGIN;
 SET LOCAL lock_timeout = '10s';
 SET LOCAL statement_timeout = '120s';
 
--- Lock every retiring table to prevent concurrent writes during the drop.
 LOCK TABLE designflow_frozen_20260710."Factory",
   designflow_frozen_20260710."Roles",
   designflow_frozen_20260710.art_piece,
@@ -22,14 +32,9 @@ DO $drop_frozen$
 DECLARE
   actual text[];
   seq_actual text[];
-  fn_actual text[];
+  fn_rec record;
   fk_count int;
 BEGIN
-  -- Precondition: frozen schema must exist.
-  IF to_regnamespace('designflow_frozen_20260710') IS NULL THEN
-    RAISE EXCEPTION '2110: frozen schema already absent';
-  END IF;
-
   -- Precondition: exactly seven base tables.
   SELECT array_agg(c.relname::text ORDER BY c.relname::text) INTO actual
   FROM pg_class c
@@ -48,14 +53,6 @@ BEGIN
     RAISE EXCEPTION '2110: frozen sequence inventory changed: %', seq_actual;
   END IF;
 
-  -- Precondition: known functions in the frozen schema (assert and drop explicitly).
-  SELECT array_agg(p.proname::text ORDER BY p.proname::text) INTO fn_actual
-  FROM pg_proc p
-  WHERE p.pronamespace = 'designflow_frozen_20260710'::regnamespace;
-  IF fn_actual IS NOT NULL AND fn_actual NOT IN (ARRAY['get_child_id', 'get_parent_id'], ARRAY['get_parent_id', 'get_child_id']) THEN
-    RAISE EXCEPTION '2110: unexpected frozen function inventory: %', fn_actual;
-  END IF;
-
   -- Precondition: no inbound FK from outside the frozen schema.
   SELECT count(*) INTO fk_count
   FROM pg_constraint con
@@ -70,41 +67,46 @@ BEGIN
     RAISE EXCEPTION '2110: % inbound foreign keys still reference the frozen schema', fk_count;
   END IF;
 
-  -- Precondition: art_piece_attachment FK resolves to dflow.art_piece(id).
+  -- Precondition: art_piece_attachment FK resolves to dflow.art_piece(id) from plm.art_piece_attachment(art_piece_id).
   IF (SELECT count(*) FROM pg_constraint con
       JOIN pg_class confrel ON confrel.oid = con.confrelid
       JOIN pg_namespace ns ON ns.oid = confrel.relnamespace
       JOIN pg_class conrel ON conrel.oid = con.conrelid
       JOIN pg_namespace nsc ON nsc.oid = conrel.relnamespace
+      JOIN pg_attribute a_child ON a_child.attrelid = conrel.oid AND a_child.attnum = con.conkey[1]
+      JOIN pg_attribute a_parent ON a_parent.attrelid = confrel.oid AND a_parent.attnum = con.confkey[1]
       WHERE con.contype = 'f'
         AND con.conname = 'art_piece_attachment_art_piece_id_fkey'
         AND ns.nspname = 'dflow' AND confrel.relname = 'art_piece'
-        AND nsc.nspname = 'plm' AND conrel.relname = 'art_piece_attachment') <> 1 THEN
-    RAISE EXCEPTION '2110: art_piece_attachment FK does not resolve to dflow.art_piece';
+        AND nsc.nspname = 'plm' AND conrel.relname = 'art_piece_attachment'
+        AND a_child.attname = 'art_piece_id' AND a_parent.attname = 'id') <> 1 THEN
+    RAISE EXCEPTION '2110: art_piece_attachment FK does not resolve to dflow.art_piece(id)';
   END IF;
 
-  -- Precondition: RolePermissions FK resolves to dflow."Roles"("Id").
+  -- Precondition: RolePermissions FK resolves to dflow."Roles"("Id") from app."RolePermissions"("RoleId").
   IF (SELECT count(*) FROM pg_constraint con
       JOIN pg_class confrel ON confrel.oid = con.confrelid
       JOIN pg_namespace ns ON ns.oid = confrel.relnamespace
       JOIN pg_class conrel ON conrel.oid = con.conrelid
       JOIN pg_namespace nsc ON nsc.oid = conrel.relnamespace
+      JOIN pg_attribute a_child ON a_child.attrelid = conrel.oid AND a_child.attnum = con.conkey[1]
+      JOIN pg_attribute a_parent ON a_parent.attrelid = confrel.oid AND a_parent.attnum = con.confkey[1]
       WHERE con.contype = 'f'
         AND con.conname = 'RolePermissions_RoleId_fkey'
         AND ns.nspname = 'dflow' AND confrel.relname = 'Roles'
-        AND nsc.nspname = 'app' AND conrel.relname = 'RolePermissions') <> 1 THEN
-    RAISE EXCEPTION '2110: RolePermissions FK does not resolve to dflow.Roles';
+        AND nsc.nspname = 'app' AND conrel.relname = 'RolePermissions'
+        AND a_child.attname = 'RoleId' AND a_parent.attname = 'Id') <> 1 THEN
+    RAISE EXCEPTION '2110: RolePermissions FK does not resolve to dflow.Roles(Id)';
   END IF;
 
-  -- Drop functions explicitly (RESTRICT).
-  IF fn_actual IS NOT NULL THEN
-    IF 'get_child_id' = ANY(fn_actual) THEN
-      EXECUTE 'DROP FUNCTION designflow_frozen_20260710.get_child_id() RESTRICT';
-    END IF;
-    IF 'get_parent_id' = ANY(fn_actual) THEN
-      EXECUTE 'DROP FUNCTION designflow_frozen_20260710.get_parent_id() RESTRICT';
-    END IF;
-  END IF;
+  -- Drop any functions in the frozen schema by catalog-derived signature.
+  FOR fn_rec IN
+    SELECT p.oid::regprocedure AS sig
+    FROM pg_proc p
+    WHERE p.pronamespace = 'designflow_frozen_20260710'::regnamespace
+  LOOP
+    EXECUTE format('DROP FUNCTION %s RESTRICT', fn_rec.sig);
+  END LOOP;
 
   -- Drop tables explicitly (RESTRICT). Owned sequences drop implicitly.
   DROP TABLE designflow_frozen_20260710."Factory",

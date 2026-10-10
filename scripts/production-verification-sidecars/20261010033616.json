@@ -3,6 +3,7 @@
   "migration_version": "20261010033616",
   "migration_sha256": "d503d0c2bf181e3c1df9fd60adeabf504ce5f9177d2b6bf5ee9577b15710dbb0",
   "checks": [
+    {"id": "frozen_schema_gone", "kind": "exact_row_count", "relation": "information_schema.schemata", "filters": [{"column": "schema_name", "type": "text", "equals": "designflow_frozen_20260710"}], "expected_count": 0},
     {"id": "frozen_art_piece_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.art_piece", "expected_count": 1},
     {"id": "frozen_artists_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.artists", "expected_count": 1},
     {"id": "frozen_customers_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.customers", "expected_count": 1},
@@ -12,7 +13,15 @@
     {"id": "frozen_artists_id_seq_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.artists_id_seq", "expected_count": 1},
     {"id": "frozen_customers_seq_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.customers_customers_id_seq", "expected_count": 1},
     {"id": "frozen_comments_id_seq_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.comments_id_seq", "expected_count": 1},
-    {"id": "frozen_product_category_id_seq_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.product_category_id_seq", "expected_count": 1}
+    {"id": "frozen_product_category_id_seq_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.product_category_id_seq", "expected_count": 1},
+    {"id": "mixedcase_factory_table_gone", "kind": "exact_row_count", "relation": "information_schema.tables", "filters": [{"column": "table_schema", "type": "text", "equals": "designflow_frozen_20260710"}, {"column": "table_name", "type": "text", "equals": "Factory"}], "expected_count": 0},
+    {"id": "mixedcase_roles_table_gone", "kind": "exact_row_count", "relation": "information_schema.tables", "filters": [{"column": "table_schema", "type": "text", "equals": "designflow_frozen_20260710"}, {"column": "table_name", "type": "text", "equals": "Roles"}], "expected_count": 0},
+    {"id": "mixedcase_factory_seq_gone", "kind": "exact_row_count", "relation": "information_schema.sequences", "filters": [{"column": "sequence_schema", "type": "text", "equals": "designflow_frozen_20260710"}, {"column": "sequence_name", "type": "text", "equals": "Factory_id_seq"}], "expected_count": 0},
+    {"id": "mixedcase_roles_seq_gone", "kind": "exact_row_count", "relation": "information_schema.sequences", "filters": [{"column": "sequence_schema", "type": "text", "equals": "designflow_frozen_20260710"}, {"column": "sequence_name", "type": "text", "equals": "Roles_Id_seq"}], "expected_count": 0},
+    {"id": "mixedcase_stdverdetail_seq_gone", "kind": "exact_row_count", "relation": "information_schema.sequences", "filters": [{"column": "sequence_schema", "type": "text", "equals": "designflow_frozen_20260710"}, {"column": "sequence_name", "type": "text", "equals": "StandardizedVersionDetail_id_seq"}], "expected_count": 0},
+    {"id": "mixedcase_stdver_seq_gone", "kind": "exact_row_count", "relation": "information_schema.sequences", "filters": [{"column": "sequence_schema", "type": "text", "equals": "designflow_frozen_20260710"}, {"column": "sequence_name", "type": "text", "equals": "StandardizedVersion_id_seq"}], "expected_count": 0},
+    {"id": "frozen_function_get_child_id_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.get_child_id(character varying,character varying,character varying,character varying,character varying,integer)", "expected_count": 1},
+    {"id": "frozen_function_get_parent_id_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.get_parent_id(character varying,character varying,integer)", "expected_count": 1}
   ],
   "marker_schema_version": 1,
   "marker_reviews": [

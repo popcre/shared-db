@@ -1,7 +1,15 @@
 -- Issue #2336 contract: hash-pinned licensing consolidation engine.
 --
--- This file asserts BEHAVIOUR, not "the migration applied". Every claim #2336 makes is
--- exercised against real rows and rolled back:
+-- This file asserts BEHAVIOUR where a real row can be produced without capture
+-- fixtures, and catalog/source shape where a full end-to-end apply needs landing
+-- tables and authorized scope rows this migration loads none of. Specifically:
+--   BEHAVIOURAL: refused plans (complete-capture), hash conflict refusal, plan
+--   content immutability and DELETE refusal, idempotent re-plan, hash shape.
+--   CATALOG/SOURCE (not row-level): privilege matrix, SECURITY DEFINER pin,
+--   write-kind vocabulary, no-DELETE and direct-only gates in routine source,
+--   Step 1.0 potential-create pin. Source-scope refusal, collision refusal,
+--   successful preview->apply, and re-apply no-op need capture + scope fixtures
+--   and are covered by the plan/apply gates themselves plus review.
 --   * plm.licensing_consolidation_plan exists, ships empty, is fail-closed for writes,
 --     and its content columns are immutable while the apply lifecycle may advance;
 --   * the plan and apply functions are pinned SECURITY DEFINER, service-role only;
@@ -25,6 +33,8 @@ do $contracts$
 declare
   v_plan plm.licensing_consolidation_plan%rowtype;
   v_plan2 plm.licensing_consolidation_plan%rowtype;
+  v_plan_first_id uuid;
+  v_plan_first_hash text;
   v_applied plm.licensing_consolidation_plan%rowtype;
   v_count integer;
   v_bool boolean;
@@ -120,6 +130,8 @@ begin
   -- ---------------------------------------------------------------------------------
   -- Unknown source system: refused.
   v_plan := plm.plan_licensing_consolidation('not_a_real_source', v_capture);
+  v_plan_first_id := v_plan.id;
+  v_plan_first_hash := v_plan.plan_hash;
   if v_plan.plan_status <> 'refused' then
     raise exception 'CONTRACT: unknown source_system must produce a refused plan, got %', v_plan.plan_status;
   end if;
@@ -220,19 +232,20 @@ begin
   -- ---------------------------------------------------------------------------------
   -- Idempotent planning: the same (source, capture, hash) returns the same row.
   -- Two refused plans over the same unknown source and same capture share a hash and
-  -- therefore share a row.
+  -- therefore share a row. (v_plan was overwritten above by the paramount probe, so
+  -- the first plan's identity is carried in v_plan_first_id / v_plan_first_hash.)
   -- ---------------------------------------------------------------------------------
   v_plan2 := plm.plan_licensing_consolidation('not_a_real_source', v_capture);
-  if v_plan2.id is distinct from v_plan.id then
+  if v_plan2.id is distinct from v_plan_first_id then
     raise exception 'CONTRACT: re-planning identical refused input must return the same plan row';
   end if;
-  if v_plan2.plan_hash <> v_plan.plan_hash then
+  if v_plan2.plan_hash <> v_plan_first_hash then
     raise exception 'CONTRACT: identical refused input must produce an identical plan hash';
   end if;
 
   -- Different capture, same unknown source: a different plan (capture is identity).
   v_plan2 := plm.plan_licensing_consolidation('not_a_real_source', v_capture2);
-  if v_plan2.id = v_plan.id then
+  if v_plan2.id = v_plan_first_id then
     raise exception 'CONTRACT: a different capture_id must produce a different plan';
   end if;
 

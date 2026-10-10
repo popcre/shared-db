@@ -280,7 +280,8 @@ comment on function plm.licensing_consolidation_plan_immutable() is
   'BEFORE UPDATE/DELETE guard that freezes every consolidation plan content column and '
   'refuses DELETE, leaving only the apply lifecycle mutable (issue #2336).';
 
-revoke all on function plm.licensing_consolidation_plan_immutable() from public;
+revoke all on function plm.licensing_consolidation_plan_immutable()
+  from public, anon, authenticated, service_role;
 
 drop trigger if exists licensing_consolidation_plan_immutable_trg
   on plm.licensing_consolidation_plan;
@@ -482,6 +483,10 @@ begin
       select l.name, l.code, l.status, null::uuid
         into v_canonical_name, v_official_code, v_canonical_status, v_canonical_licensor
         from core.licensor l where l.id = v_rec.core_licensor_id;
+      -- The licensor IS the scope subject. Naming it keeps the source-scope gate
+      -- from being skipped for licensor-kind writes (Muse finding 2).
+      v_target_licensor := v_rec.core_licensor_id;
+      v_canonical_licensor := v_rec.core_licensor_id;
     else
       -- Character, style_guide, asset and franchise consolidation is deliberately not
       -- in this engine's write set: the Step 1.0 guard protects only core.licensor and
@@ -534,24 +539,30 @@ begin
 
     -- Source-scope gate, per decision. The scope row must authorize this source at
     -- canonical_identity over this entity kind for the owning licensor, and it must be
-    -- actually authorized (audit pair present), not merely configured.
-    if v_target_licensor is not null then
-      if not exists (
-        select 1 from plm.licensing_source_scope s
-         where s.licensor_id = v_target_licensor
-           and s.source_system = v_source
-           and s.source_purpose = 'canonical_identity'
-           and s.scope_axis = 'entity'
-           and s.permitted_kind = v_rec.entity_kind
-           and s.authorized_at is not null
-           and s.authorized_by is not null
-      ) then
-        v_scope_ok := false;
-        v_refusal := coalesce(v_refusal,
-          'source-scope gate: no authorized canonical_identity scope for '
-          || v_source || '/' || v_rec.entity_kind);
-        continue;
-      end if;
+    -- actually authorized (audit pair present), not merely configured. A write with no
+    -- owning licensor cannot be scoped and is refused, never silently ungated.
+    if v_target_licensor is null then
+      v_scope_ok := false;
+      v_refusal := coalesce(v_refusal,
+        'source-scope gate: canonical target has no owning licensor for '
+        || v_source || '/' || v_rec.entity_kind || '/' || v_rec.source_id);
+      continue;
+    end if;
+    if not exists (
+      select 1 from plm.licensing_source_scope s
+       where s.licensor_id = v_target_licensor
+         and s.source_system = v_source
+         and s.source_purpose = 'canonical_identity'
+         and s.scope_axis = 'entity'
+         and s.permitted_kind = v_rec.entity_kind
+         and s.authorized_at is not null
+         and s.authorized_by is not null
+    ) then
+      v_scope_ok := false;
+      v_refusal := coalesce(v_refusal,
+        'source-scope gate: no authorized canonical_identity scope for '
+        || v_source || '/' || v_rec.entity_kind);
+      continue;
     end if;
 
     v_before := jsonb_build_object(
@@ -602,14 +613,17 @@ begin
   -- different after-values refuse the whole plan. A plan is one consistent set of
   -- writes; applying half of a contradictory pair is worse than applying nothing.
   -- -----------------------------------------------------------------------
-  select coalesce(array_agg(distinct c.canonical_id), '{}')
+  select coalesce(array_agg(c.canonical_id), '{}')
     into v_conflict_targets
-    from jsonb_array_elements(v_entity_ops) as e(elem),
-         lateral (select (elem->>'canonical_id')::uuid as canonical_id,
-                         elem->'after' as after_vals) as c
-   where c.canonical_id is not null
-   group by c.canonical_id
-  having count(distinct c.after_vals) > 1;
+    from (
+      select c.canonical_id
+        from jsonb_array_elements(v_entity_ops) as e(elem),
+             lateral (select (elem->>'canonical_id')::uuid as canonical_id,
+                             elem->'after' as after_vals) as c
+       where c.canonical_id is not null
+       group by c.canonical_id
+      having count(distinct c.after_vals) > 1
+    ) as c;
 
   v_collision_count := cardinality(coalesce(v_conflict_targets, '{}'));
   if v_collision_count > 0 then
@@ -617,6 +631,42 @@ begin
     v_refusal := coalesce(v_refusal,
       'collision gate: ' || v_collision_count
       || ' canonical target(s) have conflicting after-values');
+  end if;
+
+  -- -----------------------------------------------------------------------
+  -- AUTHORIZATION-SHAPE GATE (collision, second leg). The Step 1.0 guard table
+  -- allows exactly one authorization row per (backend_pid, transaction_id,
+  -- target_table, write_kind, plan_id, plan_hash) and matches protected_columns
+  -- exactly in both directions. Therefore every entity write on one table in one
+  -- apply must change the SAME column set, or the second write cannot obtain its
+  -- own authorization. Refuse the plan here rather than fail mid-apply.
+  -- -----------------------------------------------------------------------
+  if exists (
+    select 1
+      from jsonb_array_elements(v_entity_ops) as e(elem),
+           lateral (select elem->>'target_table' as tgt,
+                           case
+                             when elem->'before'->>'name' is distinct from elem->'after'->>'name' then 'name'
+                           end as c_name,
+                           case
+                             when elem->'before'->>'code' is distinct from elem->'after'->>'code' then 'code'
+                           end as c_code,
+                           case
+                             when elem->'before'->>'licensor_id' is distinct from elem->'after'->>'licensor_id' then 'licensor_id'
+                           end as c_licensor,
+                           case
+                             when elem->'before'->>'status' is distinct from elem->'after'->>'status' then 'status'
+                           end as c_status
+                   ) as s
+     where elem->>'op' = 'update_entity'
+     group by s.tgt
+    having count(distinct array_remove(array[s.c_name, s.c_code, s.c_licensor, s.c_status], null)) > 1
+  ) then
+    v_scope_ok := false;
+    v_collision_count := v_collision_count + 1;
+    v_refusal := coalesce(v_refusal,
+      'collision gate: entity operations on one table change different column sets; '
+      || 'the write-authorization guard can grant only one column set per table per apply');
   end if;
 
   -- -----------------------------------------------------------------------
@@ -959,11 +1009,66 @@ begin
   elsif v_plan.source_system like 'warner:%' then
     perform 1 from plm.wb_capture
      where id = v_plan.capture_id and status = 'complete';
+  else
+    -- Fail closed (Muse finding 8). An unlisted source has no capture root we can
+    -- re-check; "we did not look" must never read as "it is still complete".
+    raise exception using errcode = '40001',
+      message = 'licensing consolidation apply refused: unknown source_system cannot re-prove complete capture';
   end if;
   if not found then
     raise exception using errcode = '40001',
       message = 'licensing consolidation apply refused: capture is no longer complete';
   end if;
+
+  -- -----------------------------------------------------------------------
+  -- WRITE-AUTHORIZATION GATE, batched. The Step 1.0 guard table allows exactly
+  -- one authorization row per (backend_pid, transaction_id, target_table,
+  -- write_kind, plan_id, plan_hash) and matches protected_columns exactly in
+  -- both directions. Therefore this apply obtains ONE scrape_consolidation grant
+  -- per target table carrying the single column set the plan is allowed to
+  -- change on that table (the plan-time authorization-shape gate guarantees the
+  -- set is unique per table). Per-operation inserts would collide on that unique
+  -- key the moment a plan carried two writes to the same table (Muse finding 1).
+  -- -----------------------------------------------------------------------
+  declare
+    v_auth_tables text[] := '{}'::text[];
+    v_auth_table text;
+    v_auth_cols text[];
+  begin
+    for v_auth_table, v_auth_cols in
+      select s.tgt,
+             array_remove(array[s.c_name, s.c_code, s.c_licensor, s.c_status], null)
+        from jsonb_array_elements(v_plan.operations) as e(elem),
+             lateral (select elem->>'target_table' as tgt,
+                             case when elem->'before'->>'name' is distinct from elem->'after'->>'name'
+                                  then 'name' end as c_name,
+                             case when elem->'before'->>'code' is distinct from elem->'after'->>'code'
+                                  then 'code' end as c_code,
+                             case when elem->'before'->>'licensor_id' is distinct from elem->'after'->>'licensor_id'
+                                  then 'licensor_id' end as c_licensor,
+                             case when elem->'before'->>'status' is distinct from elem->'after'->>'status'
+                                  then 'status' end as c_status
+                     ) as s
+       where elem->>'op' = 'update_entity'
+         and elem->'before' is distinct from elem->'after'
+       group by s.tgt, s.c_name, s.c_code, s.c_licensor, s.c_status
+    loop
+      if cardinality(coalesce(v_auth_cols, '{}')) = 0 then
+        continue;
+      end if;
+      insert into plm.licensing_write_authorization (
+        backend_pid, transaction_id, target_table, write_kind,
+        plan_id, plan_hash, actor, protected_columns, expires_at
+      ) values (
+        pg_backend_pid(), txid_current(),
+        v_auth_table::regclass,
+        'scrape_consolidation',
+        v_plan.id, v_plan.plan_hash, v_actor, v_auth_cols,
+        clock_timestamp() + interval '5 minutes'
+      );
+      v_auth_tables := array_append(v_auth_tables, v_auth_table);
+    end loop;
+  end;
 
   -- -----------------------------------------------------------------------
   -- Execute operations. The operation vocabulary has no DELETE, by construction.
@@ -990,6 +1095,9 @@ begin
             from core.property p
            where p.id = (v_op.elem->>'canonical_id')::uuid;
         end if;
+      elsif v_op.elem->>'target_table' = 'core.licensor' then
+        -- The licensor row IS the scope subject (Muse finding 2).
+        v_target_licensor := (v_op.elem->>'canonical_id')::uuid;
       end if;
 
       if v_target_licensor is not null and not exists (
@@ -1034,22 +1142,10 @@ begin
         continue;
       end if;
 
-      -- WRITE-AUTHORIZATION GATE. One transaction-bound scrape_consolidation grant
-      -- per target table for the exact protected column set this operation changes.
-      -- The Step 1.0 trigger matches on (backend_pid, transaction_id, target_table,
-      -- write_kind, plan_id, plan_hash, protected_columns) and consumes the row.
-      insert into plm.licensing_write_authorization (
-        backend_pid, transaction_id, target_table, write_kind,
-        plan_id, plan_hash, actor, protected_columns, expires_at
-      ) values (
-        pg_backend_pid(), txid_current(),
-        (v_op.elem->>'target_table')::regclass,
-        'scrape_consolidation',
-        v_plan.id, v_plan.plan_hash, v_actor, v_changed,
-        clock_timestamp() + interval '5 minutes'
-      )
-      returning id into v_auth_id;
-
+      -- The per-table scrape_consolidation authorization was obtained above. The
+      -- Step 1.0 trigger consumes it on the first protected write; the plan-time
+      -- authorization-shape gate guarantees every write on this table in this
+      -- apply changes exactly the column set that grant carries.
       if v_op.elem->>'target_table' = 'core.property' then
         update core.property
            set name = coalesce(v_op.elem->'after'->>'name', name),

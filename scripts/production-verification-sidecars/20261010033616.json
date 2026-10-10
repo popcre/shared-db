@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "migration_version": "20261010033616",
+  "migration_sha256": "00c3c8f48dcc2f6c29e2be2982dd9e673cbf1fc63843f1649616d230aeda13c0",
+  "checks": [
+    {
+      "id": "frozen_schema_absent",
+      "kind": "exact_row_count",
+      "relation": "pg_namespace",
+      "filters": [
+        {
+          "column": "nspname",
+          "type": "text",
+          "equals": "designflow_frozen_20260710"
+        }
+      ],
+      "expect": 0
+    },
+    {
+      "id": "art_fk_to_dflow",
+      "kind": "exact_row_count",
+      "relation": "pg_constraint",
+      "filters": [
+        {
+          "column": "conname",
+          "type": "text",
+          "equals": "art_piece_attachment_art_piece_id_fkey"
+        },
+        {
+          "column": "contype",
+          "type": "text",
+          "equals": "f"
+        }
+      ],
+      "expect": 1
+    },
+    {
+      "id": "role_fk_to_dflow",
+      "kind": "exact_row_count",
+      "relation": "pg_constraint",
+      "filters": [
+        {
+          "column": "conname",
+          "type": "text",
+          "equals": "RolePermissions_RoleId_fkey"
+        },
+        {
+          "column": "contype",
+          "type": "text",
+          "equals": "f"
+        }
+      ],
+      "expect": 1
+    },
+    {
+      "id": "attachment_rows_preserved",
+      "kind": "exact_row_count",
+      "relation": "plm.art_piece_attachment",
+      "expect": 2276
+    },
+    {
+      "id": "role_permission_rows_preserved",
+      "kind": "exact_row_count",
+      "relation": "app.RolePermissions",
+      "expect": 4
+    }
+  ]
+}

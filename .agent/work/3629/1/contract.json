@@ -1,0 +1,67 @@
+{
+  "schema_version": 2,
+  "generation": 1,
+  "evidence_parent": null,
+  "work_issue": 3629,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Preserve repository Python diagnostics on hosts that provide python3 without a bare python executable, with explicit interpreter selection tests and no database behavior change.",
+  "base_sha": "a096bccd0c112d92cc9b6be4010e8f019f9db083",
+  "dispatcher": "Codex shared-db orchestrator session routing non-orchestrator issue 3629",
+  "worker": "Codex chat 01a0e65a-82f1-7d93-b8fb-4440da47884d on edge-dev3",
+  "branch": "codex/3629-python-interpreter",
+  "worktree": "/home/ahazan/repos/shared-db-3629-python-interpreter",
+  "allowed_paths": [
+    "scripts/lib/python-executable.mjs",
+    "scripts/lib/python-executable.test.mjs",
+    "scripts/catalog-truth.mjs",
+    "scripts/orchestrator-flow/qualify-change.mjs",
+    "scripts/check-migration-ledger-drift.mjs",
+    "scripts/throughput-guard/false-alarm-corpus.test.mjs",
+    "scripts/throughput-guard/catalog-truth.test.mjs",
+    "scripts/orchestrator-flow/qualify-change.test.mjs",
+    "scripts/check-migration-ledger-drift.test.mjs",
+    "docs/verification/throughput-dispositions/scripts~catalog-truth.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~orchestrator-flow~qualify-change.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~check-migration-ledger-drift.mjs.json",
+    ".agent/work/3629/1/contract.json",
+    ".agent/work/3629/1/completion.json"
+  ],
+  "file_writes": [
+    "scripts/lib/python-executable.mjs",
+    "scripts/lib/python-executable.test.mjs",
+    "scripts/catalog-truth.mjs",
+    "scripts/orchestrator-flow/qualify-change.mjs",
+    "scripts/check-migration-ledger-drift.mjs",
+    "scripts/throughput-guard/false-alarm-corpus.test.mjs",
+    "scripts/throughput-guard/catalog-truth.test.mjs",
+    "scripts/orchestrator-flow/qualify-change.test.mjs",
+    "scripts/check-migration-ledger-drift.test.mjs",
+    "docs/verification/throughput-dispositions/scripts~catalog-truth.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~orchestrator-flow~qualify-change.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~check-migration-ledger-drift.mjs.json",
+    ".agent/work/3629/1/contract.json",
+    ".agent/work/3629/1/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not change SQL semantics, database structure or data, or production workflows",
+    "Do not merge while structural preview or production pins current main",
+    "Do not replace operating-system binaries"
+  ],
+  "required_checks": [
+    "node --test scripts/lib/python-executable.test.mjs scripts/throughput-guard/catalog-truth.test.mjs scripts/orchestrator-flow/qualify-change.test.mjs scripts/check-migration-ledger-drift.test.mjs scripts/throughput-guard/false-alarm-corpus.test.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "The project-owned selector is necessary because four independent Node call sites invoke Python; this issue owns and retires their bare-python calls.",
+    "The #3624 delivery-preflight selector remains independent until that pull request merges; any consolidation will require its own reviewed head.",
+    "Tests must demonstrate default Linux python3, Windows python, and explicit PYTHON override without modifying host binaries."
+  ],
+  "stop_conditions": [
+    "Stop if a source change modifies diagnostic or SQL result semantics",
+    "Stop if a throughput disposition cannot be regenerated honestly",
+    "Stop if required checks or governed review refuses"
+  ]
+}

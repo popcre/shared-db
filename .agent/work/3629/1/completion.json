@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "work_issue": 3629,
+  "outcome": "ready-for-merge",
+  "pr": 3635,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3629/1",
+  "contract_sha256": "4f70be4b27a6ebbf30382b269b6722fe32ada1fa3b09082ac0fa6626045d8034",
+  "base_sha": "adfe4cd5b75f72c4f8530f649d8565259eb58a70",
+  "head_sha": "f2089ff534be1c8ca9e62a7abb944a96f82bb3d2",
+  "files_changed": [
+    "scripts/lib/python-executable.mjs",
+    "scripts/lib/python-executable.test.mjs",
+    "scripts/catalog-truth.mjs",
+    "scripts/orchestrator-flow/qualify-change.mjs",
+    "scripts/orchestrator-flow/qualify-change.test.mjs",
+    "scripts/check-migration-ledger-drift.mjs",
+    "scripts/throughput-guard/false-alarm-corpus.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/lib/python-executable.test.mjs scripts/throughput-guard/catalog-truth.test.mjs scripts/orchestrator-flow/qualify-change.test.mjs scripts/check-migration-ledger-drift.test.mjs scripts/throughput-guard/false-alarm-corpus.test.mjs",
+      "exit_code": 0,
+      "evidence": "67 tests passed, 0 failed at implementation commit 917489182e8d1b42a42270cea120f7171c3337af on edge-dev3 without bare python"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors before implementation commit"
+    }
+  ],
+  "assumptions_resolved": [
+    "A shared project-owned selector now covers all four remaining bare-Python tool files and the throughput test suite.",
+    "Linux selects python3, Windows retains python, and an explicit PYTHON override is honored.",
+    "The #3624 selector remains independent until that pull request lands; consolidation requires a separately reviewed head."
+  ],
+  "stop_conditions_hit": []
+}

@@ -14,7 +14,7 @@
           "equals": "designflow_frozen_20260710"
         }
       ],
-      "expect": 0
+      "expected_count": 0
     },
     {
       "id": "art_fk_to_dflow",
@@ -32,7 +32,7 @@
           "equals": "f"
         }
       ],
-      "expect": 1
+      "expected_count": 1
     },
     {
       "id": "role_fk_to_dflow",
@@ -50,19 +50,19 @@
           "equals": "f"
         }
       ],
-      "expect": 1
+      "expected_count": 1
     },
     {
       "id": "attachment_rows_preserved",
       "kind": "exact_row_count",
       "relation": "plm.art_piece_attachment",
-      "expect": 2276
+      "expected_count": 2276
     },
     {
       "id": "role_permission_rows_preserved",
       "kind": "exact_row_count",
       "relation": "app.RolePermissions",
-      "expect": 4
+      "expected_count": 4
     }
   ]
 }

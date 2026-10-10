@@ -1,0 +1,57 @@
+{
+  "schema_version": 2,
+  "generation": 2,
+  "work_issue": 3634,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Require authenticated exact workflow-run and artifact provenance before a shared-db live proof can complete a structural outcome; reapplied into split modules after #3726",
+  "base_sha": "c77eea5b2266689c490cc7e0c3bbdf653ea43a4d",
+  "dispatcher": "MiMo chat ses_ffe5eecd82dedffe7RhHlWNjmi on edge-dev",
+  "worker": "MiMo chat ses_ffe5eecd82dedffe7RhHlWNjmi on edge-dev",
+  "branch": "codex/3634-live-proof-provenance",
+  "worktree": "C:/repos/shared-db/.ai/worktrees/3636-prep-mimo",
+  "allowed_paths": [
+    "scripts/lib/lanes/retirement.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/check-repository-identity-conformance.mjs",
+    ".agent/work/3634/2/contract.json",
+    ".agent/work/3634/2/completion.json"
+  ],
+  "file_writes": [
+    "scripts/lib/lanes/retirement.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/check-repository-identity-conformance.mjs",
+    ".agent/work/3634/2/contract.json",
+    ".agent/work/3634/2/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not dispatch the live-proof workflow or touch production",
+    "Do not accept another workflow, event, attempt, head, or artifact run as live proof",
+    "Do not weaken the existing proof JSON, name, digest, expiry, or default-branch checks",
+    "Do not merge this pull request"
+  ],
+  "required_checks": [
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "node --test scripts/check-repository-identity-conformance.test.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "The shared-db live-proof producer is .github/workflows/shared-db-live-proof.yml under workflow_dispatch on popcre/shared-db",
+    "The authenticated GitHub artifact response carries workflow_run.id and workflow_run.head_sha",
+    "The #3726 split places live-proof matching in scripts/lib/lanes/retirement.mjs next to matchesLiveProof"
+  ],
+  "stop_conditions": [
+    "Stop if exact run and artifact provenance cannot be verified through GitHub API evidence",
+    "Stop if changes would require database schema, data, or production mutation",
+    "Stop if governed review or required checks refuse"
+  ],
+  "evidence_parent": {
+    "work_issue": 3634,
+    "generation": 1,
+    "contract_sha256": "f9f41e5d3de7a2ffe8e6fd27890ce6891661c1b5d0d0fc5487ac2817e2c95eb6"
+  }
+}

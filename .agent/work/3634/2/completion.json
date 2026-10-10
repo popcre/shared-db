@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "work_issue": 3634,
+  "outcome": "ready-for-merge",
+  "pr": 3636,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3634/2",
+  "contract_sha256": "bd8f18ad59f56f2742131fa9a0ce9a1a0b503bc94412ac34b688b576aeff365a",
+  "base_sha": "c77eea5b2266689c490cc7e0c3bbdf653ea43a4d",
+  "head_sha": "3df6a99ba76027f0e1df1f6c3fd1ad0cf7857494",
+  "files_changed": [
+    "scripts/lib/lanes/retirement.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/check-repository-identity-conformance.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "782 tests passed on implementation head 3df6a99ba76027f0e1df1f6c3fd1ad0cf7857494 (adds live-proof provenance, historical-slug, absent-field, wiring and application-route tests)"
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes-surface.test.mjs",
+      "exit_code": 0,
+      "evidence": "3 surface tests passed: entrypoint re-exports every binding identically"
+    },
+    {
+      "command": "node --test scripts/check-repository-identity-conformance.test.mjs",
+      "exit_code": 0,
+      "evidence": "5 conformance tests passed: allowlist updated for 3 new fixture literals"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "no whitespace errors"
+    }
+  ],
+  "assumptions_resolved": [
+    "The authenticated GitHub run and artifact records expose exact workflow, event, attempt, repository, run id and head fields.",
+    "Application-owned live proofs retain the established success, head, artifact name and digest checks.",
+    "The #3726 split places live-proof matching in scripts/lib/lanes/retirement.mjs next to matchesLiveProof."
+  ],
+  "stop_conditions_hit": []
+}

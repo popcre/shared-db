@@ -56,8 +56,8 @@ import { LaneError, validateClaimObjects, parseAuthorLease, assertLaneAvailable,
 export { LaneError, validateClaimObjects, parseAuthorLease, assertLaneAvailable, claimBody }
 import { EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, createRefWithReadback, deleteRefWithReadback, parseGitRemoteRefs, parseGitCommitBatch, readGitCommits, parseGhIncludeResponse, parseLinkHeader, hasNextPageLink, isConfirmedRefAbsence, currentMainMaxVersion, reviewRecordRefs, assertReviewerDrawIsWarranted, assertReviewerDrawReadiness, gh, hasLabel, ghJson, ghRefListing, reviewStateEntry, gitRemoteRefRows, GIT_COMMAND_TIMEOUT_MS, authorityGhJson } from './lib/lanes/github-wire.mjs'
 export { EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, createRefWithReadback, deleteRefWithReadback, parseGitRemoteRefs, parseGitCommitBatch, readGitCommits, parseGhIncludeResponse, parseLinkHeader, hasNextPageLink, isConfirmedRefAbsence, currentMainMaxVersion, reviewRecordRefs, assertReviewerDrawIsWarranted, assertReviewerDrawReadiness, GIT_COMMAND_TIMEOUT_MS }
-import { LEGACY_GUARDED_CLEANUP_CLOSE_REASON, CLAIM_CLOSE_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, RETIREMENT_CLOSE_REASON, retiredClaimRef, normalizeRetirementIdentity, validateRetirementRecord, formatRetirementRecord, parseRetirementRecord, isVersionRetired, readRetirementRecord, assertClaimNotRetired, assertRetirementIdentityAvailable, createRetirementTombstone, retiredReopenedClaims, matchesLiveProof, matchesGeneratedTypesProof, requireClaimCloseReason, assertReviewerDrawHandoff } from './lib/lanes/retirement.mjs'
-export { LEGACY_GUARDED_CLEANUP_CLOSE_REASON, CLAIM_CLOSE_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, RETIREMENT_CLOSE_REASON, retiredClaimRef, normalizeRetirementIdentity, validateRetirementRecord, formatRetirementRecord, parseRetirementRecord, isVersionRetired, readRetirementRecord, assertClaimNotRetired, assertRetirementIdentityAvailable, createRetirementTombstone, retiredReopenedClaims, matchesLiveProof, matchesGeneratedTypesProof, assertReviewerDrawHandoff }
+import { LEGACY_GUARDED_CLEANUP_CLOSE_REASON, CLAIM_CLOSE_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, RETIREMENT_CLOSE_REASON, retiredClaimRef, normalizeRetirementIdentity, validateRetirementRecord, formatRetirementRecord, parseRetirementRecord, isVersionRetired, readRetirementRecord, assertClaimNotRetired, assertRetirementIdentityAvailable, createRetirementTombstone, retiredReopenedClaims, matchesLiveProof, matchesGeneratedTypesProof, requireClaimCloseReason, assertReviewerDrawHandoff, liveProofSharedDbOwned, matchesLiveProofRun, matchesLiveProofProvenance, verifyLiveAssertionWith } from './lib/lanes/retirement.mjs'
+export { LEGACY_GUARDED_CLEANUP_CLOSE_REASON, CLAIM_CLOSE_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, RETIREMENT_CLOSE_REASON, retiredClaimRef, normalizeRetirementIdentity, validateRetirementRecord, formatRetirementRecord, parseRetirementRecord, isVersionRetired, readRetirementRecord, assertClaimNotRetired, assertRetirementIdentityAvailable, createRetirementTombstone, retiredReopenedClaims, matchesLiveProof, matchesGeneratedTypesProof, assertReviewerDrawHandoff, liveProofSharedDbOwned, matchesLiveProofRun, matchesLiveProofProvenance, verifyLiveAssertionWith }
 import { flowCapacityFacts, deriveLiveNoDatabasePreview, databasePreviewAdmission, readDatabasePreviewClassificationFile, withDatabasePreviewClassificationFile, deriveLivePreviewCandidate, terminalizeHistoricalPreviewReady, livePreviewLedger } from './lib/lanes/preview-admission.mjs'
 export { flowCapacityFacts, deriveLiveNoDatabasePreview, databasePreviewAdmission, readDatabasePreviewClassificationFile, withDatabasePreviewClassificationFile, deriveLivePreviewCandidate, terminalizeHistoricalPreviewReady }
 import { REVIEWER_DOCTOR_TIMEOUT_MS, REVIEWER_PREFLIGHT_TIMEOUT_MS, parseDoctorFailures, summarizeDoctorOutput, unnamedDoctorFailure, doctorSpawnPlan, doctorTimeoutFailingChecks, pickExecutableCandidate, resolveCommandPath } from './lib/lanes/reviewer-doctor.mjs'
@@ -955,18 +955,10 @@ export const githubIo = {
     return versions.length>0&&versions.every((version)=>files.get('production-ledger-after.txt').includes(version)&&files.get('migration-content-manifest.json').includes(version))
   },
   verifyLiveAssertion(evidence) {
-    const match=/^https:\/\/github\.com\/([^/]+\/[^/]+)\/actions\/runs\/(\d+)$/.exec(String(evidence?.live_evidence??''))
-    if(!match||match[1].toLowerCase()!==String(evidence.application_repository).toLowerCase())return false
-    const run=ghJson(['api',`repos/${match[1]}/actions/runs/${match[2]}`])
-    if(run?.conclusion!=='success'||String(run?.head_sha??'').toLowerCase()!==String(evidence.application_commit_sha).toLowerCase())return false
-    const artifacts=ghJson(['api',`repos/${match[1]}/actions/runs/${match[2]}/artifacts`])?.artifacts
-    if(!Array.isArray(artifacts))return false
-    const artifact=artifacts.find((row)=>Number(row.id)===Number(evidence.live_artifact_id))
-    const expectedName=`shared-db-live-proof-${evidence.work_issue}-${String(evidence.application_commit_sha).toLowerCase()}`
-    if(!(artifact?.name===expectedName&&artifact.expired===false&&String(artifact.digest??'').toLowerCase()===String(evidence.live_artifact_digest).toLowerCase()))return false
-    const proof=this.readArtifactJson(match[1],artifact.id,'db-live-proof.json')
-    return matchesLiveProof(proof,evidence)
+    return verifyLiveAssertionWith(evidence,{getJson:(path)=>ghJson(['api',path]),readArtifactJson:(repository,id,file)=>this.readArtifactJson(repository,id,file)})
   },
+  // verifyGeneratedTypes keeps the pre-#3634 successful-run rule; hardening it
+  // to the same exact-workflow provenance is tracked separately (#3636 review M2).
   verifyGeneratedTypes(evidence){
     const match=/^https:\/\/github\.com\/([^/]+\/[^/]+)\/actions\/runs\/(\d+)$/.exec(String(evidence?.generated_types_evidence??''))
     if(!match||match[1].toLowerCase()!==String(evidence.application_repository).toLowerCase())return false

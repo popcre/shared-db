@@ -1,6 +1,7 @@
 -- Live proof for issue #2110: frozen schema absent, FKs resolve to exact dflow targets,
--- child counts preserved, and all child rows resolve to live dflow parents.
--- Child counts are asserted in the same proof run as the drop (same-transaction).
+-- child counts preserved as lower bounds (>=2276, >=4), and all child rows resolve to live dflow parents.
+-- Lower bounds detect child-row loss; exact equality is not asserted to avoid false negatives
+-- from legitimate inserts between apply and proof.
 SELECT
   (to_regnamespace('designflow_frozen_20260710') IS NULL
    AND (SELECT count(*) FROM plm.art_piece_attachment) >= 2276

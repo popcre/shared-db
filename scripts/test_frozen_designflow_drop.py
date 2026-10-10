@@ -70,8 +70,25 @@ def test_inventory_checks_collate_c():
 
 def test_timeouts_set():
     sql = read_migration()
-    assert "SET LOCAL lock_timeout" in sql, "Missing lock_timeout"
-    assert "SET LOCAL statement_timeout" in sql, "Missing statement_timeout"
+    assert "SET LOCAL lock_timeout = '10s'" in sql, "Missing or wrong lock_timeout"
+    assert "SET LOCAL statement_timeout = '120s'" in sql, "Missing or wrong statement_timeout"
+
+def test_guard_precedes_lock():
+    sql = read_migration()
+    guard_pos = sql.find("to_regnamespace('designflow_frozen_20260710') IS NULL")
+    lock_pos = sql.find("LOCK TABLE")
+    assert guard_pos < lock_pos, "Guard must precede LOCK TABLE"
+
+def test_relkind_guard_present():
+    sql = read_migration()
+    assert "relkind NOT IN" in sql, "Missing relkind guard"
+
+def test_drop_targets_schema_qualified():
+    clean = strip_comments(read_migration())
+    match = re.search(r"DROP\s+TABLE\s+(.+?)\s+RESTRICT;", clean, re.IGNORECASE | re.DOTALL)
+    assert match, "No DROP TABLE found"
+    body = match.group(1)
+    assert "designflow_frozen_20260710." in body, "DROP TABLE targets must be schema-qualified"
 
 def test_clean_already_applied_exit():
     sql = read_migration()

@@ -634,39 +634,28 @@ begin
   end if;
 
   -- -----------------------------------------------------------------------
-  -- AUTHORIZATION-SHAPE GATE (collision, second leg). The Step 1.0 guard table
-  -- allows exactly one authorization row per (backend_pid, transaction_id,
-  -- target_table, write_kind, plan_id, plan_hash) and matches protected_columns
-  -- exactly in both directions. Therefore every entity write on one table in one
-  -- apply must change the SAME column set, or the second write cannot obtain its
-  -- own authorization. Refuse the plan here rather than fail mid-apply.
+  -- AUTHORIZATION-SHAPE GATE (collision, second leg). The Step 1.0 guard is a
+  -- ROW-LEVEL trigger that CONSUMES its authorization on the first protected
+  -- write, and its unique key allows only one authorization row per
+  -- (backend_pid, transaction_id, target_table, write_kind, plan_id, plan_hash).
+  -- Therefore one apply can perform AT MOST ONE protected canonical row write per
+  -- target table. A plan that needs two entity writes to the same table is
+  -- refused here, in the preview, rather than dying mid-apply. The adapter splits
+  -- such work across plans; relationship and retirement operations are not
+  -- limited and still ride in the same plan.
   -- -----------------------------------------------------------------------
   if exists (
     select 1
-      from jsonb_array_elements(v_entity_ops) as e(elem),
-           lateral (select elem->>'target_table' as tgt,
-                           case
-                             when elem->'before'->>'name' is distinct from elem->'after'->>'name' then 'name'
-                           end as c_name,
-                           case
-                             when elem->'before'->>'code' is distinct from elem->'after'->>'code' then 'code'
-                           end as c_code,
-                           case
-                             when elem->'before'->>'licensor_id' is distinct from elem->'after'->>'licensor_id' then 'licensor_id'
-                           end as c_licensor,
-                           case
-                             when elem->'before'->>'status' is distinct from elem->'after'->>'status' then 'status'
-                           end as c_status
-                   ) as s
+      from jsonb_array_elements(v_entity_ops) as e(elem)
      where elem->>'op' = 'update_entity'
-     group by s.tgt
-    having count(distinct array_remove(array[s.c_name, s.c_code, s.c_licensor, s.c_status], null)) > 1
+     group by elem->>'target_table'
+    having count(*) > 1
   ) then
     v_scope_ok := false;
     v_collision_count := v_collision_count + 1;
     v_refusal := coalesce(v_refusal,
-      'collision gate: entity operations on one table change different column sets; '
-      || 'the write-authorization guard can grant only one column set per table per apply');
+      'collision gate: more than one entity write to one table in one apply; '
+      || 'the write-authorization guard grants one protected row write per table per apply');
   end if;
 
   -- -----------------------------------------------------------------------
@@ -1021,14 +1010,14 @@ begin
   end if;
 
   -- -----------------------------------------------------------------------
-  -- WRITE-AUTHORIZATION GATE, batched. The Step 1.0 guard table allows exactly
-  -- one authorization row per (backend_pid, transaction_id, target_table,
-  -- write_kind, plan_id, plan_hash) and matches protected_columns exactly in
-  -- both directions. Therefore this apply obtains ONE scrape_consolidation grant
-  -- per target table carrying the single column set the plan is allowed to
-  -- change on that table (the plan-time authorization-shape gate guarantees the
-  -- set is unique per table). Per-operation inserts would collide on that unique
-  -- key the moment a plan carried two writes to the same table (Muse finding 1).
+  -- WRITE-AUTHORIZATION GATE. The Step 1.0 guard is a ROW-LEVEL trigger that
+  -- consumes its authorization on the first protected write, and its unique key
+  -- allows one authorization row per (backend_pid, transaction_id, target_table,
+  -- write_kind, plan_id, plan_hash). This apply therefore obtains exactly ONE
+  -- scrape_consolidation grant per target table. The plan-time
+  -- authorization-shape gate already refused any plan carrying more than one
+  -- entity write to a table, so each grant covers exactly one protected row
+  -- write and the consumption semantics are satisfied.
   -- -----------------------------------------------------------------------
   declare
     v_auth_tables text[] := '{}'::text[];

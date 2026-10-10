@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "migration_version": "20261009224453",
-  "migration_sha256": "0929256a18ca57e23a8606e34421ab6ca3dc13dac1c7af055c3ebe480b2bb4b8",
+  "migration_sha256": "f6f236dc478f78312f323bef52dc6850dcc04c386efde2f6b59f55eebbdebfeb",
   "marker_schema_version": 1,
   "marker_reviews": [
     {
@@ -59,14 +59,14 @@
       "reason": "Official-spelling probe reads plm.opa_property_character.property_name for plan after-values. Read-only; creates no durable catalog object."
     },
     {
-      "line_start": 769,
-      "line_end": 769,
+      "line_start": 758,
+      "line_end": 758,
       "disposition": "no_durable_target",
       "reason": "Capture-membership probe tests pmt_property presence for support retirement. Read-only existence check; creates no durable catalog object."
     },
     {
-      "line_start": 774,
-      "line_end": 774,
+      "line_start": 763,
+      "line_end": 763,
       "disposition": "no_durable_target",
       "reason": "Capture-membership probe tests nbcu_property presence for support retirement. Read-only existence check; creates no durable catalog object."
     }

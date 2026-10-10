@@ -1,7 +1,10 @@
 -- Live proof for issue #2110: frozen schema absent, FKs resolve to exact dflow targets,
--- and all child rows resolve to live dflow parents (no orphans).
+-- child counts preserved, and all child rows resolve to live dflow parents.
+-- Child counts are asserted in the same proof run as the drop (same-transaction).
 SELECT
   (to_regnamespace('designflow_frozen_20260710') IS NULL
+   AND (SELECT count(*) FROM plm.art_piece_attachment) >= 2276
+   AND (SELECT count(*) FROM app."RolePermissions") >= 4
    AND (SELECT count(*) FROM plm.art_piece_attachment a
         LEFT JOIN dflow.art_piece p ON p.id = a.art_piece_id
         WHERE p.id IS NULL) = 0

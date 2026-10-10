@@ -21,19 +21,28 @@ LOCK TABLE designflow_frozen_20260710."Factory",
 DO $drop_frozen$
 DECLARE
   actual text[];
+  seq_actual text[];
   fk_count int;
 BEGIN
-  -- Precondition: the frozen schema must exist with exactly seven tables.
+  -- Precondition: exactly seven base tables in the frozen schema.
   SELECT array_agg(c.relname::text ORDER BY c.relname::text) INTO actual
   FROM pg_class c
   WHERE c.relnamespace = 'designflow_frozen_20260710'::regnamespace
-    AND c.relkind IN ('r', 'p', 'v', 'm', 'f');
+    AND c.relkind = 'r';
   IF actual IS DISTINCT FROM ARRAY['Factory', 'Roles', 'art_piece', 'artists', 'comments', 'customers', 'product_category'] THEN
-    RAISE EXCEPTION '2110: frozen relation inventory changed: %', actual;
+    RAISE EXCEPTION '2110: frozen table inventory changed: %', actual;
+  END IF;
+
+  -- Precondition: exactly nine sequences in the frozen schema.
+  SELECT array_agg(c.relname::text ORDER BY c.relname::text) INTO seq_actual
+  FROM pg_class c
+  WHERE c.relnamespace = 'designflow_frozen_20260710'::regnamespace
+    AND c.relkind = 'S';
+  IF seq_actual IS DISTINCT FROM ARRAY['Factory_id_seq', 'Roles_Id_seq', 'StandardizedVersionDetail_id_seq', 'StandardizedVersion_id_seq', 'art_piece_id_seq', 'artists_id_seq', 'comments_id_seq', 'customers_customers_id_seq', 'product_category_id_seq'] THEN
+    RAISE EXCEPTION '2110: frozen sequence inventory changed: %', seq_actual;
   END IF;
 
   -- Precondition: no inbound FK from outside the frozen schema.
-  -- (Both known inbound FKs were repointed to dflow by PR #3893.)
   SELECT count(*) INTO fk_count
   FROM pg_constraint con
   JOIN pg_class confrel ON confrel.oid = con.confrelid
@@ -45,6 +54,24 @@ BEGIN
     AND ns_child.nspname <> 'designflow_frozen_20260710';
   IF fk_count > 0 THEN
     RAISE EXCEPTION '2110: % inbound foreign keys still reference the frozen schema', fk_count;
+  END IF;
+
+  -- Precondition: both repointed FKs resolve to dflow parents (not merely absent).
+  IF (SELECT count(*) FROM pg_constraint con
+      JOIN pg_class confrel ON confrel.oid = con.confrelid
+      JOIN pg_namespace ns ON ns.oid = confrel.relnamespace
+      WHERE con.contype = 'f'
+        AND con.conname = 'art_piece_attachment_art_piece_id_fkey'
+        AND ns.nspname = 'dflow') <> 1 THEN
+    RAISE EXCEPTION '2110: art_piece_attachment FK does not resolve to dflow';
+  END IF;
+  IF (SELECT count(*) FROM pg_constraint con
+      JOIN pg_class confrel ON confrel.oid = con.confrelid
+      JOIN pg_namespace ns ON ns.oid = confrel.relnamespace
+      WHERE con.contype = 'f'
+        AND con.conname = 'RolePermissions_RoleId_fkey'
+        AND ns.nspname = 'dflow') <> 1 THEN
+    RAISE EXCEPTION '2110: RolePermissions FK does not resolve to dflow';
   END IF;
 
   -- Precondition: no routine text references the frozen schema.
@@ -62,8 +89,8 @@ BEGIN
     designflow_frozen_20260710.product_category
     RESTRICT;
 
-  -- Drop sequences explicitly (RESTRICT). Some are orphaned (no owner table).
-  DROP SEQUENCE IF EXISTS
+  -- Drop sequences explicitly (RESTRICT). Existence is asserted above.
+  DROP SEQUENCE
     designflow_frozen_20260710."Factory_id_seq",
     designflow_frozen_20260710."Roles_Id_seq",
     designflow_frozen_20260710."StandardizedVersionDetail_id_seq",

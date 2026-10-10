@@ -1,25 +1,17 @@
 {
   "schema_version": 1,
   "migration_version": "20261010033616",
-  "migration_sha256": "00c3c8f48dcc2f6c29e2be2982dd9e673cbf1fc63843f1649616d230aeda13c0",
+  "migration_sha256": "753703df5893b983d566b15c5b4215fd521b8e3767eb19e93a96974693414896",
   "checks": [
-    {
-      "id": "frozen_art_piece_gone",
-      "kind": "catalog_absence",
-      "object": "designflow_frozen_20260710.art_piece",
-      "expected_count": 1
-    },
-    {
-      "id": "frozen_artists_gone",
-      "kind": "catalog_absence",
-      "object": "designflow_frozen_20260710.artists",
-      "expected_count": 1
-    },
-    {
-      "id": "frozen_customers_gone",
-      "kind": "catalog_absence",
-      "object": "designflow_frozen_20260710.customers",
-      "expected_count": 1
-    }
+    {"id": "frozen_art_piece_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.art_piece", "expected_count": 1},
+    {"id": "frozen_artists_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.artists", "expected_count": 1},
+    {"id": "frozen_customers_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.customers", "expected_count": 1},
+    {"id": "frozen_comments_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.comments", "expected_count": 1},
+    {"id": "frozen_product_category_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.product_category", "expected_count": 1},
+    {"id": "frozen_art_piece_id_seq_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.art_piece_id_seq", "expected_count": 1},
+    {"id": "frozen_artists_id_seq_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.artists_id_seq", "expected_count": 1},
+    {"id": "frozen_customers_seq_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.customers_customers_id_seq", "expected_count": 1},
+    {"id": "frozen_comments_id_seq_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.comments_id_seq", "expected_count": 1},
+    {"id": "frozen_product_category_id_seq_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.product_category_id_seq", "expected_count": 1}
   ]
 }

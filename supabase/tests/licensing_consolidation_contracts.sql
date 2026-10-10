@@ -86,7 +86,7 @@ begin
   select count(*) into v_count
     from pg_catalog.pg_proc p
    where p.oid in (
-           to_regprocedure('plm.plan_licensing_consolidation(text,uuid)'),
+           to_regprocedure('plm.plan_licensing_consolidation(text,uuid,text)'),
            to_regprocedure('plm.apply_licensing_consolidation(uuid,text)'))
      and p.prosecdef
      and p.proconfig @> array['search_path=pg_catalog'];
@@ -94,9 +94,9 @@ begin
     raise exception 'CONTRACT: both consolidation functions must be security definer with pinned search_path (found %)', v_count;
   end if;
   if has_function_privilege('anon',
-       to_regprocedure('plm.plan_licensing_consolidation(text,uuid)'), 'execute')
+       to_regprocedure('plm.plan_licensing_consolidation(text,uuid,text)'), 'execute')
      or has_function_privilege('authenticated',
-       to_regprocedure('plm.plan_licensing_consolidation(text,uuid)'), 'execute')
+       to_regprocedure('plm.plan_licensing_consolidation(text,uuid,text)'), 'execute')
      or has_function_privilege('anon',
        to_regprocedure('plm.apply_licensing_consolidation(uuid,text)'), 'execute')
      or has_function_privilege('authenticated',
@@ -104,7 +104,7 @@ begin
     raise exception 'CONTRACT: anon and authenticated must not execute the consolidation functions';
   end if;
   if not has_function_privilege('service_role',
-       to_regprocedure('plm.plan_licensing_consolidation(text,uuid)'), 'execute')
+       to_regprocedure('plm.plan_licensing_consolidation(text,uuid,text)'), 'execute')
      or not has_function_privilege('service_role',
        to_regprocedure('plm.apply_licensing_consolidation(uuid,text)'), 'execute') then
     raise exception 'CONTRACT: service_role must be able to execute the consolidation functions';
@@ -283,7 +283,7 @@ begin
 
   select prosrc into v_text
     from pg_catalog.pg_proc
-   where oid = to_regprocedure('plm.plan_licensing_consolidation(text,uuid)');
+   where oid = to_regprocedure('plm.plan_licensing_consolidation(text,uuid,text)');
   if position('evidence_kind' in v_text) = 0
      or position('direct_source_assertion' in v_text) = 0 then
     raise exception 'CONTRACT: plan must gate relationship work on direct_source_assertion';

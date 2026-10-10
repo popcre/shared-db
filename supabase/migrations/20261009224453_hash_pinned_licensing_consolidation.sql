@@ -315,7 +315,8 @@ create policy licensing_consolidation_plan_authenticated_read
 
 create or replace function plm.plan_licensing_consolidation(
   p_source_system text,
-  p_capture_id uuid
+  p_capture_id uuid,
+  p_entity_source_id text default null
 )
 returns plm.licensing_consolidation_plan
 language plpgsql
@@ -467,6 +468,7 @@ begin
       from plm.source_resolution sr
      where sr.source_system = v_source
        and sr.resolution_status = 'matched'
+       and (p_entity_source_id is null or sr.source_id = btrim(p_entity_source_id))
      order by sr.entity_kind, sr.source_id
   loop
     -- Which canonical row does this decision name?
@@ -655,7 +657,8 @@ begin
     v_collision_count := v_collision_count + 1;
     v_refusal := coalesce(v_refusal,
       'collision gate: more than one entity write to one table in one apply; '
-      || 'the write-authorization guard grants one protected row write per table per apply');
+      || 'the write-authorization guard grants one protected row write per table per apply. '
+      || 'Pass p_entity_source_id to plan one entity at a time.');
   end if;
 
   -- -----------------------------------------------------------------------
@@ -864,7 +867,7 @@ begin
 end;
 $function$;
 
-comment on function plm.plan_licensing_consolidation(text, uuid) is
+comment on function plm.plan_licensing_consolidation(text, uuid, text) is
   'Hash-pinned consolidation preview (issue #2336). Builds a deterministic plan of '
   'canonical writes from matched plm.source_resolution and '
   'plm.licensing_relationship_resolution decisions under a complete capture and '
@@ -873,9 +876,9 @@ comment on function plm.plan_licensing_consolidation(text, uuid) is
   'records and never plans a hard delete. Re-planning identical decisions returns the '
   'same plan row (idempotent). Service-role only.';
 
-revoke all on function plm.plan_licensing_consolidation(text, uuid)
+revoke all on function plm.plan_licensing_consolidation(text, uuid, text)
   from public, anon, authenticated;
-grant execute on function plm.plan_licensing_consolidation(text, uuid)
+grant execute on function plm.plan_licensing_consolidation(text, uuid, text)
   to service_role;
 
 
@@ -1024,6 +1027,20 @@ begin
     v_auth_table text;
     v_auth_cols text[];
   begin
+    -- Re-check the one-write-per-table shape against the STORED plan, not just the
+    -- plan-time gate. A preview row that somehow carries two same-table entity
+    -- writes would still 23505 on the grant insert; refuse before touching the
+    -- guard table (DeepSeek finding 3).
+    if exists (
+      select 1 from jsonb_array_elements(v_plan.operations) as e(elem)
+       where elem->>'op' = 'update_entity'
+       group by elem->>'target_table'
+      having count(*) > 1
+    ) then
+      raise exception using errcode = '40001',
+        message = 'licensing consolidation apply refused: plan carries more than one entity write to one table';
+    end if;
+
     for v_auth_table, v_auth_cols in
       select s.tgt,
              array_remove(array[s.c_name, s.c_code, s.c_licensor, s.c_status], null)
@@ -1228,8 +1245,8 @@ begin
     raise exception 'plm.licensing_consolidation_plan was not created';
   end if;
 
-  if to_regprocedure('plm.plan_licensing_consolidation(text,uuid)') is null then
-    raise exception 'plm.plan_licensing_consolidation(text,uuid) was not created';
+  if to_regprocedure('plm.plan_licensing_consolidation(text,uuid,text)') is null then
+    raise exception 'plm.plan_licensing_consolidation(text,uuid,text) was not created';
   end if;
   if to_regprocedure('plm.apply_licensing_consolidation(uuid,text)') is null then
     raise exception 'plm.apply_licensing_consolidation(uuid,text) was not created';
@@ -1239,7 +1256,7 @@ begin
   select count(*) into v_count
     from pg_catalog.pg_proc p
    where p.oid in (
-           to_regprocedure('plm.plan_licensing_consolidation(text,uuid)'),
+           to_regprocedure('plm.plan_licensing_consolidation(text,uuid,text)'),
            to_regprocedure('plm.apply_licensing_consolidation(uuid,text)'))
      and p.prosecdef
      and p.proconfig @> array['search_path=pg_catalog'];
@@ -1249,9 +1266,9 @@ begin
 
   -- Service-role only. anon and authenticated must not plan or apply.
   if has_function_privilege('anon',
-       to_regprocedure('plm.plan_licensing_consolidation(text,uuid)'), 'execute')
+       to_regprocedure('plm.plan_licensing_consolidation(text,uuid,text)'), 'execute')
      or has_function_privilege('authenticated',
-       to_regprocedure('plm.plan_licensing_consolidation(text,uuid)'), 'execute')
+       to_regprocedure('plm.plan_licensing_consolidation(text,uuid,text)'), 'execute')
      or has_function_privilege('anon',
        to_regprocedure('plm.apply_licensing_consolidation(uuid,text)'), 'execute')
      or has_function_privilege('authenticated',
@@ -1259,7 +1276,7 @@ begin
     raise exception 'anon and authenticated must not execute the consolidation functions';
   end if;
   if not has_function_privilege('service_role',
-       to_regprocedure('plm.plan_licensing_consolidation(text,uuid)'), 'execute')
+       to_regprocedure('plm.plan_licensing_consolidation(text,uuid,text)'), 'execute')
      or not has_function_privilege('service_role',
        to_regprocedure('plm.apply_licensing_consolidation(uuid,text)'), 'execute') then
     raise exception 'service_role must be able to execute the consolidation functions';

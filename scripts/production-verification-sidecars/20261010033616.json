@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "migration_version": "20261010033616",
-  "migration_sha256": "d503d0c2bf181e3c1df9fd60adeabf504ce5f9177d2b6bf5ee9577b15710dbb0",
+  "migration_sha256": "0275bc9223802373443d93c8dddfc9028b684051376030c8bc45e47149a05dc5",
   "checks": [
     {"id": "frozen_schema_gone", "kind": "exact_row_count", "relation": "information_schema.schemata", "filters": [{"column": "schema_name", "type": "text", "equals": "designflow_frozen_20260710"}], "expected_count": 0},
     {"id": "frozen_art_piece_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.art_piece", "expected_count": 1},
@@ -26,8 +26,8 @@
   "marker_schema_version": 1,
   "marker_reviews": [
     {
-      "line_start": 124,
-      "line_end": 124,
+      "line_start": 136,
+      "line_end": 136,
       "disposition": "no_durable_target",
       "reason": "Dynamic EXECUTE drops frozen-schema functions by catalog-derived OID signature (pg_proc.oid::regprocedure). Creates no dynamic catalog target; exact signatures come from the catalog, not from static text."
     }

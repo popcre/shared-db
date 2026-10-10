@@ -5,6 +5,8 @@
 -- Backup: 1Password vault vibe_coding item zepc66j5xajdg4novzttmmrtg4 (SHA-256 916be84f...).
 -- derived-from: none
 BEGIN;
+SET LOCAL lock_timeout = '10s';
+SET LOCAL statement_timeout = '120s';
 
 DO $drop_frozen$
 DECLARE
@@ -30,7 +32,7 @@ BEGIN
     IN ACCESS EXCLUSIVE MODE;
 
   -- Precondition: exactly seven base tables.
-  SELECT array_agg(c.relname::text ORDER BY c.relname::text) INTO actual
+  SELECT array_agg(c.relname::text ORDER BY c.relname::text COLLATE "C") INTO actual
   FROM pg_class c
   WHERE c.relnamespace = 'designflow_frozen_20260710'::regnamespace
     AND c.relkind = 'r';
@@ -39,7 +41,7 @@ BEGIN
   END IF;
 
   -- Precondition: exactly nine sequences.
-  SELECT array_agg(c.relname::text ORDER BY c.relname::text) INTO seq_actual
+  SELECT array_agg(c.relname::text ORDER BY c.relname::text COLLATE "C") INTO seq_actual
   FROM pg_class c
   WHERE c.relnamespace = 'designflow_frozen_20260710'::regnamespace
     AND c.relkind = 'S';

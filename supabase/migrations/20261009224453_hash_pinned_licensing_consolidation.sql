@@ -524,7 +524,7 @@ begin
     v_official_name := v_canonical_name;
     if v_rec.entity_kind = 'property' then
       begin
-        if v_source = 'paramount' then
+        if v_source = 'paramount' and v_rec.source_id ~ '^-?[0-9]{1,19}$' then
           execute 'select property_name from plm.pmt_property
                     where capture_id = $1 and property_source_id = $2::bigint'
             into v_official_name using p_capture_id, v_rec.source_id;
@@ -532,12 +532,12 @@ begin
           execute 'select property_label from plm.nbcu_property
                     where capture_id = $1 and (property_source_id = $2 or property_key = $2)'
             into v_official_name using p_capture_id, v_rec.source_id;
-        elsif v_source = 'disney_opa' then
+        elsif v_source = 'disney_opa' and v_rec.source_id ~ '^-?[0-9]{1,19}$' then
           execute 'select min(property_name) from plm.opa_property_character
                     where licensed_property_id = $1::bigint'
             into v_official_name using v_rec.source_id;
         end if;
-      exception when undefined_table then
+      exception when undefined_table or undefined_column or invalid_text_representation then
         v_official_name := v_canonical_name;
       end;
       v_official_name := coalesce(nullif(btrim(v_official_name), ''), v_canonical_name);
@@ -761,7 +761,8 @@ begin
       v_present boolean := true;
     begin
       begin
-        if v_rec.entity_kind = 'property' and v_source = 'paramount' then
+        if v_rec.entity_kind = 'property' and v_source = 'paramount'
+           and v_rec.source_id ~ '^-?[0-9]{1,19}$' then
           execute 'select exists(select 1 from plm.pmt_property
                                  where capture_id = $1
                                    and property_source_id = $2::bigint)'
@@ -772,7 +773,7 @@ begin
                                    and (property_source_id = $2 or property_key = $2))'
             into v_present using p_capture_id, v_rec.source_id;
         end if;
-      exception when undefined_table then
+      exception when undefined_table or undefined_column or invalid_text_representation then
         v_present := true; -- cannot prove absence; do not invent a retirement
       end;
 

@@ -128,6 +128,17 @@ begin
   -- Complete-capture gate: an unknown / missing capture produces a REFUSED plan with
   -- a recorded reason, never a silent empty preview and never an applyable plan.
   -- ---------------------------------------------------------------------------------
+  -- Blank p_entity_source_id is refused (not an empty preview).
+  begin
+    perform plm.plan_licensing_consolidation('not_a_real_source', v_capture, '   ');
+    raise exception 'CONTRACT: blank p_entity_source_id must be refused';
+  exception when others then
+    get stacked diagnostics v_text = message_text;
+    if position('non-blank source id' in v_text) = 0 then
+      raise exception 'CONTRACT: blank filter failed for the wrong reason: %', v_text;
+    end if;
+  end;
+
   -- Unknown source system: refused.
   v_plan := plm.plan_licensing_consolidation('not_a_real_source', v_capture);
   v_plan_first_id := v_plan.id;

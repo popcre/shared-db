@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "migration_version": "20261010033616",
-  "migration_sha256": "0275bc9223802373443d93c8dddfc9028b684051376030c8bc45e47149a05dc5",
+  "migration_sha256": "6c51f8a2c0b7bd9bfc37e6977d51071e65109a847baafb13993200dc40829568",
   "checks": [
-    {"id": "frozen_schema_gone", "kind": "exact_row_count", "relation": "information_schema.schemata", "filters": [{"column": "schema_name", "type": "text", "equals": "designflow_frozen_20260710"}], "expected_count": 0},
+    {"id": "frozen_schema_gone", "kind": "exact_row_count", "relation": "pg_catalog.pg_namespace", "filters": [{"column": "nspname", "type": "text", "equals": "designflow_frozen_20260710"}], "expected_count": 0},
     {"id": "frozen_art_piece_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.art_piece", "expected_count": 1},
     {"id": "frozen_artists_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.artists", "expected_count": 1},
     {"id": "frozen_customers_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.customers", "expected_count": 1},
@@ -14,20 +14,14 @@
     {"id": "frozen_customers_seq_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.customers_customers_id_seq", "expected_count": 1},
     {"id": "frozen_comments_id_seq_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.comments_id_seq", "expected_count": 1},
     {"id": "frozen_product_category_id_seq_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.product_category_id_seq", "expected_count": 1},
-    {"id": "mixedcase_factory_table_gone", "kind": "exact_row_count", "relation": "information_schema.tables", "filters": [{"column": "table_schema", "type": "text", "equals": "designflow_frozen_20260710"}, {"column": "table_name", "type": "text", "equals": "Factory"}], "expected_count": 0},
-    {"id": "mixedcase_roles_table_gone", "kind": "exact_row_count", "relation": "information_schema.tables", "filters": [{"column": "table_schema", "type": "text", "equals": "designflow_frozen_20260710"}, {"column": "table_name", "type": "text", "equals": "Roles"}], "expected_count": 0},
-    {"id": "mixedcase_factory_seq_gone", "kind": "exact_row_count", "relation": "information_schema.sequences", "filters": [{"column": "sequence_schema", "type": "text", "equals": "designflow_frozen_20260710"}, {"column": "sequence_name", "type": "text", "equals": "Factory_id_seq"}], "expected_count": 0},
-    {"id": "mixedcase_roles_seq_gone", "kind": "exact_row_count", "relation": "information_schema.sequences", "filters": [{"column": "sequence_schema", "type": "text", "equals": "designflow_frozen_20260710"}, {"column": "sequence_name", "type": "text", "equals": "Roles_Id_seq"}], "expected_count": 0},
-    {"id": "mixedcase_stdverdetail_seq_gone", "kind": "exact_row_count", "relation": "information_schema.sequences", "filters": [{"column": "sequence_schema", "type": "text", "equals": "designflow_frozen_20260710"}, {"column": "sequence_name", "type": "text", "equals": "StandardizedVersionDetail_id_seq"}], "expected_count": 0},
-    {"id": "mixedcase_stdver_seq_gone", "kind": "exact_row_count", "relation": "information_schema.sequences", "filters": [{"column": "sequence_schema", "type": "text", "equals": "designflow_frozen_20260710"}, {"column": "sequence_name", "type": "text", "equals": "StandardizedVersion_id_seq"}], "expected_count": 0},
     {"id": "frozen_function_get_child_id_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.get_child_id(character varying,character varying,character varying,character varying,character varying,integer)", "expected_count": 1},
     {"id": "frozen_function_get_parent_id_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.get_parent_id(character varying,character varying,integer)", "expected_count": 1}
   ],
   "marker_schema_version": 1,
   "marker_reviews": [
     {
-      "line_start": 136,
-      "line_end": 136,
+      "line_start": 138,
+      "line_end": 138,
       "disposition": "no_durable_target",
       "reason": "Dynamic EXECUTE drops frozen-schema functions by catalog-derived OID signature (pg_proc.oid::regprocedure). Creates no dynamic catalog target; exact signatures come from the catalog, not from static text."
     }

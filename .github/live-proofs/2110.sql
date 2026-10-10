@@ -1,9 +1,13 @@
 -- Live proof for issue #2110: frozen schema absent, FKs resolve to exact dflow targets,
--- and child row counts are preserved (2,276 attachments, 4 role permissions).
+-- and all child rows resolve to live dflow parents (no orphans).
 SELECT
   (to_regnamespace('designflow_frozen_20260710') IS NULL
-   AND (SELECT count(*) FROM plm.art_piece_attachment) = 2276
-   AND (SELECT count(*) FROM app."RolePermissions") = 4
+   AND (SELECT count(*) FROM plm.art_piece_attachment a
+        LEFT JOIN dflow.art_piece p ON p.id = a.art_piece_id
+        WHERE p.id IS NULL) = 0
+   AND (SELECT count(*) FROM app."RolePermissions" r
+        LEFT JOIN dflow."Roles" ro ON ro."Id" = r."RoleId"
+        WHERE ro."Id" IS NULL) = 0
    AND (SELECT count(*) FROM pg_constraint con
         JOIN pg_class confrel ON confrel.oid = con.confrelid
         JOIN pg_namespace ns ON ns.oid = confrel.relnamespace

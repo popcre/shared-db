@@ -101,16 +101,18 @@ BEGIN
     RAISE EXCEPTION '2110: RolePermissions FK does not resolve to dflow.Roles(Id)';
   END IF;
 
-  -- Precondition: no unexpected relkinds (views, matviews, foreign tables, types, domains).
+  -- Precondition: no unexpected relkinds (views, matviews, foreign tables).
   IF EXISTS (SELECT FROM pg_class c
     WHERE c.relnamespace = 'designflow_frozen_20260710'::regnamespace
-      AND c.relkind NOT IN ('r', 'S', 'i', 't', 'p')) THEN
+      AND c.relkind NOT IN ('r', 'S', 'i', 't')) THEN
     RAISE EXCEPTION '2110: unexpected relkind in frozen schema';
   END IF;
+  -- Precondition: no domains, enums, ranges, or standalone composites.
   IF EXISTS (SELECT FROM pg_type t
     WHERE t.typnamespace = 'designflow_frozen_20260710'::regnamespace
-      AND t.typtype NOT IN ('b', 'c', 'd', 'e', 'r')) THEN
-    RAISE EXCEPTION '2110: unexpected type in frozen schema';
+      AND t.typtype IN ('d', 'e', 'r')
+      AND t.typrelid = 0) THEN
+    RAISE EXCEPTION '2110: unexpected domain/enum/range type in frozen schema';
   END IF;
 
   -- Precondition: assert expected function set (get_child_id, get_parent_id) before dropping.

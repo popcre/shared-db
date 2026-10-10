@@ -75,7 +75,10 @@ BEGIN
         AND con.conname = 'art_piece_attachment_art_piece_id_fkey'
         AND ns.nspname = 'dflow' AND confrel.relname = 'art_piece'
         AND nsc.nspname = 'plm' AND conrel.relname = 'art_piece_attachment'
-        AND a_child.attname = 'art_piece_id' AND a_parent.attname = 'id') <> 1 THEN
+        AND a_child.attname = 'art_piece_id' AND a_parent.attname = 'id'
+        AND con.convalidated AND array_length(con.conkey, 1) = 1 AND array_length(con.confkey, 1) = 1
+        AND con.confupdtype = 'a' AND con.confdeltype = 'a'
+        AND NOT con.condeferrable AND NOT con.condeferred AND con.confmatchtype = 's') <> 1 THEN
     RAISE EXCEPTION '2110: art_piece_attachment FK does not resolve to dflow.art_piece(id)';
   END IF;
 
@@ -91,9 +94,25 @@ BEGIN
         AND con.conname = 'RolePermissions_RoleId_fkey'
         AND ns.nspname = 'dflow' AND confrel.relname = 'Roles'
         AND nsc.nspname = 'app' AND conrel.relname = 'RolePermissions'
-        AND a_child.attname = 'RoleId' AND a_parent.attname = 'Id') <> 1 THEN
+        AND a_child.attname = 'RoleId' AND a_parent.attname = 'Id'
+        AND con.convalidated AND array_length(con.conkey, 1) = 1 AND array_length(con.confkey, 1) = 1
+        AND con.confupdtype = 'a' AND con.confdeltype = 'a'
+        AND NOT con.condeferrable AND NOT con.condeferred AND con.confmatchtype = 's') <> 1 THEN
     RAISE EXCEPTION '2110: RolePermissions FK does not resolve to dflow.Roles(Id)';
   END IF;
+
+  -- Precondition: assert expected function set (get_child_id, get_parent_id) before dropping.
+  DECLARE
+    fn_names text[];
+  BEGIN
+    SELECT array_agg(p.proname::text ORDER BY p.proname::text COLLATE "C") INTO fn_names
+    FROM pg_proc p
+    WHERE p.pronamespace = 'designflow_frozen_20260710'::regnamespace
+      AND p.prokind = 'f';
+    IF fn_names IS NOT NULL AND fn_names NOT IN (ARRAY['get_child_id', 'get_parent_id'], ARRAY['get_parent_id', 'get_child_id']) THEN
+      RAISE EXCEPTION '2110: unexpected frozen function inventory: %', fn_names;
+    END IF;
+  END;
 
   -- Drop functions in the frozen schema by catalog-derived signature (plpgsql functions only).
   FOR fn_rec IN

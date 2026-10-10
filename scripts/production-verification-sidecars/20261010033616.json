@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "migration_version": "20261010033616",
-  "migration_sha256": "85e569b851ee1858c2764d763029b138855018c89409c01a45643ebbca25ffc7",
+  "migration_sha256": "d503d0c2bf181e3c1df9fd60adeabf504ce5f9177d2b6bf5ee9577b15710dbb0",
   "checks": [
     {"id": "frozen_art_piece_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.art_piece", "expected_count": 1},
     {"id": "frozen_artists_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.artists", "expected_count": 1},
@@ -17,8 +17,8 @@
   "marker_schema_version": 1,
   "marker_reviews": [
     {
-      "line_start": 105,
-      "line_end": 105,
+      "line_start": 124,
+      "line_end": 124,
       "disposition": "no_durable_target",
       "reason": "Dynamic EXECUTE drops frozen-schema functions by catalog-derived OID signature (pg_proc.oid::regprocedure). Creates no dynamic catalog target; exact signatures come from the catalog, not from static text."
     }

@@ -369,6 +369,10 @@ begin
     raise exception using errcode = '22023',
       message = 'plan_licensing_consolidation requires a non-blank source_system and a capture_id';
   end if;
+  if p_entity_source_id is not null and btrim(p_entity_source_id) = '' then
+    raise exception using errcode = '22023',
+      message = 'p_entity_source_id must be null or a non-blank source id';
+  end if;
 
   -- Serialize planners for the same (source, capture). Two concurrent plan calls must
   -- queue, or both would build competing plans and the identity unique key would fire
@@ -406,14 +410,14 @@ begin
         into v_capture_complete using p_capture_id;
     elsif v_source like 'warner:%' then
       execute 'select status = ''complete''
-                 from plm.wb_capture where id = $1'
+                 from plm.wb_capture where capture_id = $1 and chunk_number = 0'
         into v_capture_complete using p_capture_id;
     else
       v_capture_complete := false;
     end if;
-  exception when undefined_table then
-    -- The capture root for this source is not present in this database. Fail closed:
-    -- "we cannot prove completeness" is a refusal, never a green light.
+  exception when undefined_table or undefined_column then
+    -- The capture root for this source is not present, or its shape drifted. Fail
+    -- closed: "we cannot prove completeness" is a refusal, never a green light.
     v_capture_complete := false;
   end;
 
@@ -522,7 +526,7 @@ begin
       begin
         if v_source = 'paramount' then
           execute 'select property_name from plm.pmt_property
-                    where capture_id = $1 and property_source_id::text = $2'
+                    where capture_id = $1 and property_source_id = $2::bigint'
             into v_official_name using p_capture_id, v_rec.source_id;
         elsif v_source = 'nbcu' then
           execute 'select property_label from plm.nbcu_property
@@ -530,7 +534,7 @@ begin
             into v_official_name using p_capture_id, v_rec.source_id;
         elsif v_source = 'disney_opa' then
           execute 'select min(property_name) from plm.opa_property_character
-                    where licensed_property_id::text = $1'
+                    where licensed_property_id = $1::bigint'
             into v_official_name using v_rec.source_id;
         end if;
       exception when undefined_table then
@@ -760,7 +764,7 @@ begin
         if v_rec.entity_kind = 'property' and v_source = 'paramount' then
           execute 'select exists(select 1 from plm.pmt_property
                                  where capture_id = $1
-                                   and property_source_id::text = $2)'
+                                   and property_source_id = $2::bigint)'
             into v_present using p_capture_id, v_rec.source_id;
         elsif v_rec.entity_kind = 'property' and v_source = 'nbcu' then
           execute 'select exists(select 1 from plm.nbcu_property
@@ -1000,7 +1004,7 @@ begin
      where id = v_plan.capture_id and status = 'complete';
   elsif v_plan.source_system like 'warner:%' then
     perform 1 from plm.wb_capture
-     where id = v_plan.capture_id and status = 'complete';
+     where capture_id = v_plan.capture_id and chunk_number = 0 and status = 'complete';
   else
     -- Fail closed (Muse finding 8). An unlisted source has no capture root we can
     -- re-check; "we did not look" must never read as "it is still complete".

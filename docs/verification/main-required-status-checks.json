@@ -6,9 +6,9 @@
     "repository_id": 1275568548,
     "repository": "popcre/shared-db",
     "branch": "main",
-    "base_sha": "f6277830af0ddca4d232f6d30246c804f6813a66",
-    "capturedIso": "2026-09-28T01:40:28.457Z",
-    "revision": "65122c856c3a3cf3ffb9f82dc057a6ea8e1c6944d02d594d761dd98b8c792ac2",
+    "base_sha": "755bd33cdcefe3f7b0e236c32408668f2d7aac16",
+    "capturedIso": "2026-09-29T10:08:05.906Z",
+    "revision": "c5ba860454727a9b21fdfadb8ee5770098ab492c6596d524309c59ee2d11259c",
     "sources": {
       "classic": {
         "id": "BPR_kwDOTAehpM4E2ure",
@@ -21,13 +21,11 @@
           "Destructive SQL outside migrations",
           "Migration guarded merge authorization",
           "Merge queue gate",
-          "Agent work contract",
           "Cancelled work guard",
           "Domain ownership",
           "Handoff contract",
           "Intake pointer guard",
           "Migration author lease",
-          "Orchestrator marker guard",
           "Promotion contract tests (offline)",
           "Tools offline tests",
           "Queue-sensitive checks (aggregate)"
@@ -70,12 +68,6 @@
             }
           },
           {
-            "context": "Agent work contract",
-            "app": {
-              "databaseId": 15368
-            }
-          },
-          {
             "context": "Cancelled work guard",
             "app": {
               "databaseId": 15368
@@ -106,12 +98,6 @@
             }
           },
           {
-            "context": "Orchestrator marker guard",
-            "app": {
-              "databaseId": 15368
-            }
-          },
-          {
             "context": "Promotion contract tests (offline)",
             "app": {
               "databaseId": 15368
@@ -134,10 +120,6 @@
       "rulesets": []
     },
     "checks": [
-      {
-        "context": "Agent work contract",
-        "app_id": 15368
-      },
       {
         "context": "Cancelled work guard",
         "app_id": 15368
@@ -175,10 +157,6 @@
         "app_id": 15368
       },
       {
-        "context": "Orchestrator marker guard",
-        "app_id": 15368
-      },
-      {
         "context": "Promotion contract tests (offline)",
         "app_id": 15368
       },
@@ -202,10 +180,9 @@
   },
   "repo": "popcre/shared-db",
   "branch": "main",
-  "capturedIso": "2026-09-28T01:40:28.457Z",
+  "capturedIso": "2026-09-29T10:08:05.907Z",
   "strict": false,
   "contexts": [
-    "Agent work contract",
     "Cancelled work guard",
     "Cross-PR object collision",
     "Destructive SQL outside migrations",
@@ -215,7 +192,6 @@
     "Merge queue gate",
     "Migration author lease",
     "Migration guarded merge authorization",
-    "Orchestrator marker guard",
     "Promotion contract tests (offline)",
     "Queue-sensitive checks (aggregate)",
     "SQL migration guards",
@@ -223,10 +199,6 @@
     "supabase/tests against an ephemeral database"
   ],
   "checks": [
-    {
-      "context": "Agent work contract",
-      "app_id": 15368
-    },
     {
       "context": "Cancelled work guard",
       "app_id": 15368
@@ -261,10 +233,6 @@
     },
     {
       "context": "Migration guarded merge authorization",
-      "app_id": 15368
-    },
-    {
-      "context": "Orchestrator marker guard",
       "app_id": 15368
     },
     {

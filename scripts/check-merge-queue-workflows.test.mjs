@@ -130,7 +130,7 @@ test('every mirrored or known-live required context has a mapped emitter', () =>
 
 // Provenance of the mirror (#3562 review M-2): a committed, dated readback of live
 // branch protection. The mirror must carry exactly its contexts and strictness.
-const READBACK = JSON.parse(readFileSync(new URL('../docs/verification/main-required-status-checks-readback-20260925.json', import.meta.url), 'utf8'))
+const READBACK = JSON.parse(readFileSync(new URL('../docs/verification/main-required-status-checks-readback-20260929.json', import.meta.url), 'utf8'))
 
 test('the committed mirror equals the dated live readback artifact', () => {
   assert.deepEqual([...MIRROR.contexts].sort(), [...READBACK.contexts].sort())

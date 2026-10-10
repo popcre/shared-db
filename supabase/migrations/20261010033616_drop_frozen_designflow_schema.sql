@@ -4,29 +4,7 @@
 -- FK repoints to dflow parents landed in PR #3893 (merged 2026-10-02, production-verified 2026-10-06).
 -- Backup: 1Password vault vibe_coding item zepc66j5xajdg4novzttmmrtg4 (SHA-256 916be84f...).
 -- derived-from: none
-
--- Clean already-applied exit: if the schema is gone, this is a no-op.
-DO $already_applied$
-BEGIN
-  IF to_regnamespace('designflow_frozen_20260710') IS NULL THEN
-    RAISE NOTICE '2110: frozen schema already absent; nothing to do';
-    RETURN;
-  END IF;
-END
-$already_applied$;
-
 BEGIN;
-SET LOCAL lock_timeout = '10s';
-SET LOCAL statement_timeout = '120s';
-
-LOCK TABLE designflow_frozen_20260710."Factory",
-  designflow_frozen_20260710."Roles",
-  designflow_frozen_20260710.art_piece,
-  designflow_frozen_20260710.artists,
-  designflow_frozen_20260710.comments,
-  designflow_frozen_20260710.customers,
-  designflow_frozen_20260710.product_category
-  IN ACCESS EXCLUSIVE MODE;
 
 DO $drop_frozen$
 DECLARE
@@ -35,6 +13,22 @@ DECLARE
   fn_rec record;
   fk_count int;
 BEGIN
+  -- Clean already-applied exit: if the schema is gone, this is a no-op.
+  IF to_regnamespace('designflow_frozen_20260710') IS NULL THEN
+    RAISE NOTICE '2110: frozen schema already absent; nothing to do';
+    RETURN;
+  END IF;
+
+  -- Lock every retiring table to prevent concurrent writes during the drop.
+  LOCK TABLE designflow_frozen_20260710."Factory",
+    designflow_frozen_20260710."Roles",
+    designflow_frozen_20260710.art_piece,
+    designflow_frozen_20260710.artists,
+    designflow_frozen_20260710.comments,
+    designflow_frozen_20260710.customers,
+    designflow_frozen_20260710.product_category
+    IN ACCESS EXCLUSIVE MODE;
+
   -- Precondition: exactly seven base tables.
   SELECT array_agg(c.relname::text ORDER BY c.relname::text) INTO actual
   FROM pg_class c
@@ -99,11 +93,12 @@ BEGIN
     RAISE EXCEPTION '2110: RolePermissions FK does not resolve to dflow.Roles(Id)';
   END IF;
 
-  -- Drop any functions in the frozen schema by catalog-derived signature.
+  -- Drop functions in the frozen schema by catalog-derived signature (plpgsql functions only).
   FOR fn_rec IN
     SELECT p.oid::regprocedure AS sig
     FROM pg_proc p
     WHERE p.pronamespace = 'designflow_frozen_20260710'::regnamespace
+      AND p.prokind = 'f'
   LOOP
     EXECUTE format('DROP FUNCTION %s RESTRICT', fn_rec.sig);
   END LOOP;

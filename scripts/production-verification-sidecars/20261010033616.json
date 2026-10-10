@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "migration_version": "20261010033616",
-  "migration_sha256": "753703df5893b983d566b15c5b4215fd521b8e3767eb19e93a96974693414896",
+  "migration_sha256": "5ec483ccbb26f7d55cee8d86cfb14d9d4cea809250028870ca222a185c39e98b",
   "checks": [
     {"id": "frozen_art_piece_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.art_piece", "expected_count": 1},
     {"id": "frozen_artists_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.artists", "expected_count": 1},
@@ -12,6 +12,23 @@
     {"id": "frozen_artists_id_seq_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.artists_id_seq", "expected_count": 1},
     {"id": "frozen_customers_seq_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.customers_customers_id_seq", "expected_count": 1},
     {"id": "frozen_comments_id_seq_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.comments_id_seq", "expected_count": 1},
-    {"id": "frozen_product_category_id_seq_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.product_category_id_seq", "expected_count": 1}
+    {"id": "frozen_product_category_id_seq_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.product_category_id_seq", "expected_count": 1},
+    {"id": "frozen_get_child_id_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.get_child_id()", "expected_count": 1},
+    {"id": "frozen_get_parent_id_gone", "kind": "catalog_absence", "object": "designflow_frozen_20260710.get_parent_id()", "expected_count": 1}
+  ],
+  "marker_schema_version": 1,
+  "marker_reviews": [
+    {
+      "line_start": 102,
+      "line_end": 102,
+      "disposition": "no_durable_target",
+      "reason": "Dynamic EXECUTE drops frozen-schema function get_child_id by exact name after inventory assertion. Creates no dynamic catalog target."
+    },
+    {
+      "line_start": 105,
+      "line_end": 105,
+      "disposition": "no_durable_target",
+      "reason": "Dynamic EXECUTE drops frozen-schema function get_parent_id by exact name after inventory assertion. Creates no dynamic catalog target."
+    }
   ]
 }

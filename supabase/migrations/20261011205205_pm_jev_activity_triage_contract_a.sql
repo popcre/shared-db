@@ -357,6 +357,9 @@ begin
   if v_row.lease_token_hash is null or v_row.lease_token_hash <> p_lease_token_hash then
     raise exception using errcode = '22023', message = 'PM_LEASE_MISMATCH';
   end if;
+  if v_row.lease_expires_at is not null and v_row.lease_expires_at < now() then
+    raise exception using errcode = '22023', message = 'PM_LEASE_EXPIRED';
+  end if;
 
   update pim.ai_activity_triage
   set state = 'succeeded',
@@ -397,11 +400,14 @@ begin
   if not found then
     raise exception using errcode = 'P0002', message = 'PM_TRIAGE_NOT_FOUND';
   end if;
-  if v_row.state in ('accepted', 'dismissed', 'source_changed', 'expired', 'failed') then
+  if v_row.state in ('accepted', 'dismissed', 'source_changed', 'expired', 'failed', 'succeeded') then
     raise exception using errcode = '22023', message = 'PM_TRIAGE_ALREADY_FINAL';
   end if;
   if v_row.lease_token_hash is null or v_row.lease_token_hash <> p_lease_token_hash then
     raise exception using errcode = '22023', message = 'PM_LEASE_MISMATCH';
+  end if;
+  if v_row.lease_expires_at is not null and v_row.lease_expires_at < now() then
+    raise exception using errcode = '22023', message = 'PM_LEASE_EXPIRED';
   end if;
 
   update pim.ai_activity_triage
@@ -972,7 +978,10 @@ begin
      or (p_envelope ->> 'comment_id') is distinct from v_row.comment_id::text
      or (p_envelope ->> 'product_id') is distinct from v_row.product_id::text
      or (p_envelope ->> 'source_body_revision') is distinct from v_row.source_body_revision::text
-     or (p_envelope ->> 'input_digest') is distinct from v_row.input_digest then
+     or (p_envelope ->> 'input_digest') is distinct from v_row.input_digest
+     or (p_envelope ->> 'lease_token') is null
+     or encode(extensions.digest(convert_to(p_envelope ->> 'lease_token', 'utf8'), 'sha256'), 'hex')
+        is distinct from v_row.lease_token_hash then
     raise exception using errcode = '22023', message = 'PM_ENVELOPE_ROW_MISMATCH';
   end if;
 
@@ -1377,6 +1386,8 @@ begin
       dismissed_at = now(),
       reviewed_at = now(),
       reviewed_by_profile_id = v_profile,
+      lease_token_hash = null,
+      lease_expires_at = null,
       updated_at = now()
   where id = p_triage_id;
 

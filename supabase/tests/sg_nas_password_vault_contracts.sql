@@ -15,6 +15,21 @@ begin
     raise exception 'service_role must execute the sg nas password functions';
   end if;
 
+  if (select count(*) from pg_proc p
+       where p.oid = 'public.get_sg_nas_password()'::regprocedure
+         and p.prosecdef and p.provolatile = 's'
+         and p.prorettype = 'text'::regtype
+         and 'search_path=""' = any(p.proconfig)) <> 1 then
+    raise exception 'get_sg_nas_password must be stable security definer returning text with empty search_path';
+  end if;
+  if (select count(*) from pg_proc p
+       where p.oid = 'public.set_sg_nas_password(text)'::regprocedure
+         and p.prosecdef and p.provolatile = 'v'
+         and p.prorettype = 'void'::regtype
+         and 'search_path=""' = any(p.proconfig)) <> 1 then
+    raise exception 'set_sg_nas_password must be volatile security definer returning void with empty search_path';
+  end if;
+
   perform public.set_sg_nas_password('zz-test-4168-a');
   if public.get_sg_nas_password() <> 'zz-test-4168-a' then
     raise exception 'set then get did not round-trip';

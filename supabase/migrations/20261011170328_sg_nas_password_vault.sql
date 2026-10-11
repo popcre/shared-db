@@ -23,7 +23,36 @@
 --    printed. The admin_config row is intentionally KEPT by this migration so the
 --    currently deployed app keeps working; it is removed after popdam3 cuts over to
 --    these functions (issue #4168 step 3, an application row cleanup).
+--
+-- Preconditions are asserted up front (named errors, not raw failures): the
+-- supabase_vault extension and the vault objects this file calls, and that neither
+-- new function exists yet. vault.secrets carries a unique index on name
+-- (secrets_name_idx), so at most one row can hold the name; set_sg_nas_password
+-- also takes a transaction advisory lock so concurrent first writes serialize.
+-- The copy is verified: if the source row holds a string, the migration fails
+-- unless Vault then holds exactly that value.
 -- =====================================================================================
+
+do $preflight$
+begin
+  if not exists (select 1 from pg_extension where extname = 'supabase_vault') then
+    raise exception 'shared-db#4168 preflight: extension supabase_vault is not installed';
+  end if;
+  if to_regclass('vault.secrets') is null
+     or to_regclass('vault.decrypted_secrets') is null
+     or to_regprocedure('vault.create_secret(text,text,text,uuid)') is null
+     or to_regprocedure('vault.update_secret(uuid,text,text,text,uuid)') is null then
+    raise exception 'shared-db#4168 preflight: vault.secrets, vault.decrypted_secrets, vault.create_secret or vault.update_secret is missing';
+  end if;
+  if to_regclass('public.admin_config') is null then
+    raise exception 'shared-db#4168 preflight: public.admin_config is missing';
+  end if;
+  if to_regprocedure('public.get_sg_nas_password()') is not null
+     or to_regprocedure('public.set_sg_nas_password(text)') is not null then
+    raise exception 'shared-db#4168 preflight: get/set_sg_nas_password already exist';
+  end if;
+end;
+$preflight$;
 
 create function public.get_sg_nas_password()
 returns text
@@ -49,6 +78,8 @@ as $function$
 declare
   v_id uuid;
 begin
+  perform pg_advisory_xact_lock(hashtext('shared-db#4168 popdam_sg_nas_password'));
+
   select s.id into v_id
     from vault.secrets s
    where s.name = 'popdam_sg_nas_password'
@@ -80,9 +111,25 @@ comment on function public.get_sg_nas_password() is
 comment on function public.set_sg_nas_password(text) is
   'shared-db#4168: create/replace Vault secret popdam_sg_nas_password ('''' clears); service_role only.';
 
--- Copy the existing plaintext value into Vault, database-side only.
-select public.set_sg_nas_password(ac.value #>> '{}')
-  from public.admin_config ac
- where ac.key = 'WINDOWS_AGENT_SG_NAS_PASS'
-   and jsonb_typeof(ac.value) = 'string'
-   and not exists (select 1 from vault.secrets s where s.name = 'popdam_sg_nas_password');
+-- Copy the existing plaintext value into Vault, database-side only, and verify it.
+do $copy$
+declare
+  v_source jsonb;
+begin
+  select ac.value into v_source
+    from public.admin_config ac
+   where ac.key = 'WINDOWS_AGENT_SG_NAS_PASS';
+
+  if v_source is null or jsonb_typeof(v_source) <> 'string' then
+    raise notice 'shared-db#4168: no string WINDOWS_AGENT_SG_NAS_PASS row; nothing copied';
+    return;
+  end if;
+
+  perform public.set_sg_nas_password(v_source #>> '{}');
+
+  if public.get_sg_nas_password() is distinct from (v_source #>> '{}') then
+    raise exception 'shared-db#4168: Vault copy of WINDOWS_AGENT_SG_NAS_PASS did not verify';
+  end if;
+  raise notice 'shared-db#4168: WINDOWS_AGENT_SG_NAS_PASS copied into Vault and verified';
+end;
+$copy$;

@@ -3,7 +3,8 @@ select (
    from pg_proc p
    where p.oid in (to_regprocedure('public.get_sg_nas_password()'),
                    to_regprocedure('public.set_sg_nas_password(text)'))
-     and p.prosecdef)
+     and p.prosecdef
+     and 'search_path=""' = any(p.proconfig))
   and has_function_privilege('service_role', 'public.get_sg_nas_password()', 'execute')
   and has_function_privilege('service_role', 'public.set_sg_nas_password(text)', 'execute')
   and not has_function_privilege('authenticated', 'public.get_sg_nas_password()', 'execute')

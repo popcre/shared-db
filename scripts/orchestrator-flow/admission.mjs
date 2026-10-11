@@ -87,6 +87,13 @@ export function evaluateAdmission(issue, scope, impact = null) {
     throw new AdmissionError(`issue #${issue.number} must declare service_class as one of ${SERVICE_CLASSES.join(', ')}`)
   }
 
+  // Curated Master Data fork that ships a migration (AGENTS.md §6.4 and
+  // docs/agents/section-4-anti-collision-rules.md): it must claim a lane, so it
+  // must also be admissible, but it is NOT structural work. It declares no
+  // database objects (parseQueueScope forbids them) and its pull request must be
+  // data-only; any schema DDL still requires work_type structural. Issue #4172.
+  if (scope.workType === 'curated-master-data') return evaluateCuratedAdmission(issue, scope, impact)
+
   const actualStructural = STRUCTURAL_CHANGE_TYPES.includes(scope.changeType)
   if (!actualStructural) {
     const result = refusal(issue, scope, `actual change_type ${scope.changeType} does not change database structure`, [
@@ -138,6 +145,59 @@ export function evaluateAdmission(issue, scope, impact = null) {
     impact,
     digest: admissionDigest({ issue, scope, impact }),
   }
+}
+
+export const CURATED_ROUTE = 'curated-master-data-governance'
+
+function evaluateCuratedAdmission(issue, scope, impact) {
+  if (scope.route !== CURATED_ROUTE) throw new AdmissionError(`curated-master-data work must route ${CURATED_ROUTE}`)
+  if (scope.changeType !== 'migration') {
+    const result = refusal(issue, scope, `curated-master-data admission covers a fork that ships a data-only migration; change_type ${scope.changeType} is not admissible`, [
+      'change_type migration',
+    ])
+    throw new AdmissionError(result.reason, result)
+  }
+  if (scope.status !== 'ready') throw new AdmissionError(`issue #${issue.number} is ${scope.status}, not ready`)
+  if (scope.writes?.length || scope.reads?.length) throw new AdmissionError('curated-master-data admission must not claim database objects')
+  if (typeof scope.liveAssertion !== 'string' || !scope.liveAssertion.trim()) throw new AdmissionError('curated-master-data admission requires a concrete live_assertion')
+  if (impact) throw new AdmissionError('db-impact is reserved for urgent-application work')
+  return {
+    admitted: true,
+    curated: true,
+    issue: Number(issue.number),
+    service_class: scope.serviceClass,
+    change_type: scope.changeType,
+    application_return_to: null,
+    live_assertion: scope.liveAssertion,
+    generated_types: scope.generatedTypes,
+    writes: [],
+    reads: [],
+    impact: null,
+    digest: admissionDigest({ issue, scope, impact: null }),
+  }
+}
+
+// The curated counterpart of inspectPrStructuralChange: the pull request must
+// carry a readable migration, and that migration must contain no schema DDL,
+// no catalog function rewrite, and no role/grant object write. A curated row
+// load is admitted; anything that changes database shape fails closed.
+export function inspectPrCuratedDataChange(prFiles = []) {
+  if (!Array.isArray(prFiles)) throw new AdmissionError('pull request files are unreadable')
+  const migrations = prFiles.filter((file) => /^supabase\/migrations\/\d{14}_[^/]+\.sql$/.test(String(file?.filename ?? file?.path ?? '')) && file?.status !== 'removed')
+  if (!migrations.length) throw new AdmissionError('the curated pull request contains no added or modified migration')
+  const sql = migrations.map((file) => {
+    const name = file.filename ?? file.path
+    if (file.status !== 'added') throw new AdmissionError(`curated migration ${name} must be a newly added file`)
+    if (typeof file.content !== 'string') throw new AdmissionError(`migration ${name} content is unreadable; curated admission refuses filename-only evidence`)
+    return file.content
+  })
+  const ddl = inventoryDdlVerbs(sql)
+  const rewrites = sql.flatMap((text) => catalogFunctionRewrites(text))
+  const objects = sql.flatMap((text) => dispatchObjectKeys(text))
+  if (ddl.length || rewrites.length || objects.length) {
+    throw new AdmissionError(`curated-master-data migration changes database structure (${[...new Set([...ddl.map((row) => row.verb), ...rewrites, ...objects])].join(', ')}); structural changes require work_type structural`)
+  }
+  return { reads: [], migrations: migrations.map((file) => file.filename ?? file.path), objects: [] }
 }
 
 const inspectedAliasProofs=new WeakMap()

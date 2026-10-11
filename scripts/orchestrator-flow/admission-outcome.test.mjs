@@ -1058,3 +1058,42 @@ test('structural admission accounts for exact roles and ownership dependencies',
   assert.deepEqual(inspectPrStructuralChange(file("DO $$ BEGIN EXECUTE 'CREATE ROLE worker'; END $$;")).objects,['role worker'])
   assert.throws(() => inspectPrStructuralChange(file("DO $$ BEGIN EXECUTE format('CREATE ROLE %I', name); END $$;")), /dynamic role/)
 })
+
+// Issue #4172 / PR #4176: a curated Master Data fork that ships a data-only
+// migration must claim a lane (section-4 anti-collision rules), so admission
+// must accept it. Before the fix every filing was refused: structural/claim-first
+// as "no statement-leading schema DDL", curated as "misrouted".
+const curatedBody = ({ change='migration', extra=[] } = {}) => ['```db-work-scope','status: ready','work_type: curated-master-data','route: curated-master-data-governance',
+  `change_type: ${change}`,'live_assertion: production core.property has exactly one active row','generated_types: not-applicable','priority: 800','depends_on:','writes:','reads:',...extra,'```'].join('\n')
+const curatedSql = "insert into core.property (name, licensor_id) select 'Exorcist, The (1973)', l.id from core.licensor l where l.name = 'WARNER BROS' on conflict do nothing;\n"
+const curatedIo = (body, sql) => ({
+  getIssue:()=>issue(body,4172),getPr:()=>({state:'open',head:{sha:'f'.repeat(40)},merged_at:null}),
+  closingIssuesForPr:()=>[{number:4172,state:'open'}],
+  getPrFiles:()=>[{filename:'supabase/migrations/20261011164757_curated_warner_property_the_exorcist_1973.sql',status:'added'}],
+  getFileAt:()=>sql,
+})
+
+test('curated master data fork with a data-only migration is admitted for its pull request (#4172)', () => {
+  const body = curatedBody()
+  const admitted = evaluateAdmission(issue(body,4172), parseQueueScope(body), null)
+  assert.equal(admitted.admitted, true); assert.equal(admitted.curated, true); assert.deepEqual(admitted.writes, [])
+  const withPr = admitIssue(4172, curatedIo(body, curatedSql), { pr: 4176, allowLegacy: true })
+  assert.equal(withPr.admitted, true)
+  assert.deepEqual(withPr.actual_objects, [])
+  assert.deepEqual(withPr.migrations, ['supabase/migrations/20261011164757_curated_warner_property_the_exorcist_1973.sql'])
+  assert.equal(derivePrOperationRoute(4176, curatedIo(body, curatedSql)).route, 'structural')
+})
+
+test('curated master data admission still refuses schema DDL, non-migration change types, and missing migrations', () => {
+  const body = curatedBody()
+  assert.throws(() => admitIssue(4172, curatedIo(body, curatedSql + 'alter table core.property add column x int;\n'), { pr: 4176, allowLegacy: true }), /changes database structure.*require work_type structural/)
+  const io = { ...curatedIo(body, curatedSql), getPrFiles:()=>[{filename:'docs/x.md',status:'added'}] }
+  assert.throws(() => admitIssue(4172, io, { pr: 4176, allowLegacy: true }), /contains no added or modified migration/)
+  const table = curatedBody({ change:'table' })
+  assert.throws(() => evaluateAdmission(issue(table,4172), parseQueueScope(table), null), /change_type table is not admissible/)
+  assert.throws(() => parseQueueScope(curatedBody({ extra:['  - table core.property'] })), /must not claim database objects/)
+})
+
+test('structural route still refuses a data-only migration (gate unchanged)', () => {
+  assert.throws(() => inspectPrStructuralChange([{filename:'supabase/migrations/20261011164757_x.sql',status:'added',content:curatedSql}]), /no statement-leading schema DDL/)
+})

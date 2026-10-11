@@ -16,7 +16,7 @@ let counter=0
 const newSha=(x)=>createHash('sha1').update(JSON.stringify(x)+process.pid+Date.now()+(counter++)).digest('hex')
 function commitObj(s,oid){const c=s.commits[oid];if(!c)return null;return{oid,sha:oid,message:c.message,committedDate:c.date??'2026-09-17T00:00:00Z',tree:{oid:c.tree,sha:c.tree},parents:(c.parents??[]).map(p=>({sha:p,oid:p}))}}
 function resolveExpr(s,expr){if(/^[0-9a-f]{40}$/.test(expr))return commitObj(s,expr);const t=s.refs[expr];return t?commitObj(s,t):null}
-function prGql(s,n){const p=s.prs[n];if(!p)return null;return{number:+n,state:p.state.toUpperCase(),merged:!!p.merged,isDraft:!!p.draft,mergedAt:p.mergedAt??null,mergeCommit:p.mergeCommit?{oid:p.mergeCommit}:null,headRefOid:p.head,files:{pageInfo:{hasNextPage:false},nodes:p.files.map(f=>({path:f.filename,changeType:'ADDED'}))},closingIssuesReferences:{pageInfo:{hasNextPage:false},nodes:(p.closing??[]).map(i=>({number:+i,state:s.issues[i].state.toUpperCase(),body:s.issues[i].body,createdAt:'2026-09-01T00:00:00Z',comments:issueGql(s,i).comments}))},comments:{pageInfo:{hasNextPage:false},totalCount:0,nodes:[]},reviews:{pageInfo:{hasNextPage:false},totalCount:0,nodes:[]},reviewThreads:{totalCount:0,nodes:[]},body:p.body??'',title:p.title??'',labels:{nodes:[]}}}
+function prGql(s,n){const p=s.prs[n];if(!p)return null;return{number:+n,state:p.state.toUpperCase(),merged:!!p.merged,isDraft:!!p.draft,mergedAt:p.mergedAt??null,mergeCommit:p.mergeCommit?{oid:p.mergeCommit}:null,headRefOid:p.head,files:{pageInfo:{hasNextPage:false},nodes:p.files.map(f=>({path:f.filename,changeType:'ADDED'}))},closingIssuesReferences:{pageInfo:{hasNextPage:false},nodes:(p.closing??[]).map(i=>({number:+i,state:s.issues[i].state.toUpperCase(),body:s.issues[i].body,createdAt:'2026-09-01T00:00:00Z',comments:issueGql(s,i).comments}))},comments:{pageInfo:{hasNextPage:false},totalCount:0,nodes:[]},reviews:{pageInfo:{hasNextPage:false},totalCount:0,nodes:[]},reviewThreads:{pageInfo:{hasNextPage:false},totalCount:0,nodes:[]},body:p.body??'',title:p.title??'',labels:{nodes:[]}}}
 function issueGql(s,n){const i=s.issues[n];if(!i)return null;return{number:+n,state:i.state.toUpperCase(),body:i.body,title:i.title,comments:{pageInfo:{hasNextPage:false},nodes:[]},labels:{nodes:(i.labels??[]).map(name=>({name}))}}}
 function selections(body){const out=[];let i=0;while(i<body.length){const m=/^\s*(?:(\w+)\s*:\s*)?(\w+)\s*(\(([^)]*)\))?\s*/.exec(body.slice(i));if(!m||!m[2]){i++;continue}i+=m[0].length;let sub='';if(body[i]==='{'){let d=0,j=i;for(;j<body.length;j++){if(body[j]==='{')d++;else if(body[j]==='}'){d--;if(!d)break}}sub=body.slice(i+1,j);i=j+1}out.push({alias:m[1]??m[2],name:m[2],args:m[4]??'',sub})}return out}
 function graphql(s,query,vars){
@@ -28,7 +28,8 @@ function graphql(s,query,vars){
     const repo={}
     for(const f of selections(sel.sub)){
       const arg=(k)=>{const m=new RegExp(`${k}\\s*:\\s*("(?:[^"\\\\]|\\\\.)*"|\\$\\w+|\\d+)`).exec(f.args);if(!m)return undefined;const v=m[1];return v.startsWith('$')?vars[v.slice(1)]:JSON.parse(v)}
-      if(f.name==='object'&&arg('oid')!==undefined)repo[f.alias]={statusCheckRollup:null}
+      if(f.name==='nameWithOwner')repo[f.alias]=REPO
+      else if(f.name==='object'&&arg('oid')!==undefined){const commit=commitObj(s,arg('oid'));repo[f.alias]=commit?{...commit,__typename:'Commit',statusCheckRollup:{contexts:{totalCount:0,pageInfo:{hasNextPage:false},nodes:[]}}}:null}
       else if(f.name==='object')repo[f.alias]=resolveExpr(s,arg('expression'))
       else if(f.name==='defaultBranchRef')repo[f.alias]={name:'main',target:commitObj(s,s.refs['refs/heads/main'])}
       else if(f.name==='pullRequest')repo[f.alias]=prGql(s,arg('number'))

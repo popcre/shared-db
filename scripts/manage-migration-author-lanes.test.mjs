@@ -11488,7 +11488,7 @@ function ordinaryActivityFixture(activity){
   return {...fixture,options}
 }
 test('ordinary silence accepts completed postdraw CI only after both two-hour windows',()=>{
-  const fixture=ordinaryActivityFixture({checkRuns:[{id:'check-1',status:'COMPLETED',startedAt:'2026-09-04T10:30:00Z',completedAt:'2026-09-04T11:00:00Z'}],workflowRuns:[{id:2,status:'completed',updated_at:'2026-09-04T11:00:00Z'}]})
+  const fixture=ordinaryActivityFixture({checkRuns:[{__typename:'CheckRun',id:'check-1',status:'COMPLETED',startedAt:'2026-09-04T10:30:00Z',completedAt:'2026-09-04T11:00:00Z'}],workflowRuns:[{id:2,status:'completed',updated_at:'2026-09-04T11:00:00Z'}]})
   assert.throws(()=>probeSilentReviewer(fixture.options,new Date('2026-09-04T12:59:59Z'),fixture.io),/quiet for at least/)
   probeSilentReviewer(fixture.options,new Date('2026-09-04T13:00:00Z'),fixture.io)
   assert.throws(()=>reclaimSilentReviewer(fixture.options,new Date('2026-09-04T14:59:59Z'),fixture.io),/unchanged readable probe/)
@@ -11496,7 +11496,7 @@ test('ordinary silence accepts completed postdraw CI only after both two-hour wi
 })
 test('ordinary silence rejects old running queued unknown and missing CI states',()=>{
   for(const group of ['checkRuns','workflowRuns'])for(const status of ['IN_PROGRESS','queued','mystery',null,undefined]){
-    const row={startedAt:'2026-09-04T10:00:00Z',updated_at:'2026-09-04T10:00:00Z',...(status===undefined?{}:{status})}
+    const row={...(group==='checkRuns'?{__typename:'CheckRun'}:{}),startedAt:'2026-09-04T10:00:00Z',updated_at:'2026-09-04T10:00:00Z',...(status===undefined?{}:{status})}
     const fixture=ordinaryActivityFixture({[group]:[row]})
     assert.throws(()=>probeSilentReviewer(fixture.options,new Date('2026-09-04T15:00:00Z'),fixture.io),/status is/)
     assert.equal(fixture.io.refs.get(fixture.leaseRef),fixture.leaseSha)
@@ -11529,7 +11529,7 @@ test('ordinary reclaim refuses changed nonmaximum metadata and nonterminal activ
     const fixture=ordinaryActivityFixture({issueComments:rows})
     const probe=probeSilentReviewer(fixture.options,new Date('2026-09-04T13:00:00Z'),fixture.io)
     if(change==='nonmaximum')rows[0].updatedAt='2026-09-04T10:30:00Z'
-    else fixture.io.readLeaseActivity=()=>({issueComments:rows,reviewComments:[],reviews:[],checkRuns:[{status:'IN_PROGRESS',startedAt:'2026-09-04T10:00:00Z'}],workflowRuns:[]})
+    else fixture.io.readLeaseActivity=()=>({issueComments:rows,reviewComments:[],reviews:[],checkRuns:[{__typename:'CheckRun',status:'IN_PROGRESS',startedAt:'2026-09-04T10:00:00Z'}],workflowRuns:[]})
     assert.throws(()=>reclaimSilentReviewer(fixture.options,new Date('2026-09-04T15:00:00Z'),fixture.io),/fingerprint changed|nonterminal/)
     assert.equal(fixture.io.refs.get(fixture.leaseRef),fixture.leaseSha)
     assert.equal(fixture.io.refs.get(probe.probeRef),probe.probeSha)
@@ -11575,4 +11575,93 @@ test('ordinary reclaim preserves exact lease when a competing lease wins atomic 
   assert.throws(()=>reclaimSilentReviewer(fixture.options,new Date('2026-09-04T14:00:00Z'),fixture.io))
   assert.equal(fixture.io.refs.get(fixture.leaseRef),'b'.repeat(40))
   assert.equal([...fixture.io.refs.keys()].some(ref=>ref.startsWith(REVIEW_SILENCE_RELEASE_REF_PREFIX)),false)
+})
+
+function completeActivityResponseFixture(){
+  const lease={pr:2237,headSha:'a'.repeat(40)},connection=(nodes=[])=>({totalCount:nodes.length,pageInfo:{hasNextPage:false},nodes})
+  const graphql={data:{repository:{nameWithOwner:REPO,pullRequest:{number:lease.pr,headRefOid:lease.headSha,comments:connection([{id:'comment-1',updatedAt:'2026-09-04T11:00:00Z'}]),reviews:connection(),reviewThreads:connection([{comments:connection([{id:'reply-1',updatedAt:'2026-09-04T10:00:00Z'}])}])},object:{__typename:'Commit',oid:lease.headSha,statusCheckRollup:{contexts:connection([{__typename:'CheckRun',databaseId:1,status:'COMPLETED',conclusion:'SUCCESS',startedAt:'2026-09-04T10:00:00Z',completedAt:'2026-09-04T11:00:00Z'},{__typename:'StatusContext',id:'context-1',state:'SUCCESS',createdAt:'2026-09-04T11:00:00Z'}])}}}}}
+  const rest={total_count:1,workflow_runs:[{id:2,head_sha:lease.headSha,status:'completed',conclusion:'success',created_at:'2026-09-04T10:00:00Z',updated_at:'2026-09-04T11:00:00Z'}]},requests=[]
+  const readJson=(args)=>{requests.push(args);return args[1]==='graphql'?graphql:rest}
+  return {lease,graphql,rest,requests,readJson,connection}
+}
+test('githubIo ordinary activity consumes actual complete GraphQL and REST response shapes',()=>{
+  const wire=completeActivityResponseFixture(),fixture=ordinaryActivityFixture({})
+  fixture.io.readLeaseActivity=()=>githubIo.readLeaseActivity(wire.lease,{readJson:wire.readJson})
+  const observed=activityFingerprintForLease({...fixture.assigned,slot:1},fixture.io)
+  assert.equal(observed.lastActivityIso,'2026-09-04T11:00:00.000Z')
+  assert.equal(wire.requests.length,2)
+  const query=wire.requests[0].at(-1)
+  for(const field of ['nameWithOwner','headRefOid','__typename','oid','pageInfo{hasNextPage}','databaseId status conclusion startedAt completedAt','id state createdAt'])assert.ok(query.includes(field),`canonical activity selection lacks ${field}`)
+  assert.ok(wire.requests[1][1].includes(`head_sha=${wire.lease.headSha}`))
+  assert.ok(probeSilentReviewer(fixture.options,new Date('2026-09-04T13:00:00Z'),fixture.io).probeSha)
+})
+test('githubIo activity refuses partial GraphQL errors null malformed missing and foreign identity branches',()=>{
+  const mutations=[
+    w=>{w.graphql.errors=[{message:'partial resolver error'}]},
+    w=>{w.graphql.errors={message:'malformed errors'}},
+    w=>{w.graphql.data=null},w=>{w.graphql.data.repository=null},
+    w=>{w.graphql.data.repository.nameWithOwner='foreign/repository'},
+    w=>{w.graphql.data.repository.pullRequest=null},w=>{delete w.graphql.data.repository.pullRequest},
+    w=>{w.graphql.data.repository.pullRequest.comments=null},
+    w=>{w.graphql.data.repository.pullRequest.number=99},
+    w=>{w.graphql.data.repository.pullRequest.headRefOid='b'.repeat(40)},
+    w=>{w.graphql.data.repository.object=null},
+    w=>{delete w.graphql.data.repository.object},
+    w=>{w.graphql.data.repository.object.__typename='Tree'},
+    w=>{w.graphql.data.repository.object.oid='b'.repeat(40)},
+    w=>{w.graphql.data.repository.object.statusCheckRollup=null},
+    w=>{delete w.graphql.data.repository.object.statusCheckRollup},
+    w=>{w.graphql.data.repository.object.statusCheckRollup.contexts={}},
+    w=>{w.graphql.data.repository.object.statusCheckRollup.contexts.pageInfo.hasNextPage=true},
+    w=>{w.graphql.data.repository.object.statusCheckRollup.contexts.totalCount=3},
+    w=>{delete w.graphql.data.repository.pullRequest.comments.pageInfo},
+    w=>{w.graphql.data.repository.pullRequest.reviewThreads.nodes[0].comments.totalCount=2},
+  ]
+  for(const mutate of mutations){const wire=completeActivityResponseFixture();mutate(wire);assert.throws(()=>githubIo.readLeaseActivity(wire.lease,{readJson:wire.readJson}),/GraphQL|identity|unreadable|paginated/)}
+})
+test('githubIo activity refuses incomplete or foreign workflow shapes and unknown check union nodes',()=>{
+  for(const mutate of [w=>{w.rest.total_count=2},w=>{w.rest.workflow_runs=null},w=>{w.rest.workflow_runs[0].head_sha='b'.repeat(40)},w=>{delete w.rest.total_count}]){
+    const wire=completeActivityResponseFixture();mutate(wire)
+    assert.throws(()=>githubIo.readLeaseActivity(wire.lease,{readJson:wire.readJson}),/workflow runs are/)
+  }
+  for(const typename of [undefined,'UnknownCheck']){
+    const wire=completeActivityResponseFixture(),fixture=ordinaryActivityFixture({})
+    wire.graphql.data.repository.object.statusCheckRollup.contexts.nodes[0].__typename=typename
+    fixture.io.readLeaseActivity=()=>githubIo.readLeaseActivity(wire.lease,{readJson:wire.readJson})
+    assert.throws(()=>probeSilentReviewer(fixture.options,new Date('2026-09-04T15:00:00Z'),fixture.io),/object type is unreadable or unknown/)
+  }
+})
+test('githubIo positive empty complete connections are readable rather than inferred from null',()=>{
+  const wire=completeActivityResponseFixture(),fixture=ordinaryActivityFixture({})
+  const pr=wire.graphql.data.repository.pullRequest
+  for(const key of ['comments','reviews','reviewThreads'])pr[key]=wire.connection()
+  wire.graphql.data.repository.object.statusCheckRollup.contexts=wire.connection()
+  wire.rest={total_count:0,workflow_runs:[]}
+  fixture.io.readLeaseActivity=()=>githubIo.readLeaseActivity(wire.lease,{readJson:args=>args[1]==='graphql'?wire.graphql:wire.rest})
+  assert.equal(activityFingerprintForLease({...fixture.assigned,slot:1},fixture.io).lastActivityIso,'none')
+  assert.ok(probeSilentReviewer(fixture.options,new Date('2026-09-04T12:00:00Z'),fixture.io).probeSha)
+})
+function ordinaryCapacityRow(fixture){
+  fixture.io.readActiveReviewLeases=()=>new Map([[fixture.leaseRef,{sha:fixture.leaseSha,commit:fixture.io.getCommit(fixture.leaseSha)}]])
+  fixture.io.readReviewStates=()=>new Map([[`${fixture.request.issue}:${fixture.request.pr}`,{issue:{state:'open'},pr:fixture.io.getPr(),evidence:[]}]])
+  return reviewerCapacityReport(fixture.io,new Date('2026-09-04T15:00:00Z')).reviewers.find(row=>row.held)
+}
+test('capacity reports UNKNOWN for ongoing or unreadable ordinary activity without freeing the lease',()=>{
+  for(const activity of [{checkRuns:[{__typename:'CheckRun',status:'IN_PROGRESS',startedAt:'2026-09-04T10:00:00Z'}]},{issueComments:[{updatedAt:'unreadable'}]}]){
+    const fixture=ordinaryActivityFixture(activity),row=ordinaryCapacityRow(fixture)
+    assert.equal(row.classification,'unknown');assert.equal(row.lastActivityIso,null)
+    assert.equal(fixture.io.refs.get(fixture.leaseRef),fixture.leaseSha)
+  }
+})
+test('old immutable count-and-maximum probe fingerprints remain incompatible and cannot authorize reclaim',()=>{
+  const fixture=ordinaryActivityFixture({}),probe=probeSilentReviewer(fixture.options,new Date('2026-09-04T12:00:00Z'),fixture.io)
+  const {metadataDigest,...oldFacts}=activityFingerprintForLease({...fixture.assigned,slot:1},fixture.io).facts
+  assert.ok(metadataDigest)
+  const oldDigest=createHash('sha256').update(canonicalJson(oldFacts)).digest('hex')
+  const message=fixture.io.getCommit(probe.probeSha).message.replace(/fingerprint=[0-9a-f]{64}/,`fingerprint=${oldDigest}`)
+  const historicalSha=fixture.io.makeOwnerCommit(message);fixture.io.refs.set(probe.probeRef,historicalSha)
+  assert.throws(()=>reclaimSilentReviewer(fixture.options,new Date('2026-09-04T15:00:00Z'),fixture.io),/fingerprint changed/)
+  assert.ok(['live','suspect-aged'].includes(ordinaryCapacityRow(fixture).classification))
+  assert.equal(fixture.io.refs.get(probe.probeRef),historicalSha)
+  assert.equal(fixture.io.refs.get(fixture.leaseRef),fixture.leaseSha)
 })

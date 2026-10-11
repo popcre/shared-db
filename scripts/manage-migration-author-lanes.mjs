@@ -748,16 +748,22 @@ export const githubIo = {
   getIssue(number) { return ghJson(['api', `repos/${REPO}/issues/${number}`]) },
   getIssueComments(number) { return ghPaginated(`repos/${REPO}/issues/${number}/comments?per_page=100`) },
   getPrReviews(number) { return ghPaginated(`repos/${REPO}/pulls/${number}/reviews?per_page=100`) },
-  readLeaseActivity(lease) {
-    const query=`query{repository(owner:${JSON.stringify(REPO_OWNER)},name:${JSON.stringify(REPO_NAME)}){pullRequest(number:${Number(lease.pr)}){comments(first:100){totalCount nodes{id updatedAt}} reviews(first:100){totalCount nodes{id submittedAt updatedAt}} reviewThreads(first:100){totalCount nodes{comments(first:100){totalCount nodes{id updatedAt}}}}} object(oid:${JSON.stringify(String(lease.headSha))}){... on Commit{statusCheckRollup{contexts(first:100){totalCount nodes{__typename ... on CheckRun{databaseId status conclusion startedAt completedAt} ... on StatusContext{id state createdAt}}}}}}}}`
-    const data=ghJson(['api','graphql','-f',`query=${query}`])?.data?.repository,pr=data?.pullRequest,contexts=data?.object?.statusCheckRollup?.contexts
-    const workflows=ghJson(['api',`repos/${REPO}/actions/runs?head_sha=${lease.headSha}&per_page=100`])
-    if(!pr||!Array.isArray(pr.comments?.nodes)||Number(pr.comments.totalCount)!==pr.comments.nodes.length||!Array.isArray(pr.reviews?.nodes)||Number(pr.reviews.totalCount)!==pr.reviews.nodes.length||!Array.isArray(pr.reviewThreads?.nodes)||Number(pr.reviewThreads.totalCount)!==pr.reviewThreads.nodes.length)throw new LaneError('reviewer comment or review activity is unreadable or paginated')
+  readLeaseActivity(lease,{readJson=ghJson}={}) {
+    const connectionFields='totalCount pageInfo{hasNextPage} nodes'
+    const query=`query{repository(owner:${JSON.stringify(REPO_OWNER)},name:${JSON.stringify(REPO_NAME)}){nameWithOwner pullRequest(number:${Number(lease.pr)}){number headRefOid comments(first:100){${connectionFields}{id updatedAt}} reviews(first:100){${connectionFields}{id submittedAt updatedAt}} reviewThreads(first:100){${connectionFields}{comments(first:100){${connectionFields}{id updatedAt}}}}} object(oid:${JSON.stringify(String(lease.headSha))}){__typename ... on Commit{oid statusCheckRollup{contexts(first:100){${connectionFields}{__typename ... on CheckRun{databaseId status conclusion startedAt completedAt} ... on StatusContext{id state createdAt}}}}}}}}`
+    const response=readJson(['api','graphql','-f',`query=${query}`])
+    if(!response||typeof response!=='object'||response.errors!==undefined&&(!Array.isArray(response.errors)||response.errors.length))throw new LaneError('reviewer activity snapshot returned GraphQL errors or unreadable data')
+    const data=response.data?.repository,pr=data?.pullRequest,commit=data?.object
+    if(data?.nameWithOwner!==REPO||pr?.number!==Number(lease.pr)||pr?.headRefOid!==lease.headSha||commit?.__typename!=='Commit'||commit?.oid!==lease.headSha)throw new LaneError('reviewer activity repository, PR or Commit identity is unreadable or mismatched')
+    const completeConnection=(connection)=>connection&&Array.isArray(connection.nodes)&&Number.isInteger(connection.totalCount)&&connection.totalCount>=0&&connection.totalCount===connection.nodes.length&&connection.pageInfo?.hasNextPage===false
+    const contexts=commit.statusCheckRollup?.contexts
+    if(!completeConnection(contexts))throw new LaneError('reviewer activity check rollup is unreadable or paginated')
+    if(!completeConnection(pr.comments)||!completeConnection(pr.reviews)||!completeConnection(pr.reviewThreads))throw new LaneError('reviewer comment or review activity is unreadable or paginated')
     const reviewComments=[]
-    for(const thread of pr.reviewThreads.nodes){if(!Array.isArray(thread.comments?.nodes)||Number(thread.comments.totalCount)!==thread.comments.nodes.length)throw new LaneError('reviewer review-comment activity is unreadable or paginated');reviewComments.push(...thread.comments.nodes)}
-    if(contexts&&!Array.isArray(contexts.nodes)||contexts&&Number(contexts.totalCount)!==contexts.nodes.length)throw new LaneError('reviewer activity check runs are unreadable or paginated')
-    if(!Array.isArray(workflows?.workflow_runs)||Number(workflows.total_count)!==workflows.workflow_runs.length)throw new LaneError('reviewer activity workflow runs are unreadable or paginated')
-    return {issueComments:pr.comments.nodes,reviewComments,reviews:pr.reviews.nodes,checkRuns:contexts?.nodes??[],workflowRuns:workflows.workflow_runs}
+    for(const thread of pr.reviewThreads.nodes){if(!completeConnection(thread?.comments))throw new LaneError('reviewer review-comment activity is unreadable or paginated');reviewComments.push(...thread.comments.nodes)}
+    const workflows=readJson(['api',`repos/${REPO}/actions/runs?head_sha=${lease.headSha}&per_page=100`])
+    if(!Array.isArray(workflows?.workflow_runs)||!Number.isInteger(workflows.total_count)||workflows.total_count<0||workflows.total_count!==workflows.workflow_runs.length||workflows.workflow_runs.some(run=>run?.head_sha!==lease.headSha))throw new LaneError('reviewer activity workflow runs are unreadable, mismatched or paginated')
+    return {issueComments:pr.comments.nodes,reviewComments,reviews:pr.reviews.nodes,checkRuns:contexts.nodes,workflowRuns:workflows.workflow_runs}
   },
   readReviewerQueue(){
     const rows=this.listReviewRefsPaged(REVIEW_QUEUE_REF_PREFIX)
@@ -1708,6 +1714,7 @@ function normalizedReviewerActivity(name,rows,fields){
     }
     if(timestampCount===0)throw new LaneError(`reviewer ${name} activity timestamp is missing`)
     if(name==='checkRuns'||name==='workflowRuns'){
+      if(name==='checkRuns'&&!['CheckRun','StatusContext'].includes(row.__typename))throw new LaneError('reviewer checkRuns object type is unreadable or unknown')
       const legacyContext=name==='checkRuns'&&row.__typename==='StatusContext'
       const status=legacyContext?row.state:row.status
       if(typeof status!=='string')throw new LaneError(`reviewer ${name} status is missing or unreadable`)

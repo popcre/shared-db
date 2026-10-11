@@ -333,6 +333,7 @@ export function verifyOutcomeAcceptance({ issue, evidenceRef }, io) {
   // weaker reachable one. Every structural proof below (merge linkage, main
   // history, production apply, live assertion, generated types, exact objects)
   // runs identically for both routes.
+  if (scope?.workType === 'curated-master-data') throw new OutcomeError('curated Master Data completes by an authentic merged completion record (--complete-work), not the structural outcome lifecycle (#4194)')
   if (!scope || scope.workType !== 'structural' || !STRUCTURAL_ROUTES.includes(scope.route)) throw new OutcomeError('only an admitted structural outcome can complete')
   if (!scope.applicationReturnTo || !scope.liveAssertion) throw new OutcomeError('outcome is missing its application return address or live assertion')
   const comments=trustedOutcomeComments(io.issueComments(Number(issue)))

@@ -1,3 +1,4 @@
+-- derived-from: 20260907030418, 20261009224453, 20260829004145
 -- #2336 retained relationship summaries. Raw tables remain authorized history reads.
 -- No historical inference: all sixteen tables must remain empty at installation.
 begin;

@@ -2,7 +2,7 @@
 -- Issue #4168 - PopSG NAS password: move out of plaintext admin_config into Supabase
 -- Vault, readable only server-side (PopDAM u2giants/popdam3#194, browser exposure
 -- already removed in popdam3 PR #313).
--- Claim #4181 reserves version 20261011170328 and exactly two objects:
+-- Claim #4181 reserves version 20261011203122 and exactly two objects:
 --
 --   function public.get_sg_nas_password()        (new)
 --   function public.set_sg_nas_password(text)    (new)

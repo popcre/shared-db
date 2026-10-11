@@ -65,6 +65,10 @@ MIGRATION_LINE_RE = re.compile(r"^\s*(?:[•*\-]\s*)?(\d{14})_[^\s]+\.sql\s*$")
 # ever turns out NOT to be applied, that changes the count in AGENTS.md 6.8 and
 # this set must be revisited before anything is promoted.
 HARD_BLOCKED = {
+    # #2508: replaced originals; immutable successor provenance and live ledger verified.
+    "20260914061331",
+    "20260930212107",
+    "20261007143431",
     # #4060: merged PR4063 carries no PR-owned evidence pair, so its production
     # risk review cannot bind. Preview applied it. Claim4062 was reissued; only
     # forward replacement 20261009064439 may apply.
@@ -292,6 +296,9 @@ HARD_BLOCKED = {
 # verifier imports these names from here; pending-status policy must not import
 # that application verifier back into the production guard's execution closure.
 RETIRED_VERSION_REASONS = {
+    "20260914061331": "#2879 / #2885: production run 34819885746 refused original PR2882 provenance; #2885 forbids reuse of this version. Forward replacement 20260914075758 applied in run34834533519; live production ledger reverified October11,2026. Preserve original SQL and preview ledger; never promote original.",
+    "20260930212107": "#3234: preview-era PR3852 original replaced by production-path successor 20261005044103, applied run37292826682; source issue records complete live constraint proof. Live production successor ledger reverified October11,2026. Preserve original SQL and preview ledger; never promote original.",
+    "20261007143431": "#4037: PR4033 original never promoted; claim4038 reissued as production-path successor 20261007171252 (successor header pins byte-identical function body), applied run37669223667. Live successor ledger reverified October11,2026. Preserve original SQL; never promote original.",
     "20261009040550": "unpromotable producer provenance: original preview apply 37889697610 dispatched at 118561faaad54fd6bc477641e7a97bbf4c9db143 carried production_migration_guard.py blob bbbba660c9b329ddf35d58d28a31273f0f43b606, different from authored PR4119 merge bb03f7a54e90a7989347c40596249595b328d9fd blob 86d4f7ac1240460f5458ad8795c7ffa7a87971eb; historical recovery 37894367587 preview succeeded but automatic qualification refused dual producer pin. Preview already applied 090; production never applied it. Preserve immutable SQL and original evidence; supported same-owner claim 4117 retirement 6d51aceaff9424211fd320510ff07746ef5bca9c reissues byte-identical canonical replacement 20261009064439 under original issue 4060. Never apply retired090 again.",
     "20261008160444": "merged-stranded: PR4075 head38b6ade1b79f1c2fac869783b03ea23cc0df17ce has immutable production-risk REVISE; audit4116 and retirementd3fa4a2e7573abb5904b10f8e713a8b04880357e preserve source, never apply; claim4117 reserves canonical replacement20261009064439 under issue4060",
     "20261007232712": "merged-stranded: PR4063 head e42418b1b9dfcb271f81c06a058cb53567302de3 merged without a PR-owned evidence pair, so the post-merge production-risk review cannot bind; preview applied it in run37706126189; production never applied it; retain source and preview ledger, never apply this version; claim4062 reissued through immutable retirement589067baf4bdabe95b09dcedbe1e3f87106ee3f5 to never-applied20261008160444, now retired by audit4116 / d3fa4a2e7573abb5904b10f8e713a8b04880357e; canonical forward replacement20261009064439 under issue4060",
@@ -372,6 +379,31 @@ PREVIEW_ONLY_HISTORICAL_RESTORATIONS = {
 KNOWN_MIGRATION_TARGETS = frozenset({"production", "preview", "designflow-nonprod"})
 
 FOREIGN_TARGET_MIGRATIONS = {
+    "20261002135053": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#3869",
+        "note": "PR#3873, source issue #3869 and immutable generation 2 contract scope this link change to DesignFlow sandbox only. Source instructions prohibit shared production/preview apply. Exact version confirmed in sandbox ledger October11,2026. This is target scope, not retirement; it remains in-scope on designflow-nonprod.",
+    },
+    "20261002224215": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#3869",
+        "note": "PR#3915, source issue #3869 and immutable generation 5 contract scope this link change to DesignFlow sandbox only. Source instructions prohibit shared production/preview apply. Exact version confirmed in sandbox ledger October11,2026. This is target scope, not retirement; it remains in-scope on designflow-nonprod.",
+    },
+    "20261006164244": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#3869",
+        "note": "PR#3970, source issue #3869 and immutable generation 6 contract scope this link change to DesignFlow sandbox only. Source instructions prohibit shared production/preview apply. Exact version confirmed in sandbox ledger October11,2026. This is target scope, not retirement; it remains in-scope on designflow-nonprod.",
+    },
+    "20261009170724": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#3869",
+        "note": "PR#4143, source issue #3869 and immutable generation 9 contract scope this link change to DesignFlow sandbox only. Source instructions prohibit shared production/preview apply. Exact version confirmed in sandbox ledger October11,2026. This is target scope, not retirement; it remains in-scope on designflow-nonprod.",
+    },
+
     "20260909121403": {
         "target": "designflow-nonprod",
         "project": (

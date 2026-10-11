@@ -295,6 +295,17 @@ class GuardTests(unittest.TestCase):
         with self.assertRaises(GuardError):
             production_migration_guard.parse_allowlist("20261009040550")
 
+    def test_2508_replaced_originals_cannot_be_applied_but_successors_stay_available(self):
+        paths = local_migrations(REPO)
+        pairs = {"20260914061331": "20260914075758", "20260930212107": "20261005044103", "20261007143431": "20261007171252"}
+        for original, successor in pairs.items():
+            with self.subTest(original=original):
+                self.assertEqual(classify_pending_version(original, set(), REPO, paths, "production")["kind"], "retired")
+                self.assertIn(successor, production_migration_guard.RETIRED_VERSION_REASONS[original])
+                with self.assertRaises(GuardError):
+                    parse_allowlist(original)
+                self.assertEqual(parse_allowlist(successor), [successor])
+
     def test_the_block_list_matches_the_governed_retirements(self) -> None:
         # Three kinds, deliberately together. 20260726190000/20260726200000 are the
         # already-applied Master Data pair. 20260729120000 is the third kind:
@@ -305,6 +316,9 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(
             HARD_BLOCKED,
             {
+                "20260914061331",
+                "20260930212107",
+                "20261007143431",
                 "20261007232712",
                 "20261008160444",
                 "20261009040550",
@@ -3991,6 +4005,22 @@ class ForeignTargetScopeTest(unittest.TestCase):
     # live production ledger does, so the control reaches the classifier as
     # ordinary pending work rather than `base-absent` for an unrelated reason.
     IN_SCOPE_APPLIED = {"20260816110750", "20260909220101"}
+
+    def test_2508_exact_sandbox_chain_does_not_hide_shared_pending_work(self):
+        paths = local_migrations(REPO)
+        versions = ("20261002135053", "20261002224215", "20261006164244", "20261009170724")
+        for version in versions:
+            with self.subTest(version=version):
+                for target in ("production", "preview"):
+                    self.assertEqual(classify_pending_version(version, set(), REPO, paths, target)["kind"], "foreign-target")
+                self.assertIsNone(foreign_target_entry(version, "designflow-nonprod"))
+                with self.assertRaises(GuardError):
+                    parse_allowlist(version)
+        for version in ("20260929082814", "20260930193549", "20261001122410", "20261005025111", "20261009191951", "20261009224453", "20261010033616"):
+            with self.subTest(control=version):
+                self.assertNotIn(classify_pending_version(version, set(), REPO, paths, "production")["kind"], ("retired", "deliberately-held", "foreign-target"))
+        held = classify_pending_version("20260817150944", set(), REPO, paths, "production")
+        self.assertEqual(held["kind"], "deliberately-held")
 
     def test_hts_rag_split_is_out_of_scope_but_in_scope_work_is_still_pending(self) -> None:
         paths = local_migrations(REPO)

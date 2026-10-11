@@ -13,25 +13,31 @@
 --   refresh-style-guide-matviews                  hourly at :07
 --   refresh-style-guide-library-default-snapshot  every 15 minutes
 --
--- Idempotent: alters each job by name. A missing job (e.g. a preview branch without the
+-- Idempotent: alters every job row with that name. A missing job (e.g. a preview branch without the
 -- scheduler rows) is reported with a NOTICE and skipped; production proof reads cron.job.
+-- .github/live-proofs/3009.sql now accepts the old or new snapshot schedule.
 
 do $cadence$
 declare
-  v_job_id bigint;
+  v_job record;
+  v_found integer;
+  v_target record;
 begin
-  select jobid into v_job_id from cron.job where jobname = 'refresh-style-guide-matviews';
-  if v_job_id is null then
-    raise notice 'cron job refresh-style-guide-matviews not found; skipped';
-  else
-    perform cron.alter_job(job_id := v_job_id, schedule := '7 * * * *');
-  end if;
-
-  select jobid into v_job_id from cron.job where jobname = 'refresh-style-guide-library-default-snapshot';
-  if v_job_id is null then
-    raise notice 'cron job refresh-style-guide-library-default-snapshot not found; skipped';
-  else
-    perform cron.alter_job(job_id := v_job_id, schedule := '*/15 * * * *');
-  end if;
+  for v_target in
+    select * from (values
+      ('refresh-style-guide-matviews', '7 * * * *'),
+      ('refresh-style-guide-library-default-snapshot', '*/15 * * * *')
+    ) as t(jobname, schedule)
+  loop
+    v_found := 0;
+    -- jobname is unique only together with username, so alter every row of that name.
+    for v_job in select jobid from cron.job where jobname = v_target.jobname loop
+      perform cron.alter_job(job_id := v_job.jobid, schedule := v_target.schedule);
+      v_found := v_found + 1;
+    end loop;
+    if v_found = 0 then
+      raise notice 'cron job % not found; skipped', v_target.jobname;
+    end if;
+  end loop;
 end
 $cadence$;

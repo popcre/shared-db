@@ -57,6 +57,9 @@ begin
   end if;
 end $$;
 
+-- The migration role must be a member so it can ALTER ... OWNER TO the worker.
+grant pm_jev_triage_worker to postgres;
+
 -- ============================================================================
 -- 3. Eligibility / reservation ledger
 -- ============================================================================

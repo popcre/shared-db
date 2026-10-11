@@ -10,7 +10,8 @@
   "base_sha": "7f198bb1b8c05cbbb2f5c2aab8c91c926144f1ab",
   "files_changed": [
     "scripts/gh-read.mjs",
-    "scripts/gh-read.test.mjs"
+    "scripts/gh-read.test.mjs",
+    ".agent/work/3536/336/contract.json"
   ],
   "db_reads": [],
   "db_writes": [],

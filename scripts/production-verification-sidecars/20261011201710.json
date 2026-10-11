@@ -32,6 +32,11 @@
       "relation": "core.taxonomy_source_ref",
       "filters": [
         {
+          "column": "source_table",
+          "type": "text",
+          "equals": "plm.wb_property"
+        },
+        {
           "column": "source_id",
           "type": "text",
           "equals": "67830330-59a0-4d42-8765-c88e10814332"

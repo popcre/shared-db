@@ -3616,12 +3616,6 @@ class SandboxTargetCatalogSafetyTests(unittest.TestCase):
                     verify(REPO, "20261002135053", Path(tmp), "synthetic-project", "synthetic-token", True, ledger_name=ledger_name)
                 query.assert_not_called()
 
-
-if __name__ == "__main__":
-    unittest.main()
-
-
-
 class Issue4207RealSidecars(unittest.TestCase):
     """#4207: the cron-only (#4192) and curated data-only (#4176) migrations
     name no catalog object, so their post-apply proof is their hash-bound
@@ -3655,3 +3649,7 @@ class Issue4207RealSidecars(unittest.TestCase):
                     {"id": c["id"], "actual_count": 0, "expected_count": c["expected_count"]} for c in checks]},
             )
             self.assertTrue(failures, version)
+
+
+if __name__ == "__main__":
+    unittest.main()

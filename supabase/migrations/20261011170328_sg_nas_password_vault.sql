@@ -30,10 +30,21 @@
 -- (secrets_name_idx, asserted below), so at most one row can hold the name; two
 -- concurrent first writes cannot both succeed (the loser gets a unique violation and
 -- its admin save fails visibly). No advisory lock is used.
--- The copy runs only when no Vault secret of that name exists yet; an existing one is
--- never overwritten and must already equal the source or the migration fails. The copy
--- is verified: if the source row holds a string, the migration
+-- Vault signatures are pinned to the installed supabase_vault 0.3.1 forms
+-- create_secret(text,text,text,uuid) and update_secret(uuid,text,text,text,uuid)
+-- (observed on production 2026-10-11); the calls below use their leading arguments
+-- and defaults. A different Vault version stops the migration with a named error.
+--
+-- When the source admin_config row holds a string: if no Vault secret of that name
+-- exists, it is created from the source; if one exists, it is never overwritten and
+-- must already equal the source or the migration fails. Either way the value is
+-- verified: if the source row holds a string, the migration
 -- fails unless Vault then holds exactly that value.
+--
+-- Accepted, stated for the record: get_sg_nas_password reads one named row through
+-- the extension's vault.decrypted_secrets view (Vault holds a handful of rows); the
+-- copy block is exercised by this migration itself and fails closed rather than by a
+-- separate test, because it runs exactly once against the real source row.
 --
 -- ROLLBACK: drop both functions; the admin_config row is untouched by this migration,
 -- so the previous capability is intact. The Vault secret may be left in place or
@@ -47,14 +58,8 @@ begin
   end if;
   if to_regclass('vault.secrets') is null
      or to_regclass('vault.decrypted_secrets') is null
-     or not exists (select 1 from pg_proc p where p.pronamespace = 'vault'::regnamespace
-                      and p.proname = 'create_secret' and p.pronargs >= 2
-                      and p.pronargs - p.pronargdefaults <= 1
-                      and p.proargtypes[0] = 'text'::regtype)
-     or not exists (select 1 from pg_proc p where p.pronamespace = 'vault'::regnamespace
-                      and p.proname = 'update_secret' and p.pronargs >= 2
-                      and p.pronargs - p.pronargdefaults <= 2
-                      and p.proargtypes[0] = 'uuid'::regtype and p.proargtypes[1] = 'text'::regtype) then
+     or to_regprocedure('vault.create_secret(text,text,text,uuid)') is null
+     or to_regprocedure('vault.update_secret(uuid,text,text,text,uuid)') is null then
     raise exception 'shared-db#4168 preflight: vault.secrets, vault.decrypted_secrets, vault.create_secret or vault.update_secret is missing';
   end if;
   if (select c.relkind from pg_class c where c.oid = to_regclass('public.admin_config')) is distinct from 'r' then

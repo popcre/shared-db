@@ -5,7 +5,7 @@
 begin;
 create temporary table popsg_test_jobs (
   jobid bigint primary key, jobname text, command text, active boolean,
-  username text, database text
+  username text, database text, schedule text default '*/15 * * * *'
 );
 create temporary table popsg_test_job_runs (
   jobid bigint, runid bigint, status text, start_time timestamptz, end_time timestamptz
@@ -33,7 +33,7 @@ declare
   v_failed boolean;
 begin
   v_job := 9;
-  insert into pg_temp.popsg_test_jobs values (v_job, 'refresh-style-guide-matviews', ' SELECT public.refresh_style_guide_matviews(); ', true, 'postgres', current_database());
+  insert into pg_temp.popsg_test_jobs values (v_job, 'refresh-style-guide-matviews', ' SELECT public.refresh_style_guide_matviews(); ', true, 'postgres', current_database(), '*/15 * * * *');
   -- Isolate scheduler evidence only inside this rolled-back disposable test.
   delete from pg_temp.popsg_test_job_runs where jobid = v_job;
   update pg_temp.popsg_test_jobs set active = true, username = 'postgres', database = current_database(),
@@ -63,6 +63,33 @@ begin
   begin perform pg_temp.await_style_guide_matview_refresh(v_expired);
   exception when raise_exception then v_failed := sqlerrm = 'No successful scheduled PopSG refresh within the bounded wait window'; end;
   if not v_failed then raise exception 'An expired wait did not fail'; end if;
+  -- The approved hourly cadence has its own bounded window, not the old 20 minutes.
+  update pg_temp.popsg_test_jobs set schedule = '7 * * * *' where jobid = v_job;
+  select ready into v_ready from pg_temp.await_style_guide_matview_refresh(v_expired);
+  if v_ready then raise exception 'Hourly pending work was falsely completed'; end if;
+  update public.style_guide_crawl_runs set ingest_completed_at = clock_timestamp() - interval '68 minutes',
+    refresh_started_at = clock_timestamp() - interval '66 minutes' where id = v_expired;
+  v_failed := false;
+  begin perform pg_temp.await_style_guide_matview_refresh(v_expired);
+  exception when raise_exception then v_failed := true; end;
+  if not v_failed then raise exception 'Hourly wait did not expire'; end if;
+  insert into pg_temp.popsg_test_job_runs values (v_job, 20, 'running', clock_timestamp() - interval '1 minute', null);
+  select ready into v_ready from pg_temp.await_style_guide_matview_refresh(v_expired);
+  if v_ready then raise exception 'Hourly in-flight work was falsely completed'; end if;
+  update public.style_guide_crawl_runs set refresh_started_at = clock_timestamp() - interval '68 minutes' where id = v_expired;
+  v_failed := false;
+  begin perform pg_temp.await_style_guide_matview_refresh(v_expired);
+  exception when raise_exception then v_failed := true; end;
+  if not v_failed then raise exception 'Hourly in-flight work escaped its absolute cap'; end if;
+  delete from pg_temp.popsg_test_job_runs where runid = 20;
+  update pg_temp.popsg_test_jobs set schedule = '0 0 * * *' where jobid = v_job;
+  v_failed := false;
+  begin perform pg_temp.await_style_guide_matview_refresh(v_run);
+  exception when raise_exception then v_failed := true; end;
+  if not v_failed then raise exception 'Unsupported cadence was accepted'; end if;
+  update pg_temp.popsg_test_jobs set schedule = '*/15 * * * *' where jobid = v_job;
+  update public.style_guide_crawl_runs set ingest_completed_at = clock_timestamp() - interval '22 minutes',
+    refresh_started_at = clock_timestamp() - interval '21 minutes' where id = v_expired;
   -- A recent qualifying scheduler run in flight gets a bounded grace period.
   insert into pg_temp.popsg_test_job_runs (jobid, runid, status, start_time, end_time)
     values (v_job, 2, 'running', clock_timestamp() - interval '1 minute', null);

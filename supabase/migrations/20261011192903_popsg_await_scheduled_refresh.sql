@@ -1,7 +1,9 @@
 -- Issue #3458; claim #4200. PopDAM #335: await the existing successful
 -- scheduler refresh instead of running a full concurrent refresh in an 8s RPC.
 -- derived-from: 20260917005221
--- No scheduler, timeout, matview, source data, or legacy RPC is changed.
+-- No scheduler, statement timeout, matview, source data, or legacy RPC is changed.
+-- Supports existing */15 (20-minute wait) and #4192 hourly at :07 (65-minute
+-- wait), each with at most two extra minutes for a qualifying in-flight job.
 create or replace function public.await_style_guide_matview_refresh(p_run_id uuid)
 returns table (ready boolean, refreshed_at timestamptz)
 language plpgsql
@@ -13,6 +15,7 @@ declare
   v_ingest timestamptz;
   v_state text;
   v_job bigint;
+  v_wait_minutes integer;
   v_finished timestamptz;
   v_inflight boolean;
 begin
@@ -25,8 +28,10 @@ begin
   if not found or v_ingest is null or v_state not in ('reconciling', 'refreshing') then
     raise exception 'Crawl must have finished ingestion and reconciliation before awaiting refresh';
   end if;
-  select j.jobid into v_job from cron.job j
+  select j.jobid, case j.schedule when '*/15 * * * *' then 20 else 65 end
+    into v_job, v_wait_minutes from cron.job j
    where j.jobname = 'refresh-style-guide-matviews' and j.active
+     and j.schedule in ('*/15 * * * *', '7 * * * *')
      and j.username = 'postgres' and j.database = current_database()
      and regexp_replace(lower(regexp_replace(j.command, '[[:space:]]', '', 'g')), ';$', '') = 'selectpublic.refresh_style_guide_matviews()';
   if v_job is null then
@@ -56,15 +61,15 @@ begin
    where d.jobid = v_job and d.status = 'succeeded'
      and d.start_time >= greatest(v_start, v_ingest)
      and d.end_time >= d.start_time;
-  if v_finished is null and clock_timestamp() - v_start > interval '20 minutes' then
+  if v_finished is null and clock_timestamp() - v_start > make_interval(mins => v_wait_minutes) then
     -- A qualifying job may still be running. Allow only the existing two-minute
-    -- database execution budget, with an absolute 22-minute wait cap. A hung
+    -- database execution budget, with a schedule-dependent absolute wait cap. A hung
     -- run can never turn this into unbounded polling; no timeout is changed.
     select exists (select 1 from cron.job_run_details d
       where d.jobid = v_job and d.status in ('starting', 'connecting', 'sending', 'running')
         and d.end_time is null and d.start_time >= greatest(v_start, v_ingest)
         and d.start_time >= clock_timestamp() - interval '2 minutes') into v_inflight;
-    if not v_inflight or clock_timestamp() - v_start > interval '22 minutes' then
+    if not v_inflight or clock_timestamp() - v_start > make_interval(mins => v_wait_minutes + 2) then
       raise exception 'No successful scheduled PopSG refresh within the bounded wait window';
     end if;
   end if;

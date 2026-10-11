@@ -4026,11 +4026,10 @@ def verify(
         check.get("kind") == "catalog_contract" for check in behavior_checks
     )
     if targets.is_empty() and behavior_checks and not has_catalog_contract:
-        # Issue #4207: this is the accepted data-only route (render_report
-        # passes on the hash-bound assertions), not an error. Recording it in
-        # `errors` made every later verification-only recovery of a data or
-        # pg_cron migration impossible, because recovery requires no errors.
-        pass
+        errors.append(
+            "the allowlisted migrations named no catalog object, but supplied "
+            f"{len(behavior_checks)} hash-bound behavioral assertion(s)."
+        )
     elif targets.is_empty() and has_catalog_contract:
         # The strict named contract is the durable verification surface. This
         # is expected for migrations whose permanent DDL is passed as typed

@@ -60,7 +60,14 @@ def build_binding(repo, evidence, live_ledger, catalog, jobs, inputs):
         if manifest.get(version) != digest:
             raise ValueError("original SQL bytes changed")
         hashes[version] = digest
-    if catalog.get("enforcing") is not True or catalog.get("errors") != [] or catalog.get("allowlist") != wanted:
+    # The verifier records the accepted data-only route (no catalog object, proof
+    # by hash-bound behavioral assertions) as an informational line in `errors`.
+    # It is not a failure (render_report passes on those assertions), so exactly
+    # that line is tolerated; every other error still refuses (issue #4214).
+    data_only = re.compile(r"the allowlisted migrations named no catalog object, but supplied [1-9][0-9]* hash-bound behavioral assertion\(s\)\.")
+    errors = catalog.get("errors")
+    real_errors = [e for e in errors if not (isinstance(e, str) and data_only.fullmatch(e))] if isinstance(errors, list) else None
+    if catalog.get("enforcing") is not True or real_errors != [] or catalog.get("allowlist") != wanted:
         raise ValueError("catalog recovery did not enforce the exact allowlist")
     # Require a hash-bound named assertion for every version: a catalog
     # contract (opaque DDL) or, for a data or pg_cron migration with no catalog

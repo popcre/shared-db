@@ -110,7 +110,6 @@ begin
   -- B  COMMENT VALIDATION + C BODY REVISION (as administrator)
   -- ------------------------------------------------------------------
   perform set_config('request.jwt.claims', json_build_object('sub', v_admin_auth, 'role', 'authenticated')::text, true);
-  perform set_config('role', 'authenticated', true);
 
   v_raised := false;
   begin
@@ -142,6 +141,8 @@ begin
     raise exception 'NUL/control comment body must be rejected';
   end if;
 
+  -- Fixture writes run as the migration role; only RPC calls need the
+  -- authenticated session role.
   v_result := api.pm_add_product_comment(v_product, '  first valid comment  ', gen_random_uuid());
   v_comment := (v_result ->> 'comment_id')::uuid;
   v_rev := (v_result ->> 'body_revision')::integer;
@@ -189,7 +190,6 @@ begin
   -- E  CROSS-USER ISOLATION (RLS select own)
   -- ------------------------------------------------------------------
   perform set_config('request.jwt.claims', json_build_object('sub', v_other_auth, 'role', 'authenticated')::text, true);
-  perform set_config('role', 'authenticated', true);
 
   -- Seed a triage row as admin first.
   perform set_config('request.jwt.claims', json_build_object('sub', v_admin_auth, 'role', 'authenticated')::text, true);

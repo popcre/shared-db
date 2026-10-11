@@ -795,7 +795,8 @@ begin
     raise exception using errcode = '22023', message = 'PM_COMMENT_TARGET_INVALID';
   end if;
 
-  -- Per-profile rolling request limit (50 per 24h) without read-then-insert race.
+  -- Per-profile rolling request limit (50 per 24h). Best-effort under
+  -- concurrency; pilot-scale admin-only path.
   select count(*) into v_recent
   from pim.ai_activity_triage t
   where t.requester_profile_id = v_profile
@@ -850,6 +851,7 @@ begin
     'status', 'leased',
     'triage_id', v_row.id,
     'lease_token', v_lease_token,
+    'lease_token_hash', v_lease_hash,
     'state', v_row.state,
     'source_body_revision', v_row.source_body_revision
   );
@@ -899,9 +901,13 @@ begin
      or not pim.pm_verify_jev_hmac_envelope(p_envelope, p_signature) then
     raise exception using errcode = '22023', message = 'PM_ENVELOPE_INVALID';
   end if;
-  -- Bind envelope fields to this exact row (prevents cross-row replay).
+  -- Bind envelope fields to this exact row and action (prevents cross-row replay).
   if (p_envelope ->> 'requester_profile_id') is distinct from v_row.requester_profile_id::text
      or (p_envelope ->> 'comment_id') is distinct from v_row.comment_id::text
+     or (p_envelope ->> 'product_id') is distinct from v_row.product_id::text
+     or (p_envelope ->> 'source_body_revision') is distinct from v_row.source_body_revision::text
+     or (p_envelope ->> 'input_digest') is distinct from v_row.input_digest
+     or (p_envelope ->> 'disposition') is distinct from p_action_label
      or (p_envelope ->> 'lease_token') is null
      or encode(extensions.digest(convert_to(p_envelope ->> 'lease_token', 'utf8'), 'sha256'), 'hex')
         is distinct from v_row.lease_token_hash then
@@ -1075,9 +1081,15 @@ begin
   if v_type is null or length(v_type) < 1 or length(v_type) > 100 then
     raise exception using errcode = '22023', message = 'PM_INVALID_DECISION_TYPE';
   end if;
+  if v_type ~ '[\u0000-\u001F\u007F]' then
+    raise exception using errcode = '22023', message = 'PM_INVALID_CONTROL_CHARS';
+  end if;
   v_notes := nullif(btrim(coalesce(p_notes, '')), '');
   if v_notes is not null and length(v_notes) > 2000 then
     raise exception using errcode = '22023', message = 'PM_INVALID_DECISION_NOTES';
+  end if;
+  if v_notes is not null and v_notes ~ '[\u0000-\u001F\u007F]' then
+    raise exception using errcode = '22023', message = 'PM_INVALID_CONTROL_CHARS';
   end if;
 
   insert into app.activity (target_schema, target_table, target_id, action, summary, payload, actor_profile_id)
@@ -1113,6 +1125,9 @@ begin
   v_title := btrim(p_title);
   if v_title is null or length(v_title) < 1 or length(v_title) > 200 then
     raise exception using errcode = '22023', message = 'PM_INVALID_REMINDER_TITLE';
+  end if;
+  if v_title ~ '[\u0000-\u001F\u007F]' then
+    raise exception using errcode = '22023', message = 'PM_INVALID_CONTROL_CHARS';
   end if;
   if p_due_at is not null and p_due_at < date '2000-01-01' then
     raise exception using errcode = '22023', message = 'PM_INVALID_REMINDER_DUE';

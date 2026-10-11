@@ -16,7 +16,7 @@ with expected_relations(name,kind,columns) as (values
     ('plm.coldlion_merch_group_candidates(text,text)','TABLE(company_code text, division_code text, mg_type_code text, mg_type_desc text, mg_code text, mg_desc text, mg_category text, active text, candidate_kind text, resolution_status text, last_seen_at timestamp with time zone)','s','search_path=plm, coldlion, extensions, public')
 ), checks as (
 select
-  exists(select 1 from supabase_migrations.schema_migrations where version='20261011184117')
+  exists(select 1 from supabase_migrations.schema_migrations where version='20261011204918')
   and (select count(*) from expected_relations)=10
   and not exists(select 1 from expected_relations e left join pg_class c on c.oid=to_regclass(e.name)
     where c.oid is null or c.relkind::text<>e.kind

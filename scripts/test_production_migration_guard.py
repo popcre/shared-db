@@ -282,15 +282,15 @@ class GuardTests(unittest.TestCase):
         reason = production_migration_guard.RETIRED_VERSION_REASONS["20261005025111"]
         self.assertIn("REVISE", reason)
         self.assertIn("6328e126316baca16b7f3d842f79a769599f478c", reason)
-        self.assertIn("20261011184117", reason)
+        self.assertIn("20261011204918", reason)
         self.assertIn("not yet installed", reason)
-        self.assertNotIn("20261011184117", HARD_BLOCKED)
+        self.assertNotIn("20261011204918", HARD_BLOCKED)
         import hashlib
         original = REPO / 'supabase/migrations/20261005025111_coldlion_unit6_consumer_contracts.sql'
         self.assertEqual(hashlib.sha256(original.read_bytes()).hexdigest(), '55007a6e5eee7f1966568368f8d9c10e3f04ea884310b4cdba72026fe12f0543')
         with self.assertRaises(GuardError):
             parse_allowlist('20261005025111')
-        self.assertEqual(parse_allowlist('20261011184117'), ['20261011184117'])
+        self.assertEqual(parse_allowlist('20261011204918'), ['20261011204918'])
 
     def test_4060_forward_retirement_names_actual_replacement_and_preserves_risk_revise(self):
         versions = ("20261007232712", "20261008160444", "20261009040550")
@@ -4086,7 +4086,7 @@ class ForeignTargetScopeTest(unittest.TestCase):
                 self.assertIsNone(foreign_target_entry(version, "designflow-nonprod"))
                 with self.assertRaises(GuardError):
                     parse_allowlist(version)
-        for version in ("20260929082814", "20260930193549", "20261011184117", "20261009191951", "20261009224453", "20261010033616"):
+        for version in ("20260929082814", "20260930193549", "20261011204918", "20261009191951", "20261009224453", "20261010033616"):
             with self.subTest(control=version):
                 self.assertNotIn(classify_pending_version(version, set(), REPO, paths, "production")["kind"], ("retired", "deliberately-held", "foreign-target"))
         held = classify_pending_version("20260817150944", set(), REPO, paths, "production")

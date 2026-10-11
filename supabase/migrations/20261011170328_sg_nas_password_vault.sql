@@ -27,10 +27,16 @@
 -- Preconditions are asserted up front (named errors, not raw failures): the
 -- supabase_vault extension and the vault objects this file calls, and that neither
 -- new function exists yet. vault.secrets carries a unique index on name
--- (secrets_name_idx), so at most one row can hold the name; set_sg_nas_password
--- also takes a transaction advisory lock so concurrent first writes serialize.
--- The copy is verified: if the source row holds a string, the migration fails
--- unless Vault then holds exactly that value.
+-- (secrets_name_idx, asserted below), so at most one row can hold the name; two
+-- concurrent first writes cannot both succeed (the loser gets a unique violation and
+-- its admin save fails visibly). No advisory lock is used.
+-- The copy runs only when no Vault secret of that name exists yet (an existing one is
+-- left untouched), and is verified: if the source row holds a string, the migration
+-- fails unless Vault then holds exactly that value.
+--
+-- ROLLBACK: drop both functions; the admin_config row is untouched by this migration,
+-- so the previous capability is intact. The Vault secret may be left in place or
+-- deleted with: delete from vault.secrets where name = 'popdam_sg_nas_password';
 -- =====================================================================================
 
 do $preflight$
@@ -44,8 +50,33 @@ begin
      or to_regprocedure('vault.update_secret(uuid,text,text,text,uuid)') is null then
     raise exception 'shared-db#4168 preflight: vault.secrets, vault.decrypted_secrets, vault.create_secret or vault.update_secret is missing';
   end if;
-  if to_regclass('public.admin_config') is null then
-    raise exception 'shared-db#4168 preflight: public.admin_config is missing';
+  if (select c.relkind from pg_class c where c.oid = to_regclass('public.admin_config')) is distinct from 'r' then
+    raise exception 'shared-db#4168 preflight: public.admin_config is missing or not an ordinary table';
+  end if;
+  if (select format_type(a.atttypid, a.atttypmod) from pg_attribute a
+      where a.attrelid = 'public.admin_config'::regclass and a.attname = 'key' and not a.attisdropped) is distinct from 'text'
+     or (select format_type(a.atttypid, a.atttypmod) from pg_attribute a
+      where a.attrelid = 'public.admin_config'::regclass and a.attname = 'value' and not a.attisdropped) is distinct from 'jsonb' then
+    raise exception 'shared-db#4168 preflight: public.admin_config key/value are not text/jsonb';
+  end if;
+  -- vault.secrets must expose id and name, and name must be unique (secrets_name_idx):
+  -- set_sg_nas_password relies on at most one row holding the name.
+  if (select count(*) from pg_attribute a
+       where a.attrelid = 'vault.secrets'::regclass and not a.attisdropped
+         and (a.attname, format_type(a.atttypid, a.atttypmod)) in (('id', 'uuid'), ('name', 'text'))) <> 2
+     or (select count(*) from pg_attribute a
+       where a.attrelid = 'vault.decrypted_secrets'::regclass and not a.attisdropped
+         and (a.attname, format_type(a.atttypid, a.atttypmod)) in (('name', 'text'), ('decrypted_secret', 'text'))) <> 2 then
+    raise exception 'shared-db#4168 preflight: vault.secrets(id uuid, name text) or vault.decrypted_secrets(name text, decrypted_secret text) has a different shape';
+  end if;
+  if not exists (
+    select 1 from pg_index i
+     where i.indrelid = 'vault.secrets'::regclass and i.indisunique and i.indisvalid
+       and i.indnkeyatts = 1
+       and i.indkey[0] = (select a.attnum from pg_attribute a
+                           where a.attrelid = 'vault.secrets'::regclass and a.attname = 'name')
+  ) then
+    raise exception 'shared-db#4168 preflight: vault.secrets has no unique index on (name)';
   end if;
   if to_regprocedure('public.get_sg_nas_password()') is not null
      or to_regprocedure('public.set_sg_nas_password(text)') is not null then
@@ -78,8 +109,6 @@ as $function$
 declare
   v_id uuid;
 begin
-  perform pg_advisory_xact_lock(hashtext('shared-db#4168 popdam_sg_nas_password'));
-
   select s.id into v_id
     from vault.secrets s
    where s.name = 'popdam_sg_nas_password'
@@ -122,6 +151,10 @@ begin
 
   if v_source is null or jsonb_typeof(v_source) <> 'string' then
     raise notice 'shared-db#4168: no string WINDOWS_AGENT_SG_NAS_PASS row; nothing copied';
+    return;
+  end if;
+  if exists (select 1 from vault.secrets s where s.name = 'popdam_sg_nas_password') then
+    raise notice 'shared-db#4168: Vault secret popdam_sg_nas_password already exists; left untouched';
     return;
   end if;
 

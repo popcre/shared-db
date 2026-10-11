@@ -6,7 +6,7 @@
 do $baseline$
 begin
   if not exists (select 1 from pg_proc where oid = to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)')
-    and md5(prosrc) = '3547b0f7d28d044ff6d6e031dcbeebbb' and prosecdef and provolatile = 's') then
+    and md5(prosrc) = '3547b0f7d28d044ff6d6e031dcbeebbb' and proowner = 'postgres'::regrole and prosecdef and provolatile = 's') then
     raise exception 'PopSG search baseline differs; reconcile before applying';
   end if;
 end

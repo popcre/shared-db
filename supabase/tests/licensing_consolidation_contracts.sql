@@ -539,7 +539,7 @@ begin
   if not exists(select 1 from jsonb_array_elements(q.operations) x where x->>'op'='upsert_relationship_support' and x->>'relationship_kind'='property_character' and x->>'evidence_kind'='direct_source_assertion' and x->'after'->>'core_property_id'=p::text and x->'after'->>'core_character_id'=ch::text) then raise exception 'legacy exact direct relationship operation lost';end if;
   foreach ev in array array['inferred','co_occurrence'] loop
    failed:=false;begin
-    update plm.licensing_relationship_resolution set evidence_kind=ev where source_system=s and source_left_id='synthetic-native-2336';
+    update plm.licensing_relationship_resolution set evidence_kind=ev::core.relationship_evidence_kind where source_system=s and source_left_id='synthetic-native-2336';
    exception when check_violation then
     get stacked diagnostics constraint_name=CONSTRAINT_NAME;
     if constraint_name<>'licensing_relationship_resolution_matched_is_direct_chk' then raise;end if;

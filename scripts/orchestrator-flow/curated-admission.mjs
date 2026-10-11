@@ -100,6 +100,10 @@ const FORBIDDEN_WORDS = new Set([
 ])
 const FORBIDDEN_PREFIXES = ['pg_', 'dblink', 'query_to_', 'table_to_', 'schema_to_', 'database_to_', 'cursor_to_', 'xpath_table']
 const ALLOWED_PG_WORDS = new Set(['pg_backend_pid'])
+// Forbidden in every position, including as a qualified member: sequence
+// advancing functions, and the cron schema/functions under any spelling.
+const FORBIDDEN_IDENTS = new Set(['nextval', 'currval', 'lastval', 'cron', 'pg_catalog', 'information_schema'])
+const WHERE_KEYWORDS = new Set(['where', 'and', 'or', 'not', 'true', 'false', 'null', 'is', 'in', 'returning'])
 
 // `SET LOCAL <one of these>` is the only session statement a curated load may use.
 const SETTABLE = new Set(['statement_timeout', 'lock_timeout'])
@@ -190,10 +194,18 @@ export function inspectCuratedSql(sql) {
         if (plpgsql) throw new CuratedSqlError('nested dollar-quoted strings inside a DO block are refused')
         continue
       }
+      if (token.type === 'ident') {
+        // A quoted identifier names the same catalog object or function as its
+        // bare spelling (case aside), so it gets the same forbidden checks.
+        const name = token.value.toLowerCase(), member = tokens[k - 1]?.type === 'punct' && tokens[k - 1].value === '.'
+        if ((FORBIDDEN_WORDS.has(name) && !member) || FORBIDDEN_IDENTS.has(name) || (FORBIDDEN_PREFIXES.some((prefix) => name.startsWith(prefix)) && !ALLOWED_PG_WORDS.has(name))) throw new CuratedSqlError(`forbidden quoted identifier "${token.value}"`)
+        continue
+      }
       if (token.type !== 'word') continue
       const word = token.value, prev = tokens[k - 1], next = tokens[k + 1]
       const qualifiedMember = prev?.type === 'punct' && prev.value === '.'
       if (FORBIDDEN_WORDS.has(word) && !qualifiedMember) throw new CuratedSqlError(`forbidden word ${word.toUpperCase()}`)
+      if (FORBIDDEN_IDENTS.has(word)) throw new CuratedSqlError(`forbidden function ${word}`)
       if (FORBIDDEN_PREFIXES.some((prefix) => word.startsWith(prefix)) && !ALLOWED_PG_WORDS.has(word)) throw new CuratedSqlError(`forbidden function or catalog ${word}`)
       if (word === 'do' && !(next?.type === 'word' && ['nothing', 'update'].includes(next.value))) {
         throw new CuratedSqlError('nested or non-leading DO is refused')
@@ -227,15 +239,28 @@ export function inspectCuratedSql(sql) {
       if (!target?.schema || !target.name) throw new CuratedSqlError(`${word.toUpperCase()} target must be a schema-qualified table`)
       if (!isCuratedTarget(target.schema, target.name)) throw new CuratedSqlError(`${word.toUpperCase()} target ${target.schema}.${target.name} is outside curated Master Data`)
       if (word !== 'insert') {
-        let end = j, depth = 0, bounded = false
+        let end = j, depth = 0, where = -1
         for (; end < tokens.length; end++) {
           const t = tokens[end]
           if (t.type === 'punct' && t.value === '(') depth++
           else if (t.type === 'punct' && t.value === ')') depth--
           else if (t.type === 'punct' && t.value === ';' && depth <= 0) break
-          else if (depth === 0 && t.type === 'word' && t.value === 'where') bounded = true
+          else if (depth === 0 && t.type === 'word' && t.value === 'where' && where < 0) where = end
         }
-        if (!bounded) throw new CuratedSqlError(`${word.toUpperCase()} on ${target.schema}.${target.name} has no top-level WHERE clause`)
+        // Bounded means the top-level WHERE compares a column to a value with
+        // `=` (a literal, parameter, or PL/pgSQL variable that is not the same
+        // name). `where true`, `where 1=1`, `where id = id` are not bounds.
+        const keyOf = (t) => t?.type === 'word' ? `w:${t.value}` : t?.type === 'ident' ? `w:${t.value.toLowerCase()}` : null
+        let bounded = false
+        for (let w = where + 1; where >= 0 && w < end; w++) {
+          const t = tokens[w]
+          if (!(t.type === 'punct' && t.value === '=')) continue
+          const left = tokens[w - 1], right = tokens[w + 1]
+          const leftColumn = (left?.type === 'word' && !WHERE_KEYWORDS.has(left.value)) || left?.type === 'ident'
+          const rightValue = ['string', 'number', 'param'].includes(right?.type) || ((right?.type === 'word' && !WHERE_KEYWORDS.has(right.value)) || right?.type === 'ident')
+          if (leftColumn && rightValue && keyOf(left) !== keyOf(right)) { bounded = true; break }
+        }
+        if (!bounded) throw new CuratedSqlError(`${word.toUpperCase()} on ${target.schema}.${target.name} has no top-level WHERE clause comparing a column to a value`)
       }
       writes.add(`table ${target.schema}.${target.name}`)
       dml++
@@ -258,8 +283,9 @@ export function pgCronWrites(sql) {
   for (const { tokens } of units) {
     for (let k = 0; k + 3 < tokens.length; k++) {
       const [a, dot, b, open] = [tokens[k], tokens[k + 1], tokens[k + 2], tokens[k + 3]]
-      if (a.type === 'word' && a.value === 'cron' && dot.type === 'punct' && dot.value === '.'
-        && b.type === 'word' && PG_CRON_WRITERS.has(b.value) && open.type === 'punct' && open.value === '(') return ['table cron.job']
+      const name = (t) => t.type === 'word' ? t.value : t.type === 'ident' ? t.value.toLowerCase() : null
+      if (name(a) === 'cron' && dot.type === 'punct' && dot.value === '.'
+        && PG_CRON_WRITERS.has(name(b)) && open.type === 'punct' && open.value === '(') return ['table cron.job']
     }
   }
   return []

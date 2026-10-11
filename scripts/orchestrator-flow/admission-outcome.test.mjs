@@ -1124,8 +1124,8 @@ test('curated data-only inspection fails closed on SQL its detectors cannot see 
     ['reindex table core.property;' + ins, /structure|REINDEX/],
     ['refresh materialized view core.x;' + ins, /REFRESH/],
     ['set role postgres;' + ins, /SET LOCAL|ROLE/],
-    ['delete from core.property;', /no top-level WHERE/],
-    ["update core.property set name = 'x';", /no top-level WHERE/],
+    ['delete from core.property;', /no top-level WHERE clause comparing/],
+    ["update core.property set name = 'x';", /no top-level WHERE clause comparing/],
     ['select 1;', /writes no row/],
     // round 2: lexer desynchronisation
     ["insert into core.property (name) values (E'a\\''); create table core.evil(id int); select 1; --'", /structure|CREATE/],
@@ -1152,8 +1152,18 @@ test('curated data-only inspection fails closed on SQL its detectors cannot see 
     [ins + "select query_to_xml('create table x()', true, true, '');", /query_to_xml/],
     [ins + "select dblink_exec('create table x()');", /dblink_exec/],
     ['do language plpython3u $$ x $$;' + ins, /plpgsql/],
-    ["do $$ begin insert into core.property (name) values ('a'); update core.property set name = 'b'; end $$;", /no top-level WHERE/],
+    ["do $$ begin insert into core.property (name) values ('a'); update core.property set name = 'b'; end $$;", /no top-level WHERE clause comparing/],
     ["do $$ begin select 1 into core.evil; end $$;" + ins, /unqualified PL\/pgSQL variable/],
+    // round 3: quoted identifiers, tautological bounds, sequences, quoted cron
+    [ins + 'select "pg_terminate_backend"(1);', /quoted identifier/],
+    [ins + 'select "pg_catalog"."set_config"(\'search_path\', \'x\', false);', /quoted identifier/],
+    [ins + 'select "dblink_exec"(\'create table x()\');', /quoted identifier/],
+    ['update "pg_catalog"."pg_class" set relhasoids = true where relname = \'p\';', /quoted identifier|outside curated|structure/],
+    ['delete from core.property where true;', /no top-level WHERE clause comparing/],
+    ["update core.property set name = 'x' where 1=1;", /no top-level WHERE clause comparing/],
+    ["update core.property set name = 'x' where id = id;", /no top-level WHERE clause comparing/],
+    [ins + "select nextval('core.s');", /nextval/],
+    [ins + 'select "cron"."schedule"(\'j\', \'* * * * *\', \'select 1\');', /quoted identifier/],
   ]
   for (const [sql, pattern] of refused) {
     let error = null
@@ -1186,6 +1196,7 @@ test('pg_cron schedule changes are structural writes on table cron.job (#4192)',
   assert.deepEqual(inspectPrStructuralChange(file(cron)).objects, ['table cron.job'])
   assert.deepEqual(inspectPrStructuralChange(file("select cron.schedule('j', '* * * * *', 'select 1');")).objects, ['table cron.job'])
   assert.deepEqual(inspectPrStructuralChange(file("select cron.unschedule('j');")).objects, ['table cron.job'])
+  assert.deepEqual(inspectPrStructuralChange(file('select "cron"."schedule"(\'j\', \'* * * * *\', \'select 1\');')).objects, ['table cron.job'])
   // prose or literals mentioning cron calls are not writes
   assert.throws(() => inspectPrStructuralChange(file("-- perform cron.alter_job(1)\nselect 'cron.schedule(x)';")), /no statement-leading schema DDL/)
   // the curated data-only path never admits a cron change

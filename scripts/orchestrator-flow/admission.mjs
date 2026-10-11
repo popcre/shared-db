@@ -167,6 +167,7 @@ function evaluateCuratedAdmission(issue, scope, impact) {
   if (scope.writes?.length || scope.reads?.length) refuse('curated-master-data admission must not claim database objects')
   if (typeof scope.liveAssertion !== 'string' || !scope.liveAssertion.trim()) refuse('curated-master-data admission requires a concrete live_assertion')
   if (!['required', 'not-applicable'].includes(scope.generatedTypes)) refuse('curated-master-data admission requires generated_types: required or not-applicable')
+  if (scope.serviceClass !== 'maintenance') refuse('curated-master-data work is maintenance service class only')
   if (impact) refuse('db-impact is reserved for urgent-application work')
   return {
     admitted: true,
@@ -212,7 +213,7 @@ export function inspectPrCuratedDataChange(prFiles = [], issue = null, scope = n
   const writes = new Set()
   for (const [index, text] of sql.entries()) {
     try { for (const write of inspectCuratedSql(text).writes) writes.add(write) } catch (error) {
-      if (!(error instanceof CuratedSqlError)) throw error
+      if (!(error instanceof CuratedSqlError)) refuse(`curated-master-data migration inspection failed: ${error.message}`)
       refuse(`curated-master-data migration ${migrations[index].filename ?? migrations[index].path} is not a bounded curated row load: ${error.message}; structural or opaque SQL requires work_type structural`)
     }
   }

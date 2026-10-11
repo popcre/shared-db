@@ -1,0 +1,75 @@
+{
+  "schema_version": 2,
+  "work_issue": 3987,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Repair verified future queue restoration dispatch blockers with exact selected-PR identity/head binding and real required sibling assertions; retain actual12 settings, all14 future SUCCESS prerequisite, original application provenance and ordinary PR/group behavior Add durable combined protected-workflow/actual-future-checker regression after real guarded delivery failure and assigned reviewer note4; no production guard weakening or review-start refund.",
+  "base_sha": "493b78f0f0f27daad3e9f482375e3bd1e89fd821",
+  "dispatcher": "Codex coordinating parent #3536",
+  "worker": "codex",
+  "branch": "codex/3536-queue-retirement",
+  "worktree": "/tmp/shared-db-queue-retirement",
+  "allowed_paths": [
+    ".github/workflows/pr-guards.yml",
+    ".github/workflows/merge-queue-gate.yml",
+    "scripts/configure-merge-queue.mjs",
+    "scripts/configure-merge-queue.test.mjs",
+    "scripts/orchestrator-flow/runner-lanes.test.mjs",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "docs/verification/main-required-status-checks.json",
+    "docs/verification/main-required-status-checks-readback-20261006.json",
+    "docs/verification/ci-audit-queue-context-retirement-20261006.json",
+    "docs/merge-queue-operation.md",
+    "scripts/lib/required-check-readback.test.mjs",
+    "scripts/check-pr-object-collisions.mjs",
+    "scripts/check-pr-object-collisions.test.mjs"
+  ],
+  "file_writes": [
+    ".github/workflows/pr-guards.yml",
+    ".github/workflows/merge-queue-gate.yml",
+    "scripts/configure-merge-queue.mjs",
+    "scripts/configure-merge-queue.test.mjs",
+    "scripts/orchestrator-flow/runner-lanes.test.mjs",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "docs/verification/main-required-status-checks.json",
+    "docs/verification/main-required-status-checks-readback-20261006.json",
+    "docs/verification/ci-audit-queue-context-retirement-20261006.json",
+    "docs/merge-queue-operation.md",
+    "scripts/lib/required-check-readback.test.mjs",
+    "scripts/check-pr-object-collisions.mjs",
+    "scripts/check-pr-object-collisions.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "do not change required_status_checks.strict; it is false by owner ruling in issue #1286",
+    "do not touch any migration or database object",
+    "do not edit another session's handoff, worktree, branch, or claim"
+  ],
+  "required_checks": [
+    "node --test scripts/configure-merge-queue.test.mjs scripts/check-merge-queue-workflows.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/check-required-checks-preflight.test.mjs scripts/lib/required-check-readback.test.mjs scripts/check-pr-object-collisions.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "Stage A3989 merged on protected main before this contract is finalized and published",
+    "Current native merge queue remains inactive",
+    "Two direct lane checks and five hygiene required statuses stay bound to GitHub Actions15368",
+    "Scoped settings change executed only by coordinating session after exact-input assigned AI review",
+    "Settings already changed exactly14-to12 under durable assigned approval and verified actual readback; no further settings write in this generation",
+    "Root held approved prior head after dispatch collision, domain, destructive scan and handoff metadata audit; this prospective generation precedes all repairs and authorizes no settings write",
+    "Root authorizes genuine durable actual checker wire fidelity regression after strict same-path upstream overlap requires new review; actual capacity must independently admit new authored tests, no fabricated implementation change."
+  ],
+  "stop_conditions": [
+    "Stage A not merged",
+    "Live before snapshot or queue mode differs from reviewed exact payload",
+    "Any intended context or producer other than the two queue contexts would change",
+    "Current source merge collision or assigned review refuses"
+  ],
+  "generation": 5,
+  "evidence_parent": {
+    "work_issue": 3987,
+    "generation": 4,
+    "contract_sha256": "f86cfd21f36d0c0e5e07635fbe41e6bb1d9a2ead4be16bf2b17f281ff688aa2c"
+  }
+}

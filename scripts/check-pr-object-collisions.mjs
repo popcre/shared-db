@@ -1329,6 +1329,25 @@ function baseBranchSource(repo, number, baseRef, headSha) {
   }
 }
 
+// A manual replay must inspect the same open canonical PR whose exact head
+// GitHub attached to this workflow run. Never accept a caller-selected foreign,
+// moved, closed, or unidentifiable pull request as collision evidence.
+export function readDispatchPull(env = process.env, readPull = (repo, number) => ghJson(['api', `repos/${repo}/pulls/${number}`])) {
+  const repo = env.GITHUB_REPOSITORY
+  const number = Number(env.PR_NUMBER)
+  if (repo !== 'popcre/shared-db' || !/^[1-9]\d*$/.test(String(env.PR_NUMBER ?? '')) || !Number.isSafeInteger(number)) {
+    throw new Skip('workflow_dispatch requires a positive canonical pull request number')
+  }
+  if (!/^[0-9a-f]{40}$/i.test(env.GITHUB_SHA ?? '')) throw new Skip('workflow_dispatch exact workflow head is unknown')
+  const pr = readPull(repo, number)
+  if (!pr || pr.number !== number || pr.state !== 'open' || pr.merged !== false || pr.head?.sha !== env.GITHUB_SHA ||
+      pr.head?.repo?.full_name !== repo || pr.base?.repo?.full_name !== repo || pr.base?.ref !== 'main' ||
+      !/^[0-9a-f]{40}$/i.test(pr.base?.sha ?? '')) {
+    throw new Skip('workflow_dispatch pull request is not open at the exact canonical workflow head and main base')
+  }
+  return pr
+}
+
 export function gatherSources(
   env = process.env,
   { load = loadOpenPullFiles, readSql = sqlAtRef, baseSource = baseBranchSource, readPull = (repo, number) => ghJson(['api', `repos/${repo}/pulls/${number}`]) } = {},
@@ -1352,6 +1371,13 @@ export function gatherSources(
     } catch {
       /* fall through to the explicit checks below */
     }
+  }
+  if (env.GITHUB_EVENT_NAME === 'workflow_dispatch') {
+    const pr = readDispatchPull(env, readPull)
+    number = pr.number
+    baseRef = pr.base.ref
+    baseSha = pr.base.sha
+    headSha = pr.head.sha
   }
   if (!number) throw new Skip('not running on a pull request (no PR number)')
 

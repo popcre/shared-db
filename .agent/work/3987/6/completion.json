@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "work_issue": 3987,
+  "outcome": "ready-for-merge",
+  "pr": 4170,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3987/6",
+  "contract_sha256": "ad34b4d7cf02b51b03dd768f6ec02cde708193d249f8ce061a6e9447c88601ac",
+  "head_sha": "4e321b5f2d6ea0cf1228074ee48a507f72deb85f",
+  "base_sha": "aae8ed96f905afe78972a33e3e7b7d642a3fb539",
+  "files_changed": [
+    ".github/workflows/merge-queue-gate.yml",
+    ".github/workflows/pr-guards.yml",
+    "docs/merge-queue-operation.md",
+    "docs/verification/ci-audit-queue-context-retirement-20261006.json",
+    "docs/verification/main-required-status-checks-readback-20261006.json",
+    "docs/verification/main-required-status-checks.json",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/check-pr-object-collisions.mjs",
+    "scripts/check-pr-object-collisions.test.mjs",
+    "scripts/configure-merge-queue.mjs",
+    "scripts/configure-merge-queue.test.mjs",
+    "scripts/lib/required-check-readback.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/configure-merge-queue.test.mjs scripts/check-merge-queue-workflows.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/check-required-checks-preflight.test.mjs scripts/lib/required-check-readback.test.mjs scripts/check-pr-object-collisions.test.mjs",
+      "exit_code": 0,
+      "evidence": "197 tests passed; zero failure, cancellation or skip; actual source integration on aae8ed96."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=339 sources=95 derived_digest=6b2d82a5de11"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Own staged source and current-main diff whitespace checks pass."
+    }
+  ],
+  "assumptions_resolved": [
+    "Original3998 remote7d and differing469 custody preserved in verified full-history bundle487089fe60c067f5d9e5cf54ffa676fd4988b89d31ca2b4fa3444ee851485604",
+    "All12 non.agent source file blobs byte-identical to preserved original7d; no authored implementation repair or review-budget reset",
+    "Original3999 and4164 merged; currentownbaseaae8 exact; no livepromotion/freeze authority before source work",
+    "Original3998 converted to draft solely to serialize necessary successor4170; originalbranch/head/evidence immutable custody retained",
+    "Current source tests newly reproduced197; prior dishonest failure-as-success count notcarried",
+    "No settings mutation, activation or database action; fresh exact assigned review and true13+protectedself14 delivery pending"
+  ],
+  "stop_conditions_hit": [],
+  "generation": 6
+}

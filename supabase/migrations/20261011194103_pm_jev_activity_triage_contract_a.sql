@@ -404,10 +404,20 @@ revoke all on function pim.pm_fail_activity_triage_worker(uuid, text, text) from
 grant execute on function pim.pm_complete_activity_triage_worker(uuid, text, text, jsonb, jsonb, text) to pm_jev_triage_worker;
 grant execute on function pim.pm_fail_activity_triage_worker(uuid, text, text) to pm_jev_triage_worker;
 
+-- Private workers are owned by the dedicated NOLOGIN role (issue #3298).
+-- Table ownership is transferred so the worker (not a superuser) can read and
+-- update triage rows under RLS default-deny; authenticated keeps only SELECT
+-- via the narrow owner/admin policies created above.
+alter table pim.ai_activity_triage owner to pm_jev_triage_worker;
+alter table pim.ai_activity_triage_eligibility owner to pm_jev_triage_worker;
+
 alter function pim.pm_complete_activity_triage_worker(uuid, text, text, jsonb, jsonb, text) owner to pm_jev_triage_worker;
 alter function pim.pm_fail_activity_triage_worker(uuid, text, text) owner to pm_jev_triage_worker;
-alter function pim.pm_verify_jev_hmac_envelope(jsonb, text) owner to pm_jev_triage_worker;
-alter function pim.pm_jev_require_admin_pm_writer() owner to pm_jev_triage_worker;
+
+-- Helpers, HMAC verifier, and trigger functions stay owned by the migration
+-- role (postgres): SECURITY DEFINER then bypasses RLS and can read
+-- vault.decrypted_secrets. Only the private complete/fail implementations are
+-- worker-owned.
 
 -- ============================================================================
 -- 9. Comment validation helper
@@ -1136,8 +1146,7 @@ begin
   end if;
 
   update app.activity
-  set payload = payload || jsonb_build_object('status', v_status),
-      updated_at = now()
+  set payload = payload || jsonb_build_object('status', v_status)
   where id = p_activity_id;
 
   return jsonb_build_object('status', v_status, 'id', p_activity_id);
@@ -1209,6 +1218,7 @@ declare
   v_comment app.comment%rowtype;
   v_record_id uuid;
   v_kind text;
+  v_result jsonb;
 begin
   v_profile := pim.pm_jev_require_admin_pm_writer();
 
@@ -1253,28 +1263,20 @@ begin
     if p_title is null or length(btrim(p_title)) < 1 or length(btrim(p_title)) > 200 then
       raise exception using errcode = '22023', message = 'PM_INVALID_DEPENDENCY_TITLE';
     end if;
-    perform api.pm_create_dependency(v_row.product_id, btrim(p_title));
-    select id into v_record_id from app.activity
-    where action = 'pm_dependency' and target_id = v_row.product_id
-      and actor_profile_id = v_profile
-    order by created_at desc limit 1;
+    v_result := api.pm_create_dependency(v_row.product_id, btrim(p_title));
+    v_record_id := (v_result ->> 'id')::uuid;
   elsif v_kind = 'decision' then
     if p_type is null or length(btrim(p_type)) < 1 or length(btrim(p_type)) > 100 then
       raise exception using errcode = '22023', message = 'PM_INVALID_DECISION_TYPE';
     end if;
-    perform api.pm_create_decision(v_row.product_id, btrim(p_type), p_notes);
-    select id into v_record_id from app.activity
-    where action = 'pm_decision' and target_id = v_row.product_id
-      and actor_profile_id = v_profile
-    order by created_at desc limit 1;
+    v_result := api.pm_create_decision(v_row.product_id, btrim(p_type), p_notes);
+    v_record_id := (v_result ->> 'id')::uuid;
   elsif v_kind = 'follow_up_reminder' then
     if p_title is null or length(btrim(p_title)) < 1 or length(btrim(p_title)) > 200 then
       raise exception using errcode = '22023', message = 'PM_INVALID_REMINDER_TITLE';
     end if;
-    perform api.pm_create_reminder(v_row.product_id, btrim(p_title), p_due_at);
-    select id into v_record_id from app.notification
-    where app = 'pm' and target_id = v_row.product_id and profile_id = v_profile
-    order by created_at desc limit 1;
+    v_result := api.pm_create_reminder(v_row.product_id, btrim(p_title), p_due_at);
+    v_record_id := (v_result ->> 'id')::uuid;
   else
     raise exception using errcode = '22023', message = 'PM_TRIAGE_NOT_ACTIONABLE';
   end if;
@@ -1553,7 +1555,3 @@ drop trigger if exists pm_jev_source_changed on app.comment;
 create trigger pm_jev_source_changed
   after update of body on app.comment
   for each row execute function pim.pm_jev_source_changed_trg_fn();
-
-alter function pim.pm_validate_comment_body(text) owner to pm_jev_triage_worker;
-alter function pim.pm_jev_source_changed_trg_fn() owner to pm_jev_triage_worker;
-alter function app.comment_body_revision_trg_fn() owner to pm_jev_triage_worker;

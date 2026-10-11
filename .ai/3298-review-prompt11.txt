@@ -1,6 +1,0 @@
-Focused re-review of popcre/shared-db PR #4205 at head 5d1c9a1c00cccb7e292825c5362ebd0a627d4bf7.
-
-Prior head 470db1337 was APPROVED. This head is a merge of origin/main plus a pure rename of the migration file from 20261011205205 to 20261011225459 (re-reserved version; SQL bytes unchanged except the version comment). Test file unchanged from the approved head.
-
-Confirm the rename/merge does not change the migration contract. End with exactly:
-VERDICT: APPROVE 5d1c9a1c00cccb7e292825c5362ebd0a627d4bf7

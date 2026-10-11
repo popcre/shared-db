@@ -1,11 +1,11 @@
 {
   "schema_version": 2,
-  "generation": 7,
+  "generation": 9,
   "work_issue": 2176,
   "work_type": "structural",
   "route": "claim-first",
-  "goal": "Replace never-installed unsafe unit6 with full safe consumer contracts; preserve quantities and immutable original, administrator-only season/salesperson reads, strict-Y importer and stable row grains. Repair ephemeral replay of this exact never-installed retired original only and synchronize independent retirement expectations; preserve all other replay and refusal behavior.",
-  "base_sha": "48460174599ba8a580e818389eb9f06070345e67",
+  "goal": "Replace never-installed unsafe unit6 with full safe consumer contracts; preserve quantities and immutable original, administrator-only season/salesperson reads, strict-Y importer and stable row grains. Repair ephemeral replay of this exact never-installed retired original only and synchronize independent retirement expectations; preserve all other replay and refusal behavior. Register the two reviewed fail-closed workflow refusal sites in the existing source-specific truth catalog; scanner behavior unchanged. Retire only own superseded6/7/8 evidence pairs from the PR tree; preserve exact bytes, published refs and Git history; sole current pair9.",
+  "base_sha": "a2449ef698a753408723ac83583a977c6ba684b3",
   "dispatcher": "Codex parent chat 01a12b01-aaac-7551-8860-61a4384a25b0 on edge-dev3; supported claim3838 reissue and 19-object expansion",
   "worker": "Codex subagent chat 01a12bda-9966-7962-8f57-a61ac0c882fe on edge-dev3",
   "branch": "codex/2176-safe-consumer-contracts",
@@ -22,7 +22,12 @@
     ".github/workflows/database-contract-tests.yml",
     "scripts/test_post_batch_app_verification.py",
     ".agent/work/2176/7/contract.json",
-    ".agent/work/2176/7/completion.json"
+    ".agent/work/2176/7/completion.json",
+    "docs/verification/throughput-dispositions/.github~workflows~database-contract-tests.yml.json",
+    ".agent/work/2176/8/contract.json",
+    ".agent/work/2176/8/completion.json",
+    ".agent/work/2176/9/contract.json",
+    ".agent/work/2176/9/completion.json"
   ],
   "file_writes": [
     "supabase/migrations/20261011184117_coldlion_unit6_consumer_contracts_safe.sql",
@@ -36,7 +41,12 @@
     ".github/workflows/database-contract-tests.yml",
     "scripts/test_post_batch_app_verification.py",
     ".agent/work/2176/7/contract.json",
-    ".agent/work/2176/7/completion.json"
+    ".agent/work/2176/7/completion.json",
+    "docs/verification/throughput-dispositions/.github~workflows~database-contract-tests.yml.json",
+    ".agent/work/2176/8/contract.json",
+    ".agent/work/2176/8/completion.json",
+    ".agent/work/2176/9/contract.json",
+    ".agent/work/2176/9/completion.json"
   ],
   "db_reads": [
     "table plm.erp_licensor",
@@ -117,7 +127,7 @@
   ],
   "evidence_parent": {
     "work_issue": 2176,
-    "generation": 6,
-    "contract_sha256": "a35263f62e0948e25952062d15bd827ab1fc075ca779f1871b84cd00f7108ef0"
+    "generation": 8,
+    "contract_sha256": "33b756fa2995915495f57403fc54ab0ccb964e8a33d370c54349ebfe41f531bf"
   }
 }

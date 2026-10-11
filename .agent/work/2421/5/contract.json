@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "generation": 4,
+  "generation": 5,
   "work_issue": 2421,
   "work_type": "structural",
   "route": "claim-first",
@@ -22,7 +22,9 @@
     ".agent/work/2421/3/contract.json",
     ".agent/work/2421/3/completion.json",
     ".agent/work/2421/4/contract.json",
-    ".agent/work/2421/4/completion.json"
+    ".agent/work/2421/4/completion.json",
+    ".agent/work/2421/5/contract.json",
+    ".agent/work/2421/5/completion.json"
   ],
   "file_writes": [
     "supabase/migrations/20261011125719_style_group_change_watermark.sql",
@@ -36,7 +38,9 @@
     ".agent/work/2421/3/contract.json",
     ".agent/work/2421/3/completion.json",
     ".agent/work/2421/4/contract.json",
-    ".agent/work/2421/4/completion.json"
+    ".agent/work/2421/4/completion.json",
+    ".agent/work/2421/5/contract.json",
+    ".agent/work/2421/5/completion.json"
   ],
   "db_reads": [
     "function public.style_group_key_for_sku",
@@ -71,10 +75,9 @@
   ],
   "required_checks": [
     "bash scripts/check-sql.sh",
-    "local PostgreSQL watermark behavior/race contracts",
+    "python3 scripts/test_style_group_watermark.py",
     "git diff --check",
-    "node scripts/check-live-proof-probe.mjs",
-    "python scripts/test_style_group_watermark.py"
+    "node scripts/check-live-proof-probe.mjs"
   ],
   "assumptions": [
     "Parent approved exact additive scope and two new timestamp indexes",
@@ -89,7 +92,7 @@
   ],
   "evidence_parent": {
     "work_issue": 2421,
-    "generation": 3,
-    "contract_sha256": "30510c54c43269efb71a86a92968a28db158f3220ba2b7593067ff5269291523"
+    "generation": 4,
+    "contract_sha256": "13ae27a28d1f16da85a382a292c2c0d196f9a9e62e693a350f4afdb75ca82a12"
   }
 }

@@ -6,16 +6,16 @@
   "migration_versions": [
     "20261011125719"
   ],
-  "contract_ref": "refs/db-contracts/2421/4",
-  "contract_sha256": "13ae27a28d1f16da85a382a292c2c0d196f9a9e62e693a350f4afdb75ca82a12",
-  "head_sha": "67af7da077c65702c3a838096e49a70a7831049b",
+  "contract_ref": "refs/db-contracts/2421/5",
+  "contract_sha256": "941a8027290cd507240889b915453152c54d4f0330452ba42069423649b4bbb5",
+  "head_sha": "655ece31196f21b529faffecda3c425a63c76aae",
   "files_changed": [
-    ".agent/work/2421/4/contract.json",
     ".github/live-proofs/2421.sql",
     "scripts/test_style_group_watermark.py",
     "supabase/migrations/20261011125719_style_group_change_watermark.sql",
     "supabase/tests/style_group_change_watermark_contracts.sql",
-    ".agent/work/2421/4/completion.json"
+    ".agent/work/2421/5/contract.json",
+    ".agent/work/2421/5/completion.json"
   ],
   "db_reads": [
     "function public.style_group_key_for_sku",

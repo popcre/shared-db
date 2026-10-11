@@ -84,19 +84,17 @@ begin
   -- ------------------------------------------------------------------
   -- Fixtures (rolled back)
   -- ------------------------------------------------------------------
-  -- Bypass auth's invitation-gate trigger on auth.users (repo convention).
-  perform set_config('session_replication_role', 'replica', true);
-  insert into auth.users (id, email) values
-    (v_admin_auth, 'jev-admin-' || v_admin_auth || '@example.test'),
-    (v_sales_auth, 'jev-sales-' || v_sales_auth || '@example.test'),
-    (v_other_auth, 'jev-other-' || v_other_auth || '@example.test');
-  perform set_config('session_replication_role', 'origin', true);
+  -- popcre.com + provider azure passes the invitation gate (repo convention).
+  insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data) values
+    (v_admin_auth, 'jev-admin-' || v_admin_auth || '@popcre.com', '{}', '{"provider":"azure"}'),
+    (v_sales_auth, 'jev-sales-' || v_sales_auth || '@popcre.com', '{}', '{"provider":"azure"}'),
+    (v_other_auth, 'jev-other-' || v_other_auth || '@popcre.com', '{}', '{"provider":"azure"}');
 
   insert into app.profile (id, auth_user_id, email, display_name, status)
   values
-    (gen_random_uuid(), v_admin_auth, 'jev-admin-' || v_admin_auth || '@example.test', 'Jev Admin', 'active'),
-    (gen_random_uuid(), v_sales_auth, 'jev-sales-' || v_sales_auth || '@example.test', 'Jev Sales', 'active'),
-    (gen_random_uuid(), v_other_auth, 'jev-other-' || v_other_auth || '@example.test', 'Jev Other', 'active');
+    (gen_random_uuid(), v_admin_auth, 'jev-admin-' || v_admin_auth || '@popcre.com', 'Jev Admin', 'active'),
+    (gen_random_uuid(), v_sales_auth, 'jev-sales-' || v_sales_auth || '@popcre.com', 'Jev Sales', 'active'),
+    (gen_random_uuid(), v_other_auth, 'jev-other-' || v_other_auth || '@popcre.com', 'Jev Other', 'active');
 
   select id into v_admin_profile from app.profile where auth_user_id = v_admin_auth;
   select id into v_sales_profile from app.profile where auth_user_id = v_sales_auth;

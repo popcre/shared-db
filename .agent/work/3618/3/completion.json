@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "work_issue": 3618,
+  "outcome": "ready-for-merge",
+  "contract_ref": "refs/db-contracts/3618/3",
+  "contract_sha256": "77e09e5ecaf6390225b4f53d920f104c251a73e6095e91294532251c639a5fc8",
+  "head_sha": "e7c90afc729c507cd2ec6d6729a4d281f9347945",
+  "base_sha": "4cbdd26ad0120e33f838df57e34470e0de49e58f",
+  "files_changed": [
+    "docs/agents/section-4-anti-collision-rules.md",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "scripts/claim-author-transfer.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/claim-author-transfer.test.mjs",
+      "exit_code": 0,
+      "evidence": "24 tests passed including merged success/idempotency, all active/relinquished refusals, stale source/ancestry/scope, stage/collision/rescue/record/rollback and explicit CLI."
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "779 tests passed,0 failed."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK334call sites93sources; original14 source line hashes retained, shifted source contexts rebound."
+    }
+  ],
+  "assumptions_resolved": [
+    "Only expired-unconfirmed merged claims qualify; active takeover remains refused.",
+    "Original open-PR operator adoption tests all pass and existing shared transaction/preservation gates remain binding.",
+    "No live adoption, reviewer mutation, database write, merge or production result is claimed."
+  ],
+  "stop_conditions_hit": [],
+  "pr": 4109,
+  "migration_versions": []
+}

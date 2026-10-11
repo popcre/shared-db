@@ -100,6 +100,23 @@ reset role;
 do $update$ begin
  if not exists(select 1 from plm.erp_salesperson where company_code='FIX2176' and salesperson_code='P0' and name='Synthetic changed' and source_hash='82eb950f000cc969b6651b97de8f0bb4917b95881af5de4de371cadba673eed7' and first_seen_at='2026-10-11T12:00:00Z' and last_seen_at='2026-10-12T12:00:00Z' and raw->>'lastName'='Synthetic changed') then raise exception 'unit6 importer update lost original first sighting or raw'; end if;
 end $update$;
+-- Exercise both actual signup triggers; invitation-only access remains enforced.
+do $signup_denial$ begin
+ if not exists(select 1 from pg_trigger where tgrelid='auth.users'::regclass and tgname='on_auth_user_created' and tgfoid=to_regprocedure('app.handle_new_auth_user()') and tgenabled='O' and not tgisinternal)
+   or not exists(select 1 from pg_trigger where tgrelid='auth.users'::regclass and tgname='on_auth_user_created_popdam' and tgfoid=to_regprocedure('public.handle_new_user()') and tgenabled='O' and not tgisinternal)
+ then raise exception 'unit6 fixture requires both actual signup triggers'; end if;
+ begin
+   insert into auth.users(id,email,raw_user_meta_data,raw_app_meta_data) values('ac217600-0000-0000-0001-000000000006','unit6-uninvited@fixture.invalid','{}','{}');
+   raise exception 'unit6 uninvited signup was allowed';
+ exception when raise_exception then
+   if sqlerrm <> 'Access denied: no valid invitation found for unit6-uninvited@fixture.invalid' then raise; end if;
+ end;
+ if exists(select 1 from auth.users where id='ac217600-0000-0000-0001-000000000006')
+    or exists(select 1 from app.profile where auth_user_id='ac217600-0000-0000-0001-000000000006')
+    or exists(select 1 from public.profiles where user_id='ac217600-0000-0000-0001-000000000006')
+ then raise exception 'unit6 refused signup left partial identity rows'; end if;
+end $signup_denial$;
+insert into public.invitations(email) select 'unit6-'||i||'@fixture.invalid' from generate_series(1,5) i;
 insert into auth.users(id,email,raw_user_meta_data,raw_app_meta_data) values('ac217600-0000-0000-0001-000000000001','unit6-1@fixture.invalid','{"full_name":"Synthetic Unit6"}'::jsonb,'{}'::jsonb);
 insert into app.profile(auth_user_id,email,status) values('ac217600-0000-0000-0001-000000000001','unit6-1@fixture.invalid','active') on conflict(auth_user_id) do update set email=excluded.email,status=excluded.status;
 insert into app.user_role(profile_id,role_id,revoked_at) select p.id,r.id,null from app.profile p cross join app.role r where p.auth_user_id='ac217600-0000-0000-0001-000000000001' and r.slug='administrator' on conflict(profile_id,role_id) do update set revoked_at=excluded.revoked_at;
@@ -113,6 +130,15 @@ insert into auth.users(id,email,raw_user_meta_data,raw_app_meta_data) values('ac
 insert into app.profile(auth_user_id,email,status) values('ac217600-0000-0000-0001-000000000004','unit6-4@fixture.invalid','active') on conflict(auth_user_id) do update set email=excluded.email,status=excluded.status;
 insert into app.user_role(profile_id,role_id,revoked_at) select p.id,r.id,now() from app.profile p cross join app.role r where p.auth_user_id='ac217600-0000-0000-0001-000000000004' and r.slug='administrator' on conflict(profile_id,role_id) do update set revoked_at=excluded.revoked_at;
 insert into auth.users(id,email,raw_user_meta_data,raw_app_meta_data) values('ac217600-0000-0000-0001-000000000005','unit6-5@fixture.invalid','{"full_name":"Synthetic Unit6"}'::jsonb,'{}'::jsonb);
+do $invited_signup$ begin
+ if (select count(*) from public.invitations where email in (select 'unit6-'||i||'@fixture.invalid' from generate_series(1,5) i) and accepted_at is not null)<>5
+   or (select count(*) from public.profiles where email in (select 'unit6-'||i||'@fixture.invalid' from generate_series(1,5) i))<>5
+   or (select count(*) from app.profile where email in (select 'unit6-'||i||'@fixture.invalid' from generate_series(1,5) i))<>5
+   or exists(select 1 from auth.users u where u.email in (select 'unit6-'||i||'@fixture.invalid' from generate_series(1,5) i)
+     and (not exists(select 1 from public.user_roles r where r.user_id=u.id and r.role='user'::public.app_role)
+       or not exists(select 1 from public.app_access a where a.user_id=u.id and a.app='popdam'::public.app_name)))
+ then raise exception 'unit6 invited signup did not consume invitations and provision actual profiles/default access'; end if;
+end $invited_signup$;
 delete from app.profile where auth_user_id='ac217600-0000-0000-0001-000000000005';
 set local role authenticated;
 select set_config('request.jwt.claims','{"sub": "ac217600-0000-0000-0001-000000000001", "role": "authenticated", "app_metadata": {"roles": []}}',true);

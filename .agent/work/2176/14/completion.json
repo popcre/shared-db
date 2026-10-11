@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "work_issue": 2176,
+  "outcome": "ready-for-merge",
+  "pr": 4197,
+  "head_sha": "3e3e98beb227a63d7645082b11b1377d550e2ee6",
+  "migration_versions": [
+    "20261011184117"
+  ],
+  "base_sha": "19335c44297f48d67ba8a68e42c6d77382eda459",
+  "contract_ref": "refs/db-contracts/2176/14",
+  "contract_sha256": "0555917af7579ca94c3f057a60f83658998d2e33beb5339523be5c879361f26f",
+  "files_changed": [
+    ".github/live-proofs/2176.sql",
+    ".github/workflows/database-contract-tests.yml",
+    "docs/verification/throughput-dispositions/.github~workflows~database-contract-tests.yml.json",
+    "scripts/production_migration_guard.py",
+    "scripts/test_post_batch_app_verification.py",
+    "scripts/test_production_migration_guard.py",
+    "supabase/migrations/20261011184117_coldlion_unit6_consumer_contracts_safe.sql",
+    "supabase/tests/coldlion_unit6_consumer_contracts.sql"
+  ],
+  "db_reads": [
+    "table plm.erp_licensor",
+    "table plm.erp_property",
+    "table coldlion.customer",
+    "table coldlion.vendor",
+    "table coldlion.season",
+    "table coldlion.salesperson",
+    "table coldlion.merch_group_header",
+    "table coldlion.merch_group_detail",
+    "table coldlion.item_header",
+    "table coldlion.item_detail",
+    "table coldlion.item_merch_group",
+    "table coldlion.order_history_line",
+    "table coldlion.order_history_component",
+    "table coldlion.prod_history_line",
+    "table coldlion.prod_history_component",
+    "table coldlion.prepack_detail",
+    "table coldlion.prod_detail",
+    "table coldlion.item_image_metadata",
+    "table coldlion.sync_run",
+    "table plm.erp_customer",
+    "table plm.erp_vendor",
+    "table app.profile",
+    "table app.role",
+    "table app.user_role",
+    "function app.has_role",
+    "function app.jwt_role_names",
+    "function app.current_profile_id"
+  ],
+  "db_writes": [
+    "schema coldlion",
+    "table plm.erp_customer",
+    "table plm.erp_vendor",
+    "table plm.erp_season",
+    "table plm.erp_salesperson",
+    "function plm.import_coldlion_customers",
+    "function plm.import_coldlion_seasons",
+    "function plm.import_coldlion_salespersons",
+    "function plm.coldlion_merch_group_candidates",
+    "view plm.coldlion_item_header",
+    "view plm.coldlion_item_detail",
+    "view plm.coldlion_item_merch_group",
+    "view plm.coldlion_prod_history",
+    "view plm.coldlion_prepack_detail",
+    "view plm.coldlion_prod_detail",
+    "view plm.coldlion_sales_history",
+    "view pim.coldlion_item_image_metadata",
+    "policy plm_erp_season_admin_only on plm.erp_season",
+    "policy plm_erp_salesperson_admin_only on plm.erp_salesperson"
+  ],
+  "assumptions_resolved": [
+    "Original SQL remains exact SHA25655007a6e5eee7f1966568368f8d9c10e3f04ea884310b4cdba72026fe12f0543; no applied or accepted claim",
+    "Canonical role helper accepts trusted app_metadata roles as well as active nonrevoked profile role; synthetic matrix covers both",
+    "Existing prod_detail btree(company_code,prod_order_no) required; no new index",
+    "Sidecar scanner found zero markers; no empty sidecar or registry change needed",
+    "Retired original skipped only after actual registry+never-installed receipt+exact successor checks; separate skipped artifact/summary, no original ledger insertion; all other historical migrations unchanged.",
+    "Actual landing detail category identity isfivecolumns; ERPlicensor/property resolution keys remainfourcolumns and exact existing PKs asserted, category rows never collapsed.",
+    "Existing authenticated/serviceplm/pimUSAGE asserted without anygrantchanges.",
+    "Completion head names implementation sourcecommit; subsequentownpaironlytail validated under canonicalGitconformance, not false exactreviewhead rebinding.",
+    "Actual invitation-only public signup trigger remains active alongside app signup trigger; five synthetic invitations consumed, no simulatedSSO metadata or trigger disable.",
+    "Prospective11unusedAzureproposal preserved; root invitation selection prospectively published12 before source edits.",
+    "All eight owned implementation files byte-identical to3b797; ordinary official19335 integration adds only four foreign already-merged source files. Historical13pair preserved; current14tail requires normal exact Git proof."
+  ],
+  "stop_conditions_hit": [],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Current corrected source staticPASS; live-ledgerB2 notconfigured."
+    },
+    {
+      "command": "python scripts/test_production_migration_guard.py",
+      "exit_code": 0,
+      "evidence": "308 tests PASS, including hard-block/retirement/successor/original-byte preservation and #2508 genuine-pending control."
+    },
+    {
+      "command": "isolated PostgreSQL17 contract/importer/role/grain and negative-control proofs",
+      "exit_code": 0,
+      "evidence": "ActualPG17.11 network-none40casesPASS with canonical category identity migration/full ERP mirror table declarations and both actual signup hooks/full public invitation/profile/role/access definitions+FKs. Canonical test proves uninvited signup refusal/no partial identity, five invited consumption/provisioning, full unchanged role/JWT matrix, category collisions/samefour-key resolution and pre/post PK/schemaUSAGE refusal controls. SyntheticJWT GUC and core/ingest stubs disclosed; no preview or production."
+    },
+    {
+      "command": "exact structural extraction equals claim3838 19 objects",
+      "exit_code": 0,
+      "evidence": "inspectPrStructuralChange exact sorted match to prospective nineteen keys; single read-only live probe shape PASS."
+    },
+    {
+      "command": "python scripts/check_production_verification_sidecars.py --scan-version 20261011184117",
+      "exit_code": 0,
+      "evidence": "status OK; markers[]; sidecar false. No dynamic execution or guarded static ALTER in DO requires one."
+    },
+    {
+      "command": "python scripts/test_post_batch_app_verification.py",
+      "exit_code": 0,
+      "evidence": "143 tests PASS, actual embedded guards in both replay passes execute; missing block/reason/never-installed proof/exact filename/source refuse."
+    },
+    {
+      "command": "canonical fail-closed replay skip tests and CI actual SQL/contract checks",
+      "exit_code": 0,
+      "evidence": "143 actual replay tests PASS; integrated SQL CI38171971183 SUCCESS exact3e3e98beb227a63d7645082b11b1377d550e2ee6; full terminal log retained. All eight owned implementation files unchanged, retained actual40case PG17 proof. Final evidence-tail CI independently required; no installation claim."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs and 24 canonical truth catalog tests",
+      "exit_code": 0,
+      "evidence": "Prior actual discovery342 call sites96sources and24testsPASS retained; owned catalog/workflow source unchanged. Integrated current-source CI independently required."
+    }
+  ]
+}

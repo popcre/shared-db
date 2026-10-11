@@ -61,8 +61,27 @@ begin
   delete from pg_temp.popsg_test_job_runs where jobid = v_job and status = 'succeeded';
   v_failed := false;
   begin perform pg_temp.await_style_guide_matview_refresh(v_expired);
-  exception when raise_exception then v_failed := sqlerrm = 'No successful scheduled PopSG refresh within 20 minutes'; end;
+  exception when raise_exception then v_failed := sqlerrm = 'No successful scheduled PopSG refresh within the bounded wait window'; end;
   if not v_failed then raise exception 'An expired wait did not fail'; end if;
+  -- A recent qualifying scheduler run in flight gets a bounded grace period.
+  insert into pg_temp.popsg_test_job_runs (jobid, runid, status, start_time, end_time)
+    values (v_job, 2, 'running', clock_timestamp() - interval '1 minute', null);
+  select ready into v_ready from pg_temp.await_style_guide_matview_refresh(v_expired);
+  if v_ready then raise exception 'In-flight work was falsely completed'; end if;
+  update public.style_guide_crawl_runs set refresh_started_at = clock_timestamp() - interval '23 minutes' where id = v_expired;
+  v_failed := false;
+  begin perform pg_temp.await_style_guide_matview_refresh(v_expired);
+  exception when raise_exception then v_failed := true; end;
+  if not v_failed then raise exception 'In-flight work escaped the absolute wait cap'; end if;
+  delete from pg_temp.popsg_test_job_runs where jobid = v_job and status = 'running';
+  insert into pg_temp.popsg_test_job_runs (jobid, runid, status, start_time, end_time)
+    values (v_job, 3, 'succeeded', v_start, v_start - interval '1 second');
+  select ready into v_ready from pg_temp.await_style_guide_matview_refresh(v_run);
+  if v_ready then raise exception 'Anomalous scheduler chronology was accepted'; end if;
+  update pg_temp.popsg_test_jobs set command = 'select public.refresh_style_guide_matviews()' where jobid = v_job;
+  select ready into v_ready from pg_temp.await_style_guide_matview_refresh(v_run);
+  if v_ready then raise exception 'Pending lowercase/semicolon-free command was falsely completed'; end if;
+
   insert into pg_temp.popsg_test_job_runs (jobid, runid, status, start_time, end_time)
     values (v_job, 1, 'succeeded', v_start, clock_timestamp());
   select ready, refreshed_at into v_ready, v_stamp from pg_temp.await_style_guide_matview_refresh(v_run);
@@ -84,7 +103,8 @@ begin
   begin perform pg_temp.await_style_guide_matview_refresh(null);
   exception when raise_exception then v_failed := true; end;
   if not v_failed then raise exception 'Missing run was accepted'; end if;
-  if has_function_privilege('anon', 'public.await_style_guide_matview_refresh(uuid)', 'execute')
+  if has_function_privilege('public', 'public.await_style_guide_matview_refresh(uuid)', 'execute')
+     or has_function_privilege('anon', 'public.await_style_guide_matview_refresh(uuid)', 'execute')
      or has_function_privilege('authenticated', 'public.await_style_guide_matview_refresh(uuid)', 'execute')
      or not has_function_privilege('service_role', 'public.await_style_guide_matview_refresh(uuid)', 'execute') then
     raise exception 'Service-only privilege contract failed';

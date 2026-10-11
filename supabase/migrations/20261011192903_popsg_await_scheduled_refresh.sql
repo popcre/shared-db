@@ -1,6 +1,6 @@
 -- Issue #3458; claim #4200. PopDAM #335: await the existing successful
 -- scheduler refresh instead of running a full concurrent refresh in an 8s RPC.
--- derived-from: none
+-- derived-from: 20260917005221
 -- No scheduler, timeout, matview, source data, or legacy RPC is changed.
 create or replace function public.await_style_guide_matview_refresh(p_run_id uuid)
 returns table (ready boolean, refreshed_at timestamptz)
@@ -14,6 +14,7 @@ declare
   v_state text;
   v_job bigint;
   v_finished timestamptz;
+  v_inflight boolean;
 begin
   if p_run_id is null then
     raise exception 'A crawl run is required';
@@ -27,9 +28,19 @@ begin
   select j.jobid into v_job from cron.job j
    where j.jobname = 'refresh-style-guide-matviews' and j.active
      and j.username = 'postgres' and j.database = current_database()
-     and regexp_replace(j.command, '[[:space:]]', '', 'g') = 'SELECTpublic.refresh_style_guide_matviews();';
+     and regexp_replace(lower(regexp_replace(j.command, '[[:space:]]', '', 'g')), ';$', '') = 'selectpublic.refresh_style_guide_matviews()';
   if v_job is null then
     raise exception 'The existing PopSG refresh scheduler is unavailable or its command changed';
+  end if;
+  -- The no-argument scheduler command resolves to the two-default-argument
+  -- overload, not a zero-argument function. Pin the live, reviewed body so
+  -- future drift cannot silently weaken what a successful cron run proves.
+  if to_regprocedure('public.refresh_style_guide_matviews()') is not null
+     or not exists (select 1 from pg_proc p
+       where p.oid = to_regprocedure('public.refresh_style_guide_matviews(uuid,integer)')
+         and p.prosecdef and p.pronargdefaults = 2
+         and md5(p.prosrc) = '52b676f90e4500dc323c2f9e6e6f3c97') then
+    raise exception 'The scheduled PopSG refresh contract changed';
   end if;
   if v_start is null then
     v_start := clock_timestamp();
@@ -38,13 +49,24 @@ begin
      where id = p_run_id;
   end if;
   -- A refresh started before this crawl entered refresh is never evidence.
+  -- cron.job_run_details has a sequential history scan; existing pg_cron
+  -- retention keeps this small. No index on extension-owned relations is assumed.
   -- Completion of a cron run proves both matviews refreshed successfully.
   select max(d.end_time) into v_finished from cron.job_run_details d
    where d.jobid = v_job and d.status = 'succeeded'
      and d.start_time >= greatest(v_start, v_ingest)
      and d.end_time >= d.start_time;
   if v_finished is null and clock_timestamp() - v_start > interval '20 minutes' then
-    raise exception 'No successful scheduled PopSG refresh within 20 minutes';
+    -- A qualifying job may still be running. Allow only the existing two-minute
+    -- database execution budget, with an absolute 22-minute wait cap. A hung
+    -- run can never turn this into unbounded polling; no timeout is changed.
+    select exists (select 1 from cron.job_run_details d
+      where d.jobid = v_job and d.status in ('starting', 'connecting', 'sending', 'running')
+        and d.end_time is null and d.start_time >= greatest(v_start, v_ingest)
+        and d.start_time >= clock_timestamp() - interval '2 minutes') into v_inflight;
+    if not v_inflight or clock_timestamp() - v_start > interval '22 minutes' then
+      raise exception 'No successful scheduled PopSG refresh within the bounded wait window';
+    end if;
   end if;
   -- Never stamp refresh_completed_at here: the existing search-only step must
   -- drain search synchronization before the caller can complete the crawl.
@@ -58,7 +80,15 @@ grant execute on function public.await_style_guide_matview_refresh(uuid) to serv
 
 do $verify$
 begin
+  if to_regprocedure('public.refresh_style_guide_matviews()') is not null
+     or not exists (select 1 from pg_proc p
+       where p.oid = to_regprocedure('public.refresh_style_guide_matviews(uuid,integer)')
+         and p.prosecdef and p.pronargdefaults = 2
+         and md5(p.prosrc) = '52b676f90e4500dc323c2f9e6e6f3c97') then
+    raise exception 'The existing scheduled PopSG refresh contract is not present';
+  end if;
   if not has_function_privilege('service_role', 'public.await_style_guide_matview_refresh(uuid)', 'execute')
+     or has_function_privilege('public', 'public.await_style_guide_matview_refresh(uuid)', 'execute')
      or has_function_privilege('anon', 'public.await_style_guide_matview_refresh(uuid)', 'execute')
      or has_function_privilege('authenticated', 'public.await_style_guide_matview_refresh(uuid)', 'execute') then
     raise exception 'PopSG scheduled refresh wait privileges are incorrect';

@@ -32,10 +32,14 @@
 -- 6. CONTENTION, ACCEPTED AND BOUNDED: holding the BULK_OPERATIONS key also makes the
 --    other BULK_OPERATIONS writers (update_bulk_operation, update_bulk_operations_batch,
 --    which set no lock_timeout) wait while a wrapper call runs. Edge callers pass only
---    the groups an admin action touched, so a call is normally milliseconds; the
---    statement_timeout is 15s (not the callee's 30s) so the worst-case stall of those
---    writers is 15s. Ids are passed in one call, not chunked, for the same reason: a
---    large array fails visibly within the bound instead of holding the key longer.
+--    the groups an admin action touched, so a call is normally milliseconds. Be exact
+--    about the bound: PostgreSQL arms statement_timeout when the top-level statement
+--    starts, so neither this wrapper's `statement_timeout = 15s` nor the callee's
+--    `30s` re-arms the timer of a call already running. The key-hold is bounded by
+--    the statement_timeout in force for the calling statement (the API role's
+--    setting for an RPC through PostgREST); the function-level clauses are kept only
+--    as declared intent and do not tighten that bound. Ids are passed in one call, not chunked,
+--    so the key is taken once per call rather than held across chunks.
 --
 -- ROLLBACK: drop function public.refresh_style_group_counts_serialized(uuid[]);
 -- =====================================================================================

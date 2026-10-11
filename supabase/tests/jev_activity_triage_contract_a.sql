@@ -84,10 +84,13 @@ begin
   -- ------------------------------------------------------------------
   -- Fixtures (rolled back)
   -- ------------------------------------------------------------------
+  -- Bypass auth's invitation-gate trigger on auth.users (repo convention).
+  perform set_config('session_replication_role', 'replica', true);
   insert into auth.users (id, email) values
     (v_admin_auth, 'jev-admin-' || v_admin_auth || '@example.test'),
     (v_sales_auth, 'jev-sales-' || v_sales_auth || '@example.test'),
     (v_other_auth, 'jev-other-' || v_other_auth || '@example.test');
+  perform set_config('session_replication_role', 'origin', true);
 
   insert into app.profile (id, auth_user_id, email, display_name, status)
   values
@@ -219,7 +222,7 @@ begin
   if v_count <> 0 then
     raise exception 'other user must not read another requester triage row via RLS';
   end if;
-  reset role;
+  execute 'reset role';
 
   -- ------------------------------------------------------------------
   -- G  ENVELOPE / LEASE / SOURCE_CHANGED

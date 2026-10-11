@@ -1,27 +1,54 @@
--- Live proof for #2176 (migration 20261005025111, PR #3839). Read-only.
--- Proves on production:
---   1. the migration is in production's ledger
---   2. schema coldlion remains closed to app roles
---   3. consumer contract views/functions exist in plm/pim
---   4. sales-history view exposes no fulfilment/status column
-select (
-  exists (select 1 from supabase_migrations.schema_migrations where version = '20261005025111')
-  and not has_schema_privilege('anon', 'coldlion', 'USAGE')
-  and not has_schema_privilege('authenticated', 'coldlion', 'USAGE')
-  and pg_catalog.to_regclass('plm.coldlion_item_header') is not null
-  and pg_catalog.to_regclass('plm.coldlion_item_detail') is not null
-  and pg_catalog.to_regclass('plm.coldlion_item_merch_group') is not null
-  and pg_catalog.to_regclass('plm.coldlion_prod_history') is not null
-  and pg_catalog.to_regclass('plm.coldlion_prepack_detail') is not null
-  and pg_catalog.to_regclass('plm.coldlion_prod_detail') is not null
-  and pg_catalog.to_regclass('plm.coldlion_sales_history') is not null
-  and pg_catalog.to_regclass('pim.coldlion_item_image_metadata') is not null
-  and pg_catalog.to_regprocedure('plm.import_coldlion_seasons()') is not null
-  and pg_catalog.to_regprocedure('plm.import_coldlion_salespersons()') is not null
-  and pg_catalog.to_regprocedure('plm.coldlion_merch_group_candidates(text, text)') is not null
-  and not exists (
-    select 1 from pg_catalog.pg_attribute
-    where attrelid = pg_catalog.to_regclass('plm.coldlion_sales_history')
-      and attname in ('fulfilment_status', 'document_type', 'source_document_type', 'fulfillment_status')
-  )
-) as passed;
+-- Same-issue #2176 exact installed catalog proof; read-only, no fixtures or write RPC calls.
+with expected_relations(name,kind,columns) as (values
+    ('plm.erp_season','r','[["company_code","text"],["division_code","text"],["season_code","text"],["name","text"],["active","boolean"],["erp_created_at","timestamp with time zone"],["erp_updated_at","timestamp with time zone"],["raw","jsonb"],["source_hash","text"],["first_seen_at","timestamp with time zone"],["last_seen_at","timestamp with time zone"],["imported_at","timestamp with time zone"],["updated_at","timestamp with time zone"]]'::jsonb),
+    ('plm.erp_salesperson','r','[["company_code","text"],["salesperson_code","text"],["name","text"],["active","boolean"],["erp_created_at","timestamp with time zone"],["erp_updated_at","timestamp with time zone"],["raw","jsonb"],["source_hash","text"],["first_seen_at","timestamp with time zone"],["last_seen_at","timestamp with time zone"],["imported_at","timestamp with time zone"],["updated_at","timestamp with time zone"]]'::jsonb),
+    ('plm.coldlion_item_header','v','[["company_code","text"],["division_code","text"],["item_no","text"],["item_desc","text"],["item_display_desc","text"],["item_status","text"],["season_code","text"],["design_no","text"],["product_manager","text"],["brand_assurance_no","text"],["movie_art","text"],["character_likeness","text"],["character_list","text"],["royalty_code","text"],["royalty_code2","text"],["hts_number","text"],["hts_number2","text"],["origin_country","text"],["mg_category","text"],["retail_price","numeric"],["selling_price","numeric"],["compare_price","numeric"],["item_cost","numeric"],["item_price_a","numeric"],["item_price_b","numeric"],["item_price_c","numeric"],["item_price_d","numeric"],["item_length","numeric"],["item_width","numeric"],["item_height","numeric"],["item_weight","numeric"],["item_volume","numeric"],["carton_qty","numeric"],["carton_length","numeric"],["carton_width","numeric"],["carton_height","numeric"],["carton_weight","numeric"],["inner_pack_qty","numeric"],["po_lead_time","numeric"],["mfg_lead_time","numeric"],["sales_person_code1","text"],["sales_person_code2","text"],["active","text"],["item_available","text"],["item_discontinued","text"],["non_inventory_item","text"],["has_image","text"],["contract_sample_sent_date","date"],["contract_sample_date","date"],["annual_sample_sent_date","date"],["annual_sample_date","date"],["contract_sample_qty","numeric"],["annual_sample_qty","numeric"],["prepro_approved","text"],["prepro_approved_date","date"],["erp_created_at","timestamp with time zone"],["erp_updated_at","timestamp with time zone"],["last_seen_at","timestamp with time zone"]]'::jsonb),
+    ('plm.coldlion_item_detail','v','[["company_code","text"],["division_code","text"],["item_no","text"],["item_pkey","text"],["label_code","text"],["pre_pack_code","text"],["upc","text"],["item_status","text"],["season_code","text"],["active","text"],["item_available","text"],["item_discontinued","text"],["retail_price","numeric"],["item_cost","numeric"],["selling_price","numeric"],["item_price_a","numeric"],["item_price_b","numeric"],["item_price_c","numeric"],["item_price_d","numeric"],["carton_qty","numeric"],["nmfc_code","text"],["actual_dims","text"],["item_length","numeric"],["item_width","numeric"],["item_height","numeric"],["item_weight","numeric"],["item_volume","numeric"],["carton_length","numeric"],["carton_width","numeric"],["carton_height","numeric"],["carton_weight","numeric"],["inner_pack_qty","numeric"],["hts_number","text"],["royalty_code","text"],["royalty_code2","text"],["sales_person_code1","text"],["sales_person_code2","text"],["erp_created_at","timestamp with time zone"],["erp_updated_at","timestamp with time zone"],["last_seen_at","timestamp with time zone"]]'::jsonb),
+    ('plm.coldlion_item_merch_group','v','[["company_code","text"],["division_code","text"],["item_no","text"],["slot_no","smallint"],["mg_code","text"],["last_seen_at","timestamp with time zone"],["id","uuid"],["item_pkey","text"]]'::jsonb),
+    ('plm.coldlion_sales_history','v','[["company_code","text"],["division_code","text"],["sales_order_no","bigint"],["sales_order_line_no","integer"],["customer_code","text"],["customer_desc","text"],["po_number","text"],["sales_person_code1","text"],["start_date","date"],["cancel_date","date"],["master_item_no","text"],["label_code","text"],["pre_pack_code","text"],["warehouse_code","text"],["prod_cost","numeric"],["prod_reference_no","text"],["sub_item_no","text"],["sub_label_code","text"],["line_price","numeric"],["component_qty","numeric"],["order_qty","numeric"],["invoice_qty","numeric"],["ship_qty","numeric"],["order_amount","numeric"],["ship_amount","numeric"],["line_id","uuid"],["component_id","uuid"]]'::jsonb),
+    ('plm.coldlion_prod_history','v','[["company_code","text"],["division_code","text"],["prod_order_no","bigint"],["prod_line_seq","bigint"],["stage_code","text"],["requested_stage_code","text"],["prod_type_code","text"],["customer_code","text"],["customer_desc","text"],["vendor_code","text"],["vendor_desc","text"],["item_no","text"],["short_item_no","text"],["label_code","text"],["pre_pack_code","text"],["warehouse_code","text"],["warehouse_sku","text"],["prod_country","text"],["freight_forwarder_code","text"],["arrival_port_code","text"],["sales_order_no","bigint"],["sales_order_link_present","boolean"],["prod_reference_no","text"],["cust_po_number","text"],["prod_order_date","date"],["due_date","date"],["ship_date","date"],["receive_date","date"],["prod_order_qty","numeric"],["prepack_qty","numeric"],["total_ppk_qty","numeric"],["prod_cost","numeric"],["ext_cost","numeric"],["total_prod_cost","numeric"],["prepack_item_no","text"],["prepack_item_pkey","text"],["prepack_division_code","text"],["sub_item_no","text"],["line_price","numeric"],["ppk_detail_qty","numeric"],["ppk_detail_cost","numeric"],["line_id","uuid"],["component_id","uuid"]]'::jsonb),
+    ('plm.coldlion_prepack_detail','v','[["company_code","text"],["prepack_code","text"],["sequence_no","integer"],["division_code","text"],["item_no","text"],["color_code","text"],["size_code","text"],["dim_code","text"],["label_code","text"],["quantity","integer"],["detail_prepack","text"],["item_cost","numeric"],["item_price","numeric"],["item_price_capitalized","numeric"],["erp_created_at","timestamp with time zone"],["erp_updated_at","timestamp with time zone"],["last_seen_at","timestamp with time zone"]]'::jsonb),
+    ('plm.coldlion_prod_detail','v','[["company_code","text"],["pkey","bigint"],["prod_order_no","bigint"],["prod_line_seq","integer"],["division_code","text"],["item_pkey","bigint"],["item_no","text"],["color_code","text"],["size_code","text"],["dim_code","text"],["label_code","text"],["prepack_code","text"],["prod_qty","numeric"],["wip_qty","numeric"],["prod_cost","numeric"],["cust_po_number","text"],["erp_created_at","timestamp with time zone"],["erp_updated_at","timestamp with time zone"],["last_seen_at","timestamp with time zone"]]'::jsonb),
+    ('pim.coldlion_item_image_metadata','v','[["company_code","text"],["pkey","bigint"],["resource_id","bigint"],["division_code","text"],["item_no","text"],["color_code","text"],["label_code","text"],["file_name","text"],["file_type","text"],["item_image_desc","text"],["erp_created_at","timestamp with time zone"],["erp_updated_at","timestamp with time zone"],["last_seen_at","timestamp with time zone"]]'::jsonb)
+), expected_functions(signature,result_type,volatility,configuration) as (values
+    ('plm.import_coldlion_seasons()','TABLE(seasons_seen integer, seasons_upserted integer)','v','search_path=plm, coldlion, extensions, public'),
+    ('plm.import_coldlion_salespersons()','TABLE(salespersons_seen integer, salespersons_upserted integer)','v','search_path=plm, coldlion, extensions, public'),
+    ('plm.coldlion_merch_group_candidates(text,text)','TABLE(company_code text, division_code text, mg_type_code text, mg_type_desc text, mg_code text, mg_desc text, mg_category text, active text, candidate_kind text, resolution_status text, last_seen_at timestamp with time zone)','s','search_path=plm, coldlion, extensions, public')
+), checks as (
+select
+  exists(select 1 from supabase_migrations.schema_migrations where version='20261011184117')
+  and (select count(*) from expected_relations)=10
+  and not exists(select 1 from expected_relations e left join pg_class c on c.oid=to_regclass(e.name)
+    where c.oid is null or c.relkind::text<>e.kind
+      or coalesce((select jsonb_agg(jsonb_build_array(a.attname,format_type(a.atttypid,a.atttypmod)) order by a.attnum) from pg_attribute a where a.attrelid=c.oid and a.attnum>0 and not a.attisdropped),'[]'::jsonb)<>e.columns
+      or not has_table_privilege('authenticated',c.oid,'SELECT') or not has_table_privilege('service_role',c.oid,'SELECT')
+      or has_table_privilege('anon',c.oid,'SELECT')
+      or exists(select 1 from aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) acl where acl.grantee=0)
+      or (e.kind='v' and has_table_privilege('authenticated',c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'))
+      or (e.kind='v' and not coalesce(c.reloptions @> array['security_invoker=false','security_barrier=true'],false)))
+  and (select count(*) from expected_functions)=3
+  and (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='plm' and p.proname in ('import_coldlion_seasons','import_coldlion_salespersons','coldlion_merch_group_candidates'))=3
+  and not exists(select 1 from expected_functions e left join pg_proc p on p.oid=to_regprocedure(e.signature)
+    where p.oid is null or pg_get_function_result(p.oid)<>e.result_type or p.provolatile::text<>e.volatility
+      or not p.prosecdef or array_to_string(p.proconfig,',') is distinct from e.configuration
+      or not has_function_privilege('service_role',p.oid,'EXECUTE') or has_function_privilege('anon',p.oid,'EXECUTE')
+      or exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) acl where acl.grantee=0 and acl.privilege_type='EXECUTE')
+      or has_function_privilege('authenticated',p.oid,'EXECUTE')<>(p.proname='coldlion_merch_group_candidates'))
+  and not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='plm' and p.proname='import_coldlion_vendors')
+  and not has_schema_privilege('anon','coldlion','USAGE') and not has_schema_privilege('authenticated','coldlion','USAGE')
+  and has_schema_privilege('service_role','coldlion','USAGE')
+  and not exists(select 1 from pg_class c where c.relnamespace=to_regnamespace('coldlion') and c.relkind in ('r','p','v','m','f')
+    and (has_table_privilege('anon',c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') or has_table_privilege('authenticated',c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')))
+  and not exists(select 1 from (values ('plm.erp_season','plm_erp_season_admin_only',array['company_code','division_code','season_code']),('plm.erp_salesperson','plm_erp_salesperson_admin_only',array['company_code','salesperson_code'])) mirrors(name,policy_name,pk)
+    join pg_class c on c.oid=to_regclass(mirrors.name)
+    where not c.relrowsecurity or c.relforcerowsecurity
+      or has_table_privilege('authenticated',c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+      or not has_table_privilege('service_role',c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+      or (select count(*) from pg_policy where polrelid=c.oid)<>1
+      or not exists(select 1 from pg_policy p where p.polrelid=c.oid and p.polname=mirrors.policy_name and p.polcmd='r' and p.polpermissive and p.polroles=array[(select oid from pg_roles where rolname='authenticated')]
+         and pg_get_expr(p.polqual,p.polrelid)='app.has_role(''administrator''::app.app_role)' and p.polwithcheck is null)
+      or not exists(select 1 from pg_constraint p where p.conrelid=c.oid and p.contype='p' and (select array_agg(a.attname::text order by k.ord) from unnest(p.conkey) with ordinality k(attnum,ord) join pg_attribute a on a.attrelid=c.oid and a.attnum=k.attnum)=mirrors.pk))
+  and has_schema_privilege('authenticated','app','USAGE') and has_function_privilege('authenticated','app.has_role(app.app_role)','EXECUTE')
+  as passed
+)
+select coalesce(passed,false) as passed from checks;

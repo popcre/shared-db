@@ -28,7 +28,7 @@
     },
     {
       "site": ".github/workflows/database-contract-tests.yml:353",
-      "semantic_key": ".github/workflows/database-contract-tests.yml:083dc100b3b8f521ebcc99ad620f16d9c88489dac27ba17eb34c11a43273a0f4:context-dd7254e9619a02bb1c9f78220061dd023274404643863ded0b2af3a2a8d2090e",
+      "semantic_key": ".github/workflows/database-contract-tests.yml:083dc100b3b8f521ebcc99ad620f16d9c88489dac27ba17eb34c11a43273a0f4:context-0826bbebd2ecbd144918ce090f1ff12c585ab5766af4811ad272610833f536db",
       "legacy_semantic_key": ".github/workflows/database-contract-tests.yml:083dc100b3b8f521ebcc99ad620f16d9c88489dac27ba17eb34c11a43273a0f4:1",
       "line_sha256": "083dc100b3b8f521ebcc99ad620f16d9c88489dac27ba17eb34c11a43273a0f4",
       "disposition": "excluded",
@@ -36,7 +36,7 @@
     },
     {
       "site": ".github/workflows/database-contract-tests.yml:515",
-      "semantic_key": ".github/workflows/database-contract-tests.yml:083dc100b3b8f521ebcc99ad620f16d9c88489dac27ba17eb34c11a43273a0f4:context-eb6bf72934c24341d3aa5d1c79155d2399259fc4fbc4ff4121b7565c37418e11",
+      "semantic_key": ".github/workflows/database-contract-tests.yml:083dc100b3b8f521ebcc99ad620f16d9c88489dac27ba17eb34c11a43273a0f4:context-43942b7e5bb8fc9384a435b9b4f62cfabf4caa4968f8ffc1626cf7ab5ceb3a85",
       "legacy_semantic_key": ".github/workflows/database-contract-tests.yml:083dc100b3b8f521ebcc99ad620f16d9c88489dac27ba17eb34c11a43273a0f4:2",
       "line_sha256": "083dc100b3b8f521ebcc99ad620f16d9c88489dac27ba17eb34c11a43273a0f4",
       "disposition": "excluded",

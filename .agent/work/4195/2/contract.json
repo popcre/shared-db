@@ -1,0 +1,50 @@
+{
+  "schema_version": 2,
+  "work_issue": 4195,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Complete paginated reviewer-lease evidence connections (issue/PR comments and reviews over 100) with bounded fail-closed cursor follow-up pages so reviewer draws stop refusing repository-wide; implemented inside the lane library only, without editing scripts/manage-migration-author-lanes.mjs (serialized behind PR #4193)",
+  "base_sha": "48460174599ba8a580e818389eb9f06070345e67",
+  "dispatcher": "Claude chat 7623097e-a8da-4712-8cab-fb86b5076289 on hetz",
+  "worker": "claude",
+  "branch": "fix/review-state-pagination",
+  "worktree": "/worksp/shared-db-wt-pagination",
+  "allowed_paths": [
+    "scripts/lib/lanes/github-wire.mjs",
+    "scripts/lib/lanes/review-assignment.mjs",
+    "scripts/review-state-pagination.test.mjs"
+  ],
+  "file_writes": [
+    "scripts/lib/lanes/github-wire.mjs",
+    "scripts/lib/lanes/review-assignment.mjs",
+    "scripts/review-state-pagination.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "do not change verdict, assignment, lease or approval semantics; only complete the evidence read",
+    "do not touch any migration or database object",
+    "do not edit another session's issue, handoff, worktree, branch, claim or lease"
+  ],
+  "required_checks": [
+    "node --test scripts/review-state-pagination.test.mjs",
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "GitHub GraphQL connections cap first at 100 and return pageInfo.endCursor",
+    "reviewStateEntry remains the fail-closed gate for any still-incomplete connection",
+    "follow-up page requests go through the budgeted gh() runner in github-wire.mjs"
+  ],
+  "stop_conditions": [
+    "stop if completing the read would require changing verdict recognition",
+    "stop if a test fails for a reason unrelated to these files",
+    "stop if the change would need to touch a file outside allowed_paths"
+  ],
+  "generation": 2,
+  "evidence_parent": {
+    "work_issue": 4195,
+    "generation": 1,
+    "contract_sha256": "a32bc7303c608d82b15be4f588c10989a75574dab9161b43323bf5a889081d13"
+  }
+}

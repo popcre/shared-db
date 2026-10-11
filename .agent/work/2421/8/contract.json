@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "generation": 7,
+  "generation": 8,
   "work_issue": 2421,
   "work_type": "structural",
   "route": "claim-first",
@@ -28,7 +28,10 @@
     ".agent/work/2421/6/contract.json",
     ".agent/work/2421/6/completion.json",
     ".agent/work/2421/7/contract.json",
-    ".agent/work/2421/7/completion.json"
+    ".agent/work/2421/7/completion.json",
+    "HANDOFF.d/2026-10-11T1324Z-edge-dev3-codex-style-group-watermark.md",
+    ".agent/work/2421/8/contract.json",
+    ".agent/work/2421/8/completion.json"
   ],
   "file_writes": [
     "supabase/migrations/20261011125719_style_group_change_watermark.sql",
@@ -48,7 +51,10 @@
     ".agent/work/2421/6/contract.json",
     ".agent/work/2421/6/completion.json",
     ".agent/work/2421/7/contract.json",
-    ".agent/work/2421/7/completion.json"
+    ".agent/work/2421/7/completion.json",
+    "HANDOFF.d/2026-10-11T1324Z-edge-dev3-codex-style-group-watermark.md",
+    ".agent/work/2421/8/contract.json",
+    ".agent/work/2421/8/completion.json"
   ],
   "db_reads": [
     "function public.style_group_key_for_sku",
@@ -100,7 +106,7 @@
   ],
   "evidence_parent": {
     "work_issue": 2421,
-    "generation": 6,
-    "contract_sha256": "d6640e72f57fa6ef86dbe6ac6db34cd02e81a02ef60fb9c1a8530c3d7236a053"
+    "generation": 7,
+    "contract_sha256": "0b27bd41e564740aefc118845b76ee602362349c88903eb8ba0a5bf70ef770b6"
   }
 }

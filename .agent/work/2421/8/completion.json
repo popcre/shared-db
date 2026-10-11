@@ -6,16 +6,17 @@
   "migration_versions": [
     "20261011125719"
   ],
-  "contract_ref": "refs/db-contracts/2421/7",
-  "contract_sha256": "0b27bd41e564740aefc118845b76ee602362349c88903eb8ba0a5bf70ef770b6",
-  "head_sha": "3f75db97e47e4cef0870c5e5e55ca9a4a8aae7da",
+  "contract_ref": "refs/db-contracts/2421/8",
+  "contract_sha256": "b71092298c4ab39050d4708325abaf1f6b3cf64ab8b9eabfec2ea53a48892887",
+  "head_sha": "74cb8978ed3fafb4fbf37df16701930001f4a127",
   "files_changed": [
     ".github/live-proofs/2421.sql",
     "scripts/test_style_group_watermark.py",
     "supabase/migrations/20261011125719_style_group_change_watermark.sql",
     "supabase/tests/style_group_change_watermark_contracts.sql",
-    ".agent/work/2421/7/contract.json",
-    ".agent/work/2421/7/completion.json"
+    ".agent/work/2421/8/contract.json",
+    ".agent/work/2421/8/completion.json",
+    "HANDOFF.d/2026-10-11T1324Z-edge-dev3-codex-style-group-watermark.md"
   ],
   "db_reads": [
     "function public.style_group_key_for_sku",

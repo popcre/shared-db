@@ -40,7 +40,13 @@ jobs:
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 30
     steps:
+      # Full history (#3806): the archive decides whether a merged pull request
+      # touched supabase/migrations by diffing its merge commit locally. A shallow
+      # checkout lacks those commits, so every merged verdict read as
+      # merge-commit-unreadable and was kept, and the namespace never shrank.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:

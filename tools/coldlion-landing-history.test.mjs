@@ -14,12 +14,14 @@ import { ORDER_HISTORY, allScopes, prodHistoryScope } from "./coldlion-landing/l
 import { assertPagesComplete, buildPageUrl, fetchPage, fetchWindowScope, isPermanentStatus, requestParams, validatePage } from "./coldlion-landing/lib/http.mjs";
 import { assertExpectedTarget } from "./coldlion-landing/lib/db.mjs";
 import { bigint, canonical, date, num, sourceHash, splitTokens, sqlText, text } from "./coldlion-landing/lib/values.mjs";
-import { projectOrderHistoryWindow, splitInvoiceTokens } from "./coldlion-landing/lib/project-order-history.mjs";
+import { projectOrderHistoryWindow, splitInvoiceTokens, wallClockTimestamp } from "./coldlion-landing/lib/project-order-history.mjs";
+import { aggregateStamps, buildStampUpdateSql, parseArgs as parseStampArgs } from "./coldlion-landing/backfill-order-stamps.mjs";
 import { projectProdHistoryWindow, quantitiesAgree, selectLookup } from "./coldlion-landing/lib/project-prod-history.mjs";
 import { buildOrderHistoryLoadSql, buildProdHistoryLoadSql } from "./coldlion-landing/lib/load-window.mjs";
-import { loadedWindowsSql } from "./coldlion-landing/lib/run-history.mjs";
+import { assertHistoryShape, hasOrderStampColumns, historyShapeSql, interpretOrderStampColumns, loadedWindowsSql, orderStampColumnsSql } from "./coldlion-landing/lib/run-history.mjs";
+import { createHash } from "node:crypto";
 import { parseArgs as parseBackfillArgs, selectScopes } from "./coldlion-landing/backfill-history.mjs";
-import { parseArgs as parseSyncArgs } from "./coldlion-landing/sync-history.mjs";
+import { forwardScan, parseArgs as parseSyncArgs } from "./coldlion-landing/sync-history.mjs";
 
 // ---------------------------------------------------------------------------------
 // The fixed grid
@@ -283,6 +285,95 @@ test("a differing line projection is a separate VERSION, never a merged row", ()
   assert.notEqual(projected.lines[0].line_source_hash, projected.lines[1].line_source_hash);
 });
 
+test("entry/edit stamps land on the line, earliest created and latest modified, outside the hash (#3869)", () => {
+  counter = 0;
+  const projected = projectOrderHistoryWindow(
+    [
+      orderRow({ createdTime: "2026-03-27 11:37:34.557", createdUser: "U1", modTime: "2026-04-01 08:00:00.000", modUser: "U2" }),
+      orderRow({ subItemNo: "SKU-2", createdTime: "2026-03-26 09:00:00.000", createdUser: "U0", modTime: "2026-05-01 10:00:00.000", modUser: "U3" }),
+    ],
+    { runId: ids(), fetchedAt: "2026-09-08T00:00:00Z", newId: ids },
+  );
+  assert.equal(projected.lines.length, 1, "differing stamps never split a line into versions");
+  const [line] = projected.lines;
+  assert.equal(line.created_time, "2026-03-26T09:00:00.000Z");
+  assert.equal(line.created_user, "U0");
+  assert.equal(line.mod_time, "2026-05-01T10:00:00.000Z");
+  assert.equal(line.mod_user, "U3");
+  counter = 0;
+  const bare = projectOrderHistoryWindow([orderRow()], { runId: ids(), fetchedAt: "2026-09-08T00:00:00Z", newId: ids });
+  assert.equal(bare.lines[0].line_source_hash, line.line_source_hash, "stamps are not part of line_source_hash");
+  assert.equal(bare.lines[0].created_time, null);
+  const loadArgs = {
+    window: { from: "2026-09-07", to: "2026-09-13" }, scope: ORDER_HISTORY, runId: ids(), requestedBy: "t",
+    companyCode: "TESTCO", pages: [{ pageNumber: 0, requestedPageSize: 200, returnedPageSize: 200, rowCount: 2, reportedTotalElements: 2, reportedTotalPages: 1, isLastPage: true, httpStatus: 200, bodyStatus: null, fetchedAt: "2026-09-08T00:00:00Z" }],
+    completion: { rows: 2 }, projected, startedAt: "2026-09-08T00:00:00Z", finishedAt: "2026-09-08T00:00:01Z", durationMs: 1, notes: null,
+  };
+  assert.match(buildOrderHistoryLoadSql({ ...loadArgs, stampColumns: true }), /created_time, created_user, mod_time, mod_user/);
+  assert.doesNotMatch(buildOrderHistoryLoadSql(loadArgs), /created_time/,
+    "a target without migration 20261009170724 is never sent the stamp columns");
+});
+
+test("the loader writes stamps only when the target has all four stamp columns", () => {
+  assert.equal(interpretOrderStampColumns([["4", "4"]]), true);
+  assert.equal(interpretOrderStampColumns([["0", "0"]]), false);
+  assert.throws(() => interpretOrderStampColumns([["1", "1"]]), /1 of the 4 ColdLion stamp columns/);
+  assert.throws(() => interpretOrderStampColumns([["3", "4"]]), /3 with the expected type/);
+  assert.match(orderStampColumnsSql(), /coldlion\.order_history_line/);
+  let probes = 0;
+  const query = () => { probes += 1; return [["4", "4"]]; };
+  assert.equal(hasOrderStampColumns({ url: "postgres://probe-test-a" }, query), true);
+  assert.equal(hasOrderStampColumns({ url: "postgres://probe-test-a" }, query), true);
+  assert.equal(probes, 1, "one probe per target per run");
+});
+
+test("the stamp backfill clamps --to to the newest closed window and skips EP001", () => {
+  const lastClosed = windowAtIndex(lastClosedWindowIndex(isoDate(new Date())));
+  assert.equal(parseStampArgs(["--from", "2026-01-01", "--to", "2999-01-01"]).to, lastClosed.to);
+  assert.equal(parseStampArgs(["--from", "2026-01-01"]).to, lastClosed.to);
+  assert.equal(parseStampArgs(["--from", "2020-01-01", "--to", "2020-02-01"]).to, "2020-02-01");
+  assert.throws(() => parseStampArgs([]), /--from is required/);
+  assert.deepEqual(aggregateStamps([orderRow({ divisionCode: "EP001", createdTime: "2026-03-27 11:00:00.000" })], "current"), []);
+  const many = Array.from({ length: 1201 }, (_, i) => orderRow({ salesOrderLineNo: String(i + 1), createdTime: "2026-03-27 11:00:00.000" }));
+  const sql = buildStampUpdateSql(aggregateStamps(many, "current"), "current");
+  assert.equal((sql.match(/insert into _stamps values/g) ?? []).length, 3, "batched 500 rows per statement");
+});
+
+test("vendor wall-clock stamps are read as UTC, never in the machine zone", () => {
+  assert.equal(wallClockTimestamp("2026-03-27 11:37:34.557"), "2026-03-27T11:37:34.557Z");
+  assert.equal(wallClockTimestamp("2026-03-27T11:37:34"), "2026-03-27T11:37:34.000Z");
+  assert.equal(wallClockTimestamp("2026-03-27T11:37:34-04:00"), "2026-03-27T15:37:34.000Z");
+  assert.equal(wallClockTimestamp("1900-01-01 00:00:00.000"), null);
+  assert.equal(wallClockTimestamp(""), null);
+  assert.throws(() => wallClockTimestamp("27/03/2026"), /not an ISO timestamp/);
+});
+
+test("the stamp backfill folds and matches on the loader's line identity for each table shape", () => {
+  const rows = [
+    orderRow({ labelCode: "", createdTime: "2026-03-27 11:00:00.000", modTime: "2026-03-28 11:00:00.000" }),
+    orderRow({ labelCode: "", createdTime: "2026-03-25 11:00:00.000", modTime: "2026-03-29 11:00:00.000", modUser: "M" }),
+    orderRow({ labelCode: "", salesOrderLineNo: "2", createdTime: "2026-03-20 11:00:00.000" }),
+    orderRow({ itemNo: "NO-STAMPS" }),
+  ];
+  const current = aggregateStamps(rows, "current");
+  assert.deepEqual(current.map((s) => [s.sales_order_line_no, s.created_time, s.mod_user]), [
+    [1, "2026-03-25T11:00:00.000Z", "M"],
+    [2, "2026-03-20T11:00:00.000Z", null],
+  ], "two order lines sharing order/item/label are never folded together");
+  const sql = buildStampUpdateSql(current, "current");
+  assert.match(sql, /^begin;/);
+  assert.match(sql, /set created_time = s\.created_time, created_user = s\.created_user,\s+mod_time = s\.mod_time, mod_user = s\.mod_user/);
+  assert.match(sql, /t\.sales_order_line_no = s\.sales_order_line_no\s+and t\.master_item_no = s\.item_no/);
+  assert.doesNotMatch(sql, /label_code is not distinct/);
+  assert.doesNotMatch(sql, /insert into coldlion/);
+  const legacy = aggregateStamps(rows, "legacy");
+  assert.equal(legacy.length, 1, "the line-number-less shape keys on order/item/label, its own identity");
+  assert.equal(legacy[0].created_time, "2026-03-20T11:00:00.000Z");
+  assert.match(buildStampUpdateSql(legacy, "legacy"), /t\.item_no = s\.item_no\s+and t\.label_code is not distinct from s\.label_code/);
+  assert.equal(buildStampUpdateSql([], "legacy"), null);
+  assert.throws(() => buildStampUpdateSql(current, "x; drop"), /unexpected table shape/);
+});
+
 test("EP001 rows are excluded and the exclusion is counted, not silent", () => {
   counter = 0;
   const projected = projectOrderHistoryWindow(
@@ -409,6 +500,7 @@ test("the lookup selection prefers the newest dated copy and is stable", () => {
 
 // ---------------------------------------------------------------------------------
 // The generated transaction
+const SEALED_ORDER_SQL_SHA256 = "85506c8abc52818e0469f70bb3ba45b6dc73c58152d2f8977a81e56023d54d58";
 // ---------------------------------------------------------------------------------
 
 const page = (rowCount) => ({
@@ -425,7 +517,7 @@ const page = (rowCount) => ({
   fetchedAt: "2026-09-08T00:00:00Z",
 });
 
-function orderSql() {
+function orderSql(extra = {}) {
   counter = 0;
   const runId = "11111111-1111-4111-8111-111111111111";
   const projected = projectOrderHistoryWindow([orderRow({ invoiceNoString: "I1", invoiceDateString: "2021-03-04" })], {
@@ -446,6 +538,7 @@ function orderSql() {
     finishedAt: "2026-09-08T00:00:01Z",
     durationMs: 1000,
     notes: "lines=1",
+    ...extra,
   });
 }
 
@@ -762,4 +855,162 @@ test("no secret value can be printed", () => {
     assert.doesNotMatch(workflow, /echo .*\$\{\{\s*secrets\./, `${name} must never echo a secret`);
     assert.doesNotMatch(workflow, /echo "?\$DATABASE_URL/, `${name} must never echo the connection string`);
   }
+});
+
+// ---------------------------------------------------------------------------------
+// Forward scan (unsealed /orderHistory loads, #3869)
+// ---------------------------------------------------------------------------------
+
+test("an unsealed forward load writes lines and a run record but never seals the window", () => {
+  const sql = orderSql({ sealed: false });
+  assert.match(sql, /^begin;/);
+  assert.match(sql, /commit;$/);
+  assert.match(sql, /insert into coldlion\.order_history_line/);
+  assert.match(sql, /coldlion_order_history_line_identity_unique/);
+  assert.match(sql, /"unsealedForward":true/);
+  assert.doesNotMatch(sql, /insert into coldlion\.window_ledger/);
+  assert.doesNotMatch(sql, /history_page_ledger/);
+  assert.doesNotMatch(sql, /set state = 'loaded'/);
+  assert.match(sql, /already loaded \(sealed\)/, "a sealed window is refused, never touched");
+});
+
+test("the sealed load differs from the pre-forward loader ONLY by the forward-created-line child filter", () => {
+  // SEALED_ORDER_SQL_SHA256 is sha256 of orderSql() as built by origin/main e6a279c7, before
+  // forward mode existed. Removing exactly the three statements this PR adds to the sealed
+  // path must give back those bytes, so nothing else in the sealed load changed.
+  const sql = orderSql({ sealed: true });
+  const added = [
+    /\n\ncreate temp table _old_line on commit drop as\n[\s\S]*?where r\.request_params \? 'unsealedForward';/,
+    /\n\ndelete from _stage_component s using _old_line o where s\.line_local_id = o\.local_id;/,
+    /\n\ndelete from _stage_invoice s using _old_line o where s\.line_local_id = o\.local_id;/,
+    /\n\ndelete from _stage_pick s using _old_line o where s\.line_local_id = o\.local_id;/,
+  ];
+  let stripped = sql;
+  for (const pattern of added) {
+    assert.match(stripped, pattern);
+    stripped = stripped.replace(pattern, "");
+  }
+  assert.equal(createHash("sha256").update(stripped).digest("hex"), SEALED_ORDER_SQL_SHA256);
+});
+
+test("an unsealed load writes children only under line versions it created", () => {
+  const sql = orderSql({ sealed: false });
+  assert.match(sql, /create temp table _old_line/);
+  for (const stage of ["_stage_component", "_stage_invoice", "_stage_pick"]) {
+    assert.match(sql, new RegExp(`delete from ${stage} s using _old_line o`));
+  }
+  const sealed = orderSql();
+  assert.match(sealed, /join coldlion\.sync_run r on r\.id = l\.run_id/, "sealed loads skip children only under forward-created versions");
+  assert.doesNotMatch(sealed, /l\.run_id is distinct from/);
+});
+
+test("the loaders refuse a target that is not the canonical landing shape", () => {
+  assert.match(historyShapeSql(), /'order_history_line', 'id'/);
+  assert.match(historyShapeSql(), /'window_ledger', 'stage_code'/);
+  assert.match(historyShapeSql(), /coldlion_order_history_component_identity_unique/);
+  assert.match(historyShapeSql(), /relkind in \('r', 'p'\)/, "a view of the same name is not the table");
+  assert.doesNotThrow(() => assertHistoryShape({}, () => []));
+  assert.throws(() => assertHistoryShape({}, () => [["order_history_line.id"]]), /not the canonical landing shape/);
+});
+
+test("forward mode is /orderHistory only", () => {
+  assert.throws(() => orderSql({ sealed: false, scope: prodHistoryScope("ISS") }), /orderHistory only/);
+});
+
+test("--forward is parsed and --today drives the closed-window clamp", () => {
+  const args = parseSyncArgs(["--forward", "--today", "2026-10-09"]);
+  assert.equal(args.forward, true);
+  assert.equal(args.to, "2026-10-05");
+});
+
+async function scanWith(linesByMonth, { failMonth, failWindows = [] } = {}) {
+  const seen = [];
+  const failures = [];
+  const result = await forwardScan({
+    args: { today: "2026-10-09", company: "TESTCO", pageSize: 200 },
+    apiKey: "k",
+    failures,
+    load: async ({ window, sealed, scope }) => {
+      assert.equal(sealed, false);
+      assert.equal(scope.endpoint, "/orderHistory");
+      seen.push(window.from);
+      const month = window.from.slice(0, 7);
+      if (month === failMonth || failWindows.includes(window.from)) throw new Error("vendor down");
+      const lines = linesByMonth[month] ?? 0;
+      return { fetched: { rows: lines }, summary: { lines } };
+    },
+  });
+  return { seen, failures, result };
+}
+
+test("the forward scan starts at the OPEN current window and stops after two empty months", async () => {
+  const { seen, result } = await scanWith({ "2026-10": 5, "2026-11": 3, "2026-12": 1 });
+  assert.equal(seen[0], windowContaining("2026-10-09").from, "the open week is scanned");
+  assert.ok(seen.some((from) => from.startsWith("2026-12")), "a month with orders keeps the scan going");
+  const months = [...new Set(seen.map((from) => from.slice(0, 7)))];
+  assert.deepEqual(months.slice(-2), ["2027-01", "2027-02"], "two consecutive empty months end it");
+  assert.equal(result.stoppedAt, "2027-03-01");
+  const lastFeb = seen.filter((from) => from.startsWith("2027-02")).length;
+  assert.equal(lastFeb, 4, "an empty month is judged only after ALL its windows were read");
+});
+
+test("a forward outage stops after a bounded run of failures and stays red", async () => {
+  const { seen, failures, result } = await scanWith({}, { failMonth: "2026-10" });
+  assert.equal(seen.length, 4);
+  assert.equal(result.aborted, true);
+  assert.equal(result.stoppedAt, null, "an outage is never an empty-month stop");
+  assert.ok(failures.some((f) => /aborted after 4 consecutive/.test(f)));
+});
+
+test("a failed forward window never counts as an empty month", async () => {
+  // November would be empty, but one of its windows failed: it is NOT an empty month, so
+  // the scan runs through December and January before two empty months end it.
+  const novemberWindow = windowAtIndex(windowContaining("2026-11-10").index).from;
+  const { seen, failures } = await scanWith({ "2026-10": 5 }, { failWindows: [novemberWindow] });
+  const months = [...new Set(seen.map((from) => from.slice(0, 7)))];
+  assert.deepEqual(months.slice(-2), ["2026-12", "2027-01"]);
+  assert.equal(failures.length, 1);
+});
+
+// ---------------------------------------------------------------------------------
+// The DesignFlow sandbox sync workflow (#3869): the third sanctioned writer
+// ---------------------------------------------------------------------------------
+
+const SANDBOX_REF = "xupnyeifmpsacrqahwwm";
+const sandboxSync = readWorkflow("coldlion-landing-sync-sandbox.yml");
+
+test("the sandbox sync can only target the DesignFlow sandbox", () => {
+  const declarations = sandboxSync.match(/COLDLION_EXPECTED_PROJECT_REF: (\S+)/g) ?? [];
+  assert.deepEqual(declarations, [`COLDLION_EXPECTED_PROJECT_REF: ${SANDBOX_REF}`]);
+  assert.doesNotMatch(sandboxSync, new RegExp(PRODUCTION_REF), "never names production");
+  assert.doesNotMatch(sandboxSync, /SUPABASE_DB_URL_PRODUCTION|DATABASE_URL: \$\{\{/, "no production or injected URL secret");
+  assert.match(sandboxSync, /environment: designflow-sandbox/);
+  assert.match(sandboxSync, /secrets\.SUPABASE_DB_PASSWORD_DESIGNFLOW_SANDBOX/);
+});
+
+test("the sandbox sync cannot be reached by a push, a pull request or a fork", () => {
+  const on = sandboxSync.slice(sandboxSync.indexOf("\non:"), sandboxSync.indexOf("\njobs:"));
+  assert.doesNotMatch(on, /pull_request|push:/);
+  assert.match(on, /workflow_dispatch/);
+  assert.match(on, /cron: '30 5 \* \* \*'/);
+});
+
+test("the sandbox sync shares the one sandbox writer lock and never cancels a run", () => {
+  assert.match(sandboxSync, /concurrency:\n\s+group: designflow-sandbox-migrations\n\s+cancel-in-progress: false/);
+  assert.match(readWorkflow("designflow-sandbox-migrations.yml"), /group: designflow-sandbox-migrations/);
+});
+
+test("the sandbox sync runs the offline tests first, masks the password and bounds the backfill", () => {
+  assert.ok(sandboxSync.indexOf("node --test") < sandboxSync.indexOf("name: Sync"));
+  assert.match(sandboxSync, /::add-mask::/);
+  assert.match(sandboxSync, /SANDBOX_SYSTEM_IDENTIFIER: '7678069749886157684'/);
+  assert.ok(sandboxSync.indexOf("system_identifier mismatch") < sandboxSync.indexOf("node tools/coldlion-landing/"), "the database is proven before any loader runs");
+  const echoes = sandboxSync.match(/echo[^\n]*\$SANDBOX_PASSWORD[^\n]*/g) ?? [];
+  assert.deepEqual(echoes, ['echo "::add-mask::$SANDBOX_PASSWORD"'], "the raw password is only ever masked, never printed");
+  assert.match(sandboxSync, /--from "\$FROM" --limit "\$LIMIT"/);
+  assert.match(sandboxSync, /--windows "\$WINDOWS" --forward/);
+});
+
+test("--today is validated", () => {
+  assert.throws(() => parseSyncArgs(["--today", "2026-13-40"]), /--today/);
 });

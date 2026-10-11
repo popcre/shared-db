@@ -35,24 +35,70 @@ Intake sequence for a new customer order (Settled, Albert, 2026-09-17):
    order and becomes immutable afterwards. (Consistent with the 2026-08-28 issue-#1772
    inspection, which additionally listed col 18 Order Depth as human input; Albert's 2026-09-17
    list omits it.)
-4. Description, licensing status, and the other lookup/calculated columns then carry values
-   sourced from the linked Master Data sheet; Adam does not type them.
+4. Licensing status and the other lookup/calculated columns then carry values
+   sourced from the linked Master Data sheet; Adam does not type them. Product
+   details now come from Item Master under Albert's 2026-10-09 ruling below.
 5. Yuchen (NY-based production coordinator; not currently a user of the DesignFlow system) then
    writes the production PO to the factory and enters columns 02 Import PO#, 03 Order vendor,
    04 Seal Container Day, and 05 Sent PO Date. The remaining columns auto-populate, partly from
    the workbook's PO tab (gid `426779438`). (Settled, Albert, 2026-09-17.)
 
-On the mechanism behind step 4: the 2026-08-07/09 formula audit found no Master Data lookup
-formulas on the `Order` tab, while the 2026-08-28 inspection found gray columns explicitly
-marked automatic. Both are honest for their dates; whether the population is live formulas or
-another path was never re-audited and does not need to be — the replacement system does not copy
-either mechanism. Description and licensing status are projections from the linked canonical
-item / Master Data (48-column contract, columns S and T).
+**Historical formula uncertainty, resolved 2026-10-09.** The 2026-08-07/09
+cached-workbook audit did not find Master Data lookup formulas. A native Sheets
+inspection on 2026-10-09 did find the live lookup and array formulas and the
+reverse VendorStatistics import. The earlier absence of cached formulas must
+not be treated as evidence that the workbooks have no integration. The verified
+connections and calculations are recorded in
+[`../app-migration-notes/popdam-order-list.md`](../app-migration-notes/popdam-order-list.md).
 
-**Unknowns**
+**Current product-detail authority (Settled, Albert, 2026-10-09).** Albert said,
+verbatim, "product details should now be supplied by item master" and
+"reproduce the Sheets’ full integration" in the PopDAM conversation recorded
+on [popdam3#281](https://github.com/u2giants/popdam3/issues/281). Product details
+come from the canonical Item Master. Product workflow facts continue to come
+from Master Data and are displayed in OrderList. Purchase tracking facts belong
+to the purchase order. Vendor activity is a purchase-order summary displayed
+back in Master Data.
 
-- The full set of automatic columns beyond description and licensing status is recorded only in
-  the live workbook, not yet in this library.
+### What this changes
+
+The earlier intake description's reference to descriptions being supplied by
+Master Data is historical. Item linkage and workflow linkage are separate:
+an item can have valid product details while its current Master Data workflow
+is unavailable. Missing or conflicting current workflow is not an approval;
+import history remains history. Test-report, professional-photo and
+contractual-sample reorder inputs remain in Master Data. OrderList consumes
+them; it does not become a second editor for those product facts. The reverse
+VendorStatistics connection does not make order-specific documents or payment
+facts product attributes.
+
+For a linked order line, Item Master supplies the current product identity and
+description. The matching Licensed or Generic Master Data row supplies current
+workflow facts such as licensing progress, default/sample vendor, test report,
+professional photos, contractual-sample reorder and discontinuation. Licensed
+license status is a calculation from current workflow milestones; Generic
+items display `Generic Item`. A present named workflow value, including an
+explicit clear, takes precedence over its older sheet-letter value. If the
+current row is unavailable or conflicting, show the workflow as Unknown. Do
+not fill that gap from the order's import snapshot. Keep historical values
+separately labelled as values captured at import.
+
+PO Tracking belongs to the production-order header and is shared by its
+component lines. Its manual facts are PO sent date, vendor delivery/CRD,
+booking state, ETD, ETA, container/booking group, MBL, tracking closure, agent,
+CBM, comment, vessel, sent-to-ColdLion, worksheet completion, inspection date
+and note, invoice, packing list, bill of lading, TSCA, Lacey Act, telex,
+wire request and payment note. These purchase facts do not become product
+workflow fields. Product workflow and calculated licensing stay read-only in
+OrderList and Master Data; authorized administrators maintain PO tracking,
+sample-depth and customer-suffix inputs, while viewer access remains read-only.
+
+Sample depth is keyed by normalized style and customer. The current usable
+depth is distinct from raw source text and its source row; invalid or
+nonpositive source values remain history, not a usable depth. Clearing the
+current depth does not reactivate the historical value. Customer suffix is a
+separate customer setting and must remain nonblank. Vendor activity is a
+summary of purchase-order headers, not sales-history lines or product counts.
 
 **Automatic order intake from ColdLion (Settled, Albert, 2026-09-17).** The DesignFlow system
 polls the ColdLion API periodically during the business day and creates the canonical order rows
@@ -202,19 +248,58 @@ customer order is regularly fulfilled by multiple production POs, and the revers
   quantities where one sales line is produced across factories); they never merge headers.
 - A fully claimed placeholder is retired as evidence, never deleted.
 
+**Production orders link to sales orders by customer PO number, never by sales-order number
+(Settled, Albert, 2026-10-09).** Albert, verbatim: "so we should always be using the
+customer's purchase order field and never sales order number." The key is the customer's
+purchase-order number: on the production side `customerPONo` (`/prodtracking`) /
+`custPONumber` (`prodHistory`); on the sales side `poNumber` (`/orderHistory`). Compare
+within the same customer (MOD010 and MOD011 are one customer, Burlington — Albert,
+2026-10-09) and normalize per join rule 1 (trim, strip leading zeros). The `salesOrderNo`
+the ERP records on production rows is **not** a match key. Example: D3515 (production order
+24136, Hobby Lobby) carries customer PO 9212870; that is the link Albert's records show.
+Implementation: `plm.v_prod_order_sales_order_link` (shared-db #3869). This supersedes
+rule 3 above as a *matching* rule; rule 3 remains only a way to find rows.
+
 Also recorded: the API exposes a **`POST /order`** insert-sales-order endpoint, unused by us.
 JamieLynn's manual entry stays manual under the 2026-09-17 ruling; this only notes that the
 lever exists.
 
 Two technical constraints on the poll design:
 
-- **The feed carries no created/entry timestamp — verified live 2026-09-17.** A direct probe of
-  `/orderHistory` for the open week 2026-09-11..17 returned the full 63-field payload (the
-  2026-08-19 census said 59; the 2026-08-31/09-01 additions raised it). The only date-valued
-  fields are `startDate`, `cancelDate`, and `invoiceDateString` — none is a record-creation
-  date. The rolling re-read must be the checkpoint, not a per-row created date. Detect new
-  orders as `salesOrderNo` values not seen before, deduplicate by the landed identity plus
-  source hash, and re-read a trailing window so late corrections land as new versions.
+- **The feed now carries order entry and last-change timestamps — verified live 2026-10-09.**
+  ColdLion added four fields to `/orderHistory` (63 → 67 fields): `createdTime` and
+  `createdUser` (when and by whom the sales order was entered in ColdLion), and `modTime` and
+  `modUser` (when and by whom it was last changed). A probe of the 2026-10-05..11 start-date
+  window returned them populated on 33 of 33 rows. They are **order-level**: every line of one
+  `salesOrderNo` carries the same pair. Format is `YYYY-MM-DD HH:MM:SS.mmm` with no time zone
+  stated; they are New York time, EST/EDT (Settled, Albert, 2026-10-09). Example
+  shape: an order with a 2026-10-05 start date was entered 2026-03-25 and last changed
+  2026-08-26 — confirming orders are entered months ahead of their start date.
+  What this changes: `modTime` lets a re-read tell a changed order from an unchanged one
+  directly, and `createdTime` gives the true entry date for new-order detection and for
+  "entered before/after" comparisons against production orders (`/prodtracking` and
+  `/proddetails` already carry their own `createdTime`). What it does not change: the
+  `fromDate`/`toDate` filter still keys on the start date (re-verified 2026-10-09: all rows
+  inside the window; the window is now capped at 7 days inclusive), so these fields cannot be
+  queried by; they are read from rows already fetched. Novelty by `salesOrderNo` remains the
+  detection rule; the timestamps are added evidence, not a replacement.
+  **Caveat — `createdTime` is not reliably the original customer-order entry date (measured
+  2026-10-09, 3,818 sales-order ↔ production-PO linked pairs).** Albert: a production PO is
+  written off the customer PO, so the two should fall within about a week of each other.
+  Measured: sales-order `createdTime` falls a median 59 days (mean 64) *after* the production
+  PO's order date, and within 7 days for only 3% of pairs. It instead lands on the **same day
+  the production PO is received** for 52% of pairs (within 1 day for 59%), which suggests the
+  ColdLion sales-order record is re-created or split when goods arrive. No date pair on the two
+  records showed the expected one-week creation pattern; customer start/cancel dates match 100%
+  only because the PO copies them from the sales order. **Unknown** until ColdLion explains what
+  `createdTime` records; do not use it as the customer-order entry date or for SO↔PO matching.
+  **Confirmed mismatch (JamieLynn, 2026-10-09):** for sales order 7127837 the ColdLion screen
+  shows CreatedTime 2026-05-05 4:25 PM, while the API returns 2026-08-06 15:35:53 on all 12
+  lines (each already carrying a pick ticket and an invoice). The screen value is the true
+  entry date; the API value comes from some later record. Asked ColdLion to expose the
+  screen's CreatedTime. **Times are New York time (EST/EDT) — Settled, Albert, 2026-10-09.**
+  *Historical (2026-09-17):* a probe then found 63 fields and no created/entry timestamp; that
+  statement is superseded by the above.
 - **The window filter keys on the ERP start date — verified live 2026-09-17.** Windows in
   October, November and December 2026 return live rows today (a November window held 42 rows,
   a December window 117), and every returned row's `startDate` falls inside its requested

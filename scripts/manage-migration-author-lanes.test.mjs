@@ -11665,3 +11665,74 @@ test('old immutable count-and-maximum probe fingerprints remain incompatible and
   assert.equal(fixture.io.refs.get(probe.probeRef),historicalSha)
   assert.equal(fixture.io.refs.get(fixture.leaseRef),fixture.leaseSha)
 })
+
+// Real connection pages preserve every verdict row before allocator classification.
+import { completeReviewStateConnections } from './lib/lanes/github-wire.mjs'
+function paginatedReviewFixture(){
+  const time='2026-10-11T18:00:00Z',head='a'.repeat(40)
+  const node=(id,review=false)=>({id,updatedAt:time,body:`evidence ${id}`,authorAssociation:'OWNER',...(review?{state:'COMMENTED',commit:{oid:head}}:{})})
+  const connection=(nodes,totalCount=nodes.length,hasNextPage=false,endCursor=null)=>({totalCount,pageInfo:{hasNextPage,endCursor},nodes})
+  const empty=()=>connection([])
+  const pr={number:4193,updatedAt:time,state:'OPEN',merged:false,mergeCommit:null,headRefOid:head,comments:empty(),reviews:empty()}
+  const issue={number:3536,updatedAt:time,state:'OPEN',comments:connection([node('c1')],2,true,'cursor1')}
+  const page={...issue,comments:connection([node('c2')],2)}
+  return {time,head,node,connection,pr,issue,page,repository:{p0:pr,i0:issue},leases:[{issue:3536,pr:4193}]}
+}
+test('paginated reviewer evidence follows cursor and retains every body and association',()=>{
+  const f=paginatedReviewFixture(),queries=[]
+  const states=completeReviewStateConnections(f.repository,f.leases,{readJson(args){queries.push(args.at(-1));return {data:{repository:{issue:queries.length===1?f.page:f.issue}}}}})
+  assert.equal(queries.length,2);assert.match(queries[0],/after:"cursor1"/);assert.doesNotMatch(queries[1],/after:/)
+  assert.deepEqual(states.get('3536:4193').evidence.map(r=>r.body),['evidence c1','evidence c2'])
+  assert.equal(states.get('3536:4193').evidence[1].authorAssociation,'OWNER')
+})
+test('paginated shared issue is read once per batch and ordinary evidence adds no reads',()=>{
+  const f=paginatedReviewFixture();f.repository.p1={...f.pr,number:4194};f.repository.i1=structuredClone(f.issue);f.leases.push({issue:3536,pr:4194});let calls=0
+  const states=completeReviewStateConnections(f.repository,f.leases,{readJson(){return {data:{repository:{issue:++calls===1?f.page:f.issue}}}}})
+  assert.equal(calls,2);assert.equal(states.size,2)
+  f.issue.comments=f.connection([]);f.repository.i1=structuredClone(f.issue)
+  completeReviewStateConnections(f.repository,f.leases,{readJson(){assert.fail('ordinary batch must not add a read')}})
+})
+test('paginated PR comments and commit-bound reviews both complete',()=>{
+  const f=paginatedReviewFixture();f.issue.comments=f.connection([])
+  f.pr.comments=f.connection([f.node('p1')],2,true,'comments1');f.pr.reviews=f.connection([f.node('r1',true)],2,true,'reviews1')
+  const states=completeReviewStateConnections(f.repository,f.leases,{readJson(args){const query=args.at(-1),review=query.includes('reviews(first:100'),name=review?'reviews':'comments';return {data:{repository:{pullRequest:query.includes('after:')?{...f.pr,[name]:f.connection([f.node(review?'r2':'p2',review)],2)}:f.pr}}}}})
+  const rows=states.get('3536:4193').evidence;assert.equal(rows.length,4);assert.equal(rows[3].commit_id,f.head)
+})
+for(const [name,mutate] of [
+  ['GraphQL partial errors',r=>{r.errors=[{message:'partial'}]}],
+  ['null object',r=>{r.data.repository.issue=null}],
+  ['missing connection',r=>{delete r.data.repository.issue.comments}],
+  ['count change',r=>{r.data.repository.issue.comments.totalCount=3}],
+  ['duplicate identity',r=>{r.data.repository.issue.comments.nodes[0].id='c1'}],
+  ['invalid timestamp',r=>{r.data.repository.issue.comments.nodes[0].updatedAt='unknown'}],
+  ['missing author association',r=>{delete r.data.repository.issue.comments.nodes[0].authorAssociation}],
+  ['truncated last page',r=>{r.data.repository.issue.comments.nodes=[]}],
+  ['metadata movement',r=>{r.data.repository.issue.updatedAt='2026-10-11T18:01:00Z'}],
+  ['repeated cursor',r=>{r.data.repository.issue.comments=freshRepeatedPage()}],
+])test(`paginated reviewer evidence refuses ${name}`,()=>{
+  const f=paginatedReviewFixture();assert.throws(()=>completeReviewStateConnections(f.repository,f.leases,{readJson(){const r={data:{repository:{issue:structuredClone(f.page)}}};mutate(r);return r}}),LaneError)
+})
+function freshRepeatedPage(){const f=paginatedReviewFixture();return f.connection([f.node('c2')],2,true,'cursor1')}
+test('paginated reviewer evidence refuses invalid cursor and bounded page limit',()=>{
+  for(const cursor of [null,'',123]){const f=paginatedReviewFixture();f.issue.comments.pageInfo.endCursor=cursor;assert.throws(()=>completeReviewStateConnections(f.repository,f.leases,{readJson(){assert.fail('bad cursor must not read')}}),LaneError)}
+  const f=paginatedReviewFixture();assert.throws(()=>completeReviewStateConnections(f.repository,f.leases,{maxPages:1,readJson(){assert.fail('limit must stop before read')}}),/bounded page limit/)
+})
+test('paginated reviewer evidence refuses same-count first-page edits during final proof',()=>{
+  const f=paginatedReviewFixture();let calls=0
+  assert.throws(()=>completeReviewStateConnections(f.repository,f.leases,{readJson(){const row=structuredClone(++calls===1?f.page:f.issue);if(calls===2)row.comments.nodes[0].body='changed';return {data:{repository:{issue:row}}}}}),/changed during final proof/)
+})
+test('paginated PR evidence refuses head movement and malformed verdict commit',()=>{
+  for(const mode of ['head','commit']){const f=paginatedReviewFixture();f.issue.comments=f.connection([]);f.pr.reviews=f.connection([f.node('r1',true)],2,true,'r1')
+    assert.throws(()=>completeReviewStateConnections(f.repository,f.leases,{readJson(){const pr={...f.pr,reviews:f.connection([f.node('r2',true)],2)};if(mode==='head')pr.headRefOid='b'.repeat(40);else pr.reviews.nodes[0].commit=null;return {data:{repository:{pullRequest:pr}}}}}),LaneError)
+  }
+})
+test('complete ordinary reviewer evidence accepts merged PR state without extra reads',()=>{
+  const f=paginatedReviewFixture();f.issue.comments=f.connection([]);f.pr.state='MERGED';f.pr.merged=true;f.pr.mergeCommit={oid:f.head}
+  const states=completeReviewStateConnections(f.repository,f.leases,{readJson(){assert.fail('ordinary merged state requires no additional read')}})
+  assert.equal(states.get('3536:4193').pr.merged,true)
+})
+test('ordinary reviewer evidence refuses malformed counts and duplicate row identities',()=>{
+  for(const mode of ['count','duplicate','identity']){const f=paginatedReviewFixture();f.issue.comments=f.connection([f.node('c1')]);if(mode==='count')f.issue.comments.totalCount=2;if(mode==='duplicate')f.issue.comments=f.connection([f.node('c1'),f.node('c1')]);if(mode==='identity')f.pr.number=7
+    assert.throws(()=>completeReviewStateConnections(f.repository,f.leases,{readJson(){assert.fail('malformed ordinary evidence cannot add a read')}}),LaneError)
+  }
+})

@@ -25,6 +25,6 @@ select (
   and not has_table_privilege('authenticated', 'vault.decrypted_secrets', 'select')
   and exists (
     select 1 from supabase_migrations.schema_migrations
-    where version = '20261011203122'
+    where version = '20261011211208'
   )
 ) as passed;

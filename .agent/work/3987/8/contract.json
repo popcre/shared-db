@@ -1,0 +1,75 @@
+{
+  "schema_version": 2,
+  "work_issue": 3987,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Recover unchanged frozen queue retirement source on original PR3998 required by the reviewed one-PR13/14 bridge; preserve actual12 app15368 strictfalse, originalgen5/custody/failed admissions. No settings write, activation or review-budget reset.",
+  "base_sha": "7f198bb1b8c05cbbb2f5c2aab8c91c926144f1ab",
+  "dispatcher": "Codex parent owning authorized #2530 dependency recovery",
+  "worker": "codex",
+  "branch": "codex/3536-queue-retirement",
+  "worktree": "/home/ahazan/.codex/worktrees/3987-original-recovery/shared-db",
+  "allowed_paths": [
+    ".github/workflows/pr-guards.yml",
+    ".github/workflows/merge-queue-gate.yml",
+    "scripts/configure-merge-queue.mjs",
+    "scripts/configure-merge-queue.test.mjs",
+    "scripts/orchestrator-flow/runner-lanes.test.mjs",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "docs/verification/main-required-status-checks.json",
+    "docs/verification/main-required-status-checks-readback-20261006.json",
+    "docs/verification/ci-audit-queue-context-retirement-20261006.json",
+    "docs/merge-queue-operation.md",
+    "scripts/lib/required-check-readback.test.mjs",
+    "scripts/check-pr-object-collisions.mjs",
+    "scripts/check-pr-object-collisions.test.mjs"
+  ],
+  "file_writes": [
+    ".github/workflows/pr-guards.yml",
+    ".github/workflows/merge-queue-gate.yml",
+    "scripts/configure-merge-queue.mjs",
+    "scripts/configure-merge-queue.test.mjs",
+    "scripts/orchestrator-flow/runner-lanes.test.mjs",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "docs/verification/main-required-status-checks.json",
+    "docs/verification/main-required-status-checks-readback-20261006.json",
+    "docs/verification/ci-audit-queue-context-retirement-20261006.json",
+    "docs/merge-queue-operation.md",
+    "scripts/lib/required-check-readback.test.mjs",
+    "scripts/check-pr-object-collisions.mjs",
+    "scripts/check-pr-object-collisions.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "do not change required_status_checks.strict; it is false by owner ruling in issue #1286",
+    "do not touch any migration or database object",
+    "do not edit another session's handoff, worktree, branch, or claim"
+  ],
+  "required_checks": [
+    "node --test scripts/configure-merge-queue.test.mjs scripts/check-merge-queue-workflows.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/check-required-checks-preflight.test.mjs scripts/lib/required-check-readback.test.mjs scripts/check-pr-object-collisions.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "Original remote3998 source7d695133813111eda067f50b16c83d222bde9e15 and differing local469 preserved in verified full-history private bundle; original author inactive, parent owns necessary #2530 source delivery recovery",
+    "Original3999 and required4164 nonclosing route are merged",
+    "Current queue inactive and actual12 app15368 strictfalse remains authoritative",
+    "Recover only original scoped non.agent changes without altering twelve implementation file blobs; refresh canonical evidence prospectively",
+    "No settings write, activation, production action, reviewer budget refund or fabricated canary",
+    "Root independently verified original author thread notLoaded with completed lastturn; originalremote7d/differinglocal469 retained, no foreignlocalbranch edit",
+    "Reviewed protected preflight explicitly refuses retirement bridge inheritance by successorPR4170; root restores original3998 identity, not bridge code/settings.4170 sourceapproval advisory only, no crossPRapproval inherited"
+  ],
+  "stop_conditions": [
+    "Stage A not merged",
+    "Live before snapshot or queue mode differs from reviewed exact payload",
+    "Any intended context or producer other than the two queue contexts would change",
+    "Current source merge collision or assigned review refuses"
+  ],
+  "generation": 8,
+  "evidence_parent": {
+    "work_issue": 3987,
+    "generation": 7,
+    "contract_sha256": "d38ae8172e9fcf6a7cdae398d88a1d1d81c23b4595bfa2a79dce2a59f6edd1b6"
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "work_issue": 2421,
+  "outcome": "ready-for-merge",
+  "pr": 4161,
+  "migration_versions": [
+    "20261011125719"
+  ],
+  "contract_ref": "refs/db-contracts/2421/4",
+  "contract_sha256": "13ae27a28d1f16da85a382a292c2c0d196f9a9e62e693a350f4afdb75ca82a12",
+  "head_sha": "67af7da077c65702c3a838096e49a70a7831049b",
+  "files_changed": [
+    ".agent/work/2421/4/contract.json",
+    ".github/live-proofs/2421.sql",
+    "scripts/test_style_group_watermark.py",
+    "supabase/migrations/20261011125719_style_group_change_watermark.sql",
+    "supabase/tests/style_group_change_watermark_contracts.sql",
+    ".agent/work/2421/4/completion.json"
+  ],
+  "db_reads": [
+    "function public.style_group_key_for_sku",
+    "function public.refresh_style_group_counts_batch",
+    "table public.style_group_tags",
+    "table public.admin_config",
+    "function public.style_group_key_for_sku",
+    "function public.refresh_style_group_counts_batch"
+  ],
+  "db_writes": [
+    "table public.assets",
+    "column public.assets.style_group_changed_at",
+    "table public.style_groups",
+    "column public.style_groups.style_group_changed_at",
+    "function public.stamp_style_group_asset_change",
+    "function public.stamp_style_group_definition_change",
+    "function public.touch_style_group_tag_change",
+    "trigger assets_style_group_change_clock on public.assets",
+    "trigger style_groups_style_group_change_clock on public.style_groups",
+    "trigger style_group_tags_change_clock on public.style_group_tags",
+    "function public.rebuild_style_groups_batch",
+    "function public.queue_nightly_rebuild_style_groups",
+    "index public.assets_style_group_changed_at_idx",
+    "index public.style_groups_style_group_changed_at_idx",
+    "index public.assets_ungrouped_style_cursor_idx"
+  ],
+  "checks": [
+    {
+      "command": "python3 scripts/test_style_group_watermark.py",
+      "exit_code": 0,
+      "evidence": "7 tests passed in 6.366s; actual cancellation, exception and reentrant cleanup, counts callback release, commit races, original recovery, rollback state contracts. EXPLAIN actual asset leaf rows=3; prior population=10001."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed; current main newest20261010033616 and fresh read-only production max ledger20261009073649 precede reserved version."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors."
+    },
+    {
+      "command": "node scripts/check-live-proof-probe.mjs",
+      "exit_code": 0,
+      "evidence": "Outcome returns to u2giants/popdam3; installed-state-only probe provided, separate weekly app acceptance remains required."
+    }
+  ],
+  "assumptions_resolved": [
+    "Disposable synthetic PostgreSQL network none; no host volumes/ports or remote target inputs.",
+    "Old two-argument recovery function body unchanged."
+  ],
+  "stop_conditions_hit": []
+}

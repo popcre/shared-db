@@ -95,7 +95,7 @@ const FORBIDDEN_WORDS = new Set([
   'discard', 'vacuum', 'reindex', 'cluster', 'refresh', 'checkpoint', 'grant', 'revoke', 'create', 'alter', 'drop',
   'reset', 'lock', 'security', 'import', 'load', 'savepoint', 'rollback', 'commit', 'release', 'abort', 'start',
   'set_config', 'setval', 'session_replication_role', 'session_authorization', 'search_path', 'role',
-  'pg_catalog', 'information_schema', 'cron', 'cursor', 'open', 'fetch', 'move', 'close', 'format', 'quote_ident', 'quote_literal',
+  'pg_catalog', 'information_schema', 'cron', 'cron_schedule', 'schedule_in_database', 'unschedule', 'alter_job', 'cursor', 'open', 'fetch', 'move', 'close', 'format', 'quote_ident', 'quote_literal',
   'lo_import', 'lo_export', 'lo_unlink', 'lo_from_bytea', 'lo_put',
 ])
 const FORBIDDEN_PREFIXES = ['pg_', 'lo_', 'dblink', 'query_to_', 'table_to_', 'schema_to_', 'database_to_', 'cursor_to_', 'xpath_table']
@@ -163,6 +163,53 @@ function codeUnits(sql) {
   return units
 }
 
+// Expression-level calls are an ALLOWLIST too: only these side-effect-free
+// builtins may be called. Anything else (pg_net, vault, SECURITY DEFINER
+// helpers, extension functions) refuses, because its body is never seen here.
+const CALLABLE = new Set(['count', 'coalesce', 'nullif', 'greatest', 'least', 'lower', 'upper', 'trim', 'btrim', 'ltrim', 'rtrim',
+  'length', 'char_length', 'concat', 'concat_ws', 'replace', 'split_part', 'left', 'right', 'substr', 'position',
+  'jsonb_build_object', 'jsonb_build_array', 'json_build_object', 'json_build_array', 'to_jsonb', 'jsonb_agg', 'jsonb_object_agg',
+  'array_agg', 'string_agg', 'min', 'max', 'sum', 'avg', 'bool_and', 'bool_or', 'array_length', 'cardinality', 'abs', 'round',
+  'now', 'clock_timestamp', 'statement_timestamp', 'transaction_timestamp', 'gen_random_uuid', 'encode', 'decode', 'md5',
+  'digest', 'pg_backend_pid', 'txid_current'])
+const QUALIFIED_CALLABLE = new Set(['extensions.digest', 'extensions.gen_random_uuid'])
+// Words that take a parenthesis without being a function call.
+const PAREN_KEYWORDS = new Set(['values', 'in', 'exists', 'not', 'and', 'or', 'any', 'all', 'some', 'row', 'filter', 'over', 'as',
+  'select', 'from', 'where', 'on', 'conflict', 'using', 'when', 'then', 'else', 'if', 'elsif', 'case', 'returning', 'into', 'join',
+  'with', 'by', 'distinct', 'array', 'is', 'between', 'like', 'ilike', 'set', 'loop', 'exception', 'raise', 'perform', 'return',
+  'while', 'assert', 'cast', 'interval', 'lateral', 'except', 'union', 'intersect', 'having', 'group', 'order', 'limit', 'offset'])
+// Read sources a curated load may use: curated Master Data and the licensing
+// source extracts it is curated from.
+const READ_SCHEMAS = new Set(['core', 'plm'])
+
+function checkCall(tokens, k, declaring) {
+  const t = tokens[k], name = t.type === 'word' ? t.value : t.value
+  const prev = tokens[k - 1]
+  if (t.type === 'word' && PAREN_KEYWORDS.has(name)) return
+  // the column list of INSERT INTO <target> ( ... )
+  const before = prev?.type === 'punct' && prev.value === '.' ? tokens[k - 3] : prev
+  if (before?.type === 'word' && before.value === 'into' && tokens[k - (prev?.value === '.' ? 4 : 2)]?.type === 'word' && tokens[k - (prev?.value === '.' ? 4 : 2)].value === 'insert') return
+  if (declaring) return // a type modifier such as numeric(10, 2) in a DECLARE section
+  if (prev?.type === 'punct' && prev.value === '.') {
+    const schema = tokens[k - 2]
+    const qualified = `${schema?.value ?? ''}.${name}`
+    if (schema?.type === 'word' && QUALIFIED_CALLABLE.has(qualified)) return
+    throw new CuratedSqlError(`call to ${qualified} is not an allowed side-effect-free builtin`)
+  }
+  if (t.type === 'word' && CALLABLE.has(name)) return
+  throw new CuratedSqlError(`call to ${t.type === 'ident' ? `"${name}"` : name} is not an allowed side-effect-free builtin`)
+}
+
+function checkSource(tokens, k) {
+  const prev = tokens[k - 1]
+  if (tokens[k].value === 'from' && prev?.type === 'word' && ['delete', 'distinct'].includes(prev.value)) return
+  const next = tokens[k + 1]
+  if (next?.type === 'punct' && next.value === '(') return // subquery, checked token by token
+  if (next?.type === 'word' && next.value === 'lateral') return
+  const target = qualifiedTarget(tokens, k + 1)
+  if (!target?.schema || !READ_SCHEMAS.has(target.schema)) throw new CuratedSqlError(`read source ${target?.schema ? `${target.schema}.${target.name}` : (target?.name ?? 'expression')} is outside curated Master Data and its licensing sources (core.*, plm.*)`)
+}
+
 const DML_START = new Set(['insert', 'update', 'delete'])
 // Statement-leading allowlists. Anything else leading a statement refuses, so a
 // keyword split by a comment (exec/**/ute) or any unmodelled command fails closed.
@@ -199,15 +246,17 @@ export function inspectCuratedSql(sql) {
         // A quoted identifier names the same catalog object or function as its
         // bare spelling (case aside), so it gets the same forbidden checks.
         const name = token.value.toLowerCase(), member = tokens[k - 1]?.type === 'punct' && tokens[k - 1].value === '.'
-        if ((FORBIDDEN_WORDS.has(name) && !member) || FORBIDDEN_IDENTS.has(name) || (FORBIDDEN_PREFIXES.some((prefix) => name.startsWith(prefix)) && !ALLOWED_PG_WORDS.has(name))) throw new CuratedSqlError(`forbidden quoted identifier "${token.value}"`)
+        if (FORBIDDEN_WORDS.has(name) || FORBIDDEN_IDENTS.has(name) || (FORBIDDEN_PREFIXES.some((prefix) => name.startsWith(prefix)) && !ALLOWED_PG_WORDS.has(name))) throw new CuratedSqlError(`forbidden quoted identifier "${token.value}"`)
+        if (tokens[k + 1]?.type === 'punct' && tokens[k + 1].value === '(') checkCall(tokens, k, plpgsql && declaring)
         continue
       }
       if (token.type !== 'word') continue
       const word = token.value, prev = tokens[k - 1], next = tokens[k + 1]
-      const qualifiedMember = prev?.type === 'punct' && prev.value === '.'
-      if (FORBIDDEN_WORDS.has(word) && !qualifiedMember) throw new CuratedSqlError(`forbidden word ${word.toUpperCase()}`)
+      if (FORBIDDEN_WORDS.has(word)) throw new CuratedSqlError(`forbidden word ${word.toUpperCase()}`)
       if (FORBIDDEN_IDENTS.has(word)) throw new CuratedSqlError(`forbidden function ${word}`)
       if (FORBIDDEN_PREFIXES.some((prefix) => word.startsWith(prefix)) && !ALLOWED_PG_WORDS.has(word)) throw new CuratedSqlError(`forbidden function or catalog ${word}`)
+      if (next?.type === 'punct' && next.value === '(') checkCall(tokens, k, plpgsql && declaring)
+      if (['from', 'join'].includes(word)) checkSource(tokens, k)
       if (word === 'do' && !(next?.type === 'word' && ['nothing', 'update'].includes(next.value))) {
         throw new CuratedSqlError('nested or non-leading DO is refused')
       }

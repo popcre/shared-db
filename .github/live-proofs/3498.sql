@@ -126,5 +126,5 @@ SELECT (
   AND (
     SELECT count(*) FROM pg_catalog.pg_index
     WHERE indrelid IN ('plm.item_user_assignment'::regclass, 'plm.item_workflow_action'::regclass)
-  ) = 11
+  ) = 15  -- 11 from #3498 plus the four #3595 lookup indexes (migration 20261011212008)
 ) as passed;

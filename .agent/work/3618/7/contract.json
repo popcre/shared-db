@@ -5,8 +5,8 @@
     "scripts/expired-merged-claim-adoption.test.mjs",
     "docs/agents/section-4-anti-collision-rules.md",
     "docs/verification/throughput-dispositions/scripts~lib~lanes~expired-merged-claim-adoption.mjs.json",
-    ".agent/work/3618/6/contract.json",
-    ".agent/work/3618/6/completion.json",
+    ".agent/work/3618/7/contract.json",
+    ".agent/work/3618/7/completion.json",
     "docs/verification/throughput-dispositions/scripts~transfer-expired-merged-claim-author.mjs.json"
   ],
   "assumptions": [
@@ -15,15 +15,15 @@
     "Independent abandonment audit, current chat authorization, clean successor and no stages/conflicts remain required.",
     "Ordinary manager bytes remain unchanged; separate explicit expired-MERGED CLI imports canonical primitives."
   ],
-  "base_sha": "7f198bb1b8c05cbbb2f5c2aab8c91c926144f1ab",
+  "base_sha": "fbe8d6233fcaf2727e62aadfbe47a8d7516bf50c",
   "branch": "codex/3618-current-recovery",
   "db_reads": [],
   "db_writes": [],
   "dispatcher": "Codex root chat01a12b01-aaac-7551-8860-61a4384a25b0",
   "evidence_parent": {
     "work_issue": 3618,
-    "generation": 5,
-    "contract_sha256": "63acf973daa6b6e68bae3cf421faff6cd1968f34c8502614c6a16464841351c4"
+    "generation": 6,
+    "contract_sha256": "6ff173e747a54f4bda27f7ad81ad6e7d99b0cd70d6d70065f162477a18d2fe87"
   },
   "file_writes": [
     "scripts/lib/lanes/expired-merged-claim-adoption.mjs",
@@ -31,11 +31,11 @@
     "scripts/expired-merged-claim-adoption.test.mjs",
     "docs/agents/section-4-anti-collision-rules.md",
     "docs/verification/throughput-dispositions/scripts~lib~lanes~expired-merged-claim-adoption.mjs.json",
-    ".agent/work/3618/6/contract.json",
-    ".agent/work/3618/6/completion.json",
+    ".agent/work/3618/7/contract.json",
+    ".agent/work/3618/7/completion.json",
     "docs/verification/throughput-dispositions/scripts~transfer-expired-merged-claim-author.mjs.json"
   ],
-  "generation": 6,
+  "generation": 7,
   "goal": "Guarded operator adoption for expired merged-stranded author claims without an active-lease override.",
   "prohibited_actions": [
     "No live claim adoption, schema writes, preview, merge or production.",

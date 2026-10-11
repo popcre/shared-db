@@ -275,17 +275,20 @@ jobs:
           python "$GITHUB_WORKSPACE/scripts/production_migration_guard.py" assert-bounded \
             --dir "$RUNNER_TEMP/bounded-sandbox" \
             --allowlist "$SANDBOX_ALLOWLIST" \
-            --remote-ledger "$RUNNER_TEMP/sandbox-ledger-before.txt"
+            --remote-ledger "$RUNNER_TEMP/sandbox-ledger-before.txt" \
+            --ledger-name sandbox
           supabase db push --include-all --dry-run 2>&1 | tee "$RUNNER_TEMP/sandbox-dry-run.txt"
           python "$GITHUB_WORKSPACE/scripts/production_migration_guard.py" verify-dry-run \
             --dry-run-output "$RUNNER_TEMP/sandbox-dry-run.txt" \
             --allowlist "$SANDBOX_ALLOWLIST" \
-            --remote-ledger "$RUNNER_TEMP/sandbox-ledger-before.txt"
+            --remote-ledger "$RUNNER_TEMP/sandbox-ledger-before.txt" \
+            --ledger-name sandbox
           if [ "$MODE" = apply ]; then
             python "$GITHUB_WORKSPACE/scripts/production_migration_guard.py" assert-bounded \
               --dir "$RUNNER_TEMP/bounded-sandbox" \
               --allowlist "$SANDBOX_ALLOWLIST" \
-              --remote-ledger "$RUNNER_TEMP/sandbox-ledger-before.txt"
+              --remote-ledger "$RUNNER_TEMP/sandbox-ledger-before.txt" \
+              --ledger-name sandbox
             # Main must still be exactly the dispatched commit at the moment of the write.
             git -C "$GITHUB_WORKSPACE" fetch -q origin main
             if [ "$(git -C "$GITHUB_WORKSPACE" rev-parse origin/main)" != "$COMMIT_SHA" ]; then
@@ -328,6 +331,7 @@ jobs:
             --output-dir "$RUNNER_TEMP/catalog-verification" \
             --project-ref "$SANDBOX_PROJECT_REF" \
             --remote-ledger "$RUNNER_TEMP/sandbox-ledger-before.txt" \
+            --ledger-name sandbox \
             --mode "$VERIFY_MODE" \
             | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Save sandbox evidence

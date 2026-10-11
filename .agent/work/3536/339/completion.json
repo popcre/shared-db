@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "work_issue": 3536,
+  "outcome": "ready-for-merge",
+  "pr": 4193,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3536/339",
+  "contract_sha256": "ee6ba737dc52fdb3682e9bcc4ca0ce32107ebc016330ee6f51f3b4500cdbd62b",
+  "head_sha": "286ba096bd4beced5998cab9579c3b98e4ff0b2c",
+  "base_sha": "504d74107c9b993a369ec0daabb3837c6292b4dd",
+  "files_changed": [
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/manage-migration-author-lanes-surface.test.mjs scripts/agent-work-contract.test.mjs scripts/agent-work-contract-git-evidence.test.mjs scripts/agent-work-contract-activation.test.mjs scripts/run-governed-review.test.mjs scripts/record-review-verdict.test.mjs scripts/reviewer-wire-budget.test.mjs scripts/lib/lanes/*.test.mjs",
+      "exit_code": 0,
+      "evidence": "1120 pass, 0 fail, one existing Windows-only short/long worktree spelling skip on Linux; focused22 pass; full source lane797 pass."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "342 call sites,96 sources pass."
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "408 files pass."
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "797 source lane tests pass; final log retained privately."
+    },
+    {
+      "command": "node scripts/agent-work-contract.mjs --validate-contract --contract-file .agent/work/3536/339/contract.json",
+      "exit_code": 0,
+      "evidence": "Prospective immutable339 contract validated."
+    }
+  ],
+  "assumptions_resolved": [
+    "Ordinary started recovery requires two-hour lease and readable terminal activity quiet for two hours.",
+    "Unknown/nonterminal timestamps and status refuse; nonmaximum metadata progress changes digest.",
+    "Exact immutable probe and fresh locked lease/head/slot/verdict/CAS guards preserved; unstarted START protection unchanged.",
+    "Source-ready only: assigned review, CI and parent live metadata validation remain external delivery gates; no recovery action authorized."
+  ],
+  "stop_conditions_hit": []
+}

@@ -24,4 +24,4 @@ SELECT (
   AND to_regclass('public.style_groups_style_group_changed_at_idx') IS NOT NULL
   AND to_regclass('public.assets_ungrouped_style_cursor_idx') IS NOT NULL
   AND pg_get_functiondef('public.queue_nightly_rebuild_style_groups()'::regprocedure) LIKE '%last_successful_cutoff%'
-) AS passed
+) as passed

@@ -1,3 +1,4 @@
+-- derived-from: 20260925061508, 20260909005945
 -- #2421. Add processing clocks; preserve original file dates and both recovery routines.
 -- Reliable cutoff: writers hold a shared transaction lock until commit. The queue
 -- waits exclusively before capturing its cutoff. Later writers stamp later than it.

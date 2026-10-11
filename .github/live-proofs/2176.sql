@@ -48,6 +48,12 @@ select
       or not exists(select 1 from pg_policy p where p.polrelid=c.oid and p.polname=mirrors.policy_name and p.polcmd='r' and p.polpermissive and p.polroles=array[(select oid from pg_roles where rolname='authenticated')]
          and pg_get_expr(p.polqual,p.polrelid)='app.has_role(''administrator''::app.app_role)' and p.polwithcheck is null)
       or not exists(select 1 from pg_constraint p where p.conrelid=c.oid and p.contype='p' and (select array_agg(a.attname::text order by k.ord) from unnest(p.conkey) with ordinality k(attnum,ord) join pg_attribute a on a.attrelid=c.oid and a.attnum=k.attnum)=mirrors.pk))
+  and not exists(select 1 from (values ('authenticated','plm'),('authenticated','pim'),('service_role','plm'),('service_role','pim')) consumer(role_name,schema_name) where not has_schema_privilege(consumer.role_name,consumer.schema_name,'USAGE'))
+  and not exists(select 1 from (values
+    ('coldlion.merch_group_detail',array['company_code','division_code','mg_type_code','mg_category','mg_code']),
+    ('plm.erp_licensor',array['company_code','division_code','mg_type_code','mg_code']),
+    ('plm.erp_property',array['company_code','division_code','mg_type_code','mg_code'])
+  ) dependency(name,pk) where not exists(select 1 from pg_constraint p where p.conrelid=to_regclass(dependency.name) and p.contype='p' and (select array_agg(a.attname::text order by k.ord) from unnest(p.conkey) with ordinality k(attnum,ord) join pg_attribute a on a.attrelid=p.conrelid and a.attnum=k.attnum)=dependency.pk))
   and has_schema_privilege('authenticated','app','USAGE') and has_function_privilege('authenticated','app.has_role(app.app_role)','EXECUTE')
   as passed
 )

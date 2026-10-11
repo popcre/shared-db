@@ -368,7 +368,9 @@ begin
   if exists(select 1 from (values
     ('coldlion.sync_run',array['id']),
     ('coldlion.merch_group_header',array['company_code','division_code','mg_type_code']),
-    ('coldlion.merch_group_detail',array['company_code','division_code','mg_type_code','mg_code']),
+    ('coldlion.merch_group_detail',array['company_code','division_code','mg_type_code','mg_category','mg_code']),
+    ('plm.erp_licensor',array['company_code','division_code','mg_type_code','mg_code']),
+    ('plm.erp_property',array['company_code','division_code','mg_type_code','mg_code']),
     ('coldlion.item_header',array['company_code','division_code','item_no']),
     ('coldlion.item_detail',array['company_code','division_code','item_no','item_pkey']),
     ('coldlion.customer',array['company_code','customer_code']),
@@ -389,6 +391,9 @@ begin
   then raise exception 'unit6 merchandise NULLS NOT DISTINCT header/SKU identity required'; end if;
   if to_regnamespace('pim') is null or to_regnamespace('plm') is null or to_regnamespace('app') is null
   then raise exception 'unit6 required consumer schemas missing'; end if;
+  if exists(select 1 from (values ('authenticated','plm'),('authenticated','pim'),('service_role','plm'),('service_role','pim')) consumer(role_name,schema_name)
+    where not has_schema_privilege(consumer.role_name,consumer.schema_name,'USAGE'))
+  then raise exception 'unit6 existing consumer schema USAGE required'; end if;
 end
 $preflight$;
 
@@ -670,7 +675,7 @@ end
 $$;
 
 comment on function plm.coldlion_merch_group_candidates is
-  'Read-only merch-group candidates for hand-curated licensor/property linking (issue #2176 unit 6). Offers candidates only: this function never writes, never auto-links, and never promotes into core.*. Codes are unique per (company, division, mg_type_code, mg_code) only. resolution_status is observed from plm.erp_licensor / plm.erp_property and is never mutated.';
+  'Read-only merch-group candidates for hand-curated licensor/property linking (issue #2176 unit 6). Offers candidates only: this function never writes, never auto-links, and never promotes into core.*. Landing candidate identity is (company, division, mg_type_code, mg_category, mg_code): repeated codes in different categories remain separate rows. The mirror resolution identity is (company, division, mg_type_code, mg_code), so one existing mirror resolution legitimately applies across those categories. resolution_status is observed from plm.erp_licensor / plm.erp_property and is never mutated.';
 
 revoke all on function plm.coldlion_merch_group_candidates(text, text) from public, anon, authenticated;
 grant execute on function plm.coldlion_merch_group_candidates(text, text) to authenticated, service_role;
@@ -1077,6 +1082,12 @@ select
       or not exists(select 1 from pg_policy p where p.polrelid=c.oid and p.polname=mirrors.policy_name and p.polcmd='r' and p.polpermissive and p.polroles=array[(select oid from pg_roles where rolname='authenticated')]
          and pg_get_expr(p.polqual,p.polrelid)='app.has_role(''administrator''::app.app_role)' and p.polwithcheck is null)
       or not exists(select 1 from pg_constraint p where p.conrelid=c.oid and p.contype='p' and (select array_agg(a.attname::text order by k.ord) from unnest(p.conkey) with ordinality k(attnum,ord) join pg_attribute a on a.attrelid=c.oid and a.attnum=k.attnum)=mirrors.pk))
+  and not exists(select 1 from (values ('authenticated','plm'),('authenticated','pim'),('service_role','plm'),('service_role','pim')) consumer(role_name,schema_name) where not has_schema_privilege(consumer.role_name,consumer.schema_name,'USAGE'))
+  and not exists(select 1 from (values
+    ('coldlion.merch_group_detail',array['company_code','division_code','mg_type_code','mg_category','mg_code']),
+    ('plm.erp_licensor',array['company_code','division_code','mg_type_code','mg_code']),
+    ('plm.erp_property',array['company_code','division_code','mg_type_code','mg_code'])
+  ) dependency(name,pk) where not exists(select 1 from pg_constraint p where p.conrelid=to_regclass(dependency.name) and p.contype='p' and (select array_agg(a.attname::text order by k.ord) from unnest(p.conkey) with ordinality k(attnum,ord) join pg_attribute a on a.attrelid=p.conrelid and a.attnum=k.attnum)=dependency.pk))
   and has_schema_privilege('authenticated','app','USAGE') and has_function_privilege('authenticated','app.has_role(app.app_role)','EXECUTE')
   as passed
 )

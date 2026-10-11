@@ -52,6 +52,12 @@ select
       or not exists(select 1 from pg_policy p where p.polrelid=c.oid and p.polname=mirrors.policy_name and p.polcmd='r' and p.polpermissive and p.polroles=array[(select oid from pg_roles where rolname='authenticated')]
          and pg_get_expr(p.polqual,p.polrelid)='app.has_role(''administrator''::app.app_role)' and p.polwithcheck is null)
       or not exists(select 1 from pg_constraint p where p.conrelid=c.oid and p.contype='p' and (select array_agg(a.attname::text order by k.ord) from unnest(p.conkey) with ordinality k(attnum,ord) join pg_attribute a on a.attrelid=c.oid and a.attnum=k.attnum)=mirrors.pk))
+  and not exists(select 1 from (values ('authenticated','plm'),('authenticated','pim'),('service_role','plm'),('service_role','pim')) consumer(role_name,schema_name) where not has_schema_privilege(consumer.role_name,consumer.schema_name,'USAGE'))
+  and not exists(select 1 from (values
+    ('coldlion.merch_group_detail',array['company_code','division_code','mg_type_code','mg_category','mg_code']),
+    ('plm.erp_licensor',array['company_code','division_code','mg_type_code','mg_code']),
+    ('plm.erp_property',array['company_code','division_code','mg_type_code','mg_code'])
+  ) dependency(name,pk) where not exists(select 1 from pg_constraint p where p.conrelid=to_regclass(dependency.name) and p.contype='p' and (select array_agg(a.attname::text order by k.ord) from unnest(p.conkey) with ordinality k(attnum,ord) join pg_attribute a on a.attrelid=p.conrelid and a.attnum=k.attnum)=dependency.pk))
   and has_schema_privilege('authenticated','app','USAGE') and has_function_privilege('authenticated','app.has_role(app.app_role)','EXECUTE')
   as passed
 )
@@ -177,15 +183,22 @@ end $grain$;
 reset role;
 insert into coldlion.merch_group_header(company_code,division_code,mg_type_code,run_id,fetched_at,source_hash,first_seen_at,last_seen_at,mg_type_desc) values('FIX2176','CW001','05','ac217600-0000-0000-0000-000000000001','2026-10-11T12:00:00Z','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','2026-10-11T12:00:00Z','2026-10-11T12:00:00Z','Licensor');
 insert into coldlion.merch_group_header(company_code,division_code,mg_type_code,run_id,fetched_at,source_hash,first_seen_at,last_seen_at,mg_type_desc) values('FIX2176','CW001','06','ac217600-0000-0000-0000-000000000001','2026-10-11T12:00:00Z','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','2026-10-11T12:00:00Z','2026-10-11T12:00:00Z','Property');
-insert into coldlion.merch_group_detail(company_code,division_code,mg_type_code,mg_code,run_id,fetched_at,source_hash,first_seen_at,last_seen_at,mg_desc) values('FIX2176','CW001','05','SAME','ac217600-0000-0000-0000-000000000001','2026-10-11T12:00:00Z','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','2026-10-11T12:00:00Z','2026-10-11T12:00:00Z','Synthetic Licensor');
-insert into coldlion.merch_group_detail(company_code,division_code,mg_type_code,mg_code,run_id,fetched_at,source_hash,first_seen_at,last_seen_at,mg_desc) values('FIX2176','CW001','06','SAME','ac217600-0000-0000-0000-000000000001','2026-10-11T12:00:00Z','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','2026-10-11T12:00:00Z','2026-10-11T12:00:00Z','Synthetic Property');
+insert into coldlion.merch_group_detail(company_code,division_code,mg_type_code,mg_code,mg_category,run_id,fetched_at,source_hash,first_seen_at,last_seen_at,mg_desc) values('FIX2176','CW001','05','SAME','CAT_A','ac217600-0000-0000-0000-000000000001','2026-10-11T12:00:00Z','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','2026-10-11T12:00:00Z','2026-10-11T12:00:00Z','Synthetic Licensor');
+insert into coldlion.merch_group_detail(company_code,division_code,mg_type_code,mg_code,mg_category,run_id,fetched_at,source_hash,first_seen_at,last_seen_at,mg_desc) values('FIX2176','CW001','05','SAME','CAT_B','ac217600-0000-0000-0000-000000000001','2026-10-11T12:00:00Z','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','2026-10-11T12:00:00Z','2026-10-11T12:00:00Z','Synthetic Licensor Other Category');
+insert into coldlion.merch_group_detail(company_code,division_code,mg_type_code,mg_code,mg_category,run_id,fetched_at,source_hash,first_seen_at,last_seen_at,mg_desc) values('FIX2176','CW001','06','SAME','CAT_A','ac217600-0000-0000-0000-000000000001','2026-10-11T12:00:00Z','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','2026-10-11T12:00:00Z','2026-10-11T12:00:00Z','Synthetic Property');
+insert into coldlion.merch_group_detail(company_code,division_code,mg_type_code,mg_code,mg_category,run_id,fetched_at,source_hash,first_seen_at,last_seen_at,mg_desc) values('FIX2176','CW001','06','SAME','CAT_B','ac217600-0000-0000-0000-000000000001','2026-10-11T12:00:00Z','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','2026-10-11T12:00:00Z','2026-10-11T12:00:00Z','Synthetic Property Other Category');
+insert into plm.merch_group_header(company_code,division_code,mg_type_code,mg_type_desc) values('FIX2176','CW001','05','Licensor'),('FIX2176','CW001','06','Property');
+insert into plm.erp_licensor(company_code,division_code,mg_type_code,mg_code,mg_type_desc,name,raw,source_hash,resolution_status) values('FIX2176','CW001','05','SAME','Licensor','Synthetic Licensor','{}','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','ignored');
+insert into plm.erp_property(company_code,division_code,mg_type_code,mg_code,mg_type_desc,name,raw,source_hash,resolution_status) values('FIX2176','CW001','06','SAME','Property','Synthetic Property','{}','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','ignored');
 set local role authenticated;
 do $candidates$ begin
- if (select count(*) from plm.coldlion_merch_group_candidates('FIX2176','CW001'))<>2
+ if (select count(*) from plm.coldlion_merch_group_candidates('FIX2176','CW001'))<>4
    or (select count(distinct candidate_kind) from plm.coldlion_merch_group_candidates('FIX2176','CW001'))<>2
-   or exists(select 1 from plm.coldlion_merch_group_candidates('FIX2176','CW001') where resolution_status<>'unresolved' or mg_code<>'SAME')
+   or exists(select 1 from plm.coldlion_merch_group_candidates('FIX2176','CW001') where resolution_status<>'ignored' or mg_code<>'SAME'
+       or mg_category not in ('CAT_A','CAT_B'))
+   or exists(select 1 from (select candidate_kind from plm.coldlion_merch_group_candidates('FIX2176','CW001') group by candidate_kind having count(*)<>2 or count(distinct mg_category)<>2) broken_category_grain)
    or exists(select 1 from plm.coldlion_merch_group_candidates('FIX2176','OTHER'))
- then raise exception 'unit6 candidate company/division/type grain or no-auto-link contract failed'; end if;
+ then raise exception 'unit6 candidate category grain, shared mirror resolution or no-auto-link contract failed'; end if;
 end $candidates$;
 reset role;
 rollback;

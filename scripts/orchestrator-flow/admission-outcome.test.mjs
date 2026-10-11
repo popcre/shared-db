@@ -3,11 +3,52 @@ import { currentRepository, expectedOperatorAssociation } from '../lib/repositor
 // Fixtures follow the resolved repository identity and its operator association (#3255).
 const THIS_REPO = currentRepository(), OPERATOR_ASSOCIATION = expectedOperatorAssociation()
 import assert from 'node:assert/strict'
-import { evaluateAdmission, parseImpactBlock, STRUCTURAL_CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, assertPrCarriesStructuralChange, inspectPrStructuralChange } from './admission.mjs'
+import { evaluateAdmission, parseImpactBlock, STRUCTURAL_CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, assertPrCarriesStructuralChange, inspectPrStructuralChange, structuralWritesMatch } from './admission.mjs'
 import { OutcomeError, advanceOutcome, completeOutcome, outcomeEvent, outcomeHistory, repairOutcomeHistory, trustedOutcomeComments, OUTCOME_STATES, parseOutcomeEvidence } from './outcome-lifecycle.mjs'
 import { coordinationEvent, formatEventComment, parseEventComment } from '../db-coordination-events.mjs'
 import { admitIssue, buildDynamicQueues, claimBody, derivePrOperationRoute, EXCLUSIVE_REFS, main as managerMain, matchesGeneratedTypesProof, matchesLiveProof, MUTEX_REF, parseQueueScope, resolveAdmittedIssueForPr } from '../manage-migration-author-lanes.mjs'
 import { findCompletionRecord } from '../lib/work-dependencies.mjs'
+
+const columnInspection=(content)=>inspectPrStructuralChange([{filename:'supabase/migrations/20261011125719_example.sql',status:'added',content}])
+test('2421 processing-clock columns match only as SQL-proven supplemental locks',()=>{
+  // Exact two statements in PR4161. The table-wide dispatch identity and the
+  // durable column claims are both retained rather than rewritten for admission.
+  const inspected=columnInspection('ALTER TABLE public.assets ADD COLUMN style_group_changed_at timestamptz NOT NULL DEFAULT now();\nALTER TABLE public.style_groups ADD COLUMN style_group_changed_at timestamptz NOT NULL DEFAULT now();')
+  const actual=[...inspected.objects],declared=[...actual,'column public.assets.style_group_changed_at','column public.style_groups.style_group_changed_at']
+  assert.deepEqual(actual,['table public.assets','table public.style_groups'])
+  const before=[...declared];assert.equal(structuralWritesMatch(inspected,declared),true)
+  assert.deepEqual(inspected.objects,actual);assert.deepEqual(declared,before)
+  assert.equal(structuralWritesMatch({...inspected},declared),false,'a forged/cloned inspector cannot carry lexical proof')
+  for(const invalid of [declared.filter(x=>x!=='table public.assets'),[...declared,'column public.assets.foreign'],[...declared,declared[0]],['table public.assets','column public.assets.style_group_changed_at']])assert.equal(structuralWritesMatch(inspected,invalid),false)
+})
+
+test('quoted exact identifiers, ONLY and IF NOT EXISTS preserve the parent table lock',()=>{
+  const inspected=columnInspection('ALTER TABLE ONLY "public"."assets" ADD COLUMN IF NOT EXISTS "style_group_changed_at" timestamptz NOT NULL DEFAULT now();')
+  assert.equal(structuralWritesMatch(inspected,['table public.assets','column public.assets.style_group_changed_at']),true)
+  assert.equal(structuralWritesMatch(inspected,['table public.assets','column public.assets.Style_Group_Changed_At']),false)
+})
+
+test('no supplementary column proof from literals, function bodies, comments or uncertain DDL',()=>{
+  const cases=[
+    "ALTER TABLE public.assets ENABLE ROW LEVEL SECURITY; SELECT 'ALTER TABLE public.assets ADD COLUMN changed timestamptz;';",
+    'CREATE FUNCTION public.decoy() RETURNS void LANGUAGE plpgsql AS $$ BEGIN ALTER TABLE public.assets ADD COLUMN changed timestamptz; END; $$; ALTER TABLE public.assets ENABLE ROW LEVEL SECURITY;',
+    'ALTER TABLE public.assets ENABLE ROW LEVEL SECURITY; -- ALTER TABLE public.assets ADD COLUMN changed timestamptz;\n',
+    'ALTER TABLE public.assets ENABLE ROW LEVEL SECURITY; /* outer /* nested */ ALTER TABLE public.assets ADD COLUMN changed timestamptz; */',
+    'ALTER TABLE public.assets ADD COLUMN changed timestamptz, ADD COLUMN other timestamptz;',
+    'ALTER TABLE public.assets ADD COLUMN changed;',
+    'ALTER TABLE public.assets ADD COLUMN changed timestamptz unexpected;',
+    'ALTER TABLE public.assets ADD COLUMN changed timestamptz',
+    'ALTER TABLE public.assets ENABLE ROW LEVEL SECURITY; DO $$ BEGIN ALTER TABLE public.assets ADD COLUMN changed timestamptz; END; $$;',
+  ]
+  for(const sql of cases){const inspected=columnInspection(sql);assert.equal(structuralWritesMatch(inspected,[...inspected.objects,'column public.assets.changed']),false,sql)}
+  assert.throws(()=>columnInspection('ALTER TABLE public.assets ADD COLUMN changed timestamptz; /* unterminated'),/unterminated SQL comment/)
+})
+
+test('proof never crosses from a removed/full modified file into its actual proposed patch',()=>{
+  const sql='ALTER TABLE public.assets ADD COLUMN changed timestamptz;'
+  const inspected=inspectPrStructuralChange([{filename:'supabase/migrations/20261011125719_example.sql',status:'modified',content:sql,patch:'@@ -1 +1 @@\n-ALTER TABLE public.assets ADD COLUMN changed timestamptz;\n+ALTER TABLE public.assets ENABLE ROW LEVEL SECURITY;'}])
+  assert.equal(structuralWritesMatch(inspected,['table public.assets','column public.assets.changed']),false)
+})
 
 const issue = (body, number = 41) => ({ number, state: 'open', title: 'structural outcome', body, createdAt: '2026-09-11T00:00:00Z' })
 const ownerComment = (body) => ({body,author_association:OPERATOR_ASSOCIATION,author:'u2giants'})

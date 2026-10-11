@@ -1,0 +1,95 @@
+{
+  "schema_version": 2,
+  "generation": 4,
+  "work_issue": 2421,
+  "work_type": "structural",
+  "route": "claim-first",
+  "goal": "Schedule differential style-group rebuilds from reliable database change clocks, advance only matching completed runs and preserve weekly full/recovery behavior.",
+  "base_sha": "01b08a8544d56f1760b9b7fa2bd0d7ec3b7f0bdd",
+  "dispatcher": "Codex parent current user authority",
+  "worker": "01a12b02-63e2-7d62-b0b4-52e7c6b0f804",
+  "branch": "codex/issues-2478-2421-2420",
+  "worktree": "/home/ahazan/.codex/worktrees/3bd9-style-groups/shared-db",
+  "allowed_paths": [
+    "supabase/migrations/20261011125719_style_group_change_watermark.sql",
+    "supabase/tests/style_group_change_watermark_contracts.sql",
+    ".github/live-proofs/2421.sql",
+    ".agent/work/2421/1/contract.json",
+    ".agent/work/2421/1/completion.json",
+    ".agent/work/2421/2/contract.json",
+    ".agent/work/2421/2/completion.json",
+    "scripts/test_style_group_watermark.py",
+    ".agent/work/2421/3/contract.json",
+    ".agent/work/2421/3/completion.json",
+    ".agent/work/2421/4/contract.json",
+    ".agent/work/2421/4/completion.json"
+  ],
+  "file_writes": [
+    "supabase/migrations/20261011125719_style_group_change_watermark.sql",
+    "supabase/tests/style_group_change_watermark_contracts.sql",
+    ".github/live-proofs/2421.sql",
+    ".agent/work/2421/1/contract.json",
+    ".agent/work/2421/1/completion.json",
+    ".agent/work/2421/2/contract.json",
+    ".agent/work/2421/2/completion.json",
+    "scripts/test_style_group_watermark.py",
+    ".agent/work/2421/3/contract.json",
+    ".agent/work/2421/3/completion.json",
+    ".agent/work/2421/4/contract.json",
+    ".agent/work/2421/4/completion.json"
+  ],
+  "db_reads": [
+    "function public.style_group_key_for_sku",
+    "function public.refresh_style_group_counts_batch",
+    "table public.style_group_tags",
+    "table public.admin_config",
+    "function public.style_group_key_for_sku",
+    "function public.refresh_style_group_counts_batch"
+  ],
+  "db_writes": [
+    "table public.assets",
+    "column public.assets.style_group_changed_at",
+    "table public.style_groups",
+    "column public.style_groups.style_group_changed_at",
+    "function public.stamp_style_group_asset_change",
+    "function public.stamp_style_group_definition_change",
+    "function public.touch_style_group_tag_change",
+    "trigger assets_style_group_change_clock on public.assets",
+    "trigger style_groups_style_group_change_clock on public.style_groups",
+    "trigger style_group_tags_change_clock on public.style_group_tags",
+    "function public.rebuild_style_groups_batch",
+    "function public.queue_nightly_rebuild_style_groups",
+    "index public.assets_style_group_changed_at_idx",
+    "index public.style_groups_style_group_changed_at_idx",
+    "index public.assets_ungrouped_style_cursor_idx"
+  ],
+  "prohibited_actions": [
+    "No database writes or production dispatch by author",
+    "No merging without parent exact decision",
+    "Preserve two-argument rebuild RPC and clear recovery function",
+    "Never change original file modified_at"
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "local PostgreSQL watermark behavior/race contracts",
+    "git diff --check",
+    "node scripts/check-live-proof-probe.mjs",
+    "python scripts/test_style_group_watermark.py"
+  ],
+  "assumptions": [
+    "Parent approved exact additive scope and two new timestamp indexes",
+    "PopDAM worker companion must follow merged/applied schema and preserve params through resume",
+    "Production completion remains open through full post-rollout weekly zero-drift observation"
+  ],
+  "stop_conditions": [
+    "Claim or source overlap",
+    "Long-transaction cutoff or partial-run watermark regression",
+    "Existing recovery grants/signature changed",
+    "Source file timestamps modified"
+  ],
+  "evidence_parent": {
+    "work_issue": 2421,
+    "generation": 3,
+    "contract_sha256": "30510c54c43269efb71a86a92968a28db158f3220ba2b7593067ff5269291523"
+  }
+}

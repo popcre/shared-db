@@ -7,7 +7,7 @@ begin;
 -- Issue #2176 - ColdLion landing UNIT 6: consumer-safe promotion contracts.
 --
 -- Tracker: #2081. Plan: plan_coldlion_landing_schema_completion.md section 9 Step 8.
--- Author lane claim: #3838. Reserved version: 20261011204918. Structure only; this
+-- Author lane claim: #3838. Reserved version: 20261011224904. Structure only; this
 -- migration loads no rows.
 --
 -- WHAT THIS UNIT PUBLISHES

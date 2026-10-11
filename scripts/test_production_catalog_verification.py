@@ -3606,9 +3606,6 @@ class OrderSheetsIntegrationContractTests(unittest.TestCase):
                 load_behavior_sidecars(root, {version: migration}, [version])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 class SandboxTargetCatalogSafetyTests(unittest.TestCase):
     def test_unknown_ledger_and_preview_foreign_target_stop_before_query(self):
         from production_catalog_verification import verify
@@ -3618,3 +3615,7 @@ class SandboxTargetCatalogSafetyTests(unittest.TestCase):
                 with self.assertRaises(GuardError):
                     verify(REPO, "20261002135053", Path(tmp), "synthetic-project", "synthetic-token", True, ledger_name=ledger_name)
                 query.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main()

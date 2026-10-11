@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "work_issue": 2508,
+  "outcome": "ready-for-merge",
+  "pr": 4157,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2508/4",
+  "contract_sha256": "968e88ae7289958a43c1384dab12c9bef487dbbfa593d447e9172fe4601fbea7",
+  "head_sha": "01f5b9d061cf62db9d139ea22bdf39f5a8316fdf",
+  "base_sha": "01b08a8544d56f1760b9b7fa2bd0d7ec3b7f0bdd",
+  "files_changed": [
+    "scripts/production_migration_guard.py",
+    "scripts/test_production_migration_guard.py",
+    "scripts/test_post_batch_app_verification.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python3 -m unittest discover -s scripts -p test_*.py",
+      "exit_code": 0,
+      "evidence": "1482 tests pass,43 skipped environment-specific, including companion exact retired set"
+    },
+    {
+      "command": "node --test scripts/check-migration-ledger-drift.test.mjs scripts/report-ledger-drift-status.test.mjs",
+      "exit_code": 0,
+      "evidence": "64 tests pass, production controls preserve seven true pending versions"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "clean"
+    }
+  ],
+  "assumptions_resolved": [
+    "Production read confirms successors20260914075758,20261005044103,20261007171252",
+    "Sandbox read confirms four exact foreign-target versions",
+    "Immutable source contracts3869/2,5,6,9 prove sandbox-only scope; no migration edits"
+  ],
+  "stop_conditions_hit": []
+}

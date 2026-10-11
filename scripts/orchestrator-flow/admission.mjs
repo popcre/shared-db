@@ -210,14 +210,14 @@ export function inspectPrCuratedDataChange(prFiles = [], issue = null, scope = n
   if (ddl.length || rewrites.length || objects.length) {
     refuse(`curated-master-data migration changes database structure (${[...new Set([...ddl.map((row) => row.verb), ...rewrites, ...objects])].join(', ')}); structural changes require work_type structural`)
   }
-  const writes = new Set()
+  const writes = new Set(), reads = new Set()
   for (const [index, text] of sql.entries()) {
-    try { for (const write of inspectCuratedSql(text).writes) writes.add(write) } catch (error) {
+    try { const found = inspectCuratedSql(text); for (const write of found.writes) writes.add(write); for (const read of found.reads) reads.add(read) } catch (error) {
       if (!(error instanceof CuratedSqlError)) refuse(`curated-master-data migration inspection failed: ${error.message}`)
       refuse(`curated-master-data migration ${migrations[index].filename ?? migrations[index].path} is not a bounded curated row load: ${error.message}; structural or opaque SQL requires work_type structural`)
     }
   }
-  return { reads: [], migrations: migrations.map((file) => file.filename ?? file.path), objects: [], row_writes: [...writes].sort() }
+  return { reads: [], row_reads: [...reads].sort(), migrations: migrations.map((file) => file.filename ?? file.path), objects: [], row_writes: [...writes].sort() }
 }
 
 const inspectedAliasProofs=new WeakMap()

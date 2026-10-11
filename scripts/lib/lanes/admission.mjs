@@ -65,7 +65,7 @@ export function admitIssue(number, io = githubIo, { pr = null, actor = 'manage-m
         ?{...file,content:io.getFileAt(file.filename??file.path,head)}:file)
       if(admitted.curated){
         const inspection=inspectPrCuratedDataChange(files,issue,scope)
-        admitted={...admitted,actual_objects:[],reads:inspection.reads,row_writes:inspection.row_writes,migrations:inspection.migrations}
+        admitted={...admitted,actual_objects:[],reads:inspection.reads,row_writes:inspection.row_writes,row_reads:inspection.row_reads,migrations:inspection.migrations}
       }else{
       const inspection=inspectPrStructuralChange(files)
       const declared=[...scope.writes].sort()

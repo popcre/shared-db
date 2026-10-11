@@ -1116,7 +1116,7 @@ test('curated data-only inspection fails closed on SQL its detectors cannot see 
   const admitted = guarded.replace("$q$Bob's -- notes$q$", "'Bob''s -- notes'")
   assert.deepEqual(inspectPrCuratedDataChange(file(admitted)).row_writes, ['table core.property', 'table plm.licensing_write_authorization'])
   assert.deepEqual(inspectPrCuratedDataChange(file("insert into core.property (notes) values ($q$Bob's -- notes$q$);\n")).row_writes, ['table core.property'])
-  assert.deepEqual(inspectPrCuratedDataChange(file("update core.property set status = 'active' where id = 5 and licensor_id = -2 returning id;\ndelete from core.taxonomy_source_ref where entity_id = 'e1';\n")).row_writes, ['table core.property', 'table core.taxonomy_source_ref'])
+  assert.deepEqual(inspectPrCuratedDataChange(file("update core.property set status = 'active' where id = 5 and licensor_id = -2 returning id;\ndelete from core.taxonomy_source_ref where entity_id = 'e1';\ninsert into core.property (name) select l.name from core.licensor l, plm.wb_property w where l.id = 1;\n")).row_writes, ['table core.property', 'table core.taxonomy_source_ref'])
   const refused = [
     // round 1: dynamic DDL, destructive and maintenance statements, vacuous loads
     ["do $$ begin execute 'create table core.evil(id int)'; end $$;" + ins, /EXECUTE/],
@@ -1184,6 +1184,12 @@ test('curated data-only inspection fails closed on SQL its detectors cannot see 
     ['insert into core.property (name) select decrypted_secret from vault.decrypted_secrets;', /read source vault\.decrypted_secrets is outside/],
     ["insert into core.property (name) select name from core.licensor l join public.profiles p on p.id = l.id;", /read source public\.profiles is outside/],
     [ins + "select cron_schedule('j', '* * * * *', 'select 1');", /CRON_SCHEDULE/],
+    // round 6: comma-separated read sources, column = column bounds
+    ['insert into core.property (name) select u.email from core.licensor l, auth.users u where l.id = 1;', /read source auth\.users is outside/],
+    ['insert into core.property (name) select s.secret from core.licensor l, vault.decrypted_secrets s;', /read source vault\.decrypted_secrets is outside/],
+    ['insert into core.property (name) select (select u.email from core.licensor l, auth.users u limit 1);', /read source auth\.users is outside/],
+    ['delete from core.property where a = b;', /conjunction/],
+    ["update core.property set name = 'x' where id = 1 and a = b;", /conjunction/],
     [ins + "select extensions.set_config('search_path', 'x', false);", /SET_CONFIG/],
     [ins + 'select "cron"."schedule"(\'j\', \'* * * * *\', \'select 1\');', /quoted identifier/],
   ]

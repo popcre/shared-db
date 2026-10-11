@@ -200,14 +200,36 @@ function checkCall(tokens, k, declaring) {
   throw new CuratedSqlError(`call to ${t.type === 'ident' ? `"${name}"` : name} is not an allowed side-effect-free builtin`)
 }
 
+// Every relation in a FROM list is checked, including comma-separated ones;
+// a parenthesised subquery is skipped here because its own FROM is checked
+// when the token walk reaches it. Returns the qualified relations read.
+const FROM_LIST_END = new Set(['where', 'group', 'order', 'limit', 'offset', 'having', 'union', 'except', 'intersect', 'returning',
+  'on', 'join', 'inner', 'left', 'right', 'full', 'cross', 'natural', 'for', 'window', 'into', 'loop', 'then', 'using', 'set', 'values', 'select'])
 function checkSource(tokens, k) {
   const prev = tokens[k - 1]
-  if (tokens[k].value === 'from' && prev?.type === 'word' && ['delete', 'distinct'].includes(prev.value)) return
-  const next = tokens[k + 1]
-  if (next?.type === 'punct' && next.value === '(') return // subquery, checked token by token
-  if (next?.type === 'word' && next.value === 'lateral') return
-  const target = qualifiedTarget(tokens, k + 1)
-  if (!target?.schema || !READ_SCHEMAS.has(target.schema)) throw new CuratedSqlError(`read source ${target?.schema ? `${target.schema}.${target.name}` : (target?.name ?? 'expression')} is outside curated Master Data and its licensing sources (core.*, plm.*)`)
+  if (tokens[k].value === 'from' && prev?.type === 'word' && ['delete', 'distinct'].includes(prev.value)) return []
+  const reads = []
+  let i = k + 1
+  for (;;) {
+    const t = tokens[i]
+    if (t?.type === 'word' && t.value === 'lateral') i++
+    if (tokens[i]?.type === 'punct' && tokens[i].value === '(') {
+      let depth = 0
+      for (; i < tokens.length; i++) {
+        if (tokens[i].type === 'punct' && tokens[i].value === '(') depth++
+        else if (tokens[i].type === 'punct' && tokens[i].value === ')' && --depth === 0) { i++; break }
+      }
+    } else {
+      const target = qualifiedTarget(tokens, i)
+      if (!target?.schema || !READ_SCHEMAS.has(target.schema) || (tokens[target.next]?.type === 'punct' && tokens[target.next].value === '(')) throw new CuratedSqlError(`read source ${target?.schema ? `${target.schema}.${target.name}` : (target?.name ?? 'expression')} is outside curated Master Data and its licensing sources (core.*, plm.*)`)
+      reads.push(`table ${target.schema}.${target.name}`)
+      i = target.next
+    }
+    if (tokens[i]?.type === 'word' && tokens[i].value === 'as') i++
+    if ((tokens[i]?.type === 'word' && !FROM_LIST_END.has(tokens[i].value)) || tokens[i]?.type === 'ident') i++ // alias
+    if (tokens[i]?.type === 'punct' && tokens[i].value === ',' ) { i++; continue }
+    return reads
+  }
 }
 
 const DML_START = new Set(['insert', 'update', 'delete'])
@@ -218,14 +240,16 @@ const PLPGSQL_LEADING = new Set(['begin', 'end', 'if', 'elsif', 'else', 'raise',
   'while', 'exit', 'continue', 'assert', 'null', 'exception', 'when', 'case', 'select', 'insert', 'update', 'delete', 'with', 'declare'])
 
 export function inspectCuratedSql(sql) {
-  const writes = new Set()
+  const writes = new Set(), reads = new Set()
   let dml = 0
   for (const { tokens, plpgsql } of codeUnits(sql)) {
     let declaring = false, caseDepth = 0
+    const variables = new Set()
     for (let k = 0; k < tokens.length; k++) {
       const token = tokens[k]
       const before = tokens[k - 1]
       if (plpgsql && token.type === 'word') {
+        if (declaring && (before?.value === ';' || before?.value === 'declare') && tokens[k + 1]?.type === 'word') variables.add(token.value)
         if (token.value === 'declare') declaring = true
         else if (token.value === 'begin') declaring = false
         else if (token.value === 'case') caseDepth++
@@ -256,7 +280,7 @@ export function inspectCuratedSql(sql) {
       if (FORBIDDEN_IDENTS.has(word)) throw new CuratedSqlError(`forbidden function ${word}`)
       if (FORBIDDEN_PREFIXES.some((prefix) => word.startsWith(prefix)) && !ALLOWED_PG_WORDS.has(word)) throw new CuratedSqlError(`forbidden function or catalog ${word}`)
       if (next?.type === 'punct' && next.value === '(') checkCall(tokens, k, plpgsql && declaring)
-      if (['from', 'join'].includes(word)) checkSource(tokens, k)
+      if (['from', 'join'].includes(word)) for (const read of checkSource(tokens, k)) reads.add(read)
       if (word === 'do' && !(next?.type === 'word' && ['nothing', 'update'].includes(next.value))) {
         throw new CuratedSqlError('nested or non-leading DO is refused')
       }
@@ -302,7 +326,8 @@ export function inspectCuratedSql(sql) {
         // Bounded means the whole top-level WHERE is a conjunction of
         // `column = value` terms: no OR, NOT, subquery, function call or
         // tautology, so every term narrows the rows touched.
-        const isValue = (t) => ['string', 'number', 'param'].includes(t?.type) || (t?.type === 'word' && !WHERE_KEYWORDS.has(t.value))
+        // A value is a literal or a declared PL/pgSQL variable, never a column.
+        const isValue = (t) => ['string', 'number'].includes(t?.type) || (t?.type === 'word' && variables.has(t.value))
         const isColumn = (t) => t?.type === 'ident' || (t?.type === 'word' && !WHERE_KEYWORDS.has(t.value))
         const clause = where < 0 ? [] : tokens.slice(where + 1, returning > where ? returning : end)
         let bounded = clause.length > 0, p = 0
@@ -327,7 +352,7 @@ export function inspectCuratedSql(sql) {
     }
   }
   if (!dml) throw new CuratedSqlError('the migration writes no row')
-  return { writes: [...writes].sort() }
+  return { writes: [...writes].sort(), reads: [...reads].sort() }
 }
 
 // pg_cron (issue #4184, for #4190 / PR #4192): cron.schedule, schedule_in_database,

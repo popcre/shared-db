@@ -33,7 +33,7 @@ select (
   and not has_table_privilege('authenticated', 'public.style_guide_library_default_guides', 'SELECT')
   and exists (select 1 from cron.job
                where jobname = 'refresh-style-guide-library-default-snapshot'
-                 and schedule = '*/5 * * * *' and active)
+                 and schedule in ('*/5 * * * *', '*/15 * * * *') and active)
   and (select count(*) from calls c
          join public.style_guide_library_default_summary s on s.result_mode = c.mode
         where (c.r ->> 'total')::bigint = s.total

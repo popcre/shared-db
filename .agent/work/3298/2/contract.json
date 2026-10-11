@@ -4,7 +4,7 @@
   "work_type": "structural",
   "route": "claim-first",
   "goal": "Land additive PM Jev activity-triage migration A with contract tests and exact-head AI review.",
-  "base_sha": "a2449ef698a7",
+  "base_sha": "5d876ca1b5302369925dd11a01c71c60ca4a9421",
   "dispatcher": "MiMo chat d49a79a4-ca2b-49bb-b552-2039c560960e on EDGE-DEV",
   "worker": "MiMo chat d49a79a4-ca2b-49bb-b552-2039c560960e on EDGE-DEV",
   "branch": "mimo/3298-jev-activity-triage-migration-a",
@@ -94,6 +94,10 @@
     "Stop on exact-head reviewer REJECT that cannot be fixed additively",
     "Stop if migration collides with another claim"
   ],
-  "generation": 1,
-  "evidence_parent": null
+  "generation": 2,
+  "evidence_parent": {
+    "work_issue": 3298,
+    "generation": 1,
+    "contract_sha256": "7642a58a0355d51ccecc66f863a6b526e5c7800248d7b1009e371b3e52734403"
+  }
 }

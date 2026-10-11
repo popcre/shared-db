@@ -6,9 +6,9 @@
   "migration_versions": [
     "20261011225459"
   ],
-  "contract_ref": "refs/db-contracts/3298/1",
-  "contract_sha256": "7642a58a0355d51ccecc66f863a6b526e5c7800248d7b1009e371b3e52734403",
-  "head_sha": "e948653e82b589ca1a4d59316fc0f9e740212938",
+  "contract_ref": "refs/db-contracts/3298/2",
+  "contract_sha256": "a996d44406733590780cd8a5e4e3a17f0db31464a4f27195dc505ad35f9ad938",
+  "head_sha": "0ac4219d693333d1fe43d91d9c9faf7909474409",
   "base_sha": "5d876ca1b5302369925dd11a01c71c60ca4a9421",
   "files_changed": [
     "supabase/migrations/20261011225459_pm_jev_activity_triage_contract_a.sql",

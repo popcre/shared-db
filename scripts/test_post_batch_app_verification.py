@@ -1695,7 +1695,7 @@ class Unit6NeverInstalledReplayTests(unittest.TestCase):
         from unittest.mock import patch
         for code in self.guards():
             with tempfile.TemporaryDirectory() as directory:
-                successor = Path(directory) / '20261011204918_coldlion_unit6_consumer_contracts_safe.sql'
+                successor = Path(directory) / '20261011224904_coldlion_unit6_consumer_contracts_safe.sql'
                 successor.write_text('-- synthetic exact successor file presence')
                 with patch.object(sys, 'argv', ['-', str(successor)]):
                     exec(code, {})
@@ -1705,7 +1705,7 @@ class Unit6NeverInstalledReplayTests(unittest.TestCase):
                         with self.assertRaisesRegex(SystemExit, 'proof missing'): exec(code, {})
                     with patch.object(guard, 'RETIRED_VERSION_REASONS', {'20261005025111':'unrelated retirement successor'}):
                         with self.assertRaisesRegex(SystemExit, 'proof missing'): exec(code, {})
-                    with patch.object(guard, 'RETIRED_VERSION_REASONS', {'20261005025111':'replacement20261011204918 only; no never-installed proof'}):
+                    with patch.object(guard, 'RETIRED_VERSION_REASONS', {'20261005025111':'replacement20261011224904 only; no never-installed proof'}):
                         with self.assertRaisesRegex(SystemExit, 'proof missing'): exec(code, {})
                     wrong = Path(directory) / 'other.sql'
                     wrong.write_text('-- unrelated file')

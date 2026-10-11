@@ -341,7 +341,7 @@ jobs:
             base="$(basename "$m")"
             # UNIT6_RETIRED_SKIP_BEGIN: exact never-installed source only, not all retirements.
             if [ "${base%%_*}" = "20261005025111" ]; then
-              if ! python - "$RUNNER_TEMP/migrations/20261011204918_coldlion_unit6_consumer_contracts_safe.sql" <<'PY_UNIT6'
+              if ! python - "$RUNNER_TEMP/migrations/20261011224904_coldlion_unit6_consumer_contracts_safe.sql" <<'PY_UNIT6'
           import sys
           from pathlib import Path
           sys.path.insert(0, 'scripts')
@@ -349,7 +349,7 @@ jobs:
           old = '20261005025111'
           successor = Path(sys.argv[1])
           reason = RETIRED_VERSION_REASONS.get(old, '')
-          if old not in HARD_BLOCKED or '20261011204918' not in reason or 'preview and production never applied original' not in reason or 'retirement6328e126316baca16b7f3d842f79a769599f478c' not in reason or successor.name != '20261011204918_coldlion_unit6_consumer_contracts_safe.sql' or not successor.is_file():
+          if old not in HARD_BLOCKED or '20261011224904' not in reason or 'preview and production never applied original' not in reason or 'retirement6328e126316baca16b7f3d842f79a769599f478c' not in reason or successor.name != '20261011224904_coldlion_unit6_consumer_contracts_safe.sql' or not successor.is_file():
               raise SystemExit('REFUSED: exact never-installed unit6 retirement/successor proof missing')
           PY_UNIT6
               then
@@ -503,7 +503,7 @@ jobs:
             [ -n "$base" ] || continue
             # UNIT6_RETIRED_SKIP_BEGIN: exact never-installed source only, not all retirements.
             if [ "${base%%_*}" = "20261005025111" ]; then
-              if ! python - "supabase/migrations/20261011204918_coldlion_unit6_consumer_contracts_safe.sql" <<'PY_UNIT6'
+              if ! python - "supabase/migrations/20261011224904_coldlion_unit6_consumer_contracts_safe.sql" <<'PY_UNIT6'
           import sys
           from pathlib import Path
           sys.path.insert(0, 'scripts')
@@ -511,7 +511,7 @@ jobs:
           old = '20261005025111'
           successor = Path(sys.argv[1])
           reason = RETIRED_VERSION_REASONS.get(old, '')
-          if old not in HARD_BLOCKED or '20261011204918' not in reason or 'preview and production never applied original' not in reason or 'retirement6328e126316baca16b7f3d842f79a769599f478c' not in reason or successor.name != '20261011204918_coldlion_unit6_consumer_contracts_safe.sql' or not successor.is_file():
+          if old not in HARD_BLOCKED or '20261011224904' not in reason or 'preview and production never applied original' not in reason or 'retirement6328e126316baca16b7f3d842f79a769599f478c' not in reason or successor.name != '20261011224904_coldlion_unit6_consumer_contracts_safe.sql' or not successor.is_file():
               raise SystemExit('REFUSED: exact never-installed unit6 retirement/successor proof missing')
           PY_UNIT6
               then

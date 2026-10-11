@@ -1,9 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { evaluatePreflight } from './check-required-checks-preflight.mjs'
+import { computeRevision } from './lib/required-check-authority.mjs'
 import {
   ConfigureQueueError,
   LANE_REFS,
   QUEUE_GATE_CONTEXT,
+  QUEUE_REQUIRED_CONTEXTS,
   MERGE_QUEUE_WORKFLOW,
   assertContextsAndWorkflow,
   assertLiveContextsCovered,
@@ -56,7 +60,7 @@ test('baseline ID is read from the Step 3 artifact shape', () => {
 })
 
 test('contexts and workflow gate: the additive context and the on-main workflow', () => {
-  const ok = { contexts: ['Tools offline tests', QUEUE_GATE_CONTEXT], workflows: [MERGE_QUEUE_WORKFLOW] }
+  const ok = { contexts: ['Tools offline tests', ...QUEUE_REQUIRED_CONTEXTS], checks: QUEUE_REQUIRED_CONTEXTS.map(context => ({ context, app_id: 15368 })), workflows: [MERGE_QUEUE_WORKFLOW] }
   assert.equal(assertContextsAndWorkflow(ok), true)
   assert.throws(() => assertContextsAndWorkflow({ ...ok, contexts: ['Tools offline tests'] }), /update-required-checks/)
   assert.throws(() => assertContextsAndWorkflow({ ...ok, workflows: [] }), /not on main/)
@@ -112,14 +116,15 @@ test('activation plan: all gates pass, same-name ruleset is reused, duplicates r
     repo: 'acme/widgets',
     live: { id: 1, owner: { type: 'Organization' }, visibility: 'public' },
     baselineId: 1,
-    contexts: [QUEUE_GATE_CONTEXT],
+    contexts: [...QUEUE_REQUIRED_CONTEXTS],
+    checks: QUEUE_REQUIRED_CONTEXTS.map(context => ({ context, app_id: 15368 })),
     workflows: [MERGE_QUEUE_WORKFLOW],
     heldLanes: [],
     mainTip: { tipSha: SHA_A, tipPaths: ['docs/x.md'], statuses: [] },
-    coveredContexts: [QUEUE_GATE_CONTEXT],
+    coveredContexts: [...QUEUE_REQUIRED_CONTEXTS],
   }
   assert.equal(planActivation({ ...base, rulesets: [] }).existing, null)
-  assert.throws(() => planActivation({ ...base, rulesets: [], contexts: [QUEUE_GATE_CONTEXT, 'Unmirrored check'] }), /without proven merge-group coverage: Unmirrored check/)
+  assert.throws(() => planActivation({ ...base, rulesets: [], contexts: [...QUEUE_REQUIRED_CONTEXTS, 'Unmirrored check'] }), /without proven merge-group coverage: Unmirrored check/)
   assert.throws(() => planActivation({ ...base, rulesets: [], coveredContexts: undefined }), /unreadable/)
   assert.equal(planActivation({ ...base, rulesets: [{ id: 9, name: RULESET_NAME }] }).existing.id, 9)
   assert.throws(() => planActivation({ ...base, rulesets: [{ id: 9, name: RULESET_NAME }, { id: 10, name: RULESET_NAME }] }), /multiple rulesets/)
@@ -166,7 +171,7 @@ function fakeLive({ withRuleset = false } = {}) {
     const target = args.at(-1)
     if (target.endsWith('includes_parents=false')) return withRuleset ? [{ id: 9, name: RULESET_NAME, enforcement: 'active' }] : []
     if (target === 'repos/acme/widgets') return { id: 1, owner: { type: 'Organization' }, visibility: 'public' }
-    if (target.endsWith('required_status_checks')) return { contexts: [QUEUE_GATE_CONTEXT] }
+    if (target.endsWith('required_status_checks')) return { contexts: [...QUEUE_REQUIRED_CONTEXTS], checks: QUEUE_REQUIRED_CONTEXTS.map(context => ({ context, app_id: 15368 })) }
     if (target.includes('/git/ref/')) throw new Error('HTTP 404: Not Found')
     if (target.endsWith('/branches/main')) return { commit: { sha: SHA_B } }
     if (/commits\/[0-9a-f]{40}$/.test(target)) return { files: [{ filename: 'docs/x.md' }] }
@@ -180,13 +185,13 @@ function fakeLive({ withRuleset = false } = {}) {
 test('CLI dry run writes nothing; apply posts the exact payload once', () => {
   const { read, treeReader, calls } = fakeLive()
   const logs = []
-  const code = main([], { GITHUB_REPOSITORY: 'acme/widgets' }, { read, treeReader, baselineId: 1, log: (line) => logs.push(line), readOrigin: () => null })
+  const code = main([], { GITHUB_REPOSITORY: 'acme/widgets' }, { read, treeReader, baselineId: 1, coveredContexts: [...QUEUE_REQUIRED_CONTEXTS], log: (line) => logs.push(line), readOrigin: () => null })
   assert.equal(code, 0)
   assert.ok(logs.join('\n').includes('DRY RUN'))
   assert.equal(calls.filter((c) => c.hasInput).length, 0)
 
   const applied = fakeLive()
-  const code2 = main(['--apply'], { GITHUB_REPOSITORY: 'acme/widgets' }, { read: applied.read, treeReader: applied.treeReader, baselineId: 1, log: () => {}, readOrigin: () => null })
+  const code2 = main(['--apply'], { GITHUB_REPOSITORY: 'acme/widgets' }, { read: applied.read, treeReader: applied.treeReader, baselineId: 1, coveredContexts: [...QUEUE_REQUIRED_CONTEXTS], log: () => {}, readOrigin: () => null })
   assert.equal(code2, 0)
   assert.equal(applied.bodies.length, 1)
   assert.deepEqual(JSON.parse(applied.bodies[0]), JSON.parse(JSON.stringify(desiredRuleset())))
@@ -202,6 +207,41 @@ test('CLI refuses before any write when a gate fails', () => {
     if (target.includes('/git/ref/db-coordination/merge')) return { ref: 'refs/db-coordination/merge' }
     return read(args, options)
   }
-  assert.throws(() => main(['--apply'], { GITHUB_REPOSITORY: 'acme/widgets' }, { read: gatedRead, treeReader, baselineId: 1, log: () => {}, readOrigin: () => null }), /mutation lane\(s\) held/)
+  assert.throws(() => main(['--apply'], { GITHUB_REPOSITORY: 'acme/widgets' }, { read: gatedRead, treeReader, baselineId: 1, coveredContexts: [...QUEUE_REQUIRED_CONTEXTS], log: () => {}, readOrigin: () => null }), /mutation lane\(s\) held/)
   assert.equal(calls.filter((c) => c.hasInput).length, 0)
+})
+
+test('activation refuses missing queue contexts and foreign or unbound producers', () => {
+  const ok = { contexts: [...QUEUE_REQUIRED_CONTEXTS], checks: QUEUE_REQUIRED_CONTEXTS.map(context => ({ context, app_id: 15368 })), workflows: [MERGE_QUEUE_WORKFLOW] }
+  for (const missing of QUEUE_REQUIRED_CONTEXTS) assert.throws(() => assertContextsAndWorkflow({ ...ok, contexts: ok.contexts.filter(context => context !== missing) }), /restore both queue contexts/)
+  for (const app_id of [null, -1, 42]) for (const context of QUEUE_REQUIRED_CONTEXTS) assert.throws(() => assertContextsAndWorkflow({ ...ok, checks: ok.checks.map(check => check.context === context ? { ...check, app_id } : check) }), /required-check binding/)
+  assert.throws(() => assertContextsAndWorkflow({ ...ok, checks: [] }), /required-check binding/)
+  assert.throws(() => assertContextsAndWorkflow({ ...ok, checks: [...ok.checks, ok.checks[0]] }), /required-check binding/)
+})
+
+
+test('inactive queue restoration bootstraps mirror admission with exact-head dispatch successes', () => {
+  const contexts = JSON.parse(readFileSync(new URL('../docs/verification/main-required-status-checks.json', import.meta.url))).contexts
+  const restored = [...new Set([...contexts, ...QUEUE_REQUIRED_CONTEXTS])]
+  const checks = restored.map(context => ({ context, app_id: 15368 }))
+  const authority = { mode: 'live-effective-settings', repository_id: 1275568548, repository: 'popcre/shared-db', branch: 'main', sources: { classic: null, rulesets: [] }, checks }
+  authority.revision = computeRevision(authority)
+  const runs = restored.map((name, i) => ({ id: i + 1, name, head_sha: SHA_A, app: { id: 15368 }, status: 'completed', conclusion: QUEUE_REQUIRED_CONTEXTS.includes(name) ? 'skipped' : 'success' }))
+  const dispatches = QUEUE_REQUIRED_CONTEXTS.map((name, i) => ({ id: 100 + i, name, head_sha: SHA_A, app: { id: 15368 }, status: 'completed', conclusion: 'success' }))
+  const evaluate = checkRuns => evaluatePreflight({ authority, sha: SHA_A, checkRuns })
+  assert.throws(() => evaluate(runs), /failing:/)
+  assert.equal(evaluate([...runs, ...dispatches]).required, restored.length - 1)
+  for (const selected of QUEUE_REQUIRED_CONTEXTS) {
+    for (const override of [{ head_sha: SHA_B }, { app: { id: 7 } }, { status: 'queued', conclusion: null }]) {
+      assert.throws(() => evaluate([...runs, ...dispatches.map(run => run.name === selected ? { ...run, ...override } : run)]), /required status checks/)
+    }
+  }
+  for (const name of restored.filter(context => !QUEUE_REQUIRED_CONTEXTS.includes(context) && context !== 'Migration guarded merge authorization')) {
+    const siblingFailure = { id: 300, name, head_sha: SHA_A, app: { id: 15368 }, status: 'completed', conclusion: 'failure' }
+    assert.throws(() => evaluate([...runs, ...dispatches, siblingFailure]), /required status checks/)
+  }
+  const queuedFallback = { id: 200, name: 'Tools offline tests [lane ubuntu-22.04]', head_sha: SHA_A, app: { id: 15368 }, status: 'queued', conclusion: null }
+  assert.throws(() => evaluate([...runs, ...dispatches, queuedFallback]), /runner lane accounting refused/)
+  assert.throws(() => assertLiveContextsCovered({ contexts: restored, coveredContexts: restored.filter(context => !QUEUE_REQUIRED_CONTEXTS.includes(context)) }), /without proven merge-group coverage/)
+  assert.equal(assertLiveContextsCovered({ contexts: restored, coveredContexts: restored }), true)
 })

@@ -12,6 +12,8 @@ import { fileURLToPath } from 'node:url'
 
 import {
   baseCompareSpec,
+  readDispatchPull,
+  gatherSources,
   extractObjects,
   extractOperations,
   dispatchObjectKeys,
@@ -462,6 +464,39 @@ test('#3183: comment stripping still removes real comments and keeps literals', 
   assert.equal(normalizeSql("do $$ begin -- don't\n perform 1; end $$;").includes("don't"), false)
 })
 
+const dispatchHead = 'a'.repeat(40)
+const dispatchEnv = { GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REPOSITORY: 'popcre/shared-db', PR_NUMBER: '123', GITHUB_SHA: dispatchHead }
+const dispatchPull = () => ({ number: 123, state: 'open', merged: false, title: 'Restore mirror', body: 'Closes #123', head: { sha: dispatchHead, repo: { full_name: 'popcre/shared-db' } }, base: { ref: 'main', sha: 'b'.repeat(40), repo: { full_name: 'popcre/shared-db' } } })
+
+test('manual collision replay refuses missing, malformed, foreign or unknown workflow identity before GET', () => {
+  for (const patch of [{PR_NUMBER: undefined}, {PR_NUMBER: '0'}, {PR_NUMBER: '-1'}, {PR_NUMBER: '1.5'}, {PR_NUMBER: '123x'}, {PR_NUMBER: '9007199254740992'}, {GITHUB_REPOSITORY: 'foreign/repo'}, {GITHUB_SHA: undefined}, {GITHUB_SHA: 'unknown'}]) {
+    let reads = 0
+    assert.throws(() => readDispatchPull({...dispatchEnv,...patch}, () => { reads++; return dispatchPull() }))
+    assert.equal(reads, 0)
+  }
+})
+
+test('manual collision replay refuses moved, closed, merged, foreign, missing or non-main trusted GET identity', () => {
+  for (const mutate of [p=>{p.number=124},p=>{p.state='closed'},p=>{p.merged=true},p=>{delete p.merged},p=>{p.head.sha='c'.repeat(40)},p=>{p.head.repo.full_name='foreign/repo'},p=>{p.base.repo.full_name='foreign/repo'},p=>{p.base.ref='develop'},p=>{delete p.base.ref},p=>{delete p.base.sha},p=>{delete p.head.repo}]) {
+    const pr = dispatchPull(); mutate(pr)
+    assert.throws(() => readDispatchPull(dispatchEnv, () => pr))
+  }
+  assert.throws(() => readDispatchPull(dispatchEnv, () => { throw Error('GET unavailable') }), /GET unavailable/)
+})
+
+test('manual collision replay uses trusted exact open PR refs and scans current, competing and merged-base sources', () => {
+  const calls=[]
+  const sources=gatherSources(dispatchEnv, {
+    readPull:(repo,number)=>{calls.push(['GET',repo,number]);return dispatchPull()},
+    load:(repo,number)=>{calls.push(['load',repo,number]);return {current:{files:[]},others:[{number:124,listed:{draft:false,title:'competitor',headSha:'d'.repeat(40)},files:[]}]}},
+    readSql:()=>{throw Error('unexpected SQL read')},
+    baseSource:(repo,number,baseRef,headSha)=>{calls.push(['base',repo,number,baseRef,headSha]);return {label:'main merged source',files:[]}},
+  })
+  assert.deepEqual(calls,[['GET','popcre/shared-db',123],['load','popcre/shared-db',123],['base','popcre/shared-db',123,'main',dispatchHead]])
+  assert.equal(sources.length,3)
+  assert.equal(readDispatchPull(dispatchEnv,()=>dispatchPull()).body,'Closes #123')
+})
+
 
 test('role writes collide across CREATE ALTER DROP rename and membership in the real parser', () => {
   const source = (label, sql) => ({label, files:[{path: `${label}.sql`, sql}]})
@@ -527,5 +562,39 @@ test('integrated collision extraction refuses membership between implicit actors
     assert.throws(() => dispatchObjectKeys(sql), /implicit or reserved/)
     assert.throws(() => roleReadKeys(sql), /implicit or reserved/)
     assert.throws(() => findCollisions([{label: 'A', files: [{path: 'A.sql', sql}]}]), /implicit or reserved/)
+  }
+})
+
+
+test('bare manual collision CLI is actually red before any API read', () => {
+  const result=spawnSync(process.execPath,[path.join(repoRoot,'scripts/check-pr-object-collisions.mjs')],{cwd:repoRoot,env:{PATH:process.env.PATH,GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_REPOSITORY:'popcre/shared-db',GITHUB_SHA:dispatchHead,PR_NUMBER:''},encoding:'utf8'})
+  assert.equal(result.status,2,result.stderr)
+  assert.match(result.stderr,/requires a positive canonical pull request number/)
+  assert.match(result.stderr,/No collision checking was performed/)
+})
+
+test('empty or absent PR number retains existing push refusal; workflow never schedules this job on push', () => {
+  for (const env of [{}, {PR_NUMBER:''}]) {
+    let reads=0
+    assert.throws(()=>gatherSources({GITHUB_EVENT_NAME:'push',GITHUB_REPOSITORY:'popcre/shared-db',...env},{readPull:()=>{reads++;throw Error('unexpected GET')}}),/no PR number/)
+    assert.equal(reads,0)
+  }
+})
+
+test('dispatch empty snapshot performs real complete open-PR gathering and refuses incomplete files', async () => {
+  const {loadOpenPullFiles}=await import('./lib/open-pr-files.mjs')
+  for (const incomplete of [false,true]) {
+    const calls=[]
+    const read=args=>{
+      const endpoint=args.at(-1);calls.push(endpoint)
+      if(endpoint.includes('?state=open'))return [[dispatchPull()]]
+      if(endpoint.endsWith('/files?per_page=100'))return [[]]
+      if(endpoint.endsWith('/pulls/123'))return {...dispatchPull(),changed_files:incomplete?1:0}
+      throw Error('Unexpected endpoint '+endpoint)
+    }
+    const execute=()=>gatherSources({...dispatchEnv,OPEN_PR_FILES_SNAPSHOT:''},{readPull:()=>dispatchPull(),load:(repo,number)=>loadOpenPullFiles(repo,number,{env:{OPEN_PR_FILES_SNAPSHOT:''},read}),baseSource:()=>null})
+    if(incomplete)assert.throws(execute,/returned 0 of 1 changed files/)
+    else assert.equal(execute().length,1)
+    assert.deepEqual(calls,['repos/popcre/shared-db/pulls?state=open&per_page=100','repos/popcre/shared-db/pulls/123','repos/popcre/shared-db/pulls/123/files?per_page=100'])
   }
 })

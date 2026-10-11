@@ -357,10 +357,6 @@ begin
   if v_row.lease_token_hash is null or v_row.lease_token_hash <> p_lease_token_hash then
     raise exception using errcode = '22023', message = 'PM_LEASE_MISMATCH';
   end if;
-  if v_row.lease_expires_at is not null and v_row.lease_expires_at < now()
-     and v_row.timeout_count < 2 then
-    raise exception using errcode = '22023', message = 'PM_LEASE_NOT_TAKEOVER_ELIGIBLE';
-  end if;
 
   update pim.ai_activity_triage
   set state = 'succeeded',
@@ -460,7 +456,11 @@ begin
   if length(v) > 4000 then
     raise exception using errcode = '22023', message = 'PM_COMMENT_BODY_TOO_LONG';
   end if;
-  if v ~ '[[:cntrl:]&&[^[:space:]]]' or v ~ chr(0) then
+  -- Reject NUL/controls except tab, newline, carriage return (issue allows those).
+  if exists (
+    select 1 from unnest(regexp_split_to_array(v, '')) as ch
+    where ascii(ch) < 32 and ascii(ch) not in (9, 10, 13)
+  ) then
     raise exception using errcode = '22023', message = 'PM_COMMENT_BODY_CONTROL_CHARS';
   end if;
   return v;
@@ -1057,7 +1057,7 @@ begin
   if v_title is null or length(v_title) < 1 or length(v_title) > 200 then
     raise exception using errcode = '22023', message = 'PM_INVALID_DEPENDENCY_TITLE';
   end if;
-  if v_title ~ '[[:cntrl:]]' then
+  if exists (select 1 from unnest(regexp_split_to_array(v_title, '')) as ch where ascii(ch) < 32) then
     raise exception using errcode = '22023', message = 'PM_INVALID_CONTROL_CHARS';
   end if;
 
@@ -1096,14 +1096,14 @@ begin
   if v_type is null or length(v_type) < 1 or length(v_type) > 100 then
     raise exception using errcode = '22023', message = 'PM_INVALID_DECISION_TYPE';
   end if;
-  if v_type ~ '[[:cntrl:]]' then
+  if exists (select 1 from unnest(regexp_split_to_array(v_type, '')) as ch where ascii(ch) < 32) then
     raise exception using errcode = '22023', message = 'PM_INVALID_CONTROL_CHARS';
   end if;
   v_notes := nullif(btrim(coalesce(p_notes, '')), '');
   if v_notes is not null and length(v_notes) > 2000 then
     raise exception using errcode = '22023', message = 'PM_INVALID_DECISION_NOTES';
   end if;
-  if v_notes is not null and v_notes ~ '[[:cntrl:]]' then
+  if v_notes is not null and exists (select 1 from unnest(regexp_split_to_array(v_notes, '')) as ch where ascii(ch) < 32) then
     raise exception using errcode = '22023', message = 'PM_INVALID_CONTROL_CHARS';
   end if;
 
@@ -1141,7 +1141,7 @@ begin
   if v_title is null or length(v_title) < 1 or length(v_title) > 200 then
     raise exception using errcode = '22023', message = 'PM_INVALID_REMINDER_TITLE';
   end if;
-  if v_title ~ '[[:cntrl:]]' then
+  if exists (select 1 from unnest(regexp_split_to_array(v_title, '')) as ch where ascii(ch) < 32) then
     raise exception using errcode = '22023', message = 'PM_INVALID_CONTROL_CHARS';
   end if;
   if p_due_at is not null and p_due_at < date '2000-01-01' then

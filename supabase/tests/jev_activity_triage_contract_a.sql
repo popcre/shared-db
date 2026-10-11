@@ -134,12 +134,12 @@ begin
 
   v_raised := false;
   begin
-    perform api.pm_add_product_comment(v_product, 'bad' || chr(0) || 'body', gen_random_uuid());
+    perform api.pm_add_product_comment(v_product, 'bad' || chr(1) || 'body', gen_random_uuid());
   exception when others then
     v_raised := true;
   end;
   if not v_raised then
-    raise exception 'NUL/control comment body must be rejected';
+    raise exception 'control-character comment body must be rejected';
   end if;
 
   -- Fixture writes run as the migration role; only RPC calls need the
@@ -214,10 +214,12 @@ begin
   end if;
 
   perform set_config('request.jwt.claims', json_build_object('sub', v_other_auth, 'role', 'authenticated')::text, true);
+  perform set_config('role', 'authenticated', true);
   select count(*) into v_count from pim.ai_activity_triage where id = v_triage_id;
   if v_count <> 0 then
     raise exception 'other user must not read another requester triage row via RLS';
   end if;
+  reset role;
 
   -- ------------------------------------------------------------------
   -- G  ENVELOPE / LEASE / SOURCE_CHANGED

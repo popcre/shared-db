@@ -1,7 +1,7 @@
 -- =====================================================================================
 -- Issue #4174 - serialize on-demand style-group count refreshes against the nightly
 -- reconcile (PopDAM u2giants/popdam3#294, app half landed in popdam3 PR #325).
--- Claim #4177 reserves version 20261011165708 and exactly one object:
+-- Claim #4177 reserves version 20261011195719 and exactly one object:
 --
 --   function public.refresh_style_group_counts_serialized(uuid[])   (new)
 --

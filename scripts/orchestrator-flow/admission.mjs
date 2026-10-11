@@ -160,6 +160,7 @@ function evaluateCuratedAdmission(issue, scope, impact) {
   if (scope.status !== 'ready') throw new AdmissionError(`issue #${issue.number} is ${scope.status}, not ready`)
   if (scope.writes?.length || scope.reads?.length) throw new AdmissionError('curated-master-data admission must not claim database objects')
   if (typeof scope.liveAssertion !== 'string' || !scope.liveAssertion.trim()) throw new AdmissionError('curated-master-data admission requires a concrete live_assertion')
+  if (!['required', 'not-applicable'].includes(scope.generatedTypes)) throw new AdmissionError('curated-master-data admission requires generated_types: required or not-applicable')
   if (impact) throw new AdmissionError('db-impact is reserved for urgent-application work')
   return {
     admitted: true,
@@ -197,8 +198,32 @@ export function inspectPrCuratedDataChange(prFiles = []) {
   if (ddl.length || rewrites.length || objects.length) {
     throw new AdmissionError(`curated-master-data migration changes database structure (${[...new Set([...ddl.map((row) => row.verb), ...rewrites, ...objects])].join(', ')}); structural changes require work_type structural`)
   }
+  // The detectors above cannot see SQL hidden in string literals, so every
+  // statement form that runs or changes something they cannot model is refused
+  // outright (fail closed): dynamic SQL, string-executing helpers, role or
+  // session-authority changes, maintenance commands, and table-wide writes.
+  const code = sql.map(curatedCode)
+  const forbidden = code.flatMap((text) => CURATED_FORBIDDEN.filter(([, pattern]) => pattern.test(text)).map(([label]) => label))
+  if (forbidden.length) throw new AdmissionError(`curated-master-data migration changes database structure or runs opaque SQL (${[...new Set(forbidden)].join(', ')}); curated admission is data-only, structural changes require work_type structural`)
+  const unbounded = code.flatMap((text) => text.split(';').filter((statement) => /\b(?:update\s+(?:only\s+)?[\w."]+\s+(?:as\s+)?\w*\s*set|delete\s+from)\b/i.test(statement) && !/\bwhere\b/i.test(statement)))
+  if (unbounded.length) throw new AdmissionError('curated-master-data migration contains an UPDATE or DELETE without a WHERE clause; curated loads must be bounded')
+  if (!code.some((text) => /\b(?:insert\s+into|update\s+[\w."]+|delete\s+from)\b/i.test(text))) throw new AdmissionError('curated-master-data migration writes no row; a curated fork must carry the data change it was admitted for')
   return { reads: [], migrations: migrations.map((file) => file.filename ?? file.path), objects: [] }
 }
+
+// Comments and single-quoted literals removed; dollar-quoted bodies (DO blocks)
+// are kept, because they are code.
+function curatedCode(sql) {
+  return String(sql).replace(/'(?:[^']|'')*'|--[^\n]*|\/\*[\s\S]*?\*\//g, (token) => token.startsWith("'") ? "''" : ' ')
+}
+const CURATED_FORBIDDEN = Object.freeze([
+  ['dynamic EXECUTE', /\bexecute\b/i],
+  ['string-executing helper', /\b(?:dblink\w*|query_to_xml\w*|query_to_json\w*|xpath_table|lo_import|lo_export|pg_read_\w+|pg_ls_dir)\s*\(/i],
+  ['COPY', /(?:^|;|\b(?:begin|then|loop|else)\b)\s*copy\b/i],
+  ['TRUNCATE', /\btruncate\b/i],
+  ['role or session authority change', /\b(?:set|reset)\s+(?:local\s+|session\s+)?(?:role|session\s+authorization)\b/i],
+  ['maintenance command', /(?:^|;|\b(?:begin|then|loop|else)\b)\s*(?:reindex|refresh\s+materialized\s+view|cluster|vacuum|lock\s+table|lock\s+[\w."]+\s+in\b|security\s+label|import\s+foreign\s+schema|call)\b/i],
+])
 
 const inspectedAliasProofs=new WeakMap()
 

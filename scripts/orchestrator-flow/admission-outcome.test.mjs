@@ -3,7 +3,7 @@ import { currentRepository, expectedOperatorAssociation } from '../lib/repositor
 // Fixtures follow the resolved repository identity and its operator association (#3255).
 const THIS_REPO = currentRepository(), OPERATOR_ASSOCIATION = expectedOperatorAssociation()
 import assert from 'node:assert/strict'
-import { evaluateAdmission, parseImpactBlock, STRUCTURAL_CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, assertPrCarriesStructuralChange, inspectPrStructuralChange } from './admission.mjs'
+import { evaluateAdmission, parseImpactBlock, STRUCTURAL_CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, assertPrCarriesStructuralChange, inspectPrStructuralChange, inspectPrCuratedDataChange } from './admission.mjs'
 import { OutcomeError, advanceOutcome, completeOutcome, outcomeEvent, outcomeHistory, repairOutcomeHistory, trustedOutcomeComments, OUTCOME_STATES, parseOutcomeEvidence } from './outcome-lifecycle.mjs'
 import { coordinationEvent, formatEventComment, parseEventComment } from '../db-coordination-events.mjs'
 import { admitIssue, buildDynamicQueues, claimBody, derivePrOperationRoute, EXCLUSIVE_REFS, main as managerMain, matchesGeneratedTypesProof, matchesLiveProof, MUTEX_REF, parseQueueScope, resolveAdmittedIssueForPr } from '../manage-migration-author-lanes.mjs'
@@ -1096,4 +1096,33 @@ test('curated master data admission still refuses schema DDL, non-migration chan
 
 test('structural route still refuses a data-only migration (gate unchanged)', () => {
   assert.throws(() => inspectPrStructuralChange([{filename:'supabase/migrations/20261011164757_x.sql',status:'added',content:curatedSql}]), /no statement-leading schema DDL/)
+})
+
+test('curated data-only inspection fails closed on SQL its detectors cannot see (#4185 review)', () => {
+  const file = (content) => [{ filename:'supabase/migrations/20261011164757_x.sql', status:'added', content }]
+  const guarded = "do $g$ declare v int; begin\n  -- a comment with 'quotes' and -- dashes\n  insert into core.property (name) values ('a -- b''c');\n  update core.property set status = 'active' where name = 'a';\n  if v is null then raise exception 'x'; end if;\nend $g$;\n"
+  assert.deepEqual(inspectPrCuratedDataChange(file(guarded)).objects, [])
+  const refused = [
+    ["do $$ begin execute 'create table core.evil(id int)'; end $$;", /dynamic EXECUTE/],
+    ["do $$ begin execute format('create table %I.%I (id int)', 'core', 'evil'); end $$;", /dynamic EXECUTE/],
+    ["select query_to_xml('create table core.evil()', true, true, '');", /string-executing helper/],
+    ['truncate core.property;', /TRUNCATE/],
+    ['reindex table core.property;', /maintenance command/],
+    ['refresh materialized view core.x;', /maintenance command/],
+    ['set role postgres; insert into core.a values (1);', /role or session authority/],
+    ['delete from core.property;', /without a WHERE/],
+    ["update core.property set name = 'x';", /without a WHERE/],
+    ['select 1;', /writes no row/],
+  ]
+  for (const [sql, pattern] of refused) assert.throws(() => inspectPrCuratedDataChange(file(sql)), pattern, sql)
+})
+
+test('curated refusals at PR admission carry a durable refusal result', () => {
+  const body = curatedBody()
+  let error
+  try { admitIssue(4172, curatedIo(body, 'truncate core.property;\n'), { pr: 4176, allowLegacy: true }) } catch (caught) { error = caught }
+  assert.match(error.message, /TRUNCATE/)
+  assert.ok(error.result && Array.isArray(error.result.evidence_required))
+  const missing = curatedBody({ extra:[] }).replace('generated_types: not-applicable\n','')
+  assert.throws(() => evaluateAdmission(issue(missing,4172), parseQueueScope(missing), null), /generated_types/)
 })

@@ -5,4 +5,4 @@ select to_regprocedure('public.await_style_guide_matview_refresh(uuid)') is not 
    and not has_function_privilege('authenticated', 'public.await_style_guide_matview_refresh(uuid)', 'execute')
    and exists (select 1 from cron.job where jobname = 'refresh-style-guide-matviews' and active
      and username = 'postgres' and database = current_database()
-     and regexp_replace(command, '[[:space:]]', '', 'g') = 'SELECTpublic.refresh_style_guide_matviews();') as passed;
+     and regexp_replace(command, '[[:space:]]', '', 'g') = ('SELECTpublic.refresh_style_guide_matviews()' || chr(59))) as passed;

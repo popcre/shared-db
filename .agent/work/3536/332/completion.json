@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "work_issue": 3536,
+  "outcome": "ready-for-merge",
+  "pr": 4164,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3536/332",
+  "contract_sha256": "308f698998f518faa8d8953028cde0790e59df87d629e255b3c37019b4be19ed",
+  "head_sha": "2ff78abe07290487d62ec2a3cbbfb0de61be1f51",
+  "base_sha": "ffc65899073a35ed738247f8033d93cfea58d4c7",
+  "files_changed": [
+    "scripts/lib/lanes/admission.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/queue-hygiene-report.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "Exact implementation 2ff78abe07290487d62ec2a3cbbfb0de61be1f51; private bounded check0 log retained."
+    },
+    {
+      "command": "node --test scripts/queue-hygiene-report.test.mjs scripts/manage-migration-author-lanes-surface.test.mjs",
+      "exit_code": 0,
+      "evidence": "Exact implementation 2ff78abe07290487d62ec2a3cbbfb0de61be1f51; private bounded check1 log retained."
+    },
+    {
+      "command": "node --test scripts/agent-work-contract.test.mjs scripts/agent-work-contract-git-evidence.test.mjs",
+      "exit_code": 0,
+      "evidence": "Exact implementation 2ff78abe07290487d62ec2a3cbbfb0de61be1f51; private bounded check2 log retained."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "Exact implementation 2ff78abe07290487d62ec2a3cbbfb0de61be1f51; private bounded check3 log retained."
+    },
+    {
+      "command": "python3 -m unittest scripts.test_production_business_risk_gate.ProductionBusinessRiskGateTests.test_preview_producer_paths_cover_the_whole_executed_closure",
+      "exit_code": 0,
+      "evidence": "Exact implementation 2ff78abe07290487d62ec2a3cbbfb0de61be1f51; private bounded check4 log retained."
+    }
+  ],
+  "assumptions_resolved": [
+    "Parent authorized independent necessary nonclosing repair after original3999 active custody collision. Original source/budget/reinstatement remains outside this independent change.",
+    "331 immutable predecessor and original protected branch source retained; separate327-330 authority unchanged.",
+    "Actual4161 source requires fresh current-main canonical evidence from its owner; do not loosen base proof."
+  ],
+  "stop_conditions_hit": []
+}

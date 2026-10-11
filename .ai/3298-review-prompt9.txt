@@ -1,10 +1,0 @@
-Formal review of popcre/shared-db PR #4205 at head 020d92817e7447fd6f8d4fee753478b12b197378.
-
-Migration A for issue #3298 — additive least-privilege PM Jev activity-triage contract (claim #4204, version 20261011205205).
-
-This head keeps worker functions migration-owned (repo NOLOGIN pattern: grants + for-all worker policies; execute revoked from authenticated on private workers) because ALTER OWNER requires SET ROLE membership which collides with claim object ole postgres. Prior APPROVE-quality work from Muse on the ancestor head is otherwise unchanged except this apply-safety fix.
-
-Checklist: additive-only; least privilege; comment validation; body_revision + source_changed; admin-only matrix v1 on comment/Operations/accept/dismiss; cross-user RLS; accept-once; HMAC fail-closed and row-bound; Operations shapes; 47-key claim coverage.
-
-Report findings with file:line. End with exactly:
-VERDICT: <APPROVE|REVISE|REJECT> 020d92817e7447fd6f8d4fee753478b12b197378

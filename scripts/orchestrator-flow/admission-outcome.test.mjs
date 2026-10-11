@@ -1302,3 +1302,22 @@ test('review-state evidence over 100 comments is completed by cursor, fail-close
   row = fresh()
   assert.throws(() => completeReviewStatePages(row.pr, row.issue, { issue:3536, pr:4171 }, () => ({ errors:[{ message:'x' }] })), /GraphQL errors/)
 })
+
+test('2336 exact JSONB additions authenticate supplemental claims without changing table locks',()=>{
+ const sql="ALTER TABLE plm.licensing_consolidation_plan ADD COLUMN capture_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb;\nALTER TABLE plm.licensing_consolidation_plan ADD COLUMN applied_state jsonb;"
+ const inspected=columnInspection(sql),held=['table plm.licensing_consolidation_plan','column plm.licensing_consolidation_plan.capture_snapshot','column plm.licensing_consolidation_plan.applied_state'],before=[...held]
+ assert.deepEqual(inspected.objects,['table plm.licensing_consolidation_plan']);assert.equal(structuralWritesMatch(inspected,held),true);assert.deepEqual(held,before)
+ assert.equal(structuralWritesMatch({...inspected},held),false)
+ assert.equal(structuralWritesMatch(columnInspection('ALTER TABLE plm.licensing_consolidation_plan ENABLE ROW LEVEL SECURITY;'),held),false)
+ for(const wrong of [held.slice(1),[...held,'column plm.licensing_consolidation_plan.foreign'],[...held,held[1]],held.filter(x=>x!==held[0])])assert.equal(structuralWritesMatch(inspected,wrong),false)
+ for(const sql of ["ALTER TABLE ONLY \"plm\".\"licensing_consolidation_plan\" ADD COLUMN IF NOT EXISTS \"capture_snapshot\" jsonb NULL DEFAULT '{}' :: jsonb;",'ALTER TABLE plm.licensing_consolidation_plan ADD COLUMN capture_snapshot JSONB NOT NULL;'])assert.equal(structuralWritesMatch(columnInspection(sql),held.slice(0,2)),true)
+})
+test('JSONB proof refuses opaque, forged, malformed, mixed and wrong default casts',()=>{
+ const prefix='ALTER TABLE plm.licensing_consolidation_plan ADD COLUMN capture_snapshot jsonb',held=['table plm.licensing_consolidation_plan','column plm.licensing_consolidation_plan.capture_snapshot']
+ const bad=[" DEFAULT '{}';"," DEFAULT '{}'::json;"," DEFAULT '{}'::text;"," DEFAULT '{\"a\":1}'::jsonb;"," DEFAULT E'{}'::jsonb;"," DEFAULT $$ {} $$::jsonb;"," DEFAULT jsonb_build_object();"," DEFAULT '?'::jsonb;"," DEFAULT ?::jsonb;"," DEFAULT '{}'::jsonb || '{}'::jsonb;",', ADD COLUMN other jsonb;'," DEFAULT '{}'::jsonb unexpected;"," DEFAULT '{}'::jsonb"]
+ for(const suffix of bad)assert.equal(structuralWritesMatch(columnInspection(prefix+suffix),held),false,suffix)
+ const harmless='ALTER TABLE plm.licensing_consolidation_plan ENABLE ROW LEVEL SECURITY;'
+ for(const decoy of [`${harmless} -- ${prefix} DEFAULT '{}'::jsonb;`,`${harmless} /* outer /* nested */ ${prefix} DEFAULT '{}'::jsonb; */`,`CREATE FUNCTION public.decoy() RETURNS void LANGUAGE plpgsql AS $$ BEGIN ${prefix} DEFAULT '{}'::jsonb; END; $$; ${harmless}`,`${harmless} DO $$ BEGIN ${prefix}; END; $$;`,`${harmless} SELECT '${prefix.replaceAll("'","''")} DEFAULT ''{{}}''::jsonb;';`])assert.equal(structuralWritesMatch(columnInspection(decoy),held),false)
+ assert.throws(()=>columnInspection(prefix+" DEFAULT '{}::jsonb;"),/unterminated/)
+ assert.throws(()=>columnInspection(prefix+" DEFAULT '{}'::jsonb; /* unterminated"),/unterminated/)
+})

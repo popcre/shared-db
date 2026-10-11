@@ -257,8 +257,9 @@ export function inspectPrStructuralChange(prFiles = []) {
 
 // This proof supplements comparison only. Dispatch deliberately retains a
 // table-wide lock for ALTER TABLE, including two edits to different columns.
-// Ignore all quoted bodies/literals and nested comments before recognizing a
-// complete, single-action, statement-leading ADD COLUMN. Unknown forms prove
+// Keep literals opaque except the exact closed '{}' token used only by the
+// strict JSONB default proof. Ignore bodies and nested comments before proving
+// one complete statement-leading ADD COLUMN. Unknown forms prove
 // nothing; in particular a comma-separated ALTER cannot grant partial proof.
 function topLevelColumnStatements(sql) {
   const statements=[];let current=''
@@ -274,7 +275,7 @@ function topLevelColumnStatements(sql) {
       const start=i++;let closed=false
       while(i<sql.length){if(sql[i]===quote){if(sql[i+1]===quote){i+=2;continue}i++;closed=true;break}if(quote==='\''&&sql[i]==='\\'){i+=2;continue}i++}
       if(!closed)return []
-      current+=quote==='"'?sql.slice(start,i):' ? ';continue
+      current+=quote==='"'||sql.slice(start,i)==="'{}'"?sql.slice(start,i):' ? ';continue
     }
     const dollar=/^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(i))
     if(dollar){const end=sql.indexOf(dollar[0],i+dollar[0].length);if(end<0)return [];i=end+dollar[0].length;current+=' ? ';continue}
@@ -289,9 +290,10 @@ function provenAddedColumns(sqlTexts) {
   const identifier=String.raw`(?:"(?:[^"]|"")+"|[A-Za-z_][A-Za-z0-9_$]*)`
   const type=String.raw`(?:smallint|integer|bigint|boolean|text|uuid|date|timestamptz|timestamp(?:\s+(?:with|without)\s+time\s+zone)?)`
   const add=new RegExp(String.raw`^\s*alter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?(${identifier}\s*\.\s*${identifier})\s+add\s+column\s+(?:if\s+not\s+exists\s+)?(${identifier})\s+${type}(?:\s+(?:not\s+null|null))?(?:\s+default\s+(?:now\s*\(\s*\)|current_timestamp|true|false|-?\d+))?\s*$`,'i')
+  const jsonb=new RegExp(String.raw`^\s*alter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?(${identifier}\s*\.\s*${identifier})\s+add\s+column\s+(?:if\s+not\s+exists\s+)?(${identifier})\s+jsonb(?:\s+(?:not\s+null|null))?(?:\s+default\s+'{}'\s*::\s*jsonb)?\s*$`,'i')
   const proof=new Map()
   for(const sql of sqlTexts)for(const statement of topLevelColumnStatements(sql)){
-    const match=add.exec(statement);if(!match)continue
+    const match=add.exec(statement)??jsonb.exec(statement);if(!match)continue
     const table=canonicalIdentifier(match[1]),column=canonicalIdentifier(match[2])
     proof.set(`column ${table}.${column}`,`table ${table}`)
   }

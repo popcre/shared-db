@@ -1,0 +1,62 @@
+{
+  "allowed_paths": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    ".agent/work/3536/342/contract.json",
+    ".agent/work/3536/342/completion.json",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "scripts/test-fixtures/github-wire-fake.mjs",
+    ".agent/work/3536/339/contract.json",
+    ".agent/work/3536/339/completion.json"
+  ],
+  "assumptions": [
+    "Assigned6186 REVISE accepted by parent; all findings batched in one source head.",
+    "Full ordinary activity evidence including exact GraphQL Commit/PR/union and REST shape must prove readable terminal states; UNKNOWN refuses.",
+    "No probe/reclaim/merge/frozen queue edits or capacity reset; own-start-only path unchanged.",
+    "Root explicitly authorizes reversible retirement of own superseded339 pair from PR diff; retain exact private bytes, originalc896/6186 history and all published contracts."
+  ],
+  "base_sha": "48460174599ba8a580e818389eb9f06070345e67",
+  "branch": "codex/3536-finite-silence",
+  "db_reads": [],
+  "db_writes": [],
+  "dispatcher": "Codex coordinating parent chat 01a12b01-aaac-7551-8860-61a4384a25b0",
+  "evidence_parent": {
+    "work_issue": 3536,
+    "generation": 341,
+    "contract_sha256": "233c90b4a0279ddc245e054272d64e14fcb80816f3b52013e7b1ccad9e23a6e5"
+  },
+  "file_writes": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    ".agent/work/3536/342/contract.json",
+    ".agent/work/3536/342/completion.json",
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "scripts/test-fixtures/github-wire-fake.mjs",
+    ".agent/work/3536/339/contract.json",
+    ".agent/work/3536/339/completion.json"
+  ],
+  "generation": 342,
+  "goal": "Close actual GraphQL partial-error and missing-identity activity fail-open while preserving finite quiet recovery, old-probe refusal and full guards",
+  "prohibited_actions": [
+    "No DB/schema/data/production writes",
+    "No frozen queue source/workflow/settings change",
+    "No transport retries/classification/read-only guard relaxation",
+    "No bypass or reviewer budget reset"
+  ],
+  "required_checks": [
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "node scripts/agent-work-contract.mjs --validate-contract --contract-file .agent/work/3536/342/contract.json",
+    "node --test scripts/reviewer-wire-budget.test.mjs"
+  ],
+  "route": "repo-maintenance",
+  "schema_version": 2,
+  "stop_conditions": [
+    "Stop on exact path custody collision or unsupported gate refusal",
+    "No frozen queue source, workflow, settings, DB migration, transport policy, or production changes"
+  ],
+  "work_issue": 3536,
+  "work_type": "repo-maintenance",
+  "worker": "Codex style-groups recovery",
+  "worktree": "/home/ahazan/.codex/worktrees/3bd9-finite-silence/shared-db"
+}

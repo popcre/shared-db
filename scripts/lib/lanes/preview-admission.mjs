@@ -9,6 +9,7 @@ import path from 'node:path'
 import { inspectPrStructuralChange, inspectPrCuratedDataChange, structuralWritesCovered } from '../../orchestrator-flow/admission.mjs'
 import { LaneError, parseAuthorLease } from './claims.mjs'
 import { parseQueueScope } from './queue-routing.mjs'
+import { CURATED_LEDGER_TABLES } from '../../orchestrator-flow/curated-admission.mjs'
 import { REPO } from './constants.mjs'
 import { claimTitleIssues, claimTitleWorkIssue, claimWorkIssue } from './claim-maintenance.mjs'
 import { githubIo, main, validateOriginalPreviewApplyEvidence } from '../../manage-migration-author-lanes.mjs'
@@ -153,7 +154,7 @@ export function deriveLivePreviewCandidate(issue,io,{claimNumber=null}={}){
   if(workScope?.workType==='curated-master-data'){
     let curated
     try{curated=inspectPrCuratedDataChange(migrationFiles)}catch(error){throw new LaneError(`pull request #${pr.number} is not an admissible curated data-only migration: ${error.message}; preview preparation refused`)}
-    const uncovered=curated.row_writes.filter((key)=>!leaseWrites.includes(key))
+    const uncovered=curated.row_writes.filter((key)=>!leaseWrites.includes(key)&&!CURATED_LEDGER_TABLES.includes(key))
     if(uncovered.length)throw new LaneError(`pull request #${pr.number} curated row writes ${uncovered.join(', ')} are not covered by claim #${claim.number} writes; preview preparation refused`)
     structural={reads:[]}
   }else{

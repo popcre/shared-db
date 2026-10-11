@@ -11488,6 +11488,8 @@ test('preview preparation admits a curated data-only migration whose row writes 
   const curated=(options)=>{const fixture=mergedRehearsalIo(options);fixture.io.getIssue=curatedIssue;return fixture.io}
   const load="insert into core.property (name) values ('Exorcist, The (1973)');\n"
   assert.equal(deriveLivePreviewCandidate(1769,curated({migrationBody:load,writes:['table core.property']})).pr,1809)
+  // the append-only licensing guard ledger is written by every curated load and is not a claim object
+  assert.equal(deriveLivePreviewCandidate(1769,curated({migrationBody:"insert into plm.licensing_write_authorization (backend_pid) values (pg_backend_pid());\n"+load,writes:['table core.property']})).pr,1809)
   assert.throws(()=>deriveLivePreviewCandidate(1769,curated({migrationBody:load,writes:['table core.licensor']})),/curated row writes table core\.property are not covered by claim #1805/)
   assert.throws(()=>deriveLivePreviewCandidate(1769,curated({migrationBody:'create table core.evil();\n'+load,writes:['table core.property']})),/not an admissible curated data-only migration/)
   // the structural route still refuses the same data-only SQL

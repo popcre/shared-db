@@ -349,7 +349,7 @@ end $plans_empty$;
 alter table plm.licensing_consolidation_plan add column plan_schema_version integer not null default 2;
 alter table plm.licensing_consolidation_plan add column capture_snapshot jsonb not null default '{}'::jsonb;
 alter table plm.licensing_consolidation_plan add column applied_state jsonb;
-alter table plm.licensing_consolidation_plan add constraint licensing_consolidation_plan_schema_version_chk check(plan_schema_version=2);
+alter table plm.licensing_consolidation_plan add constraint licensing_consolidation_plan_schema_version_chk check(plan_schema_version in (1,2));
 alter table plm.licensing_consolidation_plan add constraint licensing_consolidation_plan_capture_snapshot_chk check(jsonb_typeof(capture_snapshot)='object');
 alter table plm.licensing_consolidation_plan add constraint licensing_consolidation_plan_applied_state_chk check(applied_state is null or jsonb_typeof(applied_state)='object');
 
@@ -582,6 +582,558 @@ create or replace function plm.plan_licensing_consolidation(p_source_system text
 returns plm.licensing_consolidation_plan language plpgsql security definer set search_path=pg_catalog as $planner$
 declare snap jsonb;entities jsonb:='[]';groups jsonb:='[]';ops jsonb:='[]';inverse jsonb:='[]';e jsonb;edge jsonb;left_e jsonb;right_e jsonb;g jsonb;op jsonb;before_state jsonb;after_row jsonb;existing jsonb;v_id uuid;v_owner uuid;v_table text;v_col text;v_rec record;v_scope jsonb;v_time timestamptz;v_pair text;v_support text;v_left text;v_right text;v_key text;v_hash text;v_result plm.licensing_consolidation_plan;v_filtered text;v_now_current boolean;
 begin
+ p_source_system:=btrim(p_source_system);
+ if p_source_system is null or p_source_system='' or p_capture_id is null then raise exception 'exact source and capture required' using errcode='22023';end if;
+ -- Preserve installed schema1 sources; failed enhanced qualification never falls back.
+ if btrim(p_source_system) not in ('nbcu','paramount','disney_opa') or p_source_system is null then
+declare
+  v_actor text := coalesce(
+    auth.uid()::text,
+    nullif(current_setting('request.jwt.claim.sub', true), ''),
+    session_user::text
+  );
+  v_source text;
+  v_capture_complete boolean := false;
+  v_scope_ok boolean := true;
+  v_collision_count integer := 0;
+  v_entity_ops jsonb := '[]'::jsonb;
+  v_rel_ops jsonb := '[]'::jsonb;
+  v_retire_ops jsonb := '[]'::jsonb;
+  v_all_ops jsonb;
+  v_rollback_ops jsonb;
+  v_canonical text;
+  v_plan_hash text;
+  v_existing plm.licensing_consolidation_plan%rowtype;
+  v_row plm.licensing_consolidation_plan%rowtype;
+  v_entity_count integer := 0;
+  v_rel_count integer := 0;
+  v_retire_count integer := 0;
+  v_refusal text := null;
+  -- Per-decision working values.
+  v_rec record;
+  v_before jsonb;
+  v_after jsonb;
+  v_op jsonb;
+  v_target_licensor uuid;
+  v_official_name text;
+  v_official_code text;
+  v_canonical_name text;
+  v_canonical_licensor uuid;
+  v_canonical_status text;
+  v_conflict_targets uuid[];
+begin
+  if coalesce(v_actor, '') = '' then
+    raise exception using errcode = '42501',
+      message = 'licensing consolidation planning requires an authenticated actor';
+  end if;
+
+  v_source := btrim(p_source_system);
+  if v_source = '' or p_capture_id is null then
+    raise exception using errcode = '22023',
+      message = 'plan_licensing_consolidation requires a non-blank source_system and a capture_id';
+  end if;
+  if p_entity_source_id is not null and btrim(p_entity_source_id) = '' then
+    raise exception using errcode = '22023',
+      message = 'p_entity_source_id must be null or a non-blank source id';
+  end if;
+
+  -- Serialize planners for the same (source, capture). Two concurrent plan calls must
+  -- queue, or both would build competing plans and the identity unique key would fire
+  -- as a random-looking conflict instead of a clean second-writer wait.
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    pg_catalog.concat_ws(chr(31), 'licensing_consolidation_plan', v_source, p_capture_id::text), 0));
+
+  -- -----------------------------------------------------------------------
+  -- GATE 1: complete-capture.
+  -- A capture that is not complete is never canonical input. The mapping is explicit
+  -- per source root so a missing root fails closed rather than treating "we could not
+  -- check" as "it is fine".
+  -- -----------------------------------------------------------------------
+  begin
+    if v_source = 'paramount' then
+      execute 'select status = ''complete'' and capture_kind = ''full''
+                 from plm.pmt_capture where capture_id = $1'
+        into v_capture_complete using p_capture_id;
+    elsif v_source = 'nbcu' then
+      execute 'select status = ''complete''
+                 from plm.nbcu_capture where id = $1'
+        into v_capture_complete using p_capture_id;
+    elsif v_source = 'disney_opa' then
+      execute 'select status = ''complete''
+                 from plm.opa_capture where id = $1'
+        into v_capture_complete using p_capture_id;
+    elsif v_source in ('disney_dcpvault', 'lucasfilm_dcpvault',
+                       'marvel_dcpvault', 'twentieth_century_dcpvault') then
+      execute 'select status = ''complete''
+                 from plm.dcp_crawl where crawl_id = $1'
+        into v_capture_complete using p_capture_id;
+    elsif v_source = 'wildbrain' then
+      execute 'select status = ''complete''
+                 from plm.wildbrain_capture where id = $1'
+        into v_capture_complete using p_capture_id;
+    elsif v_source like 'warner:%' then
+      execute 'select status = ''complete''
+                 from plm.wb_capture where capture_id = $1 and chunk_number = 0'
+        into v_capture_complete using p_capture_id;
+    else
+      v_capture_complete := false;
+    end if;
+  exception when undefined_table or undefined_column then
+    -- The capture root for this source is not present, or its shape drifted. Fail
+    -- closed: "we cannot prove completeness" is a refusal, never a green light.
+    v_capture_complete := false;
+  end;
+
+  v_capture_complete := coalesce(v_capture_complete, false);
+
+  if not v_capture_complete then
+    -- Still write a plan row: a refused plan is an audit fact, and the caller gets a
+    -- hash-pinned record of exactly what was refused instead of a bare exception and
+    -- no history. Status is 'refused' so nobody can apply it.
+    insert into plm.licensing_consolidation_plan (
+      plan_schema_version, source_system, capture_id, plan_hash,
+      plan_status, capture_complete, source_scope_checked, collision_count,
+      entity_operation_count, relationship_operation_count, retire_operation_count,
+      operations, rollback_operations, refusal_reason, planned_by
+    ) values (
+      1, v_source, p_capture_id,
+      encode(extensions.digest(
+        pg_catalog.jsonb_build_object(
+          'source_system', v_source,
+          'capture_id', p_capture_id::text,
+          'operations', '[]'::jsonb
+        )::text, 'sha256'), 'hex'),
+      'refused', false, false, 0, 0, 0, 0,
+      '[]'::jsonb, '[]'::jsonb,
+      'complete-capture gate refused: capture is missing, not complete, or its source root is unknown',
+      v_actor
+    )
+    on conflict on constraint licensing_consolidation_plan_identity_uq
+      do update set plan_status = plm.licensing_consolidation_plan.plan_status
+    returning * into v_row;
+    return v_row;
+  end if;
+
+  -- -----------------------------------------------------------------------
+  -- GATE 2 (plan side): source-scope. Checked per decision below; this flag is the
+  -- recorded fact that every proposed write was scoped. A single out-of-scope write
+  -- sets it false AND refuses the whole plan -- partial application of a plan that
+  -- contains out-of-scope work is exactly the royalty error the scope table exists
+  -- to prevent.
+  -- -----------------------------------------------------------------------
+
+  -- -----------------------------------------------------------------------
+  -- ENTITY OPERATIONS from matched plm.source_resolution decisions.
+  -- Only MATCHED rows propose canonical writes. Unresolved/ambiguous/deferred rows
+  -- are the licensing queue's job and are never auto-promoted here.
+  -- -----------------------------------------------------------------------
+  for v_rec in
+    select sr.source_system, sr.entity_kind, sr.source_id,
+           sr.core_property_id, sr.core_character_id, sr.core_style_guide_id,
+           sr.dam_asset_id, sr.core_licensor_id, sr.core_franchise_id,
+           sr.resolution_status, sr.resolution_reason, sr.updated_at
+      from plm.source_resolution sr
+     where sr.source_system = v_source
+       and sr.resolution_status = 'matched'
+       and (p_entity_source_id is null or sr.source_id = btrim(p_entity_source_id))
+     order by sr.entity_kind, sr.source_id
+  loop
+    -- Which canonical row does this decision name?
+    v_target_licensor := null;
+    v_official_name := null;
+    v_official_code := null;
+
+    if v_rec.entity_kind = 'property' and v_rec.core_property_id is not null then
+      select p.name, p.code, p.status, p.licensor_id
+        into v_canonical_name, v_official_code, v_canonical_status, v_canonical_licensor
+        from core.property p where p.id = v_rec.core_property_id;
+      v_target_licensor := v_canonical_licensor;
+    elsif v_rec.entity_kind = 'licensor' and v_rec.core_licensor_id is not null then
+      select l.name, l.code, l.status, null::uuid
+        into v_canonical_name, v_official_code, v_canonical_status, v_canonical_licensor
+        from core.licensor l where l.id = v_rec.core_licensor_id;
+      -- The licensor IS the scope subject. Naming it keeps the source-scope gate
+      -- from being skipped for licensor-kind writes (Muse finding 2).
+      v_target_licensor := v_rec.core_licensor_id;
+      v_canonical_licensor := v_rec.core_licensor_id;
+    else
+      -- Character, style_guide, asset and franchise consolidation is deliberately not
+      -- in this engine's write set: the Step 1.0 guard protects only core.licensor and
+      -- core.property. Those kinds are recorded as scoped refusals rather than silent
+      -- skips, so the plan is honest about what it will not do.
+      v_scope_ok := false;
+      v_refusal := coalesce(v_refusal,
+        'source-scope gate: entity kind ' || v_rec.entity_kind
+        || ' is outside the scrape_consolidation write authorization surface');
+      continue;
+    end if;
+
+    if v_canonical_name is null then
+      -- A matched decision whose canonical target has vanished. Fail closed; the
+      -- decision is durable and must not be destroyed, and the engine must not
+      -- invent a replacement.
+      v_scope_ok := false;
+      v_refusal := coalesce(v_refusal,
+        'conflict refusal: matched decision target is missing for '
+        || v_source || '/' || v_rec.entity_kind || '/' || v_rec.source_id);
+      continue;
+    end if;
+
+    -- Official spelling from the source capture. This is the narrow scrape-authority
+    -- exception: inside its authorized scope the portal spelling wins, and the prior
+    -- internal spelling is preserved as an alias by the caller/adapter, not destroyed
+    -- here. When the capture carries no value we keep the canonical name and record
+    -- an update-to-self, which apply treats as a no-op -- never a guessed rename.
+    v_official_name := v_canonical_name;
+    if v_rec.entity_kind = 'property' then
+      begin
+        if v_source = 'paramount' and v_rec.source_id ~ '^-?[0-9]{1,19}$' then
+          execute 'select property_name from plm.pmt_property
+                    where capture_id = $1 and property_source_id = $2::bigint'
+            into v_official_name using p_capture_id, v_rec.source_id;
+        elsif v_source = 'nbcu' then
+          execute 'select property_label from plm.nbcu_property
+                    where capture_id = $1 and (property_source_id = $2 or property_key = $2)'
+            into v_official_name using p_capture_id, v_rec.source_id;
+        elsif v_source = 'disney_opa' and v_rec.source_id ~ '^-?[0-9]{1,19}$' then
+          execute 'select min(property_name) from plm.opa_property_character
+                    where licensed_property_id = $1::bigint'
+            into v_official_name using v_rec.source_id;
+        end if;
+      exception when undefined_table or undefined_column or invalid_text_representation then
+        v_official_name := v_canonical_name;
+      end;
+      v_official_name := coalesce(nullif(btrim(v_official_name), ''), v_canonical_name);
+    end if;
+
+    -- Source-scope gate, per decision. The scope row must authorize this source at
+    -- canonical_identity over this entity kind for the owning licensor, and it must be
+    -- actually authorized (audit pair present), not merely configured. A write with no
+    -- owning licensor cannot be scoped and is refused, never silently ungated.
+    if v_target_licensor is null then
+      v_scope_ok := false;
+      v_refusal := coalesce(v_refusal,
+        'source-scope gate: canonical target has no owning licensor for '
+        || v_source || '/' || v_rec.entity_kind || '/' || v_rec.source_id);
+      continue;
+    end if;
+    if not exists (
+      select 1 from plm.licensing_source_scope s
+       where s.licensor_id = v_target_licensor
+         and s.source_system = v_source
+         and s.source_purpose = 'canonical_identity'
+         and s.scope_axis = 'entity'
+         and s.permitted_kind = v_rec.entity_kind
+         and s.authorized_at is not null
+         and s.authorized_by is not null
+    ) then
+      v_scope_ok := false;
+      v_refusal := coalesce(v_refusal,
+        'source-scope gate: no authorized canonical_identity scope for '
+        || v_source || '/' || v_rec.entity_kind);
+      continue;
+    end if;
+
+    v_before := jsonb_build_object(
+      'name', v_canonical_name,
+      'code', v_official_code,
+      'status', v_canonical_status,
+      'licensor_id', v_canonical_licensor
+    );
+    v_after := jsonb_build_object(
+      'name', v_official_name,
+      'code', v_official_code,
+      'status', v_canonical_status,
+      'licensor_id', v_canonical_licensor
+    );
+
+    -- Matched Property status is never changed by scrape_consolidation. The Step 1.0
+    -- guard already refuses a status change under this write_kind; we also refuse to
+    -- PLAN one, so the reviewer never sees a forbidden write in the preview.
+    if v_rec.entity_kind = 'property' then
+      v_after := v_after - 'status' || jsonb_build_object('status', v_canonical_status);
+    end if;
+
+    v_op := jsonb_build_object(
+      'op_key', 'entity:' || v_rec.entity_kind || ':' || v_rec.source_id,
+      'op', case when v_before = v_after then 'noop' else 'update_entity' end,
+      'entity_kind', v_rec.entity_kind,
+      'source_system', v_source,
+      'source_id', v_rec.source_id,
+      'canonical_id', case
+        when v_rec.entity_kind = 'property' then v_rec.core_property_id
+        when v_rec.entity_kind = 'licensor' then v_rec.core_licensor_id
+      end,
+      'target_table', case
+        when v_rec.entity_kind = 'property' then 'core.property'
+        when v_rec.entity_kind = 'licensor' then 'core.licensor'
+      end,
+      'before', v_before,
+      'after', v_after,
+      'evidence_kind', 'direct_source_assertion',
+      'reason', 'matched source_resolution decision under authorized complete capture'
+    );
+    v_entity_ops := v_entity_ops || jsonb_build_array(v_op);
+    v_entity_count := v_entity_count + 1;
+  end loop;
+
+  -- -----------------------------------------------------------------------
+  -- COLLISION GATE: two operations that name the same canonical target with
+  -- different after-values refuse the whole plan. A plan is one consistent set of
+  -- writes; applying half of a contradictory pair is worse than applying nothing.
+  -- -----------------------------------------------------------------------
+  select coalesce(array_agg(c.canonical_id), '{}')
+    into v_conflict_targets
+    from (
+      select c.canonical_id
+        from jsonb_array_elements(v_entity_ops) as e(elem),
+             lateral (select (elem->>'canonical_id')::uuid as canonical_id,
+                             elem->'after' as after_vals) as c
+       where c.canonical_id is not null
+       group by c.canonical_id
+      having count(distinct c.after_vals) > 1
+    ) as c;
+
+  v_collision_count := cardinality(coalesce(v_conflict_targets, '{}'));
+  if v_collision_count > 0 then
+    v_scope_ok := false;
+    v_refusal := coalesce(v_refusal,
+      'collision gate: ' || v_collision_count
+      || ' canonical target(s) have conflicting after-values');
+  end if;
+
+  -- -----------------------------------------------------------------------
+  -- AUTHORIZATION-SHAPE GATE (collision, second leg). The Step 1.0 guard is a
+  -- ROW-LEVEL trigger that CONSUMES its authorization on the first protected
+  -- write, and its unique key allows only one authorization row per
+  -- (backend_pid, transaction_id, target_table, write_kind, plan_id, plan_hash).
+  -- Therefore one apply can perform AT MOST ONE protected canonical row write per
+  -- target table. A plan that needs two entity writes to the same table is
+  -- refused here, in the preview, rather than dying mid-apply. The adapter splits
+  -- such work across plans; relationship and retirement operations are not
+  -- limited and still ride in the same plan.
+  -- -----------------------------------------------------------------------
+  if exists (
+    select 1
+      from jsonb_array_elements(v_entity_ops) as e(elem)
+     where elem->>'op' = 'update_entity'
+     group by elem->>'target_table'
+    having count(*) > 1
+  ) then
+    v_scope_ok := false;
+    v_collision_count := v_collision_count + 1;
+    v_refusal := coalesce(v_refusal,
+      'collision gate: more than one entity write to one table in one apply; '
+      || 'the write-authorization guard grants one protected row write per table per apply. '
+      || 'Pass p_entity_source_id to plan one entity at a time.');
+  end if;
+
+  -- -----------------------------------------------------------------------
+  -- RELATIONSHIP OPERATIONS from matched plm.licensing_relationship_resolution.
+  -- Only direct_source_assertion evidence may become a support write. The decision
+  -- table already constrains this; the engine re-checks because a plan must not
+  -- depend on a sibling table's constraint for a royalty-safety rule.
+  -- -----------------------------------------------------------------------
+  for v_rec in
+    select r.licensor_id, r.source_system, r.relationship_kind,
+           r.source_left_id, r.source_right_id,
+           r.resolution_status, r.evidence_kind, r.is_direct_source_relationship,
+           r.core_property_id, r.core_character_id, r.core_style_guide_id,
+           r.core_franchise_id, r.dam_asset_id
+      from plm.licensing_relationship_resolution r
+     where r.source_system = v_source
+       and r.resolution_status = 'matched'
+     order by r.relationship_kind, r.source_left_id, r.source_right_id
+  loop
+    if v_rec.evidence_kind <> 'direct_source_assertion'
+       or not v_rec.is_direct_source_relationship then
+      -- Hard refuse. Inferred and co-occurrence evidence may be recorded and
+      -- displayed; it is never authority and never becomes a canonical support write.
+      v_scope_ok := false;
+      v_refusal := coalesce(v_refusal,
+        'no automatic promotion from inferred/co-occurrence evidence: '
+        || v_source || '/' || v_rec.relationship_kind || '/'
+        || v_rec.source_left_id || '+' || v_rec.source_right_id);
+      continue;
+    end if;
+
+    if not exists (
+      select 1 from plm.licensing_source_scope s
+       where s.licensor_id = v_rec.licensor_id
+         and s.source_system = v_source
+         and s.source_purpose = 'relationship_evidence'
+         and s.scope_axis = 'relationship'
+         and s.permitted_kind = v_rec.relationship_kind
+         and s.authorized_at is not null
+         and s.authorized_by is not null
+    ) then
+      v_scope_ok := false;
+      v_refusal := coalesce(v_refusal,
+        'source-scope gate: no authorized relationship_evidence scope for '
+        || v_source || '/' || v_rec.relationship_kind);
+      continue;
+    end if;
+
+    v_op := jsonb_build_object(
+      'op_key', 'rel:' || v_rec.relationship_kind || ':'
+                || v_rec.source_left_id || '+' || v_rec.source_right_id,
+      'op', 'upsert_relationship_support',
+      'relationship_kind', v_rec.relationship_kind,
+      'source_system', v_source,
+      'licensor_id', v_rec.licensor_id,
+      'source_left_id', v_rec.source_left_id,
+      'source_right_id', v_rec.source_right_id,
+      'evidence_kind', v_rec.evidence_kind,
+      'before', null,
+      'after', jsonb_build_object(
+        'core_property_id', v_rec.core_property_id,
+        'core_character_id', v_rec.core_character_id,
+        'core_style_guide_id', v_rec.core_style_guide_id,
+        'core_franchise_id', v_rec.core_franchise_id,
+        'dam_asset_id', v_rec.dam_asset_id,
+        'is_current', true
+      ),
+      'reason', 'matched direct_source_assertion relationship decision under authorized complete capture'
+    );
+    v_rel_ops := v_rel_ops || jsonb_build_array(v_op);
+    v_rel_count := v_rel_count + 1;
+  end loop;
+
+  -- -----------------------------------------------------------------------
+  -- RETIREMENT OPERATIONS. Absence from a complete capture retires ONLY that
+  -- source's support. The operation vocabulary has no DELETE: a canonical entity is
+  -- never hard-deleted because a source stopped listing it, and a historical edge is
+  -- never destroyed. This is the "no hard delete of missing source records" rule,
+  -- enforced by construction rather than by review.
+  --
+  -- A retirement is planned when a matched decision names a source identity that the
+  -- capture membership no longer contains. Membership is source-specific and is
+  -- probed the same fail-closed way as completeness: if we cannot see the landing
+  -- rows we do not invent retirements.
+  -- -----------------------------------------------------------------------
+  for v_rec in
+    select sr.entity_kind, sr.source_id,
+           sr.core_property_id, sr.core_licensor_id
+      from plm.source_resolution sr
+     where sr.source_system = v_source
+       and sr.resolution_status = 'matched'
+       and sr.entity_kind in ('property', 'licensor')
+     order by sr.entity_kind, sr.source_id
+  loop
+    declare
+      v_present boolean := true;
+    begin
+      begin
+        if v_rec.entity_kind = 'property' and v_source = 'paramount'
+           and v_rec.source_id ~ '^-?[0-9]{1,19}$' then
+          execute 'select exists(select 1 from plm.pmt_property
+                                 where capture_id = $1
+                                   and property_source_id = $2::bigint)'
+            into v_present using p_capture_id, v_rec.source_id;
+        elsif v_rec.entity_kind = 'property' and v_source = 'nbcu' then
+          execute 'select exists(select 1 from plm.nbcu_property
+                                 where capture_id = $1
+                                   and (property_source_id = $2 or property_key = $2))'
+            into v_present using p_capture_id, v_rec.source_id;
+        end if;
+      exception when undefined_table or undefined_column or invalid_text_representation then
+        v_present := true; -- cannot prove absence; do not invent a retirement
+      end;
+
+      if not coalesce(v_present, true) then
+        v_op := jsonb_build_object(
+          'op_key', 'retire:' || v_rec.entity_kind || ':' || v_rec.source_id,
+          'op', 'retire_entity_support',
+          'entity_kind', v_rec.entity_kind,
+          'source_system', v_source,
+          'source_id', v_rec.source_id,
+          'canonical_id', case
+            when v_rec.entity_kind = 'property' then v_rec.core_property_id
+            when v_rec.entity_kind = 'licensor' then v_rec.core_licensor_id
+          end,
+          'before', jsonb_build_object('source_support', 'current'),
+          'after', jsonb_build_object('source_support', 'retired'),
+          'evidence_kind', 'direct_source_assertion',
+          'reason', 'absent from complete capture; retire this source support only, never hard-delete'
+        );
+        v_retire_ops := v_retire_ops || jsonb_build_array(v_op);
+        v_retire_count := v_retire_count + 1;
+      end if;
+    end;
+  end loop;
+
+  -- -----------------------------------------------------------------------
+  -- Assemble, sort deterministically, hash.
+  -- -----------------------------------------------------------------------
+  v_all_ops := v_entity_ops || v_rel_ops || v_retire_ops;
+  -- Sort by op_key so the hash does not depend on discovery order.
+  select coalesce(jsonb_agg(elem order by elem->>'op_key'), '[]'::jsonb)
+    into v_all_ops
+    from jsonb_array_elements(v_all_ops) as elem;
+
+  -- Rollback is the inverse, computed now so rollback evidence cannot be lost.
+  select coalesce(jsonb_agg(
+           jsonb_build_object(
+             'op_key', 'rollback:' || (elem->>'op_key'),
+             'op', case (elem->>'op')
+                      when 'update_entity' then 'update_entity'
+                      when 'upsert_relationship_support' then 'retire_relationship_support'
+                      when 'retire_entity_support' then 'update_entity'
+                      else elem->>'op'
+                    end,
+             'entity_kind', elem->'entity_kind',
+             'relationship_kind', elem->'relationship_kind',
+             'source_system', elem->'source_system',
+             'source_id', elem->'source_id',
+             'canonical_id', elem->'canonical_id',
+             'target_table', elem->'target_table',
+             'before', elem->'after',
+             'after', elem->'before',
+             'evidence_kind', elem->'evidence_kind',
+             'reason', 'rollback of ' || (elem->>'op_key')
+           ) order by elem->>'op_key'), '[]'::jsonb)
+    into v_rollback_ops
+    from jsonb_array_elements(v_all_ops) as elem
+   where (elem->>'op') <> 'noop';
+
+  v_canonical := pg_catalog.jsonb_build_object(
+    'source_system', v_source,
+    'capture_id', p_capture_id::text,
+    'operations', v_all_ops
+  )::text;
+  v_plan_hash := encode(extensions.digest(v_canonical, 'sha256'), 'hex');
+
+  -- Idempotent re-plan: identical decisions produce an identical hash, and the unique
+  -- key returns the existing row instead of a duplicate.
+  select * into v_existing
+    from plm.licensing_consolidation_plan
+   where source_system = v_source
+     and capture_id = p_capture_id
+     and plan_hash = v_plan_hash;
+  if found then
+    return v_existing;
+  end if;
+
+  insert into plm.licensing_consolidation_plan (
+    plan_schema_version, source_system, capture_id, plan_hash,
+    plan_status, capture_complete, source_scope_checked, collision_count,
+    entity_operation_count, relationship_operation_count, retire_operation_count,
+    operations, rollback_operations, refusal_reason, planned_by
+  ) values (
+    1, v_source, p_capture_id, v_plan_hash,
+    case when v_scope_ok and v_collision_count = 0 then 'preview' else 'refused' end,
+    true,
+    v_scope_ok,
+    v_collision_count,
+    v_entity_count, v_rel_count, v_retire_count,
+    v_all_ops, v_rollback_ops,
+    v_refusal,
+    v_actor
+  )
+  returning * into v_row;
+  return v_row;
+end;
+ end if;
  if p_source_system is null or btrim(p_source_system)='' or p_capture_id is null then raise exception 'exact source and capture required' using errcode='22023';end if;
  if p_entity_source_id is not null and btrim(p_entity_source_id)='' then raise exception 'empty filtered identity' using errcode='22023';end if;
  if p_source_system not in ('nbcu','paramount','disney_opa') then raise exception 'unsupported qualified capture source';end if;
@@ -696,6 +1248,7 @@ begin
  values(p_source_system,p_capture_id,v_hash,true,true,ops,inverse,coalesce(auth.uid()::text,session_user),2,snap,(select count(*) from jsonb_array_elements(ops) x where x->>'kind' in('entity_source','property_name')),(select count(*) from jsonb_array_elements(ops) x where x->>'kind'='relationship_source'),(select count(*) from jsonb_array_elements(ops) x where x->'after'->>'is_current'='false' or x->'after'->>'missing_since' is not null)) returning * into v_result;
  return v_result;
 exception when sqlstate 'P0001' then
+ if btrim(p_source_system) not in ('nbcu','paramount','disney_opa') or p_source_system is null then raise;end if;
  -- Preserve the existing durable refusal capability; refused plans carry no partial writes.
  snap:=jsonb_build_object('schema_version',2,'refusal',sqlerrm,'filter',p_entity_source_id);ops:='[]'::jsonb;inverse:='[]'::jsonb;
  v_hash:=encode(extensions.digest(jsonb_build_object('schema_version',2,'source_system',p_source_system,'capture_id',p_capture_id,'capture_snapshot',snap,'operations',ops,'rollback_operations',inverse,'rollback_of',null)::text,'sha256'),'hex');
@@ -709,6 +1262,45 @@ grant execute on function plm.plan_licensing_consolidation(text,uuid,text) to se
 create or replace function plm.licensing_consolidation_plan_immutable()
 returns trigger language plpgsql security definer set search_path=pg_catalog as $immutable$
 begin
+ if old.plan_schema_version=1 then
+  if new.plan_schema_version is distinct from old.plan_schema_version or new.capture_snapshot is distinct from old.capture_snapshot or new.applied_state is distinct from old.applied_state then raise exception 'schema1 plan metadata is immutable' using errcode='42501';end if;
+begin
+  if tg_op = 'DELETE' then
+    raise exception using errcode = '42501',
+      message = 'licensing consolidation plans are immutable audit facts and cannot be deleted';
+  end if;
+
+  -- Only the apply lifecycle may change, and only preview -> applied (or a recorded
+  -- refusal that was never applied). Content and gate evidence are frozen.
+  if new.id is distinct from old.id
+     or new.source_system is distinct from old.source_system
+     or new.capture_id is distinct from old.capture_id
+     or new.plan_hash is distinct from old.plan_hash
+     or new.capture_complete is distinct from old.capture_complete
+     or new.source_scope_checked is distinct from old.source_scope_checked
+     or new.collision_count is distinct from old.collision_count
+     or new.entity_operation_count is distinct from old.entity_operation_count
+     or new.relationship_operation_count is distinct from old.relationship_operation_count
+     or new.retire_operation_count is distinct from old.retire_operation_count
+     or new.operations is distinct from old.operations
+     or new.rollback_operations is distinct from old.rollback_operations
+     or new.refusal_reason is distinct from old.refusal_reason
+     or new.planned_at is distinct from old.planned_at
+     or new.planned_by is distinct from old.planned_by
+     or new.created_at is distinct from old.created_at
+     or new.rollback_of is distinct from old.rollback_of then
+    raise exception using errcode = '42501',
+      message = 'licensing consolidation plan content is immutable; only plan_status, applied_at and applied_by may change';
+  end if;
+
+  if old.plan_status = 'applied' and new.plan_status <> 'applied' then
+    raise exception using errcode = '42501',
+      message = 'an applied licensing consolidation plan cannot be un-applied; plan a rollback instead';
+  end if;
+
+  return new;
+end;
+ end if;
  if tg_op='DELETE' then raise exception 'consolidation plan audit facts cannot be deleted' using errcode='42501';end if;
  if (to_jsonb(new)-array['plan_status','applied_at','applied_by','applied_state','entity_operation_count','relationship_operation_count','retire_operation_count']) is distinct from (to_jsonb(old)-array['plan_status','applied_at','applied_by','applied_state','entity_operation_count','relationship_operation_count','retire_operation_count']) then raise exception 'consolidation immutable content changed' using errcode='42501';end if;
  if old.plan_status='applied' and to_jsonb(new) is distinct from to_jsonb(old) then raise exception 'applied consolidation audit is immutable' using errcode='42501';end if;
@@ -722,6 +1314,324 @@ returns plm.licensing_consolidation_plan language plpgsql security definer set s
 declare plan plm.licensing_consolidation_plan;snap jsonb;op jsonb;result jsonb;states jsonb:='[]';v_hash text;v_entities integer:=0;v_rel integer:=0;v_retire integer:=0;
 begin
  select * into plan from plm.licensing_consolidation_plan where id=p_plan_id for update;
+ if plan.plan_schema_version=1 then
+declare
+  v_actor text := coalesce(
+    auth.uid()::text,
+    nullif(current_setting('request.jwt.claim.sub', true), ''),
+    session_user::text
+  );
+  v_plan plm.licensing_consolidation_plan%rowtype;
+  v_recomputed text;
+  v_op record;
+  v_target_licensor uuid;
+  v_auth_id uuid;
+  v_changed text[];
+  v_before_status text;
+  v_noop_count integer := 0;
+  v_write_count integer := 0;
+begin
+  if coalesce(v_actor, '') = '' then
+    raise exception using errcode = '42501',
+      message = 'licensing consolidation apply requires an authenticated actor';
+  end if;
+  if p_plan_id is null or btrim(coalesce(p_expected_hash, '')) = '' then
+    raise exception using errcode = '22023',
+      message = 'apply_licensing_consolidation requires a plan_id and an expected_hash';
+  end if;
+  if p_expected_hash !~ '^[0-9a-f]{64}$' then
+    raise exception using errcode = '22023',
+      message = 'expected_hash must be 64 lowercase hex characters';
+  end if;
+
+  -- Serialize appliers of the same plan.
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    pg_catalog.concat_ws(chr(31), 'licensing_consolidation_apply', p_plan_id::text), 0));
+
+  select * into v_plan
+    from plm.licensing_consolidation_plan
+   where id = p_plan_id
+   for update;
+
+  if not found then
+    raise exception using errcode = 'P0002',
+      message = 'licensing consolidation plan does not exist';
+  end if;
+
+  -- CONFLICT REFUSAL: the caller must echo the exact hash they reviewed.
+  if v_plan.plan_hash <> p_expected_hash then
+    raise exception using errcode = '40001',
+      message = 'licensing consolidation plan hash mismatch; reload the plan and re-review',
+      detail = format('stored %s, expected %s', v_plan.plan_hash, p_expected_hash);
+  end if;
+
+  -- CONFLICT REFUSAL: the stored content must still hash to the pinned value. The
+  -- immutability trigger makes this unreachable by ordinary writes; this check is the
+  -- second leg, and it is what proves dry-run/apply parity to a reviewer.
+  v_recomputed := encode(extensions.digest(
+    pg_catalog.jsonb_build_object(
+      'source_system', v_plan.source_system,
+      'capture_id', v_plan.capture_id::text,
+      'operations', v_plan.operations
+    )::text, 'sha256'), 'hex');
+  if v_recomputed <> v_plan.plan_hash then
+    raise exception using errcode = '40001',
+      message = 'licensing consolidation plan content does not match its pinned hash; refusing to apply';
+  end if;
+
+  -- IDEMPOTENCY: an already-applied plan with the same hash is a successful no-op.
+  if v_plan.plan_status = 'applied' then
+    return v_plan;
+  end if;
+
+  if v_plan.plan_status = 'refused' then
+    raise exception using errcode = '40001',
+      message = 'licensing consolidation plan was refused at planning and cannot be applied',
+      detail = coalesce(v_plan.refusal_reason, 'no reason recorded');
+  end if;
+
+  if not v_plan.capture_complete then
+    raise exception using errcode = '40001',
+      message = 'licensing consolidation apply refused: plan was not built from a complete capture';
+  end if;
+
+  -- Re-check complete-capture against the live world. A capture that was complete at
+  -- plan time and is not now is drift; applying anyway would consolidate from a
+  -- superseded picture.
+  if v_plan.source_system = 'paramount' then
+    perform 1 from plm.pmt_capture
+     where capture_id = v_plan.capture_id
+       and status = 'complete' and capture_kind = 'full';
+  elsif v_plan.source_system = 'nbcu' then
+    perform 1 from plm.nbcu_capture
+     where id = v_plan.capture_id and status = 'complete';
+  elsif v_plan.source_system = 'disney_opa' then
+    perform 1 from plm.opa_capture
+     where id = v_plan.capture_id and status = 'complete';
+  elsif v_plan.source_system in ('disney_dcpvault', 'lucasfilm_dcpvault',
+                                 'marvel_dcpvault', 'twentieth_century_dcpvault') then
+    perform 1 from plm.dcp_crawl
+     where crawl_id = v_plan.capture_id and status = 'complete';
+  elsif v_plan.source_system = 'wildbrain' then
+    perform 1 from plm.wildbrain_capture
+     where id = v_plan.capture_id and status = 'complete';
+  elsif v_plan.source_system like 'warner:%' then
+    perform 1 from plm.wb_capture
+     where capture_id = v_plan.capture_id and chunk_number = 0 and status = 'complete';
+  else
+    -- Fail closed (Muse finding 8). An unlisted source has no capture root we can
+    -- re-check; "we did not look" must never read as "it is still complete".
+    raise exception using errcode = '40001',
+      message = 'licensing consolidation apply refused: unknown source_system cannot re-prove complete capture';
+  end if;
+  if not found then
+    raise exception using errcode = '40001',
+      message = 'licensing consolidation apply refused: capture is no longer complete';
+  end if;
+
+  -- -----------------------------------------------------------------------
+  -- WRITE-AUTHORIZATION GATE. The Step 1.0 guard is a ROW-LEVEL trigger that
+  -- consumes its authorization on the first protected write, and its unique key
+  -- allows one authorization row per (backend_pid, transaction_id, target_table,
+  -- write_kind, plan_id, plan_hash). This apply therefore obtains exactly ONE
+  -- scrape_consolidation grant per target table. The plan-time
+  -- authorization-shape gate already refused any plan carrying more than one
+  -- entity write to a table, so each grant covers exactly one protected row
+  -- write and the consumption semantics are satisfied.
+  -- -----------------------------------------------------------------------
+  declare
+    v_auth_tables text[] := '{}'::text[];
+    v_auth_table text;
+    v_auth_cols text[];
+  begin
+    -- Re-check the one-write-per-table shape against the STORED plan, not just the
+    -- plan-time gate. A preview row that somehow carries two same-table entity
+    -- writes would still 23505 on the grant insert; refuse before touching the
+    -- guard table (DeepSeek finding 3).
+    if exists (
+      select 1 from jsonb_array_elements(v_plan.operations) as e(elem)
+       where elem->>'op' = 'update_entity'
+       group by elem->>'target_table'
+      having count(*) > 1
+    ) then
+      raise exception using errcode = '40001',
+        message = 'licensing consolidation apply refused: plan carries more than one entity write to one table';
+    end if;
+
+    for v_auth_table, v_auth_cols in
+      select s.tgt,
+             array_remove(array[s.c_name, s.c_code, s.c_licensor, s.c_status], null)
+        from jsonb_array_elements(v_plan.operations) as e(elem),
+             lateral (select elem->>'target_table' as tgt,
+                             case when elem->'before'->>'name' is distinct from elem->'after'->>'name'
+                                  then 'name' end as c_name,
+                             case when elem->'before'->>'code' is distinct from elem->'after'->>'code'
+                                  then 'code' end as c_code,
+                             case when elem->'before'->>'licensor_id' is distinct from elem->'after'->>'licensor_id'
+                                  then 'licensor_id' end as c_licensor,
+                             case when elem->'before'->>'status' is distinct from elem->'after'->>'status'
+                                  then 'status' end as c_status
+                     ) as s
+       where elem->>'op' = 'update_entity'
+         and elem->'before' is distinct from elem->'after'
+       group by s.tgt, s.c_name, s.c_code, s.c_licensor, s.c_status
+    loop
+      if cardinality(coalesce(v_auth_cols, '{}')) = 0 then
+        continue;
+      end if;
+      insert into plm.licensing_write_authorization (
+        backend_pid, transaction_id, target_table, write_kind,
+        plan_id, plan_hash, actor, protected_columns, expires_at
+      ) values (
+        pg_backend_pid(), txid_current(),
+        v_auth_table::regclass,
+        'scrape_consolidation',
+        v_plan.id, v_plan.plan_hash, v_actor, v_auth_cols,
+        clock_timestamp() + interval '5 minutes'
+      );
+      v_auth_tables := array_append(v_auth_tables, v_auth_table);
+    end loop;
+  end;
+
+  -- -----------------------------------------------------------------------
+  -- Execute operations. The operation vocabulary has no DELETE, by construction.
+  -- Protected core.licensor / core.property writes go through a transaction-bound
+  -- scrape_consolidation authorization that the Step 1.0 guard consumes.
+  -- -----------------------------------------------------------------------
+  for v_op in
+    select elem
+      from jsonb_array_elements(v_plan.operations) as elem
+     order by elem->>'op_key'
+  loop
+    if v_op.elem->>'op' = 'noop' then
+      v_noop_count := v_noop_count + 1;
+      continue;
+    end if;
+
+    if v_op.elem->>'op' = 'update_entity' then
+      v_target_licensor := nullif(v_op.elem->'after'->>'licensor_id', '')::uuid;
+
+      -- Source-scope gate, re-checked live.
+      if v_op.elem->>'target_table' = 'core.property' then
+        if v_target_licensor is null then
+          select p.licensor_id into v_target_licensor
+            from core.property p
+           where p.id = (v_op.elem->>'canonical_id')::uuid;
+        end if;
+      elsif v_op.elem->>'target_table' = 'core.licensor' then
+        -- The licensor row IS the scope subject (Muse finding 2).
+        v_target_licensor := (v_op.elem->>'canonical_id')::uuid;
+      end if;
+
+      if v_target_licensor is not null and not exists (
+        select 1 from plm.licensing_source_scope s
+         where s.licensor_id = v_target_licensor
+           and s.source_system = v_plan.source_system
+           and s.source_purpose = 'canonical_identity'
+           and s.scope_axis = 'entity'
+           and s.permitted_kind = (v_op.elem->>'entity_kind')
+           and s.authorized_at is not null
+           and s.authorized_by is not null
+      ) then
+        raise exception using errcode = '40001',
+          message = 'licensing consolidation apply refused: source scope no longer authorizes '
+                    || v_plan.source_system || '/' || (v_op.elem->>'entity_kind');
+      end if;
+
+      -- Only write when the after-values actually differ. An update-to-self must not
+      -- consume an authorization row or rewrite an audit stamp -- that is what makes
+      -- a second identical apply a true no-op even before the applied short-circuit.
+      if v_op.elem->'before' = v_op.elem->'after' then
+        v_noop_count := v_noop_count + 1;
+        continue;
+      end if;
+
+      v_changed := '{}'::text[];
+      if v_op.elem->'before'->>'name' is distinct from v_op.elem->'after'->>'name' then
+        v_changed := array_append(v_changed, 'name');
+      end if;
+      if v_op.elem->'before'->>'code' is distinct from v_op.elem->'after'->>'code' then
+        v_changed := array_append(v_changed, 'code');
+      end if;
+      if v_op.elem->'before'->>'licensor_id' is distinct from v_op.elem->'after'->>'licensor_id' then
+        v_changed := array_append(v_changed, 'licensor_id');
+      end if;
+      if v_op.elem->'before'->>'status' is distinct from v_op.elem->'after'->>'status' then
+        v_changed := array_append(v_changed, 'status');
+      end if;
+
+      if cardinality(v_changed) = 0 then
+        v_noop_count := v_noop_count + 1;
+        continue;
+      end if;
+
+      -- The per-table scrape_consolidation authorization was obtained above. The
+      -- Step 1.0 trigger consumes it on the first protected write; the plan-time
+      -- authorization-shape gate guarantees every write on this table in this
+      -- apply changes exactly the column set that grant carries.
+      if v_op.elem->>'target_table' = 'core.property' then
+        update core.property
+           set name = coalesce(v_op.elem->'after'->>'name', name),
+               code = nullif(v_op.elem->'after'->>'code', ''),
+               licensor_id = coalesce(nullif(v_op.elem->'after'->>'licensor_id', '')::uuid, licensor_id),
+               updated_at = clock_timestamp()
+         where id = (v_op.elem->>'canonical_id')::uuid;
+      elsif v_op.elem->>'target_table' = 'core.licensor' then
+        update core.licensor
+           set name = coalesce(v_op.elem->'after'->>'name', name),
+               code = nullif(v_op.elem->'after'->>'code', ''),
+               updated_at = clock_timestamp()
+         where id = (v_op.elem->>'canonical_id')::uuid;
+      else
+        raise exception using errcode = '40001',
+          message = 'licensing consolidation apply refused: unknown target_table '
+                    || coalesce(v_op.elem->>'target_table', '(null)');
+      end if;
+
+      v_write_count := v_write_count + 1;
+
+    elsif v_op.elem->>'op' = 'retire_entity_support' then
+      -- Retirement is support-only. There is no DELETE in this branch and none in the
+      -- operation vocabulary. The canonical row keeps its identity and last-seen
+      -- history; only this source's claim of current support is retired, recorded on
+      -- the plan as the audit fact. (A future adapter may also flip a source-edge
+      -- is_current flag; that is a source-edge write and is deliberately not invented
+      -- here without the exact bridge object in scope.)
+      v_write_count := v_write_count + 1;
+
+    elsif v_op.elem->>'op' = 'upsert_relationship_support'
+          or v_op.elem->>'op' = 'retire_relationship_support' then
+      -- Relationship support writes target the #2334 source-edge tables, which are
+      -- outside this engine's write authorization surface (the Step 1.0 guard covers
+      -- core.licensor and core.property only). The operation is planned and recorded
+      -- so the adapter that owns the bridge can execute it under its own claim; the
+      -- engine refuses to write a bridge table it is not authorized for.
+      -- Re-check the non-promotion rule one more time at the point of execution.
+      if v_op.elem->>'op' = 'upsert_relationship_support'
+         and coalesce(v_op.elem->>'evidence_kind', '') <> 'direct_source_assertion' then
+        raise exception using errcode = '40001',
+          message = 'licensing consolidation apply refused: inferred/co-occurrence evidence can never be promoted';
+      end if;
+      v_noop_count := v_noop_count + 1;
+
+    else
+      raise exception using errcode = '40001',
+        message = 'licensing consolidation apply refused: unknown operation '
+                  || coalesce(v_op.elem->>'op', '(null)');
+    end if;
+  end loop;
+
+  -- Mark applied. The immutability trigger permits exactly this lifecycle change.
+  update plm.licensing_consolidation_plan
+     set plan_status = 'applied',
+         applied_at = clock_timestamp(),
+         applied_by = v_actor
+   where id = v_plan.id
+   returning * into v_plan;
+
+  return v_plan;
+end;
+ end if;
  if plan.id is null or plan.plan_schema_version<>2 or plan.plan_hash is distinct from p_expected_hash then raise exception 'exact schema2 plan hash required';end if;
  v_hash:=encode(extensions.digest(jsonb_build_object('schema_version',2,'source_system',plan.source_system,'capture_id',plan.capture_id,'capture_snapshot',plan.capture_snapshot,'operations',plan.operations,'rollback_operations',plan.rollback_operations,'rollback_of',plan.rollback_of)::text,'sha256'),'hex');
  if v_hash<>plan.plan_hash then raise exception 'immutable consolidation payload hash mismatch';end if;

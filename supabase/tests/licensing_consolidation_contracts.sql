@@ -112,7 +112,7 @@ begin
     raise exception 'CONTRACT: blank p_entity_source_id must be refused';
   exception when others then
     get stacked diagnostics v_text = message_text;
-    if position('empty filtered identity' in v_text) = 0 then
+    if position('p_entity_source_id must be null or a non-blank source id' in v_text) = 0 then
       raise exception 'CONTRACT: blank filter failed for the wrong reason: %', v_text;
     end if;
   end;
@@ -121,11 +121,11 @@ begin
   v_plan := plm.plan_licensing_consolidation('not_a_real_source', v_capture);
   v_plan_first_id := v_plan.id;
   v_plan_first_hash := v_plan.plan_hash;
-  if v_plan.plan_status <> 'refused' then
+  if v_plan.plan_status <> 'refused' or v_plan.plan_schema_version<>1 then
     raise exception 'CONTRACT: unknown source_system must produce a refused plan, got %', v_plan.plan_status;
   end if;
   if v_plan.refusal_reason is null
-     or position('unsupported qualified capture source' in v_plan.refusal_reason) = 0 then
+     or position('complete-capture gate refused: capture is missing, not complete, or its source root is unknown' in v_plan.refusal_reason) = 0 then
     raise exception 'CONTRACT: refused plan must record the complete-capture gate, got %', v_plan.refusal_reason;
   end if;
   if v_plan.capture_complete then
@@ -138,11 +138,16 @@ begin
   -- Known source, capture that does not exist: refused (null check inside the gate
   -- treats a missing row as not complete).
   v_plan := plm.plan_licensing_consolidation('paramount', v_capture);
-  if v_plan.plan_status <> 'refused' then
+  if v_plan.plan_status <> 'refused' or v_plan.plan_schema_version<>2 then
     raise exception 'CONTRACT: missing paramount capture must produce a refused plan, got %', v_plan.plan_status;
   end if;
 
   -- ---------------------------------------------------------------------------------
+  -- Every enhanced source stays schema2 when its capture qualification fails; no legacy fallback.
+  foreach t in array array['paramount','nbcu','disney_opa'] loop
+    v_plan2:=plm.plan_licensing_consolidation(' '||t||' ',gen_random_uuid());
+    if v_plan2.plan_schema_version<>2 or v_plan2.plan_status<>'refused' then raise exception 'enhanced qualification fell back to legacy for %',t;end if;
+  end loop;
   -- Apply refuses a refused plan.
   -- ---------------------------------------------------------------------------------
   begin
@@ -323,7 +328,7 @@ insert into plm.pmt_capture(capture_id,status,capture_kind,source_system,source_
 insert into plm.pmt_authorized_title(capture_id,authorized_title_key,authorized_title_name,capture_status,unique_asset_count,full_metadata_count,source_hash) values('23360000-0000-0000-0000-000000000020','title','Synthetic title','captured',0,0,repeat('c',64));
 insert into plm.pmt_property(capture_id,property_source_id,property_name,is_licensed_selection,source_hash) values('23360000-0000-0000-0000-000000000020','0007','Synthetic original',true,repeat('d',64));
 insert into plm.pmt_character(capture_id,character_source_id,character_name,source_hash) values('23360000-0000-0000-0000-000000000020','0008','Synthetic native character',repeat('e',64));
-insert into plm.pmt_collection(capture_id,collection_source_id,collection_name,paramount_term,source_hash) values('23360000-0000-0000-0000-000000000020','0009','Synthetic native collection','Collection',repeat('f',64));
+insert into plm.pmt_collection(capture_id,collection_source_id,collection_name,source_hash) values('23360000-0000-0000-0000-000000000020','0009','Synthetic native collection',repeat('f',64));
 insert into plm.pmt_authorized_title_property(capture_id,authorized_title_key,property_source_id,mapping_status,source_evidence,paramount_property_name,source_hash) values('23360000-0000-0000-0000-000000000020','title','0007','mapped','exact_property_selection','Synthetic original',repeat('1',64));
 insert into plm.pmt_property_character(capture_id,property_source_id,character_source_id,source_evidence,source_hash) values('23360000-0000-0000-0000-000000000020','0007','0008','explicit_cascading_pair',repeat('2',64));
 insert into plm.pmt_property_collection(capture_id,property_source_id,collection_source_id,source_evidence,source_hash) values('23360000-0000-0000-0000-000000000020','0007','0009','explicit_cascading_pair',repeat('2',64));
@@ -334,7 +339,7 @@ insert into plm.licensing_source_scope values('23360000-0000-0000-0000-000000000
 do $test$ declare p plm.licensing_consolidation_plan;q plm.licensing_consolidation_plan;r plm.licensing_consolidation_plan;rejected boolean:=false;native_capture uuid;native_table text;phase integer;pair_id uuid;pair_created timestamptz;begin
  begin perform plm.plan_licensing_consolidation('paramount','23360000-0000-0000-0000-000000000020','7');exception when others then rejected:=true;end;if not rejected then raise exception 'leading zero ID corrupted';end if;
  begin update plm.pmt_property set property_name='Unsafe source mutation' where capture_id='23360000-0000-0000-0000-000000000020';raise exception 'completed native property mutation accepted';exception when sqlstate 'P0001' then if sqlerrm='completed native property mutation accepted' then raise;end if;end;
- p:=plm.plan_licensing_consolidation('paramount','23360000-0000-0000-0000-000000000020');q:=plm.apply_licensing_consolidation(p.id,p.plan_hash);
+ p:=plm.plan_licensing_consolidation('paramount','23360000-0000-0000-0000-000000000020');if (plm.plan_licensing_consolidation(' paramount ','23360000-0000-0000-0000-000000000020')).id<>p.id then raise exception 'padded paramount identity differs';end if;q:=plm.apply_licensing_consolidation(p.id,p.plan_hash);
  if q.entity_operation_count<>3 or q.relationship_operation_count<>4 or not exists(select 1 from core.property_style_guide where is_current) then raise exception 'real Collection/StyleGuide support missing';end if;
  r:=plm.apply_licensing_consolidation(q.id,q.plan_hash);if r.id<>q.id or r.applied_state is distinct from q.applied_state then raise exception 'exact repeated native apply changed state';end if;
  begin
@@ -373,10 +378,17 @@ do $test$ declare p plm.licensing_consolidation_plan;q plm.licensing_consolidati
  end loop;
  update core.property_character_source_edge set metadata=metadata-'engine_schema_version' where source_system='paramount' and is_current;
  r:=plm.plan_licensing_consolidation('paramount',native_capture);
- if r.plan_status<>'refused' or r.refusal_reason not like '%incompatible namespace%' then raise exception 'NULL legacy source provenance was accepted or rewritten: % / %',r.plan_status,r.refusal_reason;end if;
+ if r.plan_status<>'refused' or r.plan_schema_version<>2 or r.refusal_reason not like '%incompatible namespace%' then raise exception 'NULL legacy source provenance was accepted or rewritten: % / %',r.plan_status,r.refusal_reason;end if;
  raise exception 'restore deliberately invalid fixture' using errcode='P0002';
  exception when sqlstate 'P0002' then null;end;
- raise notice 'Paramount native leading-zero IDs, actual Collection support, conditional physical rollback/history PASS';else raise exception 'audit lineage lost';end if;
+
+ declare compat plm.licensing_consolidation_plan;legacy_hash text;begin
+ legacy_hash:=encode(extensions.digest(jsonb_build_object('source_system','paramount','capture_id','23360000-0000-0000-0000-000000000020','operations','[]'::jsonb)::text,'sha256'),'hex');
+ insert into plm.licensing_consolidation_plan(source_system,capture_id,plan_hash,plan_schema_version,capture_complete,source_scope_checked,operations,rollback_operations,planned_by) values('paramount','23360000-0000-0000-0000-000000000020',legacy_hash,1,true,true,'[]','[]','schema1-existing-format-test') returning * into compat;
+ compat:=plm.apply_licensing_consolidation(compat.id,compat.plan_hash);if compat.plan_status<>'applied' or compat.plan_schema_version<>1 or compat.applied_state is not null then raise exception 'existing paramount schema1 apply compatibility lost';end if;
+ if (plm.apply_licensing_consolidation(compat.id,compat.plan_hash)).id<>compat.id then raise exception 'existing paramount schema1 applied retry lost';end if;
+ end;
+raise notice 'Paramount native leading-zero IDs, actual Collection support, conditional physical rollback/history PASS';else raise exception 'audit lineage lost';end if;
 end $test$;
 
 rollback;
@@ -410,7 +422,7 @@ do $test$ declare p plm.licensing_consolidation_plan;q plm.licensing_consolidati
  update plm.nbcu_capture set expected_counts=jsonb_set(expected_counts,'{asset_property}','null') where id='23360000-0000-0000-0000-000000000010';
  perform plm.licensing_consolidation_capture_snapshot('nbcu','23360000-0000-0000-0000-000000000010');raise exception 'JSON null native expected count accepted';
  exception when sqlstate 'P0001' then if sqlerrm='JSON null native expected count accepted' then raise;end if;end;
- p:=plm.plan_licensing_consolidation('nbcu','23360000-0000-0000-0000-000000000010');
+ p:=plm.plan_licensing_consolidation('nbcu','23360000-0000-0000-0000-000000000010');if (plm.plan_licensing_consolidation(' nbcu ','23360000-0000-0000-0000-000000000010')).id<>p.id then raise exception 'padded nbcu identity differs';end if;
  begin
  update plm.source_resolution set resolution_status='ignored',core_character_id=null where source_system='nbcu' and entity_kind='character' and source_id='701';
  perform plm.apply_licensing_consolidation(p.id,p.plan_hash);raise exception 'changed durable decision accepted by apply';
@@ -434,6 +446,13 @@ do $test$ declare p plm.licensing_consolidation_plan;q plm.licensing_consolidati
  insert into plm.nbcu_capture(id,capture_key,status,source_repository,source_commit_sha,source_manifest_sha256,portal_base_url,source_captured_at,load_completed_at,expected_counts,observed_counts,raw_summary,created_by) select '23360000-0000-0000-0000-000000000011','issue2336-later-native',status,source_repository,source_commit_sha,source_manifest_sha256,portal_base_url,'2026-10-11 12:00Z','2026-10-11 12:01Z',expected_counts,observed_counts,raw_summary,created_by from plm.nbcu_capture where id='23360000-0000-0000-0000-000000000010';
  q:=plm.apply_licensing_consolidation(p.id,p.plan_hash);
  if (select count(*) from plm.licensing_write_guard_audit)<>n then raise exception 'idempotent retry consumed new authorization';end if;
+
+ declare compat plm.licensing_consolidation_plan;legacy_hash text;begin
+ legacy_hash:=encode(extensions.digest(jsonb_build_object('source_system','nbcu','capture_id','23360000-0000-0000-0000-000000000010','operations','[]'::jsonb)::text,'sha256'),'hex');
+ insert into plm.licensing_consolidation_plan(source_system,capture_id,plan_hash,plan_schema_version,capture_complete,source_scope_checked,operations,rollback_operations,planned_by) values('nbcu','23360000-0000-0000-0000-000000000010',legacy_hash,1,true,true,'[]','[]','schema1-existing-format-test') returning * into compat;
+ compat:=plm.apply_licensing_consolidation(compat.id,compat.plan_hash);if compat.plan_status<>'applied' or compat.plan_schema_version<>1 or compat.applied_state is not null then raise exception 'existing nbcu schema1 apply compatibility lost';end if;
+ if (plm.apply_licensing_consolidation(compat.id,compat.plan_hash)).id<>compat.id then raise exception 'existing nbcu schema1 applied retry lost';end if;
+ end;
  raise notice 'NBCU native namespace, real source refs/pair, protected alias and exact idempotent physical apply PASS';
 end $test$;
 rollback;
@@ -464,10 +483,81 @@ do $opa_native$ declare c uuid:='23360000-0000-0000-0000-000000000030';x record;
  begin perform plm.plan_licensing_consolidation('disney_opa',c,'999');raise exception 'brand ID incorrectly accepted as licensed Property';exception when sqlstate '22023' then null;end;
  begin update plm.opa_capture_scope set authentication_evidence_sha256=null,authenticated_at=null where capture_id=c and scope_key='lucas_home_standard';perform plm.licensing_consolidation_capture_snapshot('disney_opa',c);raise exception 'unauthenticated complete route accepted';exception when sqlstate 'P0001' then if sqlerrm='unauthenticated complete route accepted' then raise;end if;end;
  begin update plm.opa_capture_scope set expected_relationship_sha256=repeat('f',64) where capture_id=c;perform plm.licensing_consolidation_capture_snapshot('disney_opa',c);raise exception 'incorrect route manifest accepted';exception when sqlstate 'P0001' then if sqlerrm='incorrect route manifest accepted' then raise;end if;end;
- plan:=plm.plan_licensing_consolidation('disney_opa',c);applied:=plm.apply_licensing_consolidation(plan.id,plan.plan_hash);
+ plan:=plm.plan_licensing_consolidation('disney_opa',c);if (plm.plan_licensing_consolidation(' disney_opa ',c)).id<>plan.id then raise exception 'padded OPA identity differs';end if;applied:=plm.apply_licensing_consolidation(plan.id,plan.plan_hash);
  if applied.plan_status<>'applied' or (select count(*) from core.taxonomy_source_ref where source_system='disney_opa' and missing_since is null)<>4 or (select count(*) from core.property_character_source_edge where source_system='disney_opa' and is_current)<>1 then raise exception 'approved two-route physical OPA provenance missing';end if;
  inverse:=plm.plan_licensing_consolidation_rollback(applied.id,encode(extensions.digest(applied.applied_state::text,'sha256'),'hex'));inverse:=plm.apply_licensing_consolidation(inverse.id,inverse.plan_hash);
  if exists(select 1 from core.property_character_source_edge where source_system='disney_opa' and is_current) or not exists(select 1 from core.property_character_source_edge where source_system='disney_opa' and not is_current) then raise exception 'OPA inverse erased history or retained current support';end if;
+
+ declare compat plm.licensing_consolidation_plan;legacy_hash text;begin
+ legacy_hash:=encode(extensions.digest(jsonb_build_object('source_system','disney_opa','capture_id','23360000-0000-0000-0000-000000000030','operations','[]'::jsonb)::text,'sha256'),'hex');
+ insert into plm.licensing_consolidation_plan(source_system,capture_id,plan_hash,plan_schema_version,capture_complete,source_scope_checked,operations,rollback_operations,planned_by) values('disney_opa','23360000-0000-0000-0000-000000000030',legacy_hash,1,true,true,'[]','[]','schema1-existing-format-test') returning * into compat;
+ compat:=plm.apply_licensing_consolidation(compat.id,compat.plan_hash);if compat.plan_status<>'applied' or compat.plan_schema_version<>1 or compat.applied_state is not null then raise exception 'existing disney_opa schema1 apply compatibility lost';end if;
+ if (plm.apply_licensing_consolidation(compat.id,compat.plan_hash)).id<>compat.id then raise exception 'existing disney_opa schema1 applied retry lost';end if;
+ end;
  raise notice 'OPA exact approved routes/actual hash/counts/licensed property namespace/physical inverse PASS';
 end $opa_native$;
+rollback;
+
+-- Preserve installed schema1 capture/scope/hash/audit capability in the same public routines.
+begin;
+do $legacy$
+declare l uuid:=gen_random_uuid();p uuid:=gen_random_uuid();ch uuid:=gen_random_uuid();d uuid:=gen_random_uuid();w uuid:=gen_random_uuid();b uuid:=gen_random_uuid();s text;c uuid;q plm.licensing_consolidation_plan;r plm.licensing_consolidation_plan;before_count bigint;pair_before bigint;msg text;failed boolean;op jsonb;h text;ev text;constraint_name text;
+begin
+ insert into plm.licensing_write_authorization(backend_pid,transaction_id,target_table,write_kind,plan_id,plan_hash,actor,protected_columns,expires_at) values(pg_backend_pid(),txid_current(),'core.licensor','scrape_consolidation',gen_random_uuid(),repeat('1',64),'schema1-native-test',array['name','code','status'],clock_timestamp()+interval '1minute');
+ insert into core.licensor(id,name,code,status) values(l,'ZZ Schema1 preservation','ZZ2336L1','active');
+ insert into plm.licensing_write_authorization(backend_pid,transaction_id,target_table,write_kind,plan_id,plan_hash,actor,protected_columns,expires_at) values(pg_backend_pid(),txid_current(),'core.property','licensing_review_create',gen_random_uuid(),repeat('2',64),'schema1-native-test',array['licensor_id','name','code','status'],clock_timestamp()+interval '1minute');
+ insert into core.property(id,licensor_id,name,code,status) values(p,l,'Synthetic preserved property','ZZ2336L1P','potential');
+ insert into core.character(id,licensor_id,name) values(ch,l,'Synthetic legacy canonical character');
+ insert into plm.dcp_crawl(crawl_id,source_system,status,captured_on,portal_base_url,crawler_version,account_scope,line_of_business,started_at,finished_at,rows_received,distinct_assets_received,captured_by,private_source_commit)
+ values(d,'disney_dcpvault','complete',date '2099-01-01','https://fixture.invalid','synthetic','synthetic','synthetic',now(),now(),0,0,'schema1-test',repeat('a',40));
+ insert into plm.wildbrain_capture(id,capture_key,source_repository,source_commit_sha,source_manifest_sha256,portal_base_url,source_captured_at,load_completed_at,status,expected_counts,observed_counts,pagination_verified,reported_total,raw_summary,created_by)
+ values(w,'zztest-2336-schema1','synthetic',repeat('a',40),repeat('b',64),'https://fixture.invalid',now(),now(),'complete','{}','{}',true,0,'{}','schema1-test');
+ insert into plm.wb_capture(capture_id,chunk_number,target,status,captured_at,private_source_commit,snapshot_sha256,expected_row_count,captured_by,source_url,started_at,completed_at,loader_report)
+ values(b,0,'wb_franchise','complete',date '2099-01-01',repeat('a',40),repeat('b',64),1,'schema1-test','https://fixture.invalid',now(),now(),'{}');
+ foreach s in array array['',null::text] loop
+  failed:=false;begin perform plm.plan_licensing_consolidation(s,d);exception when invalid_parameter_value then failed:=true;end;if not failed then raise exception 'blank/null source identity accepted';end if;
+ end loop;
+ select count(*) into before_count from core.property_character_source_edge;
+ select count(*) into pair_before from core.property_character_associations;
+ foreach s in array array['disney_dcpvault','lucasfilm_dcpvault','marvel_dcpvault','twentieth_century_dcpvault','wildbrain','warner:wb_franchise'] loop
+  c:=case when s='wildbrain' then w when s like 'warner:%' then b else d end;
+  insert into plm.source_resolution(source_system,entity_kind,source_id,core_property_id,resolution_status) values(s,'property','synthetic-native-2336',p,'matched');
+  insert into plm.licensing_source_scope(licensor_id,source_system,source_purpose,scope_axis,permitted_kind,authorized_at,authorized_by) values(l,s,'canonical_identity','entity','property',now(),'schema1-test');
+  insert into plm.licensing_relationship_resolution(licensor_id,source_system,relationship_kind,source_left_id,source_right_id,resolution_status,core_property_id,core_character_id,evidence_kind,source_evidence) values(l,s,'property_character','synthetic-native-2336','synthetic-character','matched',p,ch,'direct_source_assertion','Invented exact synthetic legacy pair');
+  insert into plm.licensing_source_scope(licensor_id,source_system,source_purpose,scope_axis,permitted_kind,authorized_at,authorized_by) values(l,s,'relationship_evidence','relationship','property_character',now(),'schema1-test');
+  q:=plm.plan_licensing_consolidation(s,c,'synthetic-native-2336');
+  if q.plan_schema_version<>1 or q.plan_status<>'preview' or q.entity_operation_count<>1 or q.relationship_operation_count<>1 or q.operations->0->>'op'<>'noop' then raise exception 'schema1 legacy positive lost for %: %',s,to_jsonb(q);end if;
+  if not exists(select 1 from jsonb_array_elements(q.operations) x where x->>'op'='upsert_relationship_support' and x->>'relationship_kind'='property_character' and x->>'evidence_kind'='direct_source_assertion' and x->'after'->>'core_property_id'=p::text and x->'after'->>'core_character_id'=ch::text) then raise exception 'legacy exact direct relationship operation lost';end if;
+  foreach ev in array array['inferred','co_occurrence'] loop
+   failed:=false;begin
+    update plm.licensing_relationship_resolution set evidence_kind=ev where source_system=s and source_left_id='synthetic-native-2336';
+   exception when check_violation then
+    get stacked diagnostics constraint_name=CONSTRAINT_NAME;
+    if constraint_name<>'licensing_relationship_resolution_matched_is_direct_chk' then raise;end if;
+    failed:=true;
+   end;
+   if not failed then raise exception 'legacy matched non-direct decision accepted: %',ev;end if;
+  end loop;
+  h:=encode(extensions.digest(jsonb_build_object('source_system',s,'capture_id',c::text,'operations',q.operations)::text,'sha256'),'hex');
+  if q.plan_hash<>h or q.capture_snapshot<>'{}' or q.applied_state is not null then raise exception 'legacy original hash/metadata changed';end if;
+  r:=plm.plan_licensing_consolidation(' '||s||' ',c,'synthetic-native-2336');if r.id<>q.id then raise exception 'legacy replan idempotency lost';end if;
+  failed:=false;begin perform plm.apply_licensing_consolidation(q.id,repeat('0',64));exception when serialization_failure then failed:=true;end;if not failed then raise exception 'legacy wrong hash accepted';end if;
+  failed:=false;begin update plm.licensing_consolidation_plan set entity_operation_count=0 where id=q.id;exception when insufficient_privilege then failed:=true;end;if not failed then raise exception 'legacy planned counter mutable';end if;
+  failed:=false;begin update plm.licensing_consolidation_plan set plan_schema_version=2 where id=q.id;exception when insufficient_privilege then failed:=true;end;if not failed then raise exception 'legacy schema dispatch mutable';end if;
+  r:=plm.apply_licensing_consolidation(q.id,q.plan_hash);if r.plan_status<>'applied' or r.entity_operation_count<>1 or r.relationship_operation_count<>1 or r.applied_state is not null then raise exception 'legacy original audit lifecycle lost';end if;
+  if (plm.apply_licensing_consolidation(q.id,q.plan_hash)).id<>q.id then raise exception 'legacy applied retry lost';end if;
+  r:=plm.plan_licensing_consolidation(s,gen_random_uuid());if r.plan_schema_version<>1 or r.plan_status<>'refused' or r.capture_complete then raise exception 'legacy incomplete capture accepted';end if;
+  delete from plm.licensing_source_scope where source_system=s and licensor_id=l;
+  r:=plm.plan_licensing_consolidation(s,c);if r.plan_status<>'refused' or r.source_scope_checked then raise exception 'legacy missing scope accepted';end if;
+ end loop;
+ if (select count(*) from core.property_character_source_edge)<>before_count or (select count(*) from core.property_character_associations)<>pair_before then raise exception 'legacy audit path invented physical pair/support writes';end if;
+ -- A schema1 payload built before replacement keeps the original hash/apply contract.
+ s:='warner:wb_franchise';insert into plm.licensing_source_scope(licensor_id,source_system,source_purpose,scope_axis,permitted_kind,authorized_at,authorized_by) values(l,s,'canonical_identity','entity','property',now(),'schema1-test');
+ op:=jsonb_build_object('op_key','entity:property:synthetic-native-2336','op','update_entity','entity_kind','property','source_system',s,'source_id','synthetic-native-2336','canonical_id',p,'target_table','core.property','before',jsonb_build_object('name','Synthetic preserved property','code','ZZ2336L1P','status','potential','licensor_id',l),'after',jsonb_build_object('name','Synthetic original-format renamed property','code','ZZ2336L1P','status','potential','licensor_id',l),'evidence_kind','direct_source_assertion');
+ h:=encode(extensions.digest(jsonb_build_object('source_system',s,'capture_id',b::text,'operations',jsonb_build_array(op))::text,'sha256'),'hex');
+ insert into plm.licensing_consolidation_plan(source_system,capture_id,plan_hash,plan_schema_version,capture_complete,source_scope_checked,operations,rollback_operations,planned_by,entity_operation_count) values(s,b,h,1,true,true,jsonb_build_array(op),'[]','schema1-test',1) returning * into q;
+ r:=plm.apply_licensing_consolidation(q.id,q.plan_hash);if r.plan_status<>'applied' or (select name from core.property where id=p)<>'Synthetic original-format renamed property' then raise exception 'legacy protected canonical write lost';end if;
+ if (plm.apply_licensing_consolidation(q.id,q.plan_hash)).id<>q.id then raise exception 'legacy real-write retry lost';end if;
+ raise notice 'Six original legacy namespace families, schema1 original hash/plan/apply/audit/real protected write preservation PASS';
+end $legacy$;
 rollback;

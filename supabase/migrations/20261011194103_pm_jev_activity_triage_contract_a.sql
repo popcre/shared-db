@@ -183,6 +183,15 @@ grant select, insert, update on pim.ai_activity_triage to pm_jev_triage_worker;
 grant select, insert, update on pim.ai_activity_triage_eligibility to pm_jev_triage_worker;
 grant usage on schema pim, api, app to pm_jev_triage_worker;
 
+-- Worker policy (repo pattern: grants + for-all policy; tables stay postgres-owned).
+drop policy if exists pm_ai_activity_triage_worker_all on pim.ai_activity_triage;
+create policy pm_ai_activity_triage_worker_all on pim.ai_activity_triage
+  for all to pm_jev_triage_worker using (true) with check (true);
+
+drop policy if exists pm_ai_activity_triage_eligibility_worker_all on pim.ai_activity_triage_eligibility;
+create policy pm_ai_activity_triage_eligibility_worker_all on pim.ai_activity_triage_eligibility
+  for all to pm_jev_triage_worker using (true) with check (true);
+
 -- ============================================================================
 -- 6. Auth helper
 -- ============================================================================
@@ -405,12 +414,8 @@ grant execute on function pim.pm_complete_activity_triage_worker(uuid, text, tex
 grant execute on function pim.pm_fail_activity_triage_worker(uuid, text, text) to pm_jev_triage_worker;
 
 -- Private workers are owned by the dedicated NOLOGIN role (issue #3298).
--- Table ownership is transferred so the worker (not a superuser) can read and
--- update triage rows under RLS default-deny; authenticated keeps only SELECT
--- via the narrow owner/admin policies created above.
-alter table pim.ai_activity_triage owner to pm_jev_triage_worker;
-alter table pim.ai_activity_triage_eligibility owner to pm_jev_triage_worker;
-
+-- Tables stay postgres-owned; the worker reaches rows via the explicit
+-- grants and pm_ai_activity_triage*_worker_all policies above.
 alter function pim.pm_complete_activity_triage_worker(uuid, text, text, jsonb, jsonb, text) owner to pm_jev_triage_worker;
 alter function pim.pm_fail_activity_triage_worker(uuid, text, text) owner to pm_jev_triage_worker;
 
@@ -890,12 +895,17 @@ begin
     raise exception using errcode = '42501', message = 'PM_NOT_ROW_REQUESTER';
   end if;
 
-  if p_envelope is not null or p_signature is not null then
-    if not pim.pm_verify_jev_hmac_envelope(p_envelope, p_signature) then
-      raise exception using errcode = '22023', message = 'PM_ENVELOPE_INVALID';
-    end if;
-  else
-    raise exception using errcode = '22023', message = 'PM_ENVELOPE_REQUIRED';
+  if p_envelope is null or p_signature is null
+     or not pim.pm_verify_jev_hmac_envelope(p_envelope, p_signature) then
+    raise exception using errcode = '22023', message = 'PM_ENVELOPE_INVALID';
+  end if;
+  -- Bind envelope fields to this exact row (prevents cross-row replay).
+  if (p_envelope ->> 'requester_profile_id') is distinct from v_row.requester_profile_id::text
+     or (p_envelope ->> 'comment_id') is distinct from v_row.comment_id::text
+     or (p_envelope ->> 'lease_token') is null
+     or encode(extensions.digest(convert_to(p_envelope ->> 'lease_token', 'utf8'), 'sha256'), 'hex')
+        is distinct from v_row.lease_token_hash then
+    raise exception using errcode = '22023', message = 'PM_ENVELOPE_ROW_MISMATCH';
   end if;
 
   perform pim.pm_complete_activity_triage_worker(
@@ -939,6 +949,10 @@ begin
   if p_envelope is null or p_signature is null
      or not pim.pm_verify_jev_hmac_envelope(p_envelope, p_signature) then
     raise exception using errcode = '22023', message = 'PM_ENVELOPE_INVALID';
+  end if;
+  if (p_envelope ->> 'requester_profile_id') is distinct from v_row.requester_profile_id::text
+     or (p_envelope ->> 'comment_id') is distinct from v_row.comment_id::text then
+    raise exception using errcode = '22023', message = 'PM_ENVELOPE_ROW_MISMATCH';
   end if;
 
   perform pim.pm_fail_activity_triage_worker(p_triage_id, p_lease_token_hash, p_error_code);
@@ -1365,6 +1379,9 @@ as $$
 declare
   v_profile uuid;
   v_row pim.ai_activity_triage%rowtype;
+  v_key text;
+  v_canon text;
+  v_expected text;
 begin
   v_profile := app.current_profile_id();
   if v_profile is null then
@@ -1385,8 +1402,24 @@ begin
   if p_signature is null or length(btrim(p_signature)) < 32 then
     return jsonb_build_object('allowed', false, 'reason', 'signature');
   end if;
-  if p_timestamp is null or p_timestamp < now() - interval '5 minutes' then
+  if p_timestamp is null or p_timestamp < now() - interval '5 minutes'
+     or p_timestamp > now() + interval '5 minutes' then
     return jsonb_build_object('allowed', false, 'reason', 'expired');
+  end if;
+  begin
+    select decrypted_secret into v_key from vault.decrypted_secrets where name = 'jev_envelope_hmac_key';
+  exception when others then
+    return jsonb_build_object('allowed', false, 'reason', 'key_unavailable');
+  end;
+  if v_key is null or length(v_key) < 16 then
+    return jsonb_build_object('allowed', false, 'reason', 'key_unavailable');
+  end if;
+  v_canon := 'fence|' || p_triage_id::text || '|' || coalesce(p_lease_token_hash, '') || '|'
+    || coalesce(p_release_digest, '') || '|' || coalesce(p_emergency_generation::text, '') || '|'
+    || extract(epoch from p_timestamp)::text || '|' || coalesce(p_nonce, '');
+  v_expected := encode(extensions.hmac(convert_to(v_canon, 'utf8'), convert_to(v_key, 'utf8'), 'sha256'), 'hex');
+  if v_expected <> lower(btrim(p_signature)) then
+    return jsonb_build_object('allowed', false, 'reason', 'signature');
   end if;
 
   return jsonb_build_object('allowed', true, 'emergency_generation', 0);

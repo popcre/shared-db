@@ -313,7 +313,8 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
     if([left,right].some(items=>items.length<=original.length || JSON.stringify(items.slice(0,original.length))!==prefix))throw new LaneError('review budget registry must only append unchanged base entries')
     const additions=[...left.slice(original.length),...right.slice(original.length)]
     if(additions.some(item=>item.issue===null) || new Set(additions.map(item=>item.version)).size!==additions.length)throw new LaneError('review budget registry additions overlap or lack issue identity')
-    additions.sort((x,y)=>x.version.localeCompare(y.version))
+    if(original.length+additions.length>=1000)throw new LaneError('review budget registry union size refused')
+    additions.sort((x,y)=>x.version<y.version?-1:x.version>y.version?1:0)
     const text=JSON.stringify({schema_version:1,sidecars:[...original,...additions]},null,2)+'\n'
     canonicalRegistryUnions.push({base,parents:[a,b],path:file,mode:'100644',parentBlobs:rows.map(row=>row.blob),protectedParent:[a,b][protectedSides.indexOf(true)],canonicalBlob:createHash('sha1').update(`blob ${Buffer.byteLength(text)}\0`).update(text).digest('hex')})
     return new Map([[file,{mode:'100644',text}]])
@@ -376,7 +377,7 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
     if(intermediate.length)paths=[...paths,...intermediate.map(p=>`:(top,literal,exclude)${p}`)]
     // Recompute with the exact authenticated historical pair paths. They can
     // explain evidence retirement but can never serve as an author witness.
-    if(intermediate.length && equal(expected,after))return {schema:1,before,after,protectedMain,kind:'unchanged',canonicalAppends,canonicalPinOverlaps,canonicalImportUnions}
+    if(intermediate.length && equal(expected,after))return {schema:1,before,after,protectedMain,kind:'unchanged',canonicalAppends,canonicalPinOverlaps,canonicalImportUnions,canonicalRegistryUnions}
 
     if (index < 0 || index >= 1000) throw new LaneError('review budget complete first-parent ancestry unavailable')
     const authorCandidates=[]
@@ -391,7 +392,7 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
         }
       } else throw new LaneError('review budget ambiguous merge provenance refused')
     }
-    const witnessExcludes=[...(canonicalAppends.length?[':(top,literal,exclude)scripts/manage-migration-author-lanes.test.mjs']:[]),...(canonicalPinOverlaps.length?[':(top,literal,exclude)scripts/production_business_risk_gate.py']:[])]
+    const witnessExcludes=[...(canonicalAppends.length?[':(top,literal,exclude)scripts/manage-migration-author-lanes.test.mjs']:[]),...(canonicalPinOverlaps.length?[':(top,literal,exclude)scripts/production_business_risk_gate.py']:[]),...(canonicalImportUnions.length?[':(top,literal,exclude)scripts/orchestrator-flow/admission-outcome.test.mjs']:[]),...(canonicalRegistryUnions.length?[':(top,literal,exclude)config/production-verification-sidecar-registry.json']:[])]
     const netPaths=run(['diff','--name-only',tree(expected),after,'--',...paths,...witnessExcludes]).split('\n').filter(Boolean)
     if(netPaths.some(file=>file.startsWith('.agent/')))throw new LaneError('review budget unverified evidence cannot witness authored repair')
     const managerFile='scripts/manage-migration-author-lanes.mjs'

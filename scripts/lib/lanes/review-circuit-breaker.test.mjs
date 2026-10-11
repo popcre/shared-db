@@ -529,11 +529,16 @@ function sidecarRegistryFixture(t,{variant=null,repair=false}={}){
  const base=f.commit(file,encode(original))
  f.git(['switch','-qc','registry-author',base])
  const shared={version:'20261011110000',issue:555}
- const before=f.commit(file,encode([...original,...(variant==='same-overlap'?[shared]:[]),author]))
+ if(variant==='author-missing-issue')author.issue=null
+ const authorAdditions=variant==='union-size'?Array.from({length:500},(_,i)=>({version:String(20261011230000+i),issue:600+i})):[...(variant==='same-overlap'?[shared]:[]),author]
+ const before=f.commit(file,encode([...original,...authorAdditions]))
  if(repair)f.commit('app.txt','context\nreal repaired source\nend\n')
+ if(variant==='extra-conflict')f.commit('app.txt','author conflict\n')
+ if(variant==='custom')f.commit('.gitattributes',file+' merge=union\n')
  f.git(['switch','-qc','registry-main',base])
  let entries=[...original,upstream],text
  if(variant==='base-remove')entries=[upstream]
+ if(variant==='union-size')entries=[...original,...Array.from({length:500},(_,i)=>({version:String(20261011120000+i),issue:1200+i}))]
  if(variant==='unsorted')entries=[...original,upstream,{version:'20261011120000',issue:556}]
  if(variant==='base-edit')entries=[{...original[0],issue:900},upstream]
  if(variant==='overlap')entries=[...original,{...author,issue:900}]
@@ -547,11 +552,15 @@ function sidecarRegistryFixture(t,{variant=null,repair=false}={}){
  if(variant==='noncanonical')text=JSON.stringify(JSON.parse(text))+'\n'
  if(variant==='header')text=JSON.stringify({schema_version:2,sidecars:entries},null,2)+'\n'
  let main=f.commit(file,text)
+ if(variant==='extra-conflict')main=f.commit('app.txt','protected conflict\n')
  if(variant==='mode'){f.git(['update-index','--chmod=+x',file]);f.git(['commit','-qm','registry mode']);main=f.git(['rev-parse','HEAD']).trim()}
  f.git(['switch','registry-author'])
- assert.throws(()=>f.git(['merge','--no-commit','registry-main']),/./)
+ if(variant==='custom')f.git(['merge','--no-commit','registry-main']);else assert.throws(()=>f.git(['merge','--no-commit','registry-main']),/./)
+ if(variant==='extra-conflict'){writeFileSync(path.join(f.dir,'app.txt'),'resolved conflict\n');f.git(['add','app.txt'])}
  let union=encode([...original,upstream,author])
  if(variant==='bad-resolution')union=encode([...original,author])
+ if(variant==='drop-author')union=encode([...original,upstream])
+ if(variant==='union-size')union=encode([...entries,...authorAdditions])
  f.commit(file,union)
  const after=f.git(['rev-parse','HEAD']).trim()
  return {...f,file,before,main,after}
@@ -566,6 +575,18 @@ test('sidecar union authenticates genuine surviving source repair',t=>{
  const f=sidecarRegistryFixture(t,{repair:true}),proof=derivePaidContentProof(f.before,f.after,f.main,f.git)
  assert.equal(proof.kind,'substantive');assert.equal(proof.witness.path,'app.txt');assert.ok(proof.canonicalRegistryUnions.length>0)
 })
-for(const variant of ['base-edit','base-remove','unsorted','mode','overlap','same-overlap','duplicate','numeric-version','missing-issue','bad-issue','unknown-field','noncanonical','header','bad-resolution'])test(`sidecar union refuses ${variant}`,t=>{
+for(const variant of ['author-missing-issue','union-size','drop-author','extra-conflict','custom','base-edit','base-remove','unsorted','mode','overlap','same-overlap','duplicate','numeric-version','missing-issue','bad-issue','unknown-field','noncanonical','header','bad-resolution'])test(`sidecar union refuses ${variant}`,t=>{
  const f=sidecarRegistryFixture(t,{variant});assert.throws(()=>derivePaidContentProof(f.before,f.after,f.main,f.git),/provenance refused/)
+})
+
+test('authenticated evidence retirement retains registry proof shape',t=>{
+ const proof=generationsFixture(t,{repair:false,ordinaryRetirement:true}).proof();assert.equal(proof.kind,'unchanged');assert.deepEqual(proof.canonicalRegistryUnions,[])
+})
+
+for(const [kind,fixture] of [['registry',sidecarRegistryFixture],['import',namedImportFixture]])for(const change of ['rewrite','revert','delete'])test(`${kind} canonical merge followed by ${change} cannot mint paid attempts`,t=>{
+ const f=fixture(t)
+ if(change==='delete')f.git(['rm',f.file])
+ else {const text=change==='revert'?f.git(['show',`${f.before}:${f.file}`]):'regular post-merge rewrite\n';writeFileSync(path.join(f.dir,f.file),text);f.git(['add',f.file])}
+ f.git(['commit','-qm','post-merge canonical file change']);const after=f.git(['rev-parse','HEAD']).trim()
+ assert.throws(()=>derivePaidContentProof(f.before,after,f.main,f.git),change==='delete'?/canonical blob missing/:/surviving author source edit unavailable/)
 })

@@ -1224,3 +1224,25 @@ test('pg_cron schedule changes are structural writes on table cron.job (#4192)',
   // the curated data-only path never admits a cron change
   assert.throws(() => inspectPrCuratedDataChange(file("insert into core.property (name) values ('a');\nselect cron.schedule('j', '* * * * *', 'select 1');")), /CRON/)
 })
+
+// #4184: one active lease whose work issue has more than 100 comments made the
+// batched review-state snapshot refuse every reviewer draw in the repository.
+test('review-state evidence over 100 comments is completed by cursor, fail-closed', async () => {
+  const { completeReviewStatePages, reviewStateEntry } = await import('../lib/lanes/github-wire.mjs')
+  const node = (n) => ({ body: `c${n}`, authorAssociation: 'MEMBER' })
+  const fresh = () => ({
+    pr: { state:'OPEN', merged:false, headRefOid:'a'.repeat(40), comments:{ pageInfo:{ hasNextPage:false, endCursor:null }, nodes:[] }, reviews:{ pageInfo:{ hasNextPage:false, endCursor:null }, nodes:[] } },
+    issue: { state:'OPEN', comments:{ pageInfo:{ hasNextPage:true, endCursor:'c100' }, nodes:Array.from({ length:100 }, (_, n) => node(n)) } },
+  })
+  let row = fresh()
+  assert.throws(() => reviewStateEntry(row.pr, row.issue), /incomplete or paginated/)
+  const queries = []
+  const fetchPage = (query) => { queries.push(query); return { data:{ repository:{ x:{ comments:{ pageInfo:{ hasNextPage:false, endCursor:'c103' }, nodes:[node(100), node(101), node(102)] } } } } } }
+  const done = completeReviewStatePages(row.pr, row.issue, { issue:3536, pr:4171 }, fetchPage)
+  assert.equal(reviewStateEntry(done.pr, done.issue).evidence.length, 103)
+  assert.match(queries[0], /issue\(number:3536\)\{comments\(first:100,after:"c100"\)/)
+  row = fresh()
+  assert.throws(() => completeReviewStatePages(row.pr, row.issue, { issue:3536, pr:4171 }, () => ({ data:{ repository:{ x:{ comments:{ pageInfo:{ hasNextPage:true, endCursor:'c100' }, nodes:[] } } } } })), /incomplete or paginated/)
+  row = fresh()
+  assert.throws(() => completeReviewStatePages(row.pr, row.issue, { issue:3536, pr:4171 }, () => ({ errors:[{ message:'x' }] })), /incomplete or paginated/)
+})

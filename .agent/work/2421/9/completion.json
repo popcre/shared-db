@@ -8,7 +8,7 @@
   ],
   "contract_ref": "refs/db-contracts/2421/9",
   "contract_sha256": "e5510c95fb70c3136ab9bfe8c9bb68e069672236522cf820b819acb31457d02f",
-  "head_sha": "c40e23d3c3b6fb9ef865e4a68ad2fc1d90d95077",
+  "head_sha": "03f79d90a3a76fc6970a6ffec2c6b18c4997d1b0",
   "files_changed": [
     ".github/live-proofs/2421.sql",
     "scripts/test_style_group_watermark.py",
@@ -16,9 +16,7 @@
     "supabase/tests/style_group_change_watermark_contracts.sql",
     ".agent/work/2421/9/contract.json",
     ".agent/work/2421/9/completion.json",
-    "HANDOFF.d/2026-10-11T1324Z-edge-dev3-codex-style-group-watermark.md",
-    ".agent/work/2421/8/contract.json",
-    ".agent/work/2421/8/completion.json"
+    "HANDOFF.d/2026-10-11T1324Z-edge-dev3-codex-style-group-watermark.md"
   ],
   "db_reads": [
     "function public.style_group_key_for_sku",

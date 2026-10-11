@@ -98,7 +98,7 @@ const FORBIDDEN_WORDS = new Set([
   'pg_catalog', 'information_schema', 'cron', 'cursor', 'open', 'fetch', 'move', 'close', 'format', 'quote_ident', 'quote_literal',
   'lo_import', 'lo_export', 'lo_unlink', 'lo_from_bytea', 'lo_put',
 ])
-const FORBIDDEN_PREFIXES = ['pg_', 'dblink', 'query_to_', 'table_to_', 'schema_to_', 'database_to_', 'cursor_to_', 'xpath_table']
+const FORBIDDEN_PREFIXES = ['pg_', 'lo_', 'dblink', 'query_to_', 'table_to_', 'schema_to_', 'database_to_', 'cursor_to_', 'xpath_table']
 const ALLOWED_PG_WORDS = new Set(['pg_backend_pid'])
 // Forbidden in every position, including as a qualified member: sequence
 // advancing functions, and the cron schema/functions under any spelling.
@@ -117,7 +117,8 @@ export function isCuratedTarget(schema, name) {
 function identAt(tokens, index) {
   const token = tokens[index]
   if (!token || (token.type !== 'word' && token.type !== 'ident')) return null
-  return token.type === 'ident' ? token.value : token.value
+  // PostgreSQL folds only unquoted names; a quoted name keeps its case.
+  return token.value
 }
 
 // Returns the qualified target at tokens[index] as {schema, name, next}.
@@ -128,9 +129,9 @@ function qualifiedTarget(tokens, index) {
     const second = identAt(tokens, index + 2)
     if (second === null) return null
     if (tokens[index + 3]?.type === 'punct' && tokens[index + 3].value === '.') return { schema: null, name: null, next: index + 4 }
-    return { schema: first.toLowerCase(), name: second.toLowerCase(), next: index + 3 }
+    return { schema: first, name: second, next: index + 3 }
   }
-  return { schema: null, name: first.toLowerCase(), next: index + 1 }
+  return { schema: null, name: first, next: index + 1 }
 }
 
 // Expand DO blocks: their dollar body is re-lexed as PL/pgSQL code. Any other
@@ -239,28 +240,38 @@ export function inspectCuratedSql(sql) {
       if (!target?.schema || !target.name) throw new CuratedSqlError(`${word.toUpperCase()} target must be a schema-qualified table`)
       if (!isCuratedTarget(target.schema, target.name)) throw new CuratedSqlError(`${word.toUpperCase()} target ${target.schema}.${target.name} is outside curated Master Data`)
       if (word !== 'insert') {
-        let end = j, depth = 0, where = -1
+        let end = j, depth = 0, where = -1, returning = -1
         for (; end < tokens.length; end++) {
           const t = tokens[end]
           if (t.type === 'punct' && t.value === '(') depth++
           else if (t.type === 'punct' && t.value === ')') depth--
           else if (t.type === 'punct' && t.value === ';' && depth <= 0) break
           else if (depth === 0 && t.type === 'word' && t.value === 'where' && where < 0) where = end
+          else if (depth === 0 && t.type === 'word' && t.value === 'returning' && returning < 0) returning = end
+          else if (depth === 0 && where < 0 && t.type === 'word' && ['from', 'using'].includes(t.value) && end > target.next) throw new CuratedSqlError(`${word.toUpperCase()} on ${target.schema}.${target.name} may not join other relations (FROM/USING)`)
         }
-        // Bounded means the top-level WHERE compares a column to a value with
-        // `=` (a literal, parameter, or PL/pgSQL variable that is not the same
-        // name). `where true`, `where 1=1`, `where id = id` are not bounds.
-        const keyOf = (t) => t?.type === 'word' ? `w:${t.value}` : t?.type === 'ident' ? `w:${t.value.toLowerCase()}` : null
-        let bounded = false
-        for (let w = where + 1; where >= 0 && w < end; w++) {
-          const t = tokens[w]
-          if (!(t.type === 'punct' && t.value === '=')) continue
-          const left = tokens[w - 1], right = tokens[w + 1]
-          const leftColumn = (left?.type === 'word' && !WHERE_KEYWORDS.has(left.value)) || left?.type === 'ident'
-          const rightValue = ['string', 'number', 'param'].includes(right?.type) || ((right?.type === 'word' && !WHERE_KEYWORDS.has(right.value)) || right?.type === 'ident')
-          if (leftColumn && rightValue && keyOf(left) !== keyOf(right)) { bounded = true; break }
+        // Bounded means the whole top-level WHERE is a conjunction of
+        // `column = value` terms: no OR, NOT, subquery, function call or
+        // tautology, so every term narrows the rows touched.
+        const isValue = (t) => ['string', 'number', 'param'].includes(t?.type) || (t?.type === 'word' && !WHERE_KEYWORDS.has(t.value))
+        const isColumn = (t) => t?.type === 'ident' || (t?.type === 'word' && !WHERE_KEYWORDS.has(t.value))
+        const clause = where < 0 ? [] : tokens.slice(where + 1, returning > where ? returning : end)
+        let bounded = clause.length > 0, p = 0
+        while (bounded && p < clause.length) {
+          let column = p
+          if (!isColumn(clause[p])) { bounded = false; break }
+          if (clause[p + 1]?.type === 'punct' && clause[p + 1].value === '.') { if (!isColumn(clause[p + 2])) { bounded = false; break } column = p + 2; p += 2 }
+          if (!(clause[p + 1]?.type === 'punct' && clause[p + 1].value === '=')) { bounded = false; break }
+          let v = p + 2
+          if (clause[v]?.type === 'punct' && clause[v].value === '-' && clause[v + 1]?.type === 'number') v++
+          if (!isValue(clause[v]) || (clause[v].type === 'word' && clause[v].value === clause[column].value) || (clause[v + 1]?.type === 'punct' && ['.', '(', '::'].includes(clause[v + 1].value))) { bounded = false; break }
+          p = v + 1
+          if (p === clause.length) break
+          if (!(clause[p]?.type === 'word' && clause[p].value === 'and')) { bounded = false; break }
+          p++
+          if (p === clause.length) bounded = false
         }
-        if (!bounded) throw new CuratedSqlError(`${word.toUpperCase()} on ${target.schema}.${target.name} has no top-level WHERE clause comparing a column to a value`)
+        if (!bounded) throw new CuratedSqlError(`${word.toUpperCase()} on ${target.schema}.${target.name} has no top-level WHERE clause that is a conjunction of column = value terms`)
       }
       writes.add(`table ${target.schema}.${target.name}`)
       dml++

@@ -1116,6 +1116,7 @@ test('curated data-only inspection fails closed on SQL its detectors cannot see 
   const admitted = guarded.replace("$q$Bob's -- notes$q$", "'Bob''s -- notes'")
   assert.deepEqual(inspectPrCuratedDataChange(file(admitted)).row_writes, ['table core.property', 'table plm.licensing_write_authorization'])
   assert.deepEqual(inspectPrCuratedDataChange(file("insert into core.property (notes) values ($q$Bob's -- notes$q$);\n")).row_writes, ['table core.property'])
+  assert.deepEqual(inspectPrCuratedDataChange(file("update core.property set status = 'active' where id = 5 and licensor_id = -2 returning id;\ndelete from core.taxonomy_source_ref where entity_id = $1;\n")).row_writes, ['table core.property', 'table core.taxonomy_source_ref'])
   const refused = [
     // round 1: dynamic DDL, destructive and maintenance statements, vacuous loads
     ["do $$ begin execute 'create table core.evil(id int)'; end $$;" + ins, /EXECUTE/],
@@ -1124,8 +1125,8 @@ test('curated data-only inspection fails closed on SQL its detectors cannot see 
     ['reindex table core.property;' + ins, /structure|REINDEX/],
     ['refresh materialized view core.x;' + ins, /REFRESH/],
     ['set role postgres;' + ins, /SET LOCAL|ROLE/],
-    ['delete from core.property;', /no top-level WHERE clause comparing/],
-    ["update core.property set name = 'x';", /no top-level WHERE clause comparing/],
+    ['delete from core.property;', /no top-level WHERE clause that is a conjunction/],
+    ["update core.property set name = 'x';", /no top-level WHERE clause that is a conjunction/],
     ['select 1;', /writes no row/],
     // round 2: lexer desynchronisation
     ["insert into core.property (name) values (E'a\\''); create table core.evil(id int); select 1; --'", /structure|CREATE/],
@@ -1152,17 +1153,27 @@ test('curated data-only inspection fails closed on SQL its detectors cannot see 
     [ins + "select query_to_xml('create table x()', true, true, '');", /query_to_xml/],
     [ins + "select dblink_exec('create table x()');", /dblink_exec/],
     ['do language plpython3u $$ x $$;' + ins, /plpgsql/],
-    ["do $$ begin insert into core.property (name) values ('a'); update core.property set name = 'b'; end $$;", /no top-level WHERE clause comparing/],
+    ["do $$ begin insert into core.property (name) values ('a'); update core.property set name = 'b'; end $$;", /no top-level WHERE clause that is a conjunction/],
     ["do $$ begin select 1 into core.evil; end $$;" + ins, /unqualified PL\/pgSQL variable/],
     // round 3: quoted identifiers, tautological bounds, sequences, quoted cron
     [ins + 'select "pg_terminate_backend"(1);', /quoted identifier/],
     [ins + 'select "pg_catalog"."set_config"(\'search_path\', \'x\', false);', /quoted identifier/],
     [ins + 'select "dblink_exec"(\'create table x()\');', /quoted identifier/],
     ['update "pg_catalog"."pg_class" set relhasoids = true where relname = \'p\';', /quoted identifier|outside curated|structure/],
-    ['delete from core.property where true;', /no top-level WHERE clause comparing/],
-    ["update core.property set name = 'x' where 1=1;", /no top-level WHERE clause comparing/],
-    ["update core.property set name = 'x' where id = id;", /no top-level WHERE clause comparing/],
+    ['delete from core.property where true;', /no top-level WHERE clause that is a conjunction/],
+    ["update core.property set name = 'x' where 1=1;", /no top-level WHERE clause that is a conjunction/],
+    ["update core.property set name = 'x' where id = id;", /no top-level WHERE clause that is a conjunction/],
     [ins + "select nextval('core.s');", /nextval/],
+    // round 4: boolean/subquery-blind bounds, large objects, quoted case
+    ['delete from core.property where id = 1 or true;', /conjunction/],
+    ["update core.property set name = 'x' where id = 1 or 1=1;", /conjunction/],
+    ['delete from core.property where not (id = 1);', /conjunction/],
+    ['delete from core.property where exists (select 1 from core.licensor where id = 1);', /conjunction/],
+    ['delete from core.property where id in (select id from core.licensor where id = 1);', /conjunction/],
+    ['update core.property set name = l.name from core.licensor l where l.id = 1;', /FROM\/USING/],
+    [ins + 'select lo_create(0);', /lo_create/],
+    [ins + "select lo_write(1, 'x');", /lo_write/],
+    ['insert into "CORE"."PROPERTY" (name) values (\'a\');', /outside curated Master Data/],
     [ins + 'select "cron"."schedule"(\'j\', \'* * * * *\', \'select 1\');', /quoted identifier/],
   ]
   for (const [sql, pattern] of refused) {

@@ -6,21 +6,20 @@
   "migration_versions": [
     "20261011125719"
   ],
-  "contract_ref": "refs/db-contracts/2421/5",
-  "contract_sha256": "941a8027290cd507240889b915453152c54d4f0330452ba42069423649b4bbb5",
-  "head_sha": "655ece31196f21b529faffecda3c425a63c76aae",
+  "contract_ref": "refs/db-contracts/2421/7",
+  "contract_sha256": "0b27bd41e564740aefc118845b76ee602362349c88903eb8ba0a5bf70ef770b6",
+  "head_sha": "3f75db97e47e4cef0870c5e5e55ca9a4a8aae7da",
   "files_changed": [
     ".github/live-proofs/2421.sql",
     "scripts/test_style_group_watermark.py",
     "supabase/migrations/20261011125719_style_group_change_watermark.sql",
     "supabase/tests/style_group_change_watermark_contracts.sql",
-    ".agent/work/2421/5/contract.json",
-    ".agent/work/2421/5/completion.json"
+    ".agent/work/2421/7/contract.json",
+    ".agent/work/2421/7/completion.json"
   ],
   "db_reads": [
     "function public.style_group_key_for_sku",
     "function public.refresh_style_group_counts_batch",
-    "table public.style_group_tags",
     "table public.admin_config",
     "function public.style_group_key_for_sku",
     "function public.refresh_style_group_counts_batch"
@@ -40,7 +39,8 @@
     "function public.queue_nightly_rebuild_style_groups",
     "index public.assets_style_group_changed_at_idx",
     "index public.style_groups_style_group_changed_at_idx",
-    "index public.assets_ungrouped_style_cursor_idx"
+    "index public.assets_ungrouped_style_cursor_idx",
+    "table public.style_group_tags"
   ],
   "checks": [
     {
@@ -62,6 +62,11 @@
       "command": "node scripts/check-live-proof-probe.mjs",
       "exit_code": 0,
       "evidence": "Outcome returns to u2giants/popdam3; installed-state-only probe provided, separate weekly app acceptance remains required."
+    },
+    {
+      "command": "python3 -m unittest scripts.test_migration_derivation scripts.test_shared_db_live_proof",
+      "exit_code": 0,
+      "evidence": "72 tests passed; both actual source derivation declarations and committed installed-state probe shape qualified."
     }
   ],
   "assumptions_resolved": [

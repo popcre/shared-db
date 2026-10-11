@@ -1176,3 +1176,18 @@ test('curated refusals at PR admission carry a durable refusal result', () => {
   try { evaluateAdmission(issue(missing,4172), parseQueueScope(missing), null) } catch (caught) { missingError = caught }
   assert.match(missingError.message, /generated_types/); assert.ok(missingError.result)
 })
+
+// Issue #4190 / PR #4192: a migration that only changes pg_cron schedules was
+// refused as "no statement-leading schema DDL". pg_cron calls write cron.job
+// rows and are modelled as the exact structural object `table cron.job`.
+test('pg_cron schedule changes are structural writes on table cron.job (#4192)', () => {
+  const file = (content) => [{ filename:'supabase/migrations/20261011175808_x.sql', status:'added', content }]
+  const cron = "do $cadence$\ndeclare v_job_id bigint;\nbegin\n  select jobid into v_job_id from cron.job where jobname = 'refresh-style-guide-matviews';\n  if v_job_id is not null then perform cron.alter_job(job_id := v_job_id, schedule := '7 * * * *'); end if;\nend\n$cadence$;\n"
+  assert.deepEqual(inspectPrStructuralChange(file(cron)).objects, ['table cron.job'])
+  assert.deepEqual(inspectPrStructuralChange(file("select cron.schedule('j', '* * * * *', 'select 1');")).objects, ['table cron.job'])
+  assert.deepEqual(inspectPrStructuralChange(file("select cron.unschedule('j');")).objects, ['table cron.job'])
+  // prose or literals mentioning cron calls are not writes
+  assert.throws(() => inspectPrStructuralChange(file("-- perform cron.alter_job(1)\nselect 'cron.schedule(x)';")), /no statement-leading schema DDL/)
+  // the curated data-only path never admits a cron change
+  assert.throws(() => inspectPrCuratedDataChange(file("insert into core.property (name) values ('a');\nselect cron.schedule('j', '* * * * *', 'select 1');")), /CRON/)
+})

@@ -95,7 +95,7 @@ const FORBIDDEN_WORDS = new Set([
   'discard', 'vacuum', 'reindex', 'cluster', 'refresh', 'checkpoint', 'grant', 'revoke', 'create', 'alter', 'drop',
   'reset', 'lock', 'security', 'import', 'load', 'savepoint', 'rollback', 'commit', 'release', 'abort', 'start',
   'set_config', 'setval', 'session_replication_role', 'session_authorization', 'search_path', 'role',
-  'pg_catalog', 'information_schema', 'cursor', 'open', 'fetch', 'move', 'close', 'format', 'quote_ident', 'quote_literal',
+  'pg_catalog', 'information_schema', 'cron', 'cursor', 'open', 'fetch', 'move', 'close', 'format', 'quote_ident', 'quote_literal',
   'lo_import', 'lo_export', 'lo_unlink', 'lo_from_bytea', 'lo_put',
 ])
 const FORBIDDEN_PREFIXES = ['pg_', 'dblink', 'query_to_', 'table_to_', 'schema_to_', 'database_to_', 'cursor_to_', 'xpath_table']
@@ -243,4 +243,24 @@ export function inspectCuratedSql(sql) {
   }
   if (!dml) throw new CuratedSqlError('the migration writes no row')
   return { writes: [...writes].sort() }
+}
+
+// pg_cron (issue #4184, for #4190 / PR #4192): cron.schedule, schedule_in_database,
+// unschedule and alter_job change scheduled database behaviour by writing rows in
+// cron.job. They carry no statement-leading DDL, so the structural detectors saw
+// nothing and refused the migration as "not structural". Each call is a write on
+// the exact object `table cron.job`, found in top-level code and in DO bodies
+// (string literals and comments are lexed out, so prose cannot trigger it).
+const PG_CRON_WRITERS = new Set(['schedule', 'schedule_in_database', 'unschedule', 'alter_job'])
+export function pgCronWrites(sql) {
+  let units
+  try { units = codeUnits(sql) } catch { return [] }
+  for (const { tokens } of units) {
+    for (let k = 0; k + 3 < tokens.length; k++) {
+      const [a, dot, b, open] = [tokens[k], tokens[k + 1], tokens[k + 2], tokens[k + 3]]
+      if (a.type === 'word' && a.value === 'cron' && dot.type === 'punct' && dot.value === '.'
+        && b.type === 'word' && PG_CRON_WRITERS.has(b.value) && open.type === 'punct' && open.value === '(') return ['table cron.job']
+    }
+  }
+  return []
 }

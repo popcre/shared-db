@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { currentRepository } from '../lib/repository-identity.mjs'
-import { CuratedSqlError, inspectCuratedSql } from './curated-admission.mjs'
+import { CuratedSqlError, inspectCuratedSql, pgCronWrites } from './curated-admission.mjs'
 import { canonicalIdentifier, dispatchObjectKeys, roleReadKeys, extractOperations, inventoryDdlVerbs } from '../check-pr-object-collisions.mjs'
 
 export class AdmissionError extends Error {
@@ -239,7 +239,7 @@ export function inspectPrStructuralChange(prFiles = []) {
   })
   const actualWrites = proposedSql.flatMap((sql) => dispatchObjectKeys(sql))
   const ddl=inventoryDdlVerbs(proposedSql)
-  const rewrites=proposedSql.flatMap((sql)=>catalogFunctionRewrites(sql))
+  const rewrites=[...proposedSql.flatMap((sql)=>catalogFunctionRewrites(sql)),...proposedSql.flatMap((sql)=>pgCronWrites(sql))]
   if(!ddl.length&&!rewrites.length&&!actualWrites.some((key) => key.startsWith('role ')))throw new AdmissionError('the pull request migration files contain no statement-leading schema DDL, so the actual change is not structural')
   const ambiguous=ddl.filter((row)=>!row.acknowledged)
   if(ambiguous.length)throw new AdmissionError(`the pull request contains unmodelled DDL (${ambiguous.map((row)=>row.verb).join(', ')}); structural admission fails closed`)

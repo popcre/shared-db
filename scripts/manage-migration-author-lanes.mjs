@@ -749,7 +749,7 @@ export const githubIo = {
   getIssueComments(number) { return ghPaginated(`repos/${REPO}/issues/${number}/comments?per_page=100`) },
   getPrReviews(number) { return ghPaginated(`repos/${REPO}/pulls/${number}/reviews?per_page=100`) },
   readLeaseActivity(lease) {
-    const query=`query{repository(owner:${JSON.stringify(REPO_OWNER)},name:${JSON.stringify(REPO_NAME)}){pullRequest(number:${Number(lease.pr)}){comments(first:100){totalCount nodes{updatedAt}} reviews(first:100){totalCount nodes{submittedAt updatedAt}} reviewThreads(first:100){totalCount nodes{comments(first:100){totalCount nodes{updatedAt}}}}} object(oid:${JSON.stringify(String(lease.headSha))}){... on Commit{statusCheckRollup{contexts(first:100){totalCount nodes{... on CheckRun{startedAt completedAt}}}}}}}}`
+    const query=`query{repository(owner:${JSON.stringify(REPO_OWNER)},name:${JSON.stringify(REPO_NAME)}){pullRequest(number:${Number(lease.pr)}){comments(first:100){totalCount nodes{id updatedAt}} reviews(first:100){totalCount nodes{id submittedAt updatedAt}} reviewThreads(first:100){totalCount nodes{comments(first:100){totalCount nodes{id updatedAt}}}}} object(oid:${JSON.stringify(String(lease.headSha))}){... on Commit{statusCheckRollup{contexts(first:100){totalCount nodes{__typename ... on CheckRun{databaseId status conclusion startedAt completedAt} ... on StatusContext{id state createdAt}}}}}}}}`
     const data=ghJson(['api','graphql','-f',`query=${query}`])?.data?.repository,pr=data?.pullRequest,contexts=data?.object?.statusCheckRollup?.contexts
     const workflows=ghJson(['api',`repos/${REPO}/actions/runs?head_sha=${lease.headSha}&per_page=100`])
     if(!pr||!Array.isArray(pr.comments?.nodes)||Number(pr.comments.totalCount)!==pr.comments.nodes.length||!Array.isArray(pr.reviews?.nodes)||Number(pr.reviews.totalCount)!==pr.reviews.nodes.length||!Array.isArray(pr.reviewThreads?.nodes)||Number(pr.reviewThreads.totalCount)!==pr.reviewThreads.nodes.length)throw new LaneError('reviewer comment or review activity is unreadable or paginated')
@@ -1689,6 +1689,34 @@ export function listDurableVerdictRefs(io,{fresh=false}={}){
   if(reviewWireBudget)freshDurableVerdictRefs=rows
   return rows
 }
+function normalizedReviewerActivity(name,rows,fields){
+  const metadataFields=['id','databaseId','__typename','status','state','conclusion',...fields]
+  return rows.map((row)=>{
+    if(!row||typeof row!=='object')throw new LaneError(`reviewer ${name} metadata is unreadable`)
+    const metadata={}
+    let timestampCount=0
+    for(const field of metadataFields){
+      const value=row[field]
+      if(value===undefined||value===null)continue
+      if(fields.includes(field)){
+        if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)||!Number.isFinite(Date.parse(value)))throw new LaneError(`reviewer ${name} activity timestamp is unreadable`)
+        metadata[field]=new Date(value).toISOString();timestampCount++
+      }else{
+        if(!['string','number','boolean'].includes(typeof value))throw new LaneError(`reviewer ${name} metadata is unreadable`)
+        metadata[field]=value
+      }
+    }
+    if(timestampCount===0)throw new LaneError(`reviewer ${name} activity timestamp is missing`)
+    if(name==='checkRuns'||name==='workflowRuns'){
+      const legacyContext=name==='checkRuns'&&row.__typename==='StatusContext'
+      const status=legacyContext?row.state:row.status
+      if(typeof status!=='string')throw new LaneError(`reviewer ${name} status is missing or unreadable`)
+      if(legacyContext?!['SUCCESS','FAILURE','ERROR'].includes(status.toUpperCase()):status.toUpperCase()!=='COMPLETED')throw new LaneError(`reviewer ${name} status is nonterminal or unknown`)
+    }
+    return metadata
+  }).sort((left,right)=>{const a=canonicalJson(left),b=canonicalJson(right);return a<b?-1:a>b?1:0})
+}
+
 export function activityFingerprintForLease(lease,io,{freshPr=false,ownStartOnly=false}={}){
   if(typeof io?.readLeaseActivity!=='function')throw new LaneError('reviewer activity is unreadable; silence cannot be observed')
   const pr=freshPr&&typeof io.__freshGetPr==='function'?io.__freshGetPr(lease.pr):reviewWireBudget&&typeof io.readPrWithReviewContext==='function'?io.readPrWithReviewContext(lease.pr):io.getPr(lease.pr)
@@ -1706,9 +1734,10 @@ export function activityFingerprintForLease(lease,io,{freshPr=false,ownStartOnly
     ['checkRuns',activity.checkRuns,['completed_at','completedAt','started_at','startedAt','created_at','createdAt']],
     ['workflowRuns',activity.workflowRuns,['updated_at','updatedAt','created_at','createdAt']],
   ]
+  const normalized=groups.map(([name,rows,fields])=>[name,normalizedReviewerActivity(name,rows,fields)])
   const maxima=groups.map(([name,rows,fields])=>[name,newestActivityTimestamp(rows,fields)])
   const last=maxima.map(([,value])=>value).filter(Boolean).sort((a,b)=>b.time-a.time)[0]??null
-  const facts={issue:Number(lease.issue),pr:Number(lease.pr),headSha:String(lease.headSha).toLowerCase(),slot:Number(lease.slot??1),sequence:Number(lease.sequence),prState:String(pr.state).toLowerCase(),currentHead:String(pr.head.sha).toLowerCase(),draft:pr.draft===true,verdictPresent:hasVerdictForHead(lease.issue,lease.pr,lease.headSha,io,leaseVerdictOptions(lease)),activity:Object.fromEntries(maxima.map(([name,value])=>[name,{count:activity[name].length,max:value?.value??null}]))}
+  const facts={issue:Number(lease.issue),pr:Number(lease.pr),headSha:String(lease.headSha).toLowerCase(),slot:Number(lease.slot??1),sequence:Number(lease.sequence),prState:String(pr.state).toLowerCase(),currentHead:String(pr.head.sha).toLowerCase(),draft:pr.draft===true,verdictPresent:hasVerdictForHead(lease.issue,lease.pr,lease.headSha,io,leaseVerdictOptions(lease)),activity:Object.fromEntries(maxima.map(([name,value])=>[name,{count:activity[name].length,max:value?.value??null}])),metadataDigest:createHash('sha256').update(canonicalJson(Object.fromEntries(normalized))).digest('hex')}
   return {fingerprint:createHash('sha256').update(canonicalJson(facts)).digest('hex'),lastActivityIso:last?.value??'none',facts}
 }
 
@@ -1738,7 +1767,10 @@ function probeSilentReviewerOperation(options,now,io){
   const heldSince=lease.heldSince
   if(unstarted&&reviewStartMarkerPresent({...lease,sequence:request.sequence,slot:request.slot},io))throw new LaneError('unstarted probe refused because the review has a durable start marker')
   const observed=activityFingerprintForLease({...lease,slot:request.slot},io,{ownStartOnly:unstarted})
-  if(!unstarted&&observed.lastActivityIso!=='none'&&Date.parse(observed.lastActivityIso)>Date.parse(heldSince))throw new LaneError('silence probe refused because reviewer activity occurred after the lease was drawn')
+  if(!unstarted&&observed.lastActivityIso!=='none'){
+    const quietAge=reviewLeaseAgeHours(observed.lastActivityIso,now)
+    if(quietAge===null||quietAge<SILENCE_MIN_AGE_HOURS)throw new LaneError(`silence probe requires readable terminal activity quiet for at least ${SILENCE_MIN_AGE_HOURS} hours`)
+  }
   const message=`db-coordination reviewer-silence-probe reviewer=${original.reviewer} issue=${request.issue} pr=${request.pr} head=${request.headSha} sequence=${request.sequence} slot=${request.slot} observed-at=${new Date(now).toISOString()} lease-held-since=${new Date(heldSince).toISOString()} last-activity=${observed.lastActivityIso} fingerprint=${observed.fingerprint}`
   const sha=io.makeOwnerCommit(message)
   if(!io.createRef(probeRef,sha)||io.readRef(probeRef)!==sha)throw new LaneError('reviewer silence probe create-only write could not be proved')

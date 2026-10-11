@@ -2877,7 +2877,7 @@ test('silence fingerprint changes on reviewer progress and ignores an unrelated 
 
 test('a genuinely working lane cannot be probed or reclaimed after one comment',()=>{
   const active=silentLeaseIo({activity:[{updated_at:'2026-09-04T12:30:00Z'}]})
-  assert.throws(()=>probeSilentReviewer({...active.request,failedSequence:active.assigned.sequence},new Date('2026-09-04T13:00:00Z'),active.io),/activity occurred after/)
+  assert.throws(()=>probeSilentReviewer({...active.request,failedSequence:active.assigned.sequence},new Date('2026-09-04T13:00:00Z'),active.io),/quiet for at least/)
   const quiet=silentLeaseIo(),options={...quiet.request,failedSequence:quiet.assigned.sequence,confirmNoVerdict:true,confirmNoArtifact:true}
   probeSilentReviewer(options,new Date('2026-09-04T12:00:00Z'),quiet.io)
   quiet.io.readLeaseActivity=()=>({issueComments:[{updated_at:'2026-09-04T13:00:00Z'}],reviewComments:[],reviews:[],checkRuns:[],workflowRuns:[]})
@@ -3042,7 +3042,7 @@ test('unstarted mode judges a reviewer only by its own start marker: CI and a si
   assert.ok(released.releaseSha);assert.equal(fixture.io.refs.get(fixture.leaseRef)??null,null)
   // The ordinary (non-unstarted) silence path still treats PR activity as progress.
   const plain=silentLeaseIo({heldSince:'2026-09-04T10:00:00Z',activity:[{created_at:'2026-09-04T11:00:00Z'}]})
-  assert.throws(()=>probeSilentReviewer({...plain.request,failedSequence:plain.assigned.sequence},new Date('2026-09-04T13:00:00Z'),plain.io),/activity occurred after the lease was drawn/)
+  assert.throws(()=>probeSilentReviewer({...plain.request,failedSequence:plain.assigned.sequence},new Date('2026-09-04T12:59:59Z'),plain.io),/quiet for at least/)
   // Fail closed: an unreadable PR is never read as unstarted.
   const dark=silentLeaseIo({heldSince:'2026-09-04T10:00:00Z'}),darkOptions={...dark.request,failedSequence:dark.assigned.sequence,unstarted:true}
   dark.io.getPr=()=>null
@@ -11479,4 +11479,100 @@ test('nonclosing structural proof refuses untrusted or stale canonical identity 
   const verify=f.io.verifyNonclosingStructuralBinding;f.io.verifyNonclosingStructuralBinding=()=>({issue:41,headSha:f.head,route:'repo-maintenance'});assert.throws(check,/structural binding is unreadable/);f.io.verifyNonclosingStructuralBinding=verify
   f.io.closingIssuesForPr=()=>[{number:41},{number:42}];assert.throws(check,/must close exactly one/)
  }finally{f.close()}
+})
+
+// #3536: ordinary silence recovery requires fully readable terminal quiet activity.
+function ordinaryActivityFixture(activity){
+  const fixture=silentLeaseIo(),options={...fixture.request,failedSequence:fixture.assigned.sequence,confirmNoVerdict:true,confirmNoArtifact:true}
+  fixture.io.readLeaseActivity=()=>({issueComments:[],reviewComments:[],reviews:[],checkRuns:[],workflowRuns:[],...activity})
+  return {...fixture,options}
+}
+test('ordinary silence accepts completed postdraw CI only after both two-hour windows',()=>{
+  const fixture=ordinaryActivityFixture({checkRuns:[{id:'check-1',status:'COMPLETED',startedAt:'2026-09-04T10:30:00Z',completedAt:'2026-09-04T11:00:00Z'}],workflowRuns:[{id:2,status:'completed',updated_at:'2026-09-04T11:00:00Z'}]})
+  assert.throws(()=>probeSilentReviewer(fixture.options,new Date('2026-09-04T12:59:59Z'),fixture.io),/quiet for at least/)
+  probeSilentReviewer(fixture.options,new Date('2026-09-04T13:00:00Z'),fixture.io)
+  assert.throws(()=>reclaimSilentReviewer(fixture.options,new Date('2026-09-04T14:59:59Z'),fixture.io),/unchanged readable probe/)
+  assert.ok(reclaimSilentReviewer(fixture.options,new Date('2026-09-04T15:00:00Z'),fixture.io).releaseSha)
+})
+test('ordinary silence rejects old running queued unknown and missing CI states',()=>{
+  for(const group of ['checkRuns','workflowRuns'])for(const status of ['IN_PROGRESS','queued','mystery',null,undefined]){
+    const row={startedAt:'2026-09-04T10:00:00Z',updated_at:'2026-09-04T10:00:00Z',...(status===undefined?{}:{status})}
+    const fixture=ordinaryActivityFixture({[group]:[row]})
+    assert.throws(()=>probeSilentReviewer(fixture.options,new Date('2026-09-04T15:00:00Z'),fixture.io),/status is/)
+    assert.equal(fixture.io.refs.get(fixture.leaseRef),fixture.leaseSha)
+  }
+})
+test('ordinary silence refuses absent invalid future and partial unreadable activity timestamps',()=>{
+  for(const row of [{},{updatedAt:null},{updatedAt:'not-a-date'},{updatedAt:'2026-09-05T10:00:00Z'},{updatedAt:'2026-09-04T10:00:00Z',createdAt:'bad'}]){
+    const fixture=ordinaryActivityFixture({issueComments:[row]})
+    assert.throws(()=>probeSilentReviewer(fixture.options,new Date('2026-09-04T15:00:00Z'),fixture.io),/timestamp|quiet for at least/)
+  }
+})
+test('ordinary silence keeps lease-age minimum even when all observed activity is old',()=>{
+  const fixture=silentLeaseIo({heldSince:'2026-09-04T14:00:00Z',activity:[{updatedAt:'2026-09-04T10:00:00Z'}]})
+  assert.throws(()=>probeSilentReviewer({...fixture.request,failedSequence:fixture.assigned.sequence},new Date('2026-09-04T15:00:00Z'),fixture.io),/lease at least 2 hours/)
+})
+test('ordinary full metadata digest detects same-count nonmaximum edits and ignores row ordering',()=>{
+  const rows=[{id:1,updatedAt:'2026-09-04T10:00:00Z'},{id:2,updatedAt:'2026-09-04T11:00:00Z'}]
+  const fixture=ordinaryActivityFixture({issueComments:rows}),lease={...fixture.assigned,slot:1}
+  const before=activityFingerprintForLease(lease,fixture.io)
+  rows.reverse()
+  assert.equal(activityFingerprintForLease(lease,fixture.io).fingerprint,before.fingerprint)
+  rows.find(row=>row.id===1).updatedAt='2026-09-04T10:30:00Z'
+  const after=activityFingerprintForLease(lease,fixture.io)
+  assert.equal(after.lastActivityIso,before.lastActivityIso)
+  assert.notEqual(after.fingerprint,before.fingerprint)
+})
+test('ordinary reclaim refuses changed nonmaximum metadata and nonterminal activity after immutable probe',()=>{
+  for(const change of ['nonmaximum','ongoing']){
+    const rows=[{id:1,updatedAt:'2026-09-04T10:00:00Z'},{id:2,updatedAt:'2026-09-04T11:00:00Z'}]
+    const fixture=ordinaryActivityFixture({issueComments:rows})
+    const probe=probeSilentReviewer(fixture.options,new Date('2026-09-04T13:00:00Z'),fixture.io)
+    if(change==='nonmaximum')rows[0].updatedAt='2026-09-04T10:30:00Z'
+    else fixture.io.readLeaseActivity=()=>({issueComments:rows,reviewComments:[],reviews:[],checkRuns:[{status:'IN_PROGRESS',startedAt:'2026-09-04T10:00:00Z'}],workflowRuns:[]})
+    assert.throws(()=>reclaimSilentReviewer(fixture.options,new Date('2026-09-04T15:00:00Z'),fixture.io),/fingerprint changed|nonterminal/)
+    assert.equal(fixture.io.refs.get(fixture.leaseRef),fixture.leaseSha)
+    assert.equal(fixture.io.refs.get(probe.probeRef),probe.probeSha)
+  }
+})
+test('ordinary silence legacy status contexts require terminal readable states',()=>{
+  for(const state of ['SUCCESS','FAILURE','ERROR']){
+    const fixture=ordinaryActivityFixture({checkRuns:[{__typename:'StatusContext',id:'ctx',state,createdAt:'2026-09-04T11:00:00Z'}]})
+    assert.ok(probeSilentReviewer(fixture.options,new Date('2026-09-04T13:00:00Z'),fixture.io).probeSha)
+  }
+  const pending=ordinaryActivityFixture({checkRuns:[{__typename:'StatusContext',state:'PENDING',createdAt:'2026-09-04T10:00:00Z'}]})
+  assert.throws(()=>probeSilentReviewer(pending.options,new Date('2026-09-04T15:00:00Z'),pending.io),/nonterminal/)
+})
+
+test('ordinary reclaim freshly refuses progress head lease and verdict races under the mutex',()=>{
+  for(const race of ['progress','head','lease','verdict']){
+    const rows=[{id:1,updatedAt:'2026-09-04T11:00:00Z'}],fixture=ordinaryActivityFixture({issueComments:rows})
+    probeSilentReviewer(fixture.options,new Date('2026-09-04T13:00:00Z'),fixture.io)
+    const create=fixture.io.createRef
+    fixture.io.createRef=(ref,sha)=>{
+      const made=create(ref,sha)
+      if(ref===MUTEX_REF&&made){
+        if(race==='progress')rows[0].updatedAt='2026-09-04T14:59:00Z'
+        if(race==='head')fixture.io.getPr=()=>({state:'open',head:{sha:'b'.repeat(40)}})
+        if(race==='lease')fixture.io.refs.set(fixture.leaseRef,'b'.repeat(40))
+        if(race==='verdict')giveVerdict(fixture.io,fixture.request)
+      }
+      return made
+    }
+    assert.throws(()=>reclaimSilentReviewer(fixture.options,new Date('2026-09-04T15:00:00Z'),fixture.io))
+    assert.equal([...fixture.io.refs.keys()].some(ref=>ref.startsWith(REVIEW_SILENCE_RELEASE_REF_PREFIX)),false)
+    assert.equal(fixture.io.refs.get(fixture.leaseRef),race==='lease'?'b'.repeat(40):fixture.leaseSha)
+  }
+})
+test('ordinary reclaim preserves exact lease when a competing lease wins atomic CAS',()=>{
+  const fixture=ordinaryActivityFixture({})
+  probeSilentReviewer(fixture.options,new Date('2026-09-04T12:00:00Z'),fixture.io)
+  const atomic=fixture.io.atomicReviewRefs
+  fixture.io.atomicReviewRefs=(changes)=>{
+    if(changes.some(change=>change.ref===fixture.leaseRef&&change.sha===null))fixture.io.refs.set(fixture.leaseRef,'b'.repeat(40))
+    return atomic(changes)
+  }
+  assert.throws(()=>reclaimSilentReviewer(fixture.options,new Date('2026-09-04T14:00:00Z'),fixture.io))
+  assert.equal(fixture.io.refs.get(fixture.leaseRef),'b'.repeat(40))
+  assert.equal([...fixture.io.refs.keys()].some(ref=>ref.startsWith(REVIEW_SILENCE_RELEASE_REF_PREFIX)),false)
 })

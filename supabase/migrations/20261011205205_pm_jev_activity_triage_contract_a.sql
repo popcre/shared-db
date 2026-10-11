@@ -300,7 +300,19 @@ begin
     extensions.hmac(convert_to(v_canonical, 'utf8'), convert_to(v_key, 'utf8'), 'sha256'),
     'hex'
   );
-  return v_expected = lower(btrim(p_signature));
+  if v_expected <> lower(btrim(p_signature)) then
+    return false;
+  end if;
+  -- Short expiry on the signed timestamp (5 minutes).
+  begin
+    if (p_envelope ->> 'timestamp') is null
+       or abs(extract(epoch from ((p_envelope ->> 'timestamp')::timestamptz - now()))) > 300 then
+      return false;
+    end if;
+  exception when others then
+    return false;
+  end;
+  return true;
 end $$;
 
 revoke all on function pim.pm_verify_jev_hmac_envelope(jsonb, text) from public, anon, authenticated, service_role;
@@ -448,7 +460,7 @@ begin
   if length(v) > 4000 then
     raise exception using errcode = '22023', message = 'PM_COMMENT_BODY_TOO_LONG';
   end if;
-  if v ~ '[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]' then
+  if v ~ '[[:cntrl:]&&[^[:space:]]]' or v ~ chr(0) then
     raise exception using errcode = '22023', message = 'PM_COMMENT_BODY_CONTROL_CHARS';
   end if;
   return v;
@@ -957,7 +969,10 @@ begin
     raise exception using errcode = '22023', message = 'PM_ENVELOPE_INVALID';
   end if;
   if (p_envelope ->> 'requester_profile_id') is distinct from v_row.requester_profile_id::text
-     or (p_envelope ->> 'comment_id') is distinct from v_row.comment_id::text then
+     or (p_envelope ->> 'comment_id') is distinct from v_row.comment_id::text
+     or (p_envelope ->> 'product_id') is distinct from v_row.product_id::text
+     or (p_envelope ->> 'source_body_revision') is distinct from v_row.source_body_revision::text
+     or (p_envelope ->> 'input_digest') is distinct from v_row.input_digest then
     raise exception using errcode = '22023', message = 'PM_ENVELOPE_ROW_MISMATCH';
   end if;
 
@@ -1042,7 +1057,7 @@ begin
   if v_title is null or length(v_title) < 1 or length(v_title) > 200 then
     raise exception using errcode = '22023', message = 'PM_INVALID_DEPENDENCY_TITLE';
   end if;
-  if v_title ~ '[\u0000-\u001F\u007F]' then
+  if v_title ~ '[[:cntrl:]]' then
     raise exception using errcode = '22023', message = 'PM_INVALID_CONTROL_CHARS';
   end if;
 
@@ -1081,14 +1096,14 @@ begin
   if v_type is null or length(v_type) < 1 or length(v_type) > 100 then
     raise exception using errcode = '22023', message = 'PM_INVALID_DECISION_TYPE';
   end if;
-  if v_type ~ '[\u0000-\u001F\u007F]' then
+  if v_type ~ '[[:cntrl:]]' then
     raise exception using errcode = '22023', message = 'PM_INVALID_CONTROL_CHARS';
   end if;
   v_notes := nullif(btrim(coalesce(p_notes, '')), '');
   if v_notes is not null and length(v_notes) > 2000 then
     raise exception using errcode = '22023', message = 'PM_INVALID_DECISION_NOTES';
   end if;
-  if v_notes is not null and v_notes ~ '[\u0000-\u001F\u007F]' then
+  if v_notes is not null and v_notes ~ '[[:cntrl:]]' then
     raise exception using errcode = '22023', message = 'PM_INVALID_CONTROL_CHARS';
   end if;
 
@@ -1126,7 +1141,7 @@ begin
   if v_title is null or length(v_title) < 1 or length(v_title) > 200 then
     raise exception using errcode = '22023', message = 'PM_INVALID_REMINDER_TITLE';
   end if;
-  if v_title ~ '[\u0000-\u001F\u007F]' then
+  if v_title ~ '[[:cntrl:]]' then
     raise exception using errcode = '22023', message = 'PM_INVALID_CONTROL_CHARS';
   end if;
   if p_due_at is not null and p_due_at < date '2000-01-01' then

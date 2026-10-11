@@ -41,6 +41,7 @@ declare
   v_count integer;
   v_raised boolean;
   v_state text;
+  v_op_id uuid;
 begin
   -- ------------------------------------------------------------------
   -- A  CATALOG
@@ -143,7 +144,12 @@ begin
 
   -- Fixture writes run as the migration role; only RPC calls need the
   -- authenticated session role.
-  v_result := api.pm_add_product_comment(v_product, '  first valid comment  ', gen_random_uuid());
+  v_result := api.pm_reserve_product_comment_operation(v_product, gen_random_uuid());
+  if (v_result ->> 'status') <> 'reserved' then
+    raise exception 'reserve must return reserved, got %', v_result ->> 'status';
+  end if;
+  v_op_id := (v_result ->> 'client_operation_id')::uuid;
+  v_result := api.pm_add_product_comment(v_product, '  first valid comment  ', v_op_id);
   v_comment := (v_result ->> 'comment_id')::uuid;
   v_rev := (v_result ->> 'body_revision')::integer;
   if v_comment is null or v_rev is distinct from 1 then
@@ -243,7 +249,9 @@ begin
   -- ------------------------------------------------------------------
   -- F  ACCEPT ONCE on a fresh actionable triage
   -- ------------------------------------------------------------------
-  v_result := api.pm_add_product_comment(v_product, 'accept-me comment', gen_random_uuid());
+  v_result := api.pm_reserve_product_comment_operation(v_product, gen_random_uuid());
+  v_op_id := (v_result ->> 'client_operation_id')::uuid;
+  v_result := api.pm_add_product_comment(v_product, 'accept-me comment', v_op_id);
   v_comment := (v_result ->> 'comment_id')::uuid;
   v_result := api.pm_begin_activity_triage(v_comment, 'digest-accept-' || v_comment, 'key-v1', 'jev-test-model', 'contract-v1', null, null);
   v_triage_id := (v_result ->> 'triage_id')::uuid;

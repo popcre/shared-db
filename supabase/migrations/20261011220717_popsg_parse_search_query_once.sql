@@ -1,5 +1,7 @@
 -- Issue #4210; exact-object claim #4212. Parse the query once in each mode.
--- No result, facet, ranking, authorization, grant or timeout change.
+-- Preserve result, facet, ranking, authorization, grants and timeout.
+-- Guides plan against this call's bound values and aggregate page metadata
+-- separately from tags; no SQL string contains user-controlled text.
 -- derived-from: 20260917024050
 do $baseline$
 begin
@@ -368,23 +370,24 @@ with params as not materialized (
   ) into v_result
   from params p;
   else
+execute $guides_query$
 with params as not materialized (
     select
-      nullif(btrim(coalesce(p_query, '')), '') as q,
+      nullif(btrim(coalesce($2, '')), '') as q,
       case
-        when lower(coalesce(p_sort, 'relevance')) in
+        when lower(coalesce($13, 'relevance')) in
           ('relevance', 'modified_desc', 'modified_asc', 'name_asc')
-          then lower(coalesce(p_sort, 'relevance'))
+          then lower(coalesce($13, 'relevance'))
         else 'relevance'
       end as sort_key,
-      greatest(1, least(coalesce(p_limit, 50), 200)) as lim,
-      greatest(0, coalesce(p_offset, 0)) as off,
+      greatest(1, least(coalesce($14, 50), 200)) as lim,
+      greatest(0, coalesce($15, 0)) as off,
       coalesce((select array_agg(distinct lower(u.value))
-                  from unnest(p_preview_states) as u(value)), '{}'::text[]) as preview_states,
+                  from unnest($8) as u(value)), '{}'::text[]) as preview_states,
       coalesce((select array_agg(distinct lower(u.value))
-                  from unnest(p_render_exception_states) as u(value)), '{}'::text[]) as render_states,
+                  from unnest($9) as u(value)), '{}'::text[]) as render_states,
       coalesce((select array_agg(distinct lower(u.value))
-                  from unnest(p_pdf_content_states) as u(value)), '{}'::text[]) as pdf_states
+                  from unnest($10) as u(value)), '{}'::text[]) as pdf_states
   ), tsq as materialized (
     select case when p.q is null then null
                 else websearch_to_tsquery('simple', p.q) end as query
@@ -441,16 +444,16 @@ with params as not materialized (
     cross join params p
     where d.is_active
       and (t.query is null or d.search_vector @@ t.query)
-      and (p_licensors is null or cardinality(p_licensors) = 0 or d.licensor_name = any (p_licensors))
-      and (p_properties is null or cardinality(p_properties) = 0 or d.property_folder = any (p_properties))
-      and (p_style_guides is null or cardinality(p_style_guides) = 0 or d.style_guide_name = any (p_style_guides))
-      and (p_extensions is null or cardinality(p_extensions) = 0
+      and ($3 is null or cardinality($3) = 0 or d.licensor_name = any ($3))
+      and ($4 is null or cardinality($4) = 0 or d.property_folder = any ($4))
+      and ($5 is null or cardinality($5) = 0 or d.style_guide_name = any ($5))
+      and ($6 is null or cardinality($6) = 0
            or lower(coalesce(d.file_extension, '')) = any (
-             select lower(u.value) from unnest(p_extensions) as u(value)
+             select lower(u.value) from unnest($6) as u(value)
            ))
-      and (p_tags is null or cardinality(p_tags) = 0 or d.tag_names && p_tags)
-      and (p_modified_after is null or d.modified_at >= p_modified_after)
-      and (p_modified_before is null or d.modified_at <= p_modified_before)
+      and ($7 is null or cardinality($7) = 0 or d.tag_names && $7)
+      and ($11 is null or d.modified_at >= $11)
+      and ($12 is null or d.modified_at <= $12)
       and (cardinality(p.preview_states) = 0
            or (case when f.has_preview then 'available' else 'missing' end) = any (p.preview_states))
       and (cardinality(p.render_states) = 0 or case
@@ -482,31 +485,32 @@ with params as not materialized (
              case when p.sort_key = 'modified_asc' then e.modified_at end asc nulls last,
              case when p.sort_key = 'name_asc' then e.sort_name end asc nulls last,
              e.entity_key limit (select lim from params) offset (select off from params)) e cross join params p
-  ), page_results as (select pg.rn, jsonb_build_object(
-        'result_mode', 'guides',
-        'guide_key', pg.entity_key,
-        'root_label', pg.root_label,
-        'licensor_name', pg.licensor_name,
-        'property_folder', pg.property_folder,
-        'style_guide_folder', pg.style_guide_folder,
-        'style_guide_name', pg.style_guide_name,
-        'matched_file_count', count(distinct d.style_guide_file_id),
-        'file_extensions', to_jsonb(coalesce(array_agg(distinct d.extension)
-                              filter (where d.extension is not null), '{}'::text[])),
-        'tag_names', to_jsonb(coalesce(array_agg(distinct tag.value order by tag.value)
-                                       filter (where tag.value is not null), '{}'::text[])),
-        'modified_at', max(d.modified_at),
-        'thumbnail_url', (array_agg(live_payload.thumbnail_url order by
-                             (live_payload.thumbnail_url is null), d.modified_at desc nulls last,
-                             d.style_guide_file_id)
-                          filter (where live_payload.thumbnail_url is not null))[1],
-        'preview_states', to_jsonb(array_agg(distinct d.preview_state order by d.preview_state)),
-        'render_exception_states', to_jsonb(array_agg(distinct d.render_exception_state order by d.render_exception_state)),
-        'pdf_content_states', to_jsonb(array_agg(distinct d.pdf_content_state order by d.pdf_content_state)),
-        'rank', max(d.rank)
-      ) as result from page pg join active_children d on d.group_id=pg.group_id join public.style_guide_files live_payload on live_payload.id=d.style_guide_file_id left join lateral unnest(d.tag_names) tag(value) on true group by pg.rn,pg.entity_key,pg.root_label,pg.licensor_name,pg.property_folder,pg.style_guide_folder,pg.style_guide_name)
+  ), page_children as materialized (
+ select d.*, live_payload.thumbnail_url from active_children d join page pg on pg.group_id=d.group_id
+ join public.style_guide_files live_payload on live_payload.id=d.style_guide_file_id
+), page_metadata as materialized (
+ select d.group_id, count(distinct d.style_guide_file_id) as matched_file_count,
+ coalesce(array_agg(distinct d.extension) filter(where d.extension is not null),'{}'::text[]) as file_extensions,
+ max(d.modified_at) as modified_at,
+ (array_agg(d.thumbnail_url order by (d.thumbnail_url is null),d.modified_at desc nulls last,d.style_guide_file_id) filter(where d.thumbnail_url is not null))[1] as thumbnail_url,
+ array_agg(distinct d.preview_state order by d.preview_state) as preview_states,
+ array_agg(distinct d.render_exception_state order by d.render_exception_state) as render_exception_states,
+ array_agg(distinct d.pdf_content_state order by d.pdf_content_state) as pdf_content_states,
+ max(d.rank) as rank from page_children d group by d.group_id
+), page_tags as materialized (
+ select d.group_id,coalesce(array_agg(distinct tag.value order by tag.value) filter(where tag.value is not null),'{}'::text[]) as tag_names
+ from page_children d left join lateral unnest(d.tag_names) tag(value) on true group by d.group_id
+), page_results as (
+ select pg.rn,jsonb_build_object('result_mode','guides','guide_key',pg.entity_key,
+ 'root_label',pg.root_label,'licensor_name',pg.licensor_name,'property_folder',pg.property_folder,
+ 'style_guide_folder',pg.style_guide_folder,'style_guide_name',pg.style_guide_name,
+ 'matched_file_count',m.matched_file_count,'file_extensions',to_jsonb(m.file_extensions),'tag_names',to_jsonb(t.tag_names),
+ 'modified_at',m.modified_at,'thumbnail_url',m.thumbnail_url,'preview_states',to_jsonb(m.preview_states),
+ 'render_exception_states',to_jsonb(m.render_exception_states),'pdf_content_states',to_jsonb(m.pdf_content_states),'rank',m.rank) as result
+ from page pg join page_metadata m on m.group_id=pg.group_id join page_tags t on t.group_id=pg.group_id
+)
   select jsonb_build_object(
-    'result_mode', v_mode,
+    'result_mode', $1,
     'total', (select count(*) from entities),
     'limit', p.lim,
     'offset', p.off,
@@ -528,8 +532,9 @@ with params as not materialized (
       'render_exception_states', coalesce((select facet_values from guide_facets where category='render_exception_states'), '[]'::jsonb),
       'pdf_content_states', coalesce((select facet_values from guide_facets where category='pdf_content_states'), '[]'::jsonb)
     )
-  ) into v_result
-  from params p;
+  ) 
+  from params p
+$guides_query$ into v_result using v_mode, p_query, p_licensors, p_properties, p_style_guides, p_extensions, p_tags, p_preview_states, p_render_exception_states, p_pdf_content_states, p_modified_after, p_modified_before, p_sort, p_limit, p_offset;
   end if;
   return v_result;
 end

@@ -8,7 +8,30 @@ import { contractHash, validateContract, validateCompletionReport, reconcileRepo
 import { validateCompletionRecord } from '../work-dependencies.mjs'
 import { LaneError } from './claims.mjs'
 import { REVIEW_STARTED_REF_PREFIX, REVIEW_REF_ROW_LIMIT } from './constants.mjs'
-import { parseTerminalFailureEvidence } from './review-replacement.mjs'
+import { parseTerminalFailureEvidence, reviewerFailureRef } from './review-replacement.mjs'
+
+// Cause-bound reinstatement (#3536/#3999). A paid start whose immutable
+// terminal failure record proves a verdict-less REVIEWER-SIDE failure, bound to
+// the exact issue/PR/head/sequence/reviewer (and slot when recorded), produced
+// no review and does not spend the unchanged-content budget. Hard ceiling per
+// slot across the unchanged-content group so crashes can never loop forever.
+export const REINSTATABLE_FAILURE_CODES = Object.freeze(['wrapper_terminal_failure','provider_unavailable','insufficient_quota','turn_limit_cancelled'])
+export const REINSTATEMENT_CEILING = 2
+
+function reinstatedByFailure(start,io){
+  if(typeof io.readRef!=='function')return false
+  const ref=reviewerFailureRef({issue:start.issue,pr:start.pr,headSha:start.headSha,failedSequence:start.sequence})
+  const sha=io.readRef(ref)
+  if(!sha)return false
+  if(!/^[0-9a-f]{40}$/.test(String(sha)))throw new LaneError('review circuit breaker: reinstatement failure ref unreadable')
+  const commit=typeof io.readReviewFailureCommit==='function'?io.readReviewFailureCommit(sha):io.getCommit(sha)
+  let failure
+  try{failure=parseTerminalFailureEvidence(commit)}catch{throw new LaneError('review circuit breaker: reinstatement failure evidence unreadable')}
+  const message=String(commit?.message??commit?.commit?.message??'')
+  const slot=/ slot=(\d+) /.exec(message)
+  if(!failure||failure.issue!==start.issue||failure.pr!==start.pr||failure.headSha!==start.headSha||failure.failedSequence!==start.sequence||failure.reviewer!==start.reviewer||(slot&&Number(slot[1])!==start.slot)||!/ verdict=none artifact=none( replacement=none)?$/.test(message))throw new LaneError('review circuit breaker: reinstatement failure binding mismatch')
+  return REINSTATABLE_FAILURE_CODES.includes(failure.failureCode)
+}
 
 export function paidStart(row, commit) {
   const tuple = /^refs\/db-review-started\/(\d+)-(\d+)-([0-9a-f]{40})-slot(\d+)-seq(\d+)$/.exec(row.ref)
@@ -359,8 +382,9 @@ export function assertPaidReviewCapacity(request, io) {
   if (!Array.isArray(rows)) throw new LaneError('review circuit breaker: immutable start listing unreadable')
   if(rows.length>=REVIEW_REF_ROW_LIMIT)throw new LaneError('review circuit breaker: bounded start listing may be truncated')
   const starts = rows.map(row=>paidStart(row,row.commit ?? io.getCommit(row.sha))).filter(row=>row && row.pr === request.pr && row.slot === request.slot)
-  let count=0
+  let count=0,reinstated=0
   const comparisonContext={}
+  starts.sort((a,b)=>a.sequence-b.sequence)
   for (const start of starts) {
     let same=start.headSha === request.headSha
     if (!same) {
@@ -372,10 +396,12 @@ export function assertPaidReviewCapacity(request, io) {
       if(proof.kind==='substantive' && (!Number.isInteger(proof.historyCount)||proof.historyCount<1||proof.historyCount>=1000)) throw new LaneError('review circuit breaker: complete substantive history proof unreadable')
       same=proof.kind==='unchanged'
     }
-    if(same) count++
+    if(!same)continue
+    if(reinstated<REINSTATEMENT_CEILING && reinstatedByFailure(start,io)){reinstated++;continue}
+    count++
   }
   if(count>=2) throw new LaneError(`review circuit breaker: two paid attempts already started for unchanged reviewed content in slot ${request.slot}; third draw refused pending substantive repair or supported cause-bound reinstatement proof`)
-  return {paidAttempts:count,remaining:2-count}
+  return reinstated?{paidAttempts:count,remaining:2-count,reinstated}:{paidAttempts:count,remaining:2-count}
 }
 
 // Provider outage/quota evidence differs from a local preparation failure.

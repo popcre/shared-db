@@ -4,6 +4,13 @@ begin;
 -- through Vault. Rolled back.
 do $$
 begin
+  -- supabase_vault ships with every Supabase stack, including the CLI stack the
+  -- ephemeral contract-test job starts (this test passed there on PR #4182); skip
+  -- with a notice, like the pg_cron/dblink tests, on a bare PostgreSQL without it.
+  if not exists (select 1 from pg_extension where extname = 'supabase_vault') then
+    raise notice 'SKIP: supabase_vault is not installed in this database';
+    return;
+  end if;
   if has_function_privilege('authenticated', 'public.get_sg_nas_password()', 'execute')
      or has_function_privilege('anon', 'public.get_sg_nas_password()', 'execute')
      or has_function_privilege('authenticated', 'public.set_sg_nas_password(text)', 'execute')

@@ -2,13 +2,13 @@
   "schema_version": 1,
   "work_issue": 3298,
   "outcome": "ready-for-merge",
-  "pr": 4205,
+  "pr": 4220,
   "migration_versions": [
     "20261011225459"
   ],
   "contract_ref": "refs/db-contracts/3298/2",
   "contract_sha256": "a996d44406733590780cd8a5e4e3a17f0db31464a4f27195dc505ad35f9ad938",
-  "head_sha": "0ac4219d693333d1fe43d91d9c9faf7909474409",
+  "head_sha": "e6e5c54eccb1a5059f130e5045eb4e7a6b508768",
   "base_sha": "5d876ca1b5302369925dd11a01c71c60ca4a9421",
   "files_changed": [
     "supabase/migrations/20261011225459_pm_jev_activity_triage_contract_a.sql",

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { currentRepository } from '../lib/repository-identity.mjs'
+import { CuratedSqlError, inspectCuratedSql } from './curated-admission.mjs'
 import { canonicalIdentifier, dispatchObjectKeys, roleReadKeys, extractOperations, inventoryDdlVerbs } from '../check-pr-object-collisions.mjs'
 
 export class AdmissionError extends Error {
@@ -148,20 +149,25 @@ export function evaluateAdmission(issue, scope, impact = null) {
 }
 
 export const CURATED_ROUTE = 'curated-master-data-governance'
+export const CURATED_EVIDENCE = Object.freeze([
+  'work_type curated-master-data, route curated-master-data-governance, change_type migration, status ready, no claimed objects, a live_assertion and generated_types',
+  'a newly added migration whose only effect is bounded row writes into curated Master Data (core.*, with plm.licensing_write_authorization)',
+])
+
+function curatedRefusal(issue, scope, reason) {
+  const result = refusal(issue, scope, reason, [...CURATED_EVIDENCE])
+  return new AdmissionError(result.reason, result)
+}
 
 function evaluateCuratedAdmission(issue, scope, impact) {
-  if (scope.route !== CURATED_ROUTE) throw new AdmissionError(`curated-master-data work must route ${CURATED_ROUTE}`)
-  if (scope.changeType !== 'migration') {
-    const result = refusal(issue, scope, `curated-master-data admission covers a fork that ships a data-only migration; change_type ${scope.changeType} is not admissible`, [
-      'change_type migration',
-    ])
-    throw new AdmissionError(result.reason, result)
-  }
-  if (scope.status !== 'ready') throw new AdmissionError(`issue #${issue.number} is ${scope.status}, not ready`)
-  if (scope.writes?.length || scope.reads?.length) throw new AdmissionError('curated-master-data admission must not claim database objects')
-  if (typeof scope.liveAssertion !== 'string' || !scope.liveAssertion.trim()) throw new AdmissionError('curated-master-data admission requires a concrete live_assertion')
-  if (!['required', 'not-applicable'].includes(scope.generatedTypes)) throw new AdmissionError('curated-master-data admission requires generated_types: required or not-applicable')
-  if (impact) throw new AdmissionError('db-impact is reserved for urgent-application work')
+  const refuse = (reason) => { throw curatedRefusal(issue, scope, reason) }
+  if (scope.route !== CURATED_ROUTE) refuse(`curated-master-data work must route ${CURATED_ROUTE}`)
+  if (scope.changeType !== 'migration') refuse(`curated-master-data admission covers a fork that ships a data-only migration; change_type ${scope.changeType} is not admissible`)
+  if (scope.status !== 'ready') refuse(`issue #${issue.number} is ${scope.status}, not ready`)
+  if (scope.writes?.length || scope.reads?.length) refuse('curated-master-data admission must not claim database objects')
+  if (typeof scope.liveAssertion !== 'string' || !scope.liveAssertion.trim()) refuse('curated-master-data admission requires a concrete live_assertion')
+  if (!['required', 'not-applicable'].includes(scope.generatedTypes)) refuse('curated-master-data admission requires generated_types: required or not-applicable')
+  if (impact) refuse('db-impact is reserved for urgent-application work')
   return {
     admitted: true,
     curated: true,
@@ -178,52 +184,40 @@ function evaluateCuratedAdmission(issue, scope, impact) {
   }
 }
 
-// The curated counterpart of inspectPrStructuralChange: the pull request must
-// carry a readable migration, and that migration must contain no schema DDL,
-// no catalog function rewrite, and no role/grant object write. A curated row
-// load is admitted; anything that changes database shape fails closed.
-export function inspectPrCuratedDataChange(prFiles = []) {
-  if (!Array.isArray(prFiles)) throw new AdmissionError('pull request files are unreadable')
+// The curated counterpart of inspectPrStructuralChange. Every migration must be
+// newly added and readable, the shared structural detectors must find nothing,
+// and the curated allowlist (scripts/orchestrator-flow/curated-admission.mjs)
+// must prove the SQL is only bounded row writes into curated Master Data.
+// `issue`/`scope` give refusals a durable curated coordination event.
+export function inspectPrCuratedDataChange(prFiles = [], issue = null, scope = null) {
+  const refuse = (reason) => { throw curatedRefusal(issue ?? { number: 0 }, scope, reason) }
+  if (!Array.isArray(prFiles)) refuse('curated pull request files are unreadable')
   const migrations = prFiles.filter((file) => /^supabase\/migrations\/\d{14}_[^/]+\.sql$/.test(String(file?.filename ?? file?.path ?? '')) && file?.status !== 'removed')
-  if (!migrations.length) throw new AdmissionError('the curated pull request contains no added or modified migration')
+  if (!migrations.length) refuse('the curated pull request contains no added or modified migration')
   const sql = migrations.map((file) => {
     const name = file.filename ?? file.path
-    if (file.status !== 'added') throw new AdmissionError(`curated migration ${name} must be a newly added file`)
-    if (typeof file.content !== 'string') throw new AdmissionError(`migration ${name} content is unreadable; curated admission refuses filename-only evidence`)
+    if (file.status !== 'added') refuse(`curated migration ${name} must be a newly added file`)
+    if (typeof file.content !== 'string') refuse(`curated migration ${name} content is unreadable; curated admission refuses filename-only evidence`)
     return file.content
   })
-  const ddl = inventoryDdlVerbs(sql)
-  const rewrites = sql.flatMap((text) => catalogFunctionRewrites(text))
-  const objects = sql.flatMap((text) => dispatchObjectKeys(text))
+  let ddl, rewrites, objects
+  try {
+    ddl = inventoryDdlVerbs(sql)
+    rewrites = sql.flatMap((text) => catalogFunctionRewrites(text))
+    objects = sql.flatMap((text) => dispatchObjectKeys(text))
+  } catch (error) { refuse(`curated-master-data migration is not parseable by the structural detectors: ${error.message}`) }
   if (ddl.length || rewrites.length || objects.length) {
-    throw new AdmissionError(`curated-master-data migration changes database structure (${[...new Set([...ddl.map((row) => row.verb), ...rewrites, ...objects])].join(', ')}); structural changes require work_type structural`)
+    refuse(`curated-master-data migration changes database structure (${[...new Set([...ddl.map((row) => row.verb), ...rewrites, ...objects])].join(', ')}); structural changes require work_type structural`)
   }
-  // The detectors above cannot see SQL hidden in string literals, so every
-  // statement form that runs or changes something they cannot model is refused
-  // outright (fail closed): dynamic SQL, string-executing helpers, role or
-  // session-authority changes, maintenance commands, and table-wide writes.
-  const code = sql.map(curatedCode)
-  const forbidden = code.flatMap((text) => CURATED_FORBIDDEN.filter(([, pattern]) => pattern.test(text)).map(([label]) => label))
-  if (forbidden.length) throw new AdmissionError(`curated-master-data migration changes database structure or runs opaque SQL (${[...new Set(forbidden)].join(', ')}); curated admission is data-only, structural changes require work_type structural`)
-  const unbounded = code.flatMap((text) => text.split(';').filter((statement) => /\b(?:update\s+(?:only\s+)?[\w."]+\s+(?:as\s+)?\w*\s*set|delete\s+from)\b/i.test(statement) && !/\bwhere\b/i.test(statement)))
-  if (unbounded.length) throw new AdmissionError('curated-master-data migration contains an UPDATE or DELETE without a WHERE clause; curated loads must be bounded')
-  if (!code.some((text) => /\b(?:insert\s+into|update\s+[\w."]+|delete\s+from)\b/i.test(text))) throw new AdmissionError('curated-master-data migration writes no row; a curated fork must carry the data change it was admitted for')
-  return { reads: [], migrations: migrations.map((file) => file.filename ?? file.path), objects: [] }
+  const writes = new Set()
+  for (const [index, text] of sql.entries()) {
+    try { for (const write of inspectCuratedSql(text).writes) writes.add(write) } catch (error) {
+      if (!(error instanceof CuratedSqlError)) throw error
+      refuse(`curated-master-data migration ${migrations[index].filename ?? migrations[index].path} is not a bounded curated row load: ${error.message}; structural or opaque SQL requires work_type structural`)
+    }
+  }
+  return { reads: [], migrations: migrations.map((file) => file.filename ?? file.path), objects: [], row_writes: [...writes].sort() }
 }
-
-// Comments and single-quoted literals removed; dollar-quoted bodies (DO blocks)
-// are kept, because they are code.
-function curatedCode(sql) {
-  return String(sql).replace(/'(?:[^']|'')*'|--[^\n]*|\/\*[\s\S]*?\*\//g, (token) => token.startsWith("'") ? "''" : ' ')
-}
-const CURATED_FORBIDDEN = Object.freeze([
-  ['dynamic EXECUTE', /\bexecute\b/i],
-  ['string-executing helper', /\b(?:dblink\w*|query_to_xml\w*|query_to_json\w*|xpath_table|lo_import|lo_export|pg_read_\w+|pg_ls_dir)\s*\(/i],
-  ['COPY', /(?:^|;|\b(?:begin|then|loop|else)\b)\s*copy\b/i],
-  ['TRUNCATE', /\btruncate\b/i],
-  ['role or session authority change', /\b(?:set|reset)\s+(?:local\s+|session\s+)?(?:role|session\s+authorization)\b/i],
-  ['maintenance command', /(?:^|;|\b(?:begin|then|loop|else)\b)\s*(?:reindex|refresh\s+materialized\s+view|cluster|vacuum|lock\s+table|lock\s+[\w."]+\s+in\b|security\s+label|import\s+foreign\s+schema|call)\b/i],
-])
 
 const inspectedAliasProofs=new WeakMap()
 

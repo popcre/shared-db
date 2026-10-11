@@ -1100,21 +1100,68 @@ test('structural route still refuses a data-only migration (gate unchanged)', ()
 
 test('curated data-only inspection fails closed on SQL its detectors cannot see (#4185 review)', () => {
   const file = (content) => [{ filename:'supabase/migrations/20261011164757_x.sql', status:'added', content }]
-  const guarded = "do $g$ declare v int; begin\n  -- a comment with 'quotes' and -- dashes\n  insert into core.property (name) values ('a -- b''c');\n  update core.property set status = 'active' where name = 'a';\n  if v is null then raise exception 'x'; end if;\nend $g$;\n"
-  assert.deepEqual(inspectPrCuratedDataChange(file(guarded)).objects, [])
+  const ins = "insert into core.property (name) values ('a');\n"
+  const guarded = [
+    "do $g$ declare v int; v_id uuid; begin",
+    "  -- a comment with 'quotes' and -- dashes /* not a block */",
+    "  insert into core.property (name, notes) values ('a -- b''c', E'it\\'s', $q$Bob's -- notes$q$) on conflict (name) do nothing returning id into v_id;",
+    "  insert into plm.licensing_write_authorization (backend_pid) values (pg_backend_pid());",
+    "  update core.property set status = 'active' where name = 'a' returning id into strict v_id;",
+    "  select count(*) into v from core.property where name = 'a' for update;",
+    "  if v is null then raise exception 'x'; end if;",
+    "end $g$;",
+  ].join('\n')
+  // The nested dollar quote above is inside a DO block and is refused; the
+  // admitted fixture keeps dollar literals at top level only.
+  const admitted = guarded.replace("$q$Bob's -- notes$q$", "'Bob''s -- notes'")
+  assert.deepEqual(inspectPrCuratedDataChange(file(admitted)).row_writes, ['table core.property', 'table plm.licensing_write_authorization'])
+  assert.deepEqual(inspectPrCuratedDataChange(file("insert into core.property (notes) values ($q$Bob's -- notes$q$);\n")).row_writes, ['table core.property'])
   const refused = [
-    ["do $$ begin execute 'create table core.evil(id int)'; end $$;", /dynamic EXECUTE/],
-    ["do $$ begin execute format('create table %I.%I (id int)', 'core', 'evil'); end $$;", /dynamic EXECUTE/],
-    ["select query_to_xml('create table core.evil()', true, true, '');", /string-executing helper/],
-    ['truncate core.property;', /TRUNCATE/],
-    ['reindex table core.property;', /maintenance command/],
-    ['refresh materialized view core.x;', /maintenance command/],
-    ['set role postgres; insert into core.a values (1);', /role or session authority/],
-    ['delete from core.property;', /without a WHERE/],
-    ["update core.property set name = 'x';", /without a WHERE/],
+    // round 1: dynamic DDL, destructive and maintenance statements, vacuous loads
+    ["do $$ begin execute 'create table core.evil(id int)'; end $$;" + ins, /EXECUTE/],
+    ["do $$ begin execute format('create table %I.%I (id int)', 'core', 'evil'); end $$;" + ins, /EXECUTE/],
+    ['truncate core.property;' + ins, /TRUNCATE/],
+    ['reindex table core.property;' + ins, /structure|REINDEX/],
+    ['refresh materialized view core.x;' + ins, /REFRESH/],
+    ['set role postgres;' + ins, /SET LOCAL|ROLE/],
+    ['delete from core.property;', /no top-level WHERE/],
+    ["update core.property set name = 'x';", /no top-level WHERE/],
     ['select 1;', /writes no row/],
+    // round 2: lexer desynchronisation
+    ["insert into core.property (name) values (E'a\\''); create table core.evil(id int); select 1; --'", /structure|CREATE/],
+    ["insert into core.property (notes) values ($q$Bob's notes$q$);\ndo $$ begin execute 'create table core.evil(id int)'; end $$;", /EXECUTE/],
+    ["do $$ begin exec/**/ute 'create table core.evil(id int)'; end $$;" + ins, /forbidden|EXEC/i],
+    ["insert into core.property (notes) values ($q$a -- b$q$); truncate core.property;", /TRUNCATE/],
+    // round 2: psql meta-commands, SELECT INTO, catalog writes, session settings, MERGE, misc
+    [ins + "select 'create table core.evil()' \\gexec\n", /backslash/],
+    [ins + '\\! touch /tmp/x\n', /backslash/],
+    [ins + "select 'x' as name into core.evil from core.licensor;", /SELECT \.\.\. INTO|INTO/],
+    ["update pg_catalog.pg_class set relhasoids = true where relname = 'property';", /PG_CATALOG|pg_/i],
+    ["insert into pg_catalog.pg_description values (1,2,3,'x');", /PG_CATALOG|pg_/i],
+    ['set session_replication_role = replica;' + ins, /SET LOCAL|SESSION_REPLICATION_ROLE/],
+    ["update other.thing set x = 1 where id = 1;", /outside curated Master Data/],
+    ['merge into core.property p using core.licensor l on true when matched then update set name = l.name;', /MERGE/],
+    ["prepare transaction 'x';" + ins, /PREPARE/],
+    ['reassign owned by a to b;' + ins, /REASSIGN/],
+    ['listen x;' + ins, /LISTEN/],
+    ['discard all;' + ins, /DISCARD/],
+    ['set search_path = core;' + ins, /SET LOCAL|SEARCH_PATH/],
+    [ins + 'select pg_terminate_backend(1);', /pg_terminate_backend/],
+    [ins + "select pg_file_write('x','y',false);", /pg_file_write/],
+    [ins + "select setval('core.s', 1);", /SETVAL/],
+    [ins + "select query_to_xml('create table x()', true, true, '');", /query_to_xml/],
+    [ins + "select dblink_exec('create table x()');", /dblink_exec/],
+    ['do language plpython3u $$ x $$;' + ins, /plpgsql/],
+    ["do $$ begin insert into core.property (name) values ('a'); update core.property set name = 'b'; end $$;", /no top-level WHERE/],
+    ["do $$ begin select 1 into core.evil; end $$;" + ins, /unqualified PL\/pgSQL variable/],
   ]
-  for (const [sql, pattern] of refused) assert.throws(() => inspectPrCuratedDataChange(file(sql)), pattern, sql)
+  for (const [sql, pattern] of refused) {
+    let error = null
+    try { inspectPrCuratedDataChange(file(sql)) } catch (caught) { error = caught }
+    assert.ok(error, `admitted: ${sql}`)
+    assert.match(error.message, pattern, sql)
+    assert.ok(error.result?.evidence_required?.length, `no durable refusal result: ${sql}`)
+  }
 })
 
 test('curated refusals at PR admission carry a durable refusal result', () => {
@@ -1123,6 +1170,9 @@ test('curated refusals at PR admission carry a durable refusal result', () => {
   try { admitIssue(4172, curatedIo(body, 'truncate core.property;\n'), { pr: 4176, allowLegacy: true }) } catch (caught) { error = caught }
   assert.match(error.message, /TRUNCATE/)
   assert.ok(error.result && Array.isArray(error.result.evidence_required))
+  assert.doesNotMatch(error.result.evidence_required.join(' '), /statement-leading schema DDL/)
   const missing = curatedBody({ extra:[] }).replace('generated_types: not-applicable\n','')
-  assert.throws(() => evaluateAdmission(issue(missing,4172), parseQueueScope(missing), null), /generated_types/)
+  let missingError
+  try { evaluateAdmission(issue(missing,4172), parseQueueScope(missing), null) } catch (caught) { missingError = caught }
+  assert.match(missingError.message, /generated_types/); assert.ok(missingError.result)
 })

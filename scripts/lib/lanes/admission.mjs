@@ -64,8 +64,8 @@ export function admitIssue(number, io = githubIo, { pr = null, actor = 'manage-m
       const files=io.getPrFiles(Number(pr)).map((file)=>/^supabase\/migrations\/\d{14}_[^/]+\.sql$/.test(String(file?.filename??file?.path??''))&&file?.status!=='removed'
         ?{...file,content:io.getFileAt(file.filename??file.path,head)}:file)
       if(admitted.curated){
-        const inspection=inspectPrCuratedDataChange(files)
-        admitted={...admitted,actual_objects:[],migrations:inspection.migrations}
+        const inspection=inspectPrCuratedDataChange(files,issue,scope)
+        admitted={...admitted,actual_objects:[],reads:inspection.reads,row_writes:inspection.row_writes,migrations:inspection.migrations}
       }else{
       const inspection=inspectPrStructuralChange(files)
       const declared=[...scope.writes].sort()
@@ -89,7 +89,7 @@ export function admitIssue(number, io = githubIo, { pr = null, actor = 'manage-m
     }
     return admitted
   } catch (error) {
-    if(error instanceof AdmissionError&&!error.result&&/(contains no added or modified migration|(?:content|patch) is unreadable|contain no statement-leading schema DDL|contains unmodelled DDL|^curated-master-data migration |^the curated pull request |^curated migration )/.test(error.message)){
+    if(error instanceof AdmissionError&&!error.result&&/(contains no added or modified migration|(?:content|patch) is unreadable|contain no statement-leading schema DDL|contains unmodelled DDL)/.test(error.message)){
       error.result={reason:error.message,return_to:scope?.applicationReturnTo??REPO,evidence_required:['readable pull request content containing acknowledged statement-leading schema DDL for the proposed structural change']}
     }
     if (error instanceof AdmissionError && error.result && io.commentIssue) {

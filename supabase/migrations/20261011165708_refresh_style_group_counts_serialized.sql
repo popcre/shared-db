@@ -26,7 +26,18 @@
 --    only after this lock is already held.
 -- 4. Ids are de-duplicated and sorted so concurrent callers update rows in one order.
 -- 5. Execute is limited to service_role (the edge functions' client). The existing
---    function and its grants are unchanged.
+--    function and its grants are unchanged: the advisory lock binds only callers that
+--    use this wrapper (the PopDAM edge functions, switched in popdam3 #294); the asset
+--    triggers keep calling refresh_style_group_counts_batch directly by design (1).
+-- 6. CONTENTION, ACCEPTED AND BOUNDED: holding the BULK_OPERATIONS key also makes the
+--    other BULK_OPERATIONS writers (update_bulk_operation, update_bulk_operations_batch,
+--    which set no lock_timeout) wait while a wrapper call runs. Edge callers pass only
+--    the groups an admin action touched, so a call is normally milliseconds; the
+--    statement_timeout is 15s (not the callee's 30s) so the worst-case stall of those
+--    writers is 15s. Ids are passed in one call, not chunked, for the same reason: a
+--    large array fails visibly within the bound instead of holding the key longer.
+--
+-- ROLLBACK: drop function public.refresh_style_group_counts_serialized(uuid[]);
 -- =====================================================================================
 
 create function public.refresh_style_group_counts_serialized(p_group_ids uuid[])
@@ -34,7 +45,7 @@ returns integer
 language plpgsql
 security definer
 set search_path to 'public'
-set statement_timeout to '30s'
+set statement_timeout to '15s'
 set lock_timeout to '5s'
 as $function$
 declare

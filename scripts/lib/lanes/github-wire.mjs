@@ -5,7 +5,7 @@ import { REVIEW_VERDICT_REPLACEMENT_REF_PREFIX } from '../../lib/review-verdict-
 import { classifyChangedPaths, changedPathsFromPullRequestFiles } from '../../lib/documents-only-change.mjs'
 import { REPO, REVIEW_REPLACEMENT_REF_PREFIX } from './constants.mjs'
 import { LaneError } from './claims.mjs'
-import { projectReviewPr } from './review-assignment.mjs'
+import { projectReviewPr, reviewStateConnectionPageQuery, REVIEW_STATE_CONNECTIONS, REVIEW_STATE_MAX_EXTRA_PAGES } from './review-assignment.mjs'
 import { gitRemoteRefs, githubIo, runGitHubCommand } from '../../manage-migration-author-lanes.mjs'
 import { authorityReadEnv } from '../authority-token-read.mjs'
 
@@ -168,7 +168,26 @@ export function completeReviewStateConnections(pr,issue,{prNumber,issueNumber},f
   const i=complete(issue,'comments','issue.comments',issueNumber)
   return {pr:p,issue:i}
 }
-export function reviewStateEntry(pr,issue){
+// Follow-up page through the budgeted gh() runner, for the connection kinds in
+// REVIEW_STATE_CONNECTIONS only.
+export function fetchReviewStateConnectionPage(kind,number,after,run=gh){
+  const [owner,name]=REPO.split('/')
+  const out=run(['api','graphql','-f',`query=${reviewStateConnectionPageQuery(kind)}`,'-F',`owner=${owner}`,'-F',`name=${name}`,'-F',`number=${Number(number)}`,'-f',`after=${after}`],{encoding:'utf8'})
+  let data
+  try{data=JSON.parse(String(out))}catch{throw new LaneError(`review evidence ${kind} follow-up page is not JSON`)}
+  if(data?.errors?.length)throw new LaneError(`review evidence ${kind} follow-up page returned GraphQL errors`)
+  const spec=REVIEW_STATE_CONNECTIONS[kind]
+  return data?.data?.repository?.[spec.owner]?.[spec.field]
+}
+// A paginated connection is completed when the batched read carried the PR and
+// issue numbers (reviewStateGraphqlFields requests them); otherwise, or if any
+// follow-up fails, the entry is refused exactly as before.
+export function reviewStateEntry(pr,issue,fetchPage=fetchReviewStateConnectionPage){
+  const paginated=[pr?.comments,pr?.reviews,issue?.comments].some((conn)=>conn?.pageInfo?.hasNextPage===true)
+  if(paginated&&Number.isInteger(pr?.number)&&Number.isInteger(issue?.number)){
+    const full=completeReviewStateConnections(pr,issue,{prNumber:pr.number,issueNumber:issue.number},fetchPage,REVIEW_STATE_MAX_EXTRA_PAGES)
+    pr=full.pr;issue=full.issue
+  }
   if(!pr||!issue||!Array.isArray(pr.comments?.nodes)||!Array.isArray(pr.reviews?.nodes)||!Array.isArray(issue.comments?.nodes)||pr.comments?.pageInfo?.hasNextPage!==false||pr.reviews?.pageInfo?.hasNextPage!==false||issue.comments?.pageInfo?.hasNextPage!==false)throw new LaneError('batched reviewer PR/verdict evidence is incomplete or paginated')
   return {issue:{state:String(issue.state).toLowerCase()},pr:projectReviewPr(pr),evidence:[...issue.comments.nodes,...pr.comments.nodes,...pr.reviews.nodes.map((row)=>({...row,commit_id:row.commit?.oid}))]}
 }

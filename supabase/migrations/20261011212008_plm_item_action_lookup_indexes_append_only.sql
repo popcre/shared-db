@@ -101,25 +101,42 @@ COMMENT ON TABLE plm.item_user_assignment IS
 COMMENT ON TABLE plm.item_workflow_action IS
   'Final plm item-master home for dflow.item_workflow_action (issues #3498, #3595). Workflow action history; append-only enforced (UPDATE and DELETE refused). A return names source_action_id and never rewrites the original actor. Actor identity source is supabase_auth or designflow_jwt; backend email is normalized. Column shapes, indexes and append-only behavior match the dflow source. Row movement is a separate DesignFlow migration. User-id foreign keys and backend grants are still pending on #3595; deny-by-default until then.';
 
--- Catalogue verification: each new index is identical to its dflow source.
+-- Catalogue verification: each new index has exactly its dflow source
+-- definition (literal text, so it does not depend on dflow surviving or on the
+-- session search_path), plus the triggers, function hardening and access boundary.
 DO $verify$
 DECLARE
-  idx text;
-  src text;
-  dst text;
+  r record;
 BEGIN
-  FOREACH idx IN ARRAY ARRAY[
-    'item_user_assignment_active_lookup',
-    'item_workflow_action_item_time',
-    'item_workflow_action_open_handoff_lookup',
-    'item_workflow_action_admin_review'
-  ] LOOP
-    SELECT pg_catalog.replace(pg_catalog.pg_get_indexdef(pg_catalog.to_regclass('dflow.' || idx)), ' ON dflow.', ' ON plm.') INTO src;
-    SELECT pg_catalog.pg_get_indexdef(pg_catalog.to_regclass('plm.' || idx)) INTO dst;
-    IF dst IS NULL OR src IS DISTINCT FROM dst THEN
-      RAISE EXCEPTION 'index plm.% differs from dflow source: % vs %', idx, dst, src;
+  FOR r IN SELECT * FROM (VALUES
+    ('item_user_assignment_active_lookup',
+     'CREATE INDEX item_user_assignment_active_lookup ON plm.item_user_assignment USING btree (rfq_item_id, function_key, effective_from, id) INCLUDE (user_id) WHERE (effective_to IS NULL)'),
+    ('item_workflow_action_item_time',
+     'CREATE INDEX item_workflow_action_item_time ON plm.item_workflow_action USING btree (rfq_item_id, occurred_at, id)'),
+    ('item_workflow_action_open_handoff_lookup',
+     'CREATE INDEX item_workflow_action_open_handoff_lookup ON plm.item_workflow_action USING btree (rfq_item_id, occurred_at DESC, id DESC) INCLUDE (actor_user_id)'),
+    ('item_workflow_action_admin_review',
+     'CREATE INDEX item_workflow_action_admin_review ON plm.item_workflow_action USING btree (rfq_item_id, occurred_at) WHERE requires_admin_review')
+  ) AS e(name, def) LOOP
+    IF pg_catalog.pg_get_indexdef(pg_catalog.to_regclass('plm.' || r.name)) IS DISTINCT FROM r.def THEN
+      RAISE EXCEPTION 'index plm.% is %, expected %', r.name,
+        pg_catalog.pg_get_indexdef(pg_catalog.to_regclass('plm.' || r.name)), r.def;
     END IF;
   END LOOP;
+
+  IF EXISTS (
+    SELECT 1 FROM unnest(ARRAY['anon','authenticated','service_role']) AS ro(role_name)
+    CROSS JOIN unnest(ARRAY['plm.reject_item_assignment_history_rewrite()',
+                            'plm.reject_item_workflow_action_rewrite()']) AS f(sig)
+    WHERE pg_catalog.has_function_privilege(ro.role_name, f.sig, 'EXECUTE')
+  ) OR (
+    SELECT count(*) FROM pg_catalog.pg_proc
+     WHERE oid IN ('plm.reject_item_assignment_history_rewrite()'::regprocedure,
+                   'plm.reject_item_workflow_action_rewrite()'::regprocedure)
+       AND proconfig @> ARRAY['search_path=pg_catalog, plm']
+  ) <> 2 THEN
+    RAISE EXCEPTION 'guard functions must pin search_path and not be executable by API roles';
+  END IF;
 
   IF (SELECT count(*) FROM pg_catalog.pg_trigger t
        WHERE NOT t.tgisinternal AND t.tgenabled = 'O'
@@ -135,10 +152,10 @@ BEGIN
   END IF;
 
   IF EXISTS (
-    SELECT 1 FROM unnest(ARRAY['anon','authenticated','service_role']) AS r(role_name)
+    SELECT 1 FROM unnest(ARRAY['anon','authenticated','service_role']) AS ro(role_name)
     CROSS JOIN unnest(ARRAY['plm.item_user_assignment','plm.item_workflow_action']) AS t(rel)
     CROSS JOIN unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) AS p(priv)
-    WHERE pg_catalog.has_table_privilege(r.role_name, t.rel, p.priv)
+    WHERE pg_catalog.has_table_privilege(ro.role_name, t.rel, p.priv)
   ) THEN
     RAISE EXCEPTION 'deny-by-default privilege boundary changed';
   END IF;

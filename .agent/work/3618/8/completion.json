@@ -13,7 +13,9 @@
     "scripts/transfer-expired-merged-claim-author.mjs",
     "scripts/expired-merged-claim-adoption.test.mjs",
     "docs/agents/section-4-anti-collision-rules.md",
-    "docs/verification/throughput-dispositions/scripts~transfer-expired-merged-claim-author.mjs.json"
+    "docs/verification/throughput-dispositions/scripts~transfer-expired-merged-claim-author.mjs.json",
+    ".agent/work/3618/8/contract.json",
+    ".agent/work/3618/8/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],

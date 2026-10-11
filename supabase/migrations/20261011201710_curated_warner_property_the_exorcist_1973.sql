@@ -35,13 +35,13 @@ declare
   v_warner_source_id     constant text := '67830330-59a0-4d42-8765-c88e10814332';
   v_catalogue_row_id     constant uuid := 'fc188413-63d4-4ff2-b676-df26ab19e303';
   v_art_assets_row_id    constant uuid := '53c4e8ca-26a9-44b0-a8fb-35b2c87315cb';
-  v_actor                constant text := 'shared-db migration 20261011164757';
+  v_actor                constant text := 'shared-db migration 20261011201710';
   v_curated_metadata     constant jsonb := jsonb_build_object(
     'curated', true,
     'import_owned', false,
     'authorising_issue', 4172,
     'owner_instruction_date', '2026-10-11',
-    'migration', '20261011164757',
+    'migration', '20261011201710',
     'curated_source', jsonb_build_object(
       'source_table', 'plm.wb_property',
       'warner_source_id', '67830330-59a0-4d42-8765-c88e10814332',

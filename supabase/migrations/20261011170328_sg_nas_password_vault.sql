@@ -179,7 +179,11 @@ begin
    where ac.key = 'WINDOWS_AGENT_SG_NAS_PASS';
 
   if v_source is null or jsonb_typeof(v_source) <> 'string' then
-    raise notice 'shared-db#4168: no string WINDOWS_AGENT_SG_NAS_PASS row; nothing copied';
+    -- No source to verify against: an already-present secret would be unexplained.
+    if exists (select 1 from vault.secrets s where s.name = 'popdam_sg_nas_password') then
+      raise exception 'shared-db#4168: Vault secret popdam_sg_nas_password exists but WINDOWS_AGENT_SG_NAS_PASS has no string value to verify it against';
+    end if;
+    raise notice 'shared-db#4168: no string WINDOWS_AGENT_SG_NAS_PASS row and no Vault secret; nothing copied';
     return;
   end if;
   if exists (select 1 from vault.secrets s where s.name = 'popdam_sg_nas_password') then

@@ -142,6 +142,32 @@ export function readGitCommits(shas,{run=execFileSync}={}){
   }
   return result.commits
 }
+// Completes every review-evidence connection the batched read left paginated,
+// using fetchPage(kind, number, after) -> {pageInfo:{hasNextPage,endCursor}, nodes}.
+// Fails closed: a missing cursor, a malformed page, or more than maxPages extra
+// pages per connection throws, so reviewStateEntry never sees a partial list.
+export function completeReviewStateConnections(pr,issue,{prNumber,issueNumber},fetchPage,maxPages=20){
+  if(!pr||!issue)return {pr,issue}
+  const complete=(owner,field,kind,number)=>{
+    const conn=owner?.[field]
+    if(!conn||!Array.isArray(conn.nodes)||conn.pageInfo?.hasNextPage!==true)return owner
+    const nodes=[...conn.nodes]
+    let info=conn.pageInfo,pages=0
+    while(info?.hasNextPage===true){
+      if(typeof info.endCursor!=='string'||!info.endCursor)throw new LaneError(`review evidence ${kind} is paginated without a cursor`)
+      if(++pages>maxPages)throw new LaneError(`review evidence ${kind} exceeds ${maxPages} extra pages`)
+      const page=fetchPage(kind,Number(number),info.endCursor)
+      if(!page||!Array.isArray(page.nodes)||typeof page.pageInfo?.hasNextPage!=='boolean')throw new LaneError(`review evidence ${kind} follow-up page is unreadable`)
+      nodes.push(...page.nodes)
+      info=page.pageInfo
+    }
+    return {...owner,[field]:{pageInfo:{hasNextPage:false,endCursor:info.endCursor??null},nodes}}
+  }
+  let p=complete(pr,'comments','pr.comments',prNumber)
+  p=complete(p,'reviews','pr.reviews',prNumber)
+  const i=complete(issue,'comments','issue.comments',issueNumber)
+  return {pr:p,issue:i}
+}
 export function reviewStateEntry(pr,issue){
   if(!pr||!issue||!Array.isArray(pr.comments?.nodes)||!Array.isArray(pr.reviews?.nodes)||!Array.isArray(issue.comments?.nodes)||pr.comments?.pageInfo?.hasNextPage!==false||pr.reviews?.pageInfo?.hasNextPage!==false||issue.comments?.pageInfo?.hasNextPage!==false)throw new LaneError('batched reviewer PR/verdict evidence is incomplete or paginated')
   return {issue:{state:String(issue.state).toLowerCase()},pr:projectReviewPr(pr),evidence:[...issue.comments.nodes,...pr.comments.nodes,...pr.reviews.nodes.map((row)=>({...row,commit_id:row.commit?.oid}))]}

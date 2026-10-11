@@ -154,8 +154,24 @@ export function reconcileReviewerOperationRouteFiles(snapshot,restFiles){
 // verdict predicate refuses association-less prose, so omitting this field here
 // makes a genuine OWNER verdict invisible to normal reviewer-lease cleanup.
 export function reviewStateGraphqlFields(lease,index){
-  return `p${index}:pullRequest(number:${lease.pr}){state merged mergeCommit{oid} headRefOid comments(first:100){pageInfo{hasNextPage} nodes{body authorAssociation}} reviews(first:100){pageInfo{hasNextPage} nodes{body state authorAssociation commit{oid}}}} i${index}:issue(number:${lease.issue}){state comments(first:100){pageInfo{hasNextPage} nodes{body authorAssociation}}}`
+  return `p${index}:pullRequest(number:${lease.pr}){state merged mergeCommit{oid} headRefOid comments(first:100){pageInfo{hasNextPage endCursor} nodes{body authorAssociation}} reviews(first:100){pageInfo{hasNextPage endCursor} nodes{body state authorAssociation commit{oid}}}} i${index}:issue(number:${lease.issue}){state comments(first:100){pageInfo{hasNextPage endCursor} nodes{body authorAssociation}}}`
 }
+
+// A work issue or PR can carry more than 100 comments (issue #3536 crossed 100 on
+// 2026-10-11 and every reviewer draw then refused, because reviewStateEntry fails
+// closed on a paginated connection). These are the follow-up pages for exactly the
+// connections the batched read marked hasNextPage, with the same node fields.
+export const REVIEW_STATE_CONNECTIONS=Object.freeze({
+  'pr.comments':{owner:'pullRequest',field:'comments',nodes:'body authorAssociation'},
+  'pr.reviews':{owner:'pullRequest',field:'reviews',nodes:'body state authorAssociation commit{oid}'},
+  'issue.comments':{owner:'issue',field:'comments',nodes:'body authorAssociation'},
+})
+export function reviewStateConnectionPageQuery(kind){
+  const spec=REVIEW_STATE_CONNECTIONS[kind]
+  if(!spec)throw new LaneError(`unknown review-state connection ${kind}`)
+  return `query($owner:String!,$name:String!,$number:Int!,$after:String!){repository(owner:$owner,name:$name){${spec.owner}(number:$number){${spec.field}(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{${spec.nodes}}}}}}`
+}
+export const REVIEW_STATE_MAX_EXTRA_PAGES=20
 
 export const MERGE_ANCESTRY_MEMO=new WeakMap()
 

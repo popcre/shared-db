@@ -1,0 +1,15 @@
+Formal review of popcre/shared-db PR #4205 at head 16343ba5478eccd3d5e48e0eb01d57a9bad270d7.
+
+Migration A for issue #3298 — additive least-privilege PM Jev activity-triage contract (claim #4204, version 20261011205205).
+
+This head addresses Muse M1/M2/L5/L6 from the prior REVISE:
+- Workers now reject expired leases (lease_expires_at enforced).
+- Fail wrapper binds lease_token hash like complete.
+- Dismiss nulls lease; fail-after-success is terminal.
+
+Remaining known low items from prior review are accepted for migration A (control-char class on Operations titles, no positive-envelope test, eligibility RLS not separately asserted).
+
+Checklist: additive-only; least privilege; comment validation; body_revision + source_changed; admin-only matrix v1 on comment/Operations/accept/dismiss; cross-user RLS; accept-once; HMAC fail-closed and row-bound; Operations shapes; 47-key claim coverage.
+
+Report findings with file:line. End with exactly:
+VERDICT: <APPROVE|REVISE|REJECT> 16343ba5478eccd3d5e48e0eb01d57a9bad270d7

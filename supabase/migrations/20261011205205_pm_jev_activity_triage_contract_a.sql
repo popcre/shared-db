@@ -57,9 +57,6 @@ begin
   end if;
 end $$;
 
--- The migration role must be a member so it can ALTER ... OWNER TO the worker.
-grant pm_jev_triage_worker to postgres;
-
 -- ============================================================================
 -- 3. Eligibility / reservation ledger
 -- ============================================================================
@@ -430,16 +427,12 @@ revoke all on function pim.pm_fail_activity_triage_worker(uuid, text, text) from
 grant execute on function pim.pm_complete_activity_triage_worker(uuid, text, text, jsonb, jsonb, text) to pm_jev_triage_worker;
 grant execute on function pim.pm_fail_activity_triage_worker(uuid, text, text) to pm_jev_triage_worker;
 
--- Private workers are owned by the dedicated NOLOGIN role (issue #3298).
--- Tables stay postgres-owned; the worker reaches rows via the explicit
--- grants and pm_ai_activity_triage*_worker_all policies above.
-alter function pim.pm_complete_activity_triage_worker(uuid, text, text, jsonb, jsonb, text) owner to pm_jev_triage_worker;
-alter function pim.pm_fail_activity_triage_worker(uuid, text, text) owner to pm_jev_triage_worker;
-
--- Helpers, HMAC verifier, and trigger functions stay owned by the migration
--- role (postgres): SECURITY DEFINER then bypasses RLS and can read
--- vault.decrypted_secrets. Only the private complete/fail implementations are
--- worker-owned.
+-- Private worker implementations execute only under pm_jev_triage_worker
+-- (execute revoked from public/anon/authenticated/service_role). They stay
+-- owned by the migration role so SECURITY DEFINER can reach the triage tables
+-- without a SET ROLE membership grant; the worker reaches rows via the
+-- grants and pm_ai_activity_triage*_worker_all policies above. This matches
+-- the repo's established NOLOGIN-role pattern (hts_rag / dflow_prod).
 
 -- ============================================================================
 -- 9. Comment validation helper

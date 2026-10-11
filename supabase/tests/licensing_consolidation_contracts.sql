@@ -428,7 +428,7 @@ do $test$ declare p plm.licensing_consolidation_plan;q plm.licensing_consolidati
  exception when sqlstate 'P0001' then if sqlerrm='JSON null native expected count accepted' then raise;end if;end;
  p:=plm.plan_licensing_consolidation('nbcu','23360000-0000-0000-0000-000000000010');if (plm.plan_licensing_consolidation(' nbcu ','23360000-0000-0000-0000-000000000010')).id<>p.id then raise exception 'padded nbcu identity differs';end if;
  begin
- update plm.source_resolution set resolution_status='ignored',core_character_id=null where source_system='nbcu' and entity_kind='character' and source_id='701';
+ update plm.source_resolution set resolution_status='rejected',core_character_id=null where source_system='nbcu' and entity_kind='character' and source_id='701';
  perform plm.apply_licensing_consolidation(p.id,p.plan_hash);raise exception 'changed durable decision accepted by apply';
  exception when sqlstate '40001' then null;end;
  if exists(select 1 from core.taxonomy_source_ref where entity_id in ('23360000-0000-0000-0000-000000000002','23360000-0000-0000-0000-000000000004','23360000-0000-0000-0000-000000000005') and source_system='nbcu') then raise exception 'stale decision refusal wrote provenance';end if;

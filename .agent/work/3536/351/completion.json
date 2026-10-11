@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "work_issue": 3536,
+  "outcome": "ready-for-merge",
+  "pr": 4193,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3536/351",
+  "contract_sha256": "bfe9eb7162140974a8153dfc14474839287293ed389b470e5fbbdebddb8da0c4",
+  "head_sha": "c62ec5579f91c9a44b0ac6065b26af73c0e9e30e",
+  "base_sha": "657427dd5fb20d00c6179ac5f755b685d12fcb12",
+  "files_changed": [
+    "docs/verification/throughput-dispositions/scripts~manage-migration-author-lanes.mjs.json",
+    "scripts/lib/lanes/github-wire.mjs",
+    "scripts/lib/lanes/review-assignment.mjs",
+    "scripts/lib/lanes/review-circuit-breaker.mjs",
+    "scripts/lib/lanes/review-circuit-breaker.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/reviewer-wire-budget.test.mjs",
+    "scripts/test-fixtures/github-wire-fake.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "Fresh351 full1251PASS/0FAIL/1existing Windows-onlyskip; truth/transport pass. Exact source-only ordinary350+657 merge; foreign177 added bytes retained."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "Fresh351 full1251PASS/0FAIL/1existing Windows-onlyskip; truth/transport pass. Exact source-only ordinary350+657 merge; foreign177 added bytes retained."
+    },
+    {
+      "command": "node scripts/agent-work-contract.mjs --validate-contract --contract-file .agent/work/3536/351/contract.json",
+      "exit_code": 0,
+      "evidence": "Fresh351 full1251PASS/0FAIL/1existing Windows-onlyskip; truth/transport pass. Exact source-only ordinary350+657 merge; foreign177 added bytes retained."
+    },
+    {
+      "command": "node --test scripts/reviewer-wire-budget.test.mjs",
+      "exit_code": 0,
+      "evidence": "Fresh351 full1251PASS/0FAIL/1existing Windows-onlyskip; truth/transport pass. Exact source-only ordinary350+657 merge; foreign177 added bytes retained."
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/admission-outcome.test.mjs",
+      "exit_code": 0,
+      "evidence": "Fresh351 full1251PASS/0FAIL/1existing Windows-onlyskip; truth/transport pass. Exact source-only ordinary350+657 merge; foreign177 added bytes retained."
+    },
+    {
+      "command": "node --test scripts/lib/lanes/review-circuit-breaker.test.mjs",
+      "exit_code": 0,
+      "evidence": "Fresh351 full1251PASS/0FAIL/1existing Windows-onlyskip; truth/transport pass. Exact source-only ordinary350+657 merge; foreign177 added bytes retained."
+    }
+  ],
+  "assumptions_resolved": [
+    "Ordinary started recovery requires two-hour lease and readable terminal activity quiet for two hours.",
+    "Unknown/nonterminal timestamps and status refuse; nonmaximum metadata progress changes digest.",
+    "Exact immutable probe and fresh locked lease/head/slot/verdict/CAS guards preserved; unstarted START protection unchanged.",
+    "Source-ready only: assigned review, CI and parent live metadata validation remain external delivery gates; no recovery action authorized.",
+    "Actual6186 REVISE fixed: full GraphQL errors and exact repository/PR/head/Commit/connection identities plus complete REST shape required; missing/null/malformed means UNKNOWN.",
+    "Real response-shaped integration regressions refuse partial errors, foreign/malformed/null branches, unknown union and incomplete pagination. Capacity UNKNOWN and old incompatible probe refusal pinned.",
+    "Actual authenticated read-only candidate metadata query for4193/c896/6186 succeeded; no probe/reclaim/review authority inferred.",
+    "MANIFEST.sha256 is the documented aggregate sorted path/bytes/hash seal; successful protected wrapper pre/post verification means no genuine own packet mismatch was evidenced. No reviewer artifact modified.",
+    "Own339 predecessor files retired under prospective342; exact339/341 bytes and unpushed341 tail preserved privately and in local recovery ref; published contracts and original6186 history unchanged.",
+    "Root independently inspected full343 source and found no blocking source issue; normal assigned governed review/CI remain gates, no source merge authorized.",
+    "Complete cursor pages preserve body/authorAssociation and review commit identity; bounded20 pages, stable count/object metadata/head, unique IDs/cursors, final first-page reproof; shared issue completion reused within batch.",
+    "Real original3536 first100 history was103total/hasNextPage:true; repaired authenticated read-only17 complete state snapshots and capacity report succeeded, preserving UNKNOWN and all104 current3536 evidence rows. No allocator bypass, provider, probe or reclaim.",
+    "Own342 pair retired under published343; exact342 bytes and686e historical head preserved privately/local recovery ref; no main historical pair changed.",
+    "Root fully inspected integrated345 source before seal/push/normal assigned review authorization; merge decision remains with root.",
+    "Foreign4185 mergeda244 preserved: three curated/cron source blobs and complete business-test prefix byte-identical. Canonical completeReviewStatePages API is sole pagination implementation; no production duplicate completeReviewStateConnections.",
+    "Inherited pagination fixture alone now models actual IDs/counts/number/updatedAt and fresh first-page proof under immutable345 scope; no production relaxation.",
+    "New real CLI paginated-wire measurement adds only necessary continuation/fresh-proof reads to independent ordinary baseline. Existing ordinary10-request assertions and production derived wire budget unchanged; no capacity reset.",
+    "Own343 pair preserved privately/local14ee recovery ref then retired; published344/345 contracts and old6186 REVISE/6143 START remain unchanged. No probe/reclaim/merge occurred.",
+    "346 predecessor preserved before retirement; published347 failed negatives honestly preserved, no347 completion.348 actual net/ordinary deletion discovery only; validator, source merge/witness/counting unchanged. No public feature push, reset/refund/provider.",
+    "Published349 before integration; source-clean canonical ordinary merge1845b159 preserves actual foreign migration20261011175808 and3009 probe. Owned348 pair preserved in verified bundle/recovery ref then retired. No public force/push/provider.",
+    "Read-only preview clean claim corrected: actual manager-test conflict reconciled ONLY by existing exact canonicalAppend rule. Full diff3 preserved; mergefe87122f retains both suffixes exactly, followed ordinaryb5068deb evidence retirement. No new exception. Foreign source files remain exact19335; no public current350 push/provider.",
+    "Root published/readback immutable351 before authoring; actual contract hash verified. Private350 recovery bundle/ref preserved; clean ordinary657 integration followed owned350pair retirement. Publichead remains677 pending legitimate6230 failure-only release or root superseded-target decision. No paid provider/redraw/reset."
+  ],
+  "stop_conditions_hit": []
+}

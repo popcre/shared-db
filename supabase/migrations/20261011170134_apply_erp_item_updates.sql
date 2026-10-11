@@ -27,7 +27,15 @@
 -- division_code, product_category, cover_description. Any other key, a missing sku,
 -- an empty updates object, a non-array payload or more than 500 items raises, and the
 -- whole call is rolled back. Matching keeps the worker's semantics: plain equality on
--- sku and division_code (a null division_code matches nothing).
+-- sku and division_code, no trimming (a null division_code matches nothing); sku must
+-- be a non-empty JSON string and division_code a string or null. Each UPDATE's SET
+-- names only the keys the item carries, so column-list triggers fire exactly as they
+-- did for the worker's per-key PATCH. Matched ids are returned lowest-first.
+--
+-- Concurrency: the page runs in one transaction, so two overlapping pages applied
+-- concurrently in different orders could deadlock; Postgres then aborts one page as a
+-- unit and the worker retries it (values are absolute, so a retry is idempotent).
+-- PopDAM runs one ERP apply at a time. lock_timeout 10s bounds any row-lock wait.
 --
 -- The erp_enrichment_log insert stays in the worker: it needs the ids this returns.
 -- Execute is service_role only (the worker's client).
@@ -39,6 +47,7 @@ language plpgsql
 security definer
 set search_path to 'public'
 set statement_timeout to '60s'
+set lock_timeout to '10s'
 as $function$
 declare
   c_allowed constant text[] := array[
@@ -51,6 +60,7 @@ declare
   v_bad      text;
   v_a_ids    uuid[];
   v_g_ids    uuid[];
+  v_set      text;
   v_results  jsonb := '[]'::jsonb;
 begin
   if p_items is null or jsonb_typeof(p_items) <> 'array' then
@@ -65,12 +75,15 @@ begin
     if jsonb_typeof(v_item) <> 'object' then
       raise exception 'each item must be a JSON object' using errcode = '22023';
     end if;
-    v_sku := nullif(btrim(coalesce(v_item ->> 'sku', '')), '');
+    if jsonb_typeof(v_item -> 'sku') is distinct from 'string' or v_item ->> 'sku' = '' then
+      raise exception 'item sku is required and must be a non-empty string' using errcode = '22023';
+    end if;
+    if jsonb_typeof(v_item -> 'division_code') not in ('string', 'null') then
+      raise exception 'item % division_code must be a string or null', v_item ->> 'sku' using errcode = '22023';
+    end if;
+    v_sku := v_item ->> 'sku';
     v_div := v_item ->> 'division_code';
     v_u   := v_item -> 'updates';
-    if v_sku is null then
-      raise exception 'item sku is required' using errcode = '22023';
-    end if;
     if v_u is null or jsonb_typeof(v_u) <> 'object' or v_u = '{}'::jsonb then
       raise exception 'item % updates must be a non-empty JSON object', v_sku using errcode = '22023';
     end if;
@@ -84,37 +97,29 @@ begin
       raise exception 'item % updates field % must be a string or null', v_sku, v_bad using errcode = '22023';
     end if;
 
-    with upd as (
-      update public.assets a set
-        mg01_code         = case when v_u ? 'mg01_code'         then v_u ->> 'mg01_code'         else a.mg01_code end,
-        mg02_code         = case when v_u ? 'mg02_code'         then v_u ->> 'mg02_code'         else a.mg02_code end,
-        mg03_code         = case when v_u ? 'mg03_code'         then v_u ->> 'mg03_code'         else a.mg03_code end,
-        size_code         = case when v_u ? 'size_code'         then v_u ->> 'size_code'         else a.size_code end,
-        licensor_code     = case when v_u ? 'licensor_code'     then v_u ->> 'licensor_code'     else a.licensor_code end,
-        property_code     = case when v_u ? 'property_code'     then v_u ->> 'property_code'     else a.property_code end,
-        division_code     = case when v_u ? 'division_code'     then v_u ->> 'division_code'     else a.division_code end,
-        product_category  = case when v_u ? 'product_category'  then v_u ->> 'product_category'  else a.product_category end,
-        cover_description = case when v_u ? 'cover_description' then v_u ->> 'cover_description' else a.cover_description end
-      where a.sku = v_sku and a.division_code = v_div and a.is_deleted = false
-      returning a.id
-    )
-    select coalesce(array_agg(id), '{}'::uuid[]) into v_a_ids from upd;
+    -- SET names only the keys this item carries (H1, issue #4167 review): column-list
+    -- triggers such as trg_sync_cover_description_to_style_group and the search
+    -- refresh then fire exactly as they did for the worker's per-key PATCH. Keys are
+    -- whitelisted above, quoted with %I, and values bound through $3.
+    select string_agg(format('%I = ($3 ->> %L)', k, k), ', ' order by k)
+      into v_set
+      from jsonb_object_keys(v_u) as k;
 
-    with upd as (
-      update public.style_groups g set
-        mg01_code         = case when v_u ? 'mg01_code'         then v_u ->> 'mg01_code'         else g.mg01_code end,
-        mg02_code         = case when v_u ? 'mg02_code'         then v_u ->> 'mg02_code'         else g.mg02_code end,
-        mg03_code         = case when v_u ? 'mg03_code'         then v_u ->> 'mg03_code'         else g.mg03_code end,
-        size_code         = case when v_u ? 'size_code'         then v_u ->> 'size_code'         else g.size_code end,
-        licensor_code     = case when v_u ? 'licensor_code'     then v_u ->> 'licensor_code'     else g.licensor_code end,
-        property_code     = case when v_u ? 'property_code'     then v_u ->> 'property_code'     else g.property_code end,
-        division_code     = case when v_u ? 'division_code'     then v_u ->> 'division_code'     else g.division_code end,
-        product_category  = case when v_u ? 'product_category'  then v_u ->> 'product_category'  else g.product_category end,
-        cover_description = case when v_u ? 'cover_description' then v_u ->> 'cover_description' else g.cover_description end
-      where g.sku = v_sku and g.division_code = v_div
-      returning g.id
-    )
-    select coalesce(array_agg(id), '{}'::uuid[]) into v_g_ids from upd;
+    execute format(
+      'with upd as (update public.assets a set %s
+                     where a.sku = $1 and a.division_code = $2 and a.is_deleted = false
+                     returning a.id)
+       select coalesce(array_agg(id order by id), ''{}''::uuid[]) from upd', v_set)
+      into v_a_ids
+      using v_sku, v_div, v_u;
+
+    execute format(
+      'with upd as (update public.style_groups g set %s
+                     where g.sku = $1 and g.division_code = $2
+                     returning g.id)
+       select coalesce(array_agg(id order by id), ''{}''::uuid[]) from upd', v_set)
+      into v_g_ids
+      using v_sku, v_div, v_u;
 
     v_results := v_results || jsonb_build_array(jsonb_build_object(
       'asset_count', cardinality(v_a_ids),

@@ -19,6 +19,10 @@ select (
   and not has_function_privilege('authenticated', 'public.set_sg_nas_password(text)', 'execute')
   and not has_function_privilege('anon', 'public.set_sg_nas_password(text)', 'execute')
   and exists (select 1 from vault.secrets where name = 'popdam_sg_nas_password')
+  and not has_table_privilege('anon', 'vault.secrets', 'select')
+  and not has_table_privilege('authenticated', 'vault.secrets', 'select')
+  and not has_table_privilege('anon', 'vault.decrypted_secrets', 'select')
+  and not has_table_privilege('authenticated', 'vault.decrypted_secrets', 'select')
   and exists (
     select 1 from supabase_migrations.schema_migrations
     where version = '20261011170328'

@@ -30,6 +30,13 @@ begin
     raise exception 'set_sg_nas_password must be volatile security definer returning void with empty search_path';
   end if;
 
+  if has_table_privilege('anon', 'vault.secrets', 'select')
+     or has_table_privilege('authenticated', 'vault.secrets', 'select')
+     or has_table_privilege('anon', 'vault.decrypted_secrets', 'select')
+     or has_table_privilege('authenticated', 'vault.decrypted_secrets', 'select') then
+    raise exception 'anon/authenticated must not read Vault directly';
+  end if;
+
   perform public.set_sg_nas_password('zz-test-4168-a');
   if public.get_sg_nas_password() <> 'zz-test-4168-a' then
     raise exception 'set then get did not round-trip';

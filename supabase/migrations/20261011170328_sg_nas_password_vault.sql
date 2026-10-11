@@ -30,8 +30,9 @@
 -- (secrets_name_idx, asserted below), so at most one row can hold the name; two
 -- concurrent first writes cannot both succeed (the loser gets a unique violation and
 -- its admin save fails visibly). No advisory lock is used.
--- The copy runs only when no Vault secret of that name exists yet (an existing one is
--- left untouched), and is verified: if the source row holds a string, the migration
+-- The copy runs only when no Vault secret of that name exists yet; an existing one is
+-- never overwritten and must already equal the source or the migration fails. The copy
+-- is verified: if the source row holds a string, the migration
 -- fails unless Vault then holds exactly that value.
 --
 -- ROLLBACK: drop both functions; the admin_config row is untouched by this migration,
@@ -46,8 +47,14 @@ begin
   end if;
   if to_regclass('vault.secrets') is null
      or to_regclass('vault.decrypted_secrets') is null
-     or to_regprocedure('vault.create_secret(text,text,text,uuid)') is null
-     or to_regprocedure('vault.update_secret(uuid,text,text,text,uuid)') is null then
+     or not exists (select 1 from pg_proc p where p.pronamespace = 'vault'::regnamespace
+                      and p.proname = 'create_secret' and p.pronargs >= 2
+                      and p.pronargs - p.pronargdefaults <= 1
+                      and p.proargtypes[0] = 'text'::regtype)
+     or not exists (select 1 from pg_proc p where p.pronamespace = 'vault'::regnamespace
+                      and p.proname = 'update_secret' and p.pronargs >= 2
+                      and p.pronargs - p.pronargdefaults <= 2
+                      and p.proargtypes[0] = 'uuid'::regtype and p.proargtypes[1] = 'text'::regtype) then
     raise exception 'shared-db#4168 preflight: vault.secrets, vault.decrypted_secrets, vault.create_secret or vault.update_secret is missing';
   end if;
   if (select c.relkind from pg_class c where c.oid = to_regclass('public.admin_config')) is distinct from 'r' then
@@ -58,6 +65,23 @@ begin
      or (select format_type(a.atttypid, a.atttypmod) from pg_attribute a
       where a.attrelid = 'public.admin_config'::regclass and a.attname = 'value' and not a.attisdropped) is distinct from 'jsonb' then
     raise exception 'shared-db#4168 preflight: public.admin_config key/value are not text/jsonb';
+  end if;
+  -- The copy reads one row by key: key must be unique.
+  if not exists (
+    select 1 from pg_constraint c
+    where c.conrelid = 'public.admin_config'::regclass and c.contype in ('p', 'u')
+      and not c.condeferrable and c.convalidated
+      and c.conkey = array[(select a.attnum from pg_attribute a
+                            where a.attrelid = 'public.admin_config'::regclass and a.attname = 'key')]::int2[]
+  ) then
+    raise exception 'shared-db#4168 preflight: public.admin_config has no primary key or unique constraint on (key)';
+  end if;
+  -- Server-side only: API roles must not read Vault directly.
+  if has_table_privilege('anon', 'vault.secrets', 'select')
+     or has_table_privilege('authenticated', 'vault.secrets', 'select')
+     or has_table_privilege('anon', 'vault.decrypted_secrets', 'select')
+     or has_table_privilege('authenticated', 'vault.decrypted_secrets', 'select') then
+    raise exception 'shared-db#4168 preflight: anon/authenticated can read vault.secrets or vault.decrypted_secrets';
   end if;
   -- vault.secrets must expose id and name, and name must be unique (secrets_name_idx):
   -- set_sg_nas_password relies on at most one row holding the name.
@@ -154,7 +178,11 @@ begin
     return;
   end if;
   if exists (select 1 from vault.secrets s where s.name = 'popdam_sg_nas_password') then
-    raise notice 'shared-db#4168: Vault secret popdam_sg_nas_password already exists; left untouched';
+    -- Never overwrite an existing secret; but it must already equal the source.
+    if public.get_sg_nas_password() is distinct from (v_source #>> '{}') then
+      raise exception 'shared-db#4168: Vault secret popdam_sg_nas_password already exists with a different value than WINDOWS_AGENT_SG_NAS_PASS';
+    end if;
+    raise notice 'shared-db#4168: Vault secret already holds the WINDOWS_AGENT_SG_NAS_PASS value; verified';
     return;
   end if;
 

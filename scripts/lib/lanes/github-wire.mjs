@@ -144,7 +144,7 @@ export function readGitCommits(shas,{run=execFileSync}={}){
 }
 // Completes every review-evidence connection the batched read left paginated,
 // using fetchPage(kind, number, after) -> {pageInfo:{hasNextPage,endCursor}, nodes}.
-// Fails closed: a missing cursor, a malformed page, or more than maxPages extra
+// Fails closed: a page without a cursor, a malformed page, or more than maxPages extra
 // pages per connection throws, so reviewStateEntry never sees a partial list.
 export function completeReviewStateConnections(pr,issue,{prNumber,issueNumber},fetchPage,maxPages=20){
   if(!pr||!issue)return {pr,issue}

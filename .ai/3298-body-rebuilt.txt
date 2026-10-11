@@ -1,0 +1,120 @@
+owner: shared-db.orch Codex chat 01a0cb03-daa2-79d2-85fd-6a8904abfc53 on EDGE-DEV (current marker #3405; re-resolve on handover)
+
+## Qualification hold (updated 2026-10-12)
+
+Blocker cleared: #3398 (exact global NOLOGIN role collision accounting) is CLOSED (2026-10-06). pop-ai-watchers asked the owner to recheck and continue (2026-10-07).
+
+Pilot-v1 writes remain **administrator-only** for comments, dependency/decision/reminder records, and Jev accept/dismiss (locked owner + independent reviewer ruling at https://github.com/u2giants/poppim-web/issues/9#issuecomment-5788297664, frozen in admin-only-matrix-v1.md). Sales, licensing, and designer grants are deferred to a later evaluated release and a separate governed shared-db change. No new owner role-matrix question is required.
+
+**Reconciliation against the current PM plan is complete (2026-10-12).** The preliminary `writes:` list below has been expanded with the plan-required additive objects from the execution brief (`docs/verification/jev-activity-triage/shared-db-3298-brief.md`). The claim session must re-verify names against the then-current plan before `manage-migration-author-lanes.mjs --claim` and must list every exact object. Evaluation-dataset / corpus RPCs (`api.pm_claim_jev_*`, `api.pm_submit_jev_*`, `api.pm_create_jev_evaluation_dataset`, `api.pm_open_jev_evaluation_dataset`, `api.pm_get_jev_evaluation_case`, `api.pm_replace_unlabeled_jev_evaluation_case`, `api.pm_freeze_jev_production_sample`, `api.pm_install_jev_production_sampler_key`) and the app-owned Deno gateway stay **out of scope** for this issue / migration A. No role, migration version, preview, or production action is authorized by this note.
+
+Migration A is **additive only**: do not revoke current direct-table grants/RLS used by the live pre-RPC frontend; Step 7B tightening is a separately governed second migration.
+
+## Why
+
+Poppim issue u2giants/poppim-web#9 proposes a human-confirmed Jev pilot that classifies newly posted product comments as routine updates, blockers/dependencies, decisions, or follow-up reminders. The browser must never hold the provider credential, Jev must never create business records automatically, and ordinary non-admin staff must work through least-privilege database contracts.
+
+The current direct inserts are not a safe foundation: `app.comment.created_by_profile_id` has no default, and the generic `app.comment`, `app.activity`, and `app.notification` write policies are administrator-only. The pilot also needs atomic idempotency, rate limiting, review outcome recording, and exactly-once acceptance without broadening table grants.
+
+## Requested structural contract
+
+1. Add `pim.ai_activity_triage` for redacted provider/result metadata only. It must never store comment text, product title, email, URL, customer/licensor name, credential, or other raw prompt data.
+2. Add a unique idempotency key covering comment, normalized-input hash, exact model, and contract version; bounded indexes for caller/review lookups; checks for states and closed labels.
+3. Add narrow RLS so a signed-in PM user can read only triage rows they requested and administrators can audit. Direct browser insert/update/delete remains denied.
+4. Add `api.pm_add_product_comment(...)` to require an active profile, PM app access, role `administrator` for pilot v1, and caller-readable product; deny viewer/vendor/anonymous; trim and require 1–4,000 characters; allow tab/newline but reject NUL and other control characters; insert with `created_by_profile_id` and return the row. Body edits increment a monotonic `app.comment.body_revision` via a trigger ordinary callers cannot bypass; every triage/eligibility row binds the captured revision.
+5. Add `api.pm_begin_activity_triage(...)` to repeat those independent checks, require caller-authored comment on the same product, atomically return an existing result or create/lease one attempt, and enforce a per-profile rolling request limit without a read-then-insert race. The lease has a random token and expiry; fresh leases cannot be stolen. A body edit marks unreviewed non-final triage rows `source_changed` and blocks fence/display/accept.
+6. Add signed `api.pm_complete_activity_triage(...)` and `api.pm_fail_activity_triage(...)` wrappers callable under the original caller JWT. They derive the actor from `auth.uid()`, require that actor to remain the row requester, verify an HMAC-SHA-256 canonical envelope using an environment-specific secret read only by the definer from Supabase Vault, and close only the matching current lease. The private implementation is owned by a dedicated NOLOGIN role with rights only on the triage table/functions; authenticated callers cannot execute it directly. Permit stale takeover after at least two provider timeouts; reject late completion from the old lease. This requires no service-role key or custom token issuer.
+7. Add `api.pm_get_activity_triage(...)` so the owning user can recover an unreviewed result after tab/product changes or reload. Plan-required recovery surface also includes `api.pm_list_active_jev_triage`, `api.pm_list_reviewed_jev_triage`, `api.pm_record_jev_suggestion_impression`, and requester-only idempotent `api.pm_repair_comment_triage_queue`.
+8. Add Jev-independent `api.pm_create_dependency(...)`, `api.pm_create_decision(...)`, `api.pm_create_reminder(...)`, `api.pm_update_dependency_status(...)`, and `api.pm_update_reminder_status(...)`. They enforce the same active-profile/PM-access/staff-role/readable-product checks and exact field allowlists below. Existing manual Operations UI will use these RPCs whether Jev is on or off, so rollback never depends on a triage row.
+9. Add `api.pm_accept_activity_triage(...)` and `api.pm_dismiss_activity_triage(...)`. Re-authorize active profile, PM access, allowed staff role, caller-readable product/business unit, and stored actionable label independently of comment ownership. The client cannot choose department or action kind. Field contract: dependency title 1–200 with fixed `blocked_by/open` and no related product; decision type 1–100 and notes ≤2,000 with fixed `decided`; reminder title 1–200, valid optional due date, current caller, fixed `open/follow_up`. Acceptance must lock the triage row, invoke the same validated creation path as the non-AI RPCs, create exactly one record, and mark the outcome in the same transaction. Retry after an ambiguous response returns the original record.
+10. Revoke function execution from public/anonymous roles and grant only the exact authenticated wrappers required. Revoke direct execution on private worker functions. Preserve existing table policies; do not add broad table writes or a LOGIN role.
+
+Plan-required reservation/recovery/repair for comment operations: `api.pm_reserve_product_comment_operation`, `api.pm_cancel_product_comment_reservation`, `api.pm_recover_product_comment_handle`, `api.pm_repair_comment_triage_queue`. HMAC envelope verification on begin/complete/fail/fence includes `api.pm_verify_jev_runtime_fence`. Eligibility ledger is `pim.ai_activity_triage_eligibility` (append-only-during-pilot; no raw text).
+
+The app-owned Edge Function source and deployment stay in `poppim-web`; this issue owns only shared database shape and preview/prod migration evidence.
+
+## Acceptance evidence
+
+- Preview migration and rollback rehearsal pass.
+- Direct-RPC comment tests reject empty/whitespace, over 4,000 characters, NUL/control characters, invalid product, and oversized request values before insertion.
+- The pilot-v1 administrator can post through the RPC, owns the recorded author profile, begins/retrieves its own triage row, and accepts/dismisses once against separately tested Licensed, Generic, and Software products. Sales/licensing/designer/viewer/vendor/anonymous are denied for pilot-v1 writes.
+- A different signed-in user cannot read or mutate that row; product/business-unit access is rechecked at acceptance.
+- Concurrent begin calls produce one logical row/active lease; stale takeover works after expiry and late old-worker completion fails; concurrent/retried accept calls produce one business record.
+- Signed completion/failure rejects missing, malformed, expired, replayed, wrong-actor, wrong-lease, or wrong-environment envelopes; its NOLOGIN owner cannot read or write unrelated application rows.
+- `body_revision` bump during queued/claimed/leased/succeeded marks `source_changed` and blocks accept; accept after edit creates no record.
+- Operations RPCs create/resolve dependency/decision/reminder records shape-compatible with My Work and `api.pm_department_report` while Jev is off.
+- Existing comment and operating-record behavior remains green for pre-RPC and RPC clients.
+- Generated database types sync through the governed path.
+
+```db-work-scope
+status: ready
+work_type: structural
+route: claim-first
+service_class: standard-application
+change_type: migration
+application_return_to: u2giants/poppim-web
+live_assertion: After the administrator-only pilot-v1 contract and app handback, authenticated PM administrators can post comments and accept one actionable triage suggestion exactly once; non-admin and anonymous users cannot write through these RPCs or read or mutate another user's triage row; manual operations work with Jev off.
+generated_types: required
+priority: 3
+writes:
+  - table pim.ai_activity_triage
+  - table pim.ai_activity_triage_eligibility
+  - column app.comment.body_revision
+  - trigger app_comment_body_revision on app.comment
+  - trigger pm_jev_source_changed on app.comment
+  - function app.comment_body_revision_trg_fn
+  - function pim.pm_jev_require_admin_pm_writer
+  - function pim.pm_jev_source_changed_trg_fn
+  - function pim.pm_validate_comment_body
+  - function pim.pm_verify_jev_hmac_envelope
+  - schema pim
+  - table app.comment
+  - function api.pm_add_product_comment
+  - function api.pm_begin_activity_triage
+  - function api.pm_complete_activity_triage
+  - function api.pm_fail_activity_triage
+  - function pim.pm_complete_activity_triage_worker
+  - function pim.pm_fail_activity_triage_worker
+  - function api.pm_get_activity_triage
+  - function api.pm_create_dependency
+  - function api.pm_create_decision
+  - function api.pm_create_reminder
+  - function api.pm_update_dependency_status
+  - function api.pm_update_reminder_status
+  - function api.pm_accept_activity_triage
+  - function api.pm_dismiss_activity_triage
+  - function api.pm_reserve_product_comment_operation
+  - function api.pm_cancel_product_comment_reservation
+  - function api.pm_recover_product_comment_handle
+  - function api.pm_repair_comment_triage_queue
+  - function api.pm_verify_jev_runtime_fence
+  - function api.pm_list_active_jev_triage
+  - function api.pm_list_reviewed_jev_triage
+  - function api.pm_record_jev_suggestion_impression
+  - policy pm_ai_activity_triage_select_own on pim.ai_activity_triage
+  - policy pm_ai_activity_triage_admin_audit on pim.ai_activity_triage
+  - policy pm_ai_activity_triage_eligibility_select_own on pim.ai_activity_triage_eligibility
+  - policy pm_ai_activity_triage_eligibility_admin_audit on pim.ai_activity_triage_eligibility
+  - role pm_jev_triage_worker
+  - index app.app_comment_poppim_client_operation_uq
+  - index pim.ai_activity_triage_comment_idempotency_key
+  - index pim.ai_activity_triage_eligibility_id_key
+  - index pim.ai_activity_triage_eligibility_requester_op_key
+  - index pim.ai_activity_triage_requester_idx
+  - index pim.ai_activity_triage_state_idx
+reads:
+  - table app.activity
+  - table app.notification
+  - table app.profile
+  - table pim.product
+```
+
+Posted by Codex chat 01a0cb6f-6caa-7e70-bddf-8d81be08942b on EDGE-DEV
+
+
+Posted by Codex chat 01a0cc65-a5c9-7453-bf7b-7c689fba04b3 on edge-dev
+
+
+Posted by MiMo chat unknown on EDGE-DEV
+
+Posted by MiMo chat d49a79a4-ca2b-49bb-b552-2039c560960e on EDGE-DEV

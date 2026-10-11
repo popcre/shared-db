@@ -1,0 +1,14 @@
+Focused re-review of popcre/shared-db PR #4205 at head 470db1337613ddc09cbe01fab07db13b4caa1472.
+
+Prior head 020d92817 was APPROVED by GLM. This head changes only supabase/tests/jev_activity_triage_contract_a.sql:
+- auth.users fixture inserts use session_replication_role=replica (repo convention to bypass invitation gate)
+- reset role uses execute 'reset role'
+
+Migration SQL is unchanged from the approved head.
+
+Confirm the test-only delta is sound and does not weaken assertions. End with exactly one line:
+VERDICT: APPROVE 470db1337613ddc09cbe01fab07db13b4caa1472
+or
+VERDICT: REVISE 470db1337613ddc09cbe01fab07db13b4caa1472
+or
+VERDICT: REJECT 470db1337613ddc09cbe01fab07db13b4caa1472

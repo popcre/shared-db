@@ -3608,3 +3608,13 @@ class OrderSheetsIntegrationContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class SandboxTargetCatalogSafetyTests(unittest.TestCase):
+    def test_unknown_ledger_and_preview_foreign_target_stop_before_query(self):
+        from production_catalog_verification import verify
+        from production_migration_guard import GuardError
+        for ledger_name in ("preview", "unknown"):
+            with self.subTest(ledger_name=ledger_name), tempfile.TemporaryDirectory() as tmp, mock.patch("production_catalog_verification.run_query") as query:
+                with self.assertRaises(GuardError):
+                    verify(REPO, "20261002135053", Path(tmp), "synthetic-project", "synthetic-token", True, ledger_name=ledger_name)
+                query.assert_not_called()

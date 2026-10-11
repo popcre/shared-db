@@ -297,13 +297,15 @@ class GuardTests(unittest.TestCase):
 
     def test_2508_replaced_originals_cannot_be_applied_but_successors_stay_available(self):
         paths = local_migrations(REPO)
-        pairs = {"20260914061331": "20260914075758", "20260930212107": "20261005044103", "20261007143431": "20261007171252"}
+        pairs = {"20261001122410": "20261006004845", "20260914061331": "20260914075758", "20260930212107": "20261005044103", "20261007143431": "20261007171252"}
         for original, successor in pairs.items():
             with self.subTest(original=original):
                 self.assertEqual(classify_pending_version(original, set(), REPO, paths, "production")["kind"], "retired")
                 self.assertIn(successor, production_migration_guard.RETIRED_VERSION_REASONS[original])
                 with self.assertRaises(GuardError):
                     parse_allowlist(original)
+                self.assertIn(successor, paths)
+                self.assertTrue(paths[successor].is_file())
                 self.assertEqual(parse_allowlist(successor), [successor])
 
     def test_the_block_list_matches_the_governed_retirements(self) -> None:
@@ -316,6 +318,7 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(
             HARD_BLOCKED,
             {
+                "20261001122410",
                 "20260914061331",
                 "20260930212107",
                 "20261007143431",
@@ -3990,6 +3993,56 @@ class PendingVersionClassifierTest(unittest.TestCase):
         self.assertIn("20260814223552", row["reason"])
 
 
+class SandboxForeignTargetEntrypointsTest(unittest.TestCase):
+    def test_named_sandbox_survives_prepare_bounded_dryrun_and_catalog(self):
+        import subprocess
+        from unittest import mock
+        from production_catalog_verification import verify
+        version = "20261002135053"
+        for target in ("production", "preview", "unknown"):
+            with self.subTest(target=target), self.assertRaises(GuardError):
+                parse_allowlist(version, target=target)
+        self.assertEqual(parse_allowlist(version, target="designflow-nonprod"), [version])
+        with self.assertRaises(GuardError):
+            production_migration_guard.migration_target_for_ledger("arbitrary")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "source"
+            migrations = root / "supabase/migrations"
+            migrations.mkdir(parents=True)
+            (migrations / "20260901000000_base.sql").write_text("create table public.basefixture(id integer);\n")
+            filename = version + "_fixture.sql"
+            (migrations / filename).write_text("-- derived-from: none\ncreate table public.sandboxfixture(id integer);\n")
+            for args in (("init", "-q"), ("config", "user.name", "Test"), ("config", "user.email", "test@example.invalid"), ("add", "."), ("commit", "-qm", "fixture")):
+                subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+            sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+            ledger = Path(tmp) / "ledger.txt"
+            ledger.write_text("Local | Remote | Time\n20260901000000 | 20260901000000 | x\n")
+            output = Path(tmp) / "bounded"
+            production_migration_guard.preflight(root, version, ledger, ledger_name="sandbox")
+            production_migration_guard.prepare(root, output, sha, version, ledger, ledger_name="sandbox")
+            production_migration_guard.assert_bounded(output, version, ledger, ledger_name="sandbox")
+            dry = Path(tmp) / "dry.txt"
+            dry.write_text("Would push these migrations:\n" + filename + "\n")
+            production_migration_guard.verify_dry_run(dry, version, ledger, ledger_name="sandbox")
+            with self.assertRaises(GuardError):
+                production_migration_guard.assert_bounded(output, version, ledger)
+            with self.assertRaises(GuardError):
+                production_migration_guard.verify_dry_run(dry, version, ledger)
+            catalog = {"relations": [{"name": "public.sandboxfixture", "to_regclass": "public.sandboxfixture", "owner": "postgres"}]}
+            with mock.patch("production_catalog_verification.run_query", return_value=[{"report": catalog}]) as query:
+                self.assertEqual(verify(root, version, Path(tmp)/"proof", "sandbox-project", "synthetic-token", True, remote_ledger=ledger, ledger_name="sandbox"), 0)
+                query.assert_called_once()
+            with mock.patch("production_catalog_verification.run_query", return_value=[{"report": {"relations": [{"name": "public.sandboxfixture", "to_regclass": None}]}}]):
+                self.assertEqual(verify(root, version, Path(tmp)/"bad-proof", "sandbox-project", "synthetic-token", True, remote_ledger=ledger, ledger_name="sandbox"), 1)
+            with mock.patch("production_catalog_verification.run_query") as query:
+                with self.assertRaises(GuardError):
+                    verify(root, version, Path(tmp)/"prod-proof", "production-project", "synthetic-token", True, remote_ledger=ledger)
+                query.assert_not_called()
+            dry.write_text("Would push these migrations:\n20261002135054_wrong.sql\n")
+            with self.assertRaises(GuardError):
+                production_migration_guard.verify_dry_run(dry, version, ledger, ledger_name="sandbox")
+
+
 class ForeignTargetScopeTest(unittest.TestCase):
     """Issue #2820 -- a migration authored for another database is not promotable here.
 
@@ -4016,7 +4069,7 @@ class ForeignTargetScopeTest(unittest.TestCase):
                 self.assertIsNone(foreign_target_entry(version, "designflow-nonprod"))
                 with self.assertRaises(GuardError):
                     parse_allowlist(version)
-        for version in ("20260929082814", "20260930193549", "20261001122410", "20261005025111", "20261009191951", "20261009224453", "20261010033616"):
+        for version in ("20260929082814", "20260930193549", "20261005025111", "20261009191951", "20261009224453", "20261010033616"):
             with self.subTest(control=version):
                 self.assertNotIn(classify_pending_version(version, set(), REPO, paths, "production")["kind"], ("retired", "deliberately-held", "foreign-target"))
         held = classify_pending_version("20260817150944", set(), REPO, paths, "production")

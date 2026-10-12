@@ -103,12 +103,52 @@ begin
   ) then
     raise exception 'missing policy pm_ai_activity_triage_eligibility_select_own';
   end if;
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'pim' and tablename = 'ai_activity_triage'
+      and policyname = 'pm_ai_activity_triage_worker_all'
+  ) then
+    raise exception 'missing policy pm_ai_activity_triage_worker_all';
+  end if;
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'pim' and tablename = 'ai_activity_triage'
+      and policyname = 'pm_ai_activity_triage_admin_audit'
+  ) then
+    raise exception 'missing policy pm_ai_activity_triage_admin_audit';
+  end if;
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'pim' and tablename = 'ai_activity_triage_eligibility'
+      and policyname = 'pm_ai_activity_triage_eligibility_worker_all'
+  ) then
+    raise exception 'missing policy pm_ai_activity_triage_eligibility_worker_all';
+  end if;
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'pim' and tablename = 'ai_activity_triage_eligibility'
+      and policyname = 'pm_ai_activity_triage_eligibility_admin_audit'
+  ) then
+    raise exception 'missing policy pm_ai_activity_triage_eligibility_admin_audit';
+  end if;
+  if not exists (
+    select 1 from pg_trigger
+    where tgname = 'pm_jev_source_changed' and tgrelid = 'app.comment'::regclass
+  ) then
+    raise exception 'missing trigger pm_jev_source_changed';
+  end if;
   -- live_comment_id is indexed for the body-edit trigger and repair update.
   if not exists (
     select 1 from pg_indexes
     where schemaname = 'pim' and indexname = 'ai_activity_triage_live_comment_idx'
   ) then
     raise exception 'missing index ai_activity_triage_live_comment_idx';
+  end if;
+  if not exists (
+    select 1 from pg_indexes
+    where schemaname = 'pim' and indexname = 'ai_activity_triage_eligibility_comment_idx'
+  ) then
+    raise exception 'missing index ai_activity_triage_eligibility_comment_idx';
   end if;
 
   -- ------------------------------------------------------------------
@@ -433,22 +473,71 @@ begin
     raise exception 'second begin with a live lease must return existing, got %', v_result ->> 'status';
   end if;
 
-  -- Stale lease with two timeouts is reclaimed with a fresh token.
-  update pim.ai_activity_triage
-  set state = 'leased',
-      lease_expires_at = now() - interval '1 minute',
-      timeout_count = 2,
-      attempt_count = 1
-  where id = v_triage_id;
+  -- Timeout fail through the worker keeps the row re-leaseable until the
+  -- retry budget is spent, and begin then reclaims it (issue #3298 item 6).
+  select lease_token_hash into v_lease_hash from pim.ai_activity_triage where id = v_triage_id;
+  perform set_config('role', 'pm_jev_triage_worker', true);
+  perform pim.pm_fail_activity_triage_worker(v_triage_id, v_lease_hash, 'timeout');
+  execute 'reset role';
+  select state, timeout_count into v_state, v_rev from pim.ai_activity_triage where id = v_triage_id;
+  -- v_rev reused as the integer counter here (timeout_count).
+  if v_state is distinct from 'queued' then
+    raise exception 'first timeout must return the row to queued, got %', v_state;
+  end if;
+
   v_result := api.pm_begin_activity_triage(v_comment, 'digest-env-' || v_comment, 'key-v1', 'jev-test-model', 'contract-v1', null, null);
   if (v_result ->> 'status') <> 'reclaimed' then
-    raise exception 'stale lease with two timeouts must be reclaimed, got %', v_result ->> 'status';
+    raise exception 'begin after first timeout must reclaim, got %', v_result ->> 'status';
   end if;
   if (v_result ->> 'lease_token') is null then
     raise exception 'reclaim must issue a fresh lease token';
   end if;
 
-  -- Fail path rejects a bad lease hash.
+  select lease_token_hash into v_lease_hash from pim.ai_activity_triage where id = v_triage_id;
+  perform set_config('role', 'pm_jev_triage_worker', true);
+  perform pim.pm_fail_activity_triage_worker(v_triage_id, v_lease_hash, 'timeout');
+  execute 'reset role';
+  select state, timeout_count into v_state, v_rev from pim.ai_activity_triage where id = v_triage_id;
+  if v_state is distinct from 'queued' or v_rev < 2 then
+    raise exception 'second timeout must stay queued with timeout_count>=2, got % / %', v_state, v_rev;
+  end if;
+
+  v_result := api.pm_begin_activity_triage(v_comment, 'digest-env-' || v_comment, 'key-v1', 'jev-test-model', 'contract-v1', null, null);
+  if (v_result ->> 'status') <> 'reclaimed' then
+    raise exception 'begin after second timeout must reclaim, got %', v_result ->> 'status';
+  end if;
+
+  select lease_token_hash into v_lease_hash from pim.ai_activity_triage where id = v_triage_id;
+  perform set_config('role', 'pm_jev_triage_worker', true);
+  perform pim.pm_fail_activity_triage_worker(v_triage_id, v_lease_hash, 'timeout');
+  execute 'reset role';
+  select state into v_state from pim.ai_activity_triage where id = v_triage_id;
+  if v_state is distinct from 'failed' then
+    raise exception 'third timeout must fail terminally, got %', v_state;
+  end if;
+
+  v_result := api.pm_begin_activity_triage(v_comment, 'digest-env-' || v_comment, 'key-v1', 'jev-test-model', 'contract-v1', null, null);
+  if (v_result ->> 'status') <> 'existing' or (v_result ->> 'lease_acquired')::boolean then
+    raise exception 'begin on a failed row must return existing without a lease, got %', v_result;
+  end if;
+
+  -- Expired-lease takeover: force expiry and confirm begin reclaims.
+  v_result := api.pm_reserve_product_comment_operation(v_product, gen_random_uuid());
+  v_op_id := (v_result ->> 'client_operation_id')::uuid;
+  v_result := api.pm_add_product_comment(v_product, 'expired lease comment', v_op_id);
+  v_comment := (v_result ->> 'comment_id')::uuid;
+  v_result := api.pm_begin_activity_triage(v_comment, 'digest-exp-' || v_comment, 'key-v1', 'jev-test-model', 'contract-v1', null, null);
+  v_triage_id := (v_result ->> 'triage_id')::uuid;
+  update pim.ai_activity_triage
+  set lease_expires_at = now() - interval '1 minute'
+  where id = v_triage_id;
+  v_result := api.pm_begin_activity_triage(v_comment, 'digest-exp-' || v_comment, 'key-v1', 'jev-test-model', 'contract-v1', null, null);
+  if (v_result ->> 'status') <> 'reclaimed' then
+    raise exception 'expired lease must be reclaimed by begin, got %', v_result ->> 'status';
+  end if;
+
+  -- Fail path rejects a bad lease hash (raises before the worker lease check
+  -- when the envelope is null; with a null envelope this asserts envelope fail-closed).
   v_raised := false;
   begin
     perform api.pm_fail_activity_triage(v_triage_id, 'not-the-lease-hash', 'timeout', null, null);

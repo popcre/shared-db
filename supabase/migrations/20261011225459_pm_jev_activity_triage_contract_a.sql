@@ -90,6 +90,9 @@ create index if not exists ai_activity_triage_eligibility_token_idx
   on pim.ai_activity_triage_eligibility (reservation_token_hash)
   where reservation_token_hash is not null;
 
+create index if not exists ai_activity_triage_eligibility_comment_idx
+  on pim.ai_activity_triage_eligibility (comment_id);
+
 -- ============================================================================
 -- 4. Triage result table
 -- ============================================================================
@@ -413,12 +416,20 @@ begin
   end if;
 
   update pim.ai_activity_triage
-  set state = 'failed',
-      error_code = p_error_code,
-      timeout_count = case when p_error_code = 'timeout' then timeout_count + 1 else timeout_count end,
-      lease_token_hash = null,
-      lease_expires_at = null,
-      updated_at = now()
+  set
+    -- Timeouts stay re-leaseable until the retry budget is spent; any other
+    -- error is terminal. Late completion from the old lease is still rejected
+    -- by the lease-token check on complete.
+    state = case
+      when p_error_code = 'timeout' and timeout_count < 2 then 'queued'
+      else 'failed'
+    end,
+    error_code = p_error_code,
+    timeout_count = case when p_error_code = 'timeout' then timeout_count + 1 else timeout_count end,
+    lease_token_hash = null,
+    lease_expires_at = null,
+    lease_acquired_at = null,
+    updated_at = now()
   where id = p_triage_id;
 
   return p_triage_id;
@@ -533,19 +544,38 @@ begin
   v_token_hash := encode(extensions.digest(convert_to(v_token, 'utf8'), 'sha256'), 'hex');
   v_handle := v_token || '.' || v_token_hash;
 
-  insert into pim.ai_activity_triage_eligibility (
-    requester_profile_id, client_operation_id, eligibility_version,
-    product_id, source_body_revision, eligibility_state,
-    reservation_token_hash, recovery_handle_mac, expires_at
-  ) values (
-    v_profile, p_client_operation_id,
-    coalesce((select max(e2.eligibility_version) from pim.ai_activity_triage_eligibility e2
-              where e2.requester_profile_id = v_profile
-                and e2.client_operation_id = p_client_operation_id), 0) + 1,
-    p_product_id, 1, 'reserved',
-    v_token_hash, v_token_hash, now() + interval '7 days'
-  )
-  returning * into v_row;
+  begin
+    insert into pim.ai_activity_triage_eligibility (
+      requester_profile_id, client_operation_id, eligibility_version,
+      product_id, source_body_revision, eligibility_state,
+      reservation_token_hash, recovery_handle_mac, expires_at
+    ) values (
+      v_profile, p_client_operation_id,
+      coalesce((select max(e2.eligibility_version) from pim.ai_activity_triage_eligibility e2
+                where e2.requester_profile_id = v_profile
+                  and e2.client_operation_id = p_client_operation_id), 0) + 1,
+      p_product_id, 1, 'reserved',
+      v_token_hash, v_token_hash, now() + interval '7 days'
+    )
+    returning * into v_row;
+  exception when unique_violation then
+    -- Concurrent double-reserve returns the winner's reservation.
+    select * into v_existing
+    from pim.ai_activity_triage_eligibility e
+    where e.requester_profile_id = v_profile
+      and e.client_operation_id = p_client_operation_id
+    order by e.eligibility_version desc
+    limit 1;
+    if found and v_existing.eligibility_state = 'reserved' and v_existing.expires_at > now() then
+      return jsonb_build_object(
+        'status', 'reserved',
+        'eligibility_id', v_existing.id,
+        'client_operation_id', v_existing.client_operation_id,
+        'expires_at', v_existing.expires_at
+      );
+    end if;
+    raise;
+  end;
 
   return jsonb_build_object(
     'status', 'reserved',
@@ -832,17 +862,8 @@ begin
     raise exception using errcode = '22023', message = 'PM_COMMENT_TARGET_INVALID';
   end if;
 
-  -- Per-profile rolling request limit (50 per 24h). Serialize the
-  -- count-then-insert on a per-profile advisory xact lock so concurrent
-  -- begins cannot both pass the limit.
-  perform pg_advisory_xact_lock(hashtext('pm_jev_rate:' || v_profile::text));
-  select count(*) into v_recent
-  from pim.ai_activity_triage t
-  where t.requester_profile_id = v_profile
-    and t.created_at > now() - interval '24 hours';
-  if v_recent >= 50 then
-    raise exception using errcode = '22023', message = 'PM_RATE_LIMITED';
-  end if;
+  -- Serialize concurrent begins for this profile (rate limit + idempotency).
+  perform pg_advisory_xact_lock(hashtext('pm_jev_begin:' || v_profile::text));
 
   select * into v_existing
   from pim.ai_activity_triage t
@@ -853,10 +874,8 @@ begin
     and t.contract_version = p_contract_version
   for update;
   if found then
-    -- Stale-lease takeover: after two provider timeouts (or an expired
-    -- terminal lease) a fresh lease may replace a dead one. Late completion
-    -- from the old lease is still rejected by the workers' lease-token check.
-    if v_existing.state in ('accepted', 'dismissed', 'source_changed', 'failed') then
+    -- Terminal outcomes never re-lease.
+    if v_existing.state in ('accepted', 'dismissed', 'source_changed', 'failed', 'succeeded') then
       return jsonb_build_object(
         'status', 'existing',
         'triage_id', v_existing.id,
@@ -864,10 +883,12 @@ begin
         'lease_acquired', false
       );
     end if;
-    if v_existing.state in ('leased', 'claimed')
-       and v_existing.lease_expires_at is not null
-       and v_existing.lease_expires_at < now()
-       and (v_existing.timeout_count >= 2 or v_existing.attempt_count >= 2) then
+    -- Re-lease a queued row (timeout retry) or take over an expired lease.
+    -- Late completion from the old lease is rejected by the workers' lease check.
+    if v_existing.state = 'queued'
+       or (v_existing.state in ('leased', 'claimed')
+           and v_existing.lease_expires_at is not null
+           and v_existing.lease_expires_at < now()) then
       v_lease_token := encode(extensions.gen_random_bytes(16), 'hex');
       v_lease_hash := encode(extensions.digest(convert_to(v_lease_token, 'utf8'), 'sha256'), 'hex');
       update pim.ai_activity_triage t
@@ -896,6 +917,16 @@ begin
         and v_existing.lease_expires_at is not null
         and v_existing.lease_expires_at >= now()
     );
+  end if;
+
+  -- Per-profile rolling request limit (50 per 24h) applies only when a new
+  -- row would be created; re-fetching or reclaiming an existing row is free.
+  select count(*) into v_recent
+  from pim.ai_activity_triage t
+  where t.requester_profile_id = v_profile
+    and t.created_at > now() - interval '24 hours';
+  if v_recent >= 50 then
+    raise exception using errcode = '22023', message = 'PM_RATE_LIMITED';
   end if;
 
   insert into pim.ai_activity_triage_eligibility (

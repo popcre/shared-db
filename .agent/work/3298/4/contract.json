@@ -12,14 +12,14 @@
   "allowed_paths": [
     "supabase/migrations/20261011225459_pm_jev_activity_triage_contract_a.sql",
     "supabase/tests/jev_activity_triage_contract_a.sql",
-    ".agent/work/3298/3/contract.json",
-    ".agent/work/3298/3/completion.json"
+    ".agent/work/3298/4/contract.json",
+    ".agent/work/3298/4/completion.json"
   ],
   "file_writes": [
     "supabase/migrations/20261011225459_pm_jev_activity_triage_contract_a.sql",
     "supabase/tests/jev_activity_triage_contract_a.sql",
-    ".agent/work/3298/3/contract.json",
-    ".agent/work/3298/3/completion.json"
+    ".agent/work/3298/4/contract.json",
+    ".agent/work/3298/4/completion.json"
   ],
   "db_reads": [
     "table app.activity",
@@ -58,6 +58,7 @@
     "function pim.pm_verify_jev_hmac_envelope",
     "index app.app_comment_poppim_client_operation_uq",
     "index pim.ai_activity_triage_comment_idempotency_key",
+    "index pim.ai_activity_triage_eligibility_comment_idx",
     "index pim.ai_activity_triage_eligibility_token_idx",
     "index pim.ai_activity_triage_live_comment_idx",
     "index pim.ai_activity_triage_requester_idx",
@@ -94,10 +95,12 @@
     "Stop on exact-head reviewer REJECT that cannot be fixed additively",
     "Stop if migration collides with another claim"
   ],
-  "generation": 3,
+  "generation": 4,
   "evidence_parent": {
     "work_issue": 3298,
-    "generation": 2,
-    "contract_sha256": "a996d44406733590780cd8a5e4e3a17f0db31464a4f27195dc505ad35f9ad938"
+    "generation": 3,
+    "contract_sha256": "8596f4ad9a527fdbe46b89f31759b947fee91960a182a4104084dc4e43fe337d"
   }
 }
+
+

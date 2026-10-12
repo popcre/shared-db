@@ -6,15 +6,15 @@
   "migration_versions": [
     "20261011225459"
   ],
-  "contract_ref": "refs/db-contracts/3298/3",
-  "contract_sha256": "8596f4ad9a527fdbe46b89f31759b947fee91960a182a4104084dc4e43fe337d",
-  "head_sha": "961b5f9a3649933ab1bf93109d48aa3a8f63d700",
+  "contract_ref": "refs/db-contracts/3298/4",
+  "contract_sha256": "af584f68b92c0e6a4a7b7f7277195ff59f2fe39540d70727b95c819ec1cb3735",
+  "head_sha": "ef10170618512d883636cda4fe4e3f8d67519f37",
   "base_sha": "5d876ca1b5302369925dd11a01c71c60ca4a9421",
   "files_changed": [
     "supabase/migrations/20261011225459_pm_jev_activity_triage_contract_a.sql",
     "supabase/tests/jev_activity_triage_contract_a.sql",
-    ".agent/work/3298/3/contract.json",
-    ".agent/work/3298/3/completion.json"
+    ".agent/work/3298/4/contract.json",
+    ".agent/work/3298/4/completion.json"
   ],
   "db_reads": [
     "table app.activity",
@@ -53,6 +53,7 @@
     "function pim.pm_verify_jev_hmac_envelope",
     "index app.app_comment_poppim_client_operation_uq",
     "index pim.ai_activity_triage_comment_idempotency_key",
+    "index pim.ai_activity_triage_eligibility_comment_idx",
     "index pim.ai_activity_triage_eligibility_token_idx",
     "index pim.ai_activity_triage_live_comment_idx",
     "index pim.ai_activity_triage_requester_idx",
@@ -88,5 +89,6 @@
     "Live preview proof deferred to issue #3298."
   ],
   "stop_conditions_hit": [],
-  "notes": "Migration A additive contract, generation 3. Supersedes generation 2 to correct evidence paths and the post-REVISE index set (live_comment_id, reservation_token_hash). Stale-lease takeover, advisory-locked rate limit, unique_violation replay, and envelope-rejection tests address DeepSeek sequence 6329 REVISE findings."
+  "notes": "Migration A additive contract, generation 4. Supersedes generation 2 to correct evidence paths and the post-REVISE index set (live_comment_id, reservation_token_hash). Stale-lease takeover, advisory-locked rate limit, unique_violation replay, and envelope-rejection tests address DeepSeek sequence 6329 REVISE findings."
 }
+

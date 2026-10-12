@@ -12,7 +12,7 @@ import unittest
 import uuid
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-MIGRATION = ROOT / 'supabase/migrations/20261011125719_style_group_change_watermark.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261012012727_style_group_change_watermark.sql'
 KEY = "hashtext('style-group-change-clock-2421')"
 
 

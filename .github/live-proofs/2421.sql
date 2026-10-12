@@ -12,7 +12,7 @@ WITH installed AS (
     AND tgname IN ('assets_style_group_change_clock','style_groups_style_group_change_clock','style_group_tags_change_clock')
 )
 SELECT (
-  EXISTS(SELECT FROM supabase_migrations.schema_migrations WHERE version='20261011125719')
+  EXISTS(SELECT FROM supabase_migrations.schema_migrations WHERE version='20261012012727')
   AND (SELECT n=2 FROM clocks) AND (SELECT n=3 FROM triggers)
   AND EXISTS(SELECT FROM installed WHERE prosecdef
     AND has_function_privilege('service_role',oid,'EXECUTE')

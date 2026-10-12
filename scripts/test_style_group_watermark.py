@@ -58,6 +58,9 @@ class WatermarkContracts(unittest.TestCase):
         source = old.read_text()
         source = source[:source.lower().index('create or replace function public.reconcile')]
         cls.sql(source)
+        baseline = (ROOT / 'supabase/ci-bootstrap/010_pre_adoption_baseline.sql').read_text()
+        start = baseline.rindex('CREATE OR REPLACE FUNCTION public.clear_style_group_batch(')
+        cls.sql(baseline[start:baseline.index('$function$;', start)+len('$function$;')])
         queue = next((ROOT / 'supabase/migrations').glob('20260909005945*')).read_text()
         start = queue.lower().index('create or replace function public.queue_nightly_rebuild_style_groups()')
         queue = queue[start:queue.index('$function$;', start)+len('$function$;')]
@@ -96,6 +99,7 @@ class WatermarkContracts(unittest.TestCase):
     def setUp(self):
         self.sql('TRUNCATE style_group_tags,assets,style_groups,admin_config;')
         self.sql(self.queue)
+        self.sql("CREATE OR REPLACE FUNCTION refresh_style_group_counts_batch(uuid[]) RETURNS integer LANGUAGE sql AS 'SELECT 0';")
 
     def wait_for(self, query):
         for _ in range(80):
@@ -126,6 +130,81 @@ class WatermarkContracts(unittest.TestCase):
         out, err = queue.communicate(timeout=5)
         self.assertEqual(queue.returncode,0,err)
         self.assertEqual(self.sql("SELECT (SELECT max(style_group_changed_at) FROM assets) > (value->'style-group-change-watermark'->>'pending_cutoff')::timestamptz FROM admin_config;"),'t')
+
+    def test_spanning_writer_cannot_publish_an_earlier_cutoff(self):
+        writer = self.process("BEGIN; INSERT INTO assets(filename,relative_path) VALUES('spanning','AAA2421AA/file'); SELECT pg_sleep(1); COMMIT;")
+        self.wait_for("SELECT EXISTS(SELECT FROM pg_locks WHERE locktype='advisory' AND mode='ShareLock' AND objid="+KEY+"::oid);")
+        queue = self.process('SELECT queue_nightly_rebuild_style_groups();')
+        self.wait_for("SELECT EXISTS(SELECT FROM pg_locks WHERE locktype='advisory' AND mode='ExclusiveLock' AND NOT granted AND objid="+KEY+"::oid);")
+        # There can be no worker run spanning this writer: its run and cutoff
+        # cannot be published until the writer's transaction has committed.
+        self.assertEqual(self.sql("SELECT NOT EXISTS(SELECT FROM admin_config WHERE key='BULK_OPERATIONS');"), 't')
+        for process in (writer, queue):
+            out, err = process.communicate(timeout=5)
+            self.assertEqual(process.returncode, 0, err)
+        self.assertEqual(self.sql("SELECT (value->'style-group-change-watermark'->>'pending_cutoff')::timestamptz >= (SELECT style_group_changed_at FROM assets WHERE filename='spanning') FROM admin_config;"), 't')
+        self.assertEqual(self.sql("SELECT rows_examined FROM rebuild_style_groups_batch(NULL,100,clock_timestamp()-interval '1 day');"), '1')
+
+    def completed_state(self):
+        self.sql("""INSERT INTO style_groups(sku) VALUES('AAA2421AA');
+          INSERT INTO admin_config VALUES('BULK_OPERATIONS',jsonb_build_object(
+            'rebuild-style-groups',jsonb_build_object('status','completed','run_id','ack-fixture',
+              'params',jsonb_build_object('watermark_protocol',1,'changed_cutoff','2026-10-11T01:00:00Z')),
+            'style-group-change-watermark',jsonb_build_object('pending_run_id','ack-fixture',
+              'pending_cutoff','2026-10-11T01:00:00+00:00','pending_mode','full'),
+            'style-group-counts-reconcile',jsonb_build_object('last_enqueued_at',clock_timestamp())),now());""")
+
+    def test_concurrent_queue_retains_transaction_lock_during_counts(self):
+        self.completed_state()
+        self.sql("CREATE OR REPLACE FUNCTION refresh_style_group_counts_batch(uuid[]) RETURNS integer LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(1); RETURN 0; END $$;")
+        first = self.process('SELECT queue_nightly_rebuild_style_groups();')
+        self.wait_for("SELECT EXISTS(SELECT FROM pg_stat_activity WHERE query='SELECT queue_nightly_rebuild_style_groups();' AND wait_event='PgSleep');")
+        second = self.process('SELECT queue_nightly_rebuild_style_groups();')
+        self.wait_for("SELECT EXISTS(SELECT FROM pg_locks WHERE locktype='advisory' AND NOT granted AND objid=hashtext('BULK_OPERATIONS')::oid);")
+        for process in (first, second):
+            out, err = process.communicate(timeout=5)
+            self.assertEqual(process.returncode, 0, err)
+        self.assertEqual(self.sql("SELECT value->'style-group-change-watermark'->>'last_successful_run_id' FROM admin_config;"), 'ack-fixture')
+        self.assertEqual(self.sql("SELECT value->'style-group-change-watermark'->>'pending_run_id' FROM admin_config;"), 'ack-fixture')
+
+    def test_external_pending_update_survives_counts_and_ack(self):
+        self.completed_state()
+        self.sql("CREATE OR REPLACE FUNCTION refresh_style_group_counts_batch(uuid[]) RETURNS integer LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(1); RETURN 0; END $$;")
+        queue = self.process('SELECT queue_nightly_rebuild_style_groups();')
+        self.wait_for("SELECT EXISTS(SELECT FROM pg_stat_activity WHERE query='SELECT queue_nightly_rebuild_style_groups();' AND wait_event='PgSleep');")
+        self.sql("UPDATE admin_config SET value=jsonb_set(value,'{style-group-change-watermark}',jsonb_build_object('pending_run_id','external-run','pending_cutoff','2026-10-11T02:00:00Z','pending_mode','incremental')) WHERE key='BULK_OPERATIONS';")
+        out, err = queue.communicate(timeout=5)
+        self.assertEqual(queue.returncode, 0, err)
+        self.assertEqual(self.sql("SELECT value->'style-group-change-watermark'->>'pending_run_id' FROM admin_config;"), 'external-run')
+        self.assertEqual(self.sql("SELECT value->'style-group-change-watermark'->>'pending_cutoff' FROM admin_config;"), '2026-10-11T02:00:00Z')
+
+    def test_invalid_batch_sizes_refuse_without_mutation(self):
+        for size in ('0', '-1', 'NULL'):
+            self.sql("DO $$ BEGIN BEGIN PERFORM rebuild_style_groups_batch(NULL,"+size+",NULL); RAISE EXCEPTION 'invalid batch accepted'; EXCEPTION WHEN invalid_parameter_value THEN NULL; END; END $$;")
+        self.assertEqual(self.sql('SELECT count(*) FROM assets;'), '0')
+
+    def test_exact_installed_probe_rejects_wrong_objects(self):
+        self.sql("""CREATE SCHEMA supabase_migrations;
+          CREATE TABLE supabase_migrations.schema_migrations(version text PRIMARY KEY);
+          INSERT INTO supabase_migrations.schema_migrations VALUES('20261012012727');
+          CREATE INDEX assets_style_group_id_active_idx ON assets(style_group_id,id)
+            WHERE is_deleted=false AND style_group_id IS NOT NULL;
+          REVOKE ALL ON FUNCTION queue_nightly_rebuild_style_groups() FROM PUBLIC,anon,authenticated;
+          GRANT EXECUTE ON FUNCTION queue_nightly_rebuild_style_groups() TO service_role;
+        """)
+        probe = (ROOT / '.github/live-proofs/2421.sql').read_text()
+        # The fixture changes only the enqueue-hour constant to make tests
+        # independent of the clock; the installed probe checks protections.
+        self.assertEqual(self.sql(probe), 't')
+        for mutation in (
+            "ALTER INDEX assets_style_group_changed_at_idx RENAME TO preserved_clock_index; CREATE INDEX assets_style_group_changed_at_idx ON assets(id);",
+            "ALTER TABLE assets DISABLE TRIGGER assets_style_group_change_clock;",
+            "GRANT EXECUTE ON FUNCTION rebuild_style_groups_batch(uuid,integer,timestamptz) TO authenticated;",
+            "ALTER FUNCTION stamp_style_group_asset_change() RESET search_path;",
+            "ALTER FUNCTION rebuild_style_groups_batch(uuid,integer,timestamptz) STABLE;",
+        ):
+            self.assertEqual(self.sql('BEGIN; '+mutation+'\n'+probe+'; ROLLBACK;'), 'f')
+        self.sql('DROP SCHEMA supabase_migrations CASCADE; DROP INDEX assets_style_group_id_active_idx;')
 
     def test_exception_classes_and_reentrant_balance(self):
         for code in ('57014','P0004','XX000'):

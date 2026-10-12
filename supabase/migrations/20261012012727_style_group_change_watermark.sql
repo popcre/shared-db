@@ -88,6 +88,9 @@ DECLARE
   v_done boolean;
   v_examined int := 0;
 BEGIN
+  IF p_batch_size IS NULL OR p_batch_size <= 0 THEN
+    RAISE EXCEPTION 'a positive bounded batch size is required' USING ERRCODE = '22023';
+  END IF;
   WITH changed_groups AS MATERIALIZED (
     SELECT id FROM public.style_groups
     WHERE p_changed_since IS NOT NULL AND style_group_changed_at > p_changed_since
@@ -367,7 +370,8 @@ begin
   if v_status = 'completed'
      and v_run_id = v_watermark ->> 'pending_run_id'
      and v_op -> 'params' ->> 'watermark_protocol' = '1'
-     and v_op -> 'params' ->> 'changed_cutoff' = v_watermark ->> 'pending_cutoff'
+     and (v_op -> 'params' ->> 'changed_cutoff')::timestamptz
+         = (v_watermark ->> 'pending_cutoff')::timestamptz
      and v_run_id is distinct from v_watermark ->> 'last_successful_run_id'
   then
     v_watermark := v_watermark || jsonb_build_object(
@@ -535,7 +539,13 @@ begin
     true
   );
 
-  v_current := jsonb_set(v_current, array[c_watermark], v_watermark, true);
+  -- Other callers of this queue serialize through the transaction-scoped BULK
+  -- lock, which remains held during counts. Preserve a new pending run even if
+  -- an external state writer does not use that lock.
+  if v_current -> c_watermark ->> 'pending_run_id'
+       is not distinct from v_watermark ->> 'pending_run_id' then
+    v_current := jsonb_set(v_current, array[c_watermark], v_watermark, true);
+  end if;
   insert into admin_config (key, value, updated_at)
   values ('BULK_OPERATIONS', v_current, now())
   on conflict (key) do update

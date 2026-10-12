@@ -17,12 +17,26 @@
 -- 2026-09-25 owner HOLD remain untouched).
 --
 -- Fail-closed rules:
+--   * provenance is the owner-approved mapping, not a ColdLion capture: raw records
+--     authority 'owner_approved_mapping' and freshness_basis 'migration_apply_time';
+--     first_seen_at/last_seen_at are apply time and do NOT prove ColdLion freshness;
+--   * the ColdLion taxonomy breaker must be closed (checked up front with a clear error);
 --   * an environment with none of the 19 canonical Licensors (CI shadow) is a no-op;
 --     some-but-not-all present aborts;
---   * each canonical Licensor must carry exactly the approved code;
---   * an existing ColdLion source row for any of the 38 keys must already point at the
---     same canonical Licensor (idempotent), otherwise abort;
---   * after insert, the 38 keys must hash to the approved subset hash.
+--   * each canonical Licensor must carry exactly the approved code, and no other
+--     Licensor may carry it (core.licensor.code is also UNIQUE);
+--   * an existing source row for any of the 38 keys, under any case/whitespace spelling of
+--     the source system/table, must be the exact approved row (idempotent), else abort;
+--   * after insert, each key resolves to its approved Licensor with source_licensor_id
+--     derived to that same Licensor, and the 38 keys hash to the approved subset hash.
+--
+-- Recovery: the rows are identified exactly by raw->>'implementation_issue' = '#4235'.
+-- Deleting ColdLion source refs is guarded by coldlion_source_ref_delete_breaker_guard;
+-- a correction ships as a reviewed forward migration through that guard's authorization,
+-- never as a manual delete.
+--
+-- Tested locally (PostgreSQL 16, minimal fixture): empty environment no-op; 38 inserted;
+-- rerun idempotent; a conflicting pre-existing row refused.
 do $migration$
 declare
   v_codes constant text[] := array['1P','AA','CB','CC','DC','DY','HP','MV','NB','PN','PP','SE','SM','SS','SW','VM','WB','WW','ZZ'];
@@ -42,6 +56,11 @@ begin
     perform 1 from core.licensor l where l.id = v_ids[i];
     if found then v_present := v_present + 1; end if;
   end loop;
+  perform 1 from plm.taxonomy_circuit_breaker b
+  where b.lane = 'coldlion_licensor_property' and b.state = 'tripped';
+  if found then
+    raise exception 'issue #4235: ColdLion taxonomy circuit breaker is tripped; refusing before any write';
+  end if;
   if v_present = 0 then
     raise notice 'issue #4235: no approved canonical Licensor exists in this environment; no-op';
     return;
@@ -58,6 +77,10 @@ begin
     if v_name is null then
       raise exception 'issue #4235: canonical Licensor % no longer carries approved code %; refusing', v_id, v_code;
     end if;
+    perform 1 from core.licensor l where l.id <> v_id and upper(btrim(coalesce(l.code, ''))) = v_code;
+    if found then
+      raise exception 'issue #4235: approved code % is carried by another Licensor; refusing', v_code;
+    end if;
     foreach v_division in array v_divisions loop
       v_key := 'EDGEHOME/' || v_division || '/05/' || v_code;
       v_existing := null;
@@ -65,8 +88,9 @@ begin
       where r.source_system = 'coldlion' and r.source_table = 'merchGroupDetails' and r.source_id = v_key
         and r.entity_schema = 'core' and r.entity_table = 'licensor';
       perform 1 from core.taxonomy_source_ref r
-      where r.source_system = 'coldlion' and r.source_table = 'merchGroupDetails' and r.source_id = v_key
-        and (r.entity_schema <> 'core' or r.entity_table <> 'licensor' or r.entity_id <> v_id);
+      where lower(btrim(r.source_system)) = 'coldlion' and upper(btrim(r.source_id)) = upper(v_key)
+        and (r.source_system <> 'coldlion' or r.source_table <> 'merchGroupDetails' or r.source_id <> v_key
+             or r.entity_schema <> 'core' or r.entity_table <> 'licensor' or r.entity_id <> v_id);
       if found then
         raise exception 'issue #4235: existing ColdLion source row % conflicts with the approved mapping; refusing', v_key;
       end if;
@@ -76,7 +100,8 @@ begin
         values ('core', 'licensor', v_id, 'coldlion', 'merchGroupDetails', v_key, v_code, v_name, 'verified',
           jsonb_build_object('implementation_issue', '#4235', 'consumer_issue', 'u2giants/popdam3#357',
             'approved_mapping_hash', '09e18e47d67181b06483d6cf4454e053',
-            'approved_licensor_subset_hash', 'b8e5cc3126a742eca1e8a5e0db4d8f57'),
+            'approved_licensor_subset_hash', 'b8e5cc3126a742eca1e8a5e0db4d8f57',
+            'authority', 'owner_approved_mapping', 'freshness_basis', 'migration_apply_time'),
           now(), now());
       end if;
     end loop;
@@ -89,9 +114,11 @@ begin
   foreach v_division in array v_divisions loop
     for i in 1..19 loop
       v_key := 'EDGEHOME/' || v_division || '/05/' || v_codes[i];
+      v_existing := null;
       select r.entity_id into v_existing from core.taxonomy_source_ref r
       where r.source_system = 'coldlion' and r.source_table = 'merchGroupDetails' and r.source_id = v_key
-        and r.entity_schema = 'core' and r.entity_table = 'licensor';
+        and r.entity_schema = 'core' and r.entity_table = 'licensor'
+        and r.source_licensor_id = v_ids[i];
       if v_existing is distinct from v_ids[i] then
         raise exception 'issue #4235: approved key % does not resolve to % after insert', v_key, v_ids[i];
       end if;

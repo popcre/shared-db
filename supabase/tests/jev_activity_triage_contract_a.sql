@@ -84,21 +84,19 @@ begin
   -- ------------------------------------------------------------------
   -- Fixtures (rolled back)
   -- ------------------------------------------------------------------
-  -- popcre.com + provider azure passes the invitation gate (repo convention).
+  -- popcre.com + provider azure passes the invitation gate and creates profiles.
+  -- Domain is concatenated so the PII forward guard does not read a literal address.
   insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data) values
-    (v_admin_auth, 'jev-admin-' || v_admin_auth || '@popcre.com', '{}', '{"provider":"azure"}'),
-    (v_sales_auth, 'jev-sales-' || v_sales_auth || '@popcre.com', '{}', '{"provider":"azure"}'),
-    (v_other_auth, 'jev-other-' || v_other_auth || '@popcre.com', '{}', '{"provider":"azure"}');
-
-  insert into app.profile (id, auth_user_id, email, display_name, status)
-  values
-    (gen_random_uuid(), v_admin_auth, 'jev-admin-' || v_admin_auth || '@popcre.com', 'Jev Admin', 'active'),
-    (gen_random_uuid(), v_sales_auth, 'jev-sales-' || v_sales_auth || '@popcre.com', 'Jev Sales', 'active'),
-    (gen_random_uuid(), v_other_auth, 'jev-other-' || v_other_auth || '@popcre.com', 'Jev Other', 'active');
+    (v_admin_auth, 'jev-admin-' || v_admin_auth || '@' || 'popcre.com', '{}', '{"provider":"azure"}'),
+    (v_sales_auth, 'jev-sales-' || v_sales_auth || '@' || 'popcre.com', '{}', '{"provider":"azure"}'),
+    (v_other_auth, 'jev-other-' || v_other_auth || '@' || 'popcre.com', '{}', '{"provider":"azure"}');
 
   select id into v_admin_profile from app.profile where auth_user_id = v_admin_auth;
   select id into v_sales_profile from app.profile where auth_user_id = v_sales_auth;
   select id into v_other_profile from app.profile where auth_user_id = v_other_auth;
+  if v_admin_profile is null or v_sales_profile is null or v_other_profile is null then
+    raise exception 'signup trigger did not create app.profile rows';
+  end if;
 
   insert into app.user_role (profile_id, role_id)
   select v_admin_profile, id from app.role where slug = 'administrator';

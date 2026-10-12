@@ -89,8 +89,9 @@
     "Live preview proof deferred to issue #3298."
   ],
   "stop_conditions_hit": [],
-  "notes": "Migration A additive contract, generation 4. Supersedes generation 2 to correct evidence paths and the post-REVISE index set (live_comment_id, reservation_token_hash). Stale-lease takeover, advisory-locked rate limit, unique_violation replay, and envelope-rejection tests address DeepSeek sequence 6329 REVISE findings."
+  "notes": "Migration A additive contract, generation 5. Supersedes generation 2 to correct evidence paths and the post-REVISE index set (live_comment_id, reservation_token_hash). Stale-lease takeover, advisory-locked rate limit, unique_violation replay, and envelope-rejection tests address DeepSeek sequence 6329 REVISE findings."
 }
+
 
 
 

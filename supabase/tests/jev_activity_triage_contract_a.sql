@@ -166,7 +166,8 @@ begin
     'ai_activity_triage_eligibility_comment_idx',
     'ai_activity_triage_eligibility_token_idx',
     'ai_activity_triage_comment_idempotency_key',
-    'ai_activity_triage_requester_idx'
+    'ai_activity_triage_requester_idx',
+    'ai_activity_triage_state_idx'
   ] loop
     if not exists (
       select 1 from pg_indexes
@@ -577,4 +578,5 @@ begin
 end $$;
 
 rollback;
+
 

@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "work_issue": 2421,
+  "outcome": "ready-for-merge",
+  "pr": 4161,
+  "migration_versions": [
+    "20261012012727"
+  ],
+  "contract_ref": "refs/db-contracts/2421/12",
+  "contract_sha256": "cd7f786a9fde555f7b6e50f1deddb8df71e535d981b0297262d622b8f836070a",
+  "head_sha": "2e41a841cb5af77a7bde763a307fbf2a0e00fb1d",
+  "files_changed": [
+    ".github/live-proofs/2421.sql",
+    "HANDOFF.d/2026-10-11T1324Z-edge-dev3-codex-style-group-watermark.md",
+    "scripts/test_style_group_watermark.py",
+    "supabase/migrations/20261012012727_style_group_change_watermark.sql",
+    "supabase/tests/style_group_change_watermark_contracts.sql"
+  ],
+  "db_reads": [
+    "function public.style_group_key_for_sku",
+    "function public.refresh_style_group_counts_batch",
+    "table public.admin_config"
+  ],
+  "db_writes": [
+    "table public.assets",
+    "column public.assets.style_group_changed_at",
+    "table public.style_groups",
+    "column public.style_groups.style_group_changed_at",
+    "function public.stamp_style_group_asset_change",
+    "function public.stamp_style_group_definition_change",
+    "function public.touch_style_group_tag_change",
+    "trigger assets_style_group_change_clock on public.assets",
+    "trigger style_groups_style_group_change_clock on public.style_groups",
+    "trigger style_group_tags_change_clock on public.style_group_tags",
+    "function public.rebuild_style_groups_batch",
+    "function public.queue_nightly_rebuild_style_groups",
+    "index public.assets_style_group_changed_at_idx",
+    "index public.style_groups_style_group_changed_at_idx",
+    "index public.assets_ungrouped_style_cursor_idx",
+    "table public.style_group_tags"
+  ],
+  "checks": [
+    {
+      "command": "python3 scripts/test_style_group_watermark.py",
+      "exit_code": 0,
+      "evidence": "7 real isolated PostgreSQL tests passed on the forward-version source. Physical candidate rows examined 3 versus old population 10001; transaction race, cancellation and recovery coverage passed."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static guards passed, including production-ledger Guard B2 against 734 real applied versions, maximum 20261011224904 below forward reservation20261012012727. No target writes."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors."
+    },
+    {
+      "command": "python3 -m unittest scripts.test_migration_derivation scripts.test_shared_db_live_proof",
+      "exit_code": 0,
+      "evidence": "74 tests passed; probe qualification remains separate from real production/application acceptance."
+    }
+  ],
+  "assumptions_resolved": [
+    "Only normal tool reserved and rewrote migration version; old permanent reservation and original generation9 pair retained.",
+    "Inherited original handoff preserved unchanged; actual source diff contains its original bytes.",
+    "No database installation, app deployment or post-rollout week acceptance claimed."
+  ],
+  "stop_conditions_hit": []
+}

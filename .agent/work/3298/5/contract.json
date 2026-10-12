@@ -10,16 +10,16 @@
   "branch": "mimo/3298-jev-activity-triage-migration-a",
   "worktree": "C:/repos/shared-db/.ai/worktrees/3298-migration-a",
   "allowed_paths": [
-    "supabase/migrations/20261011225459_pm_jev_activity_triage_contract_a.sql",
+    "supabase/migrations/20261012035000_pm_jev_activity_triage_contract_a.sql",
     "supabase/tests/jev_activity_triage_contract_a.sql",
-    ".agent/work/3298/4/contract.json",
-    ".agent/work/3298/4/completion.json"
+    ".agent/work/3298/5/contract.json",
+    ".agent/work/3298/5/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20261011225459_pm_jev_activity_triage_contract_a.sql",
+    "supabase/migrations/20261012035000_pm_jev_activity_triage_contract_a.sql",
     "supabase/tests/jev_activity_triage_contract_a.sql",
-    ".agent/work/3298/4/contract.json",
-    ".agent/work/3298/4/completion.json"
+    ".agent/work/3298/5/contract.json",
+    ".agent/work/3298/5/completion.json"
   ],
   "db_reads": [
     "table app.activity",
@@ -95,12 +95,15 @@
     "Stop on exact-head reviewer REJECT that cannot be fixed additively",
     "Stop if migration collides with another claim"
   ],
-  "generation": 4,
+  "generation": 5,
   "evidence_parent": {
     "work_issue": 3298,
-    "generation": 3,
-    "contract_sha256": "8596f4ad9a527fdbe46b89f31759b947fee91960a182a4104084dc4e43fe337d"
+    "generation": 4,
+    "contract_sha256": "af584f68b92c0e6a4a7b7f7277195ff59f2fe39540d70727b95c819ec1cb3735"
   }
 }
+
+
+
 
 

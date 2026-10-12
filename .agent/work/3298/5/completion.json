@@ -4,17 +4,17 @@
   "outcome": "ready-for-merge",
   "pr": 4221,
   "migration_versions": [
-    "20261011225459"
+    "20261012035000"
   ],
-  "contract_ref": "refs/db-contracts/3298/4",
-  "contract_sha256": "af584f68b92c0e6a4a7b7f7277195ff59f2fe39540d70727b95c819ec1cb3735",
-  "head_sha": "8f207f6922b4d38ff63a2f760ffd3d40395bfe15",
+  "contract_ref": "refs/db-contracts/3298/5",
+  "contract_sha256": "f27205c421e5dcda53fcd8a91518e9cfe436156afd152ba8134dee976529b7b1",
+  "head_sha": "cfb94a29521e84b2e5c369929cfb70c0280e21a9",
   "base_sha": "5d876ca1b5302369925dd11a01c71c60ca4a9421",
   "files_changed": [
-    "supabase/migrations/20261011225459_pm_jev_activity_triage_contract_a.sql",
+    "supabase/migrations/20261012035000_pm_jev_activity_triage_contract_a.sql",
     "supabase/tests/jev_activity_triage_contract_a.sql",
-    ".agent/work/3298/4/contract.json",
-    ".agent/work/3298/4/completion.json"
+    ".agent/work/3298/5/contract.json",
+    ".agent/work/3298/5/completion.json"
   ],
   "db_reads": [
     "table app.activity",
@@ -91,6 +91,10 @@
   "stop_conditions_hit": [],
   "notes": "Migration A additive contract, generation 4. Supersedes generation 2 to correct evidence paths and the post-REVISE index set (live_comment_id, reservation_token_hash). Stale-lease takeover, advisory-locked rate limit, unique_violation replay, and envelope-rejection tests address DeepSeek sequence 6329 REVISE findings."
 }
+
+
+
+
 
 
 

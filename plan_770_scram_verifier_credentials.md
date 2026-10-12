@@ -89,10 +89,10 @@ else is unchanged.
 A fresh one-shot packet and exact-input review are required; the consumed launcher is never
 replayed.
 
-Revision 9 + Amendment A. Revisions 1–8 got DeepSeek plan-review REJECT (runs
+Revision 9 + Amendment A (stage B launched once at 4:18 PM EDT and aborted before any write; see Amendment A). Revisions 1–8 got DeepSeek plan-review REJECT (runs
 20261012T181315-1768589-27011, 20261012T181704-2222882-23133 and
 20261012T182121-2343611-840, 20261012T182543-2382833-1180, 20261012T182919-2411551-20984, 20261012T183435-2457811-16013, 20261012T183851-2493077-780, all "method sound in
-principle"); every finding is answered below. Nothing has been executed.
+principle"); every finding is answered below. Stage A has run (isolated only); stage B ran once and wrote nothing.
 
 **Task classes.** (`ai-task-gates start --class CLASS [--reason TEXT] [--base REF]` is the
 installed toolkit's documented syntax.) Stage A runs in the private designflow-backend #770 worktree under
@@ -191,6 +191,43 @@ this retirement is recorded here and on #770.
 issue a DUMMY plaintext `ALTER ROLE dummy PASSWORD '<DUMMY>'` and show the DUMMY string *does*
 appear in the server log (success and failure) — proving plaintext issuance is unsafe and
 redaction is absent — then show a verifier issuance logs only the verifier.
+
+## Amendment A — binding implementation requirements
+
+These resolve the Amendment A review rounds and override any looser wording above.
+
+1. **Single process, in-memory secret path.** One stage-B process (the launcher) performs, in
+   order: residue sweep → preflights (0)…(iii) → password generation → verifier build/guard →
+   passfile write → 1Password `pending_password` write → step 5 → steps 6–8. The plaintexts
+   never leave that process except into (a) the tmpfs passfile, written by that same process,
+   and (b) the 1Password SDK call. The admin password is read from 1Password by the same
+   process. Passfile fields are escaped per libpq (`\` before `:` and `\`); a test covers an
+   admin password containing `:`, `\` and a leading `*`.
+2. **Digest binding covers every module the launcher imports or executes** (preflights,
+   passfile writer, issuer, vault writer, proof clients, log scanner, undo), computed over the
+   whole stage-B package directory, not a hand list.
+3. **Memory hygiene.** The launcher sets `RLIMIT_CORE=0` and `PR_SET_DUMPABLE=0` at start; the
+   Goal's "never on disk" claim is narrowed to: not written to any file other than the tmpfs
+   passfile; host swap remains a stated residual (same-UID trusted host, as in the #770
+   handoff's existing residuals).
+4. **Preflight order and numbering** (supersedes the inline list): (0) libpq ≥ 16; (1)
+   credential-free TCP+TLS on 5432 and 6543, raw socket peer IPv4; (2) authenticated admin
+   session S on 5432: `PQhostaddr` IPv4, cluster identity (four runtime roles,
+   `current_database()='postgres'`); (3) in S, outside any transaction, one failing `SELECT`;
+   its Postgres log line must carry S's `pg_backend_pid()`; (4) pooler-log source returns S's
+   connection entry; the step-7 retry window is 3× the **larger** of the Postgres and pooler
+   lags measured in (3) and (4).
+5. **Same connection.** Step 5 runs on session S (the same client connection as (2)–(3)); the
+   pid recorded in (3) is re-read inside the step-5 transaction and must be equal, else
+   rollback and stop. Pid matching is used only within the issuance window as corroboration
+   together with role names and the transaction's timestamps.
+6. **Service-path scope.** 6(c) proves that Supavisor transaction mode authenticates each role
+   by SCRAM; it is **not** the services' own node-postgres path, which belongs to the separate
+   four-service acceptance step of #770. If Supavisor ever requests cleartext, `require_auth`
+   aborts the proof and step 8 undoes — accepted, because a cleartext pooler path would itself
+   violate the Goal.
+7. **Verifier guard** is decode → re-encode equality plus key recomputation (as implemented in
+   `scram_verifier.parse`/`guard`), not the regex alone.
 
 ## Goal (stated precisely)
 

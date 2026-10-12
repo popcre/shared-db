@@ -1345,7 +1345,9 @@ class PrivilegeAssertionTests(unittest.TestCase):
 
     # -- functions ---------------------------------------------------------
     def function_catalog(self, overloads):
+        overloads = [dict(row, oid=str(index + 1)) for index, row in enumerate(overloads)]
         return {
+            "function_acl_signatures": [{"signature": row["identity"], "oid": row["oid"]} for row in overloads],
             "maintain_probed": True,
             "probe_roles": ["anon", "authenticated", "public", "service_role"],
             "functions": [{"name": "plm.f", "overloads": overloads}],
@@ -1405,7 +1407,7 @@ class PrivilegeAssertionTests(unittest.TestCase):
         self.assertEqual(len(failures), 1)
         self.assertIn("STILL holds EXECUTE", failures[0])
 
-    def test_ambiguous_overloads_record_a_grant_with_the_reason(self):
+    def test_literal_grant_selects_only_its_named_overload(self):
         rows, failures = self.assert_for(
             "grant execute on function plm.f(bigint) to anon;",
             self.function_catalog(
@@ -1418,8 +1420,7 @@ class PrivilegeAssertionTests(unittest.TestCase):
             ),
         )
         self.assertEqual(failures, [])
-        self.assertEqual(rows[0][1], "RECORD")
-        self.assertIn("overloads", rows[0][2])
+        self.assertEqual(rows[0][1], "PASS")
 
 
 class PrivilegeOrderTests(unittest.TestCase):
@@ -3650,6 +3651,45 @@ class Issue4207RealSidecars(unittest.TestCase):
             )
             self.assertTrue(failures, version)
 
+
+
+
+class LiteralRoutineAclTests(unittest.TestCase):
+    def catalog(self, selected_holders=(), default=False):
+        return {
+            "maintain_probed": True, "probe_roles": ["authenticated", "anon", "service_role", "public"],
+            "function_acl_signatures": [{"signature": "public.rebuild_style_groups_batch(uuid, integer, timestamptz)", "oid": "20"}],
+            "functions": [{"name": "public.rebuild_style_groups_batch", "overloads": [
+                {"oid": "10", "identity": "public.rebuild_style_groups_batch(uuid,integer)", "owner": "postgres", "acl_is_default": False, "acl": [], "execute_held_by": ["authenticated"]},
+                {"oid": "20", "identity": "public.rebuild_style_groups_batch(uuid,integer,timestamp with time zone)", "owner": "postgres", "acl_is_default": default, "acl": [], "execute_held_by": list(selected_holders)},
+            ]}],
+        }
+    SQL = "revoke all on function public.rebuild_style_groups_batch(uuid, integer, timestamptz) from authenticated;"
+    def test_preserved_legacy_access_does_not_fail_selected_revoke(self):
+        rows, failures = assert_privileges(targets_for(self.SQL), self.catalog())
+        self.assertEqual(failures, [])
+        self.assertEqual([r[1] for r in rows], ["PASS"])
+        self.assertIn("timestamp with time zone", rows[0][0])
+    def test_selected_inherited_or_direct_execute_still_fails(self):
+        rows, failures = assert_privileges(targets_for(self.SQL), self.catalog(["authenticated"]))
+        self.assertEqual(len(failures), 1); self.assertEqual(rows[0][1], "FAIL")
+    def test_selected_public_default_still_fails(self):
+        _, failures = assert_privileges(targets_for(self.SQL), self.catalog(default=True))
+        self.assertEqual(len(failures), 1); self.assertIn("DEFAULT ACL", failures[0])
+    def test_missing_or_unresolved_selected_overload_never_uses_legacy(self):
+        for kind in ("mapping", "selected", "wrong"):
+            data = self.catalog()
+            if kind == "mapping": data["function_acl_signatures"] = []
+            elif kind == "selected": data["functions"][0]["overloads"].pop()
+            else: data["function_acl_signatures"][0]["oid"] = "999"
+            _, failures = assert_privileges(targets_for(self.SQL), data)
+            self.assertEqual(len(failures), 1)
+    def test_type_aliases_and_statement_order_use_actual_oid(self):
+        data = self.catalog(["authenticated"])
+        data["function_acl_signatures"].append({"signature": "public.rebuild_style_groups_batch(uuid, integer, timestamp with time zone)", "oid": "20"})
+        sql = self.SQL + " grant execute on function public.rebuild_style_groups_batch(uuid, integer, timestamp with time zone) to authenticated;"
+        rows, failures = assert_privileges(targets_for(sql), data)
+        self.assertEqual(failures, []); self.assertEqual([r[1] for r in rows], ["RECORD", "PASS"])
 
 if __name__ == "__main__":
     unittest.main()

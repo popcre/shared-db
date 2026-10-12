@@ -1411,6 +1411,7 @@ class PrivilegeExpectation:
         expect_held: bool,
         source: str,
         objtype: str = "r",
+        function_signature: str | None = None,
     ) -> None:
         if kind not in self.KINDS:
             raise GuardError(f"unknown privilege expectation kind: {kind}")
@@ -1423,6 +1424,7 @@ class PrivilegeExpectation:
         self.expect_held = expect_held
         self.source = source
         self.objtype = objtype
+        self.function_signature = function_signature
 
     @property
     def key(self) -> tuple:
@@ -1433,6 +1435,7 @@ class PrivilegeExpectation:
             self.grantee,
             self.privileges,
             self.expect_held,
+            self.function_signature,
         )
 
     def expand(self, maintain_probed: bool) -> tuple[str, ...]:
@@ -1459,6 +1462,7 @@ class PrivilegeExpectation:
             "privileges": list(self.privileges),
             "expect_held": self.expect_held,
             "source": self.source,
+            "function_signature": self.function_signature,
         }
 
     def describe(self) -> str:
@@ -2248,10 +2252,11 @@ def parse_grant_statement(
 
     routine_match = ROUTINE_OBJECT_RE.match(objects)
     if routine_match:
-        names = [
-            f"{m.group(1)}.{m.group(2)}"
-            for m in ROUTINE_NAME_RE.finditer(routine_match.group(1))
-        ]
+        routine_rows = list(ROUTINE_NAME_RE.finditer(routine_match.group(1)))
+        # Preserve each literal argument list. PostgreSQL resolves type aliases
+        # to OIDs; an overload's family name cannot identify a revoke target.
+        names = [f"{m.group(1)}.{m.group(2)}" for m in routine_rows]
+        routine_targets = [(f"{m.group(1)}.{m.group(2)}", m.group(3)) for m in routine_rows]
         if not names:
             notes.append(f"unreadable routine name in: `{statement.strip()}`")
         functions |= set(names)
@@ -2285,7 +2290,7 @@ def parse_grant_statement(
         kind, objtype = "relation", "r"
 
     if privileges and grantees:
-        for target in targets:
+        for target, signature_args in (routine_targets if routine_match else [(t, None) for t in targets]):
             for grantee in sorted(grantees):
                 expectations.append(
                     PrivilegeExpectation(
@@ -2296,6 +2301,7 @@ def parse_grant_statement(
                         expect_held=action == "grant",
                         source=source,
                         objtype=objtype,
+                        function_signature=(target + signature_args if signature_args is not None else None),
                     )
                 )
     return expectations, relations, functions, notes
@@ -2817,6 +2823,9 @@ def build_catalog_sql(targets: Targets) -> str:
     rls_relations = _sql_array(targets.rls_relations)
     roles = _sql_array(targets.roles)
     functions = _sql_array(targets.functions)
+    signatures = sorted({e.function_signature for e in targets.privileges if e.function_signature is not None})
+    # Quoted SQL literals only; argument strings are never executed as SQL.
+    signature_values = "array[" + ", ".join("'" + x.replace("'", "''") + "'" for x in signatures) + "]::text[]"
     index_names = _sql_array([row[0] for row in targets.indexes])
     index_relations = _sql_array([row[1] for row in targets.indexes])
     schema_names = _sql_array(
@@ -2967,12 +2976,18 @@ select jsonb_build_object(
     from rel
     join pg_class c on c.oid = rel.oid
     cross join lateral aclexplode(c.relacl) a), '[]'::jsonb),
+  'function_acl_signatures', coalesce((
+    select jsonb_agg(jsonb_build_object('signature', signature,
+      'oid', to_regprocedure(signature)::oid::text) order by signature)
+    from unnest({signature_values}) as signature
+  ), '[]'::jsonb),
   'functions', coalesce((
     select jsonb_agg(jsonb_build_object(
       'name', f,
       'overloads', (
         select coalesce(jsonb_agg(jsonb_build_object(
           'identity', p.oid::regprocedure::text,
+          'oid', p.oid::text,
           'prokind', p.prokind::text,
           'owner', pg_get_userbyid(p.proowner),
           'has_definition', pg_get_functiondef(p.oid) is not null,
@@ -3154,6 +3169,11 @@ def assert_privileges(
 
     relations = {row.get("name"): row for row in (data.get("relations") or [])}
     functions = {row.get("name"): row for row in (data.get("functions") or [])}
+    signature_oids = {r.get("signature"): r.get("oid") for r in data.get("function_acl_signatures") or []}
+    def privilege_target(expectation):
+        if expectation.function_signature is not None:
+            return ("oid", signature_oids.get(expectation.function_signature)) if signature_oids.get(expectation.function_signature) else ("unresolved", expectation.function_signature)
+        return ("name", expectation.target)
     effective: dict[tuple[str, str], set[str]] = {}
     for row in data.get("effective_privileges") or []:
         # `probe_roles` probes the pseudo-role under its literal lowercase name
@@ -3186,7 +3206,7 @@ def assert_privileges(
             winner[
                 (
                     expectation.kind,
-                    expectation.target,
+                    privilege_target(expectation),
                     expectation.objtype,
                     expectation.grantee,
                     privilege,
@@ -3200,7 +3220,7 @@ def assert_privileges(
             if winner[
                 (
                     expectation.kind,
-                    expectation.target,
+                    privilege_target(expectation),
                     expectation.objtype,
                     expectation.grantee,
                     privilege,
@@ -3282,6 +3302,13 @@ def assert_privileges(
         if expectation.kind == "function":
             row = functions.get(expectation.target)
             overloads = (row or {}).get("overloads") or []
+            if expectation.function_signature is not None:
+                oid = signature_oids.get(expectation.function_signature)
+                selected = [o for o in overloads if oid is not None and str(o.get("oid")) == str(oid)]
+                if len(selected) != 1:
+                    verdict(expectation, "FAIL", "literal routine signature is missing, unresolved or does not identify exactly one catalog overload: " + expectation.function_signature)
+                    continue
+                overloads = selected
             if not overloads:
                 verdict(
                     expectation,

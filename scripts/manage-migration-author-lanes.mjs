@@ -78,6 +78,7 @@ import { CLAIM_WORKTREE_REBIND_REF_PREFIX, normalizeWorktreePath, claimWorktreeR
 export { CLAIM_WORKTREE_REBIND_REF_PREFIX, normalizeWorktreePath, claimWorktreeRebindRef }
 import { reviewerExecutionPreflight, failedReviewerReleaseCommand, parseReviewReplacement, requireReplacementEvidence, validateTerminalReviewerFailure, reviewerFailureRef, parseReviewRelease, assertAssignmentWasNotTerminallyReleased, resolveFailedReviewRecord, matchesAssignmentTuple, matchesReplacementForSlot, assignmentSlotSuffix, matchesReplacementTuple, parseTerminalFailureEvidence } from './lib/lanes/review-replacement.mjs'
 export { reviewerExecutionPreflight, failedReviewerReleaseCommand }
+import { paidReviewGitReader } from './lib/lanes/paid-review-git-reader.mjs'
 import { ADMISSION_LEGACY_CUTOVER, admitIssue, parseMergedPrIssueBinding, verifyMergedPrIssueBinding, withMergedPrIssueBinding, reviewTargetIsRecordable, derivePrOperationRoute, assertUnambiguousClaimTitle, requireAdmissionArguments } from './lib/lanes/admission.mjs'
 export { ADMISSION_LEGACY_CUTOVER, admitIssue, parseMergedPrIssueBinding, verifyMergedPrIssueBinding, withMergedPrIssueBinding, reviewTargetIsRecordable, derivePrOperationRoute, assertUnambiguousClaimTitle }
 import { workIssuesFromRows, openIssueNumbersFromRows, memoizePrFiles, closedClaimAuthoredOnMain, RELINQUISH_ONLY_LEASE_FIELDS, wrongOwnerMessage, renewalIssueScope, claimCoversObject, addedMigrationVersions, parseVersionPrMap, assertMergeCommitInMainHistory, completeWork, SPLIT_REMAINDER, workstreamKey, migrationVersions, replaceLeaseLocation, replaceClaimObjects, replaceLeaseExpiry, replaceCapacityState, relinquishOnlyFieldsIn, stripRelinquishOnlyFields, claimTitleIssues, claimWorkIssue, validateCapacityBlocker, requireDereferenceableRecoveryArtifact, requestedWorktreeState, observedWorktreeState, resolveRelinquishmentWorktreeState, publishCapacityEvents, laneCommand, appendClaimObjects, replaceScopeStatus, validateImmutableArtifactReference } from './lib/lanes/claim-maintenance.mjs'
@@ -828,10 +829,10 @@ export const githubIo = {
       }))
       return contracts.get(ref)
     }
-    const budgetProof=derivePaidContentProof(before,after,base,args=>execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe']}),excludePaths,pr,readContract)
+    const budgetProof=derivePaidContentProof(before,after,base,paidReviewGitReader,excludePaths,pr,readContract)
     return {before:prContentDigest(before,base,{excludePaths}),after:prContentDigest(after,base,{excludePaths}),budgetProof}
   },
-  contentPreservingRefresh(approvedHead,head,pr=null,context=null,gitRunner=(args)=>execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe']})){
+  contentPreservingRefresh(approvedHead,head,pr=null,context=null,gitRunner=paidReviewGitReader){
     const key=`${Number(pr)}:${String(head).toLowerCase()}`
     if(context?.key!==undefined&&context.key!==key)return{ok:false,reason:'review comparison context was reused for a different pull request or head'}
     if(context?.refusal)return context.refusal

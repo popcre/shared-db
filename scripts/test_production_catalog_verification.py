@@ -3757,5 +3757,21 @@ class TemporalRoutineAclTests(unittest.TestCase):
         sql="revoke all on function plm.f(integer) from anon;grant execute on function plm.f to authenticated;"
         rows,failures=assert_privileges(targets_for(sql),self.data(["anon"]))
         self.assertEqual([r[1] for r in rows],["FAIL","RECORD"]);self.assertEqual(len(failures),1)
+
+
+class StyleDifferentialInstalledDeclarationTests(unittest.TestCase):
+    def test_contract_is_exactly_the_authoritative_committed_probe(self):
+        probe = (REPO / ".github/live-proofs/2421.sql").read_text().strip().removesuffix(";")
+        self.assertEqual(CATALOG_CONTRACTS["style_group_differential_installed_v1"], "(" + probe + ")")
+    def test_selected_sidecar_is_hash_bound_to_unchanged_sql_and_owner(self):
+        import hashlib
+        version = "20261012012727"
+        migration = next((REPO / "supabase/migrations").glob(version + "_*"))
+        sidecar = json.loads((REPO / "scripts/production-verification-sidecars" / (version + ".json")).read_text())
+        self.assertEqual(sidecar["migration_sha256"], hashlib.sha256(migration.read_bytes().replace(b"\r\n", b"\n")).hexdigest())
+        self.assertEqual(sidecar["checks"], [{"id":"style_group_differential_installed", "kind":"catalog_contract", "contract":"style_group_differential_installed_v1", "expected_count":1}])
+        registry = json.loads((REPO / "config/production-verification-sidecar-registry.json").read_text())
+        self.assertEqual([row for row in registry["sidecars"] if row["version"] == version], [{"version":version,"issue":2421}])
+
 if __name__ == "__main__":
     unittest.main()

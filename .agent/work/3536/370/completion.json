@@ -19,22 +19,22 @@
   "db_writes": [],
   "checks": [
     {
-      "command": "authoritative2421probe equality and already-recorded exact real catalog contract",
+      "command": "exact authoritative2421probe equality and real selectedcontract read-onlypositive PASS",
       "exit_code": 0,
       "evidence": "Current267 focused tests pass; constant exactly mirrors committedprobe. Prior actual selectedcontract count1 and14ACLproof unchanged sourcepolicy."
     },
     {
-      "command": "strict original recovery prerequisite and malformed result negatives",
+      "command": "all recovery prerequisite/hash/delta/namedassertion/null/malformed/count negatives PASS",
       "exit_code": 0,
       "evidence": "Current267 focusedtests preserve original hashes/delta/namedassertion guards; missing/null/malformed declarations fail closed."
     },
     {
-      "command": "base-trusted policy-first source diff and private byte preservation",
+      "command": "base-trusted rulebook-first policy-only diff with sidecar activation absent PASS",
       "exit_code": 0,
       "evidence": "Current source has no12727sidecar or registry activation; original369pair/source/test/registry bytes privately SHAverified before ownretirement. Published370 matches immutable readback."
     },
     {
-      "command": "full committed source suites and normal guards",
+      "command": "full source offline suites and owned current-source/Git/contract checks PASS",
       "exit_code": 0,
       "evidence": "Clean exact9eb940 Node4930total4929pass0fail1existingWindows skip; Python1522PASS43existingconditional/live skips; original broad autodiscovery included private-data-only suites and local ignored overlay, preserved as unsuccessful inappropriate invocation."
     }

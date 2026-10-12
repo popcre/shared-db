@@ -86,11 +86,9 @@ create table if not exists pim.ai_activity_triage_eligibility (
 comment on table pim.ai_activity_triage_eligibility is
   'Append-only-during-pilot eligibility/reservation ledger. No raw comment text.';
 
-create index if not exists ai_activity_triage_eligibility_requester_op_key
-  on pim.ai_activity_triage_eligibility (requester_profile_id, client_operation_id, eligibility_version);
-
-create index if not exists ai_activity_triage_eligibility_id_key
-  on pim.ai_activity_triage_eligibility (id);
+create index if not exists ai_activity_triage_eligibility_token_idx
+  on pim.ai_activity_triage_eligibility (reservation_token_hash)
+  where reservation_token_hash is not null;
 
 -- ============================================================================
 -- 4. Triage result table
@@ -146,6 +144,10 @@ create index if not exists ai_activity_triage_requester_idx
 
 create index if not exists ai_activity_triage_state_idx
   on pim.ai_activity_triage (state, reviewed_at);
+
+create index if not exists ai_activity_triage_live_comment_idx
+  on pim.ai_activity_triage (live_comment_id)
+  where live_comment_id is not null;
 
 -- ============================================================================
 -- 5. Narrow RLS on triage tables (direct browser DML stays denied)
@@ -625,15 +627,36 @@ begin
     end if;
   end if;
 
-  insert into app.comment (
-    target_schema, target_table, target_id, body,
-    visibility, created_by_profile_id, source_system, source_id
-  ) values (
-    'pim', 'product', p_product_id, v_body,
-    'internal', v_profile, 'poppim-web-comment',
-    p_client_operation_id::text
-  )
-  returning id, body_revision into v_comment_id, v_revision;
+  begin
+    insert into app.comment (
+      target_schema, target_table, target_id, body,
+      visibility, created_by_profile_id, source_system, source_id
+    ) values (
+      'pim', 'product', p_product_id, v_body,
+      'internal', v_profile, 'poppim-web-comment',
+      p_client_operation_id::text
+    )
+    returning id, body_revision into v_comment_id, v_revision;
+  exception when unique_violation then
+    -- Concurrent replay of the same client_operation_id returns the original row.
+    select * into v_existing
+    from app.comment c
+    where c.created_by_profile_id = v_profile
+      and c.source_system = 'poppim-web-comment'
+      and c.source_id = p_client_operation_id::text
+      and c.target_schema = 'pim'
+      and c.target_table = 'product'
+      and c.target_id = p_product_id;
+    if found then
+      return jsonb_build_object(
+        'status', 'replayed',
+        'comment_id', v_existing.id,
+        'body_revision', v_existing.body_revision,
+        'client_operation_id', p_client_operation_id
+      );
+    end if;
+    raise;
+  end;
 
   if p_client_operation_id is not null then
     update pim.ai_activity_triage_eligibility
@@ -809,8 +832,10 @@ begin
     raise exception using errcode = '22023', message = 'PM_COMMENT_TARGET_INVALID';
   end if;
 
-  -- Per-profile rolling request limit (50 per 24h). Best-effort under
-  -- concurrency; pilot-scale admin-only path.
+  -- Per-profile rolling request limit (50 per 24h). Serialize the
+  -- count-then-insert on a per-profile advisory xact lock so concurrent
+  -- begins cannot both pass the limit.
+  perform pg_advisory_xact_lock(hashtext('pm_jev_rate:' || v_profile::text));
   select count(*) into v_recent
   from pim.ai_activity_triage t
   where t.requester_profile_id = v_profile
@@ -828,11 +853,48 @@ begin
     and t.contract_version = p_contract_version
   for update;
   if found then
+    -- Stale-lease takeover: after two provider timeouts (or an expired
+    -- terminal lease) a fresh lease may replace a dead one. Late completion
+    -- from the old lease is still rejected by the workers' lease-token check.
+    if v_existing.state in ('accepted', 'dismissed', 'source_changed', 'failed') then
+      return jsonb_build_object(
+        'status', 'existing',
+        'triage_id', v_existing.id,
+        'state', v_existing.state,
+        'lease_acquired', false
+      );
+    end if;
+    if v_existing.state in ('leased', 'claimed')
+       and v_existing.lease_expires_at is not null
+       and v_existing.lease_expires_at < now()
+       and (v_existing.timeout_count >= 2 or v_existing.attempt_count >= 2) then
+      v_lease_token := encode(extensions.gen_random_bytes(16), 'hex');
+      v_lease_hash := encode(extensions.digest(convert_to(v_lease_token, 'utf8'), 'sha256'), 'hex');
+      update pim.ai_activity_triage t
+      set state = 'leased',
+          lease_token_hash = v_lease_hash,
+          lease_expires_at = now() + interval '10 minutes',
+          lease_acquired_at = now(),
+          attempt_count = t.attempt_count + 1,
+          updated_at = now()
+      where t.id = v_existing.id
+      returning * into v_row;
+      return jsonb_build_object(
+        'status', 'reclaimed',
+        'triage_id', v_row.id,
+        'lease_token', v_lease_token,
+        'lease_token_hash', v_lease_hash,
+        'state', v_row.state,
+        'source_body_revision', v_row.source_body_revision
+      );
+    end if;
     return jsonb_build_object(
       'status', 'existing',
       'triage_id', v_existing.id,
       'state', v_existing.state,
       'lease_acquired', v_existing.state in ('leased', 'claimed')
+        and v_existing.lease_expires_at is not null
+        and v_existing.lease_expires_at >= now()
     );
   end if;
 
@@ -848,18 +910,41 @@ begin
   v_lease_token := encode(extensions.gen_random_bytes(16), 'hex');
   v_lease_hash := encode(extensions.digest(convert_to(v_lease_token, 'utf8'), 'sha256'), 'hex');
 
-  insert into pim.ai_activity_triage (
-    eligibility_id, comment_id, requester_profile_id, product_id,
-    source_body_revision, live_comment_id, live_product_id, live_requester_profile_id,
-    input_digest, input_key_version, model, contract_version,
-    state, lease_token_hash, lease_expires_at, lease_acquired_at, attempt_count
-  ) values (
-    v_elig.id, p_comment_id, v_profile, v_comment.target_id,
-    v_comment.body_revision, p_comment_id, v_comment.target_id, v_profile,
-    p_input_digest, p_input_key_version, p_model, p_contract_version,
-    'leased', v_lease_hash, now() + interval '10 minutes', now(), 0
-  )
-  returning * into v_row;
+  begin
+    insert into pim.ai_activity_triage (
+      eligibility_id, comment_id, requester_profile_id, product_id,
+      source_body_revision, live_comment_id, live_product_id, live_requester_profile_id,
+      input_digest, input_key_version, model, contract_version,
+      state, lease_token_hash, lease_expires_at, lease_acquired_at, attempt_count
+    ) values (
+      v_elig.id, p_comment_id, v_profile, v_comment.target_id,
+      v_comment.body_revision, p_comment_id, v_comment.target_id, v_profile,
+      p_input_digest, p_input_key_version, p_model, p_contract_version,
+      'leased', v_lease_hash, now() + interval '10 minutes', now(), 1
+    )
+    returning * into v_row;
+  exception when unique_violation then
+    -- Concurrent begin for the same idempotency key returns the existing row.
+    select * into v_existing
+    from pim.ai_activity_triage t
+    where t.comment_id = p_comment_id
+      and t.input_digest = p_input_digest
+      and t.input_key_version = p_input_key_version
+      and t.model = p_model
+      and t.contract_version = p_contract_version
+    for update;
+    if found then
+      return jsonb_build_object(
+        'status', 'existing',
+        'triage_id', v_existing.id,
+        'state', v_existing.state,
+        'lease_acquired', v_existing.state in ('leased', 'claimed')
+          and v_existing.lease_expires_at is not null
+          and v_existing.lease_expires_at >= now()
+      );
+    end if;
+    raise;
+  end;
 
   return jsonb_build_object(
     'status', 'leased',
@@ -1410,6 +1495,7 @@ create or replace function api.pm_verify_jev_runtime_fence(
 )
 returns jsonb
 language plpgsql
+stable
 security definer
 set search_path = ''
 as $$
@@ -1549,7 +1635,16 @@ begin
     and requester_profile_id = v_profile
     and first_impression_at is null;
 
-  return jsonb_build_object('status', 'recorded');
+  if found then
+    return jsonb_build_object('status', 'recorded');
+  end if;
+  if exists (
+    select 1 from pim.ai_activity_triage t
+    where t.id = p_triage_id and t.requester_profile_id = v_profile
+  ) then
+    return jsonb_build_object('status', 'already_recorded');
+  end if;
+  return jsonb_build_object('status', 'unavailable');
 end $$;
 
 create or replace function api.pm_repair_comment_triage_queue()

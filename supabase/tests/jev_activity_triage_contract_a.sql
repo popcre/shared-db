@@ -80,6 +80,36 @@ begin
   if not has_function_privilege('authenticated', 'api.pm_add_product_comment(uuid,text,uuid)', 'execute') then
     raise exception 'authenticated must execute pm_add_product_comment';
   end if;
+  -- Role attributes: NOLOGIN worker is least-privilege.
+  if exists (
+    select 1 from pg_roles
+    where rolname = 'pm_jev_triage_worker'
+      and (rolcanlogin or rolsuper or rolbypassrls or rolinherit)
+  ) then
+    raise exception 'pm_jev_triage_worker must be NOLOGIN/NOSUPERUSER/NOBYPASSRLS/NOINHERIT';
+  end if;
+  -- RLS policies exist with the intended names.
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'pim' and tablename = 'ai_activity_triage'
+      and policyname = 'pm_ai_activity_triage_select_own'
+  ) then
+    raise exception 'missing policy pm_ai_activity_triage_select_own';
+  end if;
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'pim' and tablename = 'ai_activity_triage_eligibility'
+      and policyname = 'pm_ai_activity_triage_eligibility_select_own'
+  ) then
+    raise exception 'missing policy pm_ai_activity_triage_eligibility_select_own';
+  end if;
+  -- live_comment_id is indexed for the body-edit trigger and repair update.
+  if not exists (
+    select 1 from pg_indexes
+    where schemaname = 'pim' and indexname = 'ai_activity_triage_live_comment_idx'
+  ) then
+    raise exception 'missing index ai_activity_triage_live_comment_idx';
+  end if;
 
   -- ------------------------------------------------------------------
   -- Fixtures (rolled back)
@@ -311,6 +341,122 @@ begin
   v_result := api.pm_update_dependency_status(v_dep_id, 'resolved');
   if (v_result ->> 'status') <> 'resolved' then
     raise exception 'dependency status update failed';
+  end if;
+
+  -- ------------------------------------------------------------------
+  -- G2  ENVELOPE REJECTION MATRIX + STALE LEASE TAKEOVER + REPLAY
+  -- ------------------------------------------------------------------
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin_auth, 'role', 'authenticated')::text, true);
+
+  -- Fresh comment + triage for the lease/envelope matrix.
+  v_result := api.pm_reserve_product_comment_operation(v_product, gen_random_uuid());
+  v_op_id := (v_result ->> 'client_operation_id')::uuid;
+  v_result := api.pm_add_product_comment(v_product, 'envelope matrix comment', v_op_id);
+  v_comment := (v_result ->> 'comment_id')::uuid;
+  v_result := api.pm_begin_activity_triage(v_comment, 'digest-env-' || v_comment, 'key-v1', 'jev-test-model', 'contract-v1', null, null);
+  v_triage_id := (v_result ->> 'triage_id')::uuid;
+  if v_triage_id is null or (v_result ->> 'lease_token') is null then
+    raise exception 'begin must lease a fresh triage row';
+  end if;
+
+  -- Missing envelope.
+  v_raised := false;
+  begin
+    perform api.pm_complete_activity_triage(v_triage_id, 'x', 'blocker_dependency', '{}'::jsonb, '{}'::jsonb, null, null);
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'complete with null envelope must be rejected';
+  end if;
+
+  -- Short / empty signature.
+  v_raised := false;
+  begin
+    perform api.pm_complete_activity_triage(
+      v_triage_id, 'x', 'blocker_dependency', '{}'::jsonb, '{}'::jsonb,
+      '{"environment":"test"}'::jsonb, 'short'
+    );
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'complete with short signature must be rejected';
+  end if;
+
+  -- Envelope with an unknown extra key.
+  v_raised := false;
+  begin
+    perform api.pm_complete_activity_triage(
+      v_triage_id, 'x', 'blocker_dependency', '{}'::jsonb, '{}'::jsonb,
+      jsonb_build_object('environment', 'test', 'bogus_key', '1',
+        'requester_profile_id', v_admin_profile, 'product_id', v_product,
+        'comment_id', v_comment, 'eligibility_id', gen_random_uuid(),
+        'source_body_revision', 1, 'lease_token', 't', 'disposition', 'complete',
+        'input_byte_count', 1, 'input_digest', 'd', 'input_key_version', 'k',
+        'model', 'm', 'contract_version', 'c', 'quality_release_digest', 'q',
+        'target_deployment_digest', 'td', 'emergency_generation', 0,
+        'timestamp', now()::text, 'nonce', 'n'),
+      repeat('a', 64)
+    );
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'complete with unknown envelope key must be rejected';
+  end if;
+
+  -- Envelope missing required keys.
+  v_raised := false;
+  begin
+    perform api.pm_complete_activity_triage(
+      v_triage_id, 'x', 'blocker_dependency', '{}'::jsonb, '{}'::jsonb,
+      '{"environment":"test"}'::jsonb,
+      repeat('a', 64)
+    );
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'complete with missing envelope keys must be rejected';
+  end if;
+
+  -- Comment replay is idempotent.
+  v_result := api.pm_add_product_comment(v_product, 'envelope matrix comment', v_op_id);
+  if (v_result ->> 'status') <> 'replayed' then
+    raise exception 'second add with same client_operation_id must replay, got %', v_result ->> 'status';
+  end if;
+
+  -- Begin is idempotent while the live lease is still valid.
+  v_result := api.pm_begin_activity_triage(v_comment, 'digest-env-' || v_comment, 'key-v1', 'jev-test-model', 'contract-v1', null, null);
+  if (v_result ->> 'status') <> 'existing' then
+    raise exception 'second begin with a live lease must return existing, got %', v_result ->> 'status';
+  end if;
+
+  -- Stale lease with two timeouts is reclaimed with a fresh token.
+  update pim.ai_activity_triage
+  set state = 'leased',
+      lease_expires_at = now() - interval '1 minute',
+      timeout_count = 2,
+      attempt_count = 1
+  where id = v_triage_id;
+  v_result := api.pm_begin_activity_triage(v_comment, 'digest-env-' || v_comment, 'key-v1', 'jev-test-model', 'contract-v1', null, null);
+  if (v_result ->> 'status') <> 'reclaimed' then
+    raise exception 'stale lease with two timeouts must be reclaimed, got %', v_result ->> 'status';
+  end if;
+  if (v_result ->> 'lease_token') is null then
+    raise exception 'reclaim must issue a fresh lease token';
+  end if;
+
+  -- Fail path rejects a bad lease hash.
+  v_raised := false;
+  begin
+    perform api.pm_fail_activity_triage(v_triage_id, 'not-the-lease-hash', 'timeout', null, null);
+  exception when others then
+    v_raised := true;
+  end;
+  if not v_raised then
+    raise exception 'fail with wrong lease hash must be rejected';
   end if;
 
   raise notice 'jev_activity_triage_contract_a: all assertions passed';

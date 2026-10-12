@@ -179,8 +179,33 @@ begin
   if not exists (
     select 1 from pg_indexes
     where schemaname = 'app' and indexname = 'app_comment_poppim_client_operation_uq'
+      and indexdef like '%UNIQUE%'
   ) then
-    raise exception 'missing index app_comment_poppim_client_operation_uq';
+    raise exception 'app_comment_poppim_client_operation_uq missing or not UNIQUE';
+  end if;
+  -- Trigger-to-function linkage (exact-object).
+  if not exists (
+    select 1 from pg_trigger t join pg_proc p on p.oid = t.tgfoid
+    where t.tgname = 'app_comment_body_revision' and t.tgrelid = 'app.comment'::regclass
+      and p.proname = 'comment_body_revision_trg_fn'
+  ) then
+    raise exception 'app_comment_body_revision not linked to comment_body_revision_trg_fn';
+  end if;
+  if not exists (
+    select 1 from pg_trigger t join pg_proc p on p.oid = t.tgfoid
+    where t.tgname = 'pm_jev_source_changed' and t.tgrelid = 'app.comment'::regclass
+      and p.proname = 'pm_jev_source_changed_trg_fn'
+  ) then
+    raise exception 'pm_jev_source_changed not linked to pm_jev_source_changed_trg_fn';
+  end if;
+  -- Policy USING expressions (exact-object).
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'pim' and tablename = 'ai_activity_triage'
+      and policyname = 'pm_ai_activity_triage_select_own'
+      and qual like '%current_profile_id%'
+  ) then
+    raise exception 'pm_ai_activity_triage_select_own USING does not bind current_profile_id';
   end if;
 
   -- ------------------------------------------------------------------
@@ -578,5 +603,6 @@ begin
 end $$;
 
 rollback;
+
 
 

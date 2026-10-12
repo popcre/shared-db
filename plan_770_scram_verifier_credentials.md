@@ -12,7 +12,8 @@ Registered from the #770 successor handoff
 code used an `aws-0` pooler hostname, but the project's pooler is
 `aws-1-us-east-1.pooler.supabase.com` (Supabase pooler config; also
 `docs/agents/references-and-runbooks.md`), and the direct host
-`db.qsllyeztdwjgirsysgai.supabase.co` resolves to IPv6 only while the execution host edge-dev3
+`db.qsllyeztdwjgirsysgai.supabase.co` returned only an IPv6 address (`getent ahosts`,
+2026-10-12) while the execution host edge-dev3
 has no IPv6 route (errno 101). Amendment: every production connection in steps 4–8 uses the
 Supavisor pooler at `aws-1-us-east-1.pooler.supabase.com`, verify-full with the pinned root —
 **session mode, port 5432** replaces the "direct-port" connection for the issuer (user
@@ -20,17 +21,30 @@ Supavisor pooler at `aws-1-us-east-1.pooler.supabase.com`, verify-full with the 
 `designflow_prod_<service>_runtime.qsllyeztdwjgirsysgai`); **transaction mode, port 6543**
 remains the blocking service-path proof 6(c) (same user form, as in
 `docs/agents/references-and-runbooks.md:46`). Session mode on 5432 / transaction mode on 6543 is
-Supabase's documented Supavisor port split. The hostname is a **reviewed constant** in the
+Supabase's documented Supavisor port split (in-repo:
+`docs/verification/supabase-pooler-idle-connection-drop-20260623.md:97`). The hostname is a **reviewed constant** in the
 issuer packet (no runtime Management API read, consistent with the Problem section).
-**Endpoint preflight (fail closed, before any password is sent):** the hostname resolves to at
-least one IPv4 address; TCP connects on 5432 and 6543; SSLRequest + TLS 1.3 verify-full against
-the pinned Supabase root succeeds on both (the 2026-10-08 credential-free probe did this for
-6543). **No cleartext to the pooler anywhere:** every connection that carries a password —
-issuer, undo, and all proof clients — uses `require_auth=scram-sha-256` and a protected
-passfile. Because stage A's isolated PG17 cannot exercise Supavisor, these live preflights are
+**Endpoint preflight (fail closed):** (i) credential-free: the hostname resolves to at least
+one IPv4 address; TCP connects on 5432 and 6543; SSLRequest + TLS 1.3 verify-full against the
+pinned Supabase root succeeds on both. (ii) **Cluster identity:** TLS alone cannot tell
+`aws-0` from `aws-1` (shared certificate), so the first authenticated step is a read-only
+admin session (`postgres.qsllyeztdwjgirsysgai`, session mode 5432, `require_auth`) that must
+succeed and must see exactly the four `designflow_prod_*_runtime` roles plus
+`current_database()='postgres'`; a wrong cluster rejects the tenant and the run stops with no
+write. (iii) **pid validity:** in that same session, a harmless deliberately failing
+`SELECT` (no secret) is issued and its server-log line must carry that session's
+`pg_backend_pid()` (session mode binds one backend per client session), which also measures
+ingestion lag; if the pid does not match, the step-7 control falls back to matching the four
+role names inside the issuing transaction's timestamp window, recorded as the weaker form. **No cleartext to the pooler anywhere:** every connection that carries a password —
+the step-4 admin session (pre-state probe, setting/sink/log-access/ingestion-lag/pid
+preflights), the issuer, the undo, and all proof clients — uses `require_auth=scram-sha-256`
+and a protected passfile keyed `aws-1-us-east-1.pooler.supabase.com:<5432|6543>:postgres:<user>:<password>`
+(dbname `postgres`). Stage-A test addition: against isolated PG17 with `hba` set to `password`
+and to `md5`, a client with `require_auth=scram-sha-256` must abort before sending anything. Because stage A's isolated PG17 cannot exercise Supavisor, these live preflights are
 the evidence that the session-mode path works before the one-shot write; if any fails, stop
 with no write. Changed by this amendment: endpoint, the "directly" wording in Success check,
-the preflights above, and `require_auth` scope. Everything else is unchanged.
+the preflights above, `require_auth` scope, and Method step 4 (below). Everything else is
+unchanged.
 A fresh one-shot packet and exact-input review are required; the consumed launcher is never
 replayed.
 
@@ -198,7 +212,10 @@ passwords rotated.
    (never the plaintext) appears, for one success and one forced failure; plus the DUMMY
    plaintext premise proof above; plus an **isolated undo test** (set verifier, then
    `PASSWORD NULL`, assert `rolpassword IS NULL` and login refused).
-4. **Production issuer** — role `postgres` via the vault production admin item. Read-only
+4. **Production issuer** — role `postgres` via the vault production admin item, connecting as
+   `postgres.qsllyeztdwjgirsysgai` to `aws-1-us-east-1.pooler.supabase.com:5432` (session mode),
+   verify-full with the pinned root, `require_auth=scram-sha-256`, protected passfile; the
+   Amendment A endpoint preflights (i)–(iii) run first, in this order, before anything below. Read-only
    evidence: `postgres` has `CREATEROLE` and `ADMIN OPTION` on all four runtime roles
    (`pg_auth_members`, 2026-10-12), which PostgreSQL 17 requires for `ALTER ROLE ... PASSWORD`.
    Before the write: prove target (`current_database`, pinned CA verify-full, project ref

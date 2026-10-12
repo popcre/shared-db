@@ -209,3 +209,31 @@ No index was added, no timeout/role/cron/model setting changed, no caller text
 interpolated, and the output contract is unchanged. The original BLOCKED and
 REVISE verdicts stay on the durable refs; this evidence answers the six
 requested items and does not rewrite history.
+
+## DeepSeek REVISE response round 2 (slot 2 at 02c597a0)
+
+Additional sibling index-serviceability cases are disclosed here. None are
+introduced by this repair; no index is added and output semantics are unchanged.
+
+1. **Extension predicate wrap.** `lower(coalesce(d.file_extension, '')) = any (…)`
+   cannot use `idx_sg_search_documents_filters`, which indexes raw
+   `file_extension`. The wrap defeats the column. Pre-existing, unchanged.
+2. **Style-guide name filter.** `d.style_guide_name = any (…)` has no dedicated
+   index on `style_guide_search_documents`. Pre-existing, unchanged.
+3. **Tag predicate** (already disclosed): source-file GIN does not serve
+   search-document `tag_names &&` filters.
+
+Live proof `.github/live-proofs/4210.sql` now asserts the same default-matview
+column identities/types as the contract test, so live proof and contract cover
+the same object set.
+
+Broader residual columns the routine reads (search document path/filename/
+extension/size/pdf fields, `thumbnail_error`, queue `status`) remain at their
+pre-existing types and are unchanged by this migration. They are not newly
+pinned here to keep the contract focused on the objects this repair actually
+depends on for the default snapshot path. A rename still fails at runtime, not
+silently.
+
+Test executability remains fixture-local (invented rows only). Body hashes,
+parameter mapping, volatility, grants and authorization are unchanged from the
+prior REVISE response.

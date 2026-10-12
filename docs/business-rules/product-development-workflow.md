@@ -1,13 +1,15 @@
 # Product-development workflow business rules
 
-**Status:** Proposed overall, except where a section below carries its own
-status. A section marked **Settled** is current authority regardless of the
-page-level status.
+**Status:** Proposed
 
 **Why this exists:** the only detailed account of POP's product-development
 workflow currently lives in an old PM/PIM implementation plan. A plan is not a
 safe permanent rulebook. This page is the companywide collection point for the
 workflow, regardless of which application presents it.
+
+Individual sections may carry their own status. A section marked **Settled**
+below is current authority for that subject even though the page as a whole is
+still Proposed.
 
 ## Consolidated proposed business model
 

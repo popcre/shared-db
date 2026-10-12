@@ -59,6 +59,11 @@
       "command": "python3 -m unittest scripts.test_migration_derivation scripts.test_shared_db_live_proof",
       "exit_code": 0,
       "evidence": "74 qualification tests passed. Exact installed probe qualified, separate from real application/week acceptance."
+    },
+    {
+      "command": "node scripts/check-live-proof-probe.mjs",
+      "exit_code": 0,
+      "evidence": "Normal structural outcome routing check reads sole generation13 and confirms application return u2giants/popdam3. Committed installed probe separately passes local positive and five hostile-object tests; no production/app acceptance substituted."
     }
   ],
   "assumptions_resolved": [

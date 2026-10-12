@@ -23,7 +23,10 @@ remains the blocking service-path proof 6(c) — the four services' own connecti
 production Supabase to the public pooler on port 6543 (e.g. `config/database-connection-contract.js`
 in `popcre/designflow-data-syncing` c88a43d: "Supabase/6543/public-pooler") — (user
 `designflow_prod_<service>_runtime.qsllyeztdwjgirsysgai`; the `<role>.<project ref>` form is
-the one `docs/agents/references-and-runbooks.md:46` shows for the admin). Session mode on 5432 / transaction mode on 6543 is
+the one `docs/agents/references-and-runbooks.md:46` shows for the admin). The stage-B packet
+re-checks each service's deployed contract for the 6543 binding. The admin uses session mode
+5432 (not the runbook's 6543) because an `ALTER ROLE` transaction plus `pg_backend_pid()`
+binding needs one backend for the whole session, which only session mode guarantees. Session mode on 5432 / transaction mode on 6543 is
 Supabase's documented Supavisor port split (in-repo:
 `docs/verification/supabase-pooler-idle-connection-drop-20260623.md:97` for 5432 and :99-100
 for 6543; `docs/intake-426-triage-20260803.md:41,291` for production on `aws-1`). The hostname is a **reviewed constant** in the
@@ -31,8 +34,9 @@ issuer packet; it is not read at runtime. (The only provider API use in this act
 supported log API read in steps 4 and 7.)
 **Endpoint preflight (fail closed):** (0) libpq version >= 16 (so `require_auth` is
 honoured), else stop. (i) credential-free: a TCP connect from edge-dev3 to the hostname
-succeeds on 5432 and on 6543, and libpq connects over IPv4 (asserted by `inet_server_addr()`
-family on the session; no `hostaddr` pinning, consistent with repo doctrine in
+succeeds on 5432 and on 6543, and the client-side connection is IPv4 (asserted from the client socket's
+peer address family, e.g. psycopg `conn.info.hostaddr`, never `inet_server_addr()`, which
+through the pooler reports the backend side; no `hostaddr` pinning, consistent with repo doctrine in
 `tools/coldlion-sync-common.mjs:212,243`, and `host` stays set for verify-full and passfile
 matching); SSLRequest + TLS 1.3 verify-full against the
 pinned Supabase root succeeds on both. (ii) **Cluster identity:** TLS alone cannot tell
@@ -49,15 +53,19 @@ the step-4 admin session (pre-state probe, setting/sink/log-access/ingestion-lag
 preflights), the issuer, the undo, and all proof clients — uses `require_auth=scram-sha-256`
 and a protected passfile keyed `aws-1-us-east-1.pooler.supabase.com:<5432|6543>:postgres:<user>:<password>`
 (dbname `postgres`). **Passfile lifecycle:** written by the stage-B launcher only, mode 0600,
-owner the run user, on a private **tmpfs (memory-only)** directory created 0700 for the run
-(so a crash, kill or reboot cannot leave it on disk), referenced by the `passfile` connection
+owner the run user, at the fixed path `/run/user/<uid>/770-stage-b/` on the
+user runtime **tmpfs (memory-only)** (directory 0700, created by the launcher; never on disk,
+and cleared at logout/reboot), referenced by the `passfile` connection
 parameter (never `PGPASSFILE` env); removed on every normal exit path by the launcher's
-`finally`. **Residue sweep at start:** the launcher refuses to run if any prior run's passfile,
-log-response file or `pending_password` field exists, and reports it. The first, consumed
+`finally`. **Residue sweep at start:** the launcher refuses to run if
+`/run/user/<uid>/770-stage-b/` exists or is non-empty, if any log-response file exists in the
+stage-B evidence directory, or if any staged 1Password item has a `pending_password` field; it
+reports the residue and stops. At the end the directory is removed. The first, consumed
 launch left none (Codex postcheck 4:42 PM EDT, #770 comment 6132379006: no residual passfiles
-or log-response files, `pending_password` absent). Stage-B tests assert 0600 creation, tmpfs
-location, and removal on abort, rollback and undo paths, and `pending_password` cleanup on
-abort. Because stage A's isolated PG17 cannot exercise Supavisor, these live preflights are
+or log-response files, `pending_password` absent). The passfile tests (0600 creation, tmpfs location,
+removal on abort, rollback and undo paths, `pending_password` cleanup on abort, residue-sweep
+refusal) run **before production** as unit tests of the stage-B programs against isolated
+PG17 and a fake vault — never by provoking failures in production. Because stage A's isolated PG17 cannot exercise Supavisor, these live preflights are
 the evidence that the session-mode path works before the one-shot write; if any fails, stop
 with no write. Changed by this amendment: endpoint, the "directly" wording in Success check,
 the preflights above, `require_auth` scope, passfile lifecycle, Method step 1 (new guard test),
@@ -254,8 +262,9 @@ passwords rotated.
    irrecoverably). Because the pre-state is proved NULL, undo to NULL is an exact restore.
    **Setting preflight:** re-read `password_encryption` (must be `scram-sha-256`) and
    `log_line_prefix` (must contain `%p`) immediately before step 5; otherwise stop.
-   **Supavisor preflight:** confirm from Supabase pooler documentation and the 2026-10-08 probe
-   that the pooler requests SCRAM from clients; `require_auth` on every password-carrying
+   **Supavisor preflight:** it is an *assumption*, from Supabase pooler documentation, that the
+   pooler requests SCRAM from clients (the 2026-10-08 probe was credential-free and cannot
+   show the auth method); it is proven by the live preflight (ii) handshake; `require_auth` on every password-carrying
    connection (admin session, issuer, undo, proof clients) makes a wrong assumption fail closed
    before any password is sent.
    **Ingestion-lag preflight:** before the write, run one harmless read-only statement that
@@ -283,8 +292,8 @@ passwords rotated.
    `require_auth=scram-sha-256` (PG16+ libpq; a preflight before step 4 asserts
    `psycopg.pq.version() >= 160000` and stops before any write otherwise), which refuses any server request for a cleartext
    password, so the plaintext never crosses the wire to the pooler. All proof clients (and the
-   issuer) receive the password only through a mode-0600 libpq `passfile` inside the protected
-   mount, never via `PGPASSWORD`, DSN or argv; a stage-A test asserts the child environment and
+   issuer) receive the password only through a mode-0600 libpq `passfile` in the Amendment A tmpfs
+   path, never via `PGPASSWORD`, DSN or argv; a stage-A test asserts the child environment and
    argv contain no plaintext; and step 7 also scans the
    Supavisor (pooler) logs from the supported log API for the same window. The pooler presents the same Supabase-rooted chain: the 2026-10-08
    credential-free probe completed TLS 1.3 verify-full against the pinned root on the pooler

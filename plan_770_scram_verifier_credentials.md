@@ -24,12 +24,13 @@ Supavisor pooler at `aws-1-us-east-1.pooler.supabase.com`, verify-full with the 
 `postgres.qsllyeztdwjgirsysgai`), the step-8 undo connection (also as
 `postgres.qsllyeztdwjgirsysgai` — a runtime role cannot `ALTER ROLE`), and proofs 6(a)/(b) (user
 `designflow_prod_<service>_runtime.qsllyeztdwjgirsysgai`); **transaction mode, port 6543**
-remains the blocking service-path proof 6(c) — the four services' own connection contracts bind
-production Supabase to the public pooler on port 6543 (e.g. `config/database-connection-contract.js`
-in `popcre/designflow-data-syncing` c88a43d: "Supabase/6543/public-pooler") — (user
+remains blocking proof 6(c), which proves Supavisor transaction-mode SCRAM authentication for
+each runtime role. It is **not** a claim about the services' deployed binding: today's production
+contract forces Cloud SQL (`docs/production-promotion-app-tolerance-contract.md:82-86`) and the
+Supabase branch at :96-99 is the non-production one; the services' production Supabase port and
+user form are decided and proven in #770's separate four-service acceptance/cutover step (user
 `designflow_prod_<service>_runtime.qsllyeztdwjgirsysgai`; the `<role>.<project ref>` form is
-the one `docs/agents/references-and-runbooks.md:46` shows for the admin). The stage-B packet
-re-checks each service's deployed contract for the 6543 binding. The admin uses session mode
+the one `docs/agents/references-and-runbooks.md:46` shows for the admin). The admin uses session mode
 5432 (not the runbook's 6543) because the pid recorded in preflight (iii) must be the same
 backend that later runs the write; session mode keeps one backend for the whole client session,
 while transaction mode may switch backends between transactions. Session mode on 5432 / transaction mode on 6543 is
@@ -197,15 +198,25 @@ redaction is absent — then show a verifier issuance logs only the verifier.
 These resolve the Amendment A review rounds and override any looser wording above.
 
 1. **Single process, in-memory secret path.** One stage-B process (the launcher) performs, in
-   order: residue sweep → preflights (0)…(iii) → password generation → verifier build/guard →
-   passfile write → 1Password `pending_password` write → step 5 → steps 6–8. The plaintexts
+   order: residue sweep → tmpfs directory creation → admin password read from 1Password and
+   written as the admin passfile entry → preflights (0)…(4) → password generation → verifier
+   build/guard → runtime-role passfile entries appended → 1Password `pending_password` write →
+   step 5 → steps 6–7 → **promotion** (`pending_password` → service field) → passfile and
+   directory removal; step 8 undo on any failure from step 5 on. **Promotion failure:** if the
+   vault promotion fails or applies partially after a successful step 7, the launcher runs step
+   8 (database back to NULL), deletes every `pending_password` and any partially promoted value
+   it wrote, tags the items `770-aborted-<timestamp>`, and stops — database and vault stay
+   consistent (no credential). The plaintexts
    never leave that process except into (a) the tmpfs passfile, written by that same process,
    and (b) the 1Password SDK call. The admin password is read from 1Password by the same
    process. Passfile fields are escaped per libpq (`\` before `:` and `\`); a test covers an
    admin password containing `:`, `\` and a leading `*`.
 2. **Digest binding covers every module the launcher imports or executes** (preflights,
-   passfile writer, issuer, vault writer, proof clients, log scanner, undo), computed over the
-   whole stage-B package directory, not a hand list.
+   passfile writer, issuer, vault writer, proof clients, log scanner, undo). Algorithm: list
+   every regular file under the stage-B package directory (launcher included), sort by
+   POSIX-relative path bytes, and SHA-256 over `path\0sha256(file)\n` lines; symlinks or
+   non-regular files refuse. The reviewed packet records this value; a test tampers one byte
+   of one module and one added file and asserts refusal.
 3. **Memory hygiene.** The launcher sets `RLIMIT_CORE=0` and `PR_SET_DUMPABLE=0` at start; the
    Goal's "never on disk" claim is narrowed to: not written to any file other than the tmpfs
    passfile; host swap remains a stated residual (same-UID trusted host, as in the #770
@@ -215,8 +226,10 @@ These resolve the Amendment A review rounds and override any looser wording abov
    session S on 5432: `PQhostaddr` IPv4, cluster identity (four runtime roles,
    `current_database()='postgres'`); (3) in S, outside any transaction, one failing `SELECT`;
    its Postgres log line must carry S's `pg_backend_pid()`; (4) pooler-log source returns S's
-   connection entry; the step-7 retry window is 3× the **larger** of the Postgres and pooler
-   lags measured in (3) and (4).
+   connection entry. **Step-7 retry window** (supersedes "60 s for up to 15 minutes"): poll every
+   60 s until max(15 minutes, 3× the larger lag measured in (3) and (4)); if that exceeds 60
+   minutes, stop at preflight with no write.
+   Step 6(0)'s `pg_authid` read and step 8 run on session S.
 5. **Same connection.** Step 5 runs on session S (the same client connection as (2)–(3)); the
    pid recorded in (3) is re-read inside the step-5 transaction and must be equal, else
    rollback and stop. Pid matching is used only within the issuance window as corroboration
@@ -475,10 +488,19 @@ service secret mapping in stage B. L6 pooler and ingestion-lag preflights before
 H1 (authority to retire the earlier AI-recorded prohibition): see Authority section; the owner
 ruled directly (quoted at the top of the Problem section).
 
+## Amendment A review rounds
+
+Plan-review runs 20261012T205156-4109415-26928, 205416-4125923-31354, 205713-244450-3085,
+210136-735259-14089, 210733-1594943-24368, 211249-1988165-19859, 211708-2374281-9048 and
+212118-2874533-23095 (all REJECT, each finding addressed in Amendment A and its binding
+requirements above).
+
 ## Question for the reviewer
 
 Judge the route on its technical merits against the Goal.
-Does this plan meet the privacy goal, and does it justify stage A (script + isolated steps
+For Amendment A: is the pooler route with the binding requirements sound for a fresh stage-B
+packet (to be separately exact-input reviewed)? Original question: does this plan meet the
+privacy goal, and does it justify stage A (script + isolated steps
 1–3 only)? APPROVE or name the specific remaining gap. Stage B is reviewed separately.
 
 Posted by Claude chat 16164463-0b2e-4ea7-a039-2d3d59cd5d21 on edge-dev3

@@ -145,6 +145,8 @@ create unique index if not exists ai_activity_triage_comment_idempotency_key
 create index if not exists ai_activity_triage_requester_idx
   on pim.ai_activity_triage (requester_profile_id, created_at desc);
 
+-- Serves admin-audit / recovery filters on state as a leading equality; the
+-- pilot list RPCs lead with requester_profile_id and do not use this index.
 create index if not exists ai_activity_triage_state_idx
   on pim.ai_activity_triage (state, reviewed_at);
 

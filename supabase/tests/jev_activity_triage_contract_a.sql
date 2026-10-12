@@ -55,14 +55,21 @@ begin
   if not exists (
     select 1 from information_schema.columns
     where table_schema = 'app' and table_name = 'comment' and column_name = 'body_revision'
+      and data_type = 'integer'
   ) then
-    raise exception 'missing app.comment.body_revision';
+    raise exception 'missing or wrong-typed app.comment.body_revision';
   end if;
   if not exists (
     select 1 from pg_trigger
     where tgname = 'app_comment_body_revision' and tgrelid = 'app.comment'::regclass
   ) then
     raise exception 'missing trigger app_comment_body_revision';
+  end if;
+  if not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'app' and p.proname = 'comment_body_revision_trg_fn'
+  ) then
+    raise exception 'missing app.comment_body_revision_trg_fn';
   end if;
   if not exists (select 1 from pg_roles where rolname = 'pm_jev_triage_worker') then
     raise exception 'missing role pm_jev_triage_worker';
@@ -88,48 +95,54 @@ begin
   ) then
     raise exception 'pm_jev_triage_worker must be NOLOGIN/NOSUPERUSER/NOBYPASSRLS/NOINHERIT';
   end if;
-  -- RLS policies exist with the intended names.
+  -- RLS policies exist with the intended command/roles (exact-object, not name-only).
   if not exists (
     select 1 from pg_policies
     where schemaname = 'pim' and tablename = 'ai_activity_triage'
       and policyname = 'pm_ai_activity_triage_select_own'
+      and cmd = 'SELECT' and roles = '{authenticated}'
   ) then
-    raise exception 'missing policy pm_ai_activity_triage_select_own';
+    raise exception 'policy pm_ai_activity_triage_select_own missing or wrong shape';
   end if;
   if not exists (
     select 1 from pg_policies
     where schemaname = 'pim' and tablename = 'ai_activity_triage_eligibility'
       and policyname = 'pm_ai_activity_triage_eligibility_select_own'
+      and cmd = 'SELECT' and roles = '{authenticated}'
   ) then
-    raise exception 'missing policy pm_ai_activity_triage_eligibility_select_own';
+    raise exception 'policy pm_ai_activity_triage_eligibility_select_own missing or wrong shape';
   end if;
   if not exists (
     select 1 from pg_policies
     where schemaname = 'pim' and tablename = 'ai_activity_triage'
       and policyname = 'pm_ai_activity_triage_worker_all'
+      and cmd = 'ALL' and roles = '{pm_jev_triage_worker}'
   ) then
-    raise exception 'missing policy pm_ai_activity_triage_worker_all';
+    raise exception 'policy pm_ai_activity_triage_worker_all missing or wrong shape';
   end if;
   if not exists (
     select 1 from pg_policies
     where schemaname = 'pim' and tablename = 'ai_activity_triage'
       and policyname = 'pm_ai_activity_triage_admin_audit'
+      and cmd = 'SELECT'
   ) then
-    raise exception 'missing policy pm_ai_activity_triage_admin_audit';
+    raise exception 'policy pm_ai_activity_triage_admin_audit missing or wrong shape';
   end if;
   if not exists (
     select 1 from pg_policies
     where schemaname = 'pim' and tablename = 'ai_activity_triage_eligibility'
       and policyname = 'pm_ai_activity_triage_eligibility_worker_all'
+      and cmd = 'ALL' and roles = '{pm_jev_triage_worker}'
   ) then
-    raise exception 'missing policy pm_ai_activity_triage_eligibility_worker_all';
+    raise exception 'policy pm_ai_activity_triage_eligibility_worker_all missing or wrong shape';
   end if;
   if not exists (
     select 1 from pg_policies
     where schemaname = 'pim' and tablename = 'ai_activity_triage_eligibility'
       and policyname = 'pm_ai_activity_triage_eligibility_admin_audit'
+      and cmd = 'SELECT'
   ) then
-    raise exception 'missing policy pm_ai_activity_triage_eligibility_admin_audit';
+    raise exception 'policy pm_ai_activity_triage_eligibility_admin_audit missing or wrong shape';
   end if;
   if not exists (
     select 1 from pg_trigger
@@ -137,19 +150,31 @@ begin
   ) then
     raise exception 'missing trigger pm_jev_source_changed';
   end if;
-  -- live_comment_id is indexed for the body-edit trigger and repair update.
-  if not exists (
-    select 1 from pg_indexes
-    where schemaname = 'pim' and indexname = 'ai_activity_triage_live_comment_idx'
-  ) then
-    raise exception 'missing index ai_activity_triage_live_comment_idx';
+  -- Depended-on function signatures exist (exact-object).
+  if to_regprocedure('app.current_profile_id()') is null then
+    raise exception 'missing app.current_profile_id()';
   end if;
   if not exists (
-    select 1 from pg_indexes
-    where schemaname = 'pim' and indexname = 'ai_activity_triage_eligibility_comment_idx'
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'app' and p.proname = 'has_role'
   ) then
-    raise exception 'missing index ai_activity_triage_eligibility_comment_idx';
+    raise exception 'missing app.has_role';
   end if;
+  -- Indexes created by this migration are present.
+  foreach v_state in array array[
+    'ai_activity_triage_live_comment_idx',
+    'ai_activity_triage_eligibility_comment_idx',
+    'ai_activity_triage_eligibility_token_idx',
+    'ai_activity_triage_comment_idempotency_key',
+    'ai_activity_triage_requester_idx'
+  ] loop
+    if not exists (
+      select 1 from pg_indexes
+      where schemaname = 'pim' and indexname = v_state
+    ) then
+      raise exception 'missing index %', v_state;
+    end if;
+  end loop;
 
   -- ------------------------------------------------------------------
   -- Fixtures (rolled back)

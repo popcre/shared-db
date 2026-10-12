@@ -31,9 +31,24 @@
 --     derived to that same Licensor, and the 38 keys hash to the approved subset hash.
 --
 -- Recovery: the rows are identified exactly by raw->>'implementation_issue' = '#4235'.
--- Deleting ColdLion source refs is guarded by coldlion_source_ref_delete_breaker_guard;
--- a correction ships as a reviewed forward migration through that guard's authorization,
--- never as a manual delete.
+-- Repository doctrine records absence with missing_since rather than deleting rows, and the
+-- identity guard locks source_licensor_id while the target is unchanged. A correction is a
+-- reviewed forward curated migration that records missing_since on (or repoints) exactly
+-- these rows; never a manual delete.
+--
+-- Dependencies: the breaker pre-check reads plm.taxonomy_circuit_breaker directly (the
+-- curated row-load allowlist forbids function calls); migrations apply as postgres, which
+-- bypasses its RLS. The enforcing control remains coldlion_source_ref_breaker_guard.
+-- The spelling-insensitive conflict probe wraps the indexed columns and scans
+-- core.taxonomy_source_ref (about 550 rows) 38 times; accepted for a one-time load.
+--
+-- Pinned invariants: plm.taxonomy_baseline_pin 'phase4_preview' pins coldlion_source_ref_count
+-- and taxonomy_source_ref_count, and this load moves both. The curated row-load allowlist
+-- does not permit writing plm.taxonomy_baseline_pin, so the pins are NOT refreshed here.
+-- Consequence: a later manual run of the preview-only phase-6 parallel comparison (schedules
+-- removed by #3536; production hard-refused) would report drift and may auto-trip the
+-- breaker; re-pin through that lane's own reviewed path before any such run. Production
+-- pins were already drifted before this load (taxonomy_source_ref_count pinned 515, live 538).
 --
 -- Tested locally (PostgreSQL 16, minimal fixture): empty environment no-op; 38 inserted;
 -- rerun idempotent; a conflicting pre-existing row refused.
@@ -62,6 +77,12 @@ begin
     raise exception 'issue #4235: ColdLion taxonomy circuit breaker is tripped; refusing before any write';
   end if;
   if v_present = 0 then
+    for i in 1..19 loop
+      perform 1 from core.licensor l where l.code = v_codes[i];
+      if found then
+        raise exception 'issue #4235: Licensor code % exists under a different id than approved; wrong or re-seeded database, refusing', v_codes[i];
+      end if;
+    end loop;
     raise notice 'issue #4235: no approved canonical Licensor exists in this environment; no-op';
     return;
   end if;
@@ -77,7 +98,7 @@ begin
     if v_name is null then
       raise exception 'issue #4235: canonical Licensor % no longer carries approved code %; refusing', v_id, v_code;
     end if;
-    perform 1 from core.licensor l where l.id <> v_id and upper(btrim(coalesce(l.code, ''))) = v_code;
+    perform 1 from core.licensor l where l.id <> v_id and l.code = v_code;
     if found then
       raise exception 'issue #4235: approved code % is carried by another Licensor; refusing', v_code;
     end if;
@@ -130,5 +151,6 @@ begin
   if v_hash <> 'b8e5cc3126a742eca1e8a5e0db4d8f57' then
     raise exception 'issue #4235: approved set hash %, expected b8e5cc3126a742eca1e8a5e0db4d8f57', v_hash;
   end if;
+
 end
 $migration$;

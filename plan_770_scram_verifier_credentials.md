@@ -19,13 +19,18 @@ Supavisor pooler at `aws-1-us-east-1.pooler.supabase.com`, verify-full with the 
 **session mode, port 5432** replaces the "direct-port" connection for the issuer (user
 `postgres.qsllyeztdwjgirsysgai`), the step-8 undo connection, and proofs 6(a)/(b) (user
 `designflow_prod_<service>_runtime.qsllyeztdwjgirsysgai`); **transaction mode, port 6543**
-remains the blocking service-path proof 6(c) (same user form, as in
-`docs/agents/references-and-runbooks.md:46`). Session mode on 5432 / transaction mode on 6543 is
+remains the blocking service-path proof 6(c) (user
+`designflow_prod_<service>_runtime.qsllyeztdwjgirsysgai`; the `<role>.<project ref>` form is
+the one `docs/agents/references-and-runbooks.md:46` shows for the admin). Session mode on 5432 / transaction mode on 6543 is
 Supabase's documented Supavisor port split (in-repo:
-`docs/verification/supabase-pooler-idle-connection-drop-20260623.md:97`). The hostname is a **reviewed constant** in the
-issuer packet (no runtime Management API read, consistent with the Problem section).
-**Endpoint preflight (fail closed):** (i) credential-free: the hostname resolves to at least
-one IPv4 address; TCP connects on 5432 and 6543; SSLRequest + TLS 1.3 verify-full against the
+`docs/verification/supabase-pooler-idle-connection-drop-20260623.md:97` for 5432 and :99-100
+for 6543; `docs/intake-426-triage-20260803.md:41,291` for production on `aws-1`). The hostname is a **reviewed constant** in the
+issuer packet; it is not read at runtime. (The only provider API use in this action is the
+supported log API read in steps 4 and 7.)
+**Endpoint preflight (fail closed):** (0) libpq version >= 16 (so `require_auth` is
+honoured), else stop. (i) credential-free: a TCP connect from edge-dev3 to the hostname
+succeeds on 5432 and on 6543, and the connected address is IPv4 (pinned for the run via
+`hostaddr`); SSLRequest + TLS 1.3 verify-full against the
 pinned Supabase root succeeds on both. (ii) **Cluster identity:** TLS alone cannot tell
 `aws-0` from `aws-1` (shared certificate), so the first authenticated step is a read-only
 admin session (`postgres.qsllyeztdwjgirsysgai`, session mode 5432, `require_auth`) that must
@@ -34,21 +39,24 @@ succeed and must see exactly the four `designflow_prod_*_runtime` roles plus
 write. (iii) **pid validity:** in that same session, a harmless deliberately failing
 `SELECT` (no secret) is issued and its server-log line must carry that session's
 `pg_backend_pid()` (session mode binds one backend per client session), which also measures
-ingestion lag; if the pid does not match, the step-7 control falls back to matching the four
-role names inside the issuing transaction's timestamp window, recorded as the weaker form. **No cleartext to the pooler anywhere:** every connection that carries a password —
+ingestion lag. If the pid does not match, stop before any write (no fallback): the step-7
+control is then unprovable and nothing is changed. **No cleartext to the pooler anywhere:** every connection that carries a password —
 the step-4 admin session (pre-state probe, setting/sink/log-access/ingestion-lag/pid
 preflights), the issuer, the undo, and all proof clients — uses `require_auth=scram-sha-256`
 and a protected passfile keyed `aws-1-us-east-1.pooler.supabase.com:<5432|6543>:postgres:<user>:<password>`
-(dbname `postgres`). Stage-A test addition: against isolated PG17 with `hba` set to `password`
-and to `md5`, a client with `require_auth=scram-sha-256` must abort before sending anything. Because stage A's isolated PG17 cannot exercise Supavisor, these live preflights are
+(dbname `postgres`). **Passfile lifecycle:** written by the stage-B launcher only, mode 0600,
+owner the run user, inside the encrypted protected mount, referenced by the `passfile`
+connection parameter (never `PGPASSFILE` env); removed on every exit path (success, abort,
+rollback, undo) by the launcher's `finally`, and its absence is asserted in the closing report. Because stage A's isolated PG17 cannot exercise Supavisor, these live preflights are
 the evidence that the session-mode path works before the one-shot write; if any fails, stop
 with no write. Changed by this amendment: endpoint, the "directly" wording in Success check,
-the preflights above, `require_auth` scope, and Method step 4 (below). Everything else is
-unchanged.
+the preflights above, `require_auth` scope, passfile lifecycle, Method step 1 (new guard test),
+Method step 4 (endpoint and preflight order), and the Supavisor preflight wording. Everything
+else is unchanged.
 A fresh one-shot packet and exact-input review are required; the consumed launcher is never
 replayed.
 
-Revision 9. Revisions 1–8 got DeepSeek plan-review REJECT (runs
+Revision 9 + Amendment A. Revisions 1–8 got DeepSeek plan-review REJECT (runs
 20261012T181315-1768589-27011, 20261012T181704-2222882-23133 and
 20261012T182121-2343611-840, 20261012T182543-2382833-1180, 20261012T182919-2411551-20984, 20261012T183435-2457811-16013, 20261012T183851-2493077-780, all "method sound in
 principle"); every finding is answered below. Nothing has been executed.
@@ -178,7 +186,12 @@ passwords rotated.
    **Guard tests (stage A deliverable):** accept the tool's own output; reject base64url
    alphabet, missing padding, wrong padding, non-canonical padding bits, salt not 16 bytes,
    key not 32 bytes, wrong iteration count, wrong prefix, tampered StoredKey/ServerKey,
-   trailing whitespace/newline, and a raw password string; plus an end-to-end test proving a
+   trailing whitespace/newline, and a raw password string; **`require_auth` test** (Amendment
+   A): against isolated PG17, (1) `hba` = `password` for a role with a SCRAM verifier, and (2)
+   `hba` = `md5` for a role whose stored password is an **MD5** verifier (set with
+   `password_encryption=md5` for that role only, so the server really requests MD5), a client
+   with `require_auth=scram-sha-256` must fail and the server log must show no password
+   received (libpq still sends the startup packet with user/database; no password is sent); plus an end-to-end test proving a
    rejected verifier never opens a database connection (connection factory spy). **Send-path
    test:** the spy captures every outbound SQL text and parameter for an accepted run and
    asserts each `PASSWORD` operand matches the verifier grammar and that no plaintext byte
@@ -227,8 +240,9 @@ passwords rotated.
    **Setting preflight:** re-read `password_encryption` (must be `scram-sha-256`) and
    `log_line_prefix` (must contain `%p`) immediately before step 5; otherwise stop.
    **Supavisor preflight:** confirm from Supabase pooler documentation and the 2026-10-08 probe
-   that the pooler requests SCRAM from clients; the proof client's `require_auth` makes a
-   wrong assumption fail closed before any plaintext is sent.
+   that the pooler requests SCRAM from clients; `require_auth` on every password-carrying
+   connection (admin session, issuer, undo, proof clients) makes a wrong assumption fail closed
+   before any password is sent.
    **Ingestion-lag preflight:** before the write, run one harmless read-only statement that
    is logged (a deliberately failing `SELECT` on a non-existent relation under
    `log_min_error_statement=error`, containing no secret) and measure how long it takes to

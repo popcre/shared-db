@@ -201,28 +201,33 @@ These resolve the Amendment A review rounds and override any looser wording abov
 1. **Single process, in-memory secret path.** One stage-B process (the launcher) performs, in
    order: residue sweep → credential-free preflights (0) and (1) → tmpfs directory creation →
    admin password read from 1Password and written as the admin passfile entry → preflights
-   (2) and (3) → vault pre-state snapshot (each staged item's current service-field value
-   fingerprint and presence, held in memory) → password generation → verifier
-   build/guard → runtime-role passfile entries appended → 1Password `pending_password` write →
-   step 5 → steps 6–7 → **promotion** (`pending_password` → service field) → passfile and
-   directory removal; step 8 undo on any failure from step 5 on. **Promotion failure:** if the
-   vault promotion fails or applies partially after a successful step 7, the launcher runs step
-   8 (database back to NULL), deletes every `pending_password`, restores each service field to its
-   snapshotted pre-state (or deletes it if it was absent), tags the items `770-aborted-<timestamp>`, and stops — database and vault stay
-   consistent (no credential). **Crash after commit** (kill/power loss between step 5 and the
-   end): the next launcher start finds residue and enters **recovery mode** only — prove target
-   and session S as above, read the four `rolpassword` values format-only; if any is SCRAM, run
-   step 8 (back to NULL), restore vault fields from the persisted encrypted pre-state snapshot
-   (written to the protected evidence mount before step 5), delete `pending_password`, tag
-   `770-recovered-<timestamp>`, record on #770, and stop. A new issuance needs a fresh packet.
+   (2) and (3) → password generation → verifier build/guard → runtime-role passfile entries
+   appended → 1Password `pending_password` write → step 5 → steps 6–7 → **promotion**: rename
+   `pending_password` to a **new, dedicated field** `supabase_runtime_password` on each staged
+   item → passfile and directory removal. **No existing vault field is ever modified:**
+   production still runs Cloud SQL and the services' current secret fields stay untouched;
+   wiring services to `supabase_runtime_password` belongs to #770's cutover step. So no
+   pre-state snapshot is needed. Step 8 undo runs on any failure from step 5 on; if session S
+   has been dropped, undo opens a fresh admin session on 5432 (same endpoint, `require_auth`,
+   passfile) after re-proving cluster identity. **Promotion failure** (after a successful step
+   7): step 8 (database back to NULL), delete every `pending_password` and any
+   `supabase_runtime_password` this run created, tag `770-aborted-<timestamp>`, stop.
+   **Crash after commit:** the next launcher start finds residue (tmpfs directory or
+   `pending_password`) and enters **recovery mode** only — re-prove target and cluster
+   identity on a fresh admin session, read the four `rolpassword` values format-only; if any is
+   SCRAM, run step 8; delete `pending_password` and any run-created `supabase_runtime_password`;
+   tag `770-recovered-<timestamp>`; record on #770; stop. Recovery deliberately discards even a
+   possibly successful issuance (its log proof is incomplete); a fresh packet re-issues.
    Unit tests (fake vault + isolated PG17) cover: promotion failure on the 1st, 2nd and 4th
-   item; snapshot restore of a pre-existing field; recovery mode after a simulated post-commit
-   crash. The plaintexts
+   item; recovery mode after a simulated post-commit crash; undo with S dropped; and that no
+   pre-existing vault field is ever written. The plaintexts
    never leave that process except into (a) the tmpfs passfile, written by that same process,
    and (b) the 1Password SDK call. The admin password is read from 1Password by the same
    process. Passfile fields are escaped per libpq (`\` before `:` and `\`); a test covers an
    admin password containing `:`, `\` and a leading `*`.
-2. **Digest binding covers every module the launcher imports or executes** (preflights,
+2. **Digest binding covers every module the launcher imports or executes**, including the
+   stage-A `scram_verifier` module and the pinned interpreter/venv (`psycopg`, libpq) recorded
+   by package version and file hash in the reviewed packet (preflights,
    passfile writer, issuer, vault writer, proof clients, log scanner, undo). Algorithm: list
    every regular file under the stage-B package directory (launcher included), sort by
    POSIX-relative path bytes, and SHA-256 over `path\0sha256(file)\n` lines; symlinks or
@@ -298,9 +303,9 @@ passwords rotated.
    and its literal logged).
 2. **Password generation and custody (stage B only; stage A uses DUMMY values and writes
    nothing to 1Password)** — new plaintexts are written to a **new field** `pending_password`
-   on each staged item, never over an existing value; on success (step 7 passes) the field is
-   promoted to the field name the stage-B packet proves each service's secret loader reads
-   (verified from each service's deployment secret mapping before stage B); on any abort before step 5, step-5 rollback, or step-8 undo the
+   on each staged item, never over an existing value; on success (step 7 passes) it is renamed
+   to the new dedicated field `supabase_runtime_password` (Amendment A requirement 1); no
+   field a deployed service reads today is touched; on any abort before step 5, step-5 rollback, or step-8 undo the
    `pending_password` field is deleted and the item is tagged `770-aborted-<timestamp>`, so the
    vault never claims a credential the database does not hold — one protected issuer process generates 32 random
    bytes from `secrets`, encodes them base64url (this is the password itself, not a verifier
@@ -359,7 +364,7 @@ passwords rotated.
    echoing the verifier); then (a) pooler session-mode (port 5432)
    login with the plaintext over SCRAM succeeds; (b) wrong password fails; (c) **blocking
    gate:** login through Supavisor pooler port 6543 succeeds, retried every 30 s for up to
-   10 minutes, each attempt on a **new** client connection (fresh pooler session), to absorb pooler auth-cache refresh before it counts as a failure. The 2026-10-08
+   10 minutes, each attempt on a **new** client connection (fresh pooler session), and the same retry policy applies to 6(a) on session mode 5432, to absorb pooler auth-cache refresh before it counts as a failure. The 2026-10-08
    `SUPAVISOR_AUTH_QUERY_SECRET_FORMAT` classification occurred when all four passwords were
    NULL; the inference (not proven) is that the auth query found no secret. This gate proves
    or disproves it. **No cleartext fallback:** the proof client uses libpq

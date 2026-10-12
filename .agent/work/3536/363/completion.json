@@ -39,11 +39,11 @@
     {
       "command": "owned whitespace, identity, exact source commit/remote readback and normal canonical Git evidence PASS",
       "exit_code": 0,
-      "evidence": "Actual Albert identity, owned whitespace0, source16ef9047, real livePR4229 readback, net source3files against3ed, published363 hash; normal complete report/Git validation before canonical commit follows."
+      "evidence": "Actual Albert identity, owned whitespace0, source16ef9047, real livePR4229 readback, net source3files against3ed and published363 hash. Normal complete report validation passed before seal. Canonical Git evidence then PASS at actual first pair32c9c7e4e958f7308e26ef02b84e67c9c47f5595, proving only its own two metadata files follow actual implementation. No paid review started before that validation."
     }
   ],
   "assumptions_resolved": [
-    "Every required check actually completed before this FIRST canonical363 pair. Original complete362 pair retained byte-for-byte privately/in Git and published ref.",
+    "Every required SOURCE check completed before the FIRST canonical363 pair. Canonical Git validation necessarily ran after committing that pair and passed before any paid review. Original complete362 pair retained byte-for-byte privately/in Git and published ref.",
     "Actual CI deadlock was October12 at1:40AMEDT; the published contract retains the raw CI-clock wording as historical evidence, not a NewYork time. No retrospective record rewritten.",
     "GLM6396 approval for393c retained but not carried to changed test code. Fresh normal exact-final-head assigned review and all finalCI/guardedmerge/installed named-preview proof remain gates.",
     "Source runtime routine/cron/quarantine/lease assertions unchanged. No source witness, paid refund/cap reset, UNKNOWN state, frozen3998 or2758 exception."

@@ -7,9 +7,9 @@ Registered from the #770 successor handoff
 
 ## STATUS
 
-Revision 7. Revisions 1–6 got DeepSeek plan-review REJECT (runs
+Revision 8. Revisions 1–7 got DeepSeek plan-review REJECT (runs
 20261012T181315-1768589-27011, 20261012T181704-2222882-23133 and
-20261012T182121-2343611-840, 20261012T182543-2382833-1180, 20261012T182919-2411551-20984, 20261012T183435-2457811-16013, all "method sound in
+20261012T182121-2343611-840, 20261012T182543-2382833-1180, 20261012T182919-2411551-20984, 20261012T183435-2457811-16013, 20261012T183851-2493077-780, all "method sound in
 principle"); every finding is answered below. Nothing has been executed.
 
 **Task classes.** (`ai-task-gates start --class CLASS [--reason TEXT] [--base REF]` is the
@@ -49,7 +49,9 @@ Fresh read-only evidence (2026-10-12, between the revision 1 and revision 3 comm
 `log_transaction_sample_rate=0`, `log_{statement,parser,planner,executor}_stats=off`,
 `auto_explain.log_min_duration=10000`, `pgaudit` preloaded but `pgaudit.log=none` and extension
 not created, `pg_stat_statements.track=top` with `track_utility=on`,
-`password_encryption=scram-sha-256`, PostgreSQL 17.6. Statement-text sinks are therefore: the
+`password_encryption=scram-sha-256`, `log_destination=csvlog`, `logging_collector=on`,
+`log_line_prefix='%h %m [%p] %q%u@%d '` (each line and each CSV record carries the backend pid),
+PostgreSQL 17.6. Statement-text sinks are therefore: the
 server log (`log_statement`, `log_min_error_statement`), `pg_stat_statements`, and the
 transient `pg_stat_activity.query` of the issuing session (visible only to `postgres` and
 `pg_read_all_stats` members while the statement runs). The Management API is not used for
@@ -104,7 +106,10 @@ redaction is absent — then show a verifier issuance logs only the verifier.
 ## Goal (stated precisely)
 
 No plaintext password ever appears in provider logs, pooler logs, client logs, argv, process
-environment (`PGPASSWORD`, `/proc/<pid>/environ`), connection strings/DSNs, transcripts or Git — on success or failure. SCRAM verifiers do appear in the server log and
+environment (`PGPASSWORD`, `/proc/<pid>/environ`), connection strings/DSNs, transcripts or Git
+during this issuance action (steps 1–8). Later routine service logins are SCRAM exchanges in
+which the plaintext never leaves the client; the services' own handling of their secret is the
+existing DesignFlow secret-manager path and is out of this plan's scope — on success or failure. SCRAM verifiers do appear in the server log and
 `pg_stat_statements`; a verifier alone cannot log in, and becomes usable only together with a
 successful server impersonation of a client. That residual is accepted **only** while every
 client verifies the pinned Supabase CA, which stage B makes a blocking gate on the deployed
@@ -138,7 +143,8 @@ passwords rotated.
 2. **Password generation and custody (stage B only; stage A uses DUMMY values and writes
    nothing to 1Password)** — new plaintexts are written to a **new field** `pending_password`
    on each staged item, never over an existing value; on success (step 7 passes) the field is
-   promoted to `password`; on any abort before step 5, step-5 rollback, or step-8 undo the
+   promoted to the field name the stage-B packet proves each service's secret loader reads
+   (verified from each service's deployment secret mapping before stage B); on any abort before step 5, step-5 rollback, or step-8 undo the
    `pending_password` field is deleted and the item is tagged `770-aborted-<timestamp>`, so the
    vault never claims a credential the database does not hold — one protected issuer process generates 32 random
    bytes from `secrets`, encodes them base64url (this is the password itself, not a verifier
@@ -167,6 +173,15 @@ passwords rotated.
    rolpassword LIKE 'SCRAM-SHA-256$%' THEN 'SCRAM' ELSE 'OTHER' END`. All four must be `NULL`;
    otherwise stop before any write (an existing credential would be overwritten
    irrecoverably). Because the pre-state is proved NULL, undo to NULL is an exact restore.
+   **Setting preflight:** re-read `password_encryption` (must be `scram-sha-256`) and
+   `log_line_prefix` (must contain `%p`) immediately before step 5; otherwise stop.
+   **Supavisor preflight:** confirm from Supabase pooler documentation and the 2026-10-08 probe
+   that the pooler requests SCRAM from clients; the proof client's `require_auth` makes a
+   wrong assumption fail closed before any plaintext is sent.
+   **Ingestion-lag preflight:** before the write, run one harmless read-only statement that
+   is logged (a deliberately failing `SELECT` on a non-existent relation under
+   `log_min_error_statement=error`, containing no secret) and measure how long it takes to
+   appear in the log API; the step-7 retry window is at least 3× that.
    **Sink preflight:** `pg_stat_statements` view exists in the target database and is readable by
    the proof user; if not, stop before the write. **Log-access preflight:** before the write, read one recent window of provider Postgres
    logs through the supported Supabase log API and confirm entries are returned; if not, stop
@@ -311,6 +326,14 @@ comments. M2 `pg_stat_statements` preflight; lines matched by role and issuing b
 every plaintext-touching program digest-bound. M4 `pending_password` custody with abort cleanup.
 M5 session `log_statement` suppression considered and rejected. Lows: libpq comparison by
 re-derivation; `pg_authid` wording reconciled; fresh pooler session per retry.
+
+## Revision 7 → 8 findings answered
+
+M2 `log_line_prefix` read (has `%p`). M3 Goal scoped to the issuance action, runtime residual
+stated. M4 `password_encryption` re-asserted right before the write. L5 field name proved from
+service secret mapping in stage B. L6 pooler and ingestion-lag preflights before the write.
+H1 (authority to retire the earlier AI-recorded prohibition): see Authority section; the owner
+is being asked to state it directly and his answer will be quoted here.
 
 ## Question for the reviewer
 

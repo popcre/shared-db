@@ -2222,6 +2222,57 @@ def parse_default_privileges(
     return expectations, notes
 
 
+def split_routine_acl_targets(raw: str) -> list[str]:
+    """Split only commas outside argument lists; qualified types are not routines."""
+    out, start, depth = [], 0, 0
+    for i, char in enumerate(raw):
+        if char == "(": depth += 1
+        elif char == ")": depth -= 1
+        elif char == "," and depth == 0:
+            out.append(raw[start:i].strip()); start = i + 1
+        if depth < 0: return []
+    if depth: return []
+    out.append(raw[start:].strip())
+    return out
+
+
+def normalize_function_acl_signature(signature: str) -> tuple[str | None, str | None]:
+    """Normalize supported GRANT input names/modes without guessing type search_path.
+
+    Unknown unqualified custom types and complex type spellings are explicitly
+    unassertable, never mapped to another overload or represented as a success.
+    A supported exact signature that resolves to no routine remains a hard FAIL.
+    """
+    match = re.fullmatch(rf"\s*{QUALIFIED}\s*\((.*)\)\s*", signature)
+    if not match: return None, "routine signature syntax is outside the conservative type lexer"
+    arguments = match.group(3)
+    builtin = set("bigint int8 bigserial serial8 bit bool boolean bytea char character cidr date decimal float float4 float8 double inet int int2 int4 integer interval json jsonb macaddr macaddr8 money name numeric oid real record regclass regcollation regconfig regdictionary regnamespace regoper regoperator regproc regprocedure regrole regtype serial serial2 serial4 smallint smallserial text time timestamp timestamptz timetz tsquery tsvector uuid varchar varbit void xml anyelement anyarray anynonarray anyenum anyrange anymultirange anycompatible anycompatiblearray anycompatiblenonarray anycompatiblerange anycompatiblemultirange".split())
+    multiword = {"double precision", "character varying", "bit varying", "time with time zone", "time without time zone", "timestamp with time zone", "timestamp without time zone"}
+    normalized = []
+    if not arguments.strip(): return f"{match.group(1)}.{match.group(2)}()", None
+    for raw in split_routine_acl_targets(arguments):
+        value = " ".join(raw.split())
+        mode = re.match(r"^(inout|in|out|variadic)\s+", value)
+        if mode:
+            value = value[mode.end():]
+            if mode.group(1) == "out": continue
+        # Parenthesized type modifiers and quoted forms require a SQL parser;
+        # the current lexer must not call to_regprocedure with invalid input.
+        if any(c in value for c in '()"'):
+            return None, "complex or quoted routine argument types need explicit catalog evidence"
+        words = value.split()
+        # GRANT argument names are ignored by PostgreSQL identity. A complete
+        # builtin multiword type is not an argument name followed by a type.
+        base = re.sub(r"(?:\[\])+$", "", value)
+        if len(words) > 1 and base not in multiword:
+            value = " ".join(words[1:])
+            base = re.sub(r"(?:\[\])+$", "", value)
+        if not (base in builtin or base in multiword or re.fullmatch(r"[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*", base)):
+            return None, "unqualified custom routine type depends on an unproved migration search_path"
+        normalized.append(value)
+    return f"{match.group(1)}.{match.group(2)}(" + ",".join(normalized) + ")", None
+
+
 def parse_grant_statement(
     statement: str, source: str
 ) -> tuple[list[PrivilegeExpectation], set[str], set[str], list[str]]:
@@ -2252,7 +2303,9 @@ def parse_grant_statement(
 
     routine_match = ROUTINE_OBJECT_RE.match(objects)
     if routine_match:
-        routine_rows = list(ROUTINE_NAME_RE.finditer(routine_match.group(1)))
+        routine_rows = [re.fullmatch(rf"\s*{QUALIFIED}\s*(\(.*\))?\s*", part) for part in split_routine_acl_targets(routine_match.group(1))]
+        if not routine_rows or any(row is None for row in routine_rows):
+            return [], set(), set(), notes + ["unreadable routine target list: `" + statement.strip() + "`"]
         # Preserve each literal argument list. PostgreSQL resolves type aliases
         # to OIDs; an overload's family name cannot identify a revoke target.
         names = [f"{m.group(1)}.{m.group(2)}" for m in routine_rows]
@@ -2826,6 +2879,8 @@ def build_catalog_sql(targets: Targets) -> str:
     signatures = sorted({e.function_signature for e in targets.privileges if e.function_signature is not None})
     # Quoted SQL literals only; argument strings are never executed as SQL.
     signature_values = "array[" + ", ".join("'" + x.replace("'", "''") + "'" for x in signatures) + "]::text[]"
+    normalized_signatures = [normalize_function_acl_signature(x)[0] for x in signatures]
+    normalized_values = "array[" + ", ".join("NULL" if x is None else "'" + x.replace("'", "''") + "'" for x in normalized_signatures) + "]::text[]"
     index_names = _sql_array([row[0] for row in targets.indexes])
     index_relations = _sql_array([row[1] for row in targets.indexes])
     schema_names = _sql_array(
@@ -2978,8 +3033,8 @@ select jsonb_build_object(
     cross join lateral aclexplode(c.relacl) a), '[]'::jsonb),
   'function_acl_signatures', coalesce((
     select jsonb_agg(jsonb_build_object('signature', signature,
-      'oid', to_regprocedure(signature)::oid::text) order by signature)
-    from unnest({signature_values}) as signature
+      'oid', to_regprocedure(normalized_signature)::oid::text) order by signature)
+    from unnest({signature_values}, {normalized_values}) as s(signature, normalized_signature)
   ), '[]'::jsonb),
   'functions', coalesce((
     select jsonb_agg(jsonb_build_object(
@@ -3172,7 +3227,10 @@ def assert_privileges(
     signature_oids = {r.get("signature"): r.get("oid") for r in data.get("function_acl_signatures") or []}
     def privilege_target(expectation):
         if expectation.function_signature is not None:
-            return ("oid", signature_oids.get(expectation.function_signature)) if signature_oids.get(expectation.function_signature) else ("unresolved", expectation.function_signature)
+            return ("oid", str(signature_oids.get(expectation.function_signature))) if signature_oids.get(expectation.function_signature) else ("unresolved", expectation.function_signature)
+        overloads = (functions.get(expectation.target) or {}).get("overloads") or []
+        if expectation.kind == "function" and len(overloads) == 1 and overloads[0].get("oid") is not None:
+            return ("oid", str(overloads[0]["oid"]))
         return ("name", expectation.target)
     effective: dict[tuple[str, str], set[str]] = {}
     for row in data.get("effective_privileges") or []:
@@ -3303,6 +3361,10 @@ def assert_privileges(
             row = functions.get(expectation.target)
             overloads = (row or {}).get("overloads") or []
             if expectation.function_signature is not None:
+                normalized, unassertable = normalize_function_acl_signature(expectation.function_signature)
+                if unassertable:
+                    verdict(expectation, "RECORD", unassertable + ": " + expectation.function_signature)
+                    continue
                 oid = signature_oids.get(expectation.function_signature)
                 selected = [o for o in overloads if oid is not None and str(o.get("oid")) == str(oid)]
                 if len(selected) != 1:
@@ -3322,8 +3384,8 @@ def assert_privileges(
                     expectation,
                     "RECORD",
                     f"{len(overloads)} overloads share this name and the grant "
-                    "cannot be attributed to one of them without resolving "
-                    "argument types, which this module does not do",
+                    "the statement has no literal argument list and cannot "
+                    "be attributed to one overload",
                 )
                 continue
             for overload in overloads:

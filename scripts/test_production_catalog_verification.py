@@ -3691,5 +3691,36 @@ class LiteralRoutineAclTests(unittest.TestCase):
         rows, failures = assert_privileges(targets_for(sql), data)
         self.assertEqual(failures, []); self.assertEqual([r[1] for r in rows], ["RECORD", "PASS"])
 
+
+
+class RoutineAclCompatibilityTests(unittest.TestCase):
+    def one(self, held=()):
+        return {"maintain_probed":True,"probe_roles":["anon","authenticated","public"],"function_acl_signatures":[{"signature":"plm.f(integer)","oid":"10"},{"signature":"plm.f(in x integer)","oid":"10"},{"signature":"plm.f(x integer)","oid":"10"}],"functions":[{"name":"plm.f","overloads":[{"oid":"10","identity":"plm.f(integer)","owner":"postgres","acl_is_default":False,"acl":[],"execute_held_by":list(held)}]}]}
+    def test_mixed_bare_literal_statement_order_in_both_directions(self):
+        for first,last,held in [("grant execute on function plm.f(integer) to anon;","revoke execute on function plm.f from anon;",()),("revoke execute on function plm.f from anon;","grant execute on function plm.f(integer) to anon;",("anon",))]:
+            rows,failures=assert_privileges(targets_for(first+last),self.one(held))
+            self.assertEqual(failures,[]);self.assertEqual([r[1] for r in rows],["RECORD","PASS"])
+    def test_postgresql_input_names_and_modes_resolve_selected_oid(self):
+        for signature in ("plm.f(in x integer)","plm.f(x integer)"):
+            rows,failures=assert_privileges(targets_for("revoke all on function "+signature+" from anon;"),self.one())
+            self.assertEqual(failures,[]);self.assertEqual([r[1] for r in rows],["PASS"])
+    def test_normalization_ignores_only_output_and_preserves_variadic_array_type(self):
+        from production_catalog_verification import normalize_function_acl_signature
+        self.assertEqual(normalize_function_acl_signature("plm.f(in x integer, out label text)"),("plm.f(integer)",None))
+        self.assertEqual(normalize_function_acl_signature("plm.f(variadic values uuid[], inout z timestamp with time zone)"),("plm.f(uuid[],timestamp with time zone)",None))
+        self.assertEqual(normalize_function_acl_signature("plm.f(in x plm.capture_status)"),("plm.f(plm.capture_status)",None))
+    def test_unknown_custom_search_path_and_complex_types_are_explicitly_not_asserted(self):
+        for signature in ("plm.f(migration_enum)","plm.f(numeric(10,2))"):
+            rows,failures=assert_privileges(targets_for("revoke all on function "+signature+" from anon;"),self.one(["anon"]))
+            self.assertEqual(failures,[]);self.assertEqual([r[1] for r in rows],["RECORD"])
+            self.assertTrue("search_path" in rows[0][2] or "explicit catalog evidence" in rows[0][2])
+    def test_multiple_routine_targets_do_not_misread_qualified_types(self):
+        targets=targets_for("revoke all on function plm.f(in x core.kind), plm.g(integer) from anon;")
+        self.assertEqual(targets.functions,["plm.f","plm.g"])
+        self.assertEqual([e.function_signature for e in targets.privileges],["plm.f(in x core.kind)","plm.g(integer)"])
+    def test_normalized_probe_keeps_raw_signature_and_never_parses_unknown_type(self):
+        sql=build_catalog_sql(targets_for("revoke all on function plm.f(in x integer),plm.g(migration_enum) from anon;"))
+        self.assertIn("plm.f(in x integer)",sql);self.assertIn("plm.f(integer)",sql)
+        self.assertIn("NULL",sql);self.assertIn("to_regprocedure(normalized_signature)",sql)
 if __name__ == "__main__":
     unittest.main()

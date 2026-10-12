@@ -649,3 +649,10 @@ test('ordinary source above explicit4MiB bound still refuses',t=>{
  const git=args=>execFileSync('git',args,{cwd:f.dir,encoding:'utf8',stdio:['ignore','pipe','pipe'],maxBuffer:8*1024*1024})
  assert.throws(()=>derivePaidContentProof(before,after,f.base,git),/canonical blob bytes unreadable or oversized/)
 })
+
+test('shipped reader refuses oversized provenance without returning partial witness',async t=>{
+ const {paidReviewGitReader}=await import('../../manage-migration-author-lanes.mjs')
+ const f=realGitFixture(t), source='x'.repeat(4*1024*1024+65536)
+ const before=f.commit('types.txt',source),after=f.commit('types.txt',source+'repair')
+ assert.throws(()=>derivePaidContentProof(before,after,f.base,args=>paidReviewGitReader(['-C',f.dir,...args])),/Git provenance refused:.*ENOBUFS/)
+})

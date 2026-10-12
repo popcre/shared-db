@@ -124,7 +124,7 @@ begin
     select 1 from pg_policies
     where schemaname = 'pim' and tablename = 'ai_activity_triage'
       and policyname = 'pm_ai_activity_triage_admin_audit'
-      and cmd = 'SELECT'
+      and cmd = 'SELECT' and roles = '{authenticated}'
   ) then
     raise exception 'policy pm_ai_activity_triage_admin_audit missing or wrong shape';
   end if;
@@ -140,7 +140,7 @@ begin
     select 1 from pg_policies
     where schemaname = 'pim' and tablename = 'ai_activity_triage_eligibility'
       and policyname = 'pm_ai_activity_triage_eligibility_admin_audit'
-      and cmd = 'SELECT'
+      and cmd = 'SELECT' and roles = '{authenticated}'
   ) then
     raise exception 'policy pm_ai_activity_triage_eligibility_admin_audit missing or wrong shape';
   end if;
@@ -154,11 +154,11 @@ begin
   if to_regprocedure('app.current_profile_id()') is null then
     raise exception 'missing app.current_profile_id()';
   end if;
-  if not exists (
-    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'app' and p.proname = 'has_role'
-  ) then
-    raise exception 'missing app.has_role';
+  if to_regprocedure('app.has_role(app.app_role)') is null then
+    raise exception 'missing app.has_role(app.app_role)';
+  end if;
+  if to_regprocedure('app.has_app_access(app.app_name)') is null then
+    raise exception 'missing app.has_app_access(app.app_name)';
   end if;
   -- Indexes created by this migration are present.
   foreach v_state in array array[
@@ -175,6 +175,12 @@ begin
       raise exception 'missing index %', v_state;
     end if;
   end loop;
+  if not exists (
+    select 1 from pg_indexes
+    where schemaname = 'app' and indexname = 'app_comment_poppim_client_operation_uq'
+  ) then
+    raise exception 'missing index app_comment_poppim_client_operation_uq';
+  end if;
 
   -- ------------------------------------------------------------------
   -- Fixtures (rolled back)
@@ -380,7 +386,8 @@ begin
   v_dep_id := (v_result ->> 'id')::uuid;
   select count(*) into v_count from app.activity
   where id = v_dep_id and action = 'pm_dependency'
-    and payload ->> 'kind' = 'dependency' and payload ->> 'status' = 'open';
+    and payload ->> 'kind' = 'dependency' and payload ->> 'status' = 'open'
+    and payload ->> 'type' = 'blocked_by';
   if v_count <> 1 then
     raise exception 'dependency row shape mismatch';
   end if;
@@ -498,13 +505,10 @@ begin
     raise exception 'second begin with a live lease must return existing, got %', v_result ->> 'status';
   end if;
 
-  -- Timeout fail keeps the row re-leaseable until the retry budget is spent.
-  -- Drive the post-timeout state here (the NOLOGIN worker is not SET ROLE-able
-  -- from the test session); begin's reclaim path is the public API under test.
-  update pim.ai_activity_triage
-  set state = 'queued', lease_token_hash = null, lease_expires_at = null,
-      lease_acquired_at = null, timeout_count = 1, error_code = 'timeout'
-  where id = v_triage_id;
+  -- Timeout fail through the private worker (owner EXECUTE; no SET ROLE).
+  -- First timeout re-queues; begin then reclaims via the public API.
+  select lease_token_hash into v_lease_hash from pim.ai_activity_triage where id = v_triage_id;
+  perform pim.pm_fail_activity_triage_worker(v_triage_id, v_lease_hash, 'timeout');
   select state, timeout_count into v_state, v_rev from pim.ai_activity_triage where id = v_triage_id;
   if v_state is distinct from 'queued' then
     raise exception 'first timeout must return the row to queued, got %', v_state;
@@ -518,10 +522,8 @@ begin
     raise exception 'reclaim must issue a fresh lease token';
   end if;
 
-  update pim.ai_activity_triage
-  set state = 'queued', lease_token_hash = null, lease_expires_at = null,
-      lease_acquired_at = null, timeout_count = 2, error_code = 'timeout'
-  where id = v_triage_id;
+  select lease_token_hash into v_lease_hash from pim.ai_activity_triage where id = v_triage_id;
+  perform pim.pm_fail_activity_triage_worker(v_triage_id, v_lease_hash, 'timeout');
   select state, timeout_count into v_state, v_rev from pim.ai_activity_triage where id = v_triage_id;
   if v_state is distinct from 'queued' or v_rev < 2 then
     raise exception 'second timeout must stay queued with timeout_count>=2, got % / %', v_state, v_rev;
@@ -532,10 +534,8 @@ begin
     raise exception 'begin after second timeout must reclaim, got %', v_result ->> 'status';
   end if;
 
-  update pim.ai_activity_triage
-  set state = 'failed', lease_token_hash = null, lease_expires_at = null,
-      lease_acquired_at = null, timeout_count = 3, error_code = 'timeout'
-  where id = v_triage_id;
+  select lease_token_hash into v_lease_hash from pim.ai_activity_triage where id = v_triage_id;
+  perform pim.pm_fail_activity_triage_worker(v_triage_id, v_lease_hash, 'timeout');
   select state into v_state from pim.ai_activity_triage where id = v_triage_id;
   if v_state is distinct from 'failed' then
     raise exception 'third timeout must fail terminally, got %', v_state;

@@ -1068,6 +1068,7 @@ as $$
 declare
   v_profile uuid;
   v_row pim.ai_activity_triage%rowtype;
+  v_state text;
 begin
   v_profile := app.current_profile_id();
   if v_profile is null then
@@ -1101,7 +1102,12 @@ begin
 
   perform pim.pm_fail_activity_triage_worker(p_triage_id, p_lease_token_hash, p_error_code);
 
-  return jsonb_build_object('status', 'failed', 'triage_id', p_triage_id);
+  select state into v_state from pim.ai_activity_triage where id = p_triage_id;
+  return jsonb_build_object(
+    'status', case when v_state = 'queued' then 'retryable' else 'failed' end,
+    'triage_id', p_triage_id,
+    'state', v_state
+  );
 end $$;
 
 revoke all on function api.pm_complete_activity_triage(uuid, text, text, jsonb, jsonb, jsonb, text) from public, anon, service_role;
@@ -1187,7 +1193,7 @@ begin
   insert into app.activity (target_schema, target_table, target_id, action, summary, payload, actor_profile_id)
   values (
     'pim', 'product', p_product_id, 'pm_dependency', v_title,
-    jsonb_build_object('kind', 'dependency', 'title', v_title, 'status', 'open'),
+    jsonb_build_object('kind', 'dependency', 'type', 'blocked_by', 'title', v_title, 'status', 'open'),
     v_profile
   )
   returning id into v_id;

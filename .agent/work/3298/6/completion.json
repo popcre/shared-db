@@ -4,17 +4,17 @@
   "outcome": "ready-for-merge",
   "pr": 4221,
   "migration_versions": [
-    "20261012035000"
+    "20261012114355"
   ],
-  "contract_ref": "refs/db-contracts/3298/5",
-  "contract_sha256": "f27205c421e5dcda53fcd8a91518e9cfe436156afd152ba8134dee976529b7b1",
+  "contract_ref": "refs/db-contracts/3298/6",
+  "contract_sha256": "745b83a3871921c78071ea942293c590d8b0a493c93fecfa7279285bd5ac1057",
   "head_sha": "4c5940f261659fcb84c7c322a0473aabc0e696d3",
   "base_sha": "5d876ca1b5302369925dd11a01c71c60ca4a9421",
   "files_changed": [
-    "supabase/migrations/20261012035000_pm_jev_activity_triage_contract_a.sql",
+    "supabase/migrations/20261012114355_pm_jev_activity_triage_contract_a.sql",
     "supabase/tests/jev_activity_triage_contract_a.sql",
-    ".agent/work/3298/5/contract.json",
-    ".agent/work/3298/5/completion.json"
+    ".agent/work/3298/6/contract.json",
+    ".agent/work/3298/6/completion.json"
   ],
   "db_reads": [
     "table app.activity",
@@ -91,6 +91,9 @@
   "stop_conditions_hit": [],
   "notes": "Migration A additive contract, generation 5. Supersedes generation 2 to correct evidence paths and the post-REVISE index set (live_comment_id, reservation_token_hash). Stale-lease takeover, advisory-locked rate limit, unique_violation replay, and envelope-rejection tests address DeepSeek sequence 6329 REVISE findings."
 }
+
+
+
 
 
 

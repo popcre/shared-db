@@ -23,7 +23,14 @@ select exists (select 1 from pg_proc where oid = to_regprocedure('public.search_
     ('public.style_guide_files','thumbnail_url','text'),
     ('public.style_guide_files','is_active','boolean'),
     ('public.style_guide_render_queue','style_guide_file_id','uuid'),
-    ('public.style_guide_render_queue','attempts','integer')
+    ('public.style_guide_render_queue','attempts','integer'),
+    ('public.style_guide_library_default_summary','result_mode','text'),
+    ('public.style_guide_library_default_summary','total','bigint'),
+    ('public.style_guide_library_default_summary','facets','jsonb'),
+    ('public.style_guide_library_default_guides','result','jsonb'),
+    ('public.style_guide_library_default_guides','modified_at','timestamptz'),
+    ('public.style_guide_library_default_guides','sort_name','text'),
+    ('public.style_guide_library_default_guides','entity_key','text')
   ) required(relation_name,column_name,type_name) where not exists (
     select 1 from pg_attribute a where a.attrelid=to_regclass(required.relation_name)
       and a.attname=required.column_name and a.atttypid=to_regtype(required.type_name)
@@ -56,7 +63,14 @@ begin
     ('public.style_guide_files','thumbnail_url','text'),
     ('public.style_guide_files','is_active','boolean'),
     ('public.style_guide_render_queue','style_guide_file_id','uuid'),
-    ('public.style_guide_render_queue','attempts','integer')
+    ('public.style_guide_render_queue','attempts','integer'),
+    ('public.style_guide_library_default_summary','result_mode','text'),
+    ('public.style_guide_library_default_summary','total','bigint'),
+    ('public.style_guide_library_default_summary','facets','jsonb'),
+    ('public.style_guide_library_default_guides','result','jsonb'),
+    ('public.style_guide_library_default_guides','modified_at','timestamptz'),
+    ('public.style_guide_library_default_guides','sort_name','text'),
+    ('public.style_guide_library_default_guides','entity_key','text')
   ) required(relation_name,column_name,type_name) where not exists (
     select 1 from pg_attribute a where a.attrelid=to_regclass(required.relation_name)
       and a.attname=required.column_name and a.atttypid=to_regtype(required.type_name)

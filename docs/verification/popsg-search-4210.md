@@ -113,3 +113,99 @@ sidecar refusal is addressed explicitly, without weakening its checker.
 
 Production acceptance remains unchecked until the guarded merge, merged-main
 rehearsal, automatic promotion and request-correlated live checks succeed.
+
+## DeepSeek REVISE response (slot 2, sequence 6311)
+
+Findings retained as issued at
+https://github.com/popcre/shared-db/pull/4213#issuecomment-6115408507.
+This section records the corrective evidence without erasing the judgment.
+
+### 1. Exact default-matview column identities (finding 1)
+
+`supabase/tests/popsg_parse_search_query_once_contracts.sql` now asserts exact
+`atttypid` types for the snapshot columns the RPC reads:
+
+- `style_guide_library_default_summary.result_mode` text
+- `style_guide_library_default_summary.total` bigint
+- `style_guide_library_default_summary.facets` jsonb
+- `style_guide_library_default_guides.result` jsonb
+- `style_guide_library_default_guides.modified_at` timestamptz
+- `style_guide_library_default_guides.sort_name` text
+- `style_guide_library_default_guides.entity_key` text
+
+A renamed or retyped column now fails the same fail-closed contract that
+already pins relation kind and the serving function identity.
+
+### 2. Source-file tag GIN does not serve search-document tag predicates (finding 2)
+
+`idx_style_guide_files_tag_names` is on `public.style_guide_files`. The Guides
+and Files tag filters evaluate `d.tag_names && …` against
+`public.style_guide_search_documents`, a different relation. That inventory
+entry cannot serve the filter as written. The predicate is pre-existing and
+unchanged; this repair adds no index and does not claim one serves it. Broad
+common queries may scan; exact totals and facets require the whole matched
+set. Plan evidence remains the authority, not index names.
+
+### 3. Extension-array order is not a documented guarantee (finding 3)
+
+`file_extensions` is `array_agg(distinct d.extension)` with no `ORDER BY` in
+both the snapshot matview and this repair. The new guide contract compared the
+JSON array by exact order, elevating an unspecified aggregation order to a
+hard contract. That assertion is corrected to a set comparison (sorted distinct
+values plus length). Output shape is unchanged; no `ORDER BY` was added to the
+function body, so the API contract is preserved exactly as shipped.
+
+### 4. Null-versus-empty guide_key sort ties (finding 4)
+
+`group_id` keeps NULL and '' distinct (length-prefixed parts). `entity_key`
+and the emitted `guide_key` use `coalesce(...,'')`, so two groups differing
+only in NULL vs '' share the final sort tie-break. Their relative page order
+is unspecified. This is pre-existing in the 20260917024050 body and is not
+changed here. The guide metadata contract now records that limitation with an
+explicit notice; semantics are preserved.
+
+### 5. Executable equivalence and test evidence (finding 5)
+
+Reproducible local sequence on a disposable PostgreSQL 15 fixture (invented
+rows only, never licensed data):
+
+1. Install the baseline function body from migration `20260917024050` under a
+   fixture-only name.
+2. Apply this migration's body under the real serving name.
+3. Run `supabase/tests/popsg_search_style_guide_library_v2_contracts.sql`
+   (nine behavior contracts).
+4. Run `supabase/tests/popsg_parse_search_query_once_contracts.sql` and
+   `supabase/tests/popsg_guide_page_metadata_contracts.sql`.
+5. Compare complete JSON (results, totals, facets, order, rank, live preview,
+   null/empty identity) across 224 synthetic cases in both modes.
+
+Terminal fixture output retained from the October 11 run:
+
+```
+NOTICE: issue #2506 PopSG v2 search contracts: all 9 checks passed
+NOTICE: Full old/new JSON equality: 224 synthetic cases passed
+```
+
+Production-sized prepared-body timings (Files 4.113 s, Guides 4.621 s) remain
+READ ONLY diagnosis under the unchanged eight-second ceiling. They are not
+deployed acceptance. The sidecar checker runs in CI against the real origin;
+the sandbox `RepositoryIdentityError` is a missing-origin limitation of that
+copy, not a failing sidecar.
+
+### 6. Rollback / recovery path (finding 6)
+
+The migration is a single `CREATE OR REPLACE FUNCTION` plus a fail-closed
+baseline `md5(prosrc)` guard. If the guard fails, the statement aborts and the
+prior body remains in place. If a later statement failed after a successful
+replace, recovery is re-applying the exact previous body from migration
+`20260917024050_popsg_search_v2_default_browse_snapshot.sql` (baseline
+prosrc MD5 `3547b0f7d28d044ff6d6e031dcbeebbb`). No destructive DROP is used.
+Drill: on a disposable fixture, replace with the new body, then replace again
+with the 20260917024050 body and assert the baseline hash returns.
+
+### Preservation
+
+No index was added, no timeout/role/cron/model setting changed, no caller text
+interpolated, and the output contract is unchanged. The original BLOCKED and
+REVISE verdicts stay on the durable refs; this evidence answers the six
+requested items and does not rewrite history.

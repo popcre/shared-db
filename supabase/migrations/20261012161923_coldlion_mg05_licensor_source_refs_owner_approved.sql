@@ -23,39 +23,25 @@
 --   * an existing ColdLion source row for any of the 38 keys must already point at the
 --     same canonical Licensor (idempotent), otherwise abort;
 --   * after insert, the 38 keys must hash to the approved subset hash.
-
 do $migration$
 declare
-  v_present integer;
-  v_bad integer;
+  v_codes constant text[] := array['1P','AA','CB','CC','DC','DY','HP','MV','NB','PN','PP','SE','SM','SS','SW','VM','WB','WW','ZZ'];
+  v_ids constant uuid[] := array['f39fe07e-e438-46b2-9e17-fb711358e790','e90c3124-e66d-404f-b777-0dae9a5ee4f3','b96edc00-9261-46ec-af93-9de0f5b88d48','c70e095c-2baf-404e-a2a3-c198a259a3e6','33962356-f1f9-4226-b3ef-00154e5b7d56','7d141a6f-e229-46a2-b3f5-0ba0c97dd820','ea61e3bb-37f2-4cef-a6f4-8aa314ea131f','f143c083-2dfd-48b9-ac9b-43d2290a4e4c','154bf54b-6f7d-4999-b0fb-c2828b12b56a','afff41a6-df31-4a9a-aea5-b919d1daff54','a03fff4b-65f4-4fd6-98ad-c9db3216b140','e5f1686c-700c-42f6-bbc6-98aaa9ce1634','1619ecdc-a0ad-4d1e-b8f2-7ea2aa1184fb','4dba7d87-54ed-4dee-894b-570326953d92','14f2902d-42de-4820-83c5-e4f359a6e0d6','5f951f5e-aaee-4add-bb51-fea888951405','88313675-0089-4072-87be-5b989df8a3fc','7575d1db-dbee-4336-84a9-aa378f05f105','80276015-a751-4438-8c25-759c8dd005b2']::uuid[];
+  v_divisions constant text[] := array['CW001','SP001'];
+  v_code text;
+  v_id uuid;
+  v_division text;
+  v_key text;
+  v_name text;
+  v_present integer := 0;
+  v_existing uuid;
+  v_text text := null;
   v_hash text;
-  v_count integer;
 begin
-  create temporary table issue_4235_approved(code text primary key, canonical_id uuid not null)
-    on commit drop;
-  insert into issue_4235_approved(code, canonical_id) values
-      ('1P','f39fe07e-e438-46b2-9e17-fb711358e790'::uuid),
-      ('AA','e90c3124-e66d-404f-b777-0dae9a5ee4f3'::uuid),
-      ('CB','b96edc00-9261-46ec-af93-9de0f5b88d48'::uuid),
-      ('CC','c70e095c-2baf-404e-a2a3-c198a259a3e6'::uuid),
-      ('DC','33962356-f1f9-4226-b3ef-00154e5b7d56'::uuid),
-      ('DY','7d141a6f-e229-46a2-b3f5-0ba0c97dd820'::uuid),
-      ('HP','ea61e3bb-37f2-4cef-a6f4-8aa314ea131f'::uuid),
-      ('MV','f143c083-2dfd-48b9-ac9b-43d2290a4e4c'::uuid),
-      ('NB','154bf54b-6f7d-4999-b0fb-c2828b12b56a'::uuid),
-      ('PN','afff41a6-df31-4a9a-aea5-b919d1daff54'::uuid),
-      ('PP','a03fff4b-65f4-4fd6-98ad-c9db3216b140'::uuid),
-      ('SE','e5f1686c-700c-42f6-bbc6-98aaa9ce1634'::uuid),
-      ('SM','1619ecdc-a0ad-4d1e-b8f2-7ea2aa1184fb'::uuid),
-      ('SS','4dba7d87-54ed-4dee-894b-570326953d92'::uuid),
-      ('SW','14f2902d-42de-4820-83c5-e4f359a6e0d6'::uuid),
-      ('VM','5f951f5e-aaee-4add-bb51-fea888951405'::uuid),
-      ('WB','88313675-0089-4072-87be-5b989df8a3fc'::uuid),
-      ('WW','7575d1db-dbee-4336-84a9-aa378f05f105'::uuid),
-      ('ZZ','80276015-a751-4438-8c25-759c8dd005b2'::uuid);
-
-  select count(*) into v_present
-  from issue_4235_approved a join core.licensor l on l.id = a.canonical_id;
+  for i in 1..19 loop
+    perform 1 from core.licensor l where l.id = v_ids[i];
+    if found then v_present := v_present + 1; end if;
+  end loop;
   if v_present = 0 then
     raise notice 'issue #4235: no approved canonical Licensor exists in this environment; no-op';
     return;
@@ -64,48 +50,58 @@ begin
     raise exception 'issue #4235: % of 19 approved canonical Licensors exist; refusing partial link', v_present;
   end if;
 
-  select count(*) into v_bad
-  from issue_4235_approved a join core.licensor l on l.id = a.canonical_id
-  where btrim(coalesce(l.code, '')) <> a.code;
-  if v_bad <> 0 then
-    raise exception 'issue #4235: % approved Licensor(s) no longer carry the approved code; refusing', v_bad;
-  end if;
+  for i in 1..19 loop
+    v_code := v_codes[i];
+    v_id := v_ids[i];
+    select l.name into v_name from core.licensor l
+    where l.id = v_id and btrim(coalesce(l.code, '')) = v_code;
+    if v_name is null then
+      raise exception 'issue #4235: canonical Licensor % no longer carries approved code %; refusing', v_id, v_code;
+    end if;
+    foreach v_division in array v_divisions loop
+      v_key := 'EDGEHOME/' || v_division || '/05/' || v_code;
+      v_existing := null;
+      select r.entity_id into v_existing from core.taxonomy_source_ref r
+      where r.source_system = 'coldlion' and r.source_table = 'merchGroupDetails' and r.source_id = v_key
+        and r.entity_schema = 'core' and r.entity_table = 'licensor';
+      perform 1 from core.taxonomy_source_ref r
+      where r.source_system = 'coldlion' and r.source_table = 'merchGroupDetails' and r.source_id = v_key
+        and (r.entity_schema <> 'core' or r.entity_table <> 'licensor' or r.entity_id <> v_id);
+      if found then
+        raise exception 'issue #4235: existing ColdLion source row % conflicts with the approved mapping; refusing', v_key;
+      end if;
+      if v_existing is null then
+        insert into core.taxonomy_source_ref(entity_schema, entity_table, entity_id, source_system,
+          source_table, source_id, source_code, source_name, confidence, raw, first_seen_at, last_seen_at)
+        values ('core', 'licensor', v_id, 'coldlion', 'merchGroupDetails', v_key, v_code, v_name, 'verified',
+          jsonb_build_object('implementation_issue', '#4235', 'consumer_issue', 'u2giants/popdam3#357',
+            'approved_mapping_hash', '09e18e47d67181b06483d6cf4454e053',
+            'approved_licensor_subset_hash', 'b8e5cc3126a742eca1e8a5e0db4d8f57'),
+          now(), now());
+      end if;
+    end loop;
+    v_name := null;
+  end loop;
 
-  select count(*) into v_bad
-  from issue_4235_approved a
-  cross join (values ('CW001'), ('SP001')) d(division)
-  join core.taxonomy_source_ref r
-    on r.source_system = 'coldlion' and r.source_table = 'merchGroupDetails'
-   and r.source_id = 'EDGEHOME/' || d.division || '/05/' || a.code
-  where r.entity_schema <> 'core' or r.entity_table <> 'licensor' or r.entity_id <> a.canonical_id;
-  if v_bad <> 0 then
-    raise exception 'issue #4235: % existing ColdLion source row(s) conflict with the approved mapping; refusing', v_bad;
-  end if;
-
-  insert into core.taxonomy_source_ref(entity_schema, entity_table, entity_id, source_system,
-    source_table, source_id, source_code, source_name, confidence, raw, first_seen_at, last_seen_at)
-  select 'core', 'licensor', a.canonical_id, 'coldlion', 'merchGroupDetails',
-    'EDGEHOME/' || d.division || '/05/' || a.code, a.code, l.name, 'verified',
-    jsonb_build_object('implementation_issue', '#4235', 'consumer_issue', 'u2giants/popdam3#357',
-      'approved_mapping_hash', '09e18e47d67181b06483d6cf4454e053',
-      'approved_licensor_subset_hash', 'b8e5cc3126a742eca1e8a5e0db4d8f57'),
-    now(), now()
-  from issue_4235_approved a
-  join core.licensor l on l.id = a.canonical_id
-  cross join (values ('CW001'), ('SP001')) d(division)
-  on conflict (source_system, source_table, source_id) do nothing;
-
-  select count(*), md5(string_agg('licensor|' || r.source_id || '|' || r.entity_id::text, E'\n'
-           order by ('licensor|' || r.source_id || '|' || r.entity_id::text) collate "C"))
-    into v_count, v_hash
-  from core.taxonomy_source_ref r
-  join issue_4235_approved a on r.entity_id = a.canonical_id
-  where r.source_system = 'coldlion' and r.source_table = 'merchGroupDetails'
-    and r.entity_schema = 'core' and r.entity_table = 'licensor'
-    and r.source_id in ('EDGEHOME/CW001/05/' || a.code, 'EDGEHOME/SP001/05/' || a.code);
-  if v_count <> 38 or v_hash <> 'b8e5cc3126a742eca1e8a5e0db4d8f57' then
-    raise exception 'issue #4235: post-insert set is % rows hash %, expected 38 / b8e5cc3126a742eca1e8a5e0db4d8f57',
-      v_count, v_hash;
+  -- Post-insert proof: every approved key resolves to its approved Licensor, and the set
+  -- hashes to the owner-approved subset (C-collation order: division, then code; the code
+  -- array above is already in C order; newline-joined; md5).
+  foreach v_division in array v_divisions loop
+    for i in 1..19 loop
+      v_key := 'EDGEHOME/' || v_division || '/05/' || v_codes[i];
+      select r.entity_id into v_existing from core.taxonomy_source_ref r
+      where r.source_system = 'coldlion' and r.source_table = 'merchGroupDetails' and r.source_id = v_key
+        and r.entity_schema = 'core' and r.entity_table = 'licensor';
+      if v_existing is distinct from v_ids[i] then
+        raise exception 'issue #4235: approved key % does not resolve to % after insert', v_key, v_ids[i];
+      end if;
+      v_text := case when v_text is null then '' else v_text || E'\n' end
+        || 'licensor|' || v_key || '|' || v_existing::text;
+    end loop;
+  end loop;
+  v_hash := md5(v_text);
+  if v_hash <> 'b8e5cc3126a742eca1e8a5e0db4d8f57' then
+    raise exception 'issue #4235: approved set hash %, expected b8e5cc3126a742eca1e8a5e0db4d8f57', v_hash;
   end if;
 end
 $migration$;

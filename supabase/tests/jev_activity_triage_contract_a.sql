@@ -475,6 +475,8 @@ begin
 
   -- Timeout fail through the worker keeps the row re-leaseable until the
   -- retry budget is spent, and begin then reclaims it (issue #3298 item 6).
+  -- Grant transient membership so the test can drive the NOLOGIN worker.
+  grant pm_jev_triage_worker to current_user;
   select lease_token_hash into v_lease_hash from pim.ai_activity_triage where id = v_triage_id;
   perform set_config('role', 'pm_jev_triage_worker', true);
   perform pim.pm_fail_activity_triage_worker(v_triage_id, v_lease_hash, 'timeout');

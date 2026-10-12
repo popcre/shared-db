@@ -337,6 +337,48 @@ insert into plm.source_resolution(source_system,entity_kind,source_id,core_chara
 insert into plm.source_resolution(source_system,entity_kind,source_id,core_style_guide_id,resolution_status) values('paramount','style_guide','0009','23360000-0000-0000-0000-000000000005','matched');
 insert into plm.licensing_source_scope values('23360000-0000-0000-0000-000000000001','paramount','canonical_identity','entity','property',now(),'synthetic test'),('23360000-0000-0000-0000-000000000001','paramount','canonical_identity','entity','character',now(),'synthetic test'),('23360000-0000-0000-0000-000000000001','paramount','canonical_identity','entity','style_guide',now(),'synthetic test'),('23360000-0000-0000-0000-000000000001','paramount','relationship_evidence','relationship','property_character',now(),'synthetic test'),('23360000-0000-0000-0000-000000000001','paramount','relationship_evidence','relationship','property_style_guide',now(),'synthetic test');
 do $test$ declare p plm.licensing_consolidation_plan;q plm.licensing_consolidation_plan;r plm.licensing_consolidation_plan;rejected boolean:=false;native_capture uuid;native_table text;phase integer;pair_id uuid;pair_created timestamptz;baseline jsonb;begin
+ -- A real two-rename qualified capture must refuse during planning, while
+ -- its explicit filtered plans remain usable under the unchanged single-use key.
+ begin
+  native_capture:=gen_random_uuid();
+  insert into plm.licensing_write_authorization(backend_pid,transaction_id,target_table,write_kind,plan_id,plan_hash,actor,protected_columns,expires_at)
+   values(pg_backend_pid(),txid_current(),'core.property','licensing_review_create',gen_random_uuid(),repeat('2',64),'issue2336-two-renames',array['licensor_id','name','code','status'],clock_timestamp()+interval '1 minute');
+  insert into core.property(id,licensor_id,name,code,status) values('23360000-0000-0000-0000-000000000003','23360000-0000-0000-0000-000000000001','Second old official','ZZ2336N2','potential');
+  insert into plm.pmt_capture select (jsonb_populate_record(null::plm.pmt_capture,to_jsonb(c)||jsonb_build_object('capture_id',native_capture,'started_at','2026-10-10 13:00Z'::timestamptz,'completed_at','2026-10-10 13:01Z'::timestamptz,'licensed_property_selection_count',2,'property_result_row_count',2))).* from plm.pmt_capture c where capture_id='23360000-0000-0000-0000-000000000020';
+  foreach native_table in array array['pmt_authorized_title','pmt_character','pmt_collection'] loop
+   execute format('insert into plm.%I select (jsonb_populate_record(null::plm.%I,to_jsonb(t)||jsonb_build_object(''capture_id'',$1))).* from plm.%I t where capture_id=$2',native_table,native_table,native_table) using native_capture,'23360000-0000-0000-0000-000000000020'::uuid;
+  end loop;
+  insert into plm.pmt_property select (jsonb_populate_record(null::plm.pmt_property,to_jsonb(t)||jsonb_build_object('capture_id',native_capture,'property_name','First new official'))).* from plm.pmt_property t where capture_id='23360000-0000-0000-0000-000000000020';
+  insert into plm.pmt_property(capture_id,property_source_id,property_name,is_licensed_selection,source_hash) values(native_capture,'0010','Second new official',true,repeat('d',64));
+  insert into plm.pmt_authorized_title_property select (jsonb_populate_record(null::plm.pmt_authorized_title_property,to_jsonb(t)||jsonb_build_object('capture_id',native_capture,'paramount_property_name','First new official'))).* from plm.pmt_authorized_title_property t where capture_id='23360000-0000-0000-0000-000000000020';
+  insert into plm.pmt_authorized_title_property(capture_id,authorized_title_key,property_source_id,mapping_status,source_evidence,paramount_property_name,source_hash) values(native_capture,'title','0010','mapped','exact_property_selection','Second new official',repeat('1',64));
+  foreach native_table in array array['pmt_property_collection','pmt_property_character'] loop
+   execute format('insert into plm.%I select (jsonb_populate_record(null::plm.%I,to_jsonb(t)||jsonb_build_object(''capture_id'',$1))).* from plm.%I t where capture_id=$2',native_table,native_table,native_table) using native_capture,'23360000-0000-0000-0000-000000000020'::uuid;
+  end loop;
+  insert into plm.source_resolution(source_system,entity_kind,source_id,core_property_id,resolution_status) values('paramount','property','0010','23360000-0000-0000-0000-000000000003','matched');
+  p:=plm.plan_licensing_consolidation('paramount',native_capture);
+  if p.plan_status<>'refused' or p.refusal_reason not like '%more than one property rename%' or p.operations<>'[]'::jsonb
+     or exists(select 1 from core.taxonomy_source_ref where source_system='paramount') then raise exception 'two-rename capture emitted an unapplyable or partially written preview';end if;
+  perform set_config('TimeZone','America/New_York',true);
+  p:=plm.plan_licensing_consolidation('paramount',native_capture,'0007');
+  perform set_config('TimeZone','UTC',true);
+  r:=plm.plan_licensing_consolidation('paramount',native_capture,'0007');
+  if p.plan_status<>'preview' or p.id<>r.id or p.plan_hash<>r.plan_hash then raise exception 'filtered plan or cross-timezone identity lost';end if;
+  -- A forged applied payload, even with superficially plausible counters, must
+  -- fail before the actual physical operations fulfill their planned outcomes.
+  rejected:=false;begin
+   update plm.licensing_consolidation_plan set plan_status='applied',applied_at=now(),applied_by='forged',applied_state='{}',entity_operation_count=0,relationship_operation_count=0,retire_operation_count=0 where id=p.id;
+  exception when insufficient_privilege then rejected:=true;end;
+  if not rejected then raise exception 'unexecuted forged applied payload accepted';end if;
+  perform set_config('TimeZone','America/New_York',true);
+  q:=plm.apply_licensing_consolidation(p.id,p.plan_hash);
+  if q.plan_status<>'applied' or (select name from core.property where id='23360000-0000-0000-0000-000000000002')<>'First new official'
+     or (select name from core.property where id='23360000-0000-0000-0000-000000000003')<>'Second old official' then raise exception 'filtered real rename failed or changed unrelated property';end if;
+  rejected:=false;begin update plm.licensing_consolidation_plan set entity_operation_count=entity_operation_count+1 where id=q.id;exception when insufficient_privilege then rejected:=true;end;
+  if not rejected then raise exception 'applied real counters mutable';end if;
+  raise exception using errcode='Z2336',message='roll back additional synthetic rename case';
+ exception when sqlstate 'Z2336' then null;end;
+ rejected:=false;
  baseline:=jsonb_build_object('refs',(select coalesce(jsonb_agg(to_jsonb(v) order by to_jsonb(v)::text),'[]') from core.taxonomy_source_ref v where not (entity_id in ('23360000-0000-0000-0000-000000000002','23360000-0000-0000-0000-000000000004','23360000-0000-0000-0000-000000000005'))),'pairs',(select coalesce(jsonb_agg(to_jsonb(v) order by to_jsonb(v)::text),'[]') from core.property_character_associations v where not (property_id='23360000-0000-0000-0000-000000000002' and character_id='23360000-0000-0000-0000-000000000004')),'support',(select coalesce(jsonb_agg(to_jsonb(v) order by to_jsonb(v)::text),'[]') from core.property_character_source_edge v where not (property_id='23360000-0000-0000-0000-000000000002' and character_id='23360000-0000-0000-0000-000000000004')));
  begin perform plm.plan_licensing_consolidation('paramount','23360000-0000-0000-0000-000000000020','7');exception when others then rejected:=true;end;if not rejected then raise exception 'leading zero ID corrupted';end if;
  begin update plm.pmt_property set property_name='Unsafe source mutation' where capture_id='23360000-0000-0000-0000-000000000020';raise exception 'completed native property mutation accepted';exception when sqlstate 'P0001' then if sqlerrm='completed native property mutation accepted' then raise;end if;end;
@@ -569,4 +611,55 @@ begin
  if (plm.apply_licensing_consolidation(q.id,q.plan_hash)).id<>q.id then raise exception 'legacy real-write retry lost';end if;
  raise notice 'Six original legacy namespace families, schema1 original hash/plan/apply/audit/real protected write preservation PASS';
 end $legacy$;
+rollback;
+
+-- Typed identity predicates are private, closed, and served by real existing
+-- target-key indexes. The forced-index control proves usability, not a claim
+-- about physical work or production performance on an empty fixture.
+begin;
+set local enable_seqscan=off;
+do $typed_identity_contracts$
+declare r record;op jsonb;predicate text;state jsonb;plan jsonb;bad jsonb;rejected boolean;
+begin
+ for r in select * from(values
+('core.taxonomy_source_ref','{"source_id": "ZZ2336 bound '' OR true --", "source_system": "ZZ2336 bound '' OR true --", "source_table": "ZZ2336 bound '' OR true --"}'::jsonb),
+('core.property','{"id": "23360000-0000-0000-0000-000000000099"}'::jsonb),
+('core.property_character_associations','{"character_id": "23360000-0000-0000-0000-000000000099", "property_id": "23360000-0000-0000-0000-000000000099"}'::jsonb),
+('core.property_style_guide','{"property_id": "23360000-0000-0000-0000-000000000099", "style_guide_id": "23360000-0000-0000-0000-000000000099"}'::jsonb),
+('core.property_franchise','{"franchise_id": "23360000-0000-0000-0000-000000000099", "property_id": "23360000-0000-0000-0000-000000000099"}'::jsonb),
+('core.style_guide_character','{"character_id": "23360000-0000-0000-0000-000000000099", "style_guide_id": "23360000-0000-0000-0000-000000000099"}'::jsonb),
+('dam.asset_property','{"asset_id": "23360000-0000-0000-0000-000000000099", "property_id": "23360000-0000-0000-0000-000000000099"}'::jsonb),
+('dam.asset_character','{"asset_id": "23360000-0000-0000-0000-000000000099", "character_id": "23360000-0000-0000-0000-000000000099"}'::jsonb),
+('dam.asset_style_guide','{"asset_id": "23360000-0000-0000-0000-000000000099", "style_guide_id": "23360000-0000-0000-0000-000000000099"}'::jsonb),
+('dam.asset_franchise','{"asset_id": "23360000-0000-0000-0000-000000000099", "franchise_id": "23360000-0000-0000-0000-000000000099"}'::jsonb),
+('core.property_character_source_edge','{"id": "23360000-0000-0000-0000-000000000099"}'::jsonb),
+('core.property_style_guide_source_edge','{"id": "23360000-0000-0000-0000-000000000099"}'::jsonb),
+('core.property_franchise_source_edge','{"id": "23360000-0000-0000-0000-000000000099"}'::jsonb),
+('core.style_guide_character_source_edge','{"id": "23360000-0000-0000-0000-000000000099"}'::jsonb),
+('dam.asset_property_source_edge','{"id": "23360000-0000-0000-0000-000000000099"}'::jsonb),
+('dam.asset_character_source_edge','{"id": "23360000-0000-0000-0000-000000000099"}'::jsonb),
+('dam.asset_style_guide_source_edge','{"id": "23360000-0000-0000-0000-000000000099"}'::jsonb),
+('dam.asset_franchise_source_edge','{"id": "23360000-0000-0000-0000-000000000099"}'::jsonb)
+) targets(target,identity) loop
+  op:=jsonb_build_object('target',r.target,'identity',r.identity);
+  predicate:=plm.licensing_operation_identity_predicate(op);
+  if position('ZZ2336 bound' in predicate)>0 or predicate='' then raise exception 'identity value became interpolated SQL';end if;
+  state:=plm.licensing_consolidation_operation_state(op);
+  if state->'rows'<>'[]'::jsonb then raise exception 'typed identity matched unrelated row';end if;
+  execute format('explain(format json) select 1 from %s t where %s',r.target,predicate) into plan using r.identity;
+  if position('"Index Name"' in plan::text)=0 then raise exception 'real target identity predicate cannot use existing index: %',r.target;end if;
+ end loop;
+ foreach bad in array array[
+  null::jsonb,'{}'::jsonb,'{"target":"core.property;delete from core.property","identity":{"id":"00000000-0000-0000-0000-000000000001"}}'::jsonb,
+  '{"target":"core.property","identity":null}'::jsonb,'{"target":"core.property","identity":[]}'::jsonb,
+  '{"target":"core.property","identity":{}}'::jsonb,'{"target":"core.property","identity":{"id":null}}'::jsonb,
+  '{"target":"core.property","identity":{"id":1}}'::jsonb,'{"target":"core.property","identity":{"id":"not-a-uuid"}}'::jsonb,
+  '{"target":"core.property","identity":{"id":"00000000-0000-0000-0000-000000000001","extra":"x"}}'::jsonb,
+  '{"target":"core.taxonomy_source_ref","identity":{"source_id":"x","source_table":"x"}}'::jsonb
+ ] loop
+  rejected:=false;begin perform plm.licensing_operation_identity_predicate(bad);exception when others then rejected:=true;end;
+  if not rejected then raise exception 'unsupported or malformed typed identity accepted';end if;
+ end loop;
+ raise notice '18 actual indexed typed identity targets and11 malformed/bound-value controls PASS';
+end $typed_identity_contracts$;
 rollback;

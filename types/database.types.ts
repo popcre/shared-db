@@ -31087,6 +31087,7 @@ export type Database = {
       licensing_consolidation_capture_snapshot: { Args: { p_source_system: string; p_capture_id: string }; Returns: Json }
       plan_licensing_consolidation_rollback: { Args: { p_applied_plan_id: string; p_expected_applied_state_hash: string }; Returns: Database["plm"]["Tables"]["licensing_consolidation_plan"]["Row"] }
       licensing_consolidation_operation_state: { Args: { p_operation: Json }; Returns: Json }
+      licensing_operation_identity_predicate: { Args: { p_operation: Json }; Returns: string }
       apply_licensing_support_operation: { Args: { p_plan_id: string; p_plan_hash: string; p_operation: Json }; Returns: Json }
       acknowledge_taxonomy_sync_alert: {
         Args: { p_acknowledgement: Json; p_alert_id: string }

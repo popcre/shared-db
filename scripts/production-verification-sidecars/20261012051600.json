@@ -1,26 +1,26 @@
 {
   "schema_version": 1,
   "migration_version": "20261012051600",
-  "migration_sha256": "cf76f608d57fe718df5faa1157799abf71120c8767eb2469174202c66fa7fe84",
+  "migration_sha256": "effc40e9de930fc25daa622554b78051f58bbb9540b0dc8db2db7f67f1abf1a8",
   "marker_schema_version": 1,
   "marker_reviews": [
     {
       "line_start": 211,
       "line_end": 211,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
       "line_start": 279,
       "line_end": 279,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
       "line_start": 292,
       "line_end": 292,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
       "line_start": 328,
@@ -35,163 +35,169 @@
       "line_start": 371,
       "line_end": 371,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
       "line_start": 426,
       "line_end": 426,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
       "line_start": 453,
       "line_end": 453,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 477,
-      "line_end": 477,
+      "line_start": 525,
+      "line_end": 525,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
-    },
-    {
-      "line_start": 495,
-      "line_end": 495,
-      "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
-    },
-    {
-      "line_start": 503,
-      "line_end": 503,
-      "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
       "line_start": 544,
       "line_end": 544,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 548,
-      "line_end": 548,
+      "line_start": 552,
+      "line_end": 552,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 557,
-      "line_end": 557,
+      "line_start": 593,
+      "line_end": 593,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 560,
-      "line_end": 560,
+      "line_start": 597,
+      "line_end": 597,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 654,
-      "line_end": 654,
+      "line_start": 606,
+      "line_end": 606,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 658,
-      "line_end": 658,
+      "line_start": 609,
+      "line_end": 609,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 662,
-      "line_end": 662,
+      "line_start": 703,
+      "line_end": 703,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 667,
-      "line_end": 667,
+      "line_start": 707,
+      "line_end": 707,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 671,
-      "line_end": 671,
+      "line_start": 711,
+      "line_end": 711,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 675,
-      "line_end": 675,
+      "line_start": 716,
+      "line_end": 716,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 791,
-      "line_end": 791,
+      "line_start": 720,
+      "line_end": 720,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 795,
-      "line_end": 795,
+      "line_start": 724,
+      "line_end": 724,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 799,
-      "line_end": 799,
+      "line_start": 840,
+      "line_end": 840,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 1029,
-      "line_end": 1029,
+      "line_start": 844,
+      "line_end": 844,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 1034,
-      "line_end": 1034,
+      "line_start": 848,
+      "line_end": 848,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 1163,
-      "line_end": 1163,
+      "line_start": 1078,
+      "line_end": 1078,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 1202,
-      "line_end": 1202,
+      "line_start": 1083,
+      "line_end": 1083,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 1217,
-      "line_end": 1217,
+      "line_start": 1212,
+      "line_end": 1212,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 1226,
-      "line_end": 1226,
+      "line_start": 1257,
+      "line_end": 1257,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 1687,
-      "line_end": 1687,
+      "line_start": 1272,
+      "line_end": 1272,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     },
     {
-      "line_start": 1711,
-      "line_end": 1711,
+      "line_start": 1281,
+      "line_end": 1281,
       "disposition": "no_durable_target",
-      "reason": "Runtime row-only read or bounded physical support DML inside the selected pinned routine; exact target identifiers come from a closed allowlist. This marker cannot CREATE, ALTER, or DROP any catalog object. Real isolated PostgreSQL behavior/mutation/race tests separately prove row effects and refusal; catalog evidence is not behavior evidence."
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
+    },
+    {
+      "line_start": 1371,
+      "line_end": 1371,
+      "disposition": "no_durable_target",
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
+    },
+    {
+      "line_start": 1772,
+      "line_end": 1772,
+      "disposition": "no_durable_target",
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
+    },
+    {
+      "line_start": 1796,
+      "line_end": 1796,
+      "disposition": "no_durable_target",
+      "reason": "Runtime bound row-only read or physical support DML inside a selected pinned routine. Exact targets are closed and typed; no CREATE/ALTER/DROP/system-catalog DML can be executed by this marker. Actual-native and race tests separately prove behavior; catalog checks are not physical-apply authority."
     }
   ],
   "checks": [

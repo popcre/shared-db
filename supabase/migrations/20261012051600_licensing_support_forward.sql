@@ -354,7 +354,7 @@ alter table plm.licensing_consolidation_plan add constraint licensing_consolidat
 alter table plm.licensing_consolidation_plan add constraint licensing_consolidation_plan_applied_state_chk check(applied_state is null or jsonb_typeof(applied_state)='object');
 
 create or replace function plm.licensing_consolidation_capture_snapshot(p_source_system text,p_capture_id uuid)
-returns jsonb language plpgsql stable security definer set search_path=pg_catalog as $snapshot$
+returns jsonb language plpgsql stable security definer set search_path=pg_catalog set timezone='UTC' as $snapshot$
 declare v_root jsonb; v_entities jsonb:='[]';v_edges jsonb:='[]';v_rows jsonb;v_row jsonb;v_rec record;v_coverage jsonb;v_latest uuid;v_scope text;v_native text;v_e jsonb;v_count bigint;v_expected numeric;v_hash text;v_properties bigint;v_characters bigint;v_relationships bigint;v_memberships bigint;v_cross_scope bigint;
 begin
  if p_source_system='nbcu' then
@@ -469,12 +469,60 @@ end $snapshot$;
 revoke all on function plm.licensing_consolidation_capture_snapshot(text,uuid) from public,anon,authenticated;
 grant execute on function plm.licensing_consolidation_capture_snapshot(text,uuid) to service_role;
 
+-- Closed target/identity validation supplies typed predicates to existing unique
+-- indexes. Values stay bound as JSON; neither table nor column is caller SQL.
+create function plm.licensing_operation_identity_predicate(p_operation jsonb)
+returns text language plpgsql immutable set search_path=pg_catalog as $identity$
+declare t text:=p_operation->>'target'; ident jsonb:=p_operation->'identity';
+ keys text[]; actual_keys text[]; k text; typ text:='uuid'; predicate text:='';
+begin
+ case t
+ when 'core.taxonomy_source_ref' then keys:=array['source_id','source_system','source_table'];typ:='text';
+ when 'core.property' then keys:=array['id'];
+ when 'core.property_character_associations' then keys:=array['character_id','property_id'];
+ when 'core.property_style_guide' then keys:=array['property_id','style_guide_id'];
+ when 'core.property_franchise' then keys:=array['franchise_id','property_id'];
+ when 'core.style_guide_character' then keys:=array['character_id','style_guide_id'];
+ when 'dam.asset_property' then keys:=array['asset_id','property_id'];
+ when 'dam.asset_character' then keys:=array['asset_id','character_id'];
+ when 'dam.asset_style_guide' then keys:=array['asset_id','style_guide_id'];
+ when 'dam.asset_franchise' then keys:=array['asset_id','franchise_id'];
+ when 'core.property_character_source_edge','core.property_style_guide_source_edge',
+      'core.property_franchise_source_edge','core.style_guide_character_source_edge',
+      'dam.asset_property_source_edge','dam.asset_character_source_edge',
+      'dam.asset_style_guide_source_edge','dam.asset_franchise_source_edge' then keys:=array['id'];
+ else raise exception 'unsupported exact operation state target' using errcode='22023';
+ end case;
+ if jsonb_typeof(ident) is distinct from 'object' then raise exception 'exact identity must be an object' using errcode='22023';end if;
+ select array_agg(x order by x) into actual_keys from jsonb_object_keys(ident) x;
+ if actual_keys is distinct from keys then raise exception 'exact identity keys differ from target key' using errcode='22023';end if;
+ foreach k in array keys loop
+  if jsonb_typeof(ident->k) is distinct from 'string' then raise exception 'exact identity value must be nonnull text' using errcode='22023';end if;
+  if typ='uuid' then perform (ident->>k)::uuid;end if;
+  predicate:=predicate||case when predicate='' then '' else ' and ' end||format('t.%I = ($1->>%L)::%s',k,k,typ);
+ end loop;
+ return predicate;
+end $identity$;
+revoke all on function plm.licensing_operation_identity_predicate(jsonb) from public,anon,authenticated,service_role;
+
+-- A source retirement reads all direct/current claims for one source, rather
+-- than one canonical pair. Existing pair-leading indexes do not serve it.
+create index property_character_source_edge_source_retirement_idx on core.property_character_source_edge(source_system,id) where is_current and evidence_kind='direct_source_assertion';
+create index property_style_guide_source_edge_source_retirement_idx on core.property_style_guide_source_edge(source_system,id) where is_current and evidence_kind='direct_source_assertion';
+create index property_franchise_source_edge_source_retirement_idx on core.property_franchise_source_edge(source_system,id) where is_current and evidence_kind='direct_source_assertion';
+create index style_guide_character_source_edge_source_retirement_idx on core.style_guide_character_source_edge(source_system,id) where is_current and evidence_kind='direct_source_assertion';
+create index asset_property_source_edge_source_retirement_idx on dam.asset_property_source_edge(source_system,id) where is_current and evidence_kind='direct_source_assertion';
+create index asset_character_source_edge_source_retirement_idx on dam.asset_character_source_edge(source_system,id) where is_current and evidence_kind='direct_source_assertion';
+create index asset_style_guide_source_edge_source_retirement_idx on dam.asset_style_guide_source_edge(source_system,id) where is_current and evidence_kind='direct_source_assertion';
+create index asset_franchise_source_edge_source_retirement_idx on dam.asset_franchise_source_edge(source_system,id) where is_current and evidence_kind='direct_source_assertion';
+
 create or replace function plm.licensing_consolidation_operation_state(p_operation jsonb)
-returns jsonb language plpgsql stable security definer set search_path=pg_catalog as $state$
-declare t text:=p_operation->>'target';v_state jsonb;
+returns jsonb language plpgsql stable security definer set search_path=pg_catalog set timezone='UTC' as $state$
+declare t text:=p_operation->>'target';v_state jsonb;predicate text;
 begin
  if t not in ('core.taxonomy_source_ref','core.property','core.property_character_associations','core.property_style_guide','core.property_franchise','core.style_guide_character','dam.asset_property','dam.asset_character','dam.asset_style_guide','dam.asset_franchise','core.property_character_source_edge','core.property_style_guide_source_edge','core.property_franchise_source_edge','core.style_guide_character_source_edge','dam.asset_property_source_edge','dam.asset_character_source_edge','dam.asset_style_guide_source_edge','dam.asset_franchise_source_edge') or jsonb_typeof(p_operation->'identity')<>'object' or p_operation->'identity'='{}'::jsonb then raise exception 'unsupported exact operation state identity';end if;
- execute format('select coalesce(jsonb_agg(to_jsonb(t) order by to_jsonb(t)::text),''[]''::jsonb) from %s t where to_jsonb(t) @> $1',t) into v_state using p_operation->'identity';
+ predicate:=plm.licensing_operation_identity_predicate(p_operation);
+ execute format('select coalesce(jsonb_agg(to_jsonb(t) order by to_jsonb(t)::text),''[]''::jsonb) from %s t where %s',t,predicate) into v_state using p_operation->'identity';
  if jsonb_array_length(v_state)>1 then raise exception 'operation identity is not unique';end if;
  if t='core.property' then
   return jsonb_build_object('rows',v_state,'aliases',coalesce((select jsonb_agg(to_jsonb(a) order by id) from core.property_alias a where property_id=(p_operation->'identity'->>'id')::uuid),'[]'));
@@ -484,15 +532,16 @@ end $state$;
 revoke all on function plm.licensing_consolidation_operation_state(jsonb) from public,anon,authenticated,service_role;
 
 create or replace function plm.apply_licensing_support_operation(p_plan_id uuid,p_plan_hash text,p_operation jsonb)
-returns jsonb language plpgsql volatile security definer set search_path=pg_catalog as $operation$
+returns jsonb language plpgsql volatile security definer set search_path=pg_catalog set timezone='UTC' as $operation$
 declare v_plan plm.licensing_consolidation_plan;v_state jsonb;t text:=p_operation->>'target';k text:=p_operation->>'kind';a jsonb:=p_operation->'after';b jsonb;v_rec record;v_left text;v_right text;v_count integer:=0;v_owner uuid;v_endpoint uuid;v_old_name text;v_alias text;v_source text;v_proof jsonb;v_entity jsonb;v_resolution record;v_mapped uuid;v_side text;v_kind text;v_expected uuid;
 begin
  select * into v_plan from plm.licensing_consolidation_plan where id=p_plan_id for update;
  if v_plan.id is null or v_plan.plan_hash<>p_plan_hash or v_plan.plan_status<>'preview' or v_plan.plan_schema_version<>2 or not exists(select 1 from jsonb_array_elements(v_plan.operations) x where x=p_operation) then raise exception 'support operation requires exact locked immutable preview plan membership';end if;
  if k not in ('entity_source','relationship_source','canonical_pair','property_name') then raise exception 'unknown physical support operation';end if;
  -- Lock the same exact target row whose whole before-image was pinned.
- perform plm.licensing_consolidation_operation_state(p_operation);
- execute format('select 1 from %s t where to_jsonb(t) @> $1 for update',t) using p_operation->'identity';
+ -- The private immutable helper validates the exact target and all key types
+ -- before either interpolation; no discarded, unindexable pre-lock scan.
+ execute format('select 1 from %s t where %s for update',t,plm.licensing_operation_identity_predicate(p_operation)) using p_operation->'identity';
  v_state:=plm.licensing_consolidation_operation_state(p_operation);
  if v_state is distinct from p_operation->'before' then raise exception 'physical support operation before-state changed' using errcode='40001';end if;
  b:=v_state->'rows'->0;v_source:=v_plan.source_system;
@@ -579,7 +628,7 @@ end $operation$;
 revoke all on function plm.apply_licensing_support_operation(uuid,text,jsonb) from public,anon,authenticated,service_role;
 
 create or replace function plm.plan_licensing_consolidation(p_source_system text,p_capture_id uuid,p_entity_source_id text default null)
-returns plm.licensing_consolidation_plan language plpgsql security definer set search_path=pg_catalog as $planner$
+returns plm.licensing_consolidation_plan language plpgsql security definer set search_path=pg_catalog set timezone='UTC' as $planner$
 declare snap jsonb;entities jsonb:='[]';groups jsonb:='[]';ops jsonb:='[]';inverse jsonb:='[]';e jsonb;edge jsonb;left_e jsonb;right_e jsonb;g jsonb;op jsonb;before_state jsonb;after_row jsonb;existing jsonb;v_id uuid;v_owner uuid;v_table text;v_col text;v_rec record;v_scope jsonb;v_time timestamptz;v_pair text;v_support text;v_left text;v_right text;v_key text;v_hash text;v_result plm.licensing_consolidation_plan;v_filtered text;v_now_current boolean;
 begin
  p_source_system:=btrim(p_source_system);
@@ -1177,6 +1226,12 @@ end;
    if before_state->'rows'->0->>'name'<>e->>'name' then ops:=ops||jsonb_build_array(op||jsonb_build_object('before',before_state,'after',jsonb_build_object('name',e->>'name')));end if;
   end if;
  end loop;
+ -- The existing protected-column authorization is single-use for one target
+ -- table/transaction/plan. Emit a durable refusal before any preview or writes;
+ -- the supported explicit entity filter can plan each rename separately.
+ if (select count(*) from jsonb_array_elements(ops) x where x->>'kind'='property_name')>1 then
+  raise exception 'collision gate: more than one property rename in one apply; pass p_entity_source_id';
+ end if;
  for edge in select value from jsonb_array_elements(snap->'edges') order by value::text loop
   select x into left_e from jsonb_array_elements(entities) x where x->>'kind'=edge->>'left_kind' and x->>'native_id'=edge->>'left_native_id' and coalesce(x->>'scope','')=coalesce(edge->>'scope','');
   select x into right_e from jsonb_array_elements(entities) x where x->>'kind'=edge->>'right_kind' and x->>'native_id'=edge->>'right_native_id' and coalesce(x->>'scope','')=coalesce(edge->>'scope','');
@@ -1260,7 +1315,8 @@ revoke all on function plm.plan_licensing_consolidation(text,uuid,text) from pub
 grant execute on function plm.plan_licensing_consolidation(text,uuid,text) to service_role;
 
 create or replace function plm.licensing_consolidation_plan_immutable()
-returns trigger language plpgsql security definer set search_path=pg_catalog as $immutable$
+returns trigger language plpgsql security definer set search_path=pg_catalog set timezone='UTC' as $immutable$
+declare op jsonb;state jsonb;states jsonb:='[]';changes integer;entities integer:=0;relationships integer:=0;retirements integer:=0;expected_state jsonb;normalized_after jsonb;expected_row jsonb;
 begin
  if old.plan_schema_version=1 then
   if new.plan_schema_version is distinct from old.plan_schema_version or new.capture_snapshot is distinct from old.capture_snapshot or new.applied_state is distinct from old.applied_state then raise exception 'schema1 plan metadata is immutable' using errcode='42501';end if;
@@ -1306,11 +1362,40 @@ end;
  if old.plan_status='applied' and to_jsonb(new) is distinct from to_jsonb(old) then raise exception 'applied consolidation audit is immutable' using errcode='42501';end if;
  if old.plan_status<>'preview' or new.plan_status not in ('preview','applied') or new.plan_status='preview' and (new.applied_state is distinct from old.applied_state or new.entity_operation_count<>old.entity_operation_count or new.relationship_operation_count<>old.relationship_operation_count or new.retire_operation_count<>old.retire_operation_count) then raise exception 'invalid consolidation lifecycle transition' using errcode='42501';end if;
  if new.plan_status='applied' and (new.applied_state is null or new.applied_by is null or new.applied_at is null) then raise exception 'physical applied state and actor required';end if;
+ if old.plan_status='preview' and new.plan_status='applied' then
+  for op in select value from jsonb_array_elements(old.operations) order by value->>'op_key' loop
+   state:=plm.licensing_consolidation_operation_state(op);
+   -- operation_state has already validated the closed target/typed identity.
+   -- Normalize timestamp/UUID representations through the actual row type;
+   -- only updated_at is owned by the pre-existing automatic timestamp trigger.
+   execute format('select to_jsonb(jsonb_populate_record(null::%s,$1))',op->>'target') into normalized_after using op->'after';
+   select coalesce(jsonb_object_agg(k,normalized_after->k),'{}') into expected_row
+    from jsonb_object_keys(op->'after') k where k<>'updated_at';
+   if state->'rows'->0 is null or not (state->'rows'->0 @> expected_row) then
+    raise exception 'physical applied operation does not fulfill its planned after-state' using errcode='42501';
+   end if;
+   changes:=case when state->'rows' is distinct from op->'before'->'rows' then 1 else 0 end;
+   if op->>'kind'='property_name' then
+    -- The existing apply counter counts both the property UPDATE and an
+    -- actually inserted retained alias; an already-present alias adds zero.
+    changes:=changes+(select count(*) from jsonb_array_elements(state->'aliases') a
+     where not exists(select 1 from jsonb_array_elements(op->'before'->'aliases') b where b->>'id'=a->>'id'));
+   end if;
+   states:=states||jsonb_build_array(jsonb_build_object('op_key',op->>'op_key','state',state,'changes',changes));
+   if op->>'kind' in ('entity_source','property_name') then entities:=entities+changes;else relationships:=relationships+changes;end if;
+   if op->'after'->>'is_current'='false' or op->'after'->>'missing_since' is not null then retirements:=retirements+changes;end if;
+  end loop;
+  expected_state:=jsonb_build_object('operations',states,'entity_changes',entities,'relationship_changes',relationships,'retire_changes',retirements);
+  if new.applied_state is distinct from expected_state or new.entity_operation_count is distinct from entities
+     or new.relationship_operation_count is distinct from relationships or new.retire_operation_count is distinct from retirements then
+   raise exception 'physical applied evidence or counters differ from actual operation states' using errcode='42501';
+  end if;
+ end if;
  return new;
 end $immutable$;
 
 create or replace function plm.apply_licensing_consolidation(p_plan_id uuid,p_expected_hash text)
-returns plm.licensing_consolidation_plan language plpgsql security definer set search_path=pg_catalog as $apply$
+returns plm.licensing_consolidation_plan language plpgsql security definer set search_path=pg_catalog set timezone='UTC' as $apply$
 declare plan plm.licensing_consolidation_plan;snap jsonb;op jsonb;result jsonb;states jsonb:='[]';v_hash text;v_entities integer:=0;v_rel integer:=0;v_retire integer:=0;
 begin
  select * into plan from plm.licensing_consolidation_plan where id=p_plan_id for update;
@@ -1666,7 +1751,7 @@ revoke all on function plm.apply_licensing_consolidation(uuid,text) from public,
 grant execute on function plm.apply_licensing_consolidation(uuid,text) to service_role;
 
 create or replace function plm.plan_licensing_consolidation_rollback(p_applied_plan_id uuid,p_expected_applied_state_hash text)
-returns plm.licensing_consolidation_plan language plpgsql security definer set search_path=pg_catalog as $rollback$
+returns plm.licensing_consolidation_plan language plpgsql security definer set search_path=pg_catalog set timezone='UTC' as $rollback$
 declare original plm.licensing_consolidation_plan;result plm.licensing_consolidation_plan;snap jsonb;ops jsonb:='[]';inverse jsonb:='[]';op jsonb;state jsonb;before_state jsonb;a jsonb;row_before jsonb;v_hash text;v_capture uuid;v_proof jsonb;v_native jsonb;v_meta jsonb;v_row jsonb;v_table text;v_left text;v_right text;v_keep boolean;v_rec record;v_owner uuid;v_owner_now uuid;
 begin
  select * into original from plm.licensing_consolidation_plan where id=p_applied_plan_id for update;

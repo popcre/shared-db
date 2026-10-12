@@ -8,7 +8,11 @@ Registered from the #770 successor handoff
 ## STATUS
 
 **Amendment A (2026-10-12, after the first stage-B launch).** The one-shot stage-B launch at
-4:18 PM EDT stopped at the admin connection with no write (#770 comment 6132379006): the
+4:18 PM EDT stopped at the admin connection with no write (#770 comment 6132379006, recorded
+classification verbatim: "admin-connection: STAGE_B_PREFLIGHT_ABORTED /
+CONNECTION_OR_PROTOCOL_FAILURE"; follow-up read-only diagnosis in the same comment: "the planned
+aws-0 pooler hostname does not match the project's current hostname" and "Direct connection
+still fails with network-unreachable errno 101"): the
 code used an `aws-0` pooler hostname, but the project's pooler is
 `aws-1-us-east-1.pooler.supabase.com` (Supabase pooler config; also
 `docs/agents/references-and-runbooks.md`), and the direct host
@@ -17,7 +21,8 @@ code used an `aws-0` pooler hostname, but the project's pooler is
 has no IPv6 route (errno 101). Amendment: every production connection in steps 4–8 uses the
 Supavisor pooler at `aws-1-us-east-1.pooler.supabase.com`, verify-full with the pinned root —
 **session mode, port 5432** replaces the "direct-port" connection for the issuer (user
-`postgres.qsllyeztdwjgirsysgai`), the step-8 undo connection, and proofs 6(a)/(b) (user
+`postgres.qsllyeztdwjgirsysgai`), the step-8 undo connection (also as
+`postgres.qsllyeztdwjgirsysgai` — a runtime role cannot `ALTER ROLE`), and proofs 6(a)/(b) (user
 `designflow_prod_<service>_runtime.qsllyeztdwjgirsysgai`); **transaction mode, port 6543**
 remains the blocking service-path proof 6(c) — the four services' own connection contracts bind
 production Supabase to the public pooler on port 6543 (e.g. `config/database-connection-contract.js`
@@ -25,8 +30,9 @@ in `popcre/designflow-data-syncing` c88a43d: "Supabase/6543/public-pooler") — 
 `designflow_prod_<service>_runtime.qsllyeztdwjgirsysgai`; the `<role>.<project ref>` form is
 the one `docs/agents/references-and-runbooks.md:46` shows for the admin). The stage-B packet
 re-checks each service's deployed contract for the 6543 binding. The admin uses session mode
-5432 (not the runbook's 6543) because an `ALTER ROLE` transaction plus `pg_backend_pid()`
-binding needs one backend for the whole session, which only session mode guarantees. Session mode on 5432 / transaction mode on 6543 is
+5432 (not the runbook's 6543) because the pid recorded in preflight (iii) must be the same
+backend that later runs the write; session mode keeps one backend for the whole client session,
+while transaction mode may switch backends between transactions. Session mode on 5432 / transaction mode on 6543 is
 Supabase's documented Supavisor port split (in-repo:
 `docs/verification/supabase-pooler-idle-connection-drop-20260623.md:97` for 5432 and :99-100
 for 6543; `docs/intake-426-triage-20260803.md:41,291` for production on `aws-1`). The hostname is a **reviewed constant** in the
@@ -34,9 +40,9 @@ issuer packet; it is not read at runtime. (The only provider API use in this act
 supported log API read in steps 4 and 7.)
 **Endpoint preflight (fail closed):** (0) libpq version >= 16 (so `require_auth` is
 honoured), else stop. (i) credential-free: a TCP connect from edge-dev3 to the hostname
-succeeds on 5432 and on 6543, and the client-side connection is IPv4 (asserted from the client socket's
-peer address family, e.g. psycopg `conn.info.hostaddr`, never `inet_server_addr()`, which
-through the pooler reports the backend side; no `hostaddr` pinning, consistent with repo doctrine in
+succeeds on 5432 and on 6543, and the raw probe socket's `getpeername()` is an IPv4 address; then in
+(ii) the authenticated session's libpq `PQhostaddr` (psycopg `conn.info.hostaddr`) is IPv4
+(never `inet_server_addr()`, which through the pooler reports the backend side); no `hostaddr` pinning, consistent with repo doctrine in
 `tools/coldlion-sync-common.mjs:212,243`, and `host` stays set for verify-full and passfile
 matching); SSLRequest + TLS 1.3 verify-full against the
 pinned Supabase root succeeds on both. (ii) **Cluster identity:** TLS alone cannot tell
@@ -54,20 +60,26 @@ preflights), the issuer, the undo, and all proof clients — uses `require_auth=
 and a protected passfile keyed `aws-1-us-east-1.pooler.supabase.com:<5432|6543>:postgres:<user>:<password>`
 (dbname `postgres`). **Passfile lifecycle:** written by the stage-B launcher only, mode 0600,
 owner the run user, at the fixed path `/run/user/<uid>/770-stage-b/` on the
-user runtime **tmpfs (memory-only)** (directory 0700, created by the launcher; never on disk,
+user runtime **tmpfs (memory-only)** (if `/run/user/<uid>` is absent or not tmpfs, stop before
+any password is written) (directory 0700, created by the launcher; never on disk,
 and cleared at logout/reboot), referenced by the `passfile` connection
 parameter (never `PGPASSFILE` env); removed on every normal exit path by the launcher's
 `finally`. **Residue sweep at start:** the launcher refuses to run if
 `/run/user/<uid>/770-stage-b/` exists or is non-empty, if any log-response file exists in the
 stage-B evidence directory, or if any staged 1Password item has a `pending_password` field; it
-reports the residue and stops. At the end the directory is removed. The first, consumed
+reports the residue and stops. Remediation of residue is a separate reviewed step: shred
+the passfile, delete `pending_password`, record it on #770. At the end the directory is removed. The first, consumed
 launch left none (Codex postcheck 4:42 PM EDT, #770 comment 6132379006: no residual passfiles
 or log-response files, `pending_password` absent). The passfile tests (0600 creation, tmpfs location,
 removal on abort, rollback and undo paths, `pending_password` cleanup on abort, residue-sweep
-refusal) run **before production** as unit tests of the stage-B programs against isolated
+refusal, and that a passfile entry for the wrong port or wrong user is not used) run
+**before production** as unit tests of the stage-B programs against isolated
 PG17 and a fake vault — never by provoking failures in production. Because stage A's isolated PG17 cannot exercise Supavisor, these live preflights are
 the evidence that the session-mode path works before the one-shot write; if any fails, stop
-with no write. Changed by this amendment: endpoint, the "directly" wording in Success check,
+with no write. **Their decision logic is unit-tested before production** with recorded/fake
+inputs: IPv6 vs IPv4 peer refused/accepted; wrong cluster (tenant-not-found error), three or
+five runtime roles, or wrong `current_database()` each refused; pid mismatch refused;
+unreadable Postgres or pooler log source refused; libpq < 16 refused. Changed by this amendment: endpoint, the "directly" wording in Success check,
 the preflights above, `require_auth` scope, passfile lifecycle, Method step 1 (new guard test),
 Method step 4 (endpoint and preflight order), the Supavisor preflight wording, and by
 reference every production connection in steps 6(b) and 8 (same endpoint, user form,
@@ -267,10 +279,12 @@ passwords rotated.
    show the auth method); it is proven by the live preflight (ii) handshake; `require_auth` on every password-carrying
    connection (admin session, issuer, undo, proof clients) makes a wrong assumption fail closed
    before any password is sent.
-   **Ingestion-lag preflight:** before the write, run one harmless read-only statement that
-   is logged (a deliberately failing `SELECT` on a non-existent relation under
-   `log_min_error_statement=error`, containing no secret) and measure how long it takes to
-   appear in the log API; the step-7 retry window is at least 3× that.
+   **Ingestion-lag preflight:** this is Amendment A preflight (iii) — its single deliberately
+   failing `SELECT` (no secret) is the only one issued; the time until its line appears in the
+   log API sets the step-7 retry window to at least 3× that. **Pooler-log preflight:** the
+   Supavisor log source for the project is readable through the supported log API and returns
+   the preflight (ii) connection's entry; otherwise stop before any write. In step 7, failure to
+   fetch the pooler-log window in full fails the proof exactly like the Postgres window (undo).
    **Sink preflight:** `pg_stat_statements` view exists in the target database and is readable by
    the proof user; if not, stop before the write. **Log-access preflight:** before the write, read one recent window of provider Postgres
    logs through the supported Supabase log API and confirm entries are returned; if not, stop

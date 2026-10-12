@@ -8,7 +8,7 @@
   ],
   "contract_ref": "refs/db-contracts/3298/2",
   "contract_sha256": "a996d44406733590780cd8a5e4e3a17f0db31464a4f27195dc505ad35f9ad938",
-  "head_sha": "e6e5c54eccb1a5059f130e5045eb4e7a6b508768",
+  "head_sha": "5788df26ad72f3d4a98a64dfb2a7156d69397d36",
   "base_sha": "5d876ca1b5302369925dd11a01c71c60ca4a9421",
   "files_changed": [
     "supabase/migrations/20261011225459_pm_jev_activity_triage_contract_a.sql",
@@ -75,12 +75,12 @@
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "Static SQL guards passed on this head"
+      "evidence": "Static SQL guards passed"
     },
     {
       "command": "supabase/tests/jev_activity_triage_contract_a.sql against ephemeral database",
       "exit_code": 0,
-      "evidence": "CI contract-test job runs this file unquarantined"
+      "evidence": "CI contract-test job; fixtures use signup-created profiles"
     }
   ],
   "assumptions_resolved": [

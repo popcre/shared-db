@@ -33,7 +33,8 @@ user form are decided and proven in #770's separate four-service acceptance/cuto
 the one `docs/agents/references-and-runbooks.md:46` shows for the admin). The admin uses session mode
 5432 (not the runbook's 6543) because the pid recorded in preflight (3) must be the same
 backend that later runs the write; session mode keeps one backend for the whole client session,
-while transaction mode may switch backends between transactions. Session mode on 5432 / transaction mode on 6543 is
+while transaction mode may switch backends between transactions (an *assumption* from Supavisor
+documentation; preflight (3) and the in-transaction pid re-check fail closed if it is wrong). Session mode on 5432 / transaction mode on 6543 is
 Supabase's documented Supavisor port split (in-repo:
 `docs/verification/supabase-pooler-idle-connection-drop-20260623.md:97` for 5432 and :99-100
 for 6543; `docs/intake-426-triage-20260803.md:41,291` for production on `aws-1`). The hostname is a **reviewed constant** in the
@@ -41,8 +42,8 @@ issuer packet; it is not read at runtime. (The only provider API use in this act
 supported log API read in steps 4 and 7.)
 **Endpoint preflight (fail closed):** (0) libpq version >= 16 (so `require_auth` is
 honoured), else stop. (1) credential-free: a TCP connect from edge-dev3 to the hostname
-succeeds on 5432 and on 6543, and the raw probe socket's `getpeername()` is an IPv4 address; then in
-(2) the authenticated session's libpq `PQhostaddr` (psycopg `conn.info.hostaddr`) is IPv4
+succeeds on 5432 and on 6543, and the raw probe socket's `getpeername()` is an IPv4 address; then, in the
+authenticated session of preflight (2), libpq `PQhostaddr` (psycopg `conn.info.hostaddr`) is IPv4
 (never `inet_server_addr()`, which through the pooler reports the backend side); no `hostaddr` pinning, consistent with repo doctrine in
 `tools/coldlion-sync-common.mjs:212,243`, and `host` stays set for verify-full and passfile
 matching); SSLRequest + TLS 1.3 verify-full against the
@@ -67,9 +68,11 @@ and cleared at logout/reboot), referenced by the `passfile` connection
 parameter (never `PGPASSFILE` env); removed on every normal exit path by the launcher's
 `finally`. **Residue sweep at start:** the launcher refuses to run if
 `/run/user/<uid>/770-stage-b/` exists or is non-empty, if any log-response file exists in the
-stage-B evidence directory, or if any staged 1Password item has a `pending_password` field; it
+stage-B evidence directory, if any staged 1Password item has a `pending_password` or
+`supabase_runtime_password` field, or if the persistent run journal (below) shows an
+unfinished run; it
 reports the residue and stops. Residue triggers the requirement-1 **recovery mode** (database
-back to NULL if needed, vault restored from the snapshot, passfile shredded), never a new
+back to NULL if needed, run-created vault fields deleted, passfile shredded), never a new
 issuance. At the end the directory is removed. The first, consumed
 launch left none (Codex postcheck 4:42 PM EDT, #770 comment 6132379006: no residual passfiles
 or log-response files, `pending_password` absent). The passfile tests (0600 creation, tmpfs location,
@@ -85,7 +88,7 @@ unreadable Postgres or pooler log source refused; libpq < 16 refused. Changed by
 the preflights above, `require_auth` scope, passfile lifecycle, Method step 1 (new guard test),
 Method step 4 (endpoint and preflight order), the Supavisor preflight wording, and by
 reference every production connection in steps 6(b) and 8 (same endpoint, user form,
-`require_auth` and passfile as 6(a)). Preflight (iii) is the ingestion-lag preflight; no
+`require_auth` and passfile as 6(a)). Preflight (3) is the ingestion-lag preflight; no
 separate failing statement is issued. Everything
 else is unchanged.
 A fresh one-shot packet and exact-input review are required; the consumed launcher is never
@@ -218,6 +221,20 @@ These resolve the Amendment A review rounds and override any looser wording abov
    SCRAM, run step 8; delete `pending_password` and any run-created `supabase_runtime_password`;
    tag `770-recovered-<timestamp>`; record on #770; stop. Recovery deliberately discards even a
    possibly successful issuance (its log proof is incomplete); a fresh packet re-issues.
+   **Run journal:** before step 5 the launcher writes an append-only journal file in the
+   protected evidence mount (no secrets: run id, phase markers, item ids, field ids it
+   created). It is closed `DONE` only after a successful run or a *verified* undo (format-only
+   read shows all four NULL and run-created fields are gone). If undo itself fails, the journal
+   stays open, `pending_password` is **not** deleted, and the run stops `UNDO_FAILED`; the next
+   start sees the open journal and enters recovery mode (it is never skipped by a missing tmpfs
+   directory). "Run-created" fields are exactly those recorded in the journal; promotion refuses
+   if `supabase_runtime_password` already exists on any item (checked in the residue sweep).
+   **Vault operation:** promotion uses the 1Password SDK item edit that **adds** the field
+   `supabase_runtime_password` with the plaintext and then removes `pending_password`
+   (add-then-delete, never a label rename), re-reading the item and comparing digests between
+   the two calls, so no step leaves the item without a copy. A stage-A rehearsal runs this
+   exact sequence against a **dedicated throw-away item** in vault `vibe_coding` with DUMMY
+   values (created and archived by the rehearsal), proving the real SDK semantics.
    Unit tests (fake vault + isolated PG17) cover: promotion failure on the 1st, 2nd and 4th
    item; recovery mode after a simulated post-commit crash; undo with S dropped; and that no
    pre-existing vault field is ever written. The plaintexts
@@ -225,16 +242,20 @@ These resolve the Amendment A review rounds and override any looser wording abov
    and (b) the 1Password SDK call. The admin password is read from 1Password by the same
    process. Passfile fields are escaped per libpq (`\` before `:` and `\`); a test covers an
    admin password containing `:`, `\` and a leading `*`.
-2. **Digest binding covers every module the launcher imports or executes**, including the
-   stage-A `scram_verifier` module and the pinned interpreter/venv (`psycopg`, libpq) recorded
-   by package version and file hash in the reviewed packet (preflights,
+2. **Digest binding covers every module the launcher imports or executes.** Two digests
+   are recorded in the reviewed packet and recomputed by the launcher: (a) the package digest
+   below over the stage-B package directory, which also contains a copy of the stage-A
+   `scram_verifier` module; and (b) a runtime digest over the interpreter binary, the venv's
+   `psycopg` distribution `RECORD` file hashes, and the libpq shared object actually loaded
+   (`psycopg.pq.__impl__` and `pq.version()` plus file SHA-256). Either mismatch refuses
+   (preflights,
    passfile writer, issuer, vault writer, proof clients, log scanner, undo). Algorithm: list
    every regular file under the stage-B package directory (launcher included), sort by
    POSIX-relative path bytes, and SHA-256 over `path\0sha256(file)\n` lines; symlinks or
    non-regular files refuse. The reviewed packet records this value; a test tampers one byte
    of one module and one added file and asserts refusal.
 3. **Memory hygiene.** The launcher sets `RLIMIT_CORE=0` and `PR_SET_DUMPABLE=0` at start; the
-   Goal's "never on disk" claim is narrowed to: not written to any file other than the tmpfs
+   passfile lifecycle's "never on disk" wording is narrowed to: plaintext is not written to any file other than the tmpfs
    passfile; host swap remains a stated residual (same-UID trusted host, as in the #770
    handoff's existing residuals).
 4. **Preflight order and numbering** (supersedes the inline list): (0) libpq ≥ 16; (1)

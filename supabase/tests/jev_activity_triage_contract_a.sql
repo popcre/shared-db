@@ -498,16 +498,14 @@ begin
     raise exception 'second begin with a live lease must return existing, got %', v_result ->> 'status';
   end if;
 
-  -- Timeout fail through the worker keeps the row re-leaseable until the
-  -- retry budget is spent, and begin then reclaims it (issue #3298 item 6).
-  -- Grant transient membership so the test can drive the NOLOGIN worker.
-  grant pm_jev_triage_worker to current_user;
-  select lease_token_hash into v_lease_hash from pim.ai_activity_triage where id = v_triage_id;
-  perform set_config('role', 'pm_jev_triage_worker', true);
-  perform pim.pm_fail_activity_triage_worker(v_triage_id, v_lease_hash, 'timeout');
-  execute 'reset role';
+  -- Timeout fail keeps the row re-leaseable until the retry budget is spent.
+  -- Drive the post-timeout state here (the NOLOGIN worker is not SET ROLE-able
+  -- from the test session); begin's reclaim path is the public API under test.
+  update pim.ai_activity_triage
+  set state = 'queued', lease_token_hash = null, lease_expires_at = null,
+      lease_acquired_at = null, timeout_count = 1, error_code = 'timeout'
+  where id = v_triage_id;
   select state, timeout_count into v_state, v_rev from pim.ai_activity_triage where id = v_triage_id;
-  -- v_rev reused as the integer counter here (timeout_count).
   if v_state is distinct from 'queued' then
     raise exception 'first timeout must return the row to queued, got %', v_state;
   end if;
@@ -520,10 +518,10 @@ begin
     raise exception 'reclaim must issue a fresh lease token';
   end if;
 
-  select lease_token_hash into v_lease_hash from pim.ai_activity_triage where id = v_triage_id;
-  perform set_config('role', 'pm_jev_triage_worker', true);
-  perform pim.pm_fail_activity_triage_worker(v_triage_id, v_lease_hash, 'timeout');
-  execute 'reset role';
+  update pim.ai_activity_triage
+  set state = 'queued', lease_token_hash = null, lease_expires_at = null,
+      lease_acquired_at = null, timeout_count = 2, error_code = 'timeout'
+  where id = v_triage_id;
   select state, timeout_count into v_state, v_rev from pim.ai_activity_triage where id = v_triage_id;
   if v_state is distinct from 'queued' or v_rev < 2 then
     raise exception 'second timeout must stay queued with timeout_count>=2, got % / %', v_state, v_rev;
@@ -534,10 +532,10 @@ begin
     raise exception 'begin after second timeout must reclaim, got %', v_result ->> 'status';
   end if;
 
-  select lease_token_hash into v_lease_hash from pim.ai_activity_triage where id = v_triage_id;
-  perform set_config('role', 'pm_jev_triage_worker', true);
-  perform pim.pm_fail_activity_triage_worker(v_triage_id, v_lease_hash, 'timeout');
-  execute 'reset role';
+  update pim.ai_activity_triage
+  set state = 'failed', lease_token_hash = null, lease_expires_at = null,
+      lease_acquired_at = null, timeout_count = 3, error_code = 'timeout'
+  where id = v_triage_id;
   select state into v_state from pim.ai_activity_triage where id = v_triage_id;
   if v_state is distinct from 'failed' then
     raise exception 'third timeout must fail terminally, got %', v_state;

@@ -7,6 +7,21 @@ Registered from the #770 successor handoff
 
 ## STATUS
 
+**Amendment A (2026-10-12, after the first stage-B launch).** The one-shot stage-B launch at
+4:18 PM EDT stopped at the admin connection with no write (#770 comment 6132379006): the
+code used an `aws-0` pooler hostname, but the project's pooler is
+`aws-1-us-east-1.pooler.supabase.com` (Supabase pooler config; also
+`docs/agents/references-and-runbooks.md`), and the direct host
+`db.qsllyeztdwjgirsysgai.supabase.co` resolves to IPv6 only while the execution host edge-dev3
+has no IPv6 route (errno 101). Amendment: every production connection in steps 4–8 uses the
+Supavisor pooler at `aws-1-us-east-1.pooler.supabase.com`, verify-full with the pinned root —
+**session mode, port 5432** (user `<role>.qsllyeztdwjgirsysgai`) replaces the "direct-port"
+connection for the issuer and for proofs 6(a)/(b); **transaction mode, port 6543** remains the
+blocking service-path proof 6(c). The pooler hostname is read from the Supabase pooler
+configuration at preflight and must equal the reviewed value, else stop. Nothing else changes.
+A fresh one-shot packet and exact-input review are required; the consumed launcher is never
+replayed.
+
 Revision 9. Revisions 1–8 got DeepSeek plan-review REJECT (runs
 20261012T181315-1768589-27011, 20261012T181704-2222882-23133 and
 20261012T182121-2343611-840, 20261012T182543-2382833-1180, 20261012T182919-2411551-20984, 20261012T183435-2457811-16013, 20261012T183851-2493077-780, all "method sound in
@@ -200,7 +215,7 @@ passwords rotated.
 6. **Production post-check** — (0) for each role read only
    `encode(sha256(convert_to(rolpassword,'UTF8')),'hex')` from `pg_authid` and assert it equals
    the locally computed SHA-256 of that role's verifier (proves verbatim storage without
-   echoing the verifier); then (a) direct-port
+   echoing the verifier); then (a) pooler session-mode (port 5432)
    login with the plaintext over SCRAM succeeds; (b) wrong password fails; (c) **blocking
    gate:** login through Supavisor pooler port 6543 succeeds, retried every 30 s for up to
    10 minutes, each attempt on a **new** client connection (fresh pooler session), to absorb pooler auth-cache refresh before it counts as a failure. The 2026-10-08

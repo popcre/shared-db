@@ -7,7 +7,7 @@ Registered from the #770 successor handoff
 
 ## STATUS
 
-Revision 8. Revisions 1–7 got DeepSeek plan-review REJECT (runs
+Revision 9. Revisions 1–8 got DeepSeek plan-review REJECT (runs
 20261012T181315-1768589-27011, 20261012T181704-2222882-23133 and
 20261012T182121-2343611-840, 20261012T182543-2382833-1180, 20261012T182919-2411551-20984, 20261012T183435-2457811-16013, 20261012T183851-2493077-780, all "method sound in
 principle"); every finding is answered below. Nothing has been executed.
@@ -66,6 +66,13 @@ detail), so it could never have made plaintext issuance safe. The only
 way to keep a usable secret out of provider logs on this platform is to never send one: send a
 pre-computed SCRAM-SHA-256 verifier. PostgreSQL documents that a password string already in
 SCRAM verifier format is stored as-is (docs: CREATE ROLE, "PASSWORD"; `password_encryption`).
+**Owner ruling (Albert Hazan, chat 2026-10-12, verbatim: "yes, drop the old ban and proceed").**
+Asked directly whether he approves dropping the earlier AI-recorded ban on the SCRAM verifier
+method, the owner said yes. The prohibition in `HANDOFF.d/2026-10-09T0400Z-...:66` and
+`HANDOFF.d/2026-10-12T0008Z-...:71` is retired by the owner for #770 credential issuance; the
+"provider redaction" success criterion of handoff §6 step 3 is replaced by this plan's Goal and
+proofs. The reviewer judges technical merit only.
+
 **Authority.** Owner ruling 2026-09-28 (Albert Hazan, verbatim: "never ask a human to approve
 ... ai has to do everything for me") makes technical route choices an AI decision gated by an
 independent AI reviewer. The SCRAM prohibition was a technical route choice by an earlier AI
@@ -333,7 +340,7 @@ M2 `log_line_prefix` read (has `%p`). M3 Goal scoped to the issuance action, run
 stated. M4 `password_encryption` re-asserted right before the write. L5 field name proved from
 service secret mapping in stage B. L6 pooler and ingestion-lag preflights before the write.
 H1 (authority to retire the earlier AI-recorded prohibition): see Authority section; the owner
-is being asked to state it directly and his answer will be quoted here.
+ruled directly (quoted at the top of the Problem section).
 
 ## Question for the reviewer
 

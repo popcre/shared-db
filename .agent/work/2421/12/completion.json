@@ -59,6 +59,16 @@
       "command": "python3 -m unittest scripts.test_migration_derivation scripts.test_shared_db_live_proof",
       "exit_code": 0,
       "evidence": "74 tests passed; probe qualification remains separate from real production/application acceptance."
+    },
+    {
+      "command": "node scripts/check-live-proof-probe.mjs",
+      "exit_code": 0,
+      "evidence": "Normal guard confirmed actual structural outcome returns to u2giants/popdam3; committed installed-state probe independently qualified by the 74-test suite. Application/week acceptance remains separate."
+    },
+    {
+      "command": "GitHub SQL migration guards source run38194688355",
+      "exit_code": 0,
+      "evidence": "Actual workflow completed SUCCESS on exact source2e41a841cb5af77a7bde763a307fbf2a0e00fb1d. Production jobs skipped; no application acceptance claimed."
     }
   ],
   "assumptions_resolved": [

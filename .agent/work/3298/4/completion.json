@@ -8,7 +8,7 @@
   ],
   "contract_ref": "refs/db-contracts/3298/4",
   "contract_sha256": "af584f68b92c0e6a4a7b7f7277195ff59f2fe39540d70727b95c819ec1cb3735",
-  "head_sha": "902ffb36a544b5640c9d8940fd2cc1f48298a0b3",
+  "head_sha": "0cecfa41c01a611b15a1d7eb0024aa5719501ef2",
   "base_sha": "5d876ca1b5302369925dd11a01c71c60ca4a9421",
   "files_changed": [
     "supabase/migrations/20261011225459_pm_jev_activity_triage_contract_a.sql",
@@ -91,5 +91,6 @@
   "stop_conditions_hit": [],
   "notes": "Migration A additive contract, generation 4. Supersedes generation 2 to correct evidence paths and the post-REVISE index set (live_comment_id, reservation_token_hash). Stale-lease takeover, advisory-locked rate limit, unique_violation replay, and envelope-rejection tests address DeepSeek sequence 6329 REVISE findings."
 }
+
 
 

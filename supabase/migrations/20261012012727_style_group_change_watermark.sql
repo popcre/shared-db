@@ -95,6 +95,11 @@ BEGIN
     SELECT id FROM public.style_groups
     WHERE p_changed_since IS NOT NULL AND style_group_changed_at > p_changed_since
   ), candidate_ids AS (
+    -- The full arm uses the existing UUID primary key with an active filter.
+    -- The changed-clock index filters changed rows; UUID ordering may sort that
+    -- changed set. Changed-group cardinality is not capped by the output limit:
+    -- mass edits can require many lateral probes and hit statement_timeout.
+    -- The weekly full arm remains the convergence path after such a failed run.
     -- Each indexed arm contributes at most a batch; the global union deduplicates
     -- overlap before selecting the first batch in UUID order. No arm skips a
     -- candidate below the global cursor, even when membership overlaps clocks.
@@ -284,6 +289,8 @@ BEGIN
     (SELECT bs.total_fetched FROM batch_stats bs)
   INTO v_last_id, v_groups_created, v_assets_assigned, v_ungrouped, v_done, v_examined;
 
+  -- rows_examined is selected candidate cardinality, summed across batches by
+  -- the worker. It is not physical index/heap I/O; measure that with EXPLAIN.
   RETURN QUERY SELECT v_last_id, v_groups_created, v_assets_assigned, v_ungrouped, COALESCE(v_done, true), v_examined;
 END;
 $$;

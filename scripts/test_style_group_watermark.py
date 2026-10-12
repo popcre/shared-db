@@ -193,8 +193,11 @@ class WatermarkContracts(unittest.TestCase):
           GRANT EXECUTE ON FUNCTION queue_nightly_rebuild_style_groups() TO service_role;
         """)
         probe = (ROOT / '.github/live-proofs/2421.sql').read_text()
-        # The fixture changes only the enqueue-hour constant to make tests
-        # independent of the clock; the installed probe checks protections.
+        # Exact identity uses the unmodified committed queue, not the
+        # enqueue-hour-zero behavior fixture used by the concurrency tests.
+        migration = MIGRATION.read_text()
+        start = migration.lower().index('create or replace function public.queue_nightly_rebuild_style_groups()')
+        self.sql(migration[start:])
         self.assertEqual(self.sql(probe), 't')
         for mutation in (
             "ALTER INDEX assets_style_group_changed_at_idx RENAME TO preserved_clock_index; CREATE INDEX assets_style_group_changed_at_idx ON assets(id);",
@@ -202,8 +205,15 @@ class WatermarkContracts(unittest.TestCase):
             "GRANT EXECUTE ON FUNCTION rebuild_style_groups_batch(uuid,integer,timestamptz) TO authenticated;",
             "ALTER FUNCTION stamp_style_group_asset_change() RESET search_path;",
             "ALTER FUNCTION rebuild_style_groups_batch(uuid,integer,timestamptz) STABLE;",
+            "ALTER TABLE assets ALTER COLUMN style_group_changed_at DROP DEFAULT;",
+            "DROP FUNCTION clear_style_group_batch(uuid,integer);",
+            "ALTER FUNCTION style_group_key_for_sku(text) VOLATILE;",
+            "ALTER FUNCTION style_group_key_for_sku(text) PARALLEL UNSAFE;",
+            "DROP FUNCTION rebuild_style_groups_batch(uuid,integer,timestamptz); CREATE FUNCTION rebuild_style_groups_batch(uuid,integer,timestamptz) RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path=public SET statement_timeout='120s' SET lock_timeout='0' AS 'SELECT 0'; REVOKE ALL ON FUNCTION rebuild_style_groups_batch(uuid,integer,timestamptz) FROM PUBLIC,anon,authenticated; GRANT EXECUTE ON FUNCTION rebuild_style_groups_batch(uuid,integer,timestamptz) TO service_role;",
         ):
             self.assertEqual(self.sql('BEGIN; '+mutation+'\n'+probe+'; ROLLBACK;'), 'f')
+        self.sql(self.queue)
+        self.assertEqual(self.sql(probe), 'f', 'a modified queue body must not pass exact installed identity')
         self.sql('DROP SCHEMA supabase_migrations CASCADE; DROP INDEX assets_style_group_id_active_idx;')
 
     def test_exception_classes_and_reentrant_balance(self):

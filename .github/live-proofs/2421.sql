@@ -1,13 +1,15 @@
 -- #2421 installed-state probe only. Read-only; application acceptance separately
 -- requires the deployed differential worker and a full week of zero drift.
 WITH installed AS (
-  SELECT oid,prosecdef,provolatile,proconfig FROM pg_proc
+  SELECT oid,prosecdef,provolatile,proconfig,proretset FROM pg_proc
   WHERE oid=to_regprocedure('public.rebuild_style_groups_batch(uuid,integer,timestamptz)')
 ), clocks AS (
-  SELECT count(*) AS n FROM pg_attribute
+  SELECT count(*) AS n FROM pg_attribute a
+  JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
   WHERE attrelid IN ('public.assets'::regclass,'public.style_groups'::regclass)
     AND attname='style_group_changed_at' AND atttypid='timestamptz'::regtype
     AND attnotnull AND NOT attisdropped
+    AND pg_get_expr(d.adbin,d.adrelid)='now()'
 ), triggers AS (
   SELECT count(*) AS n FROM (VALUES
     ('public.assets','assets_style_group_change_clock','public.stamp_style_group_asset_change()',23),
@@ -27,17 +29,22 @@ WITH installed AS (
   JOIN pg_index i ON i.indexrelid=to_regclass(e.name)
     AND i.indisvalid AND i.indisready AND pg_get_indexdef(i.indexrelid)=e.definition
 )
-SELECT (
+SELECT coalesce((
   EXISTS(SELECT FROM supabase_migrations.schema_migrations WHERE version='20261012012727')
   AND (SELECT n=2 FROM clocks) AND (SELECT n=3 FROM triggers)
   AND (SELECT n=4 FROM indexes)
-  AND EXISTS(SELECT FROM installed WHERE prosecdef AND provolatile='v'
+  AND EXISTS(SELECT FROM installed WHERE prosecdef AND provolatile='v' AND proretset
+    AND pg_get_function_result(oid)='TABLE(next_cursor uuid, groups_created integer, assets_assigned integer, assets_ungrouped integer, done boolean, rows_examined integer)'
+    AND md5(pg_get_functiondef(oid))='9222e39f7953290f2050123aa07811b6'
     AND proconfig @> ARRAY['search_path=public','statement_timeout=120s','lock_timeout=0']
     AND has_function_privilege('service_role',oid,'EXECUTE')
     AND NOT has_function_privilege('anon',oid,'EXECUTE')
     AND NOT has_function_privilege('authenticated',oid,'EXECUTE'))
   AND md5(pg_get_functiondef(to_regprocedure('public.rebuild_style_groups_batch(uuid,integer)')))='65c89b152f1d4aa49f3877043a16bd6b'
   AND md5(pg_get_functiondef(to_regprocedure('public.clear_style_group_batch(uuid,integer)')))='3dbea0ab37aa21181efa966cbb4e1d8f'
+  AND EXISTS(SELECT FROM pg_proc p WHERE p.oid=to_regprocedure('public.style_group_key_for_sku(text)')
+    AND p.provolatile='i' AND p.proisstrict AND p.proparallel='s'
+    AND md5(pg_get_functiondef(p.oid))='2edf6ba6ecea92b56defb5ddc811e701')
   AND NOT EXISTS(SELECT FROM (VALUES
     ('public.stamp_style_group_asset_change()'),
     ('public.stamp_style_group_definition_change()'),
@@ -52,6 +59,5 @@ SELECT (
     AND has_function_privilege('service_role',p.oid,'EXECUTE')
     AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
     AND NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
-    AND pg_get_functiondef(p.oid) LIKE '%pg_advisory_xact_lock(hashtext(''BULK_OPERATIONS''))%'
-    AND pg_get_functiondef(p.oid) LIKE '%last_successful_cutoff%')
-) as passed
+    AND md5(pg_get_functiondef(p.oid))='ae23005822bc9f0b500c06776ab9bee4')
+),false) as passed

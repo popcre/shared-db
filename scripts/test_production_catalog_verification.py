@@ -3722,5 +3722,26 @@ class RoutineAclCompatibilityTests(unittest.TestCase):
         sql=build_catalog_sql(targets_for("revoke all on function plm.f(in x integer),plm.g(migration_enum) from anon;"))
         self.assertIn("plm.f(in x integer)",sql);self.assertIn("plm.f(integer)",sql)
         self.assertIn("NULL",sql);self.assertIn("to_regprocedure(normalized_signature)",sql)
+
+
+class TemporalRoutineAclTests(unittest.TestCase):
+    def data(self, held=()):
+        return {"maintain_probed":True,"probe_roles":["anon","authenticated","public"],"function_acl_signatures":[{"signature":"plm.f(integer)","oid":"10"}],"functions":[{"name":"plm.f","overloads":[{"oid":"10","identity":"plm.f(integer)","owner":"postgres","acl_is_default":False,"acl":[],"execute_held_by":list(held)},{"oid":"20","identity":"plm.f(text)","owner":"postgres","acl_is_default":True,"acl":[],"execute_held_by":["authenticated"]}]}]}
+    def test_bare_before_later_overload_and_final_literal_grant(self):
+        sql="revoke all on function plm.f from authenticated;grant execute on function plm.f(integer) to authenticated;"
+        rows,failures=assert_privileges(targets_for(sql),self.data(["authenticated"]))
+        self.assertEqual(failures,[]);self.assertEqual([r[1] for r in rows],["RECORD","PASS"])
+    def test_later_bare_cannot_be_attributed_to_a_final_multi_overload_family(self):
+        sql="revoke all on function plm.f(integer) from authenticated;grant execute on function plm.f to authenticated;"
+        rows,failures=assert_privileges(targets_for(sql),self.data(["authenticated"]))
+        self.assertEqual(failures,[]);self.assertEqual([r[1] for r in rows],["RECORD","RECORD"])
+    def test_final_literal_revoke_still_rejects_selected_execute_after_ambiguous_bare(self):
+        sql="grant execute on function plm.f to authenticated;revoke all on function plm.f(integer) from authenticated;"
+        rows,failures=assert_privileges(targets_for(sql),self.data(["authenticated"]))
+        self.assertEqual([r[1] for r in rows],["RECORD","FAIL"]);self.assertEqual(len(failures),1)
+    def test_later_ambiguous_bare_for_another_role_never_suppresses_exact_revoke(self):
+        sql="revoke all on function plm.f(integer) from anon;grant execute on function plm.f to authenticated;"
+        rows,failures=assert_privileges(targets_for(sql),self.data(["anon"]))
+        self.assertEqual([r[1] for r in rows],["FAIL","RECORD"]);self.assertEqual(len(failures),1)
 if __name__ == "__main__":
     unittest.main()

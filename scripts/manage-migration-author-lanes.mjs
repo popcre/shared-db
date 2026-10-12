@@ -309,9 +309,6 @@ export function buildDatabasePreviewFileSnapshot(files,base,head,readContent){
   }).sort((a,b)=>a.path.localeCompare(b.path))
 }
 
-// #4048: a partial maintenance PR must retain its authentic work issue without
-// pretending to close that unfinished parent. Refs only selects the proof;
-// immutable canonical evidence and normal Git validation supply authority.
 // Owner: exact paid-review provenance. Complete source blobs can exceed the
 // Node default1MiB. This process bound does not change semantic evidence limits.
 export const PAID_REVIEW_GIT_MAX_BYTES = 4 * 1024 * 1024
@@ -319,6 +316,9 @@ export function paidReviewGitReader(args) {
   return execFileSync('git', args, {encoding:'utf8', stdio:['ignore','pipe','pipe'], maxBuffer:PAID_REVIEW_GIT_MAX_BYTES})
 }
 
+// #4048: a partial maintenance PR must retain its authentic work issue without
+// pretending to close that unfinished parent. Refs only selects the proof;
+// immutable canonical evidence and normal Git validation supply authority.
 export function verifyNonclosingMaintenanceBinding({pr,headSha,files,issue=null,structural=false},io,git=gitIo,{gitRunner=(args,options)=>execFileSync('git',args,{...options,encoding:'utf8',stdio:['ignore','pipe','pipe']})}={}){
   const refuse=(reason)=>{throw new LaneError(`nonclosing maintenance binding refused: ${reason}`)}
   const live=io.getPr(pr),main=io.mainSha?.()

@@ -289,7 +289,6 @@ GRANT_STATEMENT_RE = re.compile(
     r"^\s*(grant|revoke)\s+(?:grant\s+option\s+for\s+)?(.*?)\s+on\s+(.*?)\s+(to|from)\s+(.*)$"
 )
 ROUTINE_OBJECT_RE = re.compile(r"^\s*(?:function|procedure|routine)\s+(.*)$")
-ROUTINE_NAME_RE = re.compile(rf"{QUALIFIED}\s*(\([^)]*\))?")
 PLAIN_OBJECT_RE = re.compile(rf"^\s*(?:table\s+|view\s+)?{QUALIFIED}\s*$")
 
 # `alter default privileges ... on <what>` -> the pg_default_acl `defaclobjtype`
@@ -1469,7 +1468,7 @@ class PrivilegeExpectation:
         verb = "must HOLD" if self.expect_held else "must NOT hold"
         return (
             f"{self.grantee} {verb} {', '.join(self.privileges)} on "
-            f"{self.kind} {self.target}"
+            f"{self.kind} {self.function_signature or self.target}"
         )
 
 
@@ -3360,6 +3359,22 @@ def assert_privileges(
         if expectation.kind == "function":
             row = functions.get(expectation.target)
             overloads = (row or {}).get("overloads") or []
+            # A bare routine can have been unique when the statement ran,
+            # before another overload was added. The final family does not
+            # identify its earlier target, so attributing it to ALL is wrong.
+            if expectation.function_signature is None and len(overloads) > 1:
+                verdict(expectation, "RECORD", "bare routine target is ambiguous in the final catalog; no overload ACL is attributed to it")
+                continue
+            later_ambiguous = any(
+                later.kind == "function" and later.target == expectation.target
+                and later.grantee == expectation.grantee
+                and later.function_signature is None and len(overloads) > 1
+                and wanted.intersection(later.expand(maintain))
+                for later in targets.privileges[index + 1:]
+            )
+            if later_ambiguous:
+                verdict(expectation, "RECORD", "a later bare routine statement may restate this privilege, but its final-catalog target is ambiguous")
+                continue
             if expectation.function_signature is not None:
                 normalized, unassertable = normalize_function_acl_signature(expectation.function_signature)
                 if unassertable:

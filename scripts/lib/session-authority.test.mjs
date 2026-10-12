@@ -96,6 +96,8 @@ test('#3536 adoption recognition never accepts arbitrary aliases or ambiguous la
     `unknown/${ownChat}-2421`,`codex/${ownChat}-2421/other`,
     `codex/${ownChat}-2421\nowner: ${foreignChat}`,`codex/${foreignChat}-2421`,
     'codex/2336-runtime-recovery','codex/issue-2421',
+    `CODEX/${ownChat}-2421`,`codex/${ownChat.toUpperCase()}-2421`,
+    `codex/${ownChat}0-2421`,
   ])assert.equal(resolveSessionAuthority({env:env(ownChat),claimOwner:owner}).live,false);
   assert.equal(readSessionId(env(`codex/${ownChat}-2421`)).malformed,true);
 });

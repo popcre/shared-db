@@ -19,7 +19,9 @@ Supavisor pooler at `aws-1-us-east-1.pooler.supabase.com`, verify-full with the 
 **session mode, port 5432** replaces the "direct-port" connection for the issuer (user
 `postgres.qsllyeztdwjgirsysgai`), the step-8 undo connection, and proofs 6(a)/(b) (user
 `designflow_prod_<service>_runtime.qsllyeztdwjgirsysgai`); **transaction mode, port 6543**
-remains the blocking service-path proof 6(c) (user
+remains the blocking service-path proof 6(c) — the four services' own connection contracts bind
+production Supabase to the public pooler on port 6543 (e.g. `config/database-connection-contract.js`
+in `popcre/designflow-data-syncing` c88a43d: "Supabase/6543/public-pooler") — (user
 `designflow_prod_<service>_runtime.qsllyeztdwjgirsysgai`; the `<role>.<project ref>` form is
 the one `docs/agents/references-and-runbooks.md:46` shows for the admin). Session mode on 5432 / transaction mode on 6543 is
 Supabase's documented Supavisor port split (in-repo:
@@ -29,8 +31,10 @@ issuer packet; it is not read at runtime. (The only provider API use in this act
 supported log API read in steps 4 and 7.)
 **Endpoint preflight (fail closed):** (0) libpq version >= 16 (so `require_auth` is
 honoured), else stop. (i) credential-free: a TCP connect from edge-dev3 to the hostname
-succeeds on 5432 and on 6543, and the connected address is IPv4 (pinned for the run via
-`hostaddr`); SSLRequest + TLS 1.3 verify-full against the
+succeeds on 5432 and on 6543, and libpq connects over IPv4 (asserted by `inet_server_addr()`
+family on the session; no `hostaddr` pinning, consistent with repo doctrine in
+`tools/coldlion-sync-common.mjs:212,243`, and `host` stays set for verify-full and passfile
+matching); SSLRequest + TLS 1.3 verify-full against the
 pinned Supabase root succeeds on both. (ii) **Cluster identity:** TLS alone cannot tell
 `aws-0` from `aws-1` (shared certificate), so the first authenticated step is a read-only
 admin session (`postgres.qsllyeztdwjgirsysgai`, session mode 5432, `require_auth`) that must
@@ -45,13 +49,22 @@ the step-4 admin session (pre-state probe, setting/sink/log-access/ingestion-lag
 preflights), the issuer, the undo, and all proof clients — uses `require_auth=scram-sha-256`
 and a protected passfile keyed `aws-1-us-east-1.pooler.supabase.com:<5432|6543>:postgres:<user>:<password>`
 (dbname `postgres`). **Passfile lifecycle:** written by the stage-B launcher only, mode 0600,
-owner the run user, inside the encrypted protected mount, referenced by the `passfile`
-connection parameter (never `PGPASSFILE` env); removed on every exit path (success, abort,
-rollback, undo) by the launcher's `finally`, and its absence is asserted in the closing report. Because stage A's isolated PG17 cannot exercise Supavisor, these live preflights are
+owner the run user, on a private **tmpfs (memory-only)** directory created 0700 for the run
+(so a crash, kill or reboot cannot leave it on disk), referenced by the `passfile` connection
+parameter (never `PGPASSFILE` env); removed on every normal exit path by the launcher's
+`finally`. **Residue sweep at start:** the launcher refuses to run if any prior run's passfile,
+log-response file or `pending_password` field exists, and reports it. The first, consumed
+launch left none (Codex postcheck 4:42 PM EDT, #770 comment 6132379006: no residual passfiles
+or log-response files, `pending_password` absent). Stage-B tests assert 0600 creation, tmpfs
+location, and removal on abort, rollback and undo paths, and `pending_password` cleanup on
+abort. Because stage A's isolated PG17 cannot exercise Supavisor, these live preflights are
 the evidence that the session-mode path works before the one-shot write; if any fails, stop
 with no write. Changed by this amendment: endpoint, the "directly" wording in Success check,
 the preflights above, `require_auth` scope, passfile lifecycle, Method step 1 (new guard test),
-Method step 4 (endpoint and preflight order), and the Supavisor preflight wording. Everything
+Method step 4 (endpoint and preflight order), the Supavisor preflight wording, and by
+reference every production connection in steps 6(b) and 8 (same endpoint, user form,
+`require_auth` and passfile as 6(a)). Preflight (iii) is the ingestion-lag preflight; no
+separate failing statement is issued. Everything
 else is unchanged.
 A fresh one-shot packet and exact-input review are required; the consumed launcher is never
 replayed.
@@ -188,10 +201,12 @@ passwords rotated.
    key not 32 bytes, wrong iteration count, wrong prefix, tampered StoredKey/ServerKey,
    trailing whitespace/newline, and a raw password string; **`require_auth` test** (Amendment
    A): against isolated PG17, (1) `hba` = `password` for a role with a SCRAM verifier, and (2)
-   `hba` = `md5` for a role whose stored password is an **MD5** verifier (set with
-   `password_encryption=md5` for that role only, so the server really requests MD5), a client
-   with `require_auth=scram-sha-256` must fail and the server log must show no password
-   received (libpq still sends the startup packet with user/database; no password is sent); plus an end-to-end test proving a
+   `hba` = `md5` for a role whose stored password is an **MD5** verifier (stored by issuing that role's `ALTER ROLE ... PASSWORD`
+   in a session with `SET password_encryption='md5'`, so the server really requests MD5), in **both**
+   cases a client with `require_auth=scram-sha-256` must fail with libpq's `require_auth`
+   refusal error, and a wire capture on the isolated socket must show no
+   PasswordMessage sent by the client (libpq still sends the startup packet with
+   user/database); plus an end-to-end test proving a
    rejected verifier never opens a database connection (connection factory spy). **Send-path
    test:** the spy captures every outbound SQL text and parameter for an accepted run and
    asserts each `PASSWORD` operand matches the verifier grammar and that no plaintext byte

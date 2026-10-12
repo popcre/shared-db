@@ -15,10 +15,22 @@ code used an `aws-0` pooler hostname, but the project's pooler is
 `db.qsllyeztdwjgirsysgai.supabase.co` resolves to IPv6 only while the execution host edge-dev3
 has no IPv6 route (errno 101). Amendment: every production connection in steps 4–8 uses the
 Supavisor pooler at `aws-1-us-east-1.pooler.supabase.com`, verify-full with the pinned root —
-**session mode, port 5432** (user `<role>.qsllyeztdwjgirsysgai`) replaces the "direct-port"
-connection for the issuer and for proofs 6(a)/(b); **transaction mode, port 6543** remains the
-blocking service-path proof 6(c). The pooler hostname is read from the Supabase pooler
-configuration at preflight and must equal the reviewed value, else stop. Nothing else changes.
+**session mode, port 5432** replaces the "direct-port" connection for the issuer (user
+`postgres.qsllyeztdwjgirsysgai`), the step-8 undo connection, and proofs 6(a)/(b) (user
+`designflow_prod_<service>_runtime.qsllyeztdwjgirsysgai`); **transaction mode, port 6543**
+remains the blocking service-path proof 6(c) (same user form, as in
+`docs/agents/references-and-runbooks.md:46`). Session mode on 5432 / transaction mode on 6543 is
+Supabase's documented Supavisor port split. The hostname is a **reviewed constant** in the
+issuer packet (no runtime Management API read, consistent with the Problem section).
+**Endpoint preflight (fail closed, before any password is sent):** the hostname resolves to at
+least one IPv4 address; TCP connects on 5432 and 6543; SSLRequest + TLS 1.3 verify-full against
+the pinned Supabase root succeeds on both (the 2026-10-08 credential-free probe did this for
+6543). **No cleartext to the pooler anywhere:** every connection that carries a password —
+issuer, undo, and all proof clients — uses `require_auth=scram-sha-256` and a protected
+passfile. Because stage A's isolated PG17 cannot exercise Supavisor, these live preflights are
+the evidence that the session-mode path works before the one-shot write; if any fails, stop
+with no write. Changed by this amendment: endpoint, the "directly" wording in Success check,
+the preflights above, and `require_auth` scope. Everything else is unchanged.
 A fresh one-shot packet and exact-input review are required; the consumed launcher is never
 replayed.
 
@@ -274,7 +286,7 @@ pinned CA.
 
 ## Success check
 
-All four roles authenticate directly and through Supavisor with their 1Password secrets; wrong
+All four roles authenticate through Supavisor session mode (5432) and transaction mode (6543) with their 1Password secrets; wrong
 passwords fail; provider logs show only verifiers; logging settings unchanged; the separately
 closed credential incident untouched.
 

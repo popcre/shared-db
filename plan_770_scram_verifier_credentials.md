@@ -7,9 +7,9 @@ Registered from the #770 successor handoff
 
 ## STATUS
 
-Revision 6. Revisions 1–5 got DeepSeek plan-review REJECT (runs
+Revision 7. Revisions 1–6 got DeepSeek plan-review REJECT (runs
 20261012T181315-1768589-27011, 20261012T181704-2222882-23133 and
-20261012T182121-2343611-840, 20261012T182543-2382833-1180, 20261012T182919-2411551-20984, all "method sound in
+20261012T182121-2343611-840, 20261012T182543-2382833-1180, 20261012T182919-2411551-20984, 20261012T183435-2457811-16013, all "method sound in
 principle"); every finding is answered below. Nothing has been executed.
 
 **Task classes.** (`ai-task-gates start --class CLASS [--reason TEXT] [--base REF]` is the
@@ -29,8 +29,10 @@ digest matches. **How the stage-B reviewer sees the bytes:** the private script 
 to a public repo; it is reviewed exactly like the v23 timing action — through the installed
 `ai-review-code-only.py create` export plus a governed DeepSeek code-only review, whose packet
 carries the script bytes and their SHA-256. **Runtime enforcement:** the stage-B launcher
-recomputes the issuer script's SHA-256 immediately before step 4 and refuses unless it equals
-the digest in the reviewed packet.
+recomputes the SHA-256 of **every program that touches the plaintext or the production
+connection** — issuer, 1Password writer, login-proof clients, log scanner, undo runner, all of
+which live in the same private `scripts/cutover/` packet — immediately before step 2 and refuses
+unless each equals the digest in the reviewed packet.
 
 ## Problem and why SCRAM verifiers are the correct control
 
@@ -62,6 +64,13 @@ detail), so it could never have made plaintext issuance safe. The only
 way to keep a usable secret out of provider logs on this platform is to never send one: send a
 pre-computed SCRAM-SHA-256 verifier. PostgreSQL documents that a password string already in
 SCRAM verifier format is stored as-is (docs: CREATE ROLE, "PASSWORD"; `password_encryption`).
+**Authority.** Owner ruling 2026-09-28 (Albert Hazan, verbatim: "never ask a human to approve
+... ai has to do everything for me") makes technical route choices an AI decision gated by an
+independent AI reviewer. The SCRAM prohibition was a technical route choice by an earlier AI
+session, so retiring it is within the current Root's authority, subject to this review; it is
+not presented as an owner decision. Root transfer and the production privilege evidence are
+recorded on #770 (comments 6128727049 and 6130294501).
+
 **Root ownership.** Albert asked this Claude chat on 2026-10-12 to "Resume popcre/shared-db #770
 from" the 2026-10-12T0008Z handoff and to "finish recovery and four-service production
 acceptance"; Root for #770 therefore passed to this session (recorded on #770 with the v23
@@ -74,7 +83,10 @@ fatal/error proof" and in the same sentence listed "No ... SCRAM verifier workar
 `HANDOFF.d/2026-10-12T0008Z-...:71` repeats only the prohibition. That prohibition assumed a
 redaction control could exist. On this platform it cannot: `log_statement=ddl` writes the
 *successful* `ALTER ROLE` text, and no Supabase-exposed setting redacts statement text
-(`log_error_verbosity` is not even settable, and would not cover the success path). Under the
+(`log_error_verbosity` is not even settable, and would not cover the success path). The one
+setting that would hide the success line, a session `SET log_statement='none'` (superuser-only
+on stock PostgreSQL), is itself the logging reduction both handoffs forbid, and would still
+leave `pg_stat_statements` as a plaintext sink — so it was considered and rejected. Under the
 recorded rule, no password could ever be issued, so #770 could never finish — that is a
 deadlock, not a safety property. The rule's purpose is the Goal below; this plan meets that
 purpose by never sending a secret. Claude chat 16164463-0b2e-4ea7-a039-2d3d59cd5d21, acting as
@@ -91,8 +103,8 @@ redaction is absent — then show a verifier issuance logs only the verifier.
 
 ## Goal (stated precisely)
 
-No plaintext password ever appears in provider logs, pooler logs, client logs, argv,
-transcripts or Git — on success or failure. SCRAM verifiers do appear in the server log and
+No plaintext password ever appears in provider logs, pooler logs, client logs, argv, process
+environment (`PGPASSWORD`, `/proc/<pid>/environ`), connection strings/DSNs, transcripts or Git — on success or failure. SCRAM verifiers do appear in the server log and
 `pg_stat_statements`; a verifier alone cannot log in, and becomes usable only together with a
 successful server impersonation of a client. That residual is accepted **only** while every
 client verifies the pinned Supabase CA, which stage B makes a blocking gate on the deployed
@@ -107,8 +119,9 @@ passwords rotated.
    output `SCRAM-SHA-256$4096:<salt>$<StoredKey>:<ServerKey>` with **standard base64 (RFC 4648
    §4, `+/` and `=` padding)** for all three fields, which PostgreSQL's verifier parser
    requires. Reads the password only from an inherited file descriptor; never
-   argv/env/stdout. Unit tests against the RFC 7677 test vector and libpq
-   `PQencryptPasswordConn` output.
+   argv/env/stdout. Unit tests against the RFC 7677 test vector, and against libpq
+   `PQencryptPasswordConn` output by parsing its salt and iteration count and re-deriving the
+   verifier with the tool (libpq picks a fresh salt per call).
    **Guard tests (stage A deliverable):** accept the tool's own output; reject base64url
    alphabet, missing padding, wrong padding, non-canonical padding bits, salt not 16 bytes,
    key not 32 bytes, wrong iteration count, wrong prefix, tampered StoredKey/ServerKey,
@@ -123,7 +136,11 @@ passwords rotated.
    mismatch aborts before a connection opens (a malformed string would be hashed as plaintext
    and its literal logged).
 2. **Password generation and custody (stage B only; stage A uses DUMMY values and writes
-   nothing to 1Password)** — one protected issuer process generates 32 random
+   nothing to 1Password)** — new plaintexts are written to a **new field** `pending_password`
+   on each staged item, never over an existing value; on success (step 7 passes) the field is
+   promoted to `password`; on any abort before step 5, step-5 rollback, or step-8 undo the
+   `pending_password` field is deleted and the item is tagged `770-aborted-<timestamp>`, so the
+   vault never claims a credential the database does not hold — one protected issuer process generates 32 random
    bytes from `secrets`, encodes them base64url (this is the password itself, not a verifier
    field), and calls the step-1 verifier function in-process (the fd interface is used only
    when the CLI entrypoint is invoked by tests); the plaintext is written to the existing staged 1Password items (references recorded at
@@ -150,7 +167,8 @@ passwords rotated.
    rolpassword LIKE 'SCRAM-SHA-256$%' THEN 'SCRAM' ELSE 'OTHER' END`. All four must be `NULL`;
    otherwise stop before any write (an existing credential would be overwritten
    irrecoverably). Because the pre-state is proved NULL, undo to NULL is an exact restore.
-   **Log-access preflight:** before the write, read one recent window of provider Postgres
+   **Sink preflight:** `pg_stat_statements` view exists in the target database and is readable by
+   the proof user; if not, stop before the write. **Log-access preflight:** before the write, read one recent window of provider Postgres
    logs through the supported Supabase log API and confirm entries are returned; if not, stop
    before the write.
 5. **Production write** — one transaction containing four **separately executed** statements
@@ -163,13 +181,16 @@ passwords rotated.
    echoing the verifier); then (a) direct-port
    login with the plaintext over SCRAM succeeds; (b) wrong password fails; (c) **blocking
    gate:** login through Supavisor pooler port 6543 succeeds, retried every 30 s for up to
-   10 minutes to absorb pooler auth-cache refresh before it counts as a failure. The 2026-10-08
+   10 minutes, each attempt on a **new** client connection (fresh pooler session), to absorb pooler auth-cache refresh before it counts as a failure. The 2026-10-08
    `SUPAVISOR_AUTH_QUERY_SECRET_FORMAT` classification occurred when all four passwords were
    NULL; the inference (not proven) is that the auth query found no secret. This gate proves
    or disproves it. **No cleartext fallback:** the proof client uses libpq
    `require_auth=scram-sha-256` (PG16+ libpq; a preflight before step 4 asserts
    `psycopg.pq.version() >= 160000` and stops before any write otherwise), which refuses any server request for a cleartext
-   password, so the plaintext never crosses the wire to the pooler; and step 7 also scans the
+   password, so the plaintext never crosses the wire to the pooler. All proof clients (and the
+   issuer) receive the password only through a mode-0600 libpq `passfile` inside the protected
+   mount, never via `PGPASSWORD`, DSN or argv; a stage-A test asserts the child environment and
+   argv contain no plaintext; and step 7 also scans the
    Supavisor (pooler) logs from the supported log API for the same window. The pooler presents the same Supabase-rooted chain: the 2026-10-08
    credential-free probe completed TLS 1.3 verify-full against the pinned root on the pooler
    (`HANDOFF.d/2026-10-09T0400Z-...:60`), and each run of 6(c) uses verify-full with that
@@ -177,7 +198,9 @@ passwords rotated.
 7. **Log proof on production** — fetch the **entire** provider Postgres log window from
    1 minute before the transaction to 5 minutes after (well inside retention) through the
    supported log API into protected custody, and scan it locally. **Positive control first:**
-   exactly four `ALTER ROLE` statement lines for the four roles must be present (retry the
+   exactly one `ALTER ROLE` statement line naming each of the four roles must be present,
+   matched by role name **and** by the issuing connection's backend pid (recorded at step 5)
+   so unrelated `ALTER ROLE` activity in the window cannot satisfy or break it (retry the
    fetch every 60 s for up to 15 minutes to absorb ingestion lag). Then: each plaintext occurs
    zero times; each of those lines contains its verifier and nothing password-like. Also read
    the `pg_stat_statements` row(s) for `ALTER ROLE`: at least one row must exist; record its
@@ -198,7 +221,10 @@ Offline guessing of a 256-bit random password through 4096-iteration PBKDF2 is i
 to a client (man-in-the-middle) can recover ClientKey from that client's proof and then log in.
 So a logged verifier is safe only while every client verifies the server certificate. All four
 services pin the Supabase root CA
-with `rejectUnauthorized: true`, each in its own repository's `config/database-pool.js` line 54
+with `rejectUnauthorized: true` **and** `ca: require('./certificates/supabase-root-2021')`, each
+in its own repository's `config/database-pool.js` line 54. Supplying `ca` makes Node's TLS
+trust only that certificate set instead of the system store, which is pinning to the Supabase
+root (PEM SHA-256 `70072358142...`, per each repo's `config/certificates/README.md`)
 (`popcre/designflow-backend` 9402a88f0, `popcre/designflow-item-master` 4aa6850c,
 `popcre/designflow-tracking` e88793a0 — all `sandbox-albert`; `popcre/designflow-data-syncing`
 c88a43d on `develop`), and each repository's `config/database-connection-contract.js`
@@ -229,7 +255,7 @@ API setter.
 4. TLS mode verified for all four services (section above).
 5. Undo defined and automatic (step 8).
 6. Issuer privilege proved read-only (step 4).
-7. Assertion named: behavioural, because `pg_authid` is superuser-only (step 6).
+7. Assertion named: behavioural, now direct: `postgres` reads `pg_authid` on Supabase (step 6).
 8. Tool and custody specified, no argv exposure (steps 1–2).
 9. Registered from the successor handoff; task class and gate stated (STATUS).
 10. Prior reason engaged: plaintext issuance is unsafe under `log_statement=ddl` regardless of
@@ -276,6 +302,15 @@ proof issues as a production-mirroring non-superuser. M2 pooler retry window. M3
 executed statements. M4 libpq version preflight. L1 headings fixed. L2 Root ownership stated
 and recorded on #770; production privilege evidence posted on #770. L3 stage A writes no
 secrets.
+
+## Revision 6 → 7 findings answered
+
+H1 pinning is `ca:` (trust only the Supabase root), cited. H2 environment/DSN added to Goal,
+passfile only, stage-A test. M1 authority stated from the 2026-09-28 owner ruling and #770
+comments. M2 `pg_stat_statements` preflight; lines matched by role and issuing backend pid. M3
+every plaintext-touching program digest-bound. M4 `pending_password` custody with abort cleanup.
+M5 session `log_statement` suppression considered and rejected. Lows: libpq comparison by
+re-derivation; `pg_authid` wording reconciled; fresh pooler session per retry.
 
 ## Question for the reviewer
 

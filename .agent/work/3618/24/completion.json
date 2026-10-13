@@ -48,6 +48,11 @@
       "command": "node --test scripts/coordination-scenarios.test.mjs scripts/orchestrator-flow/capacity-state.test.mjs scripts/throughput-guard/check-throughput-truth-audit-context.test.mjs",
       "exit_code": 0,
       "evidence": "63 integration/capacity/historical-context tests PASS. Original historical cutover and retirement archives unchanged; only valid resume fixture durations and new context row legacy bindings corrected."
+    },
+    {
+      "command": "native canonical contract/completion and Git evidence validation",
+      "exit_code": 0,
+      "evidence": "Published generation24 exact readback and native exact implementation/sealed Git evidence PASS; completion final validation follows before final seal and push."
     }
   ],
   "assumptions_resolved": [

@@ -6,7 +6,6 @@
       "source": "scripts/manage-migration-author-lanes.mjs",
       "site": "scripts/manage-migration-author-lanes.mjs:3776",
       "semantic_key": "scripts/manage-migration-author-lanes.mjs:13a4c3d2e87e38098bde0b858edfee82cd18eff91a2a2ce6a14443ace04b3892:context-84bafc218be161b2fd009bcaaa4c5ed07d21041d95216ff94c2cde5cb46fb59a",
-      "legacy_semantic_key": "scripts/manage-migration-author-lanes.mjs:13a4c3d2e87e38098bde0b858edfee82cd18eff91a2a2ce6a14443ace04b3892:1",
       "line_sha256": "13a4c3d2e87e38098bde0b858edfee82cd18eff91a2a2ce6a14443ace04b3892",
       "disposition": "excluded",
       "reason": "Refuses missing, future or stale owner confirmation; this is ownership admission evidence, not an assertion of database absence."
@@ -22,7 +21,6 @@
       "source": "scripts/manage-migration-author-lanes.mjs",
       "site": "scripts/manage-migration-author-lanes.mjs:3835",
       "semantic_key": "scripts/manage-migration-author-lanes.mjs:1e4f7e93bdfa4e56b0f950e0af30aecf555234caabf45af55469df81665a4816:context-b14c2b509c5d652fb51a545fa5b29f6114c6cd100d6252c6adb0b224f5b1fde2",
-      "legacy_semantic_key": "scripts/manage-migration-author-lanes.mjs:1e4f7e93bdfa4e56b0f950e0af30aecf555234caabf45af55469df81665a4816:1",
       "line_sha256": "1e4f7e93bdfa4e56b0f950e0af30aecf555234caabf45af55469df81665a4816",
       "disposition": "excluded",
       "reason": "Refuses missing or ambiguous open-source parser evidence; merged sources require exact ancestry and structural parsing. This asserts no database absence."

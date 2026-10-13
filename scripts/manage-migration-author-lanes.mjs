@@ -2508,6 +2508,7 @@ export function prepareAuthorHandoff(options,now=new Date(),io=githubIo){
   prove()
   relinquishAuthorLease({claim:request.claim,owner:request.owner,blockedOn:artifact,worktreeState:'clean',recoveryArtifact:artifact},now,io)
   const lock=io.makeOwnerCommit(`db-coordination claim-author-transfer-mutex claim=${request.claim} operation=handoff-ready`);acquireMutex(lock,io)
+  let completed=null,failure=null
   try{
     const proof=prove(),hash=sha256(proof.claim.body),ref=AUTHOR_HANDOFF_READY_REF_PREFIX+request.claim+'-'+proof.lease.version+'-'+hash.slice(0,24)
     const existing=io.readRef(ref)?readAuthorReady(ref,io):null
@@ -2519,8 +2520,9 @@ export function prepareAuthorHandoff(options,now=new Date(),io=githubIo){
     if(readRefAfterWrite(ref,receiptSha,io)!==receiptSha)throw new LaneError('stopped-owner receipt readback failed')
     const after=prove();if(after.claim.body!==proof.claim.body||after.reservation!==proof.reservation)throw new LaneError('stopped-owner proof moved during receipt publication')
     requireOwnedRef(MUTEX_REF,lock,io)
-    return {claim:request.claim,version:proof.lease.version,capacityState:'relinquished',handoffReadyRef:ref,sha:receiptSha,idempotent:Boolean(existing)}
-  }finally{releaseMutexOnExit(lock,io)}
+    completed={claim:request.claim,version:proof.lease.version,capacityState:'relinquished',handoffReadyRef:ref,sha:receiptSha,idempotent:Boolean(existing)};return completed
+  }catch(error){failure=error;throw error}
+  finally{try{releaseMutexOnExit(lock,io)}catch(cleanup){const result=new LaneError(`${failure?failure.message+'; ':''}${cleanup.message}${completed?'; OPERATION_COMPLETED '+JSON.stringify(completed):''}`);if(completed)result.completedResult=completed;throw result}}
 }
 export const CLAIM_AUTHOR_HANDOFF_REF_PREFIX='refs/db-claim-author-handoffs/'
 function transferRecord(ref,io,voluntary=false){
@@ -2601,6 +2603,7 @@ function changeClaimAuthor(options,now,io,voluntary){
     const identity={issue:request.issue,claim:request.claim,pr:request.pr,head_sha:request.headSha,version:currentLease.version,old_owner:request.oldOwner,new_owner:request.newOwner,branch:request.branch,old_worktree:request.oldWorktree,target_worktree:request.targetWorktree,...(voluntary?{recipient_chat_id:recipientChatId,handoff_ready_ref:readyRef,request_id:requestId}:{abandonment_issue:request.abandonmentIssue}),old_worktree_state:request.oldWorktreeState}
     ref=`${voluntary?CLAIM_AUTHOR_HANDOFF_REF_PREFIX:CLAIM_AUTHOR_TRANSFER_REF_PREFIX}${request.claim}-${currentLease.version}-${sha256(canonicalJson(identity)).slice(0,20)}`
     const prior=transferRecord(ref,io,voluntary),fresh=verify(Boolean(prior))
+    if(voluntary&&prior&&!fresh.adopted&&sha256(fresh.claim.body)!==prior.record.original_body_sha256)throw new LaneError('voluntary handoff original body differs from recorded receipt')
     if(fresh.lease.version!==identity.version)throw new LaneError('claim version changed during operator adoption')
     const grantDeadline=voluntary?new Date(prior?.record.expires_at??now.valueOf()+MAX_AUTHOR_LEASE_HOURS*3600000):new Date(now.valueOf()+request.leaseHours*3600000)
     if(voluntary&&!fresh.adopted&&grantDeadline<=now)throw new LaneError('recorded successor permission has elapsed; preserve receipt and use a fresh request ID')
@@ -3801,7 +3804,7 @@ export function checkInAuthor(options,now=new Date(),io=githubIo){
   const request={...options,leaseHours:MAX_AUTHOR_LEASE_HOURS,checkin:true,checkinNow:now}
   requireCheckinOwner(request,io)
   const renewed=renewExpiredClaim(request,now,io)
-  let lock
+  let lock,completed=null,failure=null
   try{
     lock=io.makeOwnerCommit(`db-coordination claim-author-transfer-mutex claim=${options.claim} operation=author-checkin`);acquireMutex(lock,io)
     const proof=requireCheckinOwner(request,io),pr=io.getPr(options.pr)
@@ -3815,9 +3818,9 @@ export function checkInAuthor(options,now=new Date(),io=githubIo){
     else{receiptSha=io.makeOwnerCommit(AUTHOR_CHECKIN_MESSAGE+JSON.stringify(record));if(!io.createRef(ref,receiptSha))throw new LaneError('create-only author confirmation refused')}
     if(readRefAfterWrite(ref,receiptSha,io)!==receiptSha||io.getCommit(receiptSha)?.message!==AUTHOR_CHECKIN_MESSAGE+JSON.stringify(record)||requireCheckinOwner(request,io).row.body!==proof.row.body||io.readRef('refs/db-claims/'+proof.lease.version)!==reservation)throw new LaneError('author confirmation readback differs')
     requireOwnedRef(MUTEX_REF,lock,io)
-    return {...renewed,checkinRef:ref,sha:receiptSha,checkedInAt:now.toISOString(),nextCheckinMinutes:AUTHOR_CHECKIN_INTERVAL_MINUTES}
-  }catch(error){throw new LaneError(`PERMISSION_RENEWED_BUT_CONFIRMATION_UNVERIFIED claim=${options.claim}; ${error.message}`)}
-  finally{if(lock)releaseMutexOnExit(lock,io)}
+    completed={...renewed,checkinRef:ref,sha:receiptSha,checkedInAt:now.toISOString(),nextCheckinMinutes:AUTHOR_CHECKIN_INTERVAL_MINUTES};return completed
+  }catch(error){failure=new LaneError(`PERMISSION_RENEWED_BUT_CONFIRMATION_UNVERIFIED claim=${options.claim}; ${error.message}`);throw failure}
+  finally{if(lock)try{releaseMutexOnExit(lock,io)}catch(cleanup){const result=new LaneError(`${failure?failure.message+'; ':''}${cleanup.message}${completed?'; OPERATION_COMPLETED '+JSON.stringify(completed):''}`);if(completed)result.completedResult=completed;throw result}}
 }
 export function renewExpiredClaim(options, now = new Date(), io = githubIo) {
   for(const key of ['claim','issue','owner','branch','worktree','pr','headSha','leaseHours'])if(options[key]===undefined||options[key]===null||options[key]==='')throw new LaneError(`claim renewal requires ${key}`)

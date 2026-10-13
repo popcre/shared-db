@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { createHash } from 'node:crypto'
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -381,6 +382,107 @@ test('voluntary receipt-time resume refuses without overwriting owner change',()
 test('voluntary receipt replay refuses any changed claim body',()=>{
   const {io,request}=voluntaryFixture();handoffClaimAuthor(request,NOW,io);io.issues.get(3378).body+='\nforeign change'
   assert.throws(()=>handoffClaimAuthor(request,NOW,io),/body differs/)
+})
+
+test('failed voluntary receipt retries only against the exact original body and adopted replay remains idempotent',()=>{
+  const {io,request}=voluntaryFixture();request.requestId='same-owner-request'
+  const original=io.getIssue(request.claim).body,originalHash=createHash('sha256').update(original).digest('hex'),update=io.updateIssue
+  io.updateIssue=()=>{throw new Error('simulated interrupted acceptance')}
+  assert.throws(()=>handoffClaimAuthor(request,NOW,io),/simulated interrupted acceptance/)
+  io.updateIssue=update
+  const ref=[...io.refs.keys()].find(value=>value.startsWith(CLAIM_AUTHOR_HANDOFF_REF_PREFIX)),sha=io.readRef(ref)
+  assert.ok(ref);assert.ok(sha);assert.equal(io.getIssue(request.claim).body,original)
+  const first=JSON.parse(io.getCommit(sha).message.split('db-coordination claim-author-voluntary-handoff ')[1])
+  assert.equal(first.request_id,request.requestId);assert.equal(first.original_body_sha256,originalHash)
+  const reservation=io.readRef('refs/db-claims/'+VERSION),rejectEdited=()=>{
+    const edited=io.getIssue(request.claim).body,refs=[...io.refs]
+    assert.throws(()=>handoffClaimAuthor(request,NOW,io),/original body differs from recorded receipt/)
+    assert.equal(io.getIssue(request.claim).body,edited);assert.deepEqual([...io.refs],refs)
+    assert.equal(io.readRef(ref),sha);assert.equal(io.readRef('refs/db-claims/'+VERSION),reservation)
+  }
+
+  io.issues.get(request.claim).body=original+'\nreviewer trailing prose'
+  rejectEdited()
+  io.issues.get(request.claim).body=original.replace(/^expires_at: .*$/m,'expires_at: 2026-09-28T17:00:00.000Z')
+  assert.notEqual(io.getIssue(request.claim).body,original)
+  rejectEdited()
+
+  io.issues.get(request.claim).body=original
+  const adopted=handoffClaimAuthor(request,NOW,io),adoptedBody=io.getIssue(request.claim).body
+  assert.equal(adopted.idempotent,false);assert.equal(adopted.sha,sha)
+  const replay=handoffClaimAuthor(request,NOW,io)
+  assert.equal(replay.idempotent,true);assert.equal(replay.sha,sha);assert.equal(io.getIssue(request.claim).body,adoptedBody)
+  assert.equal(io.readRef('refs/db-claims/'+VERSION),reservation)
+})
+
+test('stop-author reports its durable completion when both owned mutex release paths fail',()=>{
+  const {io,request,expiry}=voluntaryFixture(),originalDelete=io.deleteRef
+  io.deleteRef=(ref)=>{
+    const owner=io.commits.get(io.readRef(ref))?.message??''
+    if(owner.includes('operation=handoff-ready'))throw new Error('simulated API release failure')
+    return originalDelete(ref)
+  }
+  io.releaseRefOverGit=(ref,sha)=>{
+    if((io.commits.get(sha)?.message??'').includes('operation=handoff-ready'))throw new Error('simulated Git release failure')
+    return false
+  }
+  const stop={issue:request.issue,claim:request.claim,pr:request.pr,headSha:HEAD,owner:request.oldOwner,branch:request.branch,worktree:request.worktree}
+  let caught
+  try{prepareAuthorHandoff(stop,NOW,io)}catch(error){caught=error}
+  assert.ok(caught);assert.match(caught.message,/OPERATION_COMPLETED/);assert.match(caught.message,/API release failed.*git release failed/i)
+  assert.deepEqual(caught.completedResult,{claim:request.claim,version:VERSION,capacityState:'relinquished',handoffReadyRef:caught.completedResult.handoffReadyRef,sha:caught.completedResult.sha,idempotent:false})
+  assert.ok(io.readRef(caught.completedResult.handoffReadyRef));assert.equal(io.getCommit(caught.completedResult.sha).message.startsWith('db-coordination author-handoff-ready '),true)
+  const lease=parseAuthorLease(io.getIssue(request.claim).body,NOW)
+  assert.equal(lease.owner,request.oldOwner);assert.equal(lease.capacityActive,false);assert.equal(lease.expiresAt.toISOString(),expiry.toISOString())
+  assert.equal(io.readRef('refs/db-claims/'+VERSION),RESERVATION)
+  const heldLock=io.readRef('refs/db-coordination/author-acquisition')
+  assert.match(io.getCommit(heldLock).message,/operation=handoff-ready/,'failed cleanup leaves the exact operation lock for named recovery')
+})
+
+test('check-in reports its durable completion when both owned mutex release paths fail',()=>{
+  const {io,request}=voluntaryFixture();handoffClaimAuthor(request,NOW,io)
+  io.orchestratorFlowAdapter=()=>({resolveMarker:()=>({live:true,task:'new-author',calling_task:'new-author'})})
+  const originalDelete=io.deleteRef
+  const messageFor=(sha)=>io.commits.get(sha)?.message??''
+  io.deleteRef=(ref)=>{
+    const owner=messageFor(io.readRef(ref))
+    if(owner.includes('operation=author-checkin'))throw new Error('simulated check-in API release failure')
+    return originalDelete(ref)
+  }
+  io.releaseRefOverGit=(ref,sha)=>{
+    if(messageFor(sha).includes('operation=author-checkin'))throw new Error('simulated check-in Git release failure')
+    return false
+  }
+  const at=new Date(NOW.valueOf()+10*60000),options={issue:request.issue,claim:request.claim,pr:request.pr,headSha:HEAD,owner:request.newOwner,branch:request.branch,worktree:request.targetWorktree}
+  let caught
+  try{checkInAuthor(options,at,io)}catch(error){caught=error}
+  assert.ok(caught);assert.match(caught.message,/OPERATION_COMPLETED/);assert.match(caught.message,/API release failed.*git release failed/i)
+  const completed=caught.completedResult
+  assert.ok(completed);assert.equal(completed.claim,request.claim);assert.equal(completed.checkedInAt,at.toISOString());assert.equal(completed.nextCheckinMinutes,10)
+  assert.ok(io.readRef(completed.checkinRef));assert.ok(io.getCommit(completed.sha).message.startsWith('db-coordination author-checkin '))
+  const heldLock=io.readRef('refs/db-coordination/author-acquisition')
+  assert.match(io.getCommit(heldLock).message,/operation=author-checkin/,'failed cleanup leaves the exact operation lock for named recovery')
+  const lease=parseAuthorLease(io.getIssue(request.claim).body,at)
+  assert.equal(lease.owner,request.newOwner);assert.equal(lease.worktree,request.targetWorktree);assert.equal(lease.expiresAt.valueOf()-at.valueOf(),30*60000)
+  assert.equal(io.readRef('refs/db-claims/'+VERSION),RESERVATION)
+})
+
+test('voluntary handoff reports mutation evidence without rollback when post-write mutex ownership is unreadable',()=>{
+  const {io,request}=voluntaryFixture(),original=io.getIssue(request.claim).body,originalHash=createHash('sha256').update(original).digest('hex')
+  const update=io.updateIssue,read=io.readRef;let claimMutated=false
+  io.updateIssue=(n,change)=>{update(n,change);if(Number(n)===request.claim)claimMutated=true}
+  io.readRef=(ref)=>{if(ref==='refs/db-coordination/author-acquisition'&&claimMutated)throw new Error('simulated unknown mutex ownership');return read(ref)}
+  let caught
+  try{handoffClaimAuthor(request,NOW,io)}catch(error){caught=error}
+  assert.ok(caught);assert.match(caught.message,/ROLLBACK NOT ATTEMPTED because mutex ownership is unknown/)
+  const evidenceText=/MUTATION_EVIDENCE (\{[^\n]+\})/.exec(caught.message)?.[1]
+  assert.ok(evidenceText,'error includes structured mutation evidence')
+  const evidence=JSON.parse(evidenceText),claim=io.getIssue(request.claim),receiptSha=io.readRef(evidence.ref)
+  assert.equal(evidence.claim,request.claim);assert.equal(evidence.mutation_attempted,true);assert.ok(evidence.sha)
+  assert.equal(evidence.original_body_sha256,originalHash)
+  assert.equal(evidence.expected_body_sha256,createHash('sha256').update(claim.body).digest('hex'))
+  assert.equal(parseAuthorLease(claim.body,NOW).owner,request.newOwner);assert.equal(parseAuthorLease(claim.body,NOW).worktree,request.targetWorktree)
+  assert.equal(receiptSha,evidence.sha);assert.equal(io.readRef('refs/db-claims/'+VERSION),RESERVATION)
 })
 
 

@@ -7,6 +7,29 @@ Registered from the #770 successor handoff
 
 ## STATUS
 
+**Amendment B live result — October 12, 2026, 9:15:50 PM EDT.** The single fresh
+run started at 9:07:53 PM EDT and completed at 9:15:19 PM EDT. Production credentials
+were written and kept: backend, item_master, tracking, and data_sync each passed
+session-mode 5432 authentication, wrong-password rejection, and transaction-mode 6543
+authentication. All four same-pid server controls were exact provider `{REDACTED}`
+statements; all four separate statement-sink controls matched the exact current journal
+verifiers. Complete three-source and statement-sink scans passed with zero plaintext
+hits. Logging settings were unchanged. All four dedicated `supabase_runtime_password`
+fields are present, `pending_password` absent, and original fields unchanged.
+Independent postcheck confirmed all four stored verifier digests, journal DONE success,
+restart refusal, no passfile/raw-log files, and preservation of all consumed markers.
+
+Execution stayed on private backend head `7907d10aee3e5bce9fac40d196088f256dd9c5d4`;
+DeepSeek final-check `20261013T010124-3432093-28696` APPROVE with implementer codex,
+report SHA-256 `37fc550a1ab29415243485328f6c10ea1b5a0a81b7e12ee3c7f06a590a34a0b6`;
+native production gate passed. The executed package bound this amended plan at
+`2e5c2bcbcdcb8bb2fce4a1e92207b23a3fab46e5`; this later result-only documentation update
+is not a replacement approval or permission to replay. All 45 real-runtime tests passed
+without skips; reviewer snapshot ran 45 with one disclosed environment skip. Receipt
+SHA-256 `defbd3a4e077ce567996bd09ebb1ee096bc151b958fc8d89d3c93f1e0b457e0e`.
+No private code was pushed, no application was deployed or cut over, and no overall
+#770 acceptance is claimed. Claude owns landing this plan branch; do not merge here.
+
 **Amendment B — provider redaction (October 12, 2026).** Albert's current chat
 brief authorizes the amended positive control and ONE fresh one-shot; owner authority,
 verbatim: "yes, drop the old ban and proceed". The earlier run (Codex session 01a13297,
@@ -21,7 +44,9 @@ literals before storage. The exact stored backend statement at **8:22:50.073 PM 
 October 12, 2026 is `statement: ALTER ROLE designflow_prod_backend_runtime PASSWORD '{REDACTED}'`.
 The ten-character operand is literally `{REDACTED}`. The four issuance lines are
 75/79/76/77 characters for backend/item_master/tracking/data_sync, respectively, too
-short to contain either the 43-character plaintext or the 133-character verifier.
+short to contain either the reported 43-character plaintext or the 133-character verifier.
+The current issuer produces 44 characters including base64 padding; this does not change
+the redaction finding or any control.
 Undo statements use `PASSWORD NULL`. This finding supersedes the earlier unknown
 classification of that ten-character operand; it establishes no plaintext leak.
 

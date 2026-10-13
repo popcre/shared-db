@@ -34,6 +34,11 @@
       "command": "git diff --check origin/main...HEAD",
       "exit_code": 0,
       "evidence": "Root static/whitespace check passed; live-ledger check belongs to CI."
+    },
+    {
+      "command": "node scripts/check-live-proof-probe.mjs",
+      "exit_code": 0,
+      "evidence": "Root executed: outcome #4268 returns to u2giants/popdam3; probe is committed for catalog verification, app owns behavioral proof."
     }
   ],
   "assumptions_resolved": [

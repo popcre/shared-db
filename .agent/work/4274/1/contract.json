@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "generation": 1,
+  "work_issue": 4274,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Provide a manually invoked, bounded, history-only path for one current or future ColdLion sales-order window.",
+  "base_sha": "8be5f2114c6f664a91381ca9b8ee65df81f91537",
+  "dispatcher": "Codex chat 01a12aec-192c-7703-a62c-b2671e88c11d",
+  "worker": "Codex chat 01a12aec-192c-7703-a62c-b2671e88c11d with mechanical acceptance subagent",
+  "branch": "codex/bounded-forward-orderhistory-20261013",
+  "worktree": "/worksp/.worktrees/shared-db-bounded-forward-orderhistory",
+  "allowed_paths": [
+    ".github/workflows/coldlion-history-backfill.yml",
+    "tools/coldlion-landing-history.test.mjs",
+    "tools/coldlion-landing/backfill-history.mjs",
+    ".agent/work/4274/1/contract.json",
+    ".agent/work/4274/1/completion.json"
+  ],
+  "file_writes": [
+    ".github/workflows/coldlion-history-backfill.yml",
+    "tools/coldlion-landing-history.test.mjs",
+    "tools/coldlion-landing/backfill-history.mjs",
+    ".agent/work/4274/1/contract.json",
+    ".agent/work/4274/1/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not backdate publication or claim the implementation began under this contract; the three source files were drafted before publication.",
+    "Do not inherit issue #4268 structural authority; this source maintenance belongs to #4274.",
+    "No database, ColdLion API, production or live actions in this source-authoring task; runtime actions need separate exact-input coordinator review.",
+    "No writes outside the listed source/evidence paths; no schema or application changes.",
+    "No merge or installation without independent exact-head approval and native checks."
+  ],
+  "required_checks": [
+    "node --test tools/coldlion-landing-history.test.mjs",
+    "node --check tools/coldlion-landing/backfill-history.mjs",
+    "python3 -c 'import yaml; yaml.safe_load(open(\".github/workflows/coldlion-history-backfill.yml\"))'",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "Issue #4274 is the root-assigned repo-maintenance source-authoring route; issue #277 remains the application live-proof issue.",
+    "The implementation commit is b805e8fe262faeef7a4c637bcc53b0bb6837ba97, based on 8be5f2114c6f664a91381ca9b8ee65df81f91537.",
+    "The three implementation files predate publication of this contract; this pair records scope and evidence without backdating or inheriting structural authority from issue #4268.",
+    "No database or production action has been performed; future runtime actions require separate root review and authorization."
+  ],
+  "stop_conditions": [
+    "Stop if any required offline check fails.",
+    "Stop if the work needs database access, ColdLion API calls, production activity, or files outside this contract.",
+    "Stop if issue #4274 does not remain the assigned repo-maintenance scope."
+  ]
+}

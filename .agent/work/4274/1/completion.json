@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "work_issue": 4274,
+  "outcome": "ready-for-merge",
+  "pr": 4273,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4274/1",
+  "contract_sha256": "e82f3d34b0ac246d07a47a66d932cdaa0b33cd2b97254ca08c190eace0735086",
+  "base_sha": "8be5f2114c6f664a91381ca9b8ee65df81f91537",
+  "head_sha": "b805e8fe262faeef7a4c637bcc53b0bb6837ba97",
+  "files_changed": [
+    ".github/workflows/coldlion-history-backfill.yml",
+    "tools/coldlion-landing-history.test.mjs",
+    "tools/coldlion-landing/backfill-history.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test tools/coldlion-landing-history.test.mjs",
+      "exit_code": 0,
+      "evidence": "82 tests passed; 0 failed, cancelled, skipped, or todo."
+    },
+    {
+      "command": "node --check tools/coldlion-landing/backfill-history.mjs",
+      "exit_code": 0,
+      "evidence": "Node.js syntax check passed."
+    },
+    {
+      "command": "python3 -c 'import yaml; yaml.safe_load(open(\".github/workflows/coldlion-history-backfill.yml\"))'",
+      "exit_code": 0,
+      "evidence": "PyYAML parsed the workflow successfully."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors."
+    }
+  ],
+  "assumptions_resolved": [
+    "The repo-maintenance source-authoring evidence is assigned to issue #4274; issue #277 remains the application live-proof issue.",
+    "The three implementation files were drafted before publication of this contract; this evidence does not claim pre-work publication or inherit structural authority from issue #4268.",
+    "No database read/write, ColdLion API call or production action occurred. The acceptance subagent performed no review, commit or GitHub write; the coordinator committed implementation b805e8fe before this evidence pair."
+  ],
+  "stop_conditions_hit": []
+}

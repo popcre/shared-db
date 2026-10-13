@@ -54,5 +54,8 @@
     "Two reviews, required CI, governed merge/promotion and application live proof remain separate unverified coordinator delivery gates."
   ],
   "stop_conditions_hit": [],
-  "pr": 4262
+  "pr": 4262,
+  "migration_versions": [
+    "20261013164735"
+  ]
 }

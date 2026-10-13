@@ -1016,7 +1016,7 @@ function withAtomicRefs(io){
 }
 
 test('preferred reviewers include StepFun; paused Grok is never drawn, and the fallback ordering still puts Grok last',()=>{
-  // Owner instruction 2026-10-07: Grok is PAUSED (in RETIRED_REVIEWERS), so it
+  // Owner instruction 2026-10-13: Grok is QUARANTINED (in QUARANTINED_REVIEWERS), so it
   // must never be drawn, not even as the cost fallback. The fallback ordering
   // policy (issue #3592) is still covered through an explicit roster that
   // includes the preserved grok-4.6 REVIEWERS row.
@@ -2135,7 +2135,7 @@ test('three terminal providers do not grow replacement preflight past the fixed 
 test('released slot-2 replacement with slot-1 approval and a reinstated reviewer fits the 25-request budget (#2550)',()=>{
   const io=doctoredIo(),request={issue:2550,pr:2551,headSha:'25'.repeat(20)}
   // Reproduce the live eligibility history (then Grok, now the first rotation
-  // reviewer since grok-4.6 was paused 2026-10-07): it was excluded as terminally
+  // reviewer since grok-4.6 was quarantined 2026-10-13): it was excluded as terminally
   // unavailable, then returned to this PR only through fresh wrapper-doctor
   // proof. The original exclusion remains immutable beside its reinstatement.
   const excluded=excludeFor(io,{issue:request.issue,pr:request.pr,reason:'terminal-unavailable'})
@@ -2171,7 +2171,7 @@ test('released slot-2 replacement with slot-1 approval and a reinstated reviewer
   // (kimi-k3's 2026-09-22 pause removed one name; qwen-3.8-max holds slot 1 and
   // muse-1.3 already failed on this head and gemini was released, so
   // deepseek-v4.1-flash and stepfun-step-5-preview need busy leases to force
-  // the wrap to the reinstated glm-5.3; grok-4.6 is paused since 2026-10-07.)
+  // the wrap to the reinstated glm-5.3; grok-4.6 is quarantined since 2026-10-13.)
   const busyReviewers=['deepseek-v4.1-flash','stepfun-step-5-preview']
   for(const [index,name] of busyReviewers.entries()){
     const busySha=io.makeOwnerCommit(`db-coordination reviewer-lease generation=1 reviewer=${name} issue=9550 pr=${busyPr} head=${busyHead} sequence=${9550+index}`)
@@ -2689,7 +2689,7 @@ test('reviewer replacement rejects a mismatched original assignment',()=>{
 // is a false invariant, and it is deliberately not asserted here. Both halves are
 // pinned below, with the exact successor named in each case.
 test('one intervening assignment gives a failed reviewer a named replacement',()=>{
-  assert.equal(ACTIVE_REVIEWERS.length,6,'this test describes the approved six-reviewer rotation (qwen-3.8-max restored 2026-09-30; kimi-k3 paused 2026-09-22; stepfun-step-5-preview added 2026-09-23; grok-4.6 paused 2026-10-07)')
+  assert.equal(ACTIVE_REVIEWERS.length,6,'this test describes the approved six-reviewer rotation (glm-5.3 restored 2026-09-30; kimi-k3 paused 2026-09-22; deepseek-v4.1-flash added 2026-09-23; stepfun-step-5-preview added 2026-09-25; grok-4.6 quarantined 2026-10-13)')
   const io=failedReviewIo()
   assignNextReviewer({issue:10,pr:110,headSha:'abcdefa'},io)
   const replacement=replaceFailedReviewer(replacementRequest,io)
@@ -2697,7 +2697,7 @@ test('one intervening assignment gives a failed reviewer a named replacement',()
 })
 
 test('N-1 intervening assignments skip the failed provider instead of stranding the replacement',()=>{
-  assert.equal(ACTIVE_REVIEWERS.length,6,'this test describes the approved six-reviewer rotation (qwen-3.8-max restored 2026-09-30; kimi-k3 paused 2026-09-22; stepfun-step-5-preview added 2026-09-23; grok-4.6 paused 2026-10-07)')
+  assert.equal(ACTIVE_REVIEWERS.length,6,'this test describes the approved six-reviewer rotation (glm-5.3 restored 2026-09-30; kimi-k3 paused 2026-09-22; deepseek-v4.1-flash added 2026-09-23; stepfun-step-5-preview added 2026-09-25; grok-4.6 quarantined 2026-10-13)')
   const io=failedReviewIo()
   for(let n=0;n<ACTIVE_REVIEWERS.length-1;n+=1){
     assignNextReviewer({issue:20+n,pr:120+n,headSha:`abcde${n}f`},io)
@@ -2839,9 +2839,9 @@ test('review lease age is truthful for known and unknown commit dates',()=>{
 
 test('capacity report classifies free, live, stale, aged, and unknown leases without mutation',()=>{
   const io=reviewIo(),snapshot=new Map(),states=new Map(),now=new Date('2026-09-02T12:00:00Z')
-  // One case per active reviewer: six after grok-4.6 was paused on 2026-10-07
-  // (qwen-3.8-max restored 2026-09-30; stepfun-step-5-preview added
-  // 2026-09-23; kimi-k3 paused 2026-09-22). 'moved'
+  // One case per active reviewer: six after grok-4.6 was quarantined on 2026-10-13
+  // (glm-5.3 restored 2026-09-30; deepseek-v4.1-flash added 2026-09-23;
+  // stepfun-step-5-preview added 2026-09-25; kimi-k3 paused 2026-09-22). 'moved'
   // and 'verdict' both reach 'stale-reclaimable' but by different routes, and
   // both are proved: 'verdict' occupies a slot here, and 'moved' is proved
   // below by moving a head under a lease that this pass classified as live.
@@ -2876,7 +2876,7 @@ test('capacity report classifies free, live, stale, aged, and unknown leases wit
   states.set(heads.get(0),livePair)
   // 'free' is the fifth classification and it is a property of an ABSENT lease, so
   // it is proved by removing one rather than by needing a spare roster name.
-  // The last roster name (stepfun-step-5-preview since grok-4.6 was paused 2026-10-07) is the one freed.
+  // The last roster name (stepfun-step-5-preview since grok-4.6 was quarantined 2026-10-13) is the one freed.
   const freed=ACTIVE_REVIEWERS.at(-1).name
   snapshot.delete(reviewActiveRef(freed));io.refs.delete(reviewActiveRef(freed))
   const withFree=reviewerCapacityReport(io,now)

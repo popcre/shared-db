@@ -7,6 +7,45 @@ Registered from the #770 successor handoff
 
 ## STATUS
 
+**Amendment B — provider redaction (October 12, 2026).** Albert's current chat
+brief authorizes the amended positive control and ONE fresh one-shot; owner authority,
+verbatim: "yes, drop the old ban and proceed". The earlier run (Codex session 01a13297,
+[#770 comment 6135641172](https://github.com/popcre/shared-db/issues/770#issuecomment-6135641172))
+issued all four credentials and passed all four session/wrong-password/transaction proof
+sets, then expired at RETRY_WINDOW_EXPIRED and verified journal-owned undo. Claude
+independently re-verified all four passwords NULL at approximately 8:55 PM EDT.
+
+Provider finding, established by Claude's supported read-only Supabase logs query and
+supplied in Albert's chat brief: the provider log pipeline rewrites PASSWORD string
+literals before storage. The exact stored backend statement at **8:22:50.073 PM EDT** on
+October 12, 2026 is `statement: ALTER ROLE designflow_prod_backend_runtime PASSWORD '{REDACTED}'`.
+The ten-character operand is literally `{REDACTED}`. The four issuance lines are
+75/79/76/77 characters for backend/item_master/tracking/data_sync, respectively, too
+short to contain either the 43-character plaintext or the 133-character verifier.
+Undo statements use `PASSWORD NULL`. This finding supersedes the earlier unknown
+classification of that ten-character operand; it establishes no plaintext leak.
+
+**Amended step 7 (blocking):** for each role require exactly one server-log statement
+from issuing session S's pid in the complete issuance window. The statement portion must
+be byte-exact `statement: ALTER ROLE <role> PASSWORD '{REDACTED}'`; standard provider
+prefixes may precede `statement:`. Also accept the verifier-form statement only if its
+operand equals that role's exact journal verifier. Any other operand/form, missing line,
+duplicate matching-role line, or wrong pid fails. Independently require the exact
+`ALTER ROLE <role> PASSWORD '<journal verifier>'` text in `pg_stat_statements` for
+**each** role; a normalized `$1`, another verifier, or another role cannot substitute.
+Retain complete count/read/count windows for all three sources and recursive plaintext
+scans over the entire window and statement sink: zero hits. No raw response persistence,
+log-setting change, logging suppression, permission change, credential exposure, or
+weakened undo/journal/privacy control is authorized. Tests exercise exact `{REDACTED}`,
+exact/mismatched verifier, all other forms, missing/duplicate/wrong-pid controls,
+per-role statement-sink equality, and whole-window plaintext rejection.
+
+The new private package requires fresh exact-head DeepSeek final-check APPROVE with
+`--implementer codex`, then the native production gate, before its sole fresh invocation.
+Every earlier marker stays consumed and immutable. Only dedicated `supabase_runtime_password`
+fields may be promoted; existing fields remain protected. This plan branch is updated
+without merge; Claude owns landing. Broader #770 cutover obligations remain separate.
+
 **Amendment A (2026-10-12, after the first stage-B launch).** The one-shot stage-B launch at
 4:18 PM EDT stopped at the admin connection with no write (#770 comment 6132379006, recorded
 classification verbatim: "admin-connection: STAGE_B_PREFLIGHT_ABORTED /
@@ -94,10 +133,10 @@ else is unchanged.
 A fresh one-shot packet and exact-input review are required; the consumed launcher is never
 replayed.
 
-Revision 9 + Amendment A (stage B launched once at 4:18 PM EDT and aborted before any write; see Amendment A). Revisions 1–8 got DeepSeek plan-review REJECT (runs
+Revision 9 + Amendments A and B (historical initial no-write launch in Amendment A; subsequent written/authenticated/undone run and current proof correction in Amendment B). Revisions 1–8 got DeepSeek plan-review REJECT (runs
 20261012T181315-1768589-27011, 20261012T181704-2222882-23133 and
 20261012T182121-2343611-840, 20261012T182543-2382833-1180, 20261012T182919-2411551-20984, 20261012T183435-2457811-16013, 20261012T183851-2493077-780, all "method sound in
-principle"); every finding is answered below. Stage A has run (isolated only); stage B ran once and wrote nothing.
+principle"); every finding is answered below. Stage A has run (isolated only); stage B history and current scope are recorded in Amendments A and B.
 
 **Task classes.** (`ai-task-gates start --class CLASS [--reason TEXT] [--base REF]` is the
 installed toolkit's documented syntax.) Stage A runs in the private designflow-backend #770 worktree under
@@ -284,8 +323,8 @@ No plaintext password ever appears in provider logs, pooler logs, client logs, a
 environment (`PGPASSWORD`, `/proc/<pid>/environ`), connection strings/DSNs, transcripts or Git
 during this issuance action (steps 1–8). Later routine service logins are SCRAM exchanges in
 which the plaintext never leaves the client; the services' own handling of their secret is the
-existing DesignFlow secret-manager path and is out of this plan's scope — on success or failure. SCRAM verifiers do appear in the server log and
-`pg_stat_statements`; a verifier alone cannot log in, and becomes usable only together with a
+existing DesignFlow secret-manager path and is out of this plan's scope — on success or failure. SCRAM verifiers appear in `pg_stat_statements`; the provider server log stores
+`{REDACTED}` for PASSWORD literals (Amendment B), while isolated PG17 retains verifier text; a verifier alone cannot log in, and becomes usable only together with a
 successful server impersonation of a client. That residual is accepted **only** while every
 client verifies the pinned Supabase CA, which stage B makes a blocking gate on the deployed
 images. If any client stops verifying, the verifiers must be treated as compromised and the four
@@ -399,18 +438,16 @@ passwords rotated.
    credential-free probe completed TLS 1.3 verify-full against the pinned root on the pooler
    (`HANDOFF.d/2026-10-09T0400Z-...:60`), and each run of 6(c) uses verify-full with that
    pinned CA. Any failure = undo.
-7. **Log proof on production** — fetch the **entire** provider Postgres log window from
-   1 minute before the transaction to 5 minutes after (well inside retention) through the
-   supported log API into protected custody, and scan it locally. **Positive control first:**
-   exactly one `ALTER ROLE` statement line naming each of the four roles must be present,
-   matched by role name **and** by session S's backend pid (captured in preflight (3) and re-checked inside step 5)
-   so unrelated `ALTER ROLE` activity in the window cannot satisfy or break it (poll every 60 s
-   until max(15 minutes, 3× the preflight (3) lag), per Amendment A requirement 4). Then: each plaintext occurs
-   zero times; each of those lines contains its verifier and nothing password-like. Also read
-   the `pg_stat_statements` row(s) for `ALTER ROLE`: at least one row must exist; record its
-   stored text form (verbatim verifier or normalized `$1`) and scan it the same way. If the
-   positive control is not met within that window, or the window cannot be fetched in full, the
-   proof is failed: step 8 undo runs (fail closed), then stop.
+7. **Log proof on production** — fetch the **entire** provider Postgres and pooler log
+   windows from one minute before the transaction to five minutes after through the
+   supported API. Apply Amendment B's exact per-role, same-session-pid server-log
+   control: one literal `{REDACTED}` statement, or one exact journal-verifier statement.
+   Every other operand/form, missing/duplicate/wrong-pid control fails. Poll within
+   max(15 minutes, 3× measured preflight lag), retaining the existing bounds. Require
+   each role's exact journal verifier in `pg_stat_statements`, never normalized `$1`
+   alone. Scan all complete source windows and statement rows recursively for all
+   registered plaintext: zero hits. Keep raw response bodies in process memory only.
+   Unavailable/incomplete windows or unmet controls fail closed into step 8 undo.
 8. **Undo** — `ALTER ROLE <role> PASSWORD NULL` for the four roles returns exactly to the
    step-4 proved pre-state (all NULL); runs automatically if any step-6 or step-7 gate fails
    (a step-5 error inside the transaction rolls back and needs no undo; the format-only query
@@ -442,7 +479,7 @@ pinned CA.
 ## Success check
 
 All four roles authenticate through Supavisor session mode (5432) and transaction mode (6543) with their 1Password secrets; wrong
-passwords fail; provider logs show only verifiers; logging settings unchanged; the separately
+passwords fail; provider logs satisfy Amendment B and show no plaintext; logging settings unchanged; the separately
 closed credential incident untouched.
 
 ## Not in scope

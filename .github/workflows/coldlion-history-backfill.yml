@@ -17,6 +17,12 @@ name: ColdLion History Backfill
 on:
   workflow_dispatch:
     inputs:
+      job:
+        description: 'history = load unloaded windows; order-stamps = re-read /orderHistory and update only the four ColdLion stamp columns (issue #4150)'
+        type: choice
+        required: false
+        default: 'history'
+        options: ['history', 'order-stamps']
       from:
         description: 'Earliest date to reach back to (YYYY-MM-DD)'
         required: true
@@ -106,8 +112,18 @@ jobs:
           ENDPOINT: ${{ github.event.inputs.endpoint }}
           STAGE: ${{ github.event.inputs.stage }}
           DRY_RUN: ${{ github.event.inputs.dry_run }}
+          JOB: ${{ github.event.inputs.job }}
         run: |
           set -euo pipefail
+          if [ "${JOB:-history}" = "order-stamps" ]; then
+            # Stamp-only backfill (issue #4150): one 7-day window per transaction, UPDATE of
+            # created_time/created_user/mod_time/mod_user only, no inserts, no ledger writes.
+            ARGS=(--from "$FROM")
+            if [ -n "${TO:-}" ]; then ARGS+=(--to "$TO"); fi
+            if [ "${DRY_RUN:-false}" = "true" ]; then ARGS+=(--dry-run); fi
+            node tools/coldlion-landing/backfill-order-stamps.mjs "${ARGS[@]}"
+            exit 0
+          fi
           ARGS=(--from "$FROM" --limit "${LIMIT:-40}")
           if [ -n "${TO:-}" ]; then ARGS+=(--to "$TO"); fi
           if [ "${ENDPOINT:-all}" != "all" ]; then ARGS+=(--endpoint "$ENDPOINT"); fi

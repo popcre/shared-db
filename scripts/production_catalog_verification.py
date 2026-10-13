@@ -1028,6 +1028,7 @@ def designflow_fk_contract(expected: tuple[tuple[str, str, str, str, str], ...])
 CATALOG_CONTRACTS = {
     # Issue2336: selected current/history lifecycle and private physical engine.
     "licensing_support_forward_v2": r"""
+select exists (
 with pairs(pair_table,edge_table,left_col,right_col,auth_read,service_read,check_name,check_def) as (values
 ('core.property_character_associations','core.property_character_source_edge','property_id','character_id',true,true,'property_character_associations_lifecycle_chk','CHECK (((is_current AND (retired_at IS NULL) AND (retired_reason IS NULL)) OR ((NOT is_current) AND (retired_at IS NOT NULL) AND (NULLIF(btrim(retired_reason), ''''::text) IS NOT NULL))))'),
 ('core.property_style_guide','core.property_style_guide_source_edge','property_id','style_guide_id',true,true,'property_style_guide_lifecycle_chk','CHECK (((is_current AND (retired_at IS NULL) AND (retired_reason IS NULL)) OR ((NOT is_current) AND (retired_at IS NOT NULL) AND (NULLIF(btrim(retired_reason), ''''::text) IS NOT NULL))))'),
@@ -1162,6 +1163,8 @@ and (select count(*) from pg_constraint c where c.conrelid=to_regclass('plm.lice
 and (select count(*) from pg_constraint c where c.conrelid=to_regclass('plm.licensing_consolidation_plan')
  and c.conname='licensing_consolidation_plan_identity_uq' and c.contype='u' and c.convalidated and not c.condeferrable and not c.condeferred
  and pg_get_constraintdef(c.oid)='UNIQUE (source_system, capture_id, plan_hash)')=1
+
+)
 """,
     # #3907/#4010: guarded ALTER statements inside DO blocks are opaque to the
     # statement-head lexer. Hash-bound sidecars require these exact inventories.

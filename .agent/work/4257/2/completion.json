@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "work_issue": 4257,
+  "outcome": "ready-for-merge",
+  "reason": "Scoped implementation and local checks complete; independent exact-head reviews, CI, governed promotion and production live acceptance are separate coordinator gates.",
+  "contract_ref": "refs/db-contracts/4257/2",
+  "contract_sha256": "d8f7e95e5feead78085cf6e577213b204839cab77be9b1ddbddc638ee1b88a60",
+  "head_sha": "05fdfaaefd8e2b418443c701f0c7ef14f0ae2130",
+  "base_sha": "dc6636aadc871597b3ef77067d0650a00ed77691",
+  "files_changed": [
+    ".github/live-proofs/4257.sql",
+    "docs/business-rules/erp-orders-and-source-meaning.md",
+    "supabase/migrations/20261013164735_production_po_no_reuse.sql",
+    "supabase/tests/production_po_no_reuse.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "table plm.production_order",
+    "table plm.production_po_reservation",
+    "table plm.production_po_legacy_admission",
+    "function plm.normalize_production_po_number",
+    "function plm.guard_production_po_number",
+    "trigger production_po_no_reuse on plm.production_order"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL checks passed; no live ledger was configured locally, which CI must independently check."
+    },
+    {
+      "command": "PostgreSQL network-isolated disposable test of supabase/tests/production_po_no_reuse.sql",
+      "exit_code": 0,
+      "evidence": "docker exec -i codex-po-no-reuse-01a12aec psql -U postgres -d normalized_test -v ON_ERROR_STOP=1 < supabase/tests/production_po_no_reuse.sql: BEGIN / DO / ROLLBACK passed. Network-none PostgreSQL15 fixture includes canonical source_id. Separate concurrent contenders: one commit, one production_po_no_reuse rejection. Pre-cutover duplicate fixture: all raw header JSON equal before/after, two headers and one reservation."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Owned implementation and evidence whitespace checks passed."
+    },
+    {
+      "command": "node scripts/check-live-proof-probe.mjs",
+      "exit_code": 0,
+      "evidence": "Application-returning outcome exempt from shared-db-only required probe. Committed probe independently passes probeShapeProblem=null and local execution returns one passed=true column."
+    }
+  ],
+  "assumptions_resolved": [
+    "Canonical source-key INSERT ON CONFLICT is not used by any current audited writer; exact-ID retry is supported, new source identities cannot reuse a number.",
+    "Existing historical duplicate headers remain byte-for-byte unchanged in pre-cutover test.",
+    "POSIX surrounding whitespace and NBSP normalize along with case; punctuation and leading zeros remain significant.",
+    "This implementation was drafted before prospective contract publication, as disclosed in contract.",
+    "No production or shared-preview database was read or mutated during implementation tests.",
+    "Two reviews, required CI, governed merge/promotion and application live proof remain separate unverified coordinator delivery gates."
+  ],
+  "stop_conditions_hit": [],
+  "pr": 4262,
+  "migration_versions": [
+    "20261013164735"
+  ]
+}

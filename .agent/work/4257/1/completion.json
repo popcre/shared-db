@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "work_issue": 4257,
+  "outcome": "returned",
+  "reason": "The evidence pair is prepared, but the scoped database work is not ready for acceptance: the migration and business-rule draft predate this prospective contract; the isolated PostgreSQL test, two independent reviews, CI, and live proof have not been verified.",
+  "contract_ref": "refs/db-contracts/4257/1",
+  "contract_sha256": "835246639aa1eca37ea953f2a5935f61c251db51ac91251c88ef4da1bef2c9e5",
+  "head_sha": "dc6636aadc871597b3ef77067d0650a00ed77691",
+  "base_sha": "dc6636aadc871597b3ef77067d0650a00ed77691",
+  "files_changed": [
+    ".github/live-proofs/4257.sql",
+    "docs/business-rules/erp-orders-and-source-meaning.md",
+    "supabase/migrations/20261013164735_production_po_no_reuse.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node scripts/agent-work-contract.mjs --validate-contract --contract-file .agent/work/4257/1/contract.json",
+      "exit_code": 0,
+      "evidence": "The prospective contract passed the repository contract validator."
+    }
+  ],
+  "assumptions_resolved": [
+    "The branch HEAD equals the contract base SHA.",
+    "The migration and business-rule draft were already present before contract preparation; no work was backdated.",
+    "No database reads or writes, isolated PostgreSQL test, independent review, CI run, merge, or live proof was performed or verified in this step."
+  ],
+  "stop_conditions_hit": []
+}

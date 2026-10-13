@@ -18,16 +18,16 @@ on:
   workflow_dispatch:
     inputs:
       job:
-        description: 'history = load unloaded windows; order-stamps = re-read /orderHistory and update only the four ColdLion stamp columns (issue #4150)'
+        description: 'history = load unloaded closed windows; order-stamps = update stamps only; order-history-window = one open/future 7-day /orderHistory window only'
         type: choice
         required: false
         default: 'history'
-        options: ['history', 'order-stamps']
+        options: ['history', 'order-stamps', 'order-history-window']
       from:
-        description: 'Earliest date to reach back to (YYYY-MM-DD)'
+        description: 'History/order-stamps: earliest date to reach back to. Order-history-window: exact start of the 7-day grid window. (YYYY-MM-DD)'
         required: true
       to:
-        description: 'Latest date (YYYY-MM-DD). Clamped to the newest CLOSED window.'
+        description: 'For history/order-stamps: latest date, clamped to a closed window. For order-history-window: exact inclusive end of the one 7-day grid window.'
         required: false
       limit:
         description: 'Maximum window/scope pairs to load in this run'
@@ -95,6 +95,11 @@ jobs:
             printf '%s' "$TO" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' \
               || { echo "::error::to must be YYYY-MM-DD."; exit 1; }
           fi
+          if [ "${JOB:-history}" = "order-history-window" ]; then
+            [ -n "${TO:-}" ] || { echo "::error::order-history-window requires an explicit to date."; exit 1; }
+            [ "${ENDPOINT:-all}" = "all" ] || [ "${ENDPOINT:-all}" = "/orderHistory" ] || { echo "::error::order-history-window is limited to /orderHistory."; exit 1; }
+            [ "${STAGE:-all}" = "all" ] || { echo "::error::order-history-window has no stage dimension."; exit 1; }
+          fi
           # The grid is anchored at 2019-01-01 and the database refuses anything before it.
           if [[ "$FROM" < "2019-01-01" ]]; then
             echo "::error::from is before the 2019-01-01 grid anchor."; exit 1
@@ -122,6 +127,12 @@ jobs:
             if [ -n "${TO:-}" ]; then ARGS+=(--to "$TO"); fi
             if [ "${DRY_RUN:-false}" = "true" ]; then ARGS+=(--dry-run); fi
             node tools/coldlion-landing/backfill-order-stamps.mjs "${ARGS[@]}"
+            exit 0
+          fi
+          if [ "${JOB:-history}" = "order-history-window" ]; then
+            ARGS=(--from "$FROM" --to "$TO" --endpoint /orderHistory --company EDGEHOME --unsealed-order-window)
+            if [ "${DRY_RUN:-false}" = "true" ]; then ARGS+=(--dry-run); fi
+            node tools/coldlion-landing/backfill-history.mjs "${ARGS[@]}"
             exit 0
           fi
           ARGS=(--from "$FROM" --limit "${LIMIT:-40}")

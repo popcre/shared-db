@@ -279,6 +279,75 @@ function voluntaryFixture(){
   const request={...args,authorizationChatId:'old-author',recipientChatId:'new-author',worktreeState:'clean',recoveryArtifact:artifact};delete request.abandonmentIssue;delete request.leaseHours
   return {io,request,expiry}
 }
+
+test('native CLI refuses malformed request IDs and retries an expired handoff receipt only under a fresh ID',()=>{
+  const {io,request}=voluntaryFixture(),dir=mkdtempSync(join(tmpdir(),'handoff-request-'))
+  const quoteFile=join(dir,'quote.txt');writeFileSync(quoteFile,QUOTE+'\n')
+  const stop=prepareAuthorHandoff({issue:request.issue,claim:request.claim,pr:request.pr,headSha:HEAD,owner:request.oldOwner,branch:request.branch,worktree:request.worktree},NOW,io)
+  io.orchestratorFlowAdapter=()=>({resolveMarker:()=>({live:true,task:'new-author',calling_task:'new-author'})})
+  const argv=(requestId)=>['--handoff-claim-author','--issue',String(request.issue),'--claim-number',String(request.claim),'--pr',String(request.pr),
+    '--head-sha',HEAD,'--old-owner',request.oldOwner,'--new-owner',request.newOwner,'--branch',request.branch,
+    '--worktree',request.worktree,'--target-worktree',request.targetWorktree,'--worktree-state','clean',
+    '--authorization-chat-id','new-author','--authorization-quote-file',quoteFile,'--recovery-artifact',request.recoveryArtifact,
+    '--recipient-chat-id',request.recipientChatId,'--handoff-ready-ref',stop.handoffReadyRef,'--request-id',requestId]
+  const log=console.log,error=console.error,originalUpdate=io.updateIssue
+  let errors=[];console.log=()=>{};console.error=(message)=>errors.push(String(message))
+  try{
+    const stoppedBody=io.getIssue(request.claim).body
+    assert.equal(main(argv('bad request id'),NOW,io),2)
+    assert.match(errors.at(-1),/request ID has invalid shape/)
+    assert.equal(io.getIssue(request.claim).body,stoppedBody)
+    assert.equal([...io.refs.keys()].filter(ref=>ref.startsWith(CLAIM_AUTHOR_HANDOFF_REF_PREFIX)).length,0)
+
+    io.updateIssue=()=>{throw new Error('simulated interrupted acceptance')}
+    assert.equal(main(argv('first-attempt'),NOW,io),2)
+    io.updateIssue=originalUpdate
+    assert.match(errors.at(-1),/simulated interrupted acceptance/)
+    assert.equal(io.getIssue(request.claim).body,stoppedBody)
+    const firstRef=[...io.refs.keys()].find(ref=>ref.startsWith(CLAIM_AUTHOR_HANDOFF_REF_PREFIX))
+    assert.ok(firstRef)
+    const firstSha=io.refs.get(firstRef),firstRecord=JSON.parse(io.getCommit(firstSha).message.split('claim-author-voluntary-handoff ')[1])
+    assert.equal(firstRecord.request_id,'first-attempt')
+    assert.equal(firstRecord.expires_at,new Date(NOW.valueOf()+30*60000).toISOString())
+
+    const later=new Date(NOW.valueOf()+31*60000)
+    assert.equal(main(argv('first-attempt'),later,io),2)
+    assert.equal(io.getIssue(request.claim).body,stoppedBody)
+    assert.equal(io.refs.get(firstRef),firstSha)
+    assert.equal(main(argv('retry-after-expiry'),later,io),0)
+    const records=[...io.refs].filter(([ref])=>ref.startsWith(CLAIM_AUTHOR_HANDOFF_REF_PREFIX))
+    assert.equal(records.length,2)
+    assert.equal(io.refs.get(firstRef),firstSha)
+    const second=[...records].find(([ref])=>ref!==firstRef)
+    const secondRecord=JSON.parse(io.getCommit(second[1]).message.split('claim-author-voluntary-handoff ')[1])
+    assert.equal(secondRecord.request_id,'retry-after-expiry')
+    assert.equal(secondRecord.expires_at,new Date(later.valueOf()+30*60000).toISOString())
+    const lease=parseAuthorLease(io.getIssue(request.claim).body,later)
+    assert.equal(lease.owner,request.newOwner);assert.equal(lease.worktree,request.targetWorktree);assert.equal(lease.capacityState,'active')
+    assert.equal(lease.expiresAt.toISOString(),secondRecord.expires_at)
+    assert.equal(lease.version,VERSION);assert.deepEqual(lease.objects,['table plm.art_piece_attachment'])
+    assert.equal(io.readRef('refs/db-claims/'+VERSION),RESERVATION)
+  }finally{io.updateIssue=originalUpdate;console.log=log;console.error=error;rmSync(dir,{recursive:true,force:true})}
+})
+
+test('legacy 24-hour operator receipts remain readable but new grants stay capped at thirty minutes',()=>{
+  const io=fixture(),first=transferClaimAuthor(args,NOW,io),claim=io.issues.get(3378)
+  const legacyExpiry=new Date(NOW.valueOf()+24*3600000).toISOString()
+  claim.body=claim.body.replace(/^expires_at: .*$/m,`expires_at: ${legacyExpiry}`)
+  const prefix='db-coordination claim-author-operator-adoption ',commit=io.commits.get(first.sha)
+  const record=JSON.parse(commit.message.slice(prefix.length));record.lease_hours=24;commit.message=prefix+JSON.stringify(record)
+
+  // The public replay reaches the exact-record comparison only if transferRecord
+  // still accepts the historical <=24-hour shape; it must not misclassify it as
+  // malformed merely because new grants have a tighter bound.
+  assert.throws(()=>transferClaimAuthor(args,NOW,io),/existing operator adoption record differs from exact request/)
+  const before=claim.body,refs=[...io.refs]
+  assert.throws(()=>transferClaimAuthor({...args,leaseHours:12},NOW,io),/author transfer requires exact issue, claim, PR, head, old\/new owner, branch, old\/new worktree, old worktree state, abandonment issue, and lease hours/)
+  assert.equal(claim.body,before);assert.deepEqual([...io.refs],refs)
+  assert.equal(io.refs.get(first.ref),first.sha)
+  assert.equal(parseAuthorLease(claim.body,NOW).expiresAt.toISOString(),legacyExpiry)
+})
+
 test('voluntary original-owner handoff works hours before expiry without audit, preserves exact expiry and source protections, replays once',()=>{
   const {io,request,expiry}=voluntaryFixture(),before=parseAuthorLease(io.getIssue(3378).body,NOW),get=io.getIssue
   io.getIssue=n=>{assert.notEqual(Number(n),900,'voluntary transfer must not read an abandonment audit');return get(n)}

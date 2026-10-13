@@ -337,6 +337,36 @@ insert into plm.source_resolution(source_system,entity_kind,source_id,core_chara
 insert into plm.source_resolution(source_system,entity_kind,source_id,core_style_guide_id,resolution_status) values('paramount','style_guide','0009','23360000-0000-0000-0000-000000000005','matched');
 insert into plm.licensing_source_scope values('23360000-0000-0000-0000-000000000001','paramount','canonical_identity','entity','property',now(),'synthetic test'),('23360000-0000-0000-0000-000000000001','paramount','canonical_identity','entity','character',now(),'synthetic test'),('23360000-0000-0000-0000-000000000001','paramount','canonical_identity','entity','style_guide',now(),'synthetic test'),('23360000-0000-0000-0000-000000000001','paramount','relationship_evidence','relationship','property_character',now(),'synthetic test'),('23360000-0000-0000-0000-000000000001','paramount','relationship_evidence','relationship','property_style_guide',now(),'synthetic test');
 do $test$ declare p plm.licensing_consolidation_plan;q plm.licensing_consolidation_plan;r plm.licensing_consolidation_plan;rejected boolean:=false;native_capture uuid;native_table text;phase integer;pair_id uuid;pair_created timestamptz;baseline jsonb;begin
+ -- Native output boundary: 505 additional matched characters plus seven base
+ -- operations makes exactly512. One further result refuses the entire plan;
+ -- input qualification is unchanged and no actual consolidation is performed.
+ begin
+  insert into core.character(id,licensor_id,name)
+   select md5('ZZ2336-output-bound-'||n)::uuid,'23360000-0000-0000-0000-000000000001','ZZ2336 output bound '||n from generate_series(1,505) n;
+  insert into plm.pmt_character(capture_id,character_source_id,character_name,source_hash)
+   select '23360000-0000-0000-0000-000000000020',(900000+n)::text,'ZZ2336 output bound '||n,repeat('e',64) from generate_series(1,505) n;
+  insert into plm.source_resolution(source_system,entity_kind,source_id,core_character_id,resolution_status)
+   select 'paramount','character',(900000+n)::text,md5('ZZ2336-output-bound-'||n)::uuid,'matched' from generate_series(1,505) n;
+  p:=plm.plan_licensing_consolidation('paramount','23360000-0000-0000-0000-000000000020');
+  if p.plan_status<>'preview' or jsonb_array_length(p.operations)<>512 then raise exception 'exact512 output boundary lost';end if;
+  insert into core.character(id,licensor_id,name) values(md5('ZZ2336-output-bound-506')::uuid,'23360000-0000-0000-0000-000000000001','ZZ2336 output bound 506');
+  insert into plm.pmt_character(capture_id,character_source_id,character_name,source_hash) values('23360000-0000-0000-0000-000000000020','900506','ZZ2336 output bound 506',repeat('e',64));
+  insert into plm.source_resolution(source_system,entity_kind,source_id,core_character_id,resolution_status) values('paramount','character','900506',md5('ZZ2336-output-bound-506')::uuid,'matched');
+  p:=plm.plan_licensing_consolidation('paramount','23360000-0000-0000-0000-000000000020');
+  if p.plan_status<>'refused' or p.refusal_reason<>'consolidation whole plan exceeds512operations'
+   or not p.capture_complete or not p.source_scope_checked or p.operations<>'[]'::jsonb or p.rollback_operations<>'[]'::jsonb
+   or p.capture_snapshot->'capture_complete'<>'true'::jsonb or p.capture_snapshot->'source_scope_checked'<>'true'::jsonb
+   or exists(select 1 from core.taxonomy_source_ref where source_system='paramount') then raise exception '513 output refusal partialwrites or gate facts';end if;
+  raise notice 'Native512 preview/513 whole-output refusal, zero writes and truthful qualified gates PASS';
+  raise exception using errcode='Z2336',message='roll back native output boundary fixture';
+ exception when sqlstate 'Z2336' then null;end;
+ begin
+  delete from plm.licensing_source_scope where source_system='paramount' and scope_axis='entity' and permitted_kind='character';
+  p:=plm.plan_licensing_consolidation('paramount','23360000-0000-0000-0000-000000000020');
+  if p.plan_status<>'refused' or not p.capture_complete or p.source_scope_checked or p.operations<>'[]'::jsonb then raise exception 'qualified capture/missing authority facts false';end if;
+  raise notice 'Complete capture with missing current authority records true/false gate facts PASS';
+  raise exception using errcode='Z2336',message='roll back native missing authority fixture';
+ exception when sqlstate 'Z2336' then null;end;
  -- A real two-rename qualified capture must refuse during planning, while
  -- its explicit filtered plans remain usable under the unchanged single-use key.
  begin
@@ -357,7 +387,7 @@ do $test$ declare p plm.licensing_consolidation_plan;q plm.licensing_consolidati
   end loop;
   insert into plm.source_resolution(source_system,entity_kind,source_id,core_property_id,resolution_status) values('paramount','property','0010','23360000-0000-0000-0000-000000000003','matched');
   p:=plm.plan_licensing_consolidation('paramount',native_capture);
-  if p.plan_status<>'refused' or p.refusal_reason not like '%more than one property rename%' or p.operations<>'[]'::jsonb
+  if p.plan_status<>'refused' or not p.capture_complete or p.source_scope_checked or p.refusal_reason not like '%more than one property rename%' or p.operations<>'[]'::jsonb
      or exists(select 1 from core.taxonomy_source_ref where source_system='paramount') then raise exception 'two-rename capture emitted an unapplyable or partially written preview';end if;
   perform set_config('TimeZone','America/New_York',true);
   p:=plm.plan_licensing_consolidation('paramount',native_capture,'0007');
@@ -374,6 +404,7 @@ do $test$ declare p plm.licensing_consolidation_plan;q plm.licensing_consolidati
   q:=plm.apply_licensing_consolidation(p.id,p.plan_hash);
   if q.plan_status<>'applied' or (select name from core.property where id='23360000-0000-0000-0000-000000000002')<>'First new official'
      or (select name from core.property where id='23360000-0000-0000-0000-000000000003')<>'Second old official' then raise exception 'filtered real rename failed or changed unrelated property';end if;
+  if (select (value->>'changes')::integer from jsonb_array_elements(q.applied_state->'operations') where value->>'op_key'='40:name:23360000-0000-0000-0000-000000000002')<>2 then raise exception 'real rename/new retained alias must count two content changes';end if;
   rejected:=false;begin update plm.licensing_consolidation_plan set entity_operation_count=entity_operation_count+1 where id=q.id;exception when insufficient_privilege then rejected:=true;end;
   if not rejected then raise exception 'applied real counters mutable';end if;
   raise exception using errcode='Z2336',message='roll back additional synthetic rename case';
@@ -565,9 +596,15 @@ begin
  values(w,'zztest-2336-schema1','synthetic',repeat('a',40),repeat('b',64),'https://fixture.invalid',now(),now(),'complete','{}','{}',true,0,'{}','schema1-test');
  insert into plm.wb_capture(capture_id,chunk_number,target,status,captured_at,private_source_commit,snapshot_sha256,expected_row_count,captured_by,source_url,started_at,completed_at,loader_report)
  values(b,0,'wb_franchise','complete',date '2099-01-01',repeat('a',40),repeat('b',64),1,'schema1-test','https://fixture.invalid',now(),now(),'{}');
- foreach s in array array['',null::text] loop
-  failed:=false;begin perform plm.plan_licensing_consolidation(s,d);exception when invalid_parameter_value then failed:=true;end;if not failed then raise exception 'blank/null source identity accepted';end if;
+ -- Preserve the actually installed schema1 input contract, including native NULL failure.
+ foreach s in array array['','   '] loop
+  failed:=false;begin perform plm.plan_licensing_consolidation(s,d);exception when invalid_parameter_value then
+   if sqlerrm<>'plan_licensing_consolidation requires a non-blank source_system and a capture_id' then raise;end if;failed:=true;
+  end;if not failed then raise exception 'blank schema1 source accepted';end if;
  end loop;
+ failed:=false;begin perform plm.plan_licensing_consolidation(null::text,d);exception when not_null_violation then
+  if position('"source_system"' in sqlerrm)=0 then raise;end if;failed:=true;
+ end;if not failed then raise exception 'NULL schema1 source behavior changed';end if;
  select count(*) into before_count from core.property_character_source_edge;
  select count(*) into pair_before from core.property_character_associations;
  foreach s in array array['disney_dcpvault','lucasfilm_dcpvault','marvel_dcpvault','twentieth_century_dcpvault','wildbrain','warner:wb_franchise'] loop
@@ -619,7 +656,7 @@ rollback;
 begin;
 set local enable_seqscan=off;
 do $typed_identity_contracts$
-declare r record;op jsonb;predicate text;state jsonb;plan jsonb;bad jsonb;rejected boolean;
+declare r record;op jsonb;predicate text;state jsonb;plan jsonb;bad jsonb;rejected boolean;identity_key text;
 begin
  for r in select * from(values
 ('core.taxonomy_source_ref','{"source_id": "ZZ2336 bound '' OR true --", "source_system": "ZZ2336 bound '' OR true --", "source_table": "ZZ2336 bound '' OR true --"}'::jsonb),
@@ -647,8 +684,28 @@ begin
   state:=plm.licensing_consolidation_operation_state(op);
   if state->'rows'<>'[]'::jsonb then raise exception 'typed identity matched unrelated row';end if;
   execute format('explain(format json) select 1 from %s t where %s',r.target,predicate) into plan using r.identity;
-  if position('"Index Name"' in plan::text)=0 then raise exception 'real target identity predicate cannot use existing index: %',r.target;end if;
+  -- An index name alone also permits a full index scan with a residual Filter.
+  -- Every supplied identity key must constrain an actual indexed equality qual.
+  for identity_key in select jsonb_object_keys(r.identity) loop
+   if not exists (
+    select 1 from jsonb_path_query(plan,'$.** ? (exists(@."Index Name") && exists(@."Index Cond"))') indexed(node)
+    where node->>'Index Cond' ~ format('(^|[^[:alnum:]_])%s[[:space:]]*=',identity_key)
+   ) then raise exception 'real target identity key is not an indexed equality qual: %.%',r.target,identity_key;end if;
+  end loop;
  end loop;
+ -- This deliberately non-sargable lookup exposes the former Index Name false positive.
+ execute 'explain(format json) select 1 from core.property t where t.id::text || '''' = $1::text'
+  into plan using '23360000-0000-0000-0000-000000000099';
+ if not jsonb_path_exists(plan,'$.**."Index Name"')
+    or not jsonb_path_exists(plan,'$.**."Filter"')
+    or jsonb_path_exists(plan,'$.**."Index Cond"') then
+  raise exception 'identity negative control no longer demonstrates an index scan without indexed quals';
+ end if;
+ rejected:=false;begin
+  perform plm.licensing_consolidation_operation_state(jsonb_build_object('target','core.property;delete from core.property','identity',jsonb_build_object('id','23360000-0000-0000-0000-000000000099')));
+ exception when invalid_parameter_value then rejected:=true;end;
+ if not rejected then raise exception 'invalid closed operation-state identity did not use22023';end if;
+ if position('operation identity is not unique'' using errcode=''21000''' in pg_get_functiondef(to_regprocedure('plm.licensing_consolidation_operation_state(jsonb)')))=0 then raise exception 'unique-key cardinality invariant lacks distinct21000';end if;
  foreach bad in array array[
   null::jsonb,'{}'::jsonb,'{"target":"core.property;delete from core.property","identity":{"id":"00000000-0000-0000-0000-000000000001"}}'::jsonb,
   '{"target":"core.property","identity":null}'::jsonb,'{"target":"core.property","identity":[]}'::jsonb,

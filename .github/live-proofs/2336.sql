@@ -102,12 +102,12 @@ and not exists(select 1 from (values
 ('core.lock_canonical_relationship_pair()','b60bf1a1136df21fa5b1e17d6f08a7bd'),
 ('core.require_direct_support_for_canonical_edge()','63dcc74814a239088c1a81d52ceff16f'),
 ('plm.apply_licensing_consolidation(uuid,text)','0ff913b195c6f0d4190ae30a6e6a80b0'),
-('plm.apply_licensing_support_operation(uuid,text,jsonb)','9a269e0a68794129b34da26d2bbce138'),
-('plm.licensing_consolidation_capture_snapshot(text,uuid)','d71bc7c27e27854af851a733b6b741dd'),
-('plm.licensing_consolidation_operation_state(jsonb)','29d8abcb694d990cbfa5d895867723e7'),
-('plm.licensing_consolidation_plan_immutable()','f1fee5d87b66833891461106cc104bfb'),
+('plm.apply_licensing_support_operation(uuid,text,jsonb)','b46df036d388f8145826aba74dc0c830'),
+('plm.licensing_consolidation_capture_snapshot(text,uuid)','3c60cbc197bc3919056e765d3e9dbc12'),
+('plm.licensing_consolidation_operation_state(jsonb)','9436d56877f281b437345ae2967fe073'),
+('plm.licensing_consolidation_plan_immutable()','3097938f8dad64d35f35931967ef3b67'),
 ('plm.licensing_operation_identity_predicate(jsonb)','ea67528b1eb6b0b34b608e6c406c2baf'),
-('plm.plan_licensing_consolidation(text,uuid,text)','afb787614989a40b27e93969f19d98ef'),
+('plm.plan_licensing_consolidation(text,uuid,text)','210117bd0c0e30a2ae41abc89893b640'),
 ('plm.plan_licensing_consolidation_rollback(uuid,text)','404a03544edb6982d9336746ad52fad2')
 ) pins(signature,body_md5) where not exists(select 1 from pg_proc p where p.oid=to_regprocedure(pins.signature) and md5(p.prosrc)=pins.body_md5))
 and not exists(select 1 from (values
@@ -118,7 +118,9 @@ and not exists(select 1 from (values
 ('dam.asset_character_source_edge_source_retirement_idx','CREATE INDEX asset_character_source_edge_source_retirement_idx ON dam.asset_character_source_edge USING btree (source_system, id) WHERE (is_current AND (evidence_kind = ''direct_source_assertion''::core.relationship_evidence_kind))'),
 ('dam.asset_franchise_source_edge_source_retirement_idx','CREATE INDEX asset_franchise_source_edge_source_retirement_idx ON dam.asset_franchise_source_edge USING btree (source_system, id) WHERE (is_current AND (evidence_kind = ''direct_source_assertion''::core.relationship_evidence_kind))'),
 ('dam.asset_property_source_edge_source_retirement_idx','CREATE INDEX asset_property_source_edge_source_retirement_idx ON dam.asset_property_source_edge USING btree (source_system, id) WHERE (is_current AND (evidence_kind = ''direct_source_assertion''::core.relationship_evidence_kind))'),
-('dam.asset_style_guide_source_edge_source_retirement_idx','CREATE INDEX asset_style_guide_source_edge_source_retirement_idx ON dam.asset_style_guide_source_edge USING btree (source_system, id) WHERE (is_current AND (evidence_kind = ''direct_source_assertion''::core.relationship_evidence_kind))')
+('dam.asset_style_guide_source_edge_source_retirement_idx','CREATE INDEX asset_style_guide_source_edge_source_retirement_idx ON dam.asset_style_guide_source_edge USING btree (source_system, id) WHERE (is_current AND (evidence_kind = ''direct_source_assertion''::core.relationship_evidence_kind))'),
+('plm.licensing_relationship_resolution_source_lock_idx','CREATE INDEX licensing_relationship_resolution_source_lock_idx ON plm.licensing_relationship_resolution USING btree (source_system, licensor_id, relationship_kind, source_left_id, source_right_id)'),
+('plm.licensing_source_scope_source_lock_idx','CREATE INDEX licensing_source_scope_source_lock_idx ON plm.licensing_source_scope USING btree (source_system, licensor_id, source_purpose, scope_axis, permitted_kind)')
 ) pins(index_name,definition) where not exists(select 1 from pg_index i where i.indexrelid=to_regclass(pins.index_name) and i.indisvalid and i.indisready and pg_get_indexdef(i.indexrelid)=pins.definition))
 and not exists(select 1 from identity_targets t where not exists(select 1 from pg_index i where i.indrelid=to_regclass(t.target) and i.indisunique and i.indisvalid and i.indisready and i.indpred is null and i.indexprs is null and (select array_agg(a.attname::text order by a.attname) from unnest(i.indkey) with ordinality keys(attnum,n) join pg_attribute a on a.attrelid=i.indrelid and a.attnum=keys.attnum where keys.n<=i.indnkeyatts)=t.keys))
 

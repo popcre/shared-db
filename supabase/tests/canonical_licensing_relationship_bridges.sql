@@ -298,6 +298,23 @@ begin
       {"t":"dam.asset_franchise_source_edge",        "g":"require_matching_licensor",
        "f":"core.require_support_edge_licensor_matches_endpoints",
        "a":"'dam.asset', 'asset_id', 'core.franchise', 'franchise_id'"}
+,
+      {"t": "core.property_character_associations", "g": "lock_relationship_pair", "f": "core.lock_canonical_relationship_pair", "a": "'core.property_character_associations', 'property_id', 'character_id'"},
+      {"t": "core.property_character_source_edge", "g": "lock_relationship_pair", "f": "core.lock_canonical_relationship_pair", "a": "'core.property_character_associations', 'property_id', 'character_id'"},
+      {"t": "core.property_style_guide", "g": "lock_relationship_pair", "f": "core.lock_canonical_relationship_pair", "a": "'core.property_style_guide', 'property_id', 'style_guide_id'"},
+      {"t": "core.property_style_guide_source_edge", "g": "lock_relationship_pair", "f": "core.lock_canonical_relationship_pair", "a": "'core.property_style_guide', 'property_id', 'style_guide_id'"},
+      {"t": "core.property_franchise", "g": "lock_relationship_pair", "f": "core.lock_canonical_relationship_pair", "a": "'core.property_franchise', 'property_id', 'franchise_id'"},
+      {"t": "core.property_franchise_source_edge", "g": "lock_relationship_pair", "f": "core.lock_canonical_relationship_pair", "a": "'core.property_franchise', 'property_id', 'franchise_id'"},
+      {"t": "core.style_guide_character", "g": "lock_relationship_pair", "f": "core.lock_canonical_relationship_pair", "a": "'core.style_guide_character', 'style_guide_id', 'character_id'"},
+      {"t": "core.style_guide_character_source_edge", "g": "lock_relationship_pair", "f": "core.lock_canonical_relationship_pair", "a": "'core.style_guide_character', 'style_guide_id', 'character_id'"},
+      {"t": "dam.asset_property", "g": "lock_relationship_pair", "f": "core.lock_canonical_relationship_pair", "a": "'dam.asset_property', 'asset_id', 'property_id'"},
+      {"t": "dam.asset_property_source_edge", "g": "lock_relationship_pair", "f": "core.lock_canonical_relationship_pair", "a": "'dam.asset_property', 'asset_id', 'property_id'"},
+      {"t": "dam.asset_character", "g": "lock_relationship_pair", "f": "core.lock_canonical_relationship_pair", "a": "'dam.asset_character', 'asset_id', 'character_id'"},
+      {"t": "dam.asset_character_source_edge", "g": "lock_relationship_pair", "f": "core.lock_canonical_relationship_pair", "a": "'dam.asset_character', 'asset_id', 'character_id'"},
+      {"t": "dam.asset_style_guide", "g": "lock_relationship_pair", "f": "core.lock_canonical_relationship_pair", "a": "'dam.asset_style_guide', 'asset_id', 'style_guide_id'"},
+      {"t": "dam.asset_style_guide_source_edge", "g": "lock_relationship_pair", "f": "core.lock_canonical_relationship_pair", "a": "'dam.asset_style_guide', 'asset_id', 'style_guide_id'"},
+      {"t": "dam.asset_franchise", "g": "lock_relationship_pair", "f": "core.lock_canonical_relationship_pair", "a": "'dam.asset_franchise', 'asset_id', 'franchise_id'"},
+      {"t": "dam.asset_franchise_source_edge", "g": "lock_relationship_pair", "f": "core.lock_canonical_relationship_pair", "a": "'dam.asset_franchise', 'asset_id', 'franchise_id'"}
     ]$wiring$::jsonb)
   loop
     select oid into v_oid from pg_trigger

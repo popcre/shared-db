@@ -355,7 +355,7 @@ alter table plm.licensing_consolidation_plan add constraint licensing_consolidat
 
 create or replace function plm.licensing_consolidation_capture_snapshot(p_source_system text,p_capture_id uuid)
 returns jsonb language plpgsql stable security definer set search_path=pg_catalog set timezone='UTC' as $snapshot$
-declare v_root jsonb; v_entities jsonb:='[]';v_edges jsonb:='[]';v_rows jsonb;v_row jsonb;v_rec record;v_coverage jsonb;v_latest uuid;v_scope text;v_native text;v_e jsonb;v_count bigint;v_expected numeric;v_hash text;v_properties bigint;v_characters bigint;v_relationships bigint;v_memberships bigint;v_cross_scope bigint;
+declare v_root jsonb; v_entities jsonb:='[]';v_edges jsonb:='[]';v_rows jsonb;v_row jsonb;v_rec record;v_coverage jsonb;v_latest uuid;v_scope text;v_native text;v_e jsonb;v_count bigint;v_expected numeric;v_hash text;v_properties bigint;v_characters bigint;v_relationships bigint;v_memberships bigint;v_cross_scope bigint;entity_rows jsonb[]:=array[]::jsonb[];edge_rows jsonb[]:=array[]::jsonb[];
 begin
  if p_source_system='nbcu' then
   select to_jsonb(c) into v_root from plm.nbcu_capture c where id=p_capture_id and status='complete';
@@ -432,16 +432,16 @@ begin
    v_e:=jsonb_build_object('kind',v_rec.kind,'source_table',v_rec.source_table,'native_id',v_native,'resolution_source_id',v_native,'source_id',jsonb_build_array(p_source_system,v_rec.source_table,v_rec.kind,v_native)::text,'name',v_row->>v_rec.name_column,'native',v_row);
    if p_source_system='paramount' and v_rec.kind='property' and not coalesce((v_row->>'is_licensed_selection')::boolean,false) then continue;end if;
    if p_source_system='nbcu' and v_rec.kind='property' and v_row->>'source_kind' not in ('property','franchise_asset') then continue;end if;
-   v_entities:=v_entities||jsonb_build_array(v_e);
+   entity_rows:=array_append(entity_rows,v_e);
   end loop;
  end loop;
  if p_source_system='disney_opa' then
   for v_row in select to_jsonb(t) from plm.opa_property_character_capture t where capture_id=p_capture_id order by scope_key,licensed_property_id,character_id nulls first loop
    v_scope:=v_row->>'scope_key';
-   v_entities:=v_entities||jsonb_build_array(jsonb_build_object('kind','property','source_table','plm.opa_property_character_capture','native_id',v_row->>'licensed_property_id','resolution_source_id',v_row->>'licensed_property_id','scope',v_scope,'source_id',jsonb_build_array(p_source_system,'plm.opa_property_character_capture','property',v_scope,v_row->>'licensed_property_id')::text,'name',v_row->>'property_name','native',v_row));
+   entity_rows:=array_append(entity_rows,jsonb_build_object('kind','property','source_table','plm.opa_property_character_capture','native_id',v_row->>'licensed_property_id','resolution_source_id',v_row->>'licensed_property_id','scope',v_scope,'source_id',jsonb_build_array(p_source_system,'plm.opa_property_character_capture','property',v_scope,v_row->>'licensed_property_id')::text,'name',v_row->>'property_name','native',v_row));
    if v_row->>'character_id' is not null then
-    v_entities:=v_entities||jsonb_build_array(jsonb_build_object('kind','character','source_table','plm.opa_property_character_capture','native_id',v_row->>'character_id','resolution_source_id',v_row->>'character_id','scope',v_scope,'source_id',jsonb_build_array(p_source_system,'plm.opa_property_character_capture','character',v_scope,v_row->>'character_id')::text,'name',v_row->>'character_name','native',v_row));
-    v_edges:=v_edges||jsonb_build_array(jsonb_build_object('kind','property_character','source_table','plm.opa_property_character_capture','left_kind','property','right_kind','character','left_native_id',v_row->>'licensed_property_id','right_native_id',v_row->>'character_id','scope',v_scope,'native',v_row));
+    entity_rows:=array_append(entity_rows,jsonb_build_object('kind','character','source_table','plm.opa_property_character_capture','native_id',v_row->>'character_id','resolution_source_id',v_row->>'character_id','scope',v_scope,'source_id',jsonb_build_array(p_source_system,'plm.opa_property_character_capture','character',v_scope,v_row->>'character_id')::text,'name',v_row->>'character_name','native',v_row));
+    edge_rows:=array_append(edge_rows,jsonb_build_object('kind','property_character','source_table','plm.opa_property_character_capture','left_kind','property','right_kind','character','left_native_id',v_row->>'licensed_property_id','right_native_id',v_row->>'character_id','scope',v_scope,'native',v_row));
    end if;
   end loop;
   if exists(select 1 from jsonb_array_elements(v_entities) e group by e->>'kind',e->>'native_id' having count(distinct e->>'scope')>1 or count(distinct e->>'name')>1) then raise exception 'OPA bare durable source identity ambiguously spans scoped routes';end if;
@@ -455,9 +455,11 @@ begin
    if coalesce(v_row->>'evidence_type',v_row->>'source_evidence','')='' then raise exception 'direct native relationship evidence absent in %',v_rec.source_table;end if;
    if p_source_system='paramount' and v_row->>'source_evidence' is distinct from (case when v_rec.kind in ('property_character','property_style_guide') then 'explicit_cascading_pair' else 'full_asset_metadata' end) then raise exception 'Paramount native evidence is not the closed direct source kind';end if;
    if p_source_system='nbcu' and (v_row->>'evidence_type' ~* '(inferred|co.?occurrence)' or nullif(btrim(v_row->>'evidence_value'),'') is null) then raise exception 'NBCU inferred or missing evidence is not direct source authority';end if;
-   v_edges:=v_edges||jsonb_build_array(jsonb_build_object('kind',v_rec.kind,'source_table',v_rec.source_table,'left_kind',v_rec.left_kind,'right_kind',v_rec.right_kind,'left_native_id',v_row->>v_rec.left_column,'right_native_id',v_row->>v_rec.right_column,'native',v_row));
+   edge_rows:=array_append(edge_rows,jsonb_build_object('kind',v_rec.kind,'source_table',v_rec.source_table,'left_kind',v_rec.left_kind,'right_kind',v_rec.right_kind,'left_native_id',v_row->>v_rec.left_column,'right_native_id',v_row->>v_rec.right_column,'native',v_row));
   end loop;
  end loop;
+ select coalesce(jsonb_agg(v order by ordinal),'[]') into v_entities from unnest(entity_rows) with ordinality q(v,ordinal);
+ select coalesce(jsonb_agg(v order by ordinal),'[]') into v_edges from unnest(edge_rows) with ordinality q(v,ordinal);
  select coalesce(jsonb_agg(e order by e->>'source_id'),'[]') into v_entities from (select (jsonb_agg(x order by x::text)->0)||jsonb_build_object('native',jsonb_agg(x->'native' order by x::text)) as e from jsonb_array_elements(v_entities) x group by x->>'source_id') q;
  select coalesce(jsonb_agg(e order by e::text),'[]') into v_edges from (select distinct e from jsonb_array_elements(v_edges) e) q;
  if p_source_system='nbcu' then
@@ -507,6 +509,9 @@ revoke all on function plm.licensing_operation_identity_predicate(jsonb) from pu
 
 -- A source retirement reads all direct/current claims for one source, rather
 -- than one canonical pair. Existing pair-leading indexes do not serve it.
+create index licensing_relationship_resolution_source_lock_idx on plm.licensing_relationship_resolution(source_system,licensor_id,relationship_kind,source_left_id,source_right_id);
+create index licensing_source_scope_source_lock_idx on plm.licensing_source_scope(source_system,licensor_id,source_purpose,scope_axis,permitted_kind);
+
 create index property_character_source_edge_source_retirement_idx on core.property_character_source_edge(source_system,id) where is_current and evidence_kind='direct_source_assertion';
 create index property_style_guide_source_edge_source_retirement_idx on core.property_style_guide_source_edge(source_system,id) where is_current and evidence_kind='direct_source_assertion';
 create index property_franchise_source_edge_source_retirement_idx on core.property_franchise_source_edge(source_system,id) where is_current and evidence_kind='direct_source_assertion';
@@ -520,10 +525,10 @@ create or replace function plm.licensing_consolidation_operation_state(p_operati
 returns jsonb language plpgsql stable security definer set search_path=pg_catalog set timezone='UTC' as $state$
 declare t text:=p_operation->>'target';v_state jsonb;predicate text;
 begin
- if t not in ('core.taxonomy_source_ref','core.property','core.property_character_associations','core.property_style_guide','core.property_franchise','core.style_guide_character','dam.asset_property','dam.asset_character','dam.asset_style_guide','dam.asset_franchise','core.property_character_source_edge','core.property_style_guide_source_edge','core.property_franchise_source_edge','core.style_guide_character_source_edge','dam.asset_property_source_edge','dam.asset_character_source_edge','dam.asset_style_guide_source_edge','dam.asset_franchise_source_edge') or jsonb_typeof(p_operation->'identity')<>'object' or p_operation->'identity'='{}'::jsonb then raise exception 'unsupported exact operation state identity';end if;
+ if t not in ('core.taxonomy_source_ref','core.property','core.property_character_associations','core.property_style_guide','core.property_franchise','core.style_guide_character','dam.asset_property','dam.asset_character','dam.asset_style_guide','dam.asset_franchise','core.property_character_source_edge','core.property_style_guide_source_edge','core.property_franchise_source_edge','core.style_guide_character_source_edge','dam.asset_property_source_edge','dam.asset_character_source_edge','dam.asset_style_guide_source_edge','dam.asset_franchise_source_edge') or jsonb_typeof(p_operation->'identity')<>'object' or p_operation->'identity'='{}'::jsonb then raise exception 'unsupported exact operation state identity' using errcode='22023';end if;
  predicate:=plm.licensing_operation_identity_predicate(p_operation);
  execute format('select coalesce(jsonb_agg(to_jsonb(t) order by to_jsonb(t)::text),''[]''::jsonb) from %s t where %s',t,predicate) into v_state using p_operation->'identity';
- if jsonb_array_length(v_state)>1 then raise exception 'operation identity is not unique';end if;
+ if jsonb_array_length(v_state)>1 then raise exception 'operation identity is not unique' using errcode='21000';end if;
  if t='core.property' then
   return jsonb_build_object('rows',v_state,'aliases',coalesce((select jsonb_agg(to_jsonb(a) order by id) from core.property_alias a where property_id=(p_operation->'identity'->>'id')::uuid),'[]'));
  end if;
@@ -623,17 +628,22 @@ begin
    v_count:=v_count+1;
   end if;
  end if;
- return jsonb_build_object('changes',v_count,'state',plm.licensing_consolidation_operation_state(p_operation));
+ -- Count actual content changes with the same definition as the immutable audit.
+ b:=plm.licensing_consolidation_operation_state(p_operation);
+ v_count:=case when b->'rows' is distinct from v_state->'rows' then 1 else 0 end;
+ if k='property_name' then
+  v_count:=v_count+(select count(*) from jsonb_array_elements(b->'aliases') added
+   where not exists(select 1 from jsonb_array_elements(v_state->'aliases') previous where previous->>'id'=added->>'id'));
+ end if;
+ return jsonb_build_object('changes',v_count,'state',b);
 end $operation$;
 revoke all on function plm.apply_licensing_support_operation(uuid,text,jsonb) from public,anon,authenticated,service_role;
 
 create or replace function plm.plan_licensing_consolidation(p_source_system text,p_capture_id uuid,p_entity_source_id text default null)
 returns plm.licensing_consolidation_plan language plpgsql security definer set search_path=pg_catalog set timezone='UTC' as $planner$
-declare snap jsonb;entities jsonb:='[]';groups jsonb:='[]';ops jsonb:='[]';inverse jsonb:='[]';e jsonb;edge jsonb;left_e jsonb;right_e jsonb;g jsonb;op jsonb;before_state jsonb;after_row jsonb;existing jsonb;v_id uuid;v_owner uuid;v_table text;v_col text;v_rec record;v_scope jsonb;v_time timestamptz;v_pair text;v_support text;v_left text;v_right text;v_key text;v_hash text;v_result plm.licensing_consolidation_plan;v_filtered text;v_now_current boolean;
+declare snap jsonb;entities jsonb:='[]';groups jsonb:='[]';ops jsonb:='[]';inverse jsonb:='[]';e jsonb;edge jsonb;left_e jsonb;right_e jsonb;g jsonb;op jsonb;before_state jsonb;after_row jsonb;existing jsonb;v_id uuid;v_owner uuid;v_table text;v_col text;v_rec record;v_scope jsonb;v_time timestamptz;v_pair text;v_support text;v_left text;v_right text;v_key text;v_hash text;v_result plm.licensing_consolidation_plan;v_filtered text;v_now_current boolean;v_capture_checked boolean:=false;v_scope_checked boolean:=false;checked_entities jsonb[]:=array[]::jsonb[];
 begin
- p_source_system:=btrim(p_source_system);
- if p_source_system is null or p_source_system='' or p_capture_id is null then raise exception 'exact source and capture required' using errcode='22023';end if;
- -- Preserve installed schema1 sources; failed enhanced qualification never falls back.
+ -- Preserve installed schema1 input semantics; enhanced qualification never falls back.
  if btrim(p_source_system) not in ('nbcu','paramount','disney_opa') or p_source_system is null then
 declare
   v_actor text := coalesce(
@@ -1183,6 +1193,7 @@ begin
   return v_row;
 end;
  end if;
+ p_source_system:=btrim(p_source_system);
  if p_source_system is null or btrim(p_source_system)='' or p_capture_id is null then raise exception 'exact source and capture required' using errcode='22023';end if;
  if p_entity_source_id is not null and btrim(p_entity_source_id)='' then raise exception 'empty filtered identity' using errcode='22023';end if;
  if p_source_system not in ('nbcu','paramount','disney_opa') then raise exception 'unsupported qualified capture source';end if;
@@ -1194,6 +1205,7 @@ end;
  perform 1 from plm.source_resolution where source_system=p_source_system order by entity_kind,source_id for update;
  perform 1 from plm.licensing_relationship_resolution where source_system=p_source_system order by licensor_id,relationship_kind,source_left_id,source_right_id for update;
  snap:=plm.licensing_consolidation_capture_snapshot(p_source_system,p_capture_id);
+ v_capture_checked:=true;
  v_scope:=snap->'scope_namespace';v_time:=coalesce((snap->'root'->>'source_captured_at')::timestamptz,(snap->'root'->>'completed_at')::timestamptz,(snap->'root'->>'load_completed_at')::timestamptz);
  if v_time is null or v_scope is null then raise exception 'capture scope namespace or clock absent';end if;
  if p_entity_source_id is not null then
@@ -1212,7 +1224,7 @@ end;
   execute format('select licensor_id from %s where id=$1 for update',v_table) into v_owner using v_id;
   if v_owner is null or not exists(select 1 from plm.licensing_source_scope where source_system=p_source_system and licensor_id=v_owner and scope_axis='entity' and source_purpose='canonical_identity' and permitted_kind=e->>'kind' and authorized_at is not null and authorized_by is not null) then raise exception 'matched native decision lacks current owner/source authority';end if;
   e:=e||jsonb_build_object('canonical_id',v_id,'canonical_table',v_table,'licensor_id',v_owner);
-  entities:=entities||jsonb_build_array(e);
+  checked_entities:=array_append(checked_entities,e);
   if v_filtered is not null and e->>'source_id'<>v_filtered then continue;end if;
   if exists(select 1 from core.taxonomy_source_ref where source_system=p_source_system and entity_id=v_id and source_id<>e->>'source_id' and (raw->>'engine_schema_version') is distinct from '2') then raise exception 'existing source reference uses incompatible provenance namespace; not rewritten';end if;
   op:=jsonb_build_object('kind','entity_source','entity_kind',e->>'kind','target','core.taxonomy_source_ref','identity',jsonb_build_object('source_system',p_source_system,'source_table',e->>'source_table','source_id',e->>'source_id'),'licensor_id',v_owner,'owners',jsonb_build_array(jsonb_build_object('table',v_table,'id',v_id)),'op_key','10:entity:'||(e->>'source_id'));
@@ -1225,29 +1237,59 @@ end;
    before_state:=plm.licensing_consolidation_operation_state(op);
    if before_state->'rows'->0->>'name'<>e->>'name' then ops:=ops||jsonb_build_array(op||jsonb_build_object('before',before_state,'after',jsonb_build_object('name',e->>'name')));end if;
   end if;
+  if jsonb_array_length(ops)>512 then raise exception 'consolidation whole plan exceeds512operations';end if;
  end loop;
+ -- Expanded native array retains exactly the checked tuples, then aggregates once.
+ select coalesce(jsonb_agg(x order by ordinal),'[]') into entities from unnest(checked_entities) with ordinality q(x,ordinal);
  -- The existing protected-column authorization is single-use for one target
  -- table/transaction/plan. Emit a durable refusal before any preview or writes;
  -- the supported explicit entity filter can plan each rename separately.
  if (select count(*) from jsonb_array_elements(ops) x where x->>'kind'='property_name')>1 then
   raise exception 'collision gate: more than one property rename in one apply; pass p_entity_source_id';
  end if;
- for edge in select value from jsonb_array_elements(snap->'edges') order by value::text loop
-  select x into left_e from jsonb_array_elements(entities) x where x->>'kind'=edge->>'left_kind' and x->>'native_id'=edge->>'left_native_id' and coalesce(x->>'scope','')=coalesce(edge->>'scope','');
-  select x into right_e from jsonb_array_elements(entities) x where x->>'kind'=edge->>'right_kind' and x->>'native_id'=edge->>'right_native_id' and coalesce(x->>'scope','')=coalesce(edge->>'scope','');
-  if left_e is null or right_e is null then continue;end if;
+ -- Materialize native tuple membership once, preserving first array ordinal.
+ for edge,left_e,right_e in
+  with entity_lookup as materialized (
+   select distinct on (x->>'kind',x->>'native_id',coalesce(x->>'scope','')) x
+   from jsonb_array_elements(entities) with ordinality q(x,n)
+   order by x->>'kind',x->>'native_id',coalesce(x->>'scope',''),n
+  ), qualified_edges as (
+   select native_edge,l.x left_entity,r.x right_entity
+   from jsonb_array_elements(snap->'edges') q(native_edge)
+   join entity_lookup l on l.x->>'kind'=native_edge->>'left_kind' and l.x->>'native_id'=native_edge->>'left_native_id' and coalesce(l.x->>'scope','')=coalesce(native_edge->>'scope','')
+   join entity_lookup r on r.x->>'kind'=native_edge->>'right_kind' and r.x->>'native_id'=native_edge->>'right_native_id' and coalesce(r.x->>'scope','')=coalesce(native_edge->>'scope','')
+  )
+  select native_edge,left_entity,right_entity from qualified_edges order by native_edge::text loop
   if v_filtered is not null and left_e->>'source_id'<>v_filtered and right_e->>'source_id'<>v_filtered then continue;end if;
   if left_e->>'licensor_id'<>right_e->>'licensor_id' then raise exception 'native direct pair canonical owners disagree';end if;
   v_owner:=(left_e->>'licensor_id')::uuid;
   if not exists(select 1 from plm.licensing_source_scope where source_system=p_source_system and licensor_id=v_owner and scope_axis='relationship' and source_purpose='relationship_evidence' and permitted_kind=edge->>'kind' and authorized_at is not null and authorized_by is not null) then raise exception 'direct pair source relationship authority missing';end if;
   if exists(select 1 from plm.licensing_relationship_resolution where source_system=p_source_system and licensor_id=v_owner and relationship_kind=edge->>'kind' and source_left_id=edge->>'left_native_id' and source_right_id=edge->>'right_native_id' and (resolution_status<>'matched' or not is_direct_source_relationship or evidence_kind<>'direct_source_assertion')) then raise exception 'durable relationship decision conflicts with native direct assertion';end if;
-  v_key:=jsonb_build_array(p_source_system,edge->>'kind',v_owner,left_e->>'canonical_id',right_e->>'canonical_id')::text;
-  select x into g from jsonb_array_elements(groups) x where x->>'source_id'=v_key;
-  if g is null then groups:=groups||jsonb_build_array(jsonb_build_object('kind',edge->>'kind','source_id',v_key,'left',left_e,'right',right_e,'proof',jsonb_build_array(edge)));
-  else
-   select jsonb_agg(case when x->>'source_id'=v_key then x||jsonb_build_object('proof',x->'proof'||jsonb_build_array(edge)) else x end order by x->>'source_id') into groups from jsonb_array_elements(groups) x;
-  end if;
  end loop;
+ v_scope_checked:=true;
+ -- Aggregate groups and native proof exactly once after all applicable authority checks.
+  with entity_lookup as materialized (
+   select distinct on (x->>'kind',x->>'native_id',coalesce(x->>'scope','')) x
+   from jsonb_array_elements(entities) with ordinality q(x,n)
+   order by x->>'kind',x->>'native_id',coalesce(x->>'scope',''),n
+  ), qualified_edges as (
+   select native_edge,l.x left_entity,r.x right_entity
+   from jsonb_array_elements(snap->'edges') q(native_edge)
+   join entity_lookup l on l.x->>'kind'=native_edge->>'left_kind' and l.x->>'native_id'=native_edge->>'left_native_id' and coalesce(l.x->>'scope','')=coalesce(native_edge->>'scope','')
+   join entity_lookup r on r.x->>'kind'=native_edge->>'right_kind' and r.x->>'native_id'=native_edge->>'right_native_id' and coalesce(r.x->>'scope','')=coalesce(native_edge->>'scope','')
+  ), keyed_edges as (
+   select native_edge,left_entity,right_entity,
+    jsonb_build_array(p_source_system,native_edge->>'kind',left_entity->>'licensor_id',left_entity->>'canonical_id',right_entity->>'canonical_id')::text source_key
+   from qualified_edges
+   where v_filtered is null or left_entity->>'source_id'=v_filtered or right_entity->>'source_id'=v_filtered
+  ), grouped as (
+   select source_key,min(native_edge->>'kind') kind,
+    jsonb_agg(left_entity order by native_edge::text)->0 left_entity,
+    jsonb_agg(right_entity order by native_edge::text)->0 right_entity,
+    jsonb_agg(native_edge order by native_edge::text) proof
+   from keyed_edges group by source_key
+  )
+ select coalesce(jsonb_agg(jsonb_build_object('kind',kind,'source_id',source_key,'left',left_entity,'right',right_entity,'proof',proof) order by source_key),'[]') into groups from grouped;
  for v_rec in select * from (values
  ('property_character','core.property_character_associations','core.property_character_source_edge','property_id','character_id','property','character'),('property_style_guide','core.property_style_guide','core.property_style_guide_source_edge','property_id','style_guide_id','property','style_guide'),('property_franchise','core.property_franchise','core.property_franchise_source_edge','property_id','franchise_id','property','franchise'),('style_guide_character','core.style_guide_character','core.style_guide_character_source_edge','style_guide_id','character_id','style_guide','character'),('asset_property','dam.asset_property','dam.asset_property_source_edge','asset_id','property_id','asset','property'),('asset_character','dam.asset_character','dam.asset_character_source_edge','asset_id','character_id','asset','character'),('asset_style_guide','dam.asset_style_guide','dam.asset_style_guide_source_edge','asset_id','style_guide_id','asset','style_guide'),('asset_franchise','dam.asset_franchise','dam.asset_franchise_source_edge','asset_id','franchise_id','asset','franchise')) m(kind,pair,support,left_col,right_col,left_kind,right_kind) loop
   v_pair:=v_rec.pair;v_support:=v_rec.support;v_left:=v_rec.left_col;v_right:=v_rec.right_col;
@@ -1266,12 +1308,12 @@ end;
    op:=jsonb_build_object('kind','canonical_pair','entity_kind',v_rec.kind,'target',v_pair,'identity',jsonb_build_object(v_left,g->'left'->>'canonical_id',v_right,g->'right'->>'canonical_id'),'licensor_id',v_owner,'owners',op->'owners','op_key','30:pair:'||(g->>'source_id'));
    before_state:=plm.licensing_consolidation_operation_state(op);existing:=before_state->'rows'->0;
    if existing is null or not (existing->>'is_current')::boolean then ops:=ops||jsonb_build_array(op||jsonb_build_object('before',before_state,'after',coalesce(existing,'{}')||op->'identity'||jsonb_build_object('is_current',true,'retired_at',null,'retired_reason',null)));end if;
+   if jsonb_array_length(ops)>512 then raise exception 'consolidation whole plan exceeds512operations';end if;
   end loop;
   -- Missing support retirement applies only to previously engine-qualified comparable
   -- scope, and only to the uniquely filtered candidate when a filter was requested.
-  execute format('select coalesce(jsonb_agg(to_jsonb(t) order by id),''[]'') from %s t where source_system=$1 and is_current and evidence_kind=''direct_source_assertion''',v_support) into existing using p_source_system;
+  execute format('with present_groups as materialized (select x->>''source_id'' source_id from jsonb_array_elements($2) x) select coalesce(jsonb_agg(to_jsonb(t) order by id),''[]'') from %s t where source_system=$1 and is_current and evidence_kind=''direct_source_assertion'' and not exists(select 1 from present_groups g where g.source_id=t.source_id)',v_support) into existing using p_source_system,groups;
   for after_row in select value from jsonb_array_elements(coalesce(existing,'[]')) loop
-   if exists(select 1 from jsonb_array_elements(groups) x where x->>'source_id'=after_row->>'source_id') then continue;end if;
    if v_filtered is not null and not (after_row->'metadata'->'entity_source_ids' @> jsonb_build_array(v_filtered)) then continue;end if;
    if after_row->'metadata'->>'engine_schema_version' is distinct from '2' or after_row->'metadata'->'scope_namespace' is distinct from v_scope then raise exception 'missing support lacks comparable complete-capture namespace';end if;
    if p_source_system='disney_opa' and v_rec.kind<>'property_character' or p_source_system='paramount' and v_rec.kind in ('property_franchise','style_guide_character') or p_source_system='nbcu' and v_rec.kind='style_guide_character' then raise exception 'unsupported source relationship membership cannot prove absence';end if;
@@ -1284,15 +1326,20 @@ end;
     before_state:=plm.licensing_consolidation_operation_state(op);
     if before_state->'rows'->0 is not null and (before_state->'rows'->0->>'is_current')::boolean then ops:=ops||jsonb_build_array(op||jsonb_build_object('before',before_state,'after',before_state->'rows'->0||jsonb_build_object('is_current',false,'retired_at',v_time,'retired_reason','No remaining qualified direct source support')));end if;
    end if;
+   if jsonb_array_length(ops)>512 then raise exception 'consolidation whole plan exceeds512operations';end if;
   end loop;
  end loop;
- for existing in select to_jsonb(r) from core.taxonomy_source_ref r where source_system=p_source_system and missing_since is null order by source_table,source_id for update loop
+ for existing in
+  with present_entities as materialized (select x->>'source_id' source_id from jsonb_array_elements(entities) x)
+  select to_jsonb(r) from core.taxonomy_source_ref r where source_system=p_source_system and missing_since is null
+   and not exists(select 1 from present_entities e where e.source_id=r.source_id)
+  order by source_table,source_id for update loop
   if v_filtered is not null and existing->>'source_id'<>v_filtered then continue;end if;
-  if exists(select 1 from jsonb_array_elements(entities) x where x->>'source_id'=existing->>'source_id') then continue;end if;
   if existing->'raw'->>'engine_schema_version' is distinct from '2' or existing->'raw'->'scope_namespace' is distinct from v_scope then raise exception 'missing entity reference lacks comparable qualified capture namespace';end if;
   v_table:=(existing->>'entity_schema')||'.'||(existing->>'entity_table');
   op:=jsonb_build_object('kind','entity_source','entity_kind',existing->>'entity_table','target','core.taxonomy_source_ref','identity',jsonb_build_object('source_system',p_source_system,'source_table',existing->>'source_table','source_id',existing->>'source_id'),'licensor_id',existing->>'source_licensor_id','owners',jsonb_build_array(jsonb_build_object('table',v_table,'id',existing->>'entity_id')),'op_key','10:entity:'||(existing->>'source_id'));
   ops:=ops||jsonb_build_array(op||jsonb_build_object('before',plm.licensing_consolidation_operation_state(op),'after',existing||jsonb_build_object('missing_since',v_time)));
+  if jsonb_array_length(ops)>512 then raise exception 'consolidation whole plan exceeds512operations';end if;
  end loop;
  if jsonb_array_length(ops)>512 then raise exception 'consolidation whole plan exceeds512operations';end if;
  if (select count(*) from jsonb_array_elements(ops))<>(select count(distinct x->>'op_key') from jsonb_array_elements(ops) x) then raise exception 'consolidation operation collision';end if;
@@ -1305,10 +1352,10 @@ end;
 exception when sqlstate 'P0001' then
  if btrim(p_source_system) not in ('nbcu','paramount','disney_opa') or p_source_system is null then raise;end if;
  -- Preserve the existing durable refusal capability; refused plans carry no partial writes.
- snap:=jsonb_build_object('schema_version',2,'refusal',sqlerrm,'filter',p_entity_source_id);ops:='[]'::jsonb;inverse:='[]'::jsonb;
+ snap:=jsonb_build_object('schema_version',2,'refusal',sqlerrm,'filter',p_entity_source_id,'capture_complete',v_capture_checked,'source_scope_checked',v_scope_checked);ops:='[]'::jsonb;inverse:='[]'::jsonb;
  v_hash:=encode(extensions.digest(jsonb_build_object('schema_version',2,'source_system',p_source_system,'capture_id',p_capture_id,'capture_snapshot',snap,'operations',ops,'rollback_operations',inverse,'rollback_of',null)::text,'sha256'),'hex');
  insert into plm.licensing_consolidation_plan(source_system,capture_id,plan_hash,plan_status,capture_complete,source_scope_checked,operations,rollback_operations,planned_by,plan_schema_version,capture_snapshot,refusal_reason)
- values(p_source_system,p_capture_id,v_hash,'refused',false,false,ops,inverse,coalesce(auth.uid()::text,session_user),2,snap,sqlerrm) on conflict(source_system,capture_id,plan_hash) do nothing;
+ values(p_source_system,p_capture_id,v_hash,'refused',v_capture_checked,v_scope_checked,ops,inverse,coalesce(auth.uid()::text,session_user),2,snap,sqlerrm) on conflict(source_system,capture_id,plan_hash) do nothing;
  select * into v_result from plm.licensing_consolidation_plan where source_system=p_source_system and capture_id=p_capture_id and plan_hash=v_hash;return v_result;
 end $planner$;
 revoke all on function plm.plan_licensing_consolidation(text,uuid,text) from public,anon,authenticated;
@@ -1365,7 +1412,8 @@ end;
  if old.plan_status='preview' and new.plan_status='applied' then
   for op in select value from jsonb_array_elements(old.operations) order by value->>'op_key' loop
    state:=plm.licensing_consolidation_operation_state(op);
-   -- operation_state has already validated the closed target/typed identity.
+   -- Revalidate the closed target at the final security-definer interpolation boundary.
+   perform plm.licensing_operation_identity_predicate(op);
    -- Normalize timestamp/UUID representations through the actual row type;
    -- only updated_at is owned by the pre-existing automatic timestamp trigger.
    execute format('select to_jsonb(jsonb_populate_record(null::%s,$1))',op->>'target') into normalized_after using op->'after';

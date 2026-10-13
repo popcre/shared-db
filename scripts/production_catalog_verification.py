@@ -1128,14 +1128,14 @@ and not exists(select 1 from (values
 ('core.assert_canonical_edge_still_supported()','37cc92749ad0d21aa51cdf03171dfba2'),
 ('core.lock_canonical_relationship_pair()','b60bf1a1136df21fa5b1e17d6f08a7bd'),
 ('core.require_direct_support_for_canonical_edge()','63dcc74814a239088c1a81d52ceff16f'),
-('plm.apply_licensing_consolidation(uuid,text)','0ff913b195c6f0d4190ae30a6e6a80b0'),
+('plm.apply_licensing_consolidation(uuid,text)','ee038a500b9b539f2564a4ecdfac5393'),
 ('plm.apply_licensing_support_operation(uuid,text,jsonb)','b46df036d388f8145826aba74dc0c830'),
 ('plm.licensing_consolidation_capture_snapshot(text,uuid)','3c60cbc197bc3919056e765d3e9dbc12'),
 ('plm.licensing_consolidation_operation_state(jsonb)','9436d56877f281b437345ae2967fe073'),
 ('plm.licensing_consolidation_plan_immutable()','3097938f8dad64d35f35931967ef3b67'),
 ('plm.licensing_operation_identity_predicate(jsonb)','ea67528b1eb6b0b34b608e6c406c2baf'),
 ('plm.plan_licensing_consolidation(text,uuid,text)','210117bd0c0e30a2ae41abc89893b640'),
-('plm.plan_licensing_consolidation_rollback(uuid,text)','404a03544edb6982d9336746ad52fad2')
+('plm.plan_licensing_consolidation_rollback(uuid,text)','0c92970d93133067f2c45552ba756b28')
 ) pins(signature,body_md5) where not exists(select 1 from pg_proc p where p.oid=to_regprocedure(pins.signature) and md5(p.prosrc)=pins.body_md5))
 and not exists(select 1 from (values
 ('core.property_character_source_edge_source_retirement_idx','CREATE INDEX property_character_source_edge_source_retirement_idx ON core.property_character_source_edge USING btree (source_system, id) WHERE (is_current AND (evidence_kind = ''direct_source_assertion''::core.relationship_evidence_kind))'),
@@ -1150,6 +1150,18 @@ and not exists(select 1 from (values
 ('plm.licensing_source_scope_source_lock_idx','CREATE INDEX licensing_source_scope_source_lock_idx ON plm.licensing_source_scope USING btree (source_system, licensor_id, source_purpose, scope_axis, permitted_kind)')
 ) pins(index_name,definition) where not exists(select 1 from pg_index i where i.indexrelid=to_regclass(pins.index_name) and i.indisvalid and i.indisready and pg_get_indexdef(i.indexrelid)=pins.definition))
 and not exists(select 1 from identity_targets t where not exists(select 1 from pg_index i where i.indrelid=to_regclass(t.target) and i.indisunique and i.indisvalid and i.indisready and i.indpred is null and i.indexprs is null and (select array_agg(a.attname::text order by a.attname) from unnest(i.indkey) with ordinality keys(attnum,n) join pg_attribute a on a.attrelid=i.indrelid and a.attnum=keys.attnum where keys.n<=i.indnkeyatts)=t.keys))
+
+and exists(select 1 from pg_class c where c.oid=to_regclass('plm.licensing_consolidation_plan') and c.relkind='r')
+and (select count(*) from pg_policy p where p.polrelid=to_regclass('plm.licensing_consolidation_plan')
+ and p.polname='licensing_consolidation_plan_authenticated_read' and p.polcmd='r' and p.polpermissive
+ and p.polroles=array[(select oid from pg_roles where rolname='authenticated')]::oid[]
+ and pg_get_expr(p.polqual,p.polrelid)='true' and p.polwithcheck is null)=1
+and (select count(*) from pg_constraint c where c.conrelid=to_regclass('plm.licensing_consolidation_plan')
+ and c.conname='licensing_consolidation_plan_hash_chk' and c.contype='c' and c.convalidated
+ and pg_get_constraintdef(c.oid)='CHECK ((plan_hash ~ ''^[0-9a-f]{64}$''::text))')=1
+and (select count(*) from pg_constraint c where c.conrelid=to_regclass('plm.licensing_consolidation_plan')
+ and c.conname='licensing_consolidation_plan_identity_uq' and c.contype='u' and c.convalidated and not c.condeferrable and not c.condeferred
+ and pg_get_constraintdef(c.oid)='UNIQUE (source_system, capture_id, plan_hash)')=1
 """,
     # #3907/#4010: guarded ALTER statements inside DO blocks are opaque to the
     # statement-head lexer. Hash-bound sidecars require these exact inventories.

@@ -367,6 +367,28 @@ do $test$ declare p plm.licensing_consolidation_plan;q plm.licensing_consolidati
   raise notice 'Complete capture with missing current authority records true/false gate facts PASS';
   raise exception using errcode='Z2336',message='roll back native missing authority fixture';
  exception when sqlstate 'Z2336' then null;end;
+ -- Scoped licensing validation must not fire or retime unrelated caller constraints.
+ begin
+  create temporary table issue2336_unrelated_deferred(k integer,
+   constraint issue2336_unrelated_deferred_uq unique(k) deferrable initially deferred) on commit drop;
+  insert into issue2336_unrelated_deferred values(1),(1);
+  p:=plm.plan_licensing_consolidation('paramount','23360000-0000-0000-0000-000000000020');q:=plm.apply_licensing_consolidation(p.id,p.plan_hash);
+  if q.plan_status<>'applied' then raise exception 'scoped licensing postvalidation lost';end if;
+  delete from issue2336_unrelated_deferred where ctid=(select ctid from issue2336_unrelated_deferred limit 1);
+  set constraints pg_temp.issue2336_unrelated_deferred_uq immediate;
+  raise notice 'Unrelated deferred caller constraint was not prematurely fired PASS';
+  raise exception using errcode='Z2336',message='roll back isolated deferred-mode fixture';
+ exception when sqlstate 'Z2336' then null;end;
+ begin
+  create temporary table issue2336_unrelated_immediate(k integer,
+   constraint issue2336_unrelated_immediate_uq unique(k) deferrable initially immediate) on commit drop;
+  insert into issue2336_unrelated_immediate values(1);
+  p:=plm.plan_licensing_consolidation('paramount','23360000-0000-0000-0000-000000000020');q:=plm.apply_licensing_consolidation(p.id,p.plan_hash);
+  rejected:=false;begin insert into issue2336_unrelated_immediate values(1);exception when unique_violation then rejected:=true;end;
+  if not rejected then raise exception 'unrelated immediate caller constraint was deferred';end if;
+  raise notice 'Unrelated immediate caller constraint remains immediate PASS';
+  raise exception using errcode='Z2336',message='roll back isolated immediate-mode fixture';
+ exception when sqlstate 'Z2336' then null;end;
  -- A real two-rename qualified capture must refuse during planning, while
  -- its explicit filtered plans remain usable under the unchanged single-use key.
  begin
@@ -405,6 +427,15 @@ do $test$ declare p plm.licensing_consolidation_plan;q plm.licensing_consolidati
   if q.plan_status<>'applied' or (select name from core.property where id='23360000-0000-0000-0000-000000000002')<>'First new official'
      or (select name from core.property where id='23360000-0000-0000-0000-000000000003')<>'Second old official' then raise exception 'filtered real rename failed or changed unrelated property';end if;
   if (select (value->>'changes')::integer from jsonb_array_elements(q.applied_state->'operations') where value->>'op_key'='40:name:23360000-0000-0000-0000-000000000002')<>2 then raise exception 'real rename/new retained alias must count two content changes';end if;
+  -- Only the native test's postgres role creates this hostile stored-audit copy;
+  -- client plan INSERT grants and all immutable UPDATE guards remain unchanged.
+  insert into plm.licensing_consolidation_plan
+   select (jsonb_populate_record(null::plm.licensing_consolidation_plan,to_jsonb(q)||jsonb_build_object(
+    'id',gen_random_uuid(),'plan_hash',encode(extensions.digest(gen_random_uuid()::text,'sha256'),'hex'),
+    'operations',jsonb_set(q.operations,'{0,owners,0,table}',to_jsonb('core.property;select pg_sleep(5)'::text))))).* returning * into r;
+  rejected:=false;begin perform plm.plan_licensing_consolidation_rollback(r.id,encode(extensions.digest(r.applied_state::text,'sha256'),'hex'));
+   exception when invalid_parameter_value then if sqlerrm<>'rollback unknown canonical owner endpoint' then raise;end if;rejected:=true;end;
+  if not rejected then raise exception 'hostile rollback owner identifier accepted';end if;
   rejected:=false;begin update plm.licensing_consolidation_plan set entity_operation_count=entity_operation_count+1 where id=q.id;exception when insufficient_privilege then rejected:=true;end;
   if not rejected then raise exception 'applied real counters mutable';end if;
   raise exception using errcode='Z2336',message='roll back additional synthetic rename case';
@@ -658,6 +689,31 @@ set local enable_seqscan=off;
 do $typed_identity_contracts$
 declare r record;op jsonb;predicate text;state jsonb;plan jsonb;bad jsonb;rejected boolean;identity_key text;
 begin
+ -- Restore the exact installed plan facts and verify formatting/trigger bits
+ -- against the native database in CI; formatting assumptions are not proof.
+ if not (true
+and exists(select 1 from pg_class c where c.oid=to_regclass('plm.licensing_consolidation_plan') and c.relkind='r')
+and (select count(*) from pg_policy p where p.polrelid=to_regclass('plm.licensing_consolidation_plan')
+ and p.polname='licensing_consolidation_plan_authenticated_read' and p.polcmd='r' and p.polpermissive
+ and p.polroles=array[(select oid from pg_roles where rolname='authenticated')]::oid[]
+ and pg_get_expr(p.polqual,p.polrelid)='true' and p.polwithcheck is null)=1
+and (select count(*) from pg_constraint c where c.conrelid=to_regclass('plm.licensing_consolidation_plan')
+ and c.conname='licensing_consolidation_plan_hash_chk' and c.contype='c' and c.convalidated
+ and pg_get_constraintdef(c.oid)='CHECK ((plan_hash ~ ''^[0-9a-f]{64}$''::text))')=1
+and (select count(*) from pg_constraint c where c.conrelid=to_regclass('plm.licensing_consolidation_plan')
+ and c.conname='licensing_consolidation_plan_identity_uq' and c.contype='u' and c.convalidated and not c.condeferrable and not c.condeferred
+ and pg_get_constraintdef(c.oid)='UNIQUE (source_system, capture_id, plan_hash)')=1
+
+ ) then raise exception 'exact installed plan relation/policy/hash/identity facts changed';end if;
+ for r in select * from(values('core.property_character_associations'),('core.property_style_guide'),('core.property_franchise'),('core.style_guide_character'),('dam.asset_property'),('dam.asset_character'),('dam.asset_style_guide'),('dam.asset_franchise')) pairs(base) loop
+  if pg_get_viewdef(to_regclass(r.base||'_current')) is distinct from format(E' SELECT %s\n   FROM %s\n  WHERE is_current'||chr(59),
+    (select string_agg(quote_ident(a.attname),E',\n    ' order by a.attnum) from pg_attribute a where a.attrelid=to_regclass(r.base) and a.attnum>0 and not a.attisdropped),r.base) then raise exception 'native exact view rendering changed:%',r.base;end if;
+ end loop;
+ if (select count(*) from pg_trigger t where t.tgname='assert_canonical_edge_still_supported' and t.tgrelid in(
+  'core.property_character_source_edge'::regclass,'core.property_style_guide_source_edge'::regclass,'core.property_franchise_source_edge'::regclass,'core.style_guide_character_source_edge'::regclass,
+  'dam.asset_property_source_edge'::regclass,'dam.asset_character_source_edge'::regclass,'dam.asset_style_guide_source_edge'::regclass,'dam.asset_franchise_source_edge'::regclass)
+  and t.tgtype=25 and t.tgconstraint<>0 and t.tgdeferrable and t.tginitdeferred and t.tgnargs=3)<>8 then raise exception 'native deferred constraint trigger type25 contract changed';end if;
+ raise notice 'Exact restored4 plan facts/native25 bits/all8 view deparser assertions PASS';
  for r in select * from(values
 ('core.taxonomy_source_ref','{"source_id": "ZZ2336 bound '' OR true --", "source_system": "ZZ2336 bound '' OR true --", "source_table": "ZZ2336 bound '' OR true --"}'::jsonb),
 ('core.property','{"id": "23360000-0000-0000-0000-000000000099"}'::jsonb),

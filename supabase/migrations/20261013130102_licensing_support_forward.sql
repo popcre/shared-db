@@ -1790,8 +1790,13 @@ end;
   if op->>'kind' in ('entity_source','property_name') then v_entities:=v_entities+(result->>'changes')::integer;else v_rel:=v_rel+(result->>'changes')::integer;end if;
   if op->'after'->>'is_current'='false' or op->'after'->>'missing_since' is not null then v_retire:=v_retire+(result->>'changes')::integer;end if;
  end loop;
- set constraints all immediate;
- set constraints all deferred;
+ -- Flush ONLY the eight licensing support constraints before recording apply.
+ -- The outer service RPC must run in its own transaction: these eight named
+ -- constraints are restored to their declared initially-deferred mode, while
+ -- unrelated FK/unique/constraint timing is left untouched. PostgreSQL does
+ -- not expose the caller's previous per-constraint mode for arbitrary restore.
+ set constraints core.assert_canonical_edge_still_supported,dam.assert_canonical_edge_still_supported immediate;
+ set constraints core.assert_canonical_edge_still_supported,dam.assert_canonical_edge_still_supported deferred;
  update plm.licensing_consolidation_plan set plan_status='applied',applied_at=clock_timestamp(),applied_by=coalesce(auth.uid()::text,session_user),applied_state=jsonb_build_object('operations',states,'entity_changes',v_entities,'relationship_changes',v_rel,'retire_changes',v_retire),entity_operation_count=v_entities,relationship_operation_count=v_rel,retire_operation_count=v_retire where id=plan.id returning * into plan;
  return plan;
 end $apply$;
@@ -1817,6 +1822,7 @@ begin
   v_owner:=(op->>'licensor_id')::uuid;
   if not exists(select 1 from plm.licensing_source_scope where source_system=original.source_system and licensor_id=v_owner and source_purpose=case when op->>'kind' in ('relationship_source','canonical_pair') then 'relationship_evidence' else 'canonical_identity' end and scope_axis=case when op->>'kind' in ('relationship_source','canonical_pair') then 'relationship' else 'entity' end and permitted_kind=op->>'entity_kind' and authorized_at is not null and authorized_by is not null) then raise exception 'rollback current source authority absent';end if;
   for v_rec in select value->>'table' owner_table,value->>'id' owner_id from jsonb_array_elements(op->'owners') order by value->>'table',value->>'id' loop
+   if v_rec.owner_table is null or v_rec.owner_table not in ('core.property','core.character','core.style_guide','core.franchise','dam.asset') then raise exception 'rollback unknown canonical owner endpoint' using errcode='22023';end if;
    execute format('select licensor_id from %s where id=$1 for update',v_rec.owner_table) into v_owner_now using v_rec.owner_id::uuid;
    if v_owner_now is distinct from v_owner then raise exception 'rollback current canonical owner changed';end if;
   end loop;

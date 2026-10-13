@@ -7,8 +7,10 @@
   "contract_ref": "refs/db-contracts/4274/2",
   "contract_sha256": "3b8b5a641910e93aa0a94637d46570d787b3a26a37155f6e86e28de9c251b006",
   "base_sha": "8be5f2114c6f664a91381ca9b8ee65df81f91537",
-  "head_sha": "692db2c43b53b8abf9c06c1a423efcba769104cf",
+  "head_sha": "fc71e2b78dc56de125c7557d9c6b4e943cbd096c",
   "files_changed": [
+    ".agent/work/4274/2/completion.json",
+    ".agent/work/4274/2/contract.json",
     ".github/workflows/coldlion-history-backfill.yml",
     "tools/coldlion-landing-history.test.mjs",
     "tools/coldlion-landing/backfill-history.mjs"

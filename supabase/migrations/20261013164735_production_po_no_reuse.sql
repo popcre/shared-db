@@ -17,6 +17,16 @@ $function$;
 
 revoke all on function plm.normalize_production_po_number(text) from public, anon, authenticated, service_role;
 
+do $cutover$
+begin
+  if exists (select 1 from plm.production_order
+             where plm.normalize_production_po_number(production_order_number) = '') then
+    raise exception 'Production PO enforcement requires resolving existing blank numbers first.'
+      using errcode = '23514';
+  end if;
+end;
+$cutover$;
+
 create table plm.production_po_reservation (
   normalized_po text primary key,
   reserved_at timestamptz not null default now(),

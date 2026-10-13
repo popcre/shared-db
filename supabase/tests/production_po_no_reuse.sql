@@ -8,6 +8,9 @@ declare
   v_constraint text;
   v_state text;
   v_used timestamptz;
+  v_role text;
+  v_registry text;
+  v_privilege text;
   v_first uuid := '42570000-0000-4000-8000-000000000001';
   v_voided uuid := '42570000-0000-4000-8000-000000000002';
   v_punct uuid := '42570000-0000-4000-8000-000000000003';
@@ -20,14 +23,15 @@ declare
 begin
   -- The reservation and one-use admission ledgers are owner-only, including for
   -- service_role, which must not become an application bypass.
-  if has_table_privilege('anon', 'plm.production_po_reservation', 'select,insert,update,delete')
-     or has_table_privilege('authenticated', 'plm.production_po_reservation', 'select,insert,update,delete')
-     or has_table_privilege('service_role', 'plm.production_po_reservation', 'select,insert,update,delete')
-     or has_table_privilege('anon', 'plm.production_po_legacy_admission', 'select,insert,update,delete')
-     or has_table_privilege('authenticated', 'plm.production_po_legacy_admission', 'select,insert,update,delete')
-     or has_table_privilege('service_role', 'plm.production_po_legacy_admission', 'select,insert,update,delete') then
-    raise exception 'application roles have production PO registry privileges';
-  end if;
+  foreach v_role in array array['anon','authenticated','service_role'] loop
+    foreach v_registry in array array['plm.production_po_reservation','plm.production_po_legacy_admission'] loop
+      foreach v_privilege in array array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'] loop
+        if has_table_privilege(v_role,v_registry,v_privilege) then
+          raise exception 'application roles have production PO registry privileges';
+        end if;
+      end loop;
+    end loop;
+  end loop;
 
   -- Outer POSIX whitespace (including tabs/newlines) and NBSP normalize to the
   -- same identity. Ordinary case/space normalization is exercised by the first row.
@@ -167,4 +171,27 @@ begin
 end;
 $test$;
 
+rollback;
+
+-- Give service_role a temporary test INSERT privilege to prove that even a
+-- direct writer cannot bypass the trigger. The ACL and fixtures roll back;
+-- neither the migration nor production grants this additional privilege.
+begin;
+grant insert on plm.production_order to service_role;
+set local role service_role;
+insert into plm.production_order(production_order_number,source_system,source_id)
+values ('TEST-NOREUSE-SERVICE-4257','po-no-reuse-test','fixture:service-owner');
+do $service_test$
+declare v_constraint text;
+begin
+  begin
+    insert into plm.production_order(production_order_number,source_system,source_id)
+    values (' test-noreuse-service-4257 ','po-no-reuse-test','fixture:service-duplicate');
+    raise exception 'service_role bypassed production PO reuse protection';
+  exception when unique_violation then
+    get stacked diagnostics v_constraint = constraint_name;
+    if v_constraint <> 'production_po_no_reuse' then raise; end if;
+  end;
+end;
+$service_test$;
 rollback;

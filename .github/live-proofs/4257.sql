@@ -1,4 +1,6 @@
--- #4257 / PopDAM #277: read-only production invariant and preserved-history proof.
+-- #4257 / PopDAM #277: catalog/access proof under supabase_read_only_user.
+-- Behavioral rejection and retained order rows are verified by the application
+-- coordinator on the same application issue; this probe does not read private ledgers.
 with trigger_contract as (
   select count(*) = 1 as passed
   from pg_catalog.pg_trigger t
@@ -23,20 +25,22 @@ with trigger_contract as (
     where conrelid = 'plm.production_po_reservation'::regclass and contype = 'f'
   ) as passed
 ), closed_registry as (
-  select bool_and(not has_table_privilege(r.role_name,t.table_name,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')) as passed
+  select bool_and(not has_table_privilege(r.role_name,t.table_name,p.privilege)) as passed
   from (values ('anon'),('authenticated'),('service_role')) r(role_name)
   cross join (values ('plm.production_po_reservation'),('plm.production_po_legacy_admission')) t(table_name)
-), all_orders_reserved as (
-  select not exists (
-    select 1 from plm.production_order p
-    where plm.normalize_production_po_number(p.production_order_number) <> '' and not exists (
-      select 1 from plm.production_po_reservation r
-      where r.normalized_po = plm.normalize_production_po_number(p.production_order_number)
-    )
-  ) as passed
+  cross join (values ('SELECT'),('INSERT'),('UPDATE'),('DELETE'),('TRUNCATE'),('REFERENCES'),('TRIGGER')) p(privilege)
+), normalizer_contract as (
+  select provolatile = 'i' and proisstrict and proparallel = 's'
+    and not prosecdef and proconfig = array['search_path=pg_catalog'] as passed
+  from pg_catalog.pg_proc
+  where oid = 'plm.normalize_production_po_number(text)'::regprocedure
+), ledger_contract as (
+  select exists (select 1 from supabase_migrations.schema_migrations
+                 where version = '20261013164735') as passed
 )
 select coalesce((select passed from trigger_contract),false)
   and coalesce((select passed from function_contract),false)
   and coalesce((select passed from reservation_contract),false)
   and coalesce((select passed from closed_registry),false)
-  and coalesce((select passed from all_orders_reserved),false) as passed;
+  and coalesce((select passed from normalizer_contract),false)
+  and coalesce((select passed from ledger_contract),false) as passed;

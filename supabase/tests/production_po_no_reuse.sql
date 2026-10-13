@@ -1,5 +1,5 @@
 -- #4257 / PopDAM #277. Transactional contract tests for permanent production PO use.
--- Run after 20261013164735_production_po_no_reuse.sql in a disposable test database.
+-- Run after 20261013201822_production_po_no_reuse.sql in a disposable test database.
 -- Synthetic fixture labels only; every row is rolled back at the end.
 begin;
 

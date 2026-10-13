@@ -1,30 +1,58 @@
 {
   "schema_version": 1,
   "work_issue": 4257,
-  "outcome": "returned",
-  "reason": "The evidence pair is prepared, but the scoped database work is not ready for acceptance: the migration and business-rule draft predate this prospective contract; the isolated PostgreSQL test, two independent reviews, CI, and live proof have not been verified.",
+  "outcome": "ready-for-merge",
+  "reason": "Scoped implementation and local checks complete; independent exact-head reviews, CI, governed promotion and production live acceptance are separate coordinator gates.",
   "contract_ref": "refs/db-contracts/4257/1",
-  "contract_sha256": "835246639aa1eca37ea953f2a5935f61c251db51ac91251c88ef4da1bef2c9e5",
-  "head_sha": "dc6636aadc871597b3ef77067d0650a00ed77691",
+  "contract_sha256": "5f01715eee4f09e4a7df8d3f0b102b3022abf8ae6d9b1ef980a2b15cfd6ad05f",
+  "head_sha": "7e774d69f86e21870b90070ef1b76d530b3e6df9",
   "base_sha": "dc6636aadc871597b3ef77067d0650a00ed77691",
   "files_changed": [
+    ".agent/work/4257/1/completion.json",
+    ".agent/work/4257/1/contract.json",
     ".github/live-proofs/4257.sql",
     "docs/business-rules/erp-orders-and-source-meaning.md",
-    "supabase/migrations/20261013164735_production_po_no_reuse.sql"
+    "supabase/migrations/20261013164735_production_po_no_reuse.sql",
+    "supabase/tests/production_po_no_reuse.sql"
   ],
   "db_reads": [],
-  "db_writes": [],
+  "db_writes": [
+    "table plm.production_order",
+    "table plm.production_po_reservation",
+    "table plm.production_po_legacy_admission",
+    "function plm.normalize_production_po_number",
+    "function plm.guard_production_po_number"
+  ],
   "checks": [
     {
-      "command": "node scripts/agent-work-contract.mjs --validate-contract --contract-file .agent/work/4257/1/contract.json",
+      "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "The prospective contract passed the repository contract validator."
+      "evidence": "Static SQL checks passed; no live ledger was configured locally, which CI must independently check."
+    },
+    {
+      "command": "PostgreSQL network-isolated disposable test of supabase/tests/production_po_no_reuse.sql",
+      "exit_code": 0,
+      "evidence": "docker exec -i codex-po-no-reuse-01a12aec psql -U postgres -d normalized_test -v ON_ERROR_STOP=1 < supabase/tests/production_po_no_reuse.sql: BEGIN / DO / ROLLBACK passed. Network-none PostgreSQL15 fixture includes canonical source_id. Separate concurrent contenders: one commit, one production_po_no_reuse rejection. Pre-cutover duplicate fixture: all raw header JSON equal before/after, two headers and one reservation."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Owned implementation and evidence whitespace checks passed."
+    },
+    {
+      "command": "node scripts/check-live-proof-probe.mjs",
+      "exit_code": 0,
+      "evidence": "Application-returning outcome exempt from shared-db-only required probe. Committed probe independently passes probeShapeProblem=null and local execution returns one passed=true column."
     }
   ],
   "assumptions_resolved": [
-    "The branch HEAD equals the contract base SHA.",
-    "The migration and business-rule draft were already present before contract preparation; no work was backdated.",
-    "No database reads or writes, isolated PostgreSQL test, independent review, CI run, merge, or live proof was performed or verified in this step."
+    "Canonical source-key INSERT ON CONFLICT is not used by any current audited writer; exact-ID retry is supported, new source identities cannot reuse a number.",
+    "Existing historical duplicate headers remain byte-for-byte unchanged in pre-cutover test.",
+    "POSIX surrounding whitespace and NBSP normalize along with case; punctuation and leading zeros remain significant.",
+    "This implementation was drafted before prospective contract publication, as disclosed in contract.",
+    "No production or shared-preview database was read or mutated during implementation tests.",
+    "Two reviews, required CI, governed merge/promotion and application live proof remain separate unverified coordinator delivery gates."
   ],
-  "stop_conditions_hit": []
+  "stop_conditions_hit": [],
+  "pr": 4262
 }

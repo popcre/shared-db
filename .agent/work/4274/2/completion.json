@@ -7,7 +7,7 @@
   "contract_ref": "refs/db-contracts/4274/2",
   "contract_sha256": "3b8b5a641910e93aa0a94637d46570d787b3a26a37155f6e86e28de9c251b006",
   "base_sha": "8be5f2114c6f664a91381ca9b8ee65df81f91537",
-  "head_sha": "fc71e2b78dc56de125c7557d9c6b4e943cbd096c",
+  "head_sha": "2c75fd0bd666221b4050612f34320346d8ad2183",
   "files_changed": [
     ".agent/work/4274/2/completion.json",
     ".agent/work/4274/2/contract.json",

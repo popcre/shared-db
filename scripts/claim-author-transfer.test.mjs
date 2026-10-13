@@ -370,3 +370,15 @@ test('merged-source check-in uses real main ancestry and structural parser witho
   assert.ok(checkInAuthor(options,NOW,io).checkinRef)
   io.getPr=()=>({...get(),state:'closed',merged:false});assert.throws(()=>checkInAuthor(options,NOW,io),/open pull request/)
 })
+test('check-in refuses an unreadable permanent reservation or a reservation moved during receipt publication',()=>{
+  for(const mode of ['malformed','undereferenceable','moved']){
+    const {io,request}=voluntaryFixture();handoffClaimAuthor(request,NOW,io)
+    io.orchestratorFlowAdapter=()=>({resolveMarker:()=>({live:true,task:'new-author',calling_task:'new-author'})})
+    if(mode==='malformed')io.refs.set('refs/db-claims/'+VERSION,'bad')
+    if(mode==='undereferenceable')io.commits.delete(RESERVATION)
+    if(mode==='moved'){const create=io.createRef;io.createRef=(ref,sha)=>{const result=create(ref,sha);if(ref.startsWith('refs/db-author-checkins/'))io.refs.set('refs/db-claims/'+VERSION,'e'.repeat(40));return result}}
+    const options={issue:request.issue,claim:request.claim,pr:request.pr,headSha:HEAD,owner:request.newOwner,branch:request.branch,worktree:request.targetWorktree}
+    assert.throws(()=>checkInAuthor(options,NOW,io),/PERMISSION_RENEWED_BUT_CONFIRMATION_UNVERIFIED/)
+    assert.equal(parseAuthorLease(io.getIssue(3378).body,NOW).capacityActive,true)
+  }
+})

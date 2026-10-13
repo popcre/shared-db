@@ -3769,6 +3769,7 @@ function requireCheckinOwner(options,io){
 export const AUTHOR_CHECKIN_MESSAGE='db-coordination author-checkin '
 export function authorCheckinRef(claim,body){const lease=parseAuthorLease(body);return `refs/db-author-checkins/${claim}-${lease.version}-${sha256(body).slice(0,24)}`}
 export function validateAuthorCheckin(record,claim,now=new Date(),{pr,headSha}={}){
+  if(!Number.isSafeInteger(Number(pr))||Number(pr)<=0||!/^[0-9a-f]{40}$/.test(String(headSha)))throw new LaneError('author check-in requires exact positive PR and40-character head binding')
   const lease=parseAuthorLease(claim.body,now),fields=['schema_version','kind','human_identity_authenticated','claim','issue','pr','head_sha','owner','branch','worktree','version','body_sha256','expires_at','author_session','checked_in_at']
   if(!record||Array.isArray(record)||Object.keys(record).length!==fields.length||fields.some(k=>!Object.hasOwn(record,k))||record.schema_version!==1||record.kind!=='author-checkin'||record.human_identity_authenticated!==false||!['claim','issue','pr'].every(k=>Number.isSafeInteger(record[k])&&record[k]>0)||!/^[0-9a-f]{40}$/.test(record.head_sha)||record.claim!==Number(claim.number)||record.owner!==lease.owner||record.branch!==lease.branch||record.worktree!==lease.worktree||record.version!==lease.version||record.body_sha256!==sha256(claim.body)||record.expires_at!==lease.expiresAt.toISOString()||!resolveSessionAuthority({env:{SHARED_DB_SESSION_ID:record.author_session},claimOwner:record.owner}).live||(pr!==undefined&&record.pr!==Number(pr))||(headSha!==undefined&&record.head_sha!==headSha))throw new LaneError('author check-in confirmation differs from exact owner, source or claim')
   const checked=Date.parse(record.checked_in_at)
@@ -3784,14 +3785,15 @@ export function checkInAuthor(options,now=new Date(),io=githubIo){
   try{
     lock=io.makeOwnerCommit(`db-coordination claim-author-transfer-mutex claim=${options.claim} operation=author-checkin`);acquireMutex(lock,io)
     const proof=requireCheckinOwner(request,io),pr=io.getPr(options.pr)
-    if(proof.lease.expiresAt.toISOString()!==renewed.expiresAt||!(pr?.state==='open'||pr?.merged===true||pr?.merged_at)||pr.head?.sha!==options.headSha||pr.head?.ref!==options.branch||!io.readRef('refs/db-claims/'+proof.lease.version))throw new LaneError('renewed confirmation source or reservation changed')
+    const reservation=io.readRef('refs/db-claims/'+proof.lease.version)
+    if(proof.lease.expiresAt.toISOString()!==renewed.expiresAt||!(pr?.state==='open'||pr?.merged===true||pr?.merged_at)||pr.head?.sha!==options.headSha||pr.head?.ref!==options.branch||!/^[0-9a-f]{40}$/.test(String(reservation))||!io.getCommit(reservation))throw new LaneError('renewed confirmation source or reservation changed')
     const ref=authorCheckinRef(Number(options.claim),proof.row.body),record={schema_version:1,kind:'author-checkin',human_identity_authenticated:false,claim:Number(options.claim),issue:Number(options.issue),pr:Number(options.pr),head_sha:options.headSha,owner:options.owner,branch:options.branch,worktree:options.worktree,version:proof.lease.version,body_sha256:sha256(proof.row.body),expires_at:renewed.expiresAt,author_session:proof.marker.task,checked_in_at:now.toISOString()}
     validateAuthorCheckin(record,{number:Number(options.claim),body:proof.row.body},now,{pr:options.pr,headSha:options.headSha})
     requireOwnedRef(MUTEX_REF,lock,io)
     let receiptSha=io.readRef(ref)
     if(receiptSha){const message=io.getCommit(receiptSha)?.message;if(message!==AUTHOR_CHECKIN_MESSAGE+JSON.stringify(record))throw new LaneError('existing confirmation differs')}
     else{receiptSha=io.makeOwnerCommit(AUTHOR_CHECKIN_MESSAGE+JSON.stringify(record));if(!io.createRef(ref,receiptSha))throw new LaneError('create-only author confirmation refused')}
-    if(readRefAfterWrite(ref,receiptSha,io)!==receiptSha||io.getCommit(receiptSha)?.message!==AUTHOR_CHECKIN_MESSAGE+JSON.stringify(record)||requireCheckinOwner(request,io).row.body!==proof.row.body)throw new LaneError('author confirmation readback differs')
+    if(readRefAfterWrite(ref,receiptSha,io)!==receiptSha||io.getCommit(receiptSha)?.message!==AUTHOR_CHECKIN_MESSAGE+JSON.stringify(record)||requireCheckinOwner(request,io).row.body!==proof.row.body||io.readRef('refs/db-claims/'+proof.lease.version)!==reservation)throw new LaneError('author confirmation readback differs')
     requireOwnedRef(MUTEX_REF,lock,io)
     return {...renewed,checkinRef:ref,sha:receiptSha,checkedInAt:now.toISOString(),nextCheckinMinutes:AUTHOR_CHECKIN_INTERVAL_MINUTES}
   }catch(error){throw new LaneError(`PERMISSION_RENEWED_BUT_CONFIRMATION_UNVERIFIED claim=${options.claim}; ${error.message}`)}

@@ -82,6 +82,9 @@ jobs:
         env:
           FROM: ${{ github.event.inputs.from }}
           TO: ${{ github.event.inputs.to }}
+          ENDPOINT: ${{ github.event.inputs.endpoint }}
+          STAGE: ${{ github.event.inputs.stage }}
+          JOB: ${{ github.event.inputs.job }}
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
           COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
           COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}

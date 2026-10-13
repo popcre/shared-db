@@ -6,6 +6,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -909,6 +910,54 @@ test("production history backfill exposes a separate endpoint-limited open/futur
   assert.match(branch, /--from "\$FROM" --to "\$TO" --endpoint \/orderHistory --company EDGEHOME --unsealed-order-window/);
   assert.doesNotMatch(branch, /sync-masters|sync-prepack|sync-prod-details|sync-coldlion-items/);
   assert.ok(backfill.indexOf("order-history-window") < backfill.indexOf('ARGS=(--from "$FROM" --limit'), "the new branch exits before the broad closed-window backfill");
+});
+
+test("the early workflow guard receives and enforces the selected job, endpoint and stage", () => {
+  const checkStep = backfill.slice(
+    backfill.indexOf("- name: Check the inputs before spending an hour on them"),
+    backfill.indexOf("\n      - name: Backfill"),
+  );
+  assert.notEqual(checkStep.indexOf("- name: Check the inputs before spending an hour on them"), -1);
+  for (const [name, input] of [["JOB", "job"], ["ENDPOINT", "endpoint"], ["STAGE", "stage"]]) {
+    assert.match(checkStep, new RegExp(`^\\s+${name}: \\$\\{\\{ github\\.event\\.inputs\\.${input} \\}\\}$`, "m"));
+  }
+
+  const runStart = checkStep.indexOf("        run: |\n");
+  assert.notEqual(runStart, -1, "the input guard must remain in the preflight step");
+  const runLines = checkStep.slice(runStart).split("\n").slice(1);
+  const scriptLines = [];
+  for (const line of runLines) {
+    if (line && !line.startsWith("          ")) break;
+    scriptLines.push(line.replace(/^          /, ""));
+  }
+  const script = scriptLines.join("\n");
+  const runGuard = (overrides = {}) => {
+    try {
+      execFileSync("bash", ["-c", script], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          FROM: "2026-10-06",
+          TO: "2026-10-12",
+          DATABASE_URL: "synthetic",
+          COLDLION_API_KEY: "synthetic",
+          JOB: "order-history-window",
+          ENDPOINT: "/orderHistory",
+          STAGE: "all",
+          ...overrides,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      return { accepted: true, output: "" };
+    } catch (error) {
+      return { accepted: false, output: `${error.stdout ?? ""}${error.stderr ?? ""}` };
+    }
+  };
+
+  assert.equal(runGuard().accepted, true, "the bounded /orderHistory case should pass preflight");
+  assert.match(runGuard({ ENDPOINT: "/prodHistory" }).output, /limited to \/orderHistory/);
+  assert.match(runGuard({ STAGE: "ISS" }).output, /has no stage dimension/);
+  assert.match(runGuard({ TO: "" }).output, /requires an explicit to date/);
 });
 
 test("neither workflow can be reached by a push, a pull request or a fork", () => {

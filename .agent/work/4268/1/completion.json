@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "work_issue": 4268,
+  "outcome": "ready-for-merge",
+  "reason": "Bounded read-only RPC and negative fixtures implemented; reviews, CI, qualified promotion and live application remain delivery gates.",
+  "contract_ref": "refs/db-contracts/4268/1",
+  "contract_sha256": "14b58fcb7b44f11dd75c59d0c440fbaeb9c513b971bf5a5608afacfc15775362",
+  "head_sha": "21736572fbf6f61082b8509cbfc3a6ba7e4dbf8b",
+  "base_sha": "69f480cd7a0b3b839c28edfddb0c0dba0e0f3dfa",
+  "files_changed": [
+    ".github/live-proofs/4268.sql",
+    "supabase/migrations/20261013211042_popdam_sales_order_received_dates.sql",
+    "supabase/tests/popdam_sales_order_received_dates.sql"
+  ],
+  "db_reads": [
+    "view api.dam_order_list",
+    "table coldlion.order_history_line"
+  ],
+  "db_writes": [
+    "function public.get_dam_order_sales_order_dates"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Root static/whitespace check passed; live-ledger check belongs to CI."
+    },
+    {
+      "command": "docker exec -i codex-po-no-reuse-01a12aec psql -U postgres -d so_date_test -v ON_ERROR_STOP=1 < supabase/tests/popdam_sales_order_received_dates.sql",
+      "exit_code": 0,
+      "evidence": "Root executed isolated synthetic fixture; PASS notice and ROLLBACK."
+    },
+    {
+      "command": "git diff --check origin/main...HEAD",
+      "exit_code": 0,
+      "evidence": "Root static/whitespace check passed; live-ledger check belongs to CI."
+    }
+  ],
+  "assumptions_resolved": [
+    "ColdLion received/entry timestamp authority is settled by #4150; timestamps are displayed as America/New_York calendar dates.",
+    "No source identities or landing rows were changed; existing linked lines only.",
+    "Negative authorization, cap, malformed reference, company, ambiguity, timezone and unchanged-row tests passed in network-isolated PostgreSQL."
+  ],
+  "stop_conditions_hit": [],
+  "migration_versions": [
+    "20261013211042"
+  ]
+}

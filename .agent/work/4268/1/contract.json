@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "work_issue": 4268,
+  "work_type": "structural",
+  "route": "claim-first",
+  "goal": "Read ColdLion Sales Order received dates for exactly linked caller-readable OrderList lines without exposing raw landing tables.",
+  "base_sha": "69f480cd7a0b3b839c28edfddb0c0dba0e0f3dfa",
+  "dispatcher": "Codex chat 01a12aec-192c-7703-a62c-b2671e88c11d",
+  "worker": "Codex chat 01a12aec-192c-7703-a62c-b2671e88c11d",
+  "branch": "codex/issue277-so-date",
+  "worktree": "/worksp/shared-db-issue277-so-date",
+  "allowed_paths": [
+    ".agent/work/4268/1/contract.json",
+    ".agent/work/4268/1/completion.json",
+    ".github/live-proofs/4268.sql",
+    "supabase/migrations/20261013211042_popdam_sales_order_received_dates.sql",
+    "supabase/tests/popdam_sales_order_received_dates.sql"
+  ],
+  "file_writes": [
+    ".agent/work/4268/1/contract.json",
+    ".agent/work/4268/1/completion.json",
+    ".github/live-proofs/4268.sql",
+    "supabase/migrations/20261013211042_popdam_sales_order_received_dates.sql",
+    "supabase/tests/popdam_sales_order_received_dates.sql"
+  ],
+  "db_reads": [
+    "view api.dam_order_list",
+    "table coldlion.order_history_line"
+  ],
+  "db_writes": [
+    "function public.get_dam_order_sales_order_dates"
+  ],
+  "prohibited_actions": [
+    "No production or shared-preview writes outside qualified governed workflows.",
+    "No changes to source rows, source identities, customer mappings, or production-to-SO link view.",
+    "No raw ColdLion table grants; no unauthenticated dates; no earliest-date guesses across Sales Orders."
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "docker exec -i codex-po-no-reuse-01a12aec psql -U postgres -d so_date_test -v ON_ERROR_STOP=1 < supabase/tests/popdam_sales_order_received_dates.sql",
+    "git diff --check origin/main...HEAD",
+    "node scripts/check-live-proof-probe.mjs"
+  ],
+  "assumptions": [
+    "created_time already landed and backfilled by #4150 is settled authoritative SO entry/received date in America/New_York.",
+    "Existing OrderList contract permits every authenticated staff user to read canonical orders; new reader must preserve that scope.",
+    "Each requested line uses only its exact existing ColdLion Sales Order reference; unknown or conflicting timestamps remain NULL.",
+    "Application code is updated only after canonical backend is merged and applied."
+  ],
+  "stop_conditions": [
+    "Stop on ambiguous matching or source timestamp conflicts; emit NULL rather than choose.",
+    "Stop before merge without two independent exact-head approvals and required checks.",
+    "Stop before writes without target proof and qualified promotion."
+  ]
+}

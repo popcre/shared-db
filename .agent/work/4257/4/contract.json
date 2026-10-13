@@ -1,29 +1,29 @@
 {
   "schema_version": 2,
-  "generation": 3,
+  "generation": 4,
   "work_issue": 4257,
   "work_type": "structural",
   "route": "claim-first",
   "goal": "Prevent reuse of normalized production PO numbers for new production orders while preserving existing historical duplicates and permitting only the exact reviewed historical admissions.",
-  "base_sha": "86576bfd6527a76b32db5d2b70208a0685a37571",
+  "base_sha": "e5901b3ba546c7e1e202ead099b06f445b956671",
   "dispatcher": "Codex chat 01a12aec-192c-7703-a62c-b2671e88c11d",
   "worker": "Codex chat 01a12aec-192c-7703-a62c-b2671e88c11d",
   "branch": "codex/issue277-po-no-reuse",
   "worktree": "/worksp/shared-db-issue277-po-no-reuse",
   "allowed_paths": [
-    ".agent/work/4257/3/contract.json",
-    ".agent/work/4257/3/completion.json",
+    ".agent/work/4257/4/contract.json",
+    ".agent/work/4257/4/completion.json",
     ".github/live-proofs/4257.sql",
     "docs/business-rules/erp-orders-and-source-meaning.md",
-    "supabase/migrations/20261013164735_production_po_no_reuse.sql",
+    "supabase/migrations/20261013201822_production_po_no_reuse.sql",
     "supabase/tests/production_po_no_reuse.sql"
   ],
   "file_writes": [
-    ".agent/work/4257/3/contract.json",
-    ".agent/work/4257/3/completion.json",
+    ".agent/work/4257/4/contract.json",
+    ".agent/work/4257/4/completion.json",
     ".github/live-proofs/4257.sql",
     "docs/business-rules/erp-orders-and-source-meaning.md",
-    "supabase/migrations/20261013164735_production_po_no_reuse.sql",
+    "supabase/migrations/20261013201822_production_po_no_reuse.sql",
     "supabase/tests/production_po_no_reuse.sql"
   ],
   "db_reads": [],
@@ -53,7 +53,8 @@
     "No current source-key upsert compatibility claim is made without separate evidence.",
     "The isolated PostgreSQL regression, independent approvals, CI, and live proof remain unverified and must be completed by the coordinator or assigned reviewers.",
     "Generation 2 explicitly declares the production_order trigger discovered by the static claim lexer; generation 1 remains preserved in its published immutable ref and Git history.",
-    "Generation 3 follows the supported refresh helper; that helper committed the current-main implementation and stopped because it cannot rerun SQL checks. Coordinator reruns the exact isolated SQL checks and uses a catalog-only probe qualified under the read-only execution role. No production permissions were broadened."
+    "Generation 3 follows the supported refresh helper; that helper committed the current-main implementation and stopped because it cannot rerun SQL checks. Coordinator reruns the exact isolated SQL checks and uses a catalog-only probe qualified under the read-only execution role. No production permissions were broadened.",
+    "Generation 4 follows native active-claim version supersession after main advanced; SQL bytes are unchanged, and the catalog probe ledger key follows reserved version 20261013201822. Older approvals do not authorize this changed head."
   ],
   "stop_conditions": [
     "Stop if any writer can bypass the reservation guard or if normalization does not match the reviewed PO identity rule.",
@@ -64,7 +65,7 @@
   ],
   "evidence_parent": {
     "work_issue": 4257,
-    "generation": 2,
-    "contract_sha256": "d8f7e95e5feead78085cf6e577213b204839cab77be9b1ddbddc638ee1b88a60"
+    "generation": 3,
+    "contract_sha256": "85a222d7882f85046901b74d57270a8ef198e108bd6051883e3317d5ddb75849"
   }
 }

@@ -36,7 +36,7 @@ with trigger_contract as (
   where oid = 'plm.normalize_production_po_number(text)'::regprocedure
 ), ledger_contract as (
   select exists (select 1 from supabase_migrations.schema_migrations
-                 where version = '20261013164735') as passed
+                 where version = '20261013201822') as passed
 )
 select coalesce((select passed from trigger_contract),false)
   and coalesce((select passed from function_contract),false)

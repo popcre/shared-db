@@ -45,6 +45,8 @@ begin
     (production_order_line_id, source_system, source_id, is_primary)
   values
     ('42680000-0000-4000-8000-000000000101', 'coldlion', 'coldlion:so:42680001:line:1:component:1', true),
+    -- A second same-system ref must not displace the primary SO identity.
+    ('42680000-0000-4000-8000-000000000101', 'coldlion', 'coldlion:so:42680009:line:1:component:1', false),
     ('42680000-0000-4000-8000-000000000102', 'coldlion', 'coldlion:so:42680002:line:1:component:1', true),
     ('42680000-0000-4000-8000-000000000103', 'coldlion', 'coldlion:so:42680001:line:2:component:1', true),
     ('42680000-0000-4000-8000-000000000104', 'coldlion', 'coldlion:so:42680004:line:1:component:1', true),
@@ -63,6 +65,8 @@ begin
     -- UTC values straddle the New York spring-forward boundary: dates are Mar 7 and Mar 8.
     ('EDGEHOME', 42680001, 1, 'ZZ-SKU-A', timestamptz '2026-03-08 04:30:00+00', repeat('a',64), v_run, now()),
     ('EDGEHOME', 42680002, 1, 'ZZ-SKU-B', timestamptz '2026-03-08 07:30:00+00', repeat('b',64), v_run, now()),
+    -- Different date than line 101's primary ref; this belongs only to its non-primary ref.
+    ('EDGEHOME', 42680009, 1, 'ZZ-SKU-A-ALTERNATE', timestamptz '2026-04-10 12:00:00+00', repeat('9',64), v_run, now()),
     -- One known stamp plus one missing version must abstain.
     ('EDGEHOME', 42680004, 1, 'ZZ-SKU-D1', timestamptz '2026-04-01 12:00:00+00', repeat('c',64), v_run, now()),
     ('EDGEHOME', 42680004, 2, 'ZZ-SKU-D2', null,                                  repeat('d',64), v_run, now()),

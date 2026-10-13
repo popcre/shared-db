@@ -3,12 +3,49 @@
 -- Do not expose ColdLion landing tables or infer another order's identity.
 begin;
 
+do $dependencies$
+declare dependency record;
+begin
+  if not exists (
+    select 1 from pg_catalog.pg_class c
+    where c.oid = to_regclass('api.dam_order_list') and c.relkind = 'v'
+      and c.reloptions @> array['security_invoker=true']
+  ) then
+    raise exception '#4268 requires the security-invoker OrderList view';
+  end if;
+  for dependency in select * from (values
+    ('api.dam_order_list', 'order_line_id', 'uuid'),
+    ('api.dam_order_list', 'coldlion_source_id', 'text'),
+    ('coldlion.order_history_line', 'company_code', 'text'),
+    ('coldlion.order_history_line', 'sales_order_no', 'bigint'),
+    ('coldlion.order_history_line', 'created_time', 'timestamp with time zone')
+  ) expected(object_name, column_name, type_name)
+  loop
+    if not exists (
+      select 1 from pg_catalog.pg_attribute a
+      where a.attrelid = to_regclass(dependency.object_name)
+        and a.attname = dependency.column_name and not a.attisdropped
+        and a.atttypid = to_regtype(dependency.type_name)
+    ) then
+      raise exception '#4268 dependency missing or changed: %.% (%)',
+        dependency.object_name, dependency.column_name, dependency.type_name;
+    end if;
+  end loop;
+  -- The current view (20261009073649) selects only primary ColdLion refs.
+  if position('coldlion_ref.is_primary' in lower(pg_get_viewdef('api.dam_order_list'::regclass))) = 0 then
+    raise exception '#4268 requires primary-only ColdLion references in OrderList';
+  end if;
+end;
+$dependencies$;
+
 create or replace function public.get_dam_order_sales_order_dates(p_line_ids uuid[])
 returns table(order_line_id uuid, sales_order_date date)
 language plpgsql stable security definer
 set search_path = pg_catalog
 as $$
 begin
+  -- Matches today's authenticated-wide OrderList read policies. If those
+  -- policies narrow, this definer reader's authorization must change with them.
   if auth.uid() is null then
     raise exception 'Authentication required' using errcode = '42501';
   end if;

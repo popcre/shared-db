@@ -41,6 +41,11 @@
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
       "evidence": "347 call sites/97 sources PASS; stale and missing confirmation refusal assertions are metadata admission, never database-absence claims"
+    },
+    {
+      "command": "native canonical contract/completion and Git evidence validation",
+      "exit_code": 0,
+      "evidence": "Contract schema validates and native exact implementation/sealed-head Git evidence passed; completion now includes this required native check and is validated before push."
     }
   ],
   "assumptions_resolved": [

@@ -1,20 +1,25 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "work_issue": 3298,
-  "outcome": "ready-for-merge",
-  "pr": 4221,
-  "migration_versions": [
-    "20261012114355"
-  ],
-  "contract_ref": "refs/db-contracts/3298/6",
-  "contract_sha256": "745b83a3871921c78071ea942293c590d8b0a493c93fecfa7279285bd5ac1057",
-  "head_sha": "158547cc49afd7c0aba05df1923c494502d55776",
+  "work_type": "structural",
+  "route": "claim-first",
+  "goal": "Land additive PM Jev activity-triage migration A with contract tests and exact-head AI review.",
   "base_sha": "5d876ca1b5302369925dd11a01c71c60ca4a9421",
-  "files_changed": [
-    "supabase/migrations/20261012114355_pm_jev_activity_triage_contract_a.sql",
+  "dispatcher": "MiMo chat ses_ffe5ed2727a0dffeZYOo8rFXq7 on EDGE-DEV",
+  "worker": "MiMo chat ses_ffe5ed2727a0dffeZYOo8rFXq7 on EDGE-DEV",
+  "branch": "mimo/3298-jev-activity-triage-migration-a",
+  "worktree": "C:/repos/shared-db/.ai/worktrees/3298-migration-a",
+  "allowed_paths": [
+    "supabase/migrations/20261013144638_pm_jev_activity_triage_contract_a.sql",
     "supabase/tests/jev_activity_triage_contract_a.sql",
-    ".agent/work/3298/6/contract.json",
-    ".agent/work/3298/6/completion.json"
+    ".agent/work/3298/7/contract.json",
+    ".agent/work/3298/7/completion.json"
+  ],
+  "file_writes": [
+    "supabase/migrations/20261013144638_pm_jev_activity_triage_contract_a.sql",
+    "supabase/tests/jev_activity_triage_contract_a.sql",
+    ".agent/work/3298/7/contract.json",
+    ".agent/work/3298/7/completion.json"
   ],
   "db_reads": [
     "table app.activity",
@@ -72,33 +77,31 @@
     "trigger app_comment_body_revision on app.comment",
     "trigger pm_jev_source_changed on app.comment"
   ],
-  "checks": [
-    {
-      "command": "bash scripts/check-sql.sh",
-      "exit_code": 0,
-      "evidence": "Static SQL guards passed"
-    },
-    {
-      "command": "supabase/tests/jev_activity_triage_contract_a.sql against ephemeral database",
-      "exit_code": 0,
-      "evidence": "CI contract-test job"
-    }
+  "prohibited_actions": [
+    "No grant widening on existing tables",
+    "No LOGIN role",
+    "No Step 7B revocations",
+    "No evaluation-dataset or Deno gateway objects"
   ],
-  "assumptions_resolved": [
-    "Pilot v1 admin-only matrix applied in RPCs.",
-    "Live preview proof deferred to issue #3298."
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "supabase/tests/jev_activity_triage_contract_a.sql against ephemeral database"
   ],
-  "stop_conditions_hit": [],
-  "notes": "Migration A additive contract, generation 5. Supersedes generation 2 to correct evidence paths and the post-REVISE index set (live_comment_id, reservation_token_hash). Stale-lease takeover, advisory-locked rate limit, unique_violation replay, and envelope-rejection tests address DeepSeek sequence 6329 REVISE findings."
+  "assumptions": [
+    "Pilot v1 is administrator-only (admin-only matrix v1).",
+    "Live preview proof and vault key install remain on issue #3298."
+  ],
+  "stop_conditions": [
+    "Stop on exact-head reviewer REJECT that cannot be fixed additively",
+    "Stop if migration collides with another claim"
+  ],
+  "generation": 7,
+  "evidence_parent": {
+    "work_issue": 3298,
+    "generation": 6,
+    "contract_sha256": "745b83a3871921c78071ea942293c590d8b0a493c93fecfa7279285bd5ac1057"
+  }
 }
-
-
-
-
-
-
-
-
 
 
 

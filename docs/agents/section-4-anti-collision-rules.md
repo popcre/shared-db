@@ -481,7 +481,10 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    5.3 → Qwen 3.8 Max → Muse Spark 1.3 Contributor → Gemini 3.8 Flash High → DeepSeek
    V4.1 Flash → StepFun Step 5 → repeat, with Grok 4.6 kept active as the fallback drawn
    only when none of those preferred reviewers can take the exact review (owner
-   preference 2026-09-27, #3592; applies to slot 2 and failed-reviewer replacements too),
+   preference 2026-09-27, #3592; applies to slot 2 and failed-reviewer replacements too;
+   Grok 4.6 is QUARANTINED since 2026-10-13 because its xAI account is out of
+   credit, owner instruction "take grok out of the reviewer pool for now", and is
+   not drawable until removed from `QUARANTINED_REVIEWERS`),
    skipping any reviewer whose engine matches the live orchestrator, and on a
    non-Linux machine skipping StepFun (its preflight is `unsupported-platform`). GLM 5.3
    was restored on 2026-09-30 (owner instruction: "add GLM back into the

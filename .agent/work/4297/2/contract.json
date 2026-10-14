@@ -1,0 +1,57 @@
+{
+  "schema_version": 2,
+  "work_issue": 4297,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Repair the existing PR4294 dependency fixture against the eligible reviewer pool, preserving its source and current upstream, then obtain exact-head review and guarded delivery",
+  "base_sha": "9595a63fcc0c616687d858b0eef1b3864a9d265e",
+  "dispatcher": "Codex coordinator 01a13b6d-f095-72f1-ab6b-fce664912065",
+  "worker": "codex",
+  "branch": "codex/4294-dependency-regression",
+  "worktree": "/home/ahazan/.codex/worktrees/review-dependency-4294/shared-db",
+  "allowed_paths": [
+    "scripts/lib/lanes/github-wire.mjs",
+    "scripts/lib/lanes/review-assignment.mjs",
+    "scripts/lib/lanes/review-records.mjs",
+    "scripts/lib/lanes/reviewer-roster.mjs",
+    "scripts/lib/orchestrator-routing.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "file_writes": [
+    "scripts/lib/lanes/github-wire.mjs",
+    "scripts/lib/lanes/review-assignment.mjs",
+    "scripts/lib/lanes/review-records.mjs",
+    "scripts/lib/lanes/reviewer-roster.mjs",
+    "scripts/lib/orchestrator-routing.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No database or production writes",
+    "No fabricated historical failure proof or deleted review history",
+    "No weakening exact-head approvals, reviewer independence, required checks or actor-engine exclusions",
+    "No edits to other sessions worktrees or PR4294"
+  ],
+  "required_checks": [
+    "node --test scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "assumptions": [
+    "PR4294 source is inherited at71ad4f52bcc7bd33d70fed376a9fdb1df5876d81; its original implementation was authored before this repair contract, not by this coordinator.",
+    "The failing test references quarantined Gemini; repair only this fixture and necessary current-upstream reconciliation.",
+    "No runtime allowlist, roster, failure cap or database protection is weakened."
+  ],
+  "stop_conditions": [
+    "Foreign branch head moves: do not overwrite or force push; reconcile fresh source.",
+    "Review must remain exact-head and independently assigned.",
+    "No changes outside declared inherited source files or canonical evidence pair."
+  ],
+  "generation": 2,
+  "evidence_parent": {
+    "work_issue": 4297,
+    "generation": 1,
+    "contract_sha256": "5b723fac4f80b035debc217adce6f4c6580157734085e8d6fe2bd3191066c253"
+  }
+}

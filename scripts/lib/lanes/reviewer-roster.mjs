@@ -492,7 +492,7 @@ export function inheritReturnedReviewerAllowlist(requested,request,io){
 // than as an import from the routing module, so editing the routing contract
 // does not enter this manager's import closure and become a global evidence
 // invalidator (config/orchestrator-global-invalidators-v1.json).
-export const ENGINE_REVIEWER_EXCLUSION=Object.freeze({codex:'codex',claude:'claude',zcode:'glm'})
+export const ENGINE_REVIEWER_EXCLUSION=Object.freeze({codex:'codex',claude:'claude',zcode:'glm',mimo:'mimo'})
 
 // The authoring engine is MANDATORY and fails closed (#3874 review): an unset,
 // blank, malformed or unknown value refuses rather than silently excluding no

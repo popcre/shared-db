@@ -9,9 +9,13 @@
   "head_sha": "aa7e9d6d89e266200e3a87d8af64dac837c7cfa6",
   "base_sha": "be192f32a35dbf250a4612c95f7f89e55c4aec04",
   "files_changed": [
+    ".agent/work/1714/4/completion.json",
+    ".agent/work/1714/4/contract.json",
+    ".agent/work/4280/1/completion.json",
+    ".agent/work/4280/1/contract.json",
+    "docs/verification/throughput-dispositions/scripts~lib~lanes~reviewer-roster.mjs.json",
     "scripts/lib/lanes/reviewer-roster.mjs",
-    "scripts/manage-migration-author-lanes.test.mjs",
-    "docs/verification/throughput-dispositions/scripts~lib~lanes~reviewer-roster.mjs.json"
+    "scripts/manage-migration-author-lanes.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],

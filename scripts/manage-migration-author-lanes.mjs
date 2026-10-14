@@ -866,7 +866,7 @@ export const githubIo = {
   },
   getCommit(sha) {
     // Issue #3187: a reviewer operation reads commit objects over git; same shape.
-    if(reviewWireBudget&&/^[0-9a-f]{40}$/i.test(String(sha))){const c=readGitCommits([sha]).get(String(sha).toLowerCase());if(!c)throw new LaneError(`commit ${sha} is unreadable`);return {sha:String(sha).toLowerCase(),message:c.message,committer:{date:c.committedDate},author:{date:c.committedDate},commit:{message:c.message,committer:{date:c.committedDate},author:{date:c.committedDate}}}}
+    if(reviewWireBudget&&/^[0-9a-f]{40}$/i.test(String(sha))){const c=readGitCommits([sha]).get(String(sha).toLowerCase());if(!c)throw new LaneError(`commit ${sha} is unreadable`);const tree=c.tree??null;return {sha:String(sha).toLowerCase(),message:c.message,committer:{date:c.committedDate},author:{date:c.committedDate},...(tree?{tree}:{}),commit:{message:c.message,committer:{date:c.committedDate},author:{date:c.committedDate},...(tree?{tree}:{})}}}
     return ghJson(['api', `repos/${REPO}/git/commits/${sha}`]) },
   // ARGUMENT ORDER IS THE WHOLE CHECK. GitHub's compare endpoint is
   // `compare/{base}...{head}` and reports how HEAD relates to BASE. Passing the

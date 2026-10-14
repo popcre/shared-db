@@ -8,13 +8,13 @@ import { reviewLeaseAgeHours } from './review-leases.mjs'
 import { releaseOwnedRef, requireOwnedRef } from './holds-and-refs.mjs'
 import { assignNextReviewer, githubIo } from '../../manage-migration-author-lanes.mjs'
 
-// One shared set of namespace listings resolves slot 1 (fail-fast + allowlist
-// for slot 2+) AND every other live peer slot for this exact head. Combining
-// the two reads keeps the 25-request wire budget: the assignment and
-// replacement listings are paid once and answer both questions. This is the
-// symmetry fix for #3427 -- previously slot 2's fill skipped higher peers and
-// a draw order like 1→3→2 could duplicate a provider.
-export function resolvePeerSlots(issue,pr,headSha,slot,io){
+// One shared set of namespace listings resolves the requesting slot's durable
+// policy, the earliest other live peer's task policy, and every other live
+// peer slot for this exact head. Combining the reads keeps the 25-request wire
+// budget: assignment and replacement listings are paid once and answer all
+// three questions. This is the symmetry fix for #3427 -- previously slot 2's
+// fill skipped higher peers and a draw order like 1→3→2 could duplicate a provider.
+export function resolvePeerSlots(issue,pr,headSha,slot,io,{fresh=false}={}){
   const head=String(headSha).toLowerCase()
   const requesting=Number(slot)
   if(!Number.isInteger(requesting)||requesting<1)throw new LaneError('review assignment slot must be a positive integer')
@@ -24,28 +24,36 @@ export function resolvePeerSlots(issue,pr,headSha,slot,io){
   // Other consumers intentionally keep the shared parser strict, so only this
   // peer resolver admits that legacy link into slot-one history.
   const namedPeerRef=(ref)=>parseAssignmentRef(ref)??(ref===replacementBase?{replacement:true,issue:Number(issue),pr:Number(pr),headSha:head,slot:1,replacementSequence:null}:null)
-  const missingSlotOne=()=>new LaneError(`slot ${requesting} requires slot 1 to already be assigned for issue #${issue} PR #${pr} head ${head}. Run --assign-reviewer --issue ${issue} --pr ${pr} --head-sha ${head} (default --review-slot 1) first, then request --review-slot ${requesting}.`)
   const returned=new Set()
   const peers=new Map()
+  const peerPolicyHistory=new Map()
   let slotOne=null
   const slotOneHistory=[]
+  let ownPolicy=null
+  const ownPolicyHistory=[]
   const accept=(row,named,parsed)=>{
     if(!named||named.issue!==Number(issue)||named.pr!==Number(pr)||named.headSha!==head)return
     if(parsed.issue!==named.issue||parsed.pr!==named.pr||String(parsed.headSha).toLowerCase()!==named.headSha||(parsed.slot??1)!==named.slot)throw new LaneError(`other reviewer slot ${named.slot} has an invalid durable assignment`)
-    if(named.slot===1){
-      if(requesting===1)return
-      slotOneHistory.push(parsed)
-      const previous=slotOne&&slotOne.sequence
-      if(!slotOne||parsed.sequence>previous)slotOne={...parsed,sha:row.sha}
+    if(named.slot===requesting){
+      ownPolicyHistory.push(parsed)
+      if(!ownPolicy||parsed.sequence>ownPolicy.sequence)ownPolicy={...parsed,sha:row.sha,slot:named.slot}
       return
     }
-    if(named.slot===requesting)return
+    if(named.slot===1){
+      slotOneHistory.push(parsed)
+      const previous=slotOne&&slotOne.sequence
+      if(!slotOne||parsed.sequence>previous)slotOne={...parsed,sha:row.sha,slot:1}
+      return
+    }
+    const history=peerPolicyHistory.get(named.slot)??[]
+    history.push(parsed)
+    peerPolicyHistory.set(named.slot,history)
     const previous=peers.get(named.slot)
-    if(!previous||parsed.sequence>previous.sequence)peers.set(named.slot,{...parsed,sha:row.sha})
+    if(!previous||parsed.sequence>previous.sequence)peers.set(named.slot,{...parsed,sha:row.sha,slot:named.slot})
   }
   // Returns are only consulted when peer candidates exist. Slot 1's record is
   // not filtered by returns (matching slot 1's historical behaviour), and a
-  // slot-2 draw with no higher peers pays no listing for them.
+  // draw with no other peer slots pays no listing for them.
   const filterReturned=()=>{
     if(!peers.size)return
     for(const row of readReviewReturns(issue,pr,head,io))returned.add(row.assignmentSha)
@@ -59,7 +67,6 @@ export function resolvePeerSlots(issue,pr,headSha,slot,io){
     for(const row of (records.matching??[])){
       const named=namedPeerRef(row.ref)
       if(!named||named.headSha!==head)continue
-      if(named.slot===requesting&&!named.replacement)continue
       if(returned.has(row.sha))continue
       const parsed=parseReviewCursor(row.commit??io.getCommit(row.sha))
       accept(row,named,parsed)
@@ -68,32 +75,36 @@ export function resolvePeerSlots(issue,pr,headSha,slot,io){
       const record=records.get(ref)
       if(!record?.sha)continue
       const named=parseAssignmentRef(ref)
-      if(named?.slot===requesting)continue
       const parsed=parseReviewCursor(record.commit??io.getCommit(record.sha))
       accept({ref,sha:record.sha},named,parsed)
     }
     assertReviewerAllowlistConsistency(slotOneHistory)
+    assertReviewerAllowlistConsistency(ownPolicyHistory)
+    for(const history of peerPolicyHistory.values())assertReviewerAllowlistConsistency(history)
     filterReturned()
-    if(requesting>=2&&!slotOne)throw missingSlotOne()
-    return {slotOne,peers}
+    const policyPeer=[...(slotOne?[slotOne]:[]),...peers.values()].sort((a,b)=>a.sequence-b.sequence||a.slot-b.slot)[0]??null
+    return {slotOne,peers,policyPeer,ownPolicy}
   }
   if(typeof io.listRefs!=='function')throw new LaneError('peer review slot records cannot be listed; independent draw refused')
-  const assignmentRows=io.listRefs(assignmentBase)
+  const list=fresh&&typeof io.__freshListRefs==='function'?io.__freshListRefs:io.listRefs.bind(io)
+  const assignmentRows=list(assignmentBase)
   for(const row of assignmentRows){
     const named=namedPeerRef(row.ref)
-    if(named?.replacement||named?.slot===requesting)continue
+    if(named?.replacement)continue
     accept(row,named,parseReviewCursor(row.commit??io.getCommit(row.sha)))
   }
-  const replacementRows=io.listRefs(replacementBase)
+  const replacementRows=list(replacementBase)
   for(const row of replacementRows){
     const named=namedPeerRef(row.ref)
     if(!named?.replacement)continue
     accept(row,named,parseReviewCursor(row.commit??io.getCommit(row.sha)))
   }
   assertReviewerAllowlistConsistency(slotOneHistory)
+  assertReviewerAllowlistConsistency(ownPolicyHistory)
+  for(const history of peerPolicyHistory.values())assertReviewerAllowlistConsistency(history)
   filterReturned()
-  if(requesting>=2&&!slotOne)throw missingSlotOne()
-  return {slotOne,peers}
+  const policyPeer=[...(slotOne?[slotOne]:[]),...peers.values()].sort((a,b)=>a.sequence-b.sequence||a.slot-b.slot)[0]??null
+  return {slotOne,peers,policyPeer,ownPolicy}
 }
 
 // AGENTS.md section 4 rule 2 is merge-first, so a migration reaching main and only

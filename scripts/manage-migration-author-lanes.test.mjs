@@ -1240,10 +1240,11 @@ test('10,000 historical assignments do not change bounded availability cost',()=
     return {requests,activeReads,historyScans}
   }
   const empty=run(0), large=run(10_000)
-  // One head-narrowed prefix scan discovers peer slots; it is O(1) in history
-  // because the prefix names the exact issue/pr/head. Cost must stay constant.
-  assert.equal(large.historyScans,1);assert.equal(empty.requests,large.requests)
-  assert.equal(large.requests,20,JSON.stringify(large));assert.equal(large.activeReads,0,JSON.stringify(large))
+  // Exact-head peer scans before and under the mutex stay O(1) in history.
+  // The fresh second scan closes the stale task-policy race without raising
+  // the existing wire ceiling or reading unrelated historical assignments.
+  assert.equal(large.historyScans,2);assert.equal(empty.requests,large.requests)
+  assert.equal(large.requests,22,JSON.stringify(large));assert.equal(large.activeReads,0,JSON.stringify(large))
 })
 
 test('complete assignment stays inside the real wire-attempt budget',()=>{
@@ -1333,7 +1334,7 @@ test('complete slot-2 assignment stays inside the real wire-attempt budget (issu
   // section still fits. Both reviewers derived that mechanism correctly, and
   // the wrong name was nearly merged anyway -- so the gate is now asserted by
   // behaviour below, not only by its numeral.
-  assert.equal(attempts,23,`slot 2 used ${attempts} wire attempts with the shared peer resolver; keep the ${REVIEW_OPERATION_REQUEST_LIMIT}-request ceiling`)
+  assert.equal(attempts,25,`slot 2 used ${attempts} wire attempts including fresh peer policy; keep the ${REVIEW_OPERATION_REQUEST_LIMIT}-request ceiling`)
   assert.equal(REVIEW_MUTEX_SECTION_RESERVE,15,'the mutex-section entry-gate reserve changed without this budget being re-derived')
   assert.equal(REVIEW_OPERATION_REQUEST_LIMIT,25,'the ceiling changed; re-derive it against the real cost rather than raising it again')
   // The three pins above are near-tautologies: they restate constants. None of
@@ -6001,9 +6002,72 @@ test('slot 1 is the unchanged default: omitting --review-slot behaves exactly as
   assert.deepEqual(explicit,implicit)
 })
 
-test('slot 2 requires slot 1 to already be assigned for this exact head',()=>{
-  const io=reviewIo()
-  assert.throws(()=>assignNextReviewer({issue:201,pr:301,headSha:'b'.repeat(40),slot:2},io),/slot 2 requires slot 1/)
+for(const order of [[2,1],[3,2,1],[1,3,2]])test('#4297 reviewer independence holds for draw order '+order.join(' then '),()=>{
+  const io=reviewIo(),request={issue:201,pr:301,headSha:'b'.repeat(40)}
+  const assignments=order.map(slot=>assignNextReviewer({...request,slot},io))
+  assert.equal(new Set(assignments.map(row=>row.reviewer)).size,order.length)
+  for(const row of assignments)assert.deepEqual(assignNextReviewer({...request,slot:row.slot},io),row)
+})
+
+test('#4297 slot 2 first anchors task policy and slot 1 cannot silently widen it',()=>{
+  const io=reviewIo(),request={issue:201,pr:301,headSha:'b'.repeat(40)}
+  const allowlist=['glm-5.3','muse-spark-1.3-contributor']
+  const second=assignNextReviewer({...request,slot:2,reviewerAllowlist:allowlist},io)
+  assert.throws(()=>assignNextReviewer({...request,slot:1,reviewerAllowlist:['glm-5.3','muse-spark-1.3-contributor','stepfun-step-5-preview']},io),/allowlist/)
+  const first=assignNextReviewer({...request,slot:1},io)
+  assert.notEqual(first.reviewer,second.reviewer)
+  assert.deepEqual(first.reviewerAllowlist,second.reviewerAllowlist)
+})
+
+for(const batched of [false,true])for(const laterSlot of [1,2])test('#4297 stale preflight refuses a raced task policy then retry inherits it, slot '+laterSlot+' batched '+batched,()=>{
+  const io=reviewIo(),request={issue:201,pr:301,headSha:'b'.repeat(40)},otherSlot=laterSlot===1?2:1
+  const allowlist=['glm-5.3','muse-spark-1.3-contributor']
+  if(batched)io.readReviewRecords=(refs,prefix,_failurePrefix,assignmentPrefix)=>{
+    const result=new Map(refs.map(ref=>{const sha=io.refs.get(ref);return [ref,sha?{sha,commit:io.getCommit(sha)}:null]}))
+    result.matching=[...io.refs].filter(([ref])=>(prefix&&ref.startsWith(prefix))||(assignmentPrefix&&ref.startsWith(assignmentPrefix))).map(([ref,sha])=>({ref,sha,commit:io.getCommit(sha)}))
+    return result
+  }
+  const create=io.createRef;let raced=false
+  io.createRef=(ref,sha)=>{
+    if(ref==='refs/db-coordination/author-acquisition'&&!raced){
+      raced=true
+      const suffix=otherSlot===1?'':`-slot${otherSlot}`
+      const peer=io.makeOwnerCommit(`db-coordination reviewer-cursor sequence=100 reviewer=muse-spark-1.3-contributor issue=${request.issue} pr=${request.pr} head=${request.headSha}${otherSlot===1?'':` slot=${otherSlot}`} allowlist=${allowlist.join(',')}`)
+      io.refs.set(`refs/db-review-assignments/${request.issue}-${request.pr}-${request.headSha}${suffix}`,peer)
+    }
+    return create(ref,sha)
+  }
+  assert.throws(()=>assignNextReviewer({...request,slot:laterSlot},io),/task policy changed/)
+  const ownSuffix=laterSlot===1?'':`-slot${laterSlot}`
+  assert.equal(io.readRef(`refs/db-review-assignments/${request.issue}-${request.pr}-${request.headSha}${ownSuffix}`),null)
+  const assigned=assignNextReviewer({...request,slot:laterSlot},io)
+  assert.deepEqual(assigned.reviewerAllowlist,allowlist)
+  assert.notEqual(assigned.reviewer,'muse-spark-1.3-contributor')
+})
+
+function addVerifiedServiceFailures(io,request,reviewers){
+  let sequence=100
+  for(const reviewer of reviewers)for(let n=0;n<2;n++){
+    sequence++
+    io.refs.set(`refs/db-review-started/${request.issue}-${request.pr}-${request.headSha}-slot${request.slot??1}-seq${sequence}`,io.makeOwnerCommit(`db-coordination review-started issue=${request.issue} pr=${request.pr} head=${request.headSha} slot=${request.slot??1} sequence=${sequence} reviewer=${reviewer} at=2026-10-14T18:00:00Z`))
+    io.refs.set(`refs/db-review-failures/${request.issue}-${request.pr}-${request.headSha}-${sequence}`,io.makeOwnerCommit(`db-coordination reviewer-failure-release reviewer=${reviewer} issue=${request.issue} pr=${request.pr} head=${request.headSha} failed-sequence=${sequence} code=wrapper_terminal_failure verdict=none artifact=none replacement=none`))
+  }
+}
+
+test('#4297 multiple service failures retain healthy independent review capacity',()=>{
+  const io=reviewIo(),request={issue:201,pr:301,headSha:'b'.repeat(40)}
+  const failed=ACTIVE_REVIEWERS.slice(0,2).map(row=>row.name)
+  addVerifiedServiceFailures(io,request,failed)
+  const assigned=assignNextReviewer(request,io)
+  assert.ok(!failed.includes(assigned.reviewer))
+})
+
+test('#4297 exhausting every reviewer refuses without spending a new paid start',()=>{
+  const io=reviewIo(),request={issue:201,pr:301,headSha:'b'.repeat(40)}
+  addVerifiedServiceFailures(io,request,ACTIVE_REVIEWERS.map(row=>row.name))
+  const before=[...io.refs].filter(([ref])=>ref.startsWith('refs/db-review-started/'))
+  assert.throws(()=>assignNextReviewer(request,io),/two verified service failures/)
+  assert.deepEqual([...io.refs].filter(([ref])=>ref.startsWith('refs/db-review-started/')),before)
 })
 
 test('slot 2 lands a different provider than slot 1, and is idempotent on retry',()=>{

@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/4297/13",
   "contract_sha256": "8dc569b8d27a824ad3c80feaab68f3fbf633efc35cc3aa758ac15db5125c48e0",
-  "head_sha": "510a7cb1a967079649e6d9a69873d9d7b31d3395",
+  "head_sha": "cad55ad56fc503228c1fc45ee94178fd7714a71c",
   "base_sha": "5af6ca6768999460c944f65ee67f3380851e8a4b",
   "files_changed": [
     "docs/agents/review-recovery-policy.md",
@@ -54,7 +54,8 @@
     "Diagnostics include only charged unprovedheads after exact causebound refund; durableassignment/return/refhistory remains unchanged.",
     "Native read-only actual4294capacity charged old627once withremaining1, no refund or release ofunknownGLM; this observationdoesnotauthorizepaid review.",
     "Source/test component blobs match the recorded passing gates; main integration adds only unrelated licensing bytes and prose, which remain preserved.",
-    "Assigned freshcurrenthead formalreview, requiredCI, guardedmerge and mergedsource liveproof remainpending; localreadiness outcome is not gateapproval or deliveryclaim."
+    "Assigned freshcurrenthead formalreview, requiredCI, guardedmerge and mergedsource liveproof remainpending; localreadiness outcome is not gateapproval or deliveryclaim.",
+    "Final plan STATUS is a dated dispatch-time snapshot pointing to issue4297 and PR4308 as later live authority; only prose changes after the recorded passing component tests, whose exact source/test blobs remain unchanged."
   ],
   "stop_conditions_hit": []
 }

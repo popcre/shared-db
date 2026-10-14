@@ -995,6 +995,35 @@ test('#4206 parseReviewCursor keeps single-line messages and returns the owner-q
   assert.deepEqual([...parsed.reviewerAllowlist].sort(),['muse-spark-1.3-contributor','stepfun-step-5-preview'].sort())
 })
 
+test('#4206 owner-quoted widening draws slot 2 from a tree-identical head without re-drawing slot 1',()=>{
+  const io=withAtomicRefs(reviewIo()),headOld='b1'.repeat(20),headNew='b2'.repeat(20),tree='c0'.repeat(20)
+  const narrow=['muse-spark-1.3-contributor']
+  const widened=['muse-spark-1.3-contributor','stepfun-step-5-preview']
+  // Slot 1 is drawn while the old head is live, then the PR moves to a
+  // tree-identical new head (the #4206 re-push shape).
+  io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:headOld,ref:'codex/2336-complete-support'}})
+  const rawGetCommit=io.getCommit
+  io.getCommit=(sha)=>{
+    const commit=rawGetCommit(sha)
+    // Head SHAs are compared by tree; the fixture has no real commits for them.
+    if(!commit&&[headOld,headNew].includes(String(sha).toLowerCase()))return {message:'',tree:{sha:tree}}
+    return commit?{...commit,tree:{sha:tree}}:commit
+  }
+  const first=assignNextReviewer({issue:2336,pr:4206,headSha:headOld,reviewerAllowlist:narrow},io)
+  assert.equal(first.reviewer,'muse-spark-1.3-contributor')
+  const firstSha=io.refs.get(`${REVIEW_ASSIGNMENT_REF_PREFIX}/2336-4206-${headOld}`)
+  io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:headNew,ref:'codex/2336-complete-support'}})
+  const second=assignNextReviewer({issue:2336,pr:4206,headSha:headNew,slot:2,reviewerAllowlist:widened,ownerQuote:'use stepfun'},io)
+  assert.equal(second.reviewer,'stepfun-step-5-preview','slot 2 draws from the widened set at the new head')
+  assert.deepEqual([...second.reviewerAllowlist].sort(),[...widened].sort())
+  assert.equal(io.refs.get(`${REVIEW_ASSIGNMENT_REF_PREFIX}/2336-4206-${headOld}`),firstSha,'slot 1 was not re-drawn')
+  assert.equal(io.refs.has(`${REVIEW_ASSIGNMENT_REF_PREFIX}/2336-4206-${headNew}`),false,'no new slot-1 assignment at the tree-identical head')
+  const secondSha=io.refs.get(`${REVIEW_ASSIGNMENT_REF_PREFIX}/2336-4206-${headNew}-slot2`)
+  const parsed=parseReviewCursor(io.getCommit(secondSha))
+  assert.equal(parsed.ownerQuote,'use stepfun')
+  assert.deepEqual([...parsed.reviewerAllowlist].sort(),[...widened].sort())
+})
+
 test('#3291 returned permissions survive unrelated cursor movement and an omitted redraw input',()=>{
   const io=withAtomicRefs(reviewIo()),head='8'.repeat(40),allowed=['muse-spark-1.3-contributor','gemini-3.8-flash-high']
   io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:head,ref:'codex/x'}})

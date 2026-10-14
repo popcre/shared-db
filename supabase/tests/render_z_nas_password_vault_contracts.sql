@@ -45,22 +45,31 @@ begin
   end if;
 
   perform public.set_render_z_nas_password('zz-test-4283-a');
-  if public.get_render_z_nas_password() <> 'zz-test-4283-a' then
+  if public.get_render_z_nas_password() is distinct from 'zz-test-4283-a' then
     raise exception 'set then get did not round-trip';
   end if;
   perform public.set_render_z_nas_password('zz-test-4283-b');
-  if public.get_render_z_nas_password() <> 'zz-test-4283-b' then
+  if public.get_render_z_nas_password() is distinct from 'zz-test-4283-b' then
     raise exception 'replace did not round-trip';
   end if;
   if (select count(*) from vault.secrets where name = 'popdam_render_z_nas_password') <> 1 then
     raise exception 'replace must keep exactly one vault secret';
   end if;
   perform public.set_render_z_nas_password(null);
-  if public.get_render_z_nas_password() <> '' then
+  if public.get_render_z_nas_password() is distinct from '' then
     raise exception 'clear must read back as empty';
   end if;
   if (select count(*) from vault.secrets where name = 'popdam_render_z_nas_password') <> 0 then
     raise exception 'clear must delete the vault row, not leave an empty one';
+  end if;
+  -- An empty string clears exactly like null (the migration's documented contract).
+  perform public.set_render_z_nas_password('zz-test-4283-c');
+  perform public.set_render_z_nas_password('');
+  if public.get_render_z_nas_password() is distinct from '' then
+    raise exception 'empty-string clear must read back as empty';
+  end if;
+  if (select count(*) from vault.secrets where name = 'popdam_render_z_nas_password') <> 0 then
+    raise exception 'empty-string clear must delete the vault row';
   end if;
 end;
 $$;

@@ -39,7 +39,8 @@ import { HISTORICAL_RESTORATIONS, validateHistoricalRestorationFile } from './hi
 import { AdmissionError, SERVICE_CLASSES, CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, STRUCTURAL_ROUTES, parseImpactBlock, evaluateAdmission, inspectPrStructuralChange, structuralWritesMatch, structuralWritesCovered } from './orchestrator-flow/admission.mjs'
 import { assertNamedHold, conflicts, describeLeaseHolder, formatHoldReason, HoldReasonError } from './lib/hold-reason.mjs'
 import { OUTCOME_STATES, OutcomeError, advanceOutcome, completeOutcome, verifyOutcomeAcceptance, outcomeEvent, outcomeHistory, repairOutcomeHistory } from './orchestrator-flow/outcome-lifecycle.mjs'
-import { assertPaidReviewCapacity, pauseActualReviewFailure, derivePaidContentProof } from './lib/lanes/review-circuit-breaker.mjs'
+import { assertPaidReviewCapacity, pauseActualReviewFailure, derivePaidContentProof, RETRYABLE_RELEASED_FAILURE_CODES } from './lib/lanes/review-circuit-breaker.mjs'
+export { RETRYABLE_RELEASED_FAILURE_CODES }
 const paidBudgetContractCaches=new WeakMap()
 import { isContentPreservingRefresh, prContentDigest, verifiedEvidencePaths } from './lib/pr-content-equivalence.mjs'
 import { wrapperEmitsGovernedVerdict } from './lib/reviewer-capabilities.mjs'
@@ -821,6 +822,8 @@ export const githubIo = {
     const commits=readGitCommits(rows.map(row=>row.sha))
     return rows.map(row=>({...row,commit:commits.get(row.sha)}))
   },
+  // #4290: the merge base a newer reviewed head had with the PR base, so an older head
+  // can be classified against it exactly as when that newer head was drawn.
   reviewContentComparison(before,after,pr,context={}) {
     const base=context.base??this.getPr(pr)?.base?.sha
     context.base=base
@@ -2533,6 +2536,8 @@ function transferRecord(ref,io,voluntary=false){
   let record
   try{record=JSON.parse(message.slice(prefix.length))}catch{throw new LaneError('operator adoption record is malformed')}
   const fields=['kind','human_identity_authenticated','issue','claim','pr','head_sha','version','old_owner','new_owner','branch','old_worktree','target_worktree',...(voluntary?['recipient_chat_id','handoff_ready_ref','handoff_ready_sha','request_id','original_expires_at','expires_at','original_body_sha256','rebound_body_sha256']:['abandonment_issue','lease_hours']),'old_worktree_state','reservation_sha','authorization_chat_id','authorization_quote','recovery_artifact']
+  // #4288: a remote-custody voluntary handoff adds exactly original_worktree_custody:'remote'.
+  if(voluntary&&record&&typeof record==='object'&&Object.hasOwn(record,'original_worktree_custody')){if(record.original_worktree_custody!=='remote')throw new LaneError('voluntary handoff record has an invalid original worktree custody');fields.push('original_worktree_custody')}
   if(!record||typeof record!=='object'||Array.isArray(record)||Object.keys(record).length!==fields.length||Object.keys(record).some((key)=>!fields.includes(key))||record.kind!==(voluntary?'voluntary-owner-handoff':'operator-adoption')||record.human_identity_authenticated!==false||!Number.isSafeInteger(record.issue)||record.issue<=0||!Number.isSafeInteger(record.claim)||record.claim<=0||!Number.isSafeInteger(record.pr)||record.pr<=0||(!voluntary&&(!Number.isSafeInteger(record.abandonment_issue)||record.abandonment_issue<=0))||!/^[0-9a-f]{40}$/.test(String(record.head_sha))||!/^[0-9a-f]{40}$/.test(String(record.reservation_sha))||!/^\d{14}$/.test(String(record.version))||typeof record.old_owner!=='string'||!record.old_owner||typeof record.new_owner!=='string'||!record.new_owner||record.old_owner===record.new_owner||typeof record.branch!=='string'||!record.branch||typeof record.old_worktree!=='string'||!record.old_worktree||typeof record.target_worktree!=='string'||!record.target_worktree||normalizeWorktreePath(record.old_worktree)===normalizeWorktreePath(record.target_worktree)||!WORKTREE_STATES.includes(record.old_worktree_state)||typeof record.recovery_artifact!=='string'||typeof record.authorization_quote!=='string'||record.authorization_quote.trim().length<20||record.authorization_quote!==record.authorization_quote.trim()||!record.authorization_chat_id||(voluntary?(!Number.isFinite(Date.parse(record.expires_at))||!record.recipient_chat_id||!record.request_id||!Number.isFinite(Date.parse(record.original_expires_at))||(record.handoff_ready_ref===null?record.handoff_ready_sha!==null:(!String(record.handoff_ready_ref).startsWith(AUTHOR_HANDOFF_READY_REF_PREFIX)||!/^[0-9a-f]{40}$/.test(String(record.handoff_ready_sha))))||!['original_body_sha256','rebound_body_sha256'].every(key=>/^[0-9a-f]{64}$/.test(record[key]))):!(record.lease_hours>0&&record.lease_hours<=24)))throw new LaneError('operator adoption record has invalid exact fields')
   return {sha,record}
 }
@@ -2546,6 +2551,16 @@ function changeClaimAuthor(options,now,io,voluntary){
   if(!request.authorizationChatId||request.authorizationQuote.trim().length<20||request.authorizationQuote!==request.authorizationQuote.trim())throw new LaneError('operator adoption requires current-chat ID and verbatim user authorization quote')
   const recipientChatId=voluntary?String(options.recipientChatId??''):null
   const readyRef=voluntary?(options.handoffReadyRef??null):null,requestId=voluntary?String(options.requestId??'initial'):null
+  // Cross-machine acceptance (#4288; claim #4152 / PR #4206): the original owner stopped
+  // on another machine and signed an owner-ready receipt. The recipient cannot hold the
+  // original working copy, so custody is RECORDED as remote -- never recreated. The only
+  // new condition is that the original worktree path is genuinely absent here; the rest
+  // is the existing voluntary-handoff proof: readAuthorReady requires execution_stopped
+  // and an author_session resolving to the owner, the recovery point must be exactly
+  // artifact:<PR head>, and the live PR head/branch, body hash and reservation must match.
+  if(options.remoteCustody!==undefined&&typeof options.remoteCustody!=='boolean')throw new LaneError('remote custody flag must be a boolean')
+  const remoteCustody=options.remoteCustody===true
+  if(remoteCustody&&(!voluntary||!readyRef))throw new LaneError('remote custody acceptance requires a voluntary handoff with the original owner-signed ready receipt')
   if(voluntary&&!/^[A-Za-z0-9._-]{1,120}$/.test(requestId))throw new LaneError('voluntary handoff request ID has invalid shape')
   if(voluntary&&(recipientChatId!==recipientChatId.trim()||request.oldWorktreeState!=='clean'||request.recoveryArtifact!==`artifact:${request.headSha}`||!resolveSessionAuthority({env:{SHARED_DB_SESSION_ID:recipientChatId},claimOwner:request.newOwner}).live))throw new LaneError('voluntary handoff requires exact recipient identity and clean checkpoint custody')
   const proofOptions={claim:request.claim,blockedOn:voluntary?request.recoveryArtifact:`issue:#${request.abandonmentIssue}`,worktreeState:request.oldWorktreeState}
@@ -2562,14 +2577,19 @@ function changeClaimAuthor(options,now,io,voluntary){
     renewalIssueScope(issue,lease,[request.issue],{allowClaimSuperset:true})
     const audit=adopted||voluntary?true:assertAbandonmentEvidence(proofOptions,lease,proofOptions.blockedOn,io)
     if(!audit)throw new LaneError('exact abandonment audit proof is absent')
-    if(!adopted){const observed=observedWorktreeState(request.oldWorktree,io);if(observed!==request.oldWorktreeState&&!(observed==='absent'&&request.oldWorktreeState==='remote'))throw new LaneError('old worktree state differs from explicit declaration')}
+    // Remote custody: the owner's signed state stays the declared one; what this machine
+    // observes (absent) is checked by the remote-custody block below.
+    if(!adopted&&!remoteCustody){const observed=observedWorktreeState(request.oldWorktree,io);if(observed!==request.oldWorktreeState&&!(observed==='absent'&&request.oldWorktreeState==='remote'))throw new LaneError('old worktree state differs from explicit declaration')}
     const marker=io.orchestratorFlowAdapter().resolveMarker()
     if(!marker?.live||marker.calling_task!==marker.task||marker.task!==request.authorizationChatId)throw new LaneError(`operator adoption chat ID does not match this declared session${marker?.live?'':`; ${sessionAuthorityRefusal(marker)}`}`)
     if(voluntary){
       if(readyRef){const consent=readAuthorReady(readyRef,io),r=consent.record;if(!resolveSessionAuthority({env:{SHARED_DB_SESSION_ID:marker.task},claimOwner:request.newOwner}).live||marker.task!==recipientChatId||r.claim!==request.claim||r.issue!==request.issue||r.pr!==request.pr||r.head_sha!==request.headSha||r.owner!==request.oldOwner||r.branch!==request.branch||r.worktree!==request.oldWorktree||r.version!==lease.version||(!adopted&&r.body_sha256!==sha256(claim.body))||io.readRef('refs/db-claims/'+lease.version)!==r.reservation_sha)throw new LaneError('owner-issued ready consent differs from exact source, claim or actual recipient')}
       else if(!marker?.live||marker.calling_task!==marker.task||!resolveSessionAuthority({env:{SHARED_DB_SESSION_ID:marker.task},claimOwner:request.oldOwner}).live)throw new LaneError('voluntary handoff must execute in the original owner session')
     }
-    if(voluntary&&(observedWorktreeState(request.oldWorktree,io)!=='clean'||!io.localClean(request.oldWorktree)||io.localHead(request.oldWorktree)!==request.headSha||io.localBranch(request.oldWorktree)!==request.branch))throw new LaneError('voluntary handoff original source custody changed')
+    if(voluntary&&remoteCustody){
+      const observed=observedWorktreeState(request.oldWorktree,io)
+      if(observed!=='absent')throw new LaneError(`remote custody acceptance refused: the original worktree is ${observed} on this machine; accept with local custody instead`)
+    }else if(voluntary&&(observedWorktreeState(request.oldWorktree,io)!=='clean'||!io.localClean(request.oldWorktree)||io.localHead(request.oldWorktree)!==request.headSha||io.localBranch(request.oldWorktree)!==request.branch))throw new LaneError('voluntary handoff original source custody changed')
     if(voluntary||request.oldWorktreeState!=='clean')requireDereferenceableRecoveryArtifact(request.recoveryArtifact,io)
     const pr=io.getPr(request.pr)
     const merged=voluntary&&Boolean(pr?.merged===true||pr?.merged_at)
@@ -2600,7 +2620,7 @@ function changeClaimAuthor(options,now,io,voluntary){
   let bodyChanged=false,evidenceCreated=false,beforeBody=null,newBody=null,ref=null,transferSha=null,completed=null,failure=null
   try{
     const current=io.getIssue(request.claim),currentLease=parseAuthorLease(current?.body??'',now)
-    const identity={issue:request.issue,claim:request.claim,pr:request.pr,head_sha:request.headSha,version:currentLease.version,old_owner:request.oldOwner,new_owner:request.newOwner,branch:request.branch,old_worktree:request.oldWorktree,target_worktree:request.targetWorktree,...(voluntary?{recipient_chat_id:recipientChatId,handoff_ready_ref:readyRef,request_id:requestId}:{abandonment_issue:request.abandonmentIssue}),old_worktree_state:request.oldWorktreeState}
+    const identity={issue:request.issue,claim:request.claim,pr:request.pr,head_sha:request.headSha,version:currentLease.version,old_owner:request.oldOwner,new_owner:request.newOwner,branch:request.branch,old_worktree:request.oldWorktree,target_worktree:request.targetWorktree,...(voluntary?{recipient_chat_id:recipientChatId,handoff_ready_ref:readyRef,request_id:requestId,...(remoteCustody?{original_worktree_custody:'remote'}:{})}:{abandonment_issue:request.abandonmentIssue}),old_worktree_state:request.oldWorktreeState}
     ref=`${voluntary?CLAIM_AUTHOR_HANDOFF_REF_PREFIX:CLAIM_AUTHOR_TRANSFER_REF_PREFIX}${request.claim}-${currentLease.version}-${sha256(canonicalJson(identity)).slice(0,20)}`
     const prior=transferRecord(ref,io,voluntary),fresh=verify(Boolean(prior))
     if(voluntary&&prior&&!fresh.adopted&&sha256(fresh.claim.body)!==prior.record.original_body_sha256)throw new LaneError('voluntary handoff original body differs from recorded receipt')
@@ -3049,11 +3069,20 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     // #2224 shape, a claim about the world recorded as permanent -- deadlocks
     // the slot once every other name has failed on the same head (#3492 on PR
     // #3309: 4 of 5 failed, the fifth holds the other slot). Such a sequence is
-    // re-eligible here. Every other terminal failure code, and any failure whose
-    // evidence is the replacement record itself (`failure-ref=self`), stays
-    // excluded fail-closed.
+    // re-eligible here. Any failure whose evidence is the replacement record
+    // itself (`failure-ref=self`) stays excluded fail-closed, and so does every
+    // terminal failure code outside RETRYABLE_RELEASED_FAILURE_CODES (#4284,
+    // below), which are retried only last and only from a real release record.
     const silenceReleasedSequences=new Set()
     if(releasedFailure?.failureCode==='silent_worker_observed')silenceReleasedSequences.add(request.failedSequence)
+    // #4284: a released failure whose code describes the provider, wallet or
+    // local wrapper (quota, outage, wrapper fault, malformed verdict line) says
+    // nothing about these bytes. Excluding it forever on this head emptied the
+    // pool: 4 of 6 "failed", one held slot 1, one was unfunded. Such a name is
+    // retried LAST -- only when no never-failed reviewer is drawable -- and is
+    // still subject to live preflight usability and the paid circuit breaker.
+    const retryableSequences=new Set()
+    if(releasedFailure&&!releasedFailure.selfReplacement&&RETRYABLE_RELEASED_FAILURE_CODES.includes(releasedFailure.failureCode))retryableSequences.add(request.failedSequence)
     const bySequence=new Map([[initial.sequence,initial.reviewer],...parsedReplacements.map((row)=>[row.sequence,row.reviewer])])
     for(const row of parsedReplacements){
       if(!row.failureSha||row.failureSha===row.assignmentSha)continue
@@ -3065,15 +3094,24 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
       // failed sequence or reviewer differs never restores a name.
       if(release.issue!==request.issue||release.pr!==request.pr||release.headSha!==request.headSha||release.failedSequence!==row.failedSequence||release.reviewer!==bySequence.get(row.failedSequence))continue
       if(release.failureCode==='silent_worker_observed')silenceReleasedSequences.add(row.failedSequence)
+      if(RETRYABLE_RELEASED_FAILURE_CODES.includes(release.failureCode))retryableSequences.add(row.failedSequence)
     }
-    const failedNames=new Set()
-    if(!silenceReleasedSequences.has(request.failedSequence))failedNames.add(original.reviewer)
-    for(const row of parsedReplacements){const name=bySequence.get(row.failedSequence);if(name&&!silenceReleasedSequences.has(row.failedSequence))failedNames.add(name)}
+    const failedNames=new Set(),hardFailedNames=new Set()
+    const noteFailure=(name,failedSequence)=>{
+      if(!name||silenceReleasedSequences.has(failedSequence))return
+      failedNames.add(name)
+      if(!retryableSequences.has(failedSequence))hardFailedNames.add(name)
+    }
+    noteFailure(original.reviewer,request.failedSequence)
+    for(const row of parsedReplacements)noteFailure(bySequence.get(row.failedSequence),row.failedSequence)
     let sequence=null, reviewer=null
-    for(const [offset,candidate] of drawOrder(cursor.sequence+1,io).entries()){
-      const candidateSequence=cursor.sequence+1+offset
-      if(!eligibleNames.has(candidate.name)||!reviewerEmitsGovernedVerdict(candidate.name)||failedNames.has(candidate.name)||(!concurrentLeases&&preflightBusy.has(candidate.name))||excludedProviders.has(candidate.name)||preflightExclusions.has(candidate.name))continue
-      sequence=candidateSequence;reviewer=candidate;break
+    for(const excluded of [failedNames,hardFailedNames]){
+      for(const [offset,candidate] of drawOrder(cursor.sequence+1,io).entries()){
+        const candidateSequence=cursor.sequence+1+offset
+        if(!eligibleNames.has(candidate.name)||!reviewerEmitsGovernedVerdict(candidate.name)||excluded.has(candidate.name)||(!concurrentLeases&&preflightBusy.has(candidate.name))||excludedProviders.has(candidate.name)||preflightExclusions.has(candidate.name))continue
+        sequence=candidateSequence;reviewer=candidate;break
+      }
+      if(reviewer)break
     }
     // Owner ruling 2026-10-02: no independent replacement left on a merged PR's
     // post-merge slot >= 2 -> reuse a reviewer holding another slot here. Failed,
@@ -3096,14 +3134,14 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
       if(overflow){sequence=cursor.sequence+1+ACTIVE_REVIEWERS.length;reviewer=overflow}
     }
     if(!reviewer){
-      const failedList=[...failedNames].filter((name)=>ACTIVE_REVIEWERS.some((row)=>row.name===name))
+      const failedList=[...hardFailedNames].filter((name)=>ACTIVE_REVIEWERS.some((row)=>row.name===name))
       // #3130 / owner ruling 2026-09-16: with per-review lease refs a live
       // lease never makes a reviewer unavailable, so "busy" is reported only
       // for the legacy single-lease layout, only for ACTIVE (drawable)
       // reviewers, and only when busy is the sole reason. A provider excluded
       // for independence or eligibility is named under that real reason.
-      const busyList=(concurrentLeases?[]:[...preflightBusy]).filter((name)=>!failedNames.has(name)&&ACTIVE_REVIEWERS.some((row)=>row.name===name)&&eligibleNames.has(name)&&!excludedProviders.has(name)&&!preflightExclusions.has(name)).map((name)=>{const rows=preflightBusy.byReviewer?.get(name)??(preflightBusy.leases.get(name)?[preflightBusy.leases.get(name)]:[]);return `${name}${rows.map((row)=>` #${row.lease.issue}/PR #${row.lease.pr}`).join('')}`})
-      const unavailable=ACTIVE_REVIEWERS.map((row)=>row.name).filter((name)=>!failedNames.has(name)&&(!eligibleNames.has(name)||excludedProviders.has(name)||preflightExclusions.has(name))).map((name)=>`${name} (${!eligibleNames.has(name)?(unusable.has(name)?`unusable by ai-review-preflight (${unusable.get(name)?.status})`:'ineligible'):excludedProviders.has(name)?'holds another slot on this pull request':'excluded for this issue'})`)
+      const busyList=(concurrentLeases?[]:[...preflightBusy]).filter((name)=>!hardFailedNames.has(name)&&ACTIVE_REVIEWERS.some((row)=>row.name===name)&&eligibleNames.has(name)&&!excludedProviders.has(name)&&!preflightExclusions.has(name)).map((name)=>{const rows=preflightBusy.byReviewer?.get(name)??(preflightBusy.leases.get(name)?[preflightBusy.leases.get(name)]:[]);return `${name}${rows.map((row)=>` #${row.lease.issue}/PR #${row.lease.pr}`).join('')}`})
+      const unavailable=ACTIVE_REVIEWERS.map((row)=>row.name).filter((name)=>!hardFailedNames.has(name)&&(!eligibleNames.has(name)||excludedProviders.has(name)||preflightExclusions.has(name))).map((name)=>`${name} (${!eligibleNames.has(name)?(unusable.has(name)?`unusable by ai-review-preflight (${unusable.get(name)?.status})`:'ineligible'):excludedProviders.has(name)?'holds another slot on this pull request':'excluded for this issue'})`)
       const releaseCommand=failedReviewerReleaseCommand(request,{failureCode,failingCheck})
       const compatiblePrefix=request.slot===1?'no other reviewer is available':'no other independent reviewer is available for slot '+request.slot
       throw new LaneError(`${compatiblePrefix}; no replacement reviewer is available: ${failedList.length} of ${ACTIVE_REVIEWERS.length} already failed on this exact head (${failedList.join(', ')||'none'}); ${busyList.length} of ${ACTIVE_REVIEWERS.length} hold other live leases (${busyList.join(', ')||'none'}); ${unavailable.length} are otherwise ineligible or excluded (${unavailable.join(', ')||'none'}). If this failed holder must be freed before another terminal holder can be reclaimed, run ${releaseCommand}.`)
@@ -4648,6 +4686,7 @@ function parseArgs(argv) {
     else if (a === '--rebind-claim-worktree') out.rebindClaimWorktree = true
     else if (a === '--transfer-claim-author') out.transferClaimAuthor = true
     else if (a === '--handoff-claim-author') out.handoffClaimAuthor = true
+    else if (a === '--remote-custody') out.remoteCustody = true
     else if (a === '--check-in-author') out.checkInAuthor = true
     else if (a === '--stop-author') out.stopAuthor = true
     else if (a === '--reversion-active-claim' || a === '--supersede-active-claim-version') out.reversionClaim = true
@@ -4680,6 +4719,7 @@ export function main(argv, now = new Date(), io = githubIo) {
     const numericPrimary=new Set(['resolveAdmittedIssueForPr','outcomeStatus','repairOutcomeHistory','completeOutcome','preparePreviewDispatch','returnIssue'])
     if(selectedPrimary.length===1&&numericPrimary.has(selectedPrimary[0])&&(!Number.isInteger(o[selectedPrimary[0]])||o[selectedPrimary[0]]<=0))throw new LaneError(`--${selectedPrimary[0].replace(/[A-Z]/g,(value)=>`-${value.toLowerCase()}`)} requires a positive number`)
     const admissionCombined=new Set(['claim','assignReviewer','replaceFailedReviewer','preparePreviewDispatch','acquireExclusive','advanceOutcome'])
+    if(o.remoteCustody&&!(selectedPrimary.length===1&&selectedPrimary[0]==='handoffClaimAuthor'))throw new LaneError('--remote-custody is valid only with --handoff-claim-author')
     if(hasAdmission&&selectedPrimary.length===1&&!admissionCombined.has(selectedPrimary[0]))throw new LaneError(`--admit-issue cannot be combined with --${selectedPrimary[0].replace(/[A-Z]/g,(value)=>`-${value.toLowerCase()}`)}`)
     if(o.databasePreviewClassificationFile)io=withDatabasePreviewClassificationFile(io,o.databasePreviewClassificationFile)
     // DELIVERY PREFLIGHT (#2728). Both paths run before any GitHub read or write.

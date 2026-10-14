@@ -19,12 +19,12 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "849 tests pass, 0 fail on the four-reviewer pool."
+      "evidence": "849 tests pass, 0 fail on the four-reviewer pool (re-run 2026-10-14)."
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK after disposition line-key refresh."
+      "evidence": "truth audit OK after disposition line-key refresh (re-run 2026-10-14)."
     }
   ],
   "assumptions_resolved": [

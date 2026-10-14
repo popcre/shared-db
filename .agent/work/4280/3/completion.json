@@ -6,9 +6,11 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/4280/3",
   "contract_sha256": "ca563c8ef837eedff96e743c021032a60be03caec70a0aa1f8cb663a11e6193b",
-  "head_sha": "c4bb8f123d4f96815b9c74c222166ccb149b6adf",
+  "head_sha": "1490b11e198dcd545749c65cdbaf02a848f3935a",
   "base_sha": "08d0b593a1f3eeb95623b703373345b7a412b11b",
   "files_changed": [
+    ".agent/work/4280/3/completion.json",
+    ".agent/work/4280/3/contract.json",
     "docs/verification/throughput-dispositions/scripts~lib~lanes~reviewer-roster.mjs.json",
     "scripts/lib/lanes/reviewer-roster.mjs",
     "scripts/manage-migration-author-lanes.test.mjs"
@@ -19,12 +21,12 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "849 tests pass, 0 fail on the four-reviewer pool (re-run 2026-10-14)."
+      "evidence": "849 tests pass, 0 fail on the four-reviewer pool."
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK after disposition line-key refresh (re-run 2026-10-14)."
+      "evidence": "truth audit OK after disposition line-key refresh."
     }
   ],
   "assumptions_resolved": [

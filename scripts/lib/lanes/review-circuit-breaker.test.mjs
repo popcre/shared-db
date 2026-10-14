@@ -1,7 +1,11 @@
 import {createHash} from 'node:crypto'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { paidStart, assertPaidReviewCapacity, pauseActualReviewFailure, derivePaidContentProof } from './review-circuit-breaker.mjs'
+import { paidStart, assertPaidReviewCapacity, pauseActualReviewFailure, derivePaidContentProof, linkBaseOf } from './review-circuit-breaker.mjs'
+import { execFileSync as execGit } from 'node:child_process'
+import { mkdtempSync as mkTemp, rmSync as rmTemp } from 'node:fs'
+import { tmpdir as osTmp } from 'node:os'
+import { join as joinPath } from 'node:path'
 const head='a'.repeat(40), next='b'.repeat(40), digest='c'.repeat(64)
 const request={issue:3536,pr:4000,headSha:head,slot:1}
 function row(seq=1,h=head,slot=1){return{ref:`refs/db-review-started/3536-4000-${h}-slot${slot}-seq${seq}`,sha:String(seq).padStart(40,'0')}}
@@ -708,8 +712,8 @@ test('resolved metadata requires a valid source hash and all other bytes',t=>{
 function chainIo({heads,proofs}){
   const rows=heads.map((h,i)=>row(i+1,h))
   return {listRefs:()=>rows,getCommit:sha=>({message:message(Number(sha),heads[Number(sha)-1])}),reviewLinkBase:()=> '7'.repeat(40),
-    reviewContentComparison:(before,after)=>{const kind=proofs[`${before[0]}>${after[0]}`];if(!kind)throw new Error('review budget Git provenance refused: review budget canonical blob bytes unreadable or oversized')
-      return {before:digest,after:digest,budgetProof:{schema:1,before,after,protectedMain:head,kind,historyCount:1}}}}
+    reviewContentComparison:(before,after,pr,ctx)=>{const kind=proofs[`${before[0]}>${after[0]}`];if(!kind)throw new Error('review budget Git provenance refused: review budget canonical blob bytes unreadable or oversized')
+      return {before:digest,after:digest,budgetProof:{schema:1,before,after,protectedMain:ctx?.base??head,kind,historyCount:1}}}}
 }
 const old='e'.repeat(40),reviewed='f'.repeat(40),fresh='9'.repeat(40)
 test('an unprovable older head composes through a newer proven head (substantive older edit)',()=>{
@@ -766,4 +770,40 @@ test('a malformed link proof refuses instead of trying the next chain',()=>{
 test('duplicate-head starts each count, and the link base is read once per newer head',()=>{
   let reads=0;const x=chainIo({heads:[old,old,reviewed],proofs:{'f>9':'unchanged','e>f':'unchanged'}});x.reviewLinkBase=()=>{reads++;return '7'.repeat(40)}
   assert.throws(()=>assertPaidReviewCapacity({...request,headSha:fresh},x),/third draw refused/);assert.equal(reads,1)
+})
+
+// #4293 review round 2.
+test('a disagreement result is counted but never used as a chain intermediate',()=>{
+  const m='8'.repeat(40),n1='1'.repeat(40),n2='2'.repeat(40),o='3'.repeat(40)
+  // newest first: n2, n1 proven unchanged/substantive vs request; m disagrees through them; o can only chain through m.
+  const x=chainIo({heads:[o,m,n1,n2],proofs:{'2>9':'substantive','1>9':'unchanged','8>1':'unchanged','8>2':'unchanged'}})
+  assert.throws(()=>assertPaidReviewCapacity({...request,headSha:fresh},x),/canonical blob bytes unreadable/)
+})
+test('a tamper-class provenance refusal is never bridged',()=>{
+  const x=chainIo({heads:[old,reviewed],proofs:{'f>9':'unchanged','e>f':'substantive'}}),compare=x.reviewContentComparison
+  x.reviewContentComparison=(b,a,pr,ctx)=>{if(b[0]==='e'&&a[0]==='9')throw new Error('review budget Git provenance refused: review budget mutated generation');return compare(b,a,pr,ctx)}
+  assert.throws(()=>assertPaidReviewCapacity({...request,headSha:fresh},x),/mutated generation/)
+})
+test('a proof whose protected main differs from the requested base refuses',()=>{
+  const x=chainIo({heads:[reviewed],proofs:{'f>9':'unchanged'}}),compare=x.reviewContentComparison
+  x.reviewContentComparison=(b,a,pr,ctx)=>{const r=compare(b,a,pr,ctx);ctx.base='4'.repeat(40);return r}
+  assert.throws(()=>assertPaidReviewCapacity({...request,headSha:fresh},x),/author-owned Git provenance proof unreadable/)
+})
+test('one unreadable link base skips that head and tries the next',()=>{
+  const mid='8'.repeat(40)
+  const x=chainIo({heads:[old,mid,reviewed],proofs:{'f>9':'unchanged','8>9':'substantive','e>8':'unchanged'}})
+  x.reviewLinkBase=(h)=>{if(h===reviewed)throw new Error('git merge-base boom');return '7'.repeat(40)}
+  assert.equal(assertPaidReviewCapacity({...request,headSha:fresh},x).paidAttempts,1)
+})
+test('linkBaseOf returns the newest main commit a reviewed head contains, on real git',()=>{
+  const dir=mkTemp(joinPath(osTmp(),'linkbase-'));const git=(args)=>execGit('git',['-C',dir,...args],{encoding:'utf8'}).trim()
+  try{
+    git(['init','-q','-b','main']);git(['config','user.email','t@t']);git(['config','user.name','t'])
+    git(['commit','-q','--allow-empty','-m','base']);const drawBase=git(['rev-parse','HEAD'])
+    git(['checkout','-q','-b','pr']);git(['commit','-q','--allow-empty','-m','reviewed']);const reviewedHead=git(['rev-parse','HEAD'])
+    git(['checkout','-q','main']);git(['commit','-q','--allow-empty','-m','main moved']);const movedMain=git(['rev-parse','HEAD'])
+    assert.equal(linkBaseOf(reviewedHead,movedMain,git),drawBase)
+    git(['checkout','-q','--orphan','rewritten']);git(['commit','-q','--allow-empty','-m','rewritten main']);const rewritten=git(['rev-parse','HEAD'])
+    assert.throws(()=>linkBaseOf(reviewedHead,rewritten,git),/link base/)
+  }finally{rmTemp(dir,{recursive:true,force:true})}
 })

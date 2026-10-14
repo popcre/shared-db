@@ -500,6 +500,19 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
   }
 }
 
+// #4290: the newest protected-main commit a reviewed head contains. It is the head's
+// draw-time protected base whenever main only moves forward; it must itself be an
+// ancestor of the current protected base, otherwise main was rewritten and no link
+// may be judged against it.
+export function linkBaseOf(head, base, git) {
+  if(!/^[0-9a-f]{40}$/.test(String(head??''))||!/^[0-9a-f]{40}$/.test(String(base??'')))throw new LaneError('review circuit breaker: link base inputs unreadable')
+  let mergeBase=''
+  try{mergeBase=String(git(['merge-base',head,base])).trim()}catch{throw new LaneError('review circuit breaker: link base unreadable')}
+  if(!/^[0-9a-f]{40}$/.test(mergeBase))throw new LaneError('review circuit breaker: link base unreadable')
+  try{git(['merge-base','--is-ancestor',mergeBase,base])}catch{throw new LaneError('review circuit breaker: link base is not in protected main')}
+  return mergeBase
+}
+
 export function assertPaidReviewCapacity(request, io) {
   if(!Number.isInteger(request.pr)||request.pr<1||!Number.isInteger(request.slot)||request.slot<1)throw new LaneError('review circuit breaker: exact positive PR and slot required')
   const prefix=`${REVIEW_STARTED_REF_PREFIX}/`
@@ -515,7 +528,7 @@ export function assertPaidReviewCapacity(request, io) {
     const comparison=io.reviewContentComparison(beforeHead,afterHead,request.pr,context)
     if (!comparison || !/^[0-9a-f]{64}$/.test(comparison.before) || !/^[0-9a-f]{64}$/.test(comparison.after)) throw new LaneError('review circuit breaker: substantive content proof unreadable')
     const proof=comparison.budgetProof
-    if(!proof || proof.schema!==1 || proof.before!==beforeHead || proof.after!==afterHead || !/^[0-9a-f]{40}$/.test(proof.protectedMain??'') || !['unchanged','substantive'].includes(proof.kind)) throw new LaneError('review circuit breaker: author-owned Git provenance proof unreadable')
+    if(!proof || proof.schema!==1 || proof.before!==beforeHead || proof.after!==afterHead || !/^[0-9a-f]{40}$/.test(proof.protectedMain??'') || (context.base!==undefined && proof.protectedMain!==context.base) || !['unchanged','substantive'].includes(proof.kind)) throw new LaneError('review circuit breaker: author-owned Git provenance proof unreadable')
     if(proof.kind==='substantive' && (!Number.isInteger(proof.historyCount)||proof.historyCount<1||proof.historyCount>=1000)) throw new LaneError('review circuit breaker: complete substantive history proof unreadable')
     return proof.kind
   }
@@ -526,22 +539,32 @@ export function assertPaidReviewCapacity(request, io) {
   // older->newer (pre-refresh, directly comparable) composed with newer->request. Only a
   // fully proven chain counts; anything else still refuses.
   const proven=new Map(),linkBases=new Map()
-  const provenanceGap=(error)=>/^review budget Git provenance refused: /.test(String(error?.message??''))
+  // Only the moved-main merge gap may be bridged: re-merging an older head against the
+  // current main conflicts outside the canonical append forms. Every other provenance
+  // refusal (mutated generation, foreign evidence, hash refusal, ...) keeps refusing.
+  const provenanceGap=(error)=>/^review budget Git provenance refused: review budget (conflict is outside the one canonical test append|canonical blob bytes unreadable or oversized|canonical append requires exactly one conflict|append marker ambiguity|append must be one EOF conflict|append cannot modify old lines or omit a parent)$/.test(String(error?.message??''))
   // Composition table: unchanged after unchanged is unchanged; a substantive step on
   // either side with an unchanged step on the other is substantive. Two substantive
   // steps prove nothing (the second may revert the first), so that chain is skipped.
   const compose=(link,kind)=>link==='unchanged'?kind:kind==='unchanged'?'substantive':null
+  const linkBase=(head)=>{
+    if(!linkBases.has(head)){
+      let base=null
+      try{base=io.reviewLinkBase(head,request.pr,comparisonContext.base)}catch{base=null}
+      linkBases.set(head,/^[0-9a-f]{40}$/.test(String(base??''))?base:null)
+    }
+    return linkBases.get(head)
+  }
+  // Returns {kind, proven}: proven is false for a conservative disagreement result,
+  // which may be counted but must never serve as an intermediate for another chain.
   const classifyStart=(start)=>{
-    try{return classify(start.headSha,request.headSha)}catch(error){
-      // Only a provenance gap (older head unmergeable against the moved main) may be
-      // bridged; a malformed, tampered or unbound proof keeps refusing.
+    try{return {kind:classify(start.headSha,request.headSha),proven:true}}catch(error){
       if(!provenanceGap(error)||typeof io.reviewLinkBase!=='function')throw error
       const results=new Set()
       for(const [head,kind] of proven.entries()){
         if(head===start.headSha)continue
-        let base=linkBases.get(head)
-        if(base===undefined){base=io.reviewLinkBase(head,request.pr,comparisonContext.base);linkBases.set(head,base)}
-        if(!/^[0-9a-f]{40}$/.test(String(base??'')))throw new LaneError('review circuit breaker: link base unreadable')
+        const base=linkBase(head)
+        if(!base)continue
         let link
         try{link=classify(start.headSha,head,{base})}catch(linkError){if(provenanceGap(linkError))continue;throw linkError}
         const composed=compose(link,kind)
@@ -550,7 +573,7 @@ export function assertPaidReviewCapacity(request, io) {
       if(!results.size)throw error
       // Every provable chain must agree; on disagreement count conservatively (as
       // unchanged), which can only spend capacity, never grant an extra paid review.
-      return results.size===1?[...results][0]:'unchanged'
+      return results.size===1?{kind:[...results][0],proven:true}:{kind:'unchanged',proven:false}
     }
   }
   starts.sort((a,b)=>a.sequence-b.sequence)
@@ -558,8 +581,8 @@ export function assertPaidReviewCapacity(request, io) {
   const kinds=new Map()
   for (const start of [...starts].reverse()) {
     if(start.headSha===request.headSha)continue
-    const kind=classifyStart(start)
-    kinds.set(start,kind);proven.set(start.headSha,kind)
+    const result=classifyStart(start)
+    kinds.set(start,result.kind);if(result.proven)proven.set(start.headSha,result.kind)
   }
   for (const start of starts) {
     const same=start.headSha===request.headSha||kinds.get(start)==='unchanged'

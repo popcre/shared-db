@@ -539,10 +539,12 @@ export function assertPaidReviewCapacity(request, io) {
   // older->newer (pre-refresh, directly comparable) composed with newer->request. Only a
   // fully proven chain counts; anything else still refuses.
   const proven=new Map(),linkBases=new Map()
-  // Only the moved-main merge gap may be bridged: re-merging an older head against the
-  // current main conflicts outside the canonical append forms. Every other provenance
-  // refusal (mutated generation, foreign evidence, hash refusal, ...) keeps refusing.
-  const provenanceGap=(error)=>/^review budget Git provenance refused: review budget (conflict is outside the one canonical test append|canonical blob bytes unreadable or oversized|canonical append requires exactly one conflict|append marker ambiguity|append must be one EOF conflict|append cannot modify old lines or omit a parent)$/.test(String(error?.message??''))
+  // A chain may replace a direct proof only when the direct failure came from the
+  // provenance derivation itself (an older head that no longer re-merges against the
+  // moved main). Any binding/shape failure of a returned proof keeps refusing. Tampered
+  // history is still refused: the older head is the "before" of every link too, so its
+  // evidence and blob integrity are re-checked there and no chain can be proven.
+  const provenanceGap=(error)=>/^review budget Git provenance refused: /.test(String(error?.message??''))
   // Composition table: unchanged after unchanged is unchanged; a substantive step on
   // either side with an unchanged step on the other is substantive. Two substantive
   // steps prove nothing (the second may revert the first), so that chain is skipped.
@@ -555,10 +557,10 @@ export function assertPaidReviewCapacity(request, io) {
     }
     return linkBases.get(head)
   }
-  // Returns {kind, proven}: proven is false for a conservative disagreement result,
-  // which may be counted but must never serve as an intermediate for another chain.
+  // Returns {kind, direct}. Chained (and conservative disagreement) results are counted
+  // but never serve as intermediates for another chain.
   const classifyStart=(start)=>{
-    try{return {kind:classify(start.headSha,request.headSha),proven:true}}catch(error){
+    try{return {kind:classify(start.headSha,request.headSha),direct:true}}catch(error){
       if(!provenanceGap(error)||typeof io.reviewLinkBase!=='function')throw error
       const results=new Set()
       for(const [head,kind] of proven.entries()){
@@ -573,7 +575,7 @@ export function assertPaidReviewCapacity(request, io) {
       if(!results.size)throw error
       // Every provable chain must agree; on disagreement count conservatively (as
       // unchanged), which can only spend capacity, never grant an extra paid review.
-      return results.size===1?{kind:[...results][0],proven:true}:{kind:'unchanged',proven:false}
+      return {kind:results.size===1?[...results][0]:'unchanged',direct:false}
     }
   }
   starts.sort((a,b)=>a.sequence-b.sequence)
@@ -582,7 +584,9 @@ export function assertPaidReviewCapacity(request, io) {
   for (const start of [...starts].reverse()) {
     if(start.headSha===request.headSha)continue
     const result=classifyStart(start)
-    kinds.set(start,result.kind);if(result.proven)proven.set(start.headSha,result.kind)
+    // Only DIRECT proofs serve as chain intermediates (no multi-hop): every link is then
+    // one step from a head whose classification against the request was proven directly.
+    kinds.set(start,result.kind);if(result.direct)proven.set(start.headSha,result.kind)
   }
   for (const start of starts) {
     const same=start.headSha===request.headSha||kinds.get(start)==='unchanged'

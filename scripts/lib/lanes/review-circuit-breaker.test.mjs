@@ -779,10 +779,15 @@ test('a disagreement result is counted but never used as a chain intermediate',(
   const x=chainIo({heads:[o,m,n1,n2],proofs:{'2>9':'substantive','1>9':'unchanged','8>1':'unchanged','8>2':'unchanged'}})
   assert.throws(()=>assertPaidReviewCapacity({...request,headSha:fresh},x),/canonical blob bytes unreadable/)
 })
-test('a tamper-class provenance refusal is never bridged',()=>{
-  const x=chainIo({heads:[old,reviewed],proofs:{'f>9':'unchanged','e>f':'substantive'}}),compare=x.reviewContentComparison
-  x.reviewContentComparison=(b,a,pr,ctx)=>{if(b[0]==='e'&&a[0]==='9')throw new Error('review budget Git provenance refused: review budget mutated generation');return compare(b,a,pr,ctx)}
-  assert.throws(()=>assertPaidReviewCapacity({...request,headSha:fresh},x),/mutated generation/)
+test('tampered older history is refused: the link re-checks the same evidence and fails',()=>{
+  const x=chainIo({heads:[old,reviewed],proofs:{'f>9':'unchanged'}}),compare=x.reviewContentComparison
+  x.reviewContentComparison=(b,a,pr,ctx)=>{if(b[0]==='e')throw new Error('review budget Git provenance refused: review budget historical evidence mutated generation');return compare(b,a,pr,ctx)}
+  assert.throws(()=>assertPaidReviewCapacity({...request,headSha:fresh},x),/historical evidence mutated generation/)
+})
+test('a chained result is never an intermediate (no multi-hop)',()=>{
+  const o1='3'.repeat(40),m='8'.repeat(40)
+  const x=chainIo({heads:[o1,m,reviewed],proofs:{'f>9':'unchanged','8>f':'substantive','3>8':'substantive'}})
+  assert.throws(()=>assertPaidReviewCapacity({...request,headSha:fresh},x),/canonical blob bytes unreadable/)
 })
 test('a proof whose protected main differs from the requested base refuses',()=>{
   const x=chainIo({heads:[reviewed],proofs:{'f>9':'unchanged'}}),compare=x.reviewContentComparison

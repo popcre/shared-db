@@ -43,7 +43,7 @@
     {
       "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
       "exit_code": 0,
-      "evidence": "24 passed, zero failures. Focused truthaudit suites24pass and fullworkflow72pass; catalogueaccuratelymarksmissing-slot diagnostic, without claiming already-reviewed approval."
+      "evidence": "16 passed, zero failures for the exact required single truth-audit command at05ab8d7b9; full Tools Offline throughput step72/72 passed with348 call sites,98 sources and4739ca1b86eb digest. No source edits since those checks."
     }
   ],
   "assumptions_resolved": [

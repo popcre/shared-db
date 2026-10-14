@@ -673,3 +673,16 @@ test('CLI --handoff-claim-author --remote-custody accepts end to end (#4288 revi
   const ref=[...io.refs.keys()].find(r=>r.startsWith(CLAIM_AUTHOR_HANDOFF_REF_PREFIX))
   assert.equal(JSON.parse(io.getCommit(io.refs.get(ref)).message.split('claim-author-voluntary-handoff ')[1]).original_worktree_custody,'remote')
 })
+test('remote custody refuses a receipt stored under a ref name that does not match its identity (#4288 review round 4)',()=>{
+  const {io,request,accept,stop}=remoteHandoff(),prefix='db-coordination author-handoff-ready '
+  const rec=JSON.parse(io.getCommit(io.refs.get(stop.handoffReadyRef)).message.slice(prefix.length))
+  io.refs.set(stop.handoffReadyRef,io.makeOwnerCommit(prefix+JSON.stringify({...rec,body_sha256:'0'.repeat(64)})))
+  unchanged(io,request.claim,()=>handoffClaimAuthor(accept,NOW,io),/differ from their immutable identity/)
+})
+test('remote custody binds the accepting session to the recipient and the new owner (#4288 review round 4)',()=>{
+  {const {io,request,accept}=remoteHandoff()
+    io.orchestratorFlowAdapter=()=>({resolveMarker:()=>({live:true,task:'third-party',calling_task:'third-party'})})
+    unchanged(io,request.claim,()=>handoffClaimAuthor({...accept,authorizationChatId:'third-party'},NOW,io),/owner-issued ready consent differs from exact source, claim or actual recipient/)}
+  {const {io,request,accept}=remoteHandoff()
+    unchanged(io,request.claim,()=>handoffClaimAuthor({...accept,newOwner:'impostor'},NOW,io),/./)}
+})

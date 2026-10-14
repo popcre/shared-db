@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "work_issue": 1714,
+  "work_issue": 4280,
   "outcome": "ready-for-merge",
   "pr": 4272,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/1714/4",
-  "contract_sha256": "b163662bba816774dfc2ea4798c754f7d79dfd451832fc8a81f01c461b52091f",
-  "head_sha": "9d3de51188644ab4a9d760433807f84dc69bd0dc",
+  "contract_ref": "refs/db-contracts/4280/1",
+  "contract_sha256": "f61c1f8e0a363a8aa08ddbdf7ebe76ff70b82221f27a6806139fed3d973edf59",
+  "head_sha": "aa7e9d6d89e266200e3a87d8af64dac837c7cfa6",
   "base_sha": "be192f32a35dbf250a4612c95f7f89e55c4aec04",
   "files_changed": [
     "scripts/lib/lanes/reviewer-roster.mjs",
@@ -19,7 +19,7 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "849 tests pass, 0 fail on the four-reviewer pool after merge with main."
+      "evidence": "849 tests pass, 0 fail on the four-reviewer pool."
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",

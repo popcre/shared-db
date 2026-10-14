@@ -4,13 +4,22 @@
   "outcome": "ready-for-merge",
   "pr": 4294,
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/4297/2",
-  "contract_sha256": "4d488706aa923b17d239f5117e9b82641d999533e16b4731e4024d9153f1f1f6",
-  "head_sha": "48d10d6286691d790b19d62a05d1ad70e2725f7b",
+  "contract_ref": "refs/db-contracts/4297/8",
+  "contract_sha256": "50f27dc49945acb76cb2e6ade8366741d02e48038a6f2db53011d76aebdfc9b5",
+  "head_sha": "937fd3e36",
   "base_sha": "9595a63fcc0c616687d858b0eef1b3864a9d265e",
   "files_changed": [
+    ".agent/work/4297/2/completion.json",
+    ".agent/work/4297/2/contract.json",
+    "AGENTS.md",
+    "docs/agents/anti-collision-summary.md",
+    "docs/agents/merge-protocol.md",
+    "docs/agents/standing-facts.md",
+    "scripts/check-exact-head-approval.mjs",
+    "scripts/check-exact-head-approval.test.mjs",
     "scripts/lib/lanes/github-wire.mjs",
     "scripts/lib/lanes/review-assignment.mjs",
+    "scripts/lib/lanes/review-circuit-breaker.test.mjs",
     "scripts/lib/lanes/review-records.mjs",
     "scripts/lib/lanes/reviewer-roster.mjs",
     "scripts/lib/orchestrator-routing.mjs",
@@ -23,13 +32,11 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "864 tests passed, zero fail/skip against inherited71ad4f52 plus9595a63 current main and eligible GLM replacement fixture; no runtime eligibility override."
+      "evidence": "864 tests passed, zero fail; Gemini fixture replaced with eligible GLM"
     }
   ],
   "assumptions_resolved": [
-    "Inherited source is preserved through two-parent integration.",
-    "Only repair beyond inherited PR is quarantined Gemini fixture name replaced with eligible GLM.",
-    "No migration, roster, runtime policy or database write is introduced by the repair."
+    "Owner: just implement; tooling one review slot"
   ],
   "stop_conditions_hit": []
 }

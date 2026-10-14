@@ -10,8 +10,8 @@
       "reason": "Excluded: validates local reviewer admission evidence before assignment; missing or malformed admission is not a database absence claim."
     },
     {
-      "site": "scripts/lib/lanes/reviewer-roster.mjs:343",
-      "semantic_key": "scripts/lib/lanes/reviewer-roster.mjs:435a6abb51443c34755210b1f1927ce87702403e85b83c894a9d0ee9a1b367f8:context-a0657f3f74e284f6180bdbafb33d6fe9193a229c5ff4cf32eb4c603277989304",
+      "site": "scripts/lib/lanes/reviewer-roster.mjs:344",
+      "semantic_key": "scripts/lib/lanes/reviewer-roster.mjs:435a6abb51443c34755210b1f1927ce87702403e85b83c894a9d0ee9a1b367f8:context-bcd0ef952978ec8e461ec07ec001b66440428646e5762b80b74f90502987eac7",
       "line_sha256": "435a6abb51443c34755210b1f1927ce87702403e85b83c894a9d0ee9a1b367f8",
       "disposition": "excluded",
       "reason": "Prose comment explaining the #2078 reviewer-repository-access gate; the word matches the discovery pattern but the line is not a throughput call site and carries no derivation behavior."

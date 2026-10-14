@@ -70,8 +70,9 @@
     "PR4294 is retained as the delivery card so the existing MiMo approach continues; root PR4299 combined source8c6590ee6c7be4363e39cf665d24265234d8176d and MiMo source451a4f8a897b837cdfcfe08777f59ec7c292e491 are explicitly inherited and preserved as ancestors, not claimed to have been originally authored under this new contract.",
     "Only additive fast-forward delivery of the combined tested repair is allowed; preserve every existing source commit and do not force push or mutate another worktree.",
     "The combined source retains finite service-failure bounds, own-slot policy, validated replacements/returns, private approval-carry proof, narrow ancestor .agent-only equivalence, required review counts and independent identities.",
-    "Only generation8 pair is current in the final candidate delta; superseded candidate evidence is preserved in history and immutable refs.",
-    "Claude PR4301 remains closed under its separate owner and will reconcile after this delivery; no source or evidence is borrowed as approval for our code."
+    "Only this generation current keyed pair appears in the final candidate delta; superseded candidate evidence is preserved in history and immutable refs.",
+    "Claude PR4301 remains closed under its separate owner and will reconcile after this delivery; no source or evidence is borrowed as approval for our code.",
+    "This successor corrects the predecessor prose generation label; source and file scope are unchanged and original consolidation remains authorized prospectively under generation9."
   ],
   "stop_conditions": [
     "Any foreign head movement must be captured and reconciled before marking that proposal superseded; no overwrite or force push.",
@@ -79,10 +80,10 @@
     "No database or production writes, no fabricated history or evidence, no weakened required checks, independent review or finite spending limits.",
     "Any additional source path requires a published scope successor before edits."
   ],
-  "generation": 9,
+  "generation": 10,
   "evidence_parent": {
     "work_issue": 4297,
-    "generation": 8,
-    "contract_sha256": "50f27dc49945acb76cb2e6ade8366741d02e48038a6f2db53011d76aebdfc9b5"
+    "generation": 9,
+    "contract_sha256": "0a994112c2654627cd99d677f37f57aa8b4ea6c33300dd8c733c8857b509a83e"
   }
 }

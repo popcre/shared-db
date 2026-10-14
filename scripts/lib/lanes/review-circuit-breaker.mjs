@@ -509,18 +509,47 @@ export function assertPaidReviewCapacity(request, io) {
   const starts = rows.map(row=>paidStart(row,row.commit ?? io.getCommit(row.sha))).filter(row=>row && row.pr === request.pr && row.slot === request.slot)
   let count=0,reinstated=0
   const comparisonContext={}
-  starts.sort((a,b)=>a.sequence-b.sequence)
-  for (const start of starts) {
-    let same=start.headSha === request.headSha
-    if (!same) {
-      if (typeof io.reviewContentComparison !== 'function') throw new LaneError('review circuit breaker: substantive content comparison unavailable')
-      const comparison=io.reviewContentComparison(start.headSha,request.headSha,request.pr,comparisonContext)
-      if (!comparison || !/^[0-9a-f]{64}$/.test(comparison.before) || !/^[0-9a-f]{64}$/.test(comparison.after)) throw new LaneError('review circuit breaker: substantive content proof unreadable')
-      const proof=comparison.budgetProof
-      if(!proof || proof.schema!==1 || proof.before!==start.headSha || proof.after!==request.headSha || !/^[0-9a-f]{40}$/.test(proof.protectedMain??'') || !['unchanged','substantive'].includes(proof.kind)) throw new LaneError('review circuit breaker: author-owned Git provenance proof unreadable')
-      if(proof.kind==='substantive' && (!Number.isInteger(proof.historyCount)||proof.historyCount<1||proof.historyCount>=1000)) throw new LaneError('review circuit breaker: complete substantive history proof unreadable')
-      same=proof.kind==='unchanged'
+  // One proven classification of before->after content: 'unchanged' or 'substantive'.
+  const classify=(beforeHead,afterHead,context=comparisonContext)=>{
+    if (typeof io.reviewContentComparison !== 'function') throw new LaneError('review circuit breaker: substantive content comparison unavailable')
+    const comparison=io.reviewContentComparison(beforeHead,afterHead,request.pr,context)
+    if (!comparison || !/^[0-9a-f]{64}$/.test(comparison.before) || !/^[0-9a-f]{64}$/.test(comparison.after)) throw new LaneError('review circuit breaker: substantive content proof unreadable')
+    const proof=comparison.budgetProof
+    if(!proof || proof.schema!==1 || proof.before!==beforeHead || proof.after!==afterHead || !/^[0-9a-f]{40}$/.test(proof.protectedMain??'') || !['unchanged','substantive'].includes(proof.kind)) throw new LaneError('review circuit breaker: author-owned Git provenance proof unreadable')
+    if(proof.kind==='substantive' && (!Number.isInteger(proof.historyCount)||proof.historyCount<1||proof.historyCount>=1000)) throw new LaneError('review circuit breaker: complete substantive history proof unreadable')
+    return proof.kind
+  }
+  // #4290/#4206: after the branch is refreshed from main, an OLDER reviewed head can no
+  // longer be re-merged against the moved main (its stale copies of files main has since
+  // changed conflict), so its direct classification is unprovable. It is then classified
+  // THROUGH a newer reviewed head of the same PR whose own classification is proven:
+  // older->newer (pre-refresh, directly comparable) composed with newer->request. Only a
+  // fully proven chain counts; anything else still refuses.
+  const proven=new Map()
+  const classifyStart=(start)=>{
+    try{return classify(start.headSha,request.headSha)}catch(error){
+      // The older->newer link is judged exactly as it was when the newer head was
+      // drawn: against the newer head's own merge base with the PR base, not the moved main.
+      if(typeof io.reviewLinkBase!=='function')throw error
+      const newer=[...proven.entries()].filter(([head])=>head!==start.headSha)
+      for(const [head,kind] of newer){
+        let link
+        try{const base=io.reviewLinkBase(head,request.pr);if(!/^[0-9a-f]{40}$/.test(String(base??'')))continue;link=classify(start.headSha,head,{base})}catch{continue}
+        return link==='unchanged'?kind:'substantive'
+      }
+      throw error
     }
+  }
+  starts.sort((a,b)=>a.sequence-b.sequence)
+  // Prove newest first so an older head can compose through a newer proven one.
+  const kinds=new Map()
+  for (const start of [...starts].reverse()) {
+    if(start.headSha===request.headSha)continue
+    const kind=classifyStart(start)
+    kinds.set(start,kind);proven.set(start.headSha,kind)
+  }
+  for (const start of starts) {
+    const same=start.headSha===request.headSha||kinds.get(start)==='unchanged'
     if(!same)continue
     if(reinstated<REINSTATEMENT_CEILING && reinstatedByFailure(start,io)){reinstated++;continue}
     count++

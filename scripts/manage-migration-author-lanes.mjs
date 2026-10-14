@@ -822,6 +822,14 @@ export const githubIo = {
     const commits=readGitCommits(rows.map(row=>row.sha))
     return rows.map(row=>({...row,commit:commits.get(row.sha)}))
   },
+  // #4290: the merge base a newer reviewed head had with the PR base, so an older head
+  // can be classified against it exactly as when that newer head was drawn.
+  reviewLinkBase(head,pr) {
+    const base=this.getPr(pr)?.base?.sha
+    if(!/^[0-9a-f]{40}$/.test(String(head??''))||!/^[0-9a-f]{40}$/.test(base??''))throw new LaneError('review circuit breaker: link base inputs unreadable')
+    execFileSync('git',['fetch','--no-tags','-q','origin',head,base],{stdio:['ignore','pipe','pipe']})
+    return String(execFileSync('git',['merge-base',head,base],{encoding:'utf8'})).trim()
+  },
   reviewContentComparison(before,after,pr,context={}) {
     const base=context.base??this.getPr(pr)?.base?.sha
     context.base=base

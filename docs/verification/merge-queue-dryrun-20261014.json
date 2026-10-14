@@ -1,5 +1,5 @@
 {
-  "_why": "Dated dry-run record (#2530 Step 8 re-activation, 2026-10-14): configure-merge-queue.mjs proposed payload before apply. Lane gate note: refs/db-coordination/author-acquisition held by issue #2336 / PR #4206 (reviewer-assignment-lock, not a database mutation lane). preview/merge/production lanes free. Settings mutations authorized by owner (2026-10-14).",
+  "_why": "Dated dry-run record (#2530 Step 8 re-activation, 2026-10-14): configure-merge-queue.mjs proposed payload before apply. Lane gate: the five LANE_REFS (author-acquisition, preview, merge, production, promotion-freeze) were free at capture instant 2026-10-14T16:48:44Z, so assertNoMutationLane passed and this payload is the real dry-run output. A separate undated observation of author-acquisition held by issue #2336 / PR #4206 was taken at a different moment and is not the state at capture. Settings mutations authorized by owner (2026-10-14).",
   "mode": "DRY RUN",
   "repo": "popcre/shared-db",
   "capturedIso": "2026-10-14T16:48:44Z",

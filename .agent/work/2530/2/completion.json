@@ -1,8 +1,0 @@
-{
-  "issue": 2530,
-  "generation": 2,
-  "status": "handoff-written",
-  "files_changed": 1,
-  "evidence": "HANDOFF.d/2026-10-14T2048Z-edge-dev-mimo-2530-merge-queue-closeout.md",
-  "notes": "Docs-only closeout. No implementation, no database write."
-}

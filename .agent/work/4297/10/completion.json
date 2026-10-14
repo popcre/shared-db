@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "work_issue": 4297,
+  "outcome": "ready-for-merge",
+  "pr": 4294,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4297/10",
+  "contract_sha256": "8cd016f15e41da5330f35f5caebc31830c3b2900c4090ba93c36abe6ffe6947f",
+  "head_sha": "c21384fa48566c9fbfb5d182ed49940a0c2c2f99",
+  "base_sha": "0b498f0734415da1cb44c0ead866ddb2ab531fe6",
+  "files_changed": [
+    "AGENTS.md",
+    "docs/agents/anti-collision-summary.md",
+    "docs/agents/merge-protocol.md",
+    "docs/agents/review-recovery-policy.md",
+    "docs/agents/standing-facts.md",
+    "plan_review_recovery_4297.md",
+    "scripts/check-exact-head-approval.mjs",
+    "scripts/check-exact-head-approval.test.mjs",
+    "scripts/lib/lanes/github-wire.mjs",
+    "scripts/lib/lanes/review-assignment.mjs",
+    "scripts/lib/lanes/review-circuit-breaker.mjs",
+    "scripts/lib/lanes/review-circuit-breaker.test.mjs",
+    "scripts/lib/lanes/review-records.mjs",
+    "scripts/lib/lanes/reviewer-roster.mjs",
+    "scripts/lib/orchestrator-routing.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/run-governed-review.mjs",
+    "scripts/run-governed-review.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/lib/lanes/review-circuit-breaker.test.mjs",
+      "exit_code": 0,
+      "evidence": "172 passed, zero failures; provenance, unknown/negative starts and per-reviewer exhaustion. Tested at8c6590ee; component and test blobs unchanged in this merged-source candidate."
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "884 passed, zero failures; either-slot-first, scoped quote widening, latest replacements/returns, batched/fallback freshness and wire ceiling25. Tested at8c6590ee; component and test blobs unchanged in this merged-source candidate."
+    },
+    {
+      "command": "node --test scripts/run-governed-review.test.mjs",
+      "exit_code": 0,
+      "evidence": "113 passed, zero failures, one existing skipped test; real local assignment/start/release CAS and head/verdict/lease races. Tested at8c6590ee; component and test blobs unchanged in this merged-source candidate."
+    },
+    {
+      "command": "node --test scripts/check-exact-head-approval.test.mjs",
+      "exit_code": 0,
+      "evidence": "109 passed, zero failures after final either-order wording/assertion correction."
+    }
+  ],
+  "assumptions_resolved": [
+    "Both approaches are incorporated into one full PR4294 delivery; original Codex8c6590ee and MiMo62701c7a source remain preserved as ancestors.",
+    "Canonical first-parent history follows latest actual remote62701c7a, preserving paid review-start ancestry; currentmain0b498f07 is merged without modifying its unrelated approved documentation.",
+    "Generation9 prospectively covers this consolidation; inherited source is not retrospectively claimed as newly authored.",
+    "All code/test component blobs match tested8c6590ee except the accurate required-slot wording/assertion whose109-test gate passed. Final policy/parallelism/skill-drift checks pass.",
+    "One current generation9 pair matches the published immutable scope and actual main/source/file inventory; prior refs and history remain unchanged.",
+    "Current GLM review of old62701c7a is preserved. No branch publication may invalidate that active review; its verdict does not approve the additional combined repair.",
+    "Independent current-head review, CI, guarded merge and native merged-source acceptance remain required; this is local source evidence only."
+  ],
+  "stop_conditions_hit": []
+}

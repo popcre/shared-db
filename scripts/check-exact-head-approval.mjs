@@ -280,7 +280,7 @@ export function evaluateExactHeadApproval(input) {
   const undrawnSlots = []
   for (let slot = 1; slot <= requiredSlots; slot += 1) if (!liveBySlot.has(slot) && !carriedBySlot.has(slot)) undrawnSlots.push(slot)
   if (undrawnSlots.length) {
-    throw new ApprovalCheckError(`head ${headSha} owes required review slot(s) ${undrawnSlots.join(', ')} that no assignment ever drew: this pull request's change requires ${requiredSlots} independent review slot(s) (AGENTS.md 6.x: migrations need two, scripts/docs/CI one), and a slot this gate cannot see is a slot it cannot require. Draw the owed slot pinned to this exact head (--assign-reviewer, slot 2 only after slot 1 is assigned) and have that assignment record its own APPROVE.`)
+    throw new ApprovalCheckError(`head ${headSha} owes required review slot(s) ${undrawnSlots.join(', ')} that no assignment ever drew: this pull request's change requires ${requiredSlots} independent review slot(s) (AGENTS.md 6.x: migrations need two, scripts/docs/CI one), and a slot this gate cannot see is a slot it cannot require. Draw each missing required slot at this exact head in either order (--assign-reviewer); each assignment must record its own APPROVE.`)
   }
   // Slots this head owns plus slots carried from a content-equivalent ancestor
   // together satisfy the minimum. Each still owes its own APPROVE below.

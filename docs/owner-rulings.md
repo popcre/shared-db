@@ -2130,7 +2130,7 @@ job must be able to release a freeze it did not set.
 Verbatim from Albert's chat (2026-10-14): "let Muse review twice but don't stop the other agent's approach"
 
 Extends the 2026-10-02 reuse ruling. A pull request listed in
-`config/owner-reviewer-reuse.json`, with the owner's verbatim quote and the
+`OWNER_REVIEWER_REUSE` (`scripts/lib/lanes/owner-reviewer-reuse.mjs`), with the owner's verbatim quote and the
 named reviewer, may fill review slot 2 or later with that reviewer even while
 it holds another slot at the same head and the pull request is still open.
 Slot 1 is unaffected, an unlisted pull request stays strict, and a malformed or

@@ -19,7 +19,7 @@ test('unlisted PR, missing quote, bad schema or unreadable file grant nothing', 
   assert.equal(ownerReviewerReuseAllowed({ pr: 4206, slot: 2 }, () => JSON.stringify({ schema: 'x', entries: [entry] })), false)
   assert.equal(ownerReviewerReuseAllowed({ pr: 4206, slot: 2 }, () => { throw new Error('nope') }), false)
 })
-test('committed config names only PR 4206 with a verbatim quote', () => {
+test('committed list names only PR 4206 with a verbatim quote', () => {
   const rows = ownerReuseEntries()
   assert.deepEqual(rows.map((r) => r.pr), [4206])
   assert.match(rows[0].owner_quote, /let Muse review twice/)

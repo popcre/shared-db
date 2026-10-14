@@ -1,14 +1,16 @@
 // OWNER RULING, Albert Hazan in his chat 2026-10-14 (verbatim): "let Muse review
 // twice but don't stop the other agent's approach". Extends the 2026-10-02 reuse
 // ruling to the exact open pull requests and reviewer listed in
-// config/owner-reviewer-reuse.json. Slot 1 is never affected; any malformed or
-// unreadable list grants nothing.
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+// OWNER_REVIEWER_REUSE below. Slot 1 is never affected; a malformed list grants
+// nothing. Remove an entry once its pull request merges.
+export const OWNER_REVIEWER_REUSE = Object.freeze({
+  schema: 'shared-db-owner-reviewer-reuse/v1',
+  entries: [
+    { pr: 4206, issue: 2336, reviewer: 'muse-spark-1.3-contributor', owner_quote: "let Muse review twice but don't stop the other agent's approach", ruled_at: '2026-10-14' },
+  ],
+})
 
-const CONFIG = fileURLToPath(new URL('../../../config/owner-reviewer-reuse.json', import.meta.url))
-
-export function ownerReuseEntries(read = () => readFileSync(CONFIG, 'utf8')) {
+export function ownerReuseEntries(read = () => JSON.stringify(OWNER_REVIEWER_REUSE)) {
   try {
     const data = JSON.parse(read())
     if (data?.schema !== 'shared-db-owner-reviewer-reuse/v1' || !Array.isArray(data.entries)) return []

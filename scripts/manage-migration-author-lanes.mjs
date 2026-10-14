@@ -824,11 +824,13 @@ export const githubIo = {
   },
   // #4290: the merge base a newer reviewed head had with the PR base, so an older head
   // can be classified against it exactly as when that newer head was drawn.
-  reviewLinkBase(head,pr) {
-    const base=this.getPr(pr)?.base?.sha
+  // The newest protected-main commit the newer head contains; reuses the operation's
+  // already-read PR base (no extra GitHub request) and is cached per head by the caller.
+  reviewLinkBase(head,pr,knownBase=null) {
+    const base=/^[0-9a-f]{40}$/.test(String(knownBase??''))?knownBase:this.getPr(pr)?.base?.sha
     if(!/^[0-9a-f]{40}$/.test(String(head??''))||!/^[0-9a-f]{40}$/.test(base??''))throw new LaneError('review circuit breaker: link base inputs unreadable')
-    execFileSync('git',['fetch','--no-tags','-q','origin',head,base],{stdio:['ignore','pipe','pipe']})
-    return String(execFileSync('git',['merge-base',head,base],{encoding:'utf8'})).trim()
+    execFileSync('git',['fetch','--no-tags','-q','origin',head,base],{stdio:['ignore','pipe','pipe'],timeout:GIT_COMMAND_TIMEOUT_MS})
+    return String(execFileSync('git',['merge-base',head,base],{encoding:'utf8',timeout:GIT_COMMAND_TIMEOUT_MS})).trim()
   },
   reviewContentComparison(before,after,pr,context={}) {
     const base=context.base??this.getPr(pr)?.base?.sha
@@ -1633,7 +1635,7 @@ function reviewOperationIo(io){
       const cacheable=['listRefs','listReviewRefsPaged','getCommit','getPr','getIssue','getIssueComments','getPrReviews'].includes(key)
       const cacheKey=cacheable?`${String(key)}:${JSON.stringify(args)}`:null
       if(cacheable&&cache.has(cacheKey))return cache.get(cacheKey)
-      const result=value.apply(key==='reviewContentComparison'?proxy:target,args)
+      const result=value.apply(['reviewContentComparison','reviewLinkBase'].includes(key)?proxy:target,args)
       if(cacheable)cache.set(cacheKey,result)
       if(['createRef','updateRef','deleteRef'].includes(key))cache.delete(`readRef:${JSON.stringify([args[0]])}`)
       return result

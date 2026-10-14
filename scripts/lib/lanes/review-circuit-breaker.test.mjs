@@ -740,3 +740,30 @@ test('the older->newer link is judged at the newer head merge base, not the move
   assertPaidReviewCapacity({...request,headSha:fresh},x)
   assert.ok(seen.some(([b,a,base])=>b==='e'&&a==='f'&&base==='7'.repeat(40)))
 })
+
+// #4293 review: composition soundness.
+test('two substantive steps prove nothing (a revert) and the refusal stands',()=>{
+  const x=chainIo({heads:[old,reviewed],proofs:{'f>9':'substantive','e>f':'substantive'}})
+  assert.throws(()=>assertPaidReviewCapacity({...request,headSha:fresh},x),/canonical blob bytes unreadable/)
+})
+test('disagreeing chains are counted conservatively, independent of draw order',()=>{
+  const mid='8'.repeat(40)
+  for(const heads of [[old,mid,reviewed],[old,reviewed,mid]]){
+    const x=chainIo({heads,proofs:{'f>9':'unchanged','8>9':'unchanged','e>f':'substantive','e>8':'unchanged'}})
+    assert.throws(()=>assertPaidReviewCapacity({...request,headSha:fresh},x),/third draw refused/)
+  }
+})
+test('a malformed direct proof is never bridged by a chain',()=>{
+  const x=chainIo({heads:[old,reviewed],proofs:{'f>9':'unchanged','e>f':'substantive'}}),compare=x.reviewContentComparison
+  x.reviewContentComparison=(b,a,pr,ctx)=>b[0]==='e'&&a[0]==='9'?{before:digest,after:digest,budgetProof:{schema:1,before:reviewed,after:a,protectedMain:head,kind:'unchanged'}}:compare(b,a,pr,ctx)
+  assert.throws(()=>assertPaidReviewCapacity({...request,headSha:fresh},x),/author-owned Git provenance proof unreadable/)
+})
+test('a malformed link proof refuses instead of trying the next chain',()=>{
+  const x=chainIo({heads:[old,reviewed],proofs:{'f>9':'unchanged'}}),compare=x.reviewContentComparison
+  x.reviewContentComparison=(b,a,pr,ctx)=>b[0]==='e'&&a[0]==='f'?{before:digest,after:digest,budgetProof:{schema:1,before:b,after:old,protectedMain:head,kind:'substantive',historyCount:1}}:compare(b,a,pr,ctx)
+  assert.throws(()=>assertPaidReviewCapacity({...request,headSha:fresh},x),/author-owned Git provenance proof unreadable/)
+})
+test('duplicate-head starts each count, and the link base is read once per newer head',()=>{
+  let reads=0;const x=chainIo({heads:[old,old,reviewed],proofs:{'f>9':'unchanged','e>f':'unchanged'}});x.reviewLinkBase=()=>{reads++;return '7'.repeat(40)}
+  assert.throws(()=>assertPaidReviewCapacity({...request,headSha:fresh},x),/third draw refused/);assert.equal(reads,1)
+})

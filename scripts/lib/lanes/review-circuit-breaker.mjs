@@ -525,19 +525,32 @@ export function assertPaidReviewCapacity(request, io) {
   // THROUGH a newer reviewed head of the same PR whose own classification is proven:
   // older->newer (pre-refresh, directly comparable) composed with newer->request. Only a
   // fully proven chain counts; anything else still refuses.
-  const proven=new Map()
+  const proven=new Map(),linkBases=new Map()
+  const provenanceGap=(error)=>/^review budget Git provenance refused: /.test(String(error?.message??''))
+  // Composition table: unchanged after unchanged is unchanged; a substantive step on
+  // either side with an unchanged step on the other is substantive. Two substantive
+  // steps prove nothing (the second may revert the first), so that chain is skipped.
+  const compose=(link,kind)=>link==='unchanged'?kind:kind==='unchanged'?'substantive':null
   const classifyStart=(start)=>{
     try{return classify(start.headSha,request.headSha)}catch(error){
-      // The older->newer link is judged exactly as it was when the newer head was
-      // drawn: against the newer head's own merge base with the PR base, not the moved main.
-      if(typeof io.reviewLinkBase!=='function')throw error
-      const newer=[...proven.entries()].filter(([head])=>head!==start.headSha)
-      for(const [head,kind] of newer){
+      // Only a provenance gap (older head unmergeable against the moved main) may be
+      // bridged; a malformed, tampered or unbound proof keeps refusing.
+      if(!provenanceGap(error)||typeof io.reviewLinkBase!=='function')throw error
+      const results=new Set()
+      for(const [head,kind] of proven.entries()){
+        if(head===start.headSha)continue
+        let base=linkBases.get(head)
+        if(base===undefined){base=io.reviewLinkBase(head,request.pr,comparisonContext.base);linkBases.set(head,base)}
+        if(!/^[0-9a-f]{40}$/.test(String(base??'')))throw new LaneError('review circuit breaker: link base unreadable')
         let link
-        try{const base=io.reviewLinkBase(head,request.pr);if(!/^[0-9a-f]{40}$/.test(String(base??'')))continue;link=classify(start.headSha,head,{base})}catch{continue}
-        return link==='unchanged'?kind:'substantive'
+        try{link=classify(start.headSha,head,{base})}catch(linkError){if(provenanceGap(linkError))continue;throw linkError}
+        const composed=compose(link,kind)
+        if(composed)results.add(composed)
       }
-      throw error
+      if(!results.size)throw error
+      // Every provable chain must agree; on disagreement count conservatively (as
+      // unchanged), which can only spend capacity, never grant an extra paid review.
+      return results.size===1?[...results][0]:'unchanged'
     }
   }
   starts.sort((a,b)=>a.sequence-b.sequence)

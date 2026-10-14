@@ -1346,6 +1346,16 @@ Original and successor must genuinely be clean at the same source branch/head;
 use independent repository/worktree custody when Git cannot attach a branch
 twice. Never force a duplicate checkout or discard the original.
 
+**Remote custody (#4288).** When the original owner stopped on another machine,
+the recipient adds `--remote-custody` (valid only with `--handoff-claim-author`
+and a ready ref). It is accepted only when the owner-signed ready receipt binds
+the exact source, the recovery point is exactly the pushed PR head
+(`artifact:<head>`), the live PR head/branch are unchanged, and the original
+worktree path is genuinely **absent** on the accepting machine; the successor
+worktree must still be clean at the exact head. The handoff receipt records
+`original_worktree_custody: remote`. Never recreate the original path to satisfy
+local custody.
+
 Acceptance re-proves source/version/parser/custody/main ancestry, scope, entire
 claim body, ready evidence, permanent reservation, foreign collisions and stages
 under the canonical mutex. A distinct create-only acceptance receipt binds both

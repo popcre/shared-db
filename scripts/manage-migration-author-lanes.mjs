@@ -2534,6 +2534,8 @@ function transferRecord(ref,io,voluntary=false){
   let record
   try{record=JSON.parse(message.slice(prefix.length))}catch{throw new LaneError('operator adoption record is malformed')}
   const fields=['kind','human_identity_authenticated','issue','claim','pr','head_sha','version','old_owner','new_owner','branch','old_worktree','target_worktree',...(voluntary?['recipient_chat_id','handoff_ready_ref','handoff_ready_sha','request_id','original_expires_at','expires_at','original_body_sha256','rebound_body_sha256']:['abandonment_issue','lease_hours']),'old_worktree_state','reservation_sha','authorization_chat_id','authorization_quote','recovery_artifact']
+  // #4288: a remote-custody voluntary handoff adds exactly original_worktree_custody:'remote'.
+  if(voluntary&&record&&typeof record==='object'&&Object.hasOwn(record,'original_worktree_custody')){if(record.original_worktree_custody!=='remote')throw new LaneError('voluntary handoff record has an invalid original worktree custody');fields.push('original_worktree_custody')}
   if(!record||typeof record!=='object'||Array.isArray(record)||Object.keys(record).length!==fields.length||Object.keys(record).some((key)=>!fields.includes(key))||record.kind!==(voluntary?'voluntary-owner-handoff':'operator-adoption')||record.human_identity_authenticated!==false||!Number.isSafeInteger(record.issue)||record.issue<=0||!Number.isSafeInteger(record.claim)||record.claim<=0||!Number.isSafeInteger(record.pr)||record.pr<=0||(!voluntary&&(!Number.isSafeInteger(record.abandonment_issue)||record.abandonment_issue<=0))||!/^[0-9a-f]{40}$/.test(String(record.head_sha))||!/^[0-9a-f]{40}$/.test(String(record.reservation_sha))||!/^\d{14}$/.test(String(record.version))||typeof record.old_owner!=='string'||!record.old_owner||typeof record.new_owner!=='string'||!record.new_owner||record.old_owner===record.new_owner||typeof record.branch!=='string'||!record.branch||typeof record.old_worktree!=='string'||!record.old_worktree||typeof record.target_worktree!=='string'||!record.target_worktree||normalizeWorktreePath(record.old_worktree)===normalizeWorktreePath(record.target_worktree)||!WORKTREE_STATES.includes(record.old_worktree_state)||typeof record.recovery_artifact!=='string'||typeof record.authorization_quote!=='string'||record.authorization_quote.trim().length<20||record.authorization_quote!==record.authorization_quote.trim()||!record.authorization_chat_id||(voluntary?(!Number.isFinite(Date.parse(record.expires_at))||!record.recipient_chat_id||!record.request_id||!Number.isFinite(Date.parse(record.original_expires_at))||(record.handoff_ready_ref===null?record.handoff_ready_sha!==null:(!String(record.handoff_ready_ref).startsWith(AUTHOR_HANDOFF_READY_REF_PREFIX)||!/^[0-9a-f]{40}$/.test(String(record.handoff_ready_sha))))||!['original_body_sha256','rebound_body_sha256'].every(key=>/^[0-9a-f]{64}$/.test(record[key]))):!(record.lease_hours>0&&record.lease_hours<=24)))throw new LaneError('operator adoption record has invalid exact fields')
   return {sha,record}
 }
@@ -2547,12 +2549,13 @@ function changeClaimAuthor(options,now,io,voluntary){
   if(!request.authorizationChatId||request.authorizationQuote.trim().length<20||request.authorizationQuote!==request.authorizationQuote.trim())throw new LaneError('operator adoption requires current-chat ID and verbatim user authorization quote')
   const recipientChatId=voluntary?String(options.recipientChatId??''):null
   const readyRef=voluntary?(options.handoffReadyRef??null):null,requestId=voluntary?String(options.requestId??'initial'):null
-  // Cross-machine acceptance (claim #4152 / PR #4206): the original owner stopped on
-  // another machine and signed an owner-ready receipt. The recipient cannot hold the
-  // original working copy, so custody is RECORDED as remote -- never recreated. It is
-  // accepted only for a voluntary handoff with that owner-signed receipt, a recovery
-  // point that is exactly the pushed PR head, an unchanged PR head, and an original
-  // worktree path that is genuinely absent here.
+  // Cross-machine acceptance (#4288; claim #4152 / PR #4206): the original owner stopped
+  // on another machine and signed an owner-ready receipt. The recipient cannot hold the
+  // original working copy, so custody is RECORDED as remote -- never recreated. The only
+  // new condition is that the original worktree path is genuinely absent here; the rest
+  // is the existing voluntary-handoff proof: readAuthorReady requires execution_stopped
+  // and an author_session resolving to the owner, the recovery point must be exactly
+  // artifact:<PR head>, and the live PR head/branch, body hash and reservation must match.
   const remoteCustody=options.remoteCustody===true
   if(remoteCustody&&(!voluntary||!readyRef))throw new LaneError('remote custody acceptance requires a voluntary handoff with the original owner-signed ready receipt')
   if(voluntary&&!/^[A-Za-z0-9._-]{1,120}$/.test(requestId))throw new LaneError('voluntary handoff request ID has invalid shape')
@@ -2577,13 +2580,12 @@ function changeClaimAuthor(options,now,io,voluntary){
     const marker=io.orchestratorFlowAdapter().resolveMarker()
     if(!marker?.live||marker.calling_task!==marker.task||marker.task!==request.authorizationChatId)throw new LaneError(`operator adoption chat ID does not match this declared session${marker?.live?'':`; ${sessionAuthorityRefusal(marker)}`}`)
     if(voluntary){
-      if(readyRef){const consent=readAuthorReady(readyRef,io),r=consent.record;if(remoteCustody&&(r.execution_stopped!==true||!resolveSessionAuthority({env:{SHARED_DB_SESSION_ID:r.author_session},claimOwner:r.owner}).live))throw new LaneError('remote custody acceptance requires a ready receipt signed by the original owner session after it stopped');if(!resolveSessionAuthority({env:{SHARED_DB_SESSION_ID:marker.task},claimOwner:request.newOwner}).live||marker.task!==recipientChatId||r.claim!==request.claim||r.issue!==request.issue||r.pr!==request.pr||r.head_sha!==request.headSha||r.owner!==request.oldOwner||r.branch!==request.branch||r.worktree!==request.oldWorktree||r.version!==lease.version||(!adopted&&r.body_sha256!==sha256(claim.body))||io.readRef('refs/db-claims/'+lease.version)!==r.reservation_sha)throw new LaneError('owner-issued ready consent differs from exact source, claim or actual recipient')}
+      if(readyRef){const consent=readAuthorReady(readyRef,io),r=consent.record;if(!resolveSessionAuthority({env:{SHARED_DB_SESSION_ID:marker.task},claimOwner:request.newOwner}).live||marker.task!==recipientChatId||r.claim!==request.claim||r.issue!==request.issue||r.pr!==request.pr||r.head_sha!==request.headSha||r.owner!==request.oldOwner||r.branch!==request.branch||r.worktree!==request.oldWorktree||r.version!==lease.version||(!adopted&&r.body_sha256!==sha256(claim.body))||io.readRef('refs/db-claims/'+lease.version)!==r.reservation_sha)throw new LaneError('owner-issued ready consent differs from exact source, claim or actual recipient')}
       else if(!marker?.live||marker.calling_task!==marker.task||!resolveSessionAuthority({env:{SHARED_DB_SESSION_ID:marker.task},claimOwner:request.oldOwner}).live)throw new LaneError('voluntary handoff must execute in the original owner session')
     }
     if(voluntary&&remoteCustody){
       const observed=observedWorktreeState(request.oldWorktree,io)
       if(observed!=='absent')throw new LaneError(`remote custody acceptance refused: the original worktree is ${observed} on this machine; accept with local custody instead`)
-      if(request.recoveryArtifact!==`artifact:${request.headSha}`)throw new LaneError('remote custody acceptance requires the recovery point to be the exact pushed PR head')
     }else if(voluntary&&(observedWorktreeState(request.oldWorktree,io)!=='clean'||!io.localClean(request.oldWorktree)||io.localHead(request.oldWorktree)!==request.headSha||io.localBranch(request.oldWorktree)!==request.branch))throw new LaneError('voluntary handoff original source custody changed')
     if(voluntary||request.oldWorktreeState!=='clean')requireDereferenceableRecoveryArtifact(request.recoveryArtifact,io)
     const pr=io.getPr(request.pr)
@@ -4714,6 +4716,7 @@ export function main(argv, now = new Date(), io = githubIo) {
     const numericPrimary=new Set(['resolveAdmittedIssueForPr','outcomeStatus','repairOutcomeHistory','completeOutcome','preparePreviewDispatch','returnIssue'])
     if(selectedPrimary.length===1&&numericPrimary.has(selectedPrimary[0])&&(!Number.isInteger(o[selectedPrimary[0]])||o[selectedPrimary[0]]<=0))throw new LaneError(`--${selectedPrimary[0].replace(/[A-Z]/g,(value)=>`-${value.toLowerCase()}`)} requires a positive number`)
     const admissionCombined=new Set(['claim','assignReviewer','replaceFailedReviewer','preparePreviewDispatch','acquireExclusive','advanceOutcome'])
+    if(o.remoteCustody&&!(selectedPrimary.length===1&&selectedPrimary[0]==='handoffClaimAuthor'))throw new LaneError('--remote-custody is valid only with --handoff-claim-author')
     if(hasAdmission&&selectedPrimary.length===1&&!admissionCombined.has(selectedPrimary[0]))throw new LaneError(`--admit-issue cannot be combined with --${selectedPrimary[0].replace(/[A-Z]/g,(value)=>`-${value.toLowerCase()}`)}`)
     if(o.databasePreviewClassificationFile)io=withDatabasePreviewClassificationFile(io,o.databasePreviewClassificationFile)
     // DELIVERY PREFLIGHT (#2728). Both paths run before any GitHub read or write.

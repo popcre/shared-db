@@ -585,7 +585,7 @@ test('remote custody refuses without the owner-signed ready receipt',()=>{
 })
 test('remote custody refuses a recovery point that is not the exact pushed PR head',()=>{
   const {io,request,accept}=remoteHandoff()
-  unchanged(io,request.claim,()=>handoffClaimAuthor({...accept,recoveryArtifact:'artifact:'+'e'.repeat(40)},NOW,io),/clean checkpoint custody|exact pushed PR head/)
+  unchanged(io,request.claim,()=>handoffClaimAuthor({...accept,recoveryArtifact:'artifact:'+'e'.repeat(40)},NOW,io),/clean checkpoint custody/)
 })
 test('remote custody refuses when the PR head moved after the handoff',()=>{
   const {io,request,accept}=remoteHandoff()
@@ -597,7 +597,7 @@ test('remote custody refuses a ready receipt not signed by the original owner se
   const sha=io.refs.get(stop.handoffReadyRef),message=io.getCommit(sha).message,prefix='db-coordination author-handoff-ready '
   const forged={...JSON.parse(message.slice(prefix.length)),author_session:'someone-else'}
   io.refs.set(stop.handoffReadyRef,io.makeOwnerCommit(prefix+JSON.stringify(forged)))
-  unchanged(io,request.claim,()=>handoffClaimAuthor(accept,NOW,io),/signed by the original owner session|differ from their immutable identity/)
+  unchanged(io,request.claim,()=>handoffClaimAuthor(accept,NOW,io),/differ from their immutable identity/)
 })
 test('without --remote-custody an absent original worktree still refuses (custody is never assumed)',()=>{
   const {io,request,accept}=remoteHandoff()
@@ -606,4 +606,24 @@ test('without --remote-custody an absent original worktree still refuses (custod
 test('remote custody is refused on the operator-adoption (non-voluntary) path',()=>{
   const {io,request,accept}=remoteHandoff()
   unchanged(io,request.claim,()=>transferClaimAuthor({...accept,abandonmentIssue:4287,leaseHours:0.5},NOW,io),/requires a voluntary handoff/)
+})
+
+test('remote custody: the receipt replays idempotently and an interrupted acceptance resumes from it (#4288 review)',()=>{
+  const {io,request,accept}=remoteHandoff()
+  const original=io.updateIssue;io.updateIssue=()=>{throw new Error('simulated interrupted acceptance')}
+  assert.throws(()=>handoffClaimAuthor(accept,NOW,io),/simulated interrupted acceptance/)
+  io.updateIssue=original
+  const first=handoffClaimAuthor(accept,NOW,io),again=handoffClaimAuthor(accept,NOW,io)
+  assert.equal(again.sha,first.sha);assert.equal(parseAuthorLease(io.getIssue(request.claim).body,NOW).owner,request.newOwner)
+})
+test('remote custody still refuses a dirty or off-head successor worktree (#4288 review)',()=>{
+  for(const mutate of [(io,request)=>{io.localClean=(p)=>p!==request.targetWorktree&&p!==request.worktree},(io,request)=>{const head=io.localHead;io.localHead=(p)=>p===request.targetWorktree?'d'.repeat(40):head(p)}]){
+    const {io,request,accept}=remoteHandoff();mutate(io,request)
+    unchanged(io,request.claim,()=>handoffClaimAuthor(accept,NOW,io),/successor worktree must be clean on the claim branch at exact PR head/)
+  }
+})
+test('CLI binds --remote-custody to --handoff-claim-author only (#4288 review)',()=>{
+  const {io}=remoteHandoff(),error=console.error;let errors=[];console.error=(m)=>errors.push(String(m))
+  try{assert.equal(main(['--renew-claim','--remote-custody','--issue','2110','--claim-number','3378'],NOW,io),2)}finally{console.error=error}
+  assert.match(errors.at(-1),/--remote-custody is valid only with --handoff-claim-author/)
 })

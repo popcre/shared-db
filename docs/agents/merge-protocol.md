@@ -31,6 +31,33 @@ production command, manual workflow dispatch, other repository, or bypass.
 Docs-only PRs (no schema change) need just items 1 and "it reads correctly" —
 merge them promptly.
 
+### Review slots and carried reviews (owner 2026-10-14)
+
+`scripts/check-exact-head-approval.mjs` is the single authority for how many
+independent exact-head APPROVEs a pull request needs. It reads the pull
+request's own changed files: a change touching `supabase/migrations/` needs
+**two**; every other change (scripts, docs, CI, tooling) needs **one**. No
+gate, test or helper may demand two slots for a non-migration pull request.
+Migration PRs still need two independent exact-head APPROVEs before merge and
+production; branch protection is never disabled.
+
+A **tree-identical re-push** — same git tree, or same pull request diff ignoring
+`.agent/` — keeps every existing review. Slot 1 is not re-drawn and no paid
+attempt is burned to re-pin the same bytes. Slot 2 may draw on the new head
+using the carried slot-1 assignment from a tree-identical or content-equivalent
+ancestor. The gate composes the ancestor's slot 1 with the new head's slot 2;
+each slot still owes its own APPROVE at its own head, providers stay
+independent, a return at the new head is never filled from the ancestor, and a
+slot re-drawn at the new head supersedes the ancestor's slot. A carried slot 1
+is not a third paid slot-1 draw.
+
+**Owner-quoted allowlist widening** (PR #4294): a strict superset of slot 1's
+durable reviewer allowlist plus a verbatim owner quote, recorded on the
+assignment commit body, lets an undrawn slot 2 draw without re-drawing slot 1.
+Slot 1's durable policy stays exactly as recorded; same-slot retries and
+replacements keep the slot's own policy and still refuse narrowing or quoteless
+widening.
+
 ### 5.0-D Declare what a re-derived migration was derived from — `-- derived-from:` (issue #1608, added 2026-08-26)
 
 Loader-style migrations here are authored as a **full re-derivation of the

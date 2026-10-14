@@ -253,16 +253,38 @@ export function evaluateExactHeadApproval(input) {
   // naming the slot number, so it fails loudly instead of being invisible.
   const migrationsTouched = (input.changedFiles ?? []).some((file) => String(file ?? '').replace(/\\/g, '/').startsWith('supabase/migrations/'))
   const requiredSlots = Object.prototype.hasOwnProperty.call(input, 'changedFiles') && migrationsTouched ? 2 : 1
+  // CARRIED SLOTS FROM A CONTENT-EQUIVALENT PRIOR HEAD (tree-identical re-push).
+  // A re-push of the same bytes must not burn a paid slot-1 draw just to re-pin
+  // an assignment an ancestor already holds. When this head draws only NEW slots
+  // (the #4206 shape: slot 1 stands at an equivalent ancestor, slot 2 is drawn
+  // here), `carriedAssignments`/`carriedVerdicts` supply the ancestor's slots.
+  // They never override a slot drawn at this head, and a return at this head
+  // still refuses (checked above, before this fill).
+  const carriedAssignments = (input.carriedAssignments ?? []).filter((row) => row && Number(row.pr) === Number(pr))
+  const carriedBySlot = new Map()
+  for (const assignment of carriedAssignments) {
+    const slot = Number.isInteger(assignment.slot) && assignment.slot >= 1 ? assignment.slot : 1
+    if (liveBySlot.has(slot) || carriedBySlot.has(slot)) continue
+    carriedBySlot.set(slot, { ...assignment, slot })
+  }
   const undrawnSlots = []
-  for (let slot = 1; slot <= requiredSlots; slot += 1) if (!liveBySlot.has(slot)) undrawnSlots.push(slot)
+  for (let slot = 1; slot <= requiredSlots; slot += 1) if (!liveBySlot.has(slot) && !carriedBySlot.has(slot)) undrawnSlots.push(slot)
   if (undrawnSlots.length) {
     throw new ApprovalCheckError(`head ${headSha} owes required review slot(s) ${undrawnSlots.join(', ')} that no assignment ever drew: this pull request's change requires ${requiredSlots} independent review slot(s) (AGENTS.md 6.x: migrations need two, scripts/docs/CI one), and a slot this gate cannot see is a slot it cannot require. Draw the owed slot pinned to this exact head (--assign-reviewer, slot 2 only after slot 1 is assigned) and have that assignment record its own APPROVE.`)
   }
+  // Slots this head owns plus slots carried from a content-equivalent ancestor
+  // together satisfy the minimum. Each still owes its own APPROVE below.
+  for (const [slot, assignment] of carriedBySlot) if (!liveBySlot.has(slot)) liveBySlot.set(slot, assignment)
 
 
   if (Object.prototype.hasOwnProperty.call(input, 'verdicts')) {
     const all = (verdicts ?? []).filter((row) => Number(row.pr) === Number(pr) && String(row.head_sha).toLowerCase() === String(headSha).toLowerCase())
+    // A carried slot's APPROVE lives at the ancestor head, not here. It is
+    // accepted only for the exact carried assignment it names, and only when
+    // that slot is not owned by this head (the fill above already enforced that).
+    const carriedVerdicts = (input.carriedVerdicts ?? []).filter((row) => row && Number(row.pr) === Number(pr) && carriedBySlot.has(Number.isInteger(row.slot) && row.slot >= 1 ? row.slot : 1))
     if (all.some((row) => !isValidatedVerdictArtifact(row))) throw new ApprovalCheckError('durable verdict input crossed the approval boundary without artifact validation')
+    if (carriedVerdicts.some((row) => !isValidatedVerdictArtifact(row))) throw new ApprovalCheckError('carried durable verdict input crossed the approval boundary without artifact validation')
     if (new Set(all.map((row) => row.ref)).size !== all.length) throw new ApprovalCheckError('duplicate durable verdict refs cannot be counted')
     // THE NON-READING-REVIEWER RULE, ENFORCED AT THE GATE THAT AUTHORIZES MERGES (#2079).
     //
@@ -276,22 +298,25 @@ export function evaluateExactHeadApproval(input) {
     // APPROVE. Both directions are disregarded, identically. Every row here is a
     // validated artifact, so `reviewer` is present and was checked against the
     // assignment; an unknown name fails closed to "cannot read".
-    const disregarded = all.filter((row) => !reviewerReadsRepository(row.reviewer))
+    const disregarded = [...all, ...carriedVerdicts].filter((row) => !reviewerReadsRepository(row.reviewer))
     const exact = all.filter((row) => reviewerReadsRepository(row.reviewer))
+    const carriedExact = carriedVerdicts.filter((row) => reviewerReadsRepository(row.reviewer))
     const disregardedNote = disregarded.length ? ` (${disregarded.length} durable verdict artifact(s) at this head are DISREGARDED because their reviewer cannot read the repository: ${disregarded.map((row) => `${row.ref} by ${row.reviewer}`).join(', ')}. Re-review the slot with --replace-failed-reviewer --failure-code reviewer_cannot_read_repository)` : ''
     if (exact.some((row) => row.verdict !== 'APPROVE')) throw new ApprovalCheckError(`head ${headSha} carries a durable reviewer refusal; answer it with a new commit and a fresh exact-head review${disregardedNote}`)
+    if (carriedExact.some((row) => row.verdict !== 'APPROVE')) throw new ApprovalCheckError(`a content-equivalent prior head carries a durable reviewer refusal; a refusal is never carried past${disregardedNote}`)
     const approvals = exact.filter((row) => row.verdict === 'APPROVE')
-    if (!approvals.length) throw new ApprovalCheckError(`head ${headSha} has no durable APPROVE artifact; a review that wrote no artifact never authorizes a merge${disregardedNote}`)
+    const carriedApprovals = carriedExact.filter((row) => row.verdict === 'APPROVE')
+    if (!approvals.length && !carriedApprovals.length) throw new ApprovalCheckError(`head ${headSha} has no durable APPROVE artifact; a review that wrote no artifact never authorizes a merge${disregardedNote}`)
     const latestBySlot = liveBySlot
-    for (const assignment of latestBySlot.values()) if (!approvals.some((row) => row.assignment_sha === assignment.sha)) throw new ApprovalCheckError(`review slot ${assignment.slot} has no durable APPROVE for its latest exact-head assignment${disregardedNote}`)
+    for (const assignment of latestBySlot.values()) if (!approvals.some((row) => row.assignment_sha === assignment.sha) && !carriedApprovals.some((row) => row.assignment_sha === assignment.sha)) throw new ApprovalCheckError(`review slot ${assignment.slot} has no durable APPROVE for its latest exact-head assignment${disregardedNote}`)
     const providers = new Set()
     for (const assignment of latestBySlot.values()) {
-      const reviewer = approvals.find((row) => row.assignment_sha === assignment.sha)?.reviewer
+      const reviewer = approvals.find((row) => row.assignment_sha === assignment.sha)?.reviewer ?? carriedApprovals.find((row) => row.assignment_sha === assignment.sha)?.reviewer
       if (!reviewer) throw new ApprovalCheckError(`review slot ${assignment.slot} has no verified reviewer identity`)
       if (providers.has(reviewer) && input.mergedAtHead !== true) throw new ApprovalCheckError(`review slots at exact head ${headSha} share reviewer ${reviewer}; independent approval refused`)
       providers.add(reviewer)
     }
-    return { approved: true, head_sha: headSha, pr: Number(pr), assignments: latestBySlot.size, approvals: new Set(approvals.map((row) => row.ref)).size, required_slots: requiredSlots }
+    return { approved: true, head_sha: headSha, pr: Number(pr), assignments: latestBySlot.size, approvals: new Set([...approvals, ...carriedApprovals].map((row) => row.ref)).size, required_slots: requiredSlots }
   }
 
   // COMMENT TEXT IS NOT A VERDICT IN PRODUCTION (issue #2075).
@@ -579,13 +604,16 @@ export function evaluateApprovalWithRefresh(input, { contentPreservingRefresh })
   if (!Array.isArray(input?.verdicts) || typeof contentPreservingRefresh !== 'function') throw exactError
   if (input.verdicts.some((row) => !isValidatedVerdictArtifact(row))) throw exactError
   if (durableRefusalsAt(input.verdicts, input.pr, input.headSha).length) throw exactError
-  // A head with reviewer records of its own -- an assignment, a replacement, a
-  // return or any verdict -- is judged on those records alone. Carrying a prior
-  // head's sign-off past them would bypass a slot returned or newly drawn at this
-  // head (muse review of PR #2780).
   const head = String(input.headSha).toLowerCase()
   const ownAssignments = (input.assignments ?? []).filter((row) => String(row.headSha ?? '').toLowerCase() === head)
-  if (ownAssignments.length || (input.returns ?? []).length || input.verdicts.length) throw new ApprovalCheckError(`${exactError.message}; an APPROVE cannot be carried forward because this head has reviewer records of its own (assignment, return or verdict), so it is judged on those alone`)
+  const ownSlots = new Set(ownAssignments.map((row) => Number.isInteger(row.slot) && row.slot >= 1 ? row.slot : 1))
+  const ownReturn = (input.returns ?? []).length
+  // A RETURN at this head must be answered at this head. Carrying a prior head's
+  // sign-off past a return would bypass the slot the return handed back (muse
+  // review of PR #2780). This is absolute: a returned slot is never filled from
+  // an ancestor.
+  if (ownReturn) throw new ApprovalCheckError(`${exactError.message}; an APPROVE cannot be carried forward because this head has reviewer records of its own (assignment, return or verdict), so it is judged on those alone`)
+  // Find content-equivalent prior heads (same PR diff, `.agent/` aside).
   const equivalent = [], digests = new Map()
   for (const prior of input.priorHeads ?? []) {
     const proof = contentPreservingRefresh(prior?.headSha, input.headSha)
@@ -599,11 +627,46 @@ export function evaluateApprovalWithRefresh(input, { contentPreservingRefresh })
   }
   const refusedPrior = equivalent.find((prior) => durableRefusalsAt(prior.verdicts, input.pr, prior.headSha).length)
   if (refusedPrior) throw new ApprovalCheckError(`${exactError.message}; an APPROVE cannot be carried forward because head ${refusedPrior.headSha}, whose pull request diff is identical to this head, carries a durable reviewer refusal`)
+  // COMPOSED CARRY (tree-identical re-push, #4206): this head draws only NEW
+  // slots an equivalent prior head never had (the "carried slot 1 + new slot 2"
+  // shape). A slot this head re-drawn supersedes the ancestor's slot and is
+  // never filled from it. Purely additive own records may compose; anything
+  // else keeps the hard "records of its own" refusal.
+  // Prior-head assignments live in `input.assignments` (the adapter lists every
+  // head); `recordsAt` carries only returns and verdicts.
+  const assignmentsAt = (sha) => (input.assignments ?? []).filter((row) => String(row.headSha ?? '').toLowerCase() === String(sha).toLowerCase())
+  const priorSlotSet = (prior) => new Set(assignmentsAt(prior.headSha).map((row) => Number.isInteger(row.slot) && row.slot >= 1 ? row.slot : 1))
+  const composable = ownAssignments.length || input.verdicts.length
+    ? equivalent.find((prior) => {
+      const priorSlots = priorSlotSet(prior)
+      return ![...ownSlots].some((slot) => priorSlots.has(slot))
+        && assignmentsAt(prior.headSha).some((row) => !ownSlots.has(Number.isInteger(row.slot) && row.slot >= 1 ? row.slot : 1))
+    })
+    : null
+  if ((ownAssignments.length || input.verdicts.length) && !composable) throw new ApprovalCheckError(`${exactError.message}; an APPROVE cannot be carried forward because this head has reviewer records of its own (assignment, return or verdict), so it is judged on those alone`)
   for (const prior of equivalent) {
+    // FULL CARRY: this head has no reviewer records of its own, and the prior
+    // head is fully approved. Every slot is judged on the prior head's records.
+    if (!ownAssignments.length && !input.verdicts.length) {
+      try {
+        // mergedAtHead describes the CURRENT head only; a carried prior head is judged strictly.
+        const result = evaluateExactHeadApproval({ ...input, headSha: prior.headSha, returns: prior.returns ?? [], verdicts: prior.verdicts, mergedAtHead: false })
+        if (result.documents_only) continue
+        return { ...result, head_sha: input.headSha, carried_from: prior.headSha, implementation_digest: digests.get(prior) }
+      } catch (error) { if (!(error instanceof ApprovalCheckError)) throw error }
+      continue
+    }
+    if (prior !== composable) continue
+    const carriedAssignments = assignmentsAt(prior.headSha).filter((row) => !ownSlots.has(Number.isInteger(row.slot) && row.slot >= 1 ? row.slot : 1))
     try {
-      // mergedAtHead describes the CURRENT head only; a carried prior head is judged strictly.
-      const result = evaluateExactHeadApproval({ ...input, headSha: prior.headSha, returns: prior.returns ?? [], verdicts: prior.verdicts, mergedAtHead: false })
-      if (result.documents_only) continue
+      const result = evaluateExactHeadApproval({
+        ...input,
+        returns: input.returns ?? [],
+        verdicts: input.verdicts,
+        carriedAssignments,
+        carriedVerdicts: prior.verdicts ?? [],
+        mergedAtHead: input.mergedAtHead === true,
+      })
       return { ...result, head_sha: input.headSha, carried_from: prior.headSha, implementation_digest: digests.get(prior) }
     } catch (error) { if (!(error instanceof ApprovalCheckError)) throw error }
   }

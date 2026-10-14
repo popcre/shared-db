@@ -13,6 +13,19 @@ test('evidence-only or empty-head refresh cannot reset cap',()=>assert.throws(()
 test('substantive byte change starts another round',()=>{const x=io([row(),row(2)]);x.reviewContentComparison=()=>({before:digest,after:'d'.repeat(64),budgetProof:{schema:1,before:head,after:next,protectedMain:head,kind:'substantive',historyCount:1}});assert.equal(assertPaidReviewCapacity({...request,headSha:next},x).remaining,2)})
 test('unknown, malformed and failed comparison cannot reset',()=>{for(const proof of [null,{before:'unknown',after:digest}]){const x=io([row(),row(2)]);x.reviewContentComparison=()=>proof;assert.throws(()=>assertPaidReviewCapacity({...request,headSha:next},x),/proof unreadable/)}const x=io([row()]);x.reviewContentComparison=()=>{throw Error('fetch failed')};assert.throws(()=>assertPaidReviewCapacity({...request,headSha:next},x),/fetch failed/)})
 test('independent slots have separate paid caps',()=>{const x=io([row(1,head,2),row(2,head,2)]);x.getCommit=sha=>({message:message(Number(sha),head,2)});assert.equal(assertPaidReviewCapacity(request,x).remaining,2)})
+// A carried slot 1 (assignment standing at a tree-identical ancestor) is not a
+// paid draw. Drawing slot 2 at the new head must not be blocked by slot 1's
+// exhausted unchanged-content cap: the caps are per slot, and the carry writes
+// no start at all (#4206).
+test('carried slot 1 plus a new slot 2 draw on tree-identical content is allowed',()=>{
+  const x=io([row(1,head,1),row(2,head,1)])
+  x.getCommit=sha=>({message:message(Number(sha),head,Number(sha)===1||Number(sha)===2?1:2)})
+  x.reviewContentComparison=()=>({before:digest,after:digest,budgetProof:{schema:1,before:head,after:next,protectedMain:head,kind:'unchanged'}})
+  // Slot 1 has two paid starts on unchanged content: a third slot-1 draw refuses.
+  assert.throws(()=>assertPaidReviewCapacity({...request,slot:1,headSha:next},x),/third draw refused/)
+  // Slot 2 is empty at both heads: the first slot-2 draw is allowed.
+  assert.equal(assertPaidReviewCapacity({...request,slot:2,headSha:next},x).remaining,2)
+})
 test('tampered scope, time or record refuses',()=>{for(const text of [message().replace('pr=4000','pr=4001'),message().replace('2026-10-06T18:00:00.000Z','unknown'),'PASS doctor repaired'])assert.throws(()=>paidStart(row(),{message:text}),/binding mismatch|unrecognized/)})
 test('unstarted atomic reclaim is not a paid attempt',()=>{const text=`db-coordination reviewer-silence-release reviewer=glm-5.3 issue=3536 pr=4000 head=${head} sequence=1 code=silent_worker_observed probe=${'e'.repeat(40)} observed-at=2026-10-06T17:00:00Z confirmed-at=2026-10-06T18:00:00Z verdict=none artifact=none replacement=none`;assert.equal(paidStart(row(),{message:text}),null);assert.throws(()=>paidStart(row(),{message:text.replace('sequence=1','sequence=2')}),/unrecognized/)})
 test('quoted or repeated doctor PASS never provides a reset',()=>{const x=io([row(),row(2)]);x.reinstatement=()=>({output:'PASS',fresh:true});assert.throws(()=>assertPaidReviewCapacity(request,x),/third draw refused/)})

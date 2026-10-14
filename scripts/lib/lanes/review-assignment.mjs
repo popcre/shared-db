@@ -21,16 +21,17 @@ import { assignNextReviewer, githubIo } from '../../manage-migration-author-lane
 // (verbatim 2026-10-13: "use stepfun"); a tree-identical re-push must not burn
 // a third paid slot-1 attempt just to re-pin the same bytes.
 function sameReviewContent(before,after,pr,io){
-  if(String(before).toLowerCase()===String(after).toLowerCase())return true
+  const leftHead=String(before).toLowerCase(),rightHead=String(after).toLowerCase()
+  if(leftHead===rightHead)return true
   const treeOf=(sha)=>{
     const commit=io.getCommit?.(sha)
     return commit?.tree?.sha??commit?.commit?.tree?.sha??null
   }
-  const left=treeOf(before),right=treeOf(after)
+  const left=treeOf(leftHead),right=treeOf(rightHead)
   if(left&&right)return left===right
   if(typeof io.reviewContentComparison!=='function')return false
   try{
-    const comparison=io.reviewContentComparison(before,after,pr,{})
+    const comparison=io.reviewContentComparison(leftHead,rightHead,pr,{})
     return comparison?.budgetProof?.kind==='unchanged'
   }catch{return false}
 }
@@ -39,17 +40,23 @@ function findCarriedSlotOne(issue,pr,head,io){
   let rows=[]
   if(typeof io.listRefs==='function')rows=io.listRefs(prefix)??[]
   else if(typeof io.gitRemoteRefs==='function')rows=[...(io.gitRemoteRefs([`${prefix}*`])??[])].map(([ref,sha])=>({ref,sha}))
-  let best=null
+  const candidates=[]
   for(const row of rows){
     const named=parseAssignmentRef(row.ref)
     if(!named||named.issue!==Number(issue)||named.pr!==Number(pr)||named.slot!==1||named.replacement)continue
     if(String(named.headSha).toLowerCase()===head)continue
     const parsed=parseReviewCursor(row.commit??io.getCommit(row.sha))
     if(parsed.issue!==named.issue||parsed.pr!==named.pr||String(parsed.headSha).toLowerCase()!==named.headSha||(parsed.slot??1)!==1)continue
-    if(!sameReviewContent(named.headSha,head,Number(pr),io))continue
-    if(!best||parsed.sequence>best.sequence)best={...parsed,sha:row.sha,carriedFrom:named.headSha}
+    candidates.push({...parsed,sha:row.sha,carriedFrom:named.headSha})
   }
-  return best
+  // Newest slot-1 first: the latest drawn holder is the one a re-push of the
+  // same bytes left standing. Stop at the first content match so a long history
+  // of older heads never forces a full paid-content comparison walk.
+  candidates.sort((a,b)=>b.sequence-a.sequence)
+  for(const candidate of candidates){
+    if(sameReviewContent(candidate.carriedFrom,head,Number(pr),io))return candidate
+  }
+  return null
 }
 
 export function resolvePeerSlots(issue,pr,headSha,slot,io){

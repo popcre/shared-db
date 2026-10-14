@@ -39,6 +39,7 @@
     "scripts/lib/lanes/exclusive-policy.mjs",
     "scripts/lib/lanes/github-wire.mjs",
     "scripts/lib/lanes/holds-and-refs.mjs",
+    "scripts/lib/lanes/owner-reviewer-reuse.mjs",
     "scripts/lib/lanes/preview-admission.mjs",
     "scripts/lib/lanes/queue-routing.mjs",
     "scripts/lib/lanes/retirement.mjs",

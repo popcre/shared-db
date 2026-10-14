@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "work_issue": 1714,
+  "generation": 2,
   "work_type": "repo-maintenance",
   "route": "repo-maintenance",
   "goal": "Quarantine qwen-3.8-max and gemini-3.8-flash-high in the shared-db reviewer roster so ACTIVE_REVIEWERS is exactly Muse, DeepSeek, GLM, and StepFun (owner instruction 2026-10-13, popcre/ai-devops#1714). REVIEWERS rows stay so durable verdicts still resolve.",
@@ -10,15 +11,15 @@
   "branch": "mimo/1714-quarantine-qwen-gemini",
   "worktree": "C:\\repos\\shared-db-worktrees\\wt-1714-roster",
   "allowed_paths": [
-    ".agent/work/1714/1/completion.json",
-    ".agent/work/1714/1/contract.json",
+    ".agent/work/1714/2/completion.json",
+    ".agent/work/1714/2/contract.json",
     "scripts/lib/lanes/reviewer-roster.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
     "docs/verification/throughput-dispositions/scripts~lib~lanes~reviewer-roster.mjs.json"
   ],
   "file_writes": [
-    ".agent/work/1714/1/completion.json",
-    ".agent/work/1714/1/contract.json",
+    ".agent/work/1714/2/completion.json",
+    ".agent/work/1714/2/contract.json",
     "scripts/lib/lanes/reviewer-roster.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
     "docs/verification/throughput-dispositions/scripts~lib~lanes~reviewer-roster.mjs.json"

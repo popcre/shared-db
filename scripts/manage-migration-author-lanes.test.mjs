@@ -17,7 +17,7 @@ import { assignWithMutexRetry } from './manage-migration-author-lanes.mjs'
 import { authorizeRepositoryMaintenanceStatus } from './manage-migration-author-lanes.mjs'
 import { mergedPrReviewerReuseAllowed, acquirePromotionFreeze, releasePromotionFreeze, readPromotionFreeze, PROMOTION_FREEZE_REF } from './manage-migration-author-lanes.mjs'
 import { SLOT_INDEPENDENCE_CONFLICT } from './manage-migration-author-lanes.mjs'
-import { canonicalReviewerAllowlist } from './manage-migration-author-lanes.mjs'
+import { canonicalReviewerAllowlist, REVIEWER_FALLBACK_PROVIDERS, orderedReviewers } from './manage-migration-author-lanes.mjs'
 import { parseAssignmentRef } from './manage-migration-author-lanes.mjs'
 import { setScopeStatus, wrongOwnerMessage } from './manage-migration-author-lanes.mjs'
 import { readyRecord, persistInitialReady } from './orchestrator-flow/reconcile.mjs'
@@ -26,7 +26,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { assertUnambiguousClaimTitle, claimCoversObject, renewalIssueScope, CLAIM_CLOSE_REASONS, RECORDABLE_EXCLUSION_REASONS, RETIRED_EXCLUSION_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, LEGACY_GUARDED_CLEANUP_CLOSE_REASON, ACTIVE_REVIEWERS, OVERFLOW_REVIEWERS, reviewersForOrchestrator, findBusyReviewers, reviewerCapacityReport, reviewLeaseAgeHours, activityFingerprintForLease, probeSilentReviewer, reclaimSilentReviewer, SILENCE_MIN_AGE_HOURS, SILENCE_CONFIRM_HOURS, REVIEW_SILENCE_PROBE_REF_PREFIX, REVIEW_SILENCE_RELEASE_REF_PREFIX, REVIEW_QUEUE_REF_PREFIX, pickReviewer, addedMigrationVersions, assertMergeCommitInMainHistory, REVIEWERS, RETIRED_REVIEWERS, QUARANTINED_REVIEWERS, acquireAuthorLane, acquireExclusive, assertLaneAvailable, assignNextReviewer, assertDurableReviewApproval, buildDynamicQueues, claimBody, closedClaimAuthoredOnMain, currentMainMaxVersion, queueExit, NON_STRUCTURAL_EXITS, OUTSIDE_ORCHESTRATOR_EXITS, conflicts, completeWork, requiresReturnAddress, returnIssueToOwner, RETURNED_MARKER, createRefWithReadback, deleteRefWithReadback, expandActiveClaimFromIssue, expandActiveClaimFromPr, EXCLUSIVE_REFS, githubIo, isConfirmedRefAbsence, LaneError, main, MUTEX_RECOVERY_ACTIVE_REF, MUTEX_REF, parseAuthorLease, parseQueueScope, parseReviewCursor, readPrAfterPush, readRefAfterWrite, recoverExpiredClaimFromPr, recoverSameOwnerSplit, recoverStaleAuthorMutex, reissueMergedStrandedClaim, releaseOwnedRef, releaseFailedReviewer, replaceFailedReviewer, failedReviewerReleaseCommand, requireOwnedRef, renewExpiredClaim, reviewerExecutionPreflight, reversionActiveClaim, runGitHubCommand, withReviewRequestBudget, supersedeActiveClaimVersion, REVIEW_CURSOR_REF, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_FAILURE_REF_PREFIX, validateClaimObjects, parseDoctorFailures, TERMINAL_FAILURE_CODES, doctorSpawnPlan, doctorTimeoutFailingChecks, resolveCommandPath, summarizeDoctorOutput, pickExecutableCandidate, REVIEWER_DOCTOR_TIMEOUT_MS, REVIEWER_PREFLIGHT_TIMEOUT_MS, findPrReviewAssignments, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_ACTIVE_REF_PREFIX, REVIEW_ACTIVE_CUTOVER_REF, reviewActiveRef, parseReviewLease, EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, deriveLivePreviewCandidate, validateOriginalPreviewApplyEvidence, projectReviewPr, projectReviewerOperationRouteSnapshot, reviewStateGraphqlFields, REVIEW_OPERATION_REQUEST_LIMIT, REVIEW_MUTEX_SECTION_RESERVE, REVIEW_SILENT_RECLAIM_REQUEST_LIMIT, REVIEW_SILENT_RECLAIM_MUTEX_SECTION_RESERVE, inReviewReplacementNamespace, activateReviewCutover, REVIEW_REF_ROW_LIMIT, parseGhIncludeResponse, hasNextPageLink, parseLinkHeader, excludeReviewerForPr, parseReviewExclusion, REVIEW_EXCLUSION_REF_PREFIX, reinstateReviewerExclusion, parseReviewReinstatement, REVIEW_REINSTATEMENT_REF_PREFIX, REINSTATABLE_EXCLUSION_REASONS, reviewExclusionRef, reviewReinstatementRef, REVIEW_EXCLUSION_GENERATION_LIMIT, countDoctorPassLines, REVIEW_RETURN_REF_PREFIX, parseReviewReturn, readReviewReturns, reviewReturnRef, reviewRecordRefs, retiredVerdictRef, REVIEW_RETIRED_VERDICT_REF_PREFIX, reviewerReadsRepository, reviewerEmitsGovernedVerdict, readReviewVerdicts, nonReadingReviewerReplacementCommand, hasVerdictForHead, headVerdictBlocksReplacement, reviewerKnownNonReading, DURABLE_VERDICT_REF_NAMESPACE, recordReviewVerdict, markReviewRefListingRefusal, isReviewRefListingRefusal, markLeaseReadFailure, isLeaseReadFailure, REVIEW_TARGET_SUPERSEDED, reapAbandonedReviewLeases, withArchivedVerdictMirror, legacyLeaseTerminalReason, isCommandSizeFailure, archiveOldReviewVerdicts, classifyVerdictForArchive, archivedVerdictRef, REVIEW_ARCHIVED_VERDICT_REF_PREFIX, reviewStartedMarkerRef, reviewerStartWatchLeases, RETURNED_COPY_MARKER, returnedCopyProvenance, REPO } from './manage-migration-author-lanes.mjs'
+import { assertUnambiguousClaimTitle, claimCoversObject, renewalIssueScope, CLAIM_CLOSE_REASONS, RECORDABLE_EXCLUSION_REASONS, RETIRED_EXCLUSION_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, LEGACY_GUARDED_CLEANUP_CLOSE_REASON, ACTIVE_REVIEWERS, OVERFLOW_REVIEWERS, reviewersForOrchestrator, findBusyReviewers, reviewerCapacityReport, reviewLeaseAgeHours, activityFingerprintForLease, probeSilentReviewer, reclaimSilentReviewer, SILENCE_MIN_AGE_HOURS, SILENCE_CONFIRM_HOURS, REVIEW_SILENCE_PROBE_REF_PREFIX, REVIEW_SILENCE_RELEASE_REF_PREFIX, REVIEW_QUEUE_REF_PREFIX, pickReviewer, addedMigrationVersions, assertMergeCommitInMainHistory, REVIEWERS, RETIRED_REVIEWERS, QUARANTINED_REVIEWERS, acquireAuthorLane, acquireExclusive, assertLaneAvailable, assignNextReviewer, assertDurableReviewApproval, buildDynamicQueues, claimBody, closedClaimAuthoredOnMain, currentMainMaxVersion, queueExit, NON_STRUCTURAL_EXITS, OUTSIDE_ORCHESTRATOR_EXITS, conflicts, completeWork, requiresReturnAddress, returnIssueToOwner, RETURNED_MARKER, createRefWithReadback, deleteRefWithReadback, expandActiveClaimFromIssue, expandActiveClaimFromPr, EXCLUSIVE_REFS, githubIo, isConfirmedRefAbsence, LaneError, main, MUTEX_RECOVERY_ACTIVE_REF, MUTEX_REF, parseAuthorLease, parseQueueScope, parseReviewCursor, readPrAfterPush, readRefAfterWrite, recoverExpiredClaimFromPr, recoverSameOwnerSplit, recoverStaleAuthorMutex, reissueMergedStrandedClaim, releaseOwnedRef, releaseFailedReviewer, replaceFailedReviewer, failedReviewerReleaseCommand, requireOwnedRef, renewExpiredClaim, reviewerExecutionPreflight, reversionActiveClaim, runGitHubCommand, withReviewRequestBudget, supersedeActiveClaimVersion, REVIEW_CURSOR_REF, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_FAILURE_REF_PREFIX, validateClaimObjects, parseDoctorFailures, TERMINAL_FAILURE_CODES, doctorSpawnPlan, doctorTimeoutFailingChecks, resolveCommandPath, summarizeDoctorOutput, pickExecutableCandidate, REVIEWER_DOCTOR_TIMEOUT_MS, REVIEWER_PREFLIGHT_TIMEOUT_MS, findPrReviewAssignments, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_ACTIVE_REF_PREFIX, REVIEW_ACTIVE_CUTOVER_REF, reviewActiveRef, parseReviewLease, EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, deriveLivePreviewCandidate, validateOriginalPreviewApplyEvidence, projectReviewPr, projectReviewerOperationRouteSnapshot, reviewStateGraphqlFields, REVIEW_OPERATION_REQUEST_LIMIT, REVIEW_MUTEX_SECTION_RESERVE, REVIEW_SILENT_RECLAIM_REQUEST_LIMIT, REVIEW_SILENT_RECLAIM_MUTEX_SECTION_RESERVE, inReviewReplacementNamespace, activateReviewCutover, REVIEW_REF_ROW_LIMIT, parseGhIncludeResponse, hasNextPageLink, parseLinkHeader, excludeReviewerForPr, parseReviewExclusion, REVIEW_EXCLUSION_REF_PREFIX, reinstateReviewerExclusion, parseReviewReinstatement, REVIEW_REINSTATEMENT_REF_PREFIX, REINSTATABLE_EXCLUSION_REASONS, reviewExclusionRef, reviewReinstatementRef, REVIEW_EXCLUSION_GENERATION_LIMIT, countDoctorPassLines, REVIEW_RETURN_REF_PREFIX, parseReviewReturn, readReviewReturns, reviewReturnRef, reviewRecordRefs, retiredVerdictRef, REVIEW_RETIRED_VERDICT_REF_PREFIX, reviewerReadsRepository, reviewerEmitsGovernedVerdict, readReviewVerdicts, nonReadingReviewerReplacementCommand, hasVerdictForHead, headVerdictBlocksReplacement, reviewerKnownNonReading, DURABLE_VERDICT_REF_NAMESPACE, recordReviewVerdict, markReviewRefListingRefusal, isReviewRefListingRefusal, markLeaseReadFailure, isLeaseReadFailure, REVIEW_TARGET_SUPERSEDED, reapAbandonedReviewLeases, withArchivedVerdictMirror, legacyLeaseTerminalReason, isCommandSizeFailure, archiveOldReviewVerdicts, classifyVerdictForArchive, archivedVerdictRef, REVIEW_ARCHIVED_VERDICT_REF_PREFIX, reviewStartedMarkerRef, reviewerStartWatchLeases, RETURNED_COPY_MARKER, returnedCopyProvenance, REPO, noteHeldMutex, clearHeldMutex, releaseHeldMutexOnProcessExit } from './manage-migration-author-lanes.mjs'
 import { readDatabasePreviewClassificationFile, withDatabasePreviewClassificationFile, databasePreviewAdmission, buildDatabasePreviewFileSnapshot } from './manage-migration-author-lanes.mjs'
 
 function commandFailure(message){const error=new Error(message);error.stderr=message;return error}
@@ -846,9 +846,9 @@ test('#2705 reviewer assignment refuses malformed reconciled state before durabl
 })
 
 test('#3291 reviewer allowlist accepts canonical active names and rejects ambiguous or unavailable policy names',()=>{
-  const allowed=['grok-4.6','muse-spark-1.3-contributor','qwen-3.8-max']
+  const allowed=['gemini-3.8-flash-high','muse-spark-1.3-contributor','qwen-3.8-max']
   assert.deepEqual(new Set(canonicalReviewerAllowlist(allowed.join(','))),new Set(allowed))
-  for(const value of ['', 'grok-4.6,grok-4.6', 'grok', 'Grok-4.6', 'codex-gpt-5.6-sol', 'grok-4.6, muse-spark-1.3-contributor']){
+  for(const value of ['', 'gemini-3.8-flash-high,gemini-3.8-flash-high', 'grok', 'Grok-4.6', 'codex-gpt-5.6-sol', 'gemini-3.8-flash-high, muse-spark-1.3-contributor']){
     assert.throws(()=>canonicalReviewerAllowlist(value),/allowlist/)
   }
 })
@@ -859,7 +859,7 @@ test('#3291 assignment persists the canonical allowlist, inherits it on retry, a
   assert.equal(first.reviewer,allowed[0])
   assert.deepEqual(first.reviewerAllowlist,allowed)
   assert.deepEqual(assignNextReviewer({issue:3291,pr:3292,headSha:head},io),first,'omitted retry input inherits the durable restriction')
-  assert.throws(()=>assignNextReviewer({issue:3291,pr:3292,headSha:head,reviewerAllowlist:['grok-4.6']},io),/does not match the durable assignment/)
+  assert.throws(()=>assignNextReviewer({issue:3291,pr:3292,headSha:head,reviewerAllowlist:['gemini-3.8-flash-high']},io),/does not match the durable assignment/)
 })
 
 test('#3291 an allowed but unusable reviewer remains unusable and consumes no sequence',()=>{
@@ -870,7 +870,7 @@ test('#3291 an allowed but unusable reviewer remains unusable and consumes no se
 })
 
 test('#3291 one allowlisted reviewer still holds more than eight concurrent exact-head reviews',()=>{
-  const io=withAtomicRefs(reviewIo()),heads=new Map(),name='grok-4.6',assigned=[]
+  const io=withAtomicRefs(reviewIo()),heads=new Map(),name='gemini-3.8-flash-high',assigned=[]
   io.requiresExactReviewHeadSha=true
   io.getPr=(pr)=>({number:Number(pr),state:'open',head:{sha:heads.get(Number(pr)),ref:'codex/x'}})
   const rawGetCommit=io.getCommit
@@ -884,7 +884,7 @@ test('#3291 one allowlisted reviewer still holds more than eight concurrent exac
 })
 
 test('#3291 replacement inherits the durable allowlist and cannot widen it',()=>{
-  const io=withAtomicRefs(reviewIo()),head='3'.repeat(40),allowed=['grok-4.6','muse-spark-1.3-contributor']
+  const io=withAtomicRefs(reviewIo()),head='3'.repeat(40),allowed=['muse-spark-1.3-contributor','gemini-3.8-flash-high']
   io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:head,ref:'codex/x'}})
   const first=assignNextReviewer({issue:3291,pr:3294,headSha:head,reviewerAllowlist:allowed},io)
   const request={issue:3291,pr:3294,headSha:head,failedSequence:first.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true}
@@ -897,17 +897,17 @@ test('#3291 replacement inherits the durable allowlist and cannot widen it',()=>
 })
 
 test('#3291 later slots inherit slot one permissions and replacements cannot widen them',()=>{
-  const io=withAtomicRefs(reviewIo()),head='7'.repeat(40),allowed=['grok-4.6','qwen-3.8-max','muse-spark-1.3-contributor']
+  const io=withAtomicRefs(reviewIo()),head='7'.repeat(40),allowed=['qwen-3.8-max','muse-spark-1.3-contributor','gemini-3.8-flash-high']
   io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:head,ref:'codex/x'}})
   const first=assignNextReviewer({issue:3291,pr:3292,headSha:head,reviewerAllowlist:allowed},io)
   const request={issue:3291,pr:3292,headSha:head,slot:2}
-  assert.throws(()=>assignNextReviewer({...request,reviewerAllowlist:['gemini-3.8-flash-high']},io),/does not match/)
+  assert.throws(()=>assignNextReviewer({...request,reviewerAllowlist:['deepseek-v4.1-flash']},io),/does not match/)
   const second=assignNextReviewer(request,io)
   assert.ok(allowed.includes(second.reviewer));assert.notEqual(second.reviewer,first.reviewer)
   assert.deepEqual(second.reviewerAllowlist,allowed)
   assert.deepEqual(assignNextReviewer(request,io),second)
   const replacementRequest={...request,failedSequence:second.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true}
-  assert.throws(()=>replaceFailedReviewer({...replacementRequest,reviewerAllowlist:['gemini-3.8-flash-high']},io),/does not match/)
+  assert.throws(()=>replaceFailedReviewer({...replacementRequest,reviewerAllowlist:['deepseek-v4.1-flash']},io),/does not match/)
   const replacement=replaceFailedReviewer(replacementRequest,io)
   assert.deepEqual(replacement.reviewerAllowlist,allowed)
   assert.ok(allowed.includes(replacement.reviewer))
@@ -915,7 +915,7 @@ test('#3291 later slots inherit slot one permissions and replacements cannot wid
 })
 
 test('#3291 returned permissions survive unrelated cursor movement and an omitted redraw input',()=>{
-  const io=withAtomicRefs(reviewIo()),head='8'.repeat(40),allowed=['grok-4.6','muse-spark-1.3-contributor']
+  const io=withAtomicRefs(reviewIo()),head='8'.repeat(40),allowed=['muse-spark-1.3-contributor','gemini-3.8-flash-high']
   io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:head,ref:'codex/x'}})
   const request={issue:3291,pr:3292,headSha:head}
   const first=assignNextReviewer({...request,reviewerAllowlist:allowed},io)
@@ -924,7 +924,7 @@ test('#3291 returned permissions survive unrelated cursor movement and an omitte
   assignNextReviewer({issue:9991,pr:9992,headSha:head},io)
   assert.throws(()=>assignNextReviewer({...request,reviewerAllowlist:['qwen-3.8-max']},io),/does not match/)
   const next=assignNextReviewer(request,io)
-  assert.equal(next.reviewer,'muse-spark-1.3-contributor')
+  assert.equal(next.reviewer,allowed.find((name)=>name!==first.reviewer))
   assert.deepEqual(next.reviewerAllowlist,allowed)
 })
 
@@ -932,7 +932,7 @@ test('#3291 returned permissions survive unrelated cursor movement and an omitte
 function allowlistHistoryFixture(){
   const io=withAtomicRefs(reviewIo()),head='9'.repeat(40),request={issue:3291,pr:3292,headSha:head}
   io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:head,ref:'codex/x'}})
-  const allowed=['grok-4.6','qwen-3.8-max','muse-spark-1.3-contributor']
+  const allowed=['qwen-3.8-max','muse-spark-1.3-contributor','gemini-3.8-flash-high']
   const first=assignNextReviewer({...request,reviewerAllowlist:allowed},io)
   const replace=(sequence)=>({...request,failedSequence:sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true})
   return {io,head,request,first,replace}
@@ -1015,17 +1015,34 @@ function withAtomicRefs(io){
   return io
 }
 
-test('preferred reviewers include StepFun while Grok remains an eligible fallback',()=>{
+test('preferred reviewers include StepFun; paused Grok is never drawn, and the fallback ordering still puts Grok last',()=>{
+  // Owner instruction 2026-10-13: Grok is QUARANTINED (in QUARANTINED_REVIEWERS), so it
+  // must never be drawn, not even as the cost fallback. The fallback ordering
+  // policy (issue #3592) is still covered through an explicit roster that
+  // includes the preserved grok-4.6 REVIEWERS row.
   const preferred=reviewIo();delete preferred.reviewerOrder
   const chosen=[]
   for(let n=1;n<=10;n++)chosen.push(assignNextReviewer({issue:9000+n,pr:9100+n,headSha:`abcdef${n}`},preferred).reviewer)
   assert.ok(!chosen.includes('grok-4.6'))
+  assert.ok(chosen.includes('stepfun-step-5-preview'))
+  assert.ok(!ACTIVE_REVIEWERS.some((row)=>row.name==='grok-4.6'))
   const fallback=reviewIo();delete fallback.reviewerOrder
   fallback.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,{...usableAdmission(row),usable:row.provider==='grok',status:row.provider==='grok'?'ready':'quarantined'}]))
-  assert.equal(assignNextReviewer({issue:9201,pr:9301,headSha:'abcdef1'},fallback).reviewer,'grok-4.6')
+  const before=[...fallback.refs]
+  assert.throws(()=>assignNextReviewer({issue:9201,pr:9301,headSha:'abcdef1'},fallback),/no reviewer is available/)
+  assert.deepEqual([...fallback.refs],before,'a paused fallback consumes no sequence')
+  assert.deepEqual(REVIEWER_FALLBACK_PROVIDERS,['grok'])
+  const grokRow=REVIEWERS.find((row)=>row.name==='grok-4.6')
+  assert.ok(grokRow,'the paused Grok row stays readable for durable verdicts')
+  const withGrok=[grokRow,...ACTIVE_REVIEWERS]
+  for(let sequence=1;sequence<=withGrok.length+1;sequence++){
+    const order=orderedReviewers(sequence,withGrok)
+    assert.equal(order.at(-1).name,'grok-4.6','Grok is ordered last whenever it is in the roster')
+    assert.equal(order.length,withGrok.length)
+  }
 })
 
-test('preference applies to the second independent slot and to a failed-reviewer replacement',()=>{
+test('preference applies to the second independent slot and to a failed-reviewer replacement; paused Grok is never a replacement',()=>{
   const io=withAtomicRefs(reviewIo());delete io.reviewerOrder
   const headSha='a'.repeat(40),request={issue:3592,pr:3593,headSha}
   io.requiresExactReviewHeadSha=true
@@ -1036,17 +1053,22 @@ test('preference applies to the second independent slot and to a failed-reviewer
   assert.notEqual(first.reviewer,'grok-4.6')
   assert.notEqual(second.reviewer,'grok-4.6')
 
-  // Every preferred reviewer now refuses locally; Grok must remain a valid
-  // replacement for the failed first slot without reusing its original holder.
+  // Every active reviewer refuses locally and Grok would be ready: while Grok
+  // is paused the replacement must refuse rather than draw it.
   io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,{...usableAdmission(row),usable:row.provider==='grok',status:row.provider==='grok'?'ready':'quarantined'}]))
-  const replaced=replaceFailedReviewer({...request,failedSequence:first.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true},io)
-  assert.equal(replaced.reviewer,'grok-4.6')
+  const replacementRequest={...request,failedSequence:first.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true}
+  assert.throws(()=>replaceFailedReviewer(replacementRequest,io),/no replacement reviewer is available/)
+
+  // One preferred reviewer becomes usable again: it replaces the failed slot.
+  io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,usableAdmission(row)]))
+  const replaced=replaceFailedReviewer(replacementRequest,io)
+  assert.notEqual(replaced.reviewer,'grok-4.6')
+  assert.notEqual(replaced.reviewer,first.reviewer)
   assert.ok(replaced.sequence>second.sequence)
 
-  io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,usableAdmission(row)]))
   io.getPr=(pr)=>({number:Number(pr),state:'open',head:{sha:Number(pr)===3595?'b'.repeat(40):headSha,ref:'codex/priority'}})
   const next=assignNextReviewer({issue:3594,pr:3595,headSha:'b'.repeat(40)},io)
-  assert.notEqual(next.reviewer,'grok-4.6','fallback must not become the first choice for the next review')
+  assert.notEqual(next.reviewer,'grok-4.6','a paused reviewer never becomes a choice for the next review')
 })
 
 test('a test-only reviewer order cannot add, drop, or repeat a roster member',()=>{
@@ -1384,7 +1406,7 @@ test('complete replacement stays inside the real wire-attempt budget',()=>{
 })
 
 test('atomic replacement succeeds when the failed assignment has no active lease',()=>{
-  const io=failedReviewIo(),failedRef=reviewActiveRef('grok-4.6');io.refs.delete(failedRef)
+  const io=failedReviewIo(),failedRef=reviewActiveRef('glm-5.3');io.refs.delete(failedRef)
   io.readActiveReviewLeases=()=>new Map()
   io.readReviewStates=(leases)=>new Map(leases.map((lease)=>[`${lease.issue}:${lease.pr}`,{issue:{state:'open'},pr:{state:'open',head:{sha:lease.headSha}},evidence:[]}]))
   io.readReviewRefs=(refs)=>new Map(refs.map((ref)=>[ref,io.refs.get(ref)??null]))
@@ -1400,7 +1422,7 @@ test('merged-head replacement reuses the bounded target snapshot instead of rere
   io.getIssueComments=()=>{throw new Error('separate verdict read is forbidden')}
   io.getPrReviews=()=>{throw new Error('separate review read is forbidden')}
   io.mergeCommitInMain=(sha)=>sha===mergeSha
-  io.refs.delete(reviewActiveRef('grok-4.6'))
+  io.refs.delete(reviewActiveRef('glm-5.3'))
   io.readActiveReviewLeases=()=>new Map()
   io.readReviewStates=(leases)=>new Map(leases.map((lease)=>[`${lease.issue}:${lease.pr}`,{
     issue:{state:'closed'},
@@ -1554,9 +1576,15 @@ test('the active rotation is exactly the current models, in a stable order',()=>
   // been out of credit since 2026-09-17. With deepseek-v4.1-flash added on
   // 2026-09-23 (issue #3468), glm-5.3 restored on 2026-09-30, and
   // stepfun-step-5-preview on 2026-09-25 (issue #3555, drawn only on Linux
-  // machines) the live pool is exactly seven, in the historical REVIEWERS order.
-  assert.deepEqual(ACTIVE_REVIEWERS.map((r)=>r.name),['grok-4.6','glm-5.3','qwen-3.8-max','muse-spark-1.3-contributor','gemini-3.8-flash-high','deepseek-v4.1-flash','stepfun-step-5-preview'])
+  // machines) the live pool was seven. grok-4.6 was paused on 2026-10-07 (owner
+  // instruction), restored 2026-10-08, and QUARANTINED on 2026-10-13 (owner
+  // instruction: xAI account out of credit), so the live pool is exactly six,
+  // in the historical REVIEWERS order.
+  assert.deepEqual(ACTIVE_REVIEWERS.map((r)=>r.name),['glm-5.3','qwen-3.8-max','muse-spark-1.3-contributor','gemini-3.8-flash-high','deepseek-v4.1-flash','stepfun-step-5-preview'])
   assert.ok(RETIRED_REVIEWERS.includes('kimi-k3'),'kimi-k3 stays paused until its account has credit again')
+  assert.ok(QUARANTINED_REVIEWERS.includes('grok-4.6'),'grok-4.6 stays quarantined until the owner restores it')
+  assert.ok(!RETIRED_REVIEWERS.includes('grok-4.6'),'grok-4.6 is quarantined (temporary), not retired')
+  assert.equal(reviewerReadsRepository('grok-4.6'),true,'pausing grok-4.6 must not invalidate the verdicts it already recorded')
   assert.equal(reviewerReadsRepository('kimi-k3'),true,'pausing the account must not invalidate the verdicts it already recorded')
   assert.ok(!RETIRED_REVIEWERS.includes('glm-5.3'),'glm-5.3 is back in the rotation (owner instruction 2026-09-30)')
   assert.ok(ACTIVE_REVIEWERS.some((r)=>r.name==='glm-5.3'),'glm-5.3 must be drawable after the 2026-09-30 restore')
@@ -1581,7 +1609,7 @@ test('the active rotation is exactly the current models, in a stable order',()=>
   // claim; the drawable half replaces the old undrawable assertion so a silent
   // re-quarantine cannot pass unnoticed.
   assert.ok(!RETIRED_REVIEWERS.includes('qwen-3.8-max'),'qwen-3.8-max must never be listed as retired')
-  assert.deepEqual(QUARANTINED_REVIEWERS,[])
+  assert.deepEqual(QUARANTINED_REVIEWERS,['grok-4.6'],'only Grok (out of credit 2026-10-13) is quarantined; Qwen is not')
   assert.ok(ACTIVE_REVIEWERS.some((r)=>r.name==='qwen-3.8-max'),'live-qualified Qwen must be drawable')
   // Gemini was added on 2026-09-06 (ai-devops #285) only after a recorded live
   // safety qualification AND a live review that returned a well-formed verdict
@@ -1997,13 +2025,13 @@ const replacementRequest={...failedReview,failedSequence:1,failureCode:'insuffic
 
 test('terminal provider failure advances exactly once and retry is idempotent',()=>{
   const io=failedReviewIo(), first=replaceFailedReviewer(replacementRequest,io), second=replaceFailedReviewer(replacementRequest,io)
-  assert.equal(first.sequence,2);assert.equal(first.reviewer,'glm-5.3');assert.deepEqual(second,first)
+  assert.equal(first.sequence,2);assert.equal(first.reviewer,'qwen-3.8-max');assert.deepEqual(second,first)
   assert.equal(first.replacementSequence,1,'the recorder needs the ref suffix, not the allocation cursor')
   assert.equal(io.refs.get(first.assignmentRef),first.replacementSha)
   assert.ok(first.assignmentRef.endsWith(`-${first.replacementSequence}`))
   assert.equal(assignNextReviewer(failedReview,io).replacementSequence,first.replacementSequence)
-  assert.equal(assignNextReviewer(failedReview,io).reviewer,'glm-5.3')
-  assert.equal(assignNextReviewer({issue:10,pr:110,headSha:'abcdefa'},io).reviewer,'qwen-3.8-max')
+  assert.equal(assignNextReviewer(failedReview,io).reviewer,'qwen-3.8-max')
+  assert.equal(assignNextReviewer({issue:10,pr:110,headSha:'abcdefa'},io).reviewer,'muse-spark-1.3-contributor')
 })
 
 test('a retired reviewer is replaced cleanly, without an exclusion deadlock (#2078)',()=>{
@@ -2019,10 +2047,10 @@ test('a retired reviewer is replaced cleanly, without an exclusion deadlock (#20
   io.refs.set(REVIEW_CURSOR_REF,sha)
   assert.throws(()=>assignNextReviewer(failedReview,io),/belongs to a retired, quarantined or orchestrator-conflicting reviewer[\s\S]*Record a governed replacement for this exact head/)
   const replacement=replaceFailedReviewer({...replacementRequest,failureCode:'wrapper_terminal_failure'},io)
-  assert.equal(replacement.reviewer,'glm-5.3')
+  assert.equal(replacement.reviewer,'qwen-3.8-max')
   assert.equal(reviewerReadsRepository(replacement.reviewer),true,'the replacement must be a reviewer that reads the code')
   assert.equal(io.refs.get(reviewActiveRef('deepseek-chat'))??null,null,'the retired reviewer lease is released')
-  assert.equal(io.refs.get(reviewActiveRef('glm-5.3')),replacement.replacementSha)
+  assert.equal(io.refs.get(reviewActiveRef('qwen-3.8-max')),replacement.replacementSha)
   // Idempotent, exactly as for any other replacement.
   assert.deepEqual(replaceFailedReviewer({...replacementRequest,failureCode:'wrapper_terminal_failure'},io),replacement)
 })
@@ -2035,7 +2063,7 @@ test('a failed reviewer holding an UNRELATED live lease no longer blocks its own
   // OTHER reviewer in the pool could not clear it: only this one reviewer going
   // idle would. During marker #2074 two assignments each needed four draws.
   const io=failedReviewIo()
-  const failedName='grok-4.6'
+  const failedName='glm-5.3'
   assert.equal(io.refs.has(reviewActiveRef(failedName)),true,'the fixture must start with the failed reviewer holding its own lease')
   // Same head so the unrelated lease is LIVE, not stale -- the point of the test
   // is an active unrelated review, not a leftover to be swept.
@@ -2059,9 +2087,9 @@ test('a failed reviewer holding an UNRELATED live lease no longer blocks its own
   io.atomicReviewMutexRelease=(ownerSha)=>applyAtomic([{ref:MUTEX_REF,expected:ownerSha,sha:null}])
   const replacement=replaceFailedReviewer(replacementRequest,io)
   assert.equal(protectedByCas,true)
-  assert.equal(replacement.reviewer,'glm-5.3')
+  assert.equal(replacement.reviewer,'qwen-3.8-max')
   assert.equal(io.refs.get(reviewActiveRef(failedName)),unrelated,'the unrelated review must be left exactly as it was found')
-  assert.equal(io.refs.get(reviewActiveRef('glm-5.3')),replacement.replacementSha)
+  assert.equal(io.refs.get(reviewActiveRef('qwen-3.8-max')),replacement.replacementSha)
   // Still idempotent, and still does not touch the unrelated lease on retry.
   assert.deepEqual(replaceFailedReviewer(replacementRequest,io),replacement)
   assert.equal(io.refs.get(reviewActiveRef(failedName)),unrelated)
@@ -2106,11 +2134,12 @@ test('three terminal providers do not grow replacement preflight past the fixed 
 
 test('released slot-2 replacement with slot-1 approval and a reinstated reviewer fits the 25-request budget (#2550)',()=>{
   const io=doctoredIo(),request={issue:2550,pr:2551,headSha:'25'.repeat(20)}
-  // Reproduce the live eligibility history: Grok was excluded as terminally
+  // Reproduce the live eligibility history (then Grok, now the first rotation
+  // reviewer since grok-4.6 was quarantined 2026-10-13): it was excluded as terminally
   // unavailable, then returned to this PR only through fresh wrapper-doctor
   // proof. The original exclusion remains immutable beside its reinstatement.
   const excluded=excludeFor(io,{issue:request.issue,pr:request.pr,reason:'terminal-unavailable'})
-  assert.equal(excluded.reviewer,'grok-4.6')
+  assert.equal(excluded.reviewer,'glm-5.3')
   const reinstated=reinstateReviewerExclusion({issue:request.issue,pr:request.pr,reviewer:excluded.reviewer},io)
   assert.equal(io.refs.get(reviewReinstatementRef({issue:request.issue,pr:request.pr,reviewer:excluded.reviewer})),reinstated.sha)
 
@@ -2118,11 +2147,11 @@ test('released slot-2 replacement with slot-1 approval and a reinstated reviewer
   io.getPr=(number)=>Number(number)===busyPr?{state:'open',head:{sha:busyHead}}:{state:'open',head:{sha:request.headSha}}
   const slotOne=assignNextReviewer(request,io)
   const slotTwo=assignNextReviewer({...request,slot:2},io)
-  assert.equal(slotOne.reviewer,'glm-5.3')
-  assert.equal(slotTwo.reviewer,'qwen-3.8-max')
+  assert.equal(slotOne.reviewer,'qwen-3.8-max')
+  assert.equal(slotTwo.reviewer,'muse-spark-1.3-contributor')
   giveVerdict(io,{...request,slot:1})
   const firstReplacement=replaceFailedReviewer({...request,slot:2,failedSequence:slotTwo.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true},io)
-  assert.equal(firstReplacement.reviewer,'muse-spark-1.3-contributor')
+  assert.equal(firstReplacement.reviewer,'gemini-3.8-flash-high')
   // Reproduce the live #2509 chain exactly: the predecessor was assigned while
   // Muse 1.2 was drawable, then that catalogued name retired. Its active ref now
   // belongs to unrelated work, so replacement must carry the historical row in
@@ -2138,12 +2167,12 @@ test('released slot-2 replacement with slot-1 approval and a reinstated reviewer
   assert.equal(io.refs.get(reviewActiveRef(retiredName))??null,null)
 
   // The next rotation candidate is busy elsewhere, making the freshly
-  // reinstated Grok record materially necessary to the successful draw.
-  // (kimi-k3's 2026-09-22 pause removed one name; glm-5.3 holds slot 1 and
-  // muse-1.3 already failed on this head, so gemini, deepseek-v4.1-flash
-  // (appended 2026-09-23) and stepfun-step-5-preview (appended 2026-09-25)
-  // need busy leases to force the wrap to the reinstated Grok.)
-  const busyReviewers=['gemini-3.8-flash-high','deepseek-v4.1-flash','stepfun-step-5-preview']
+  // reinstated record materially necessary to the successful draw.
+  // (kimi-k3's 2026-09-22 pause removed one name; qwen-3.8-max holds slot 1 and
+  // muse-1.3 already failed on this head and gemini was released, so
+  // deepseek-v4.1-flash and stepfun-step-5-preview need busy leases to force
+  // the wrap to the reinstated glm-5.3; grok-4.6 is quarantined since 2026-10-13.)
+  const busyReviewers=['deepseek-v4.1-flash','stepfun-step-5-preview']
   for(const [index,name] of busyReviewers.entries()){
     const busySha=io.makeOwnerCommit(`db-coordination reviewer-lease generation=1 reviewer=${name} issue=9550 pr=${busyPr} head=${busyHead} sequence=${9550+index}`)
     io.refs.set(reviewActiveRef(name),busySha)
@@ -2171,7 +2200,7 @@ test('released slot-2 replacement with slot-1 approval and a reinstated reviewer
   const make=io.makeOwnerCommit;io.makeOwnerCommit=(message)=>{wire(1,'commit');return make(message)}
 
   const replacement=replaceFailedReviewer(releasedRequest,io)
-  assert.equal(replacement.reviewer,'grok-4.6','the reinstated independent reviewer must be drawable again')
+  assert.equal(replacement.reviewer,'glm-5.3','the reinstated independent reviewer must be drawable again')
   assert.equal(replacement.failureSha,released.failureSha,'the replacement must adopt the immutable release record')
   assert.ok(batched.includes(`${REVIEW_FAILURE_REF_PREFIX}/${request.issue}-${request.pr}-${request.headSha}-${slotTwo.sequence}`),'the predecessor failure must ride in the fixed-record batch')
   assert.equal(attempts,25,`released slot-2 replacement wire accounting drifted: ${labels.join(',')}`)
@@ -2270,7 +2299,7 @@ test('lost atomic assignment readback clears mutex and retry converges',()=>{
 })
 
 test('replacement retry repairs a crash between permanent evidence and lease updates',()=>{
-  const io=failedReviewIo(),failedRef=reviewActiveRef('grok-4.6'),failedSha=io.refs.get(failedRef)
+  const io=failedReviewIo(),failedRef=reviewActiveRef('glm-5.3'),failedSha=io.refs.get(failedRef)
   const first=replaceFailedReviewer(replacementRequest,io),replacementRef=reviewActiveRef(first.reviewer)
   io.refs.delete(replacementRef);io.refs.set(failedRef,failedSha)
   assert.deepEqual(replaceFailedReviewer(replacementRequest,io),first)
@@ -2292,7 +2321,7 @@ test('a historical replacement never recreates an active lease for a retired rev
 })
 
 test('replacement retry swaps a conclusively stale occupied successor lease',()=>{
-  const io=failedReviewIo(),failedRef=reviewActiveRef('grok-4.6'),failedSha=io.refs.get(failedRef)
+  const io=failedReviewIo(),failedRef=reviewActiveRef('glm-5.3'),failedSha=io.refs.get(failedRef)
   const first=replaceFailedReviewer(replacementRequest,io),replacementRef=reviewActiveRef(first.reviewer)
   const staleSha=io.makeOwnerCommit(`db-coordination reviewer-cursor sequence=99 reviewer=${first.reviewer} issue=99 pr=199 head=${'d'.repeat(40)}`)
   io.refs.set(replacementRef,staleSha);io.refs.set(failedRef,failedSha)
@@ -2354,12 +2383,13 @@ test('assignment refuses a PR close arriving after mutex acquisition',()=>{
 })
 
 const preflightIo=()=>({resolveOrchestratorEngine:()=> 'claude',commandAvailable:()=>true,localHead:()=>failedReview.headSha,localClean:()=>true,reviewerDoctor:()=>({ok:true,failingChecks:[]})})
-const preflightRequest={reviewer:'grok-4.6',wrapper:'ai-grok-review',worktree:'C:/review',headSha:failedReview.headSha}
+const preflightRequest={reviewer:'gemini-3.8-flash-high',wrapper:'ai-gemini',worktree:'C:/review',headSha:failedReview.headSha}
 
 test('reviewer execution preflight enforces approved wrapper, clean worktree, and exact head',()=>{
   const io=preflightIo(), request=preflightRequest
   assert.equal(reviewerExecutionPreflight(request,io).ready,true)
   assert.throws(()=>reviewerExecutionPreflight({...request,wrapper:'ai-qwen'},io),/exact wrapper/)
+  assert.throws(()=>reviewerExecutionPreflight({...request,reviewer:'grok-4.6',wrapper:'ai-grok-review'},io),/approved reviewer/,'paused grok-4.6 is not an approved reviewer')
   assert.throws(()=>reviewerExecutionPreflight(request,{...io,commandAvailable:()=>false}),/cannot execute/)
   assert.throws(()=>reviewerExecutionPreflight(request,{...io,localHead:()=> 'f'.repeat(40)}),/exact assigned head/)
   assert.throws(()=>reviewerExecutionPreflight(request,{...io,localClean:()=>false}),/dirty/)
@@ -2376,8 +2406,8 @@ test('preflight refuses a LOCAL dependency fault and quotes the failing check',(
   assert.throws(()=>reviewerExecutionPreflight(preflightRequest,io),/LOCAL dependency fault/)
   // It must say plainly that the reviewer is not at fault, or the next operator
   // pauses a working provider exactly as before.
-  assert.throws(()=>reviewerExecutionPreflight(preflightRequest,io),/not a grok-4.6 provider fault/)
-  assert.throws(()=>reviewerExecutionPreflight(preflightRequest,io),/Do NOT pause grok-4.6/)
+  assert.throws(()=>reviewerExecutionPreflight(preflightRequest,io),/not a gemini-3.8-flash-high provider fault/)
+  assert.throws(()=>reviewerExecutionPreflight(preflightRequest,io),/Do NOT pause gemini-3.8-flash-high/)
 })
 
 test('preflight refuses to report ready on evidence it never collected',()=>{
@@ -2522,7 +2552,7 @@ test('local_dependency_unavailable is a distinct terminal code and must name wha
 test('a confirmed-unfixable local fault replaces and writes the failing check into the evidence',()=>{
   const io=failedReviewIo()
   const done=replaceFailedReviewer({...replacementRequest,failureCode:'local_dependency_unavailable',failingCheck:'health endpoint answers',confirmLocalDependencyUnfixable:true},io)
-  assert.equal(done.reviewer,'glm-5.3')
+  assert.equal(done.reviewer,'qwen-3.8-max')
   const failureRef=[...io.refs.keys()].find((ref)=>ref.startsWith('refs/db-review-failures/'))
   const message=io.getCommit(io.refs.get(failureRef)).message
   assert.match(message,/code=local_dependency_unavailable/)
@@ -2583,7 +2613,7 @@ test('two consecutive terminal no-verdict failures form an immutable idempotent 
   const first=replaceFailedReviewer(replacementRequest,io)
   const secondRequest={...replacementRequest,failedSequence:first.sequence,failureCode:'turn_limit_cancelled'}
   const second=replaceFailedReviewer(secondRequest,io)
-  assert.equal(first.sequence,2);assert.equal(second.sequence,3);assert.equal(second.reviewer,'qwen-3.8-max')
+  assert.equal(first.sequence,2);assert.equal(second.sequence,3);assert.equal(second.reviewer,'muse-spark-1.3-contributor')
   assert.deepEqual(replaceFailedReviewer(replacementRequest,io),first)
   assert.deepEqual(replaceFailedReviewer(secondRequest,io),second)
   assert.equal(assignNextReviewer(failedReview,io).sequence,3)
@@ -2659,25 +2689,25 @@ test('reviewer replacement rejects a mismatched original assignment',()=>{
 // is a false invariant, and it is deliberately not asserted here. Both halves are
 // pinned below, with the exact successor named in each case.
 test('one intervening assignment gives a failed reviewer a named replacement',()=>{
-  assert.equal(ACTIVE_REVIEWERS.length,7,'this test describes the approved seven-reviewer rotation (glm-5.3 restored 2026-09-30; kimi-k3 paused 2026-09-22; deepseek-v4.1-flash added 2026-09-23; stepfun-step-5-preview added 2026-09-25)')
+  assert.equal(ACTIVE_REVIEWERS.length,6,'this test describes the approved six-reviewer rotation (glm-5.3 restored 2026-09-30; kimi-k3 paused 2026-09-22; deepseek-v4.1-flash added 2026-09-23; stepfun-step-5-preview added 2026-09-25; grok-4.6 quarantined 2026-10-13)')
   const io=failedReviewIo()
   assignNextReviewer({issue:10,pr:110,headSha:'abcdefa'},io)
   const replacement=replaceFailedReviewer(replacementRequest,io)
-  assert.equal(replacement.reviewer,'qwen-3.8-max')
+  assert.equal(replacement.reviewer,'muse-spark-1.3-contributor')
 })
 
 test('N-1 intervening assignments skip the failed provider instead of stranding the replacement',()=>{
-  assert.equal(ACTIVE_REVIEWERS.length,7,'this test describes the approved seven-reviewer rotation (glm-5.3 restored 2026-09-30; kimi-k3 paused 2026-09-22; deepseek-v4.1-flash added 2026-09-23; stepfun-step-5-preview added 2026-09-25)')
+  assert.equal(ACTIVE_REVIEWERS.length,6,'this test describes the approved six-reviewer rotation (glm-5.3 restored 2026-09-30; kimi-k3 paused 2026-09-22; deepseek-v4.1-flash added 2026-09-23; stepfun-step-5-preview added 2026-09-25; grok-4.6 quarantined 2026-10-13)')
   const io=failedReviewIo()
   for(let n=0;n<ACTIVE_REVIEWERS.length-1;n+=1){
     assignNextReviewer({issue:20+n,pr:120+n,headSha:`abcde${n}f`},io)
   }
   // The cursor now sits on a multiple of the roster length, so the plain modulo would compute
-  // back to grok-4.6 -- the provider that just failed. The selection skips it and
+  // back to glm-5.3 -- the provider that just failed. The selection skips it and
   // advances the durable cursor one extra step to the next active name.
   const cursorBefore=parseReviewCursor(io.getCommit(io.refs.get(REVIEW_CURSOR_REF)))
   const replacement=replaceFailedReviewer(replacementRequest,io)
-  assert.equal(replacement.reviewer,'glm-5.3')
+  assert.equal(replacement.reviewer,'qwen-3.8-max')
   assert.equal(replacement.sequence,cursorBefore.sequence+2)
   assert.equal(parseReviewCursor(io.getCommit(io.refs.get(REVIEW_CURSOR_REF))).sequence,replacement.sequence)
   // Governed guarantees survive the skip: the retry is byte-identical.
@@ -2689,11 +2719,11 @@ test('a chained replacement skips TWO already-failed providers to reach the last
   for(let n=0;n<ACTIVE_REVIEWERS.length-1;n+=1){
     assignNextReviewer({issue:30+n,pr:130+n,headSha:`abcdf${n}f`},io)
   }
-  // grok-4.6 failed, then its replacement glm-5.3 fails too. The cursor is then
-  // walked back to a roster boundary so the plain modulo computes to grok-4.6, and
+  // glm-5.3 failed, then its replacement qwen-3.8-max fails too. The cursor is then
+  // walked back to a roster boundary so the plain modulo computes to glm-5.3, and
   // selection must skip BOTH failed names (offset 2) to land on the next live one.
   const first=replaceFailedReviewer(replacementRequest,io)
-  assert.equal(first.reviewer,'glm-5.3')
+  assert.equal(first.reviewer,'qwen-3.8-max')
   let n=0
   while(parseReviewCursor(io.getCommit(io.refs.get(REVIEW_CURSOR_REF))).sequence%ACTIVE_REVIEWERS.length!==0){
     assignNextReviewer({issue:40+n,pr:140+n,headSha:`abcdf${n}9`},io);n+=1
@@ -2701,14 +2731,14 @@ test('a chained replacement skips TWO already-failed providers to reach the last
   const cursorBefore=parseReviewCursor(io.getCommit(io.refs.get(REVIEW_CURSOR_REF)))
   assert.equal(cursorBefore.sequence%ACTIVE_REVIEWERS.length,0,'the cursor must sit on a roster boundary for this to be a two-name skip')
   const second=replaceFailedReviewer({...replacementRequest,failedSequence:first.sequence},io)
-  assert.equal(second.reviewer,'qwen-3.8-max')
+  assert.equal(second.reviewer,'muse-spark-1.3-contributor')
   assert.equal(second.sequence,cursorBefore.sequence+3)
   assert.deepEqual(replaceFailedReviewer({...replacementRequest,failedSequence:first.sequence},io),second)
 })
 
 test('replacement exhausts the active rotation, then refuses',()=>{
   const io=failedReviewIo()
-  const seen=['grok-4.6']
+  const seen=['glm-5.3']
   let failedSequence=replacementRequest.failedSequence
   for(let n=0;n<ACTIVE_REVIEWERS.length-1;n+=1){
     const step=replaceFailedReviewer({...replacementRequest,failedSequence},io)
@@ -2732,10 +2762,10 @@ test('release frees a terminally failed lease when every reviewer slot is full',
   assert.match(refusal?.message??'',/no replacement reviewer is available|no other reviewer is available/)
   assert.match(refusal.message,new RegExp(`1 of ${ACTIVE_REVIEWERS.length} already failed on this exact head`))
   assert.match(refusal.message,new RegExp(`${ACTIVE_REVIEWERS.length-1} of ${ACTIVE_REVIEWERS.length} hold other live leases`))
-  assert.match(refusal.message,/glm-5\.3 #2100\/PR #2200/)
+  assert.match(refusal.message,/qwen-3\.8-max #2100\/PR #2200/)
   const cursorBefore=io.refs.get(REVIEW_CURSOR_REF)
   const released=releaseFailedReviewer(replacementRequest,io)
-  assert.equal(released.reviewer,'grok-4.6')
+  assert.equal(released.reviewer,'glm-5.3')
   assert.equal(io.refs.get(reviewActiveRef(released.reviewer))??null,null)
   assert.equal(findBusyReviewers(io).size,ACTIVE_REVIEWERS.length-1)
   assert.equal(io.refs.get(REVIEW_CURSOR_REF),cursorBefore,'release must not move the rotation cursor')
@@ -2764,18 +2794,18 @@ test('a release retry does not mistake a live sibling job for the outstanding le
   io.atomicReviewRefs=(changes)=>{for(const change of changes)assert.equal(io.refs.get(change.ref)??null,change.expected??null);for(const change of changes){if(change.sha===null)io.refs.delete(change.ref);else io.refs.set(change.ref,change.sha)}}
   io.atomicReviewMutexRelease=(ownerSha)=>io.atomicReviewRefs([{ref:MUTEX_REF,expected:ownerSha,sha:null}])
   const released=releaseFailedReviewer(replacementRequest,io)
-  assert.equal(released.reviewer,'grok-4.6')
-  const leaseRef=reviewActiveRef('grok-4.6')
+  assert.equal(released.reviewer,'glm-5.3')
+  const leaseRef=reviewActiveRef('glm-5.3')
   assert.equal(io.refs.get(leaseRef)??null,null,'the released job hands its own lease back')
   // The SAME provider now holds a lease for a DIFFERENT job. Nothing about this
   // job changed: its release evidence is still immutable and still complete.
-  const siblingSha=io.makeOwnerCommit('db-coordination reviewer-cursor sequence=7 reviewer=grok-4.6 issue=4242 pr=4343 head=cafe000000000000000000000000000000000000 slot=1')
+  const siblingSha=io.makeOwnerCommit('db-coordination reviewer-cursor sequence=7 reviewer=glm-5.3 issue=4242 pr=4343 head=cafe000000000000000000000000000000000000 slot=1')
   io.refs.set(leaseRef,siblingSha)
   assert.equal(releaseFailedReviewer(replacementRequest,io).alreadyReleased,true,'the sibling lease must not be read as the outstanding lease of this job')
   assert.equal(io.refs.get(leaseRef),siblingSha,'the lease of the sibling job is left exactly as it was')
   // POSITIVE CONTROL: when the ref really does hold THIS job's lease again, the
   // manual-audit refusal still fires, so the check above is not simply disabled.
-  const ownSha=io.makeOwnerCommit(`db-coordination reviewer-cursor sequence=1 reviewer=grok-4.6 issue=${failedReview.issue} pr=${failedReview.pr} head=${failedReview.headSha} slot=1`)
+  const ownSha=io.makeOwnerCommit(`db-coordination reviewer-cursor sequence=1 reviewer=glm-5.3 issue=${failedReview.issue} pr=${failedReview.pr} head=${failedReview.headSha} slot=1`)
   io.refs.set(leaseRef,ownSha)
   assert.throws(()=>releaseFailedReviewer(replacementRequest,io),/reconciliation requires manual audit/)
 })
@@ -2809,9 +2839,9 @@ test('review lease age is truthful for known and unknown commit dates',()=>{
 
 test('capacity report classifies free, live, stale, aged, and unknown leases without mutation',()=>{
   const io=reviewIo(),snapshot=new Map(),states=new Map(),now=new Date('2026-09-02T12:00:00Z')
-  // One case per active reviewer: seven after glm-5.3 was restored on 2026-09-30
-  // and stepfun-step-5-preview was added on 2026-09-25 (deepseek-v4.1-flash added
-  // 2026-09-23; kimi-k3 paused 2026-09-22). 'moved'
+  // One case per active reviewer: six after grok-4.6 was quarantined on 2026-10-13
+  // (glm-5.3 restored 2026-09-30; deepseek-v4.1-flash added 2026-09-23;
+  // stepfun-step-5-preview added 2026-09-25; kimi-k3 paused 2026-09-22). 'moved'
   // and 'verdict' both reach 'stale-reclaimable' but by different routes, and
   // both are proved: 'verdict' occupies a slot here, and 'moved' is proved
   // below by moving a head under a lease that this pass classified as live.
@@ -2821,7 +2851,6 @@ test('capacity report classifies free, live, stale, aged, and unknown leases wit
     {kind:'aged',date:'2026-08-31T00:00:00Z'},
     {kind:'unknown',date:null},
     {kind:'live',date:'2026-09-02T11:30:00Z'},
-    {kind:'live',date:'2026-09-02T11:45:00Z'},
     {kind:'live',date:'2026-09-02T12:00:00Z'},
   ]
   const heads=new Map()
@@ -2836,23 +2865,23 @@ test('capacity report classifies free, live, stale, aged, and unknown leases wit
   io.readActiveReviewLeases=()=>snapshot
   io.readReviewStates=()=>states
   const before=new Map(io.refs),report=reviewerCapacityReport(io,now)
-  assert.deepEqual(report.reviewers.map((row)=>row.classification),['live','stale-reclaimable','suspect-aged','unknown','live','live','live'])
-  assert.deepEqual(report.summary,{total:7,free:0,live:5,reclaimable:1,silenceProbed:0,silenceReclaimable:0,unknown:1})
+  assert.deepEqual(report.reviewers.map((row)=>row.classification),['live','stale-reclaimable','suspect-aged','unknown','live','live'])
+  assert.deepEqual(report.summary,{total:6,free:0,live:4,reclaimable:1,silenceProbed:0,silenceReclaimable:0,unknown:1})
   assert.deepEqual(io.refs,before,'capacity report must be read-only')
   // The OTHER route to 'stale-reclaimable': the reviewed head moved out from
   // under a lease this same pass just called live. No recorded verdict involved.
   const livePair=states.get(heads.get(0))
   states.set(heads.get(0),{...livePair,pr:{...livePair.pr,head:{sha:'f'.repeat(40)}}})
-  assert.deepEqual(reviewerCapacityReport(io,now).reviewers.map((row)=>row.classification),['stale-reclaimable','stale-reclaimable','suspect-aged','unknown','live','live','live'])
+  assert.deepEqual(reviewerCapacityReport(io,now).reviewers.map((row)=>row.classification),['stale-reclaimable','stale-reclaimable','suspect-aged','unknown','live','live'])
   states.set(heads.get(0),livePair)
   // 'free' is the fifth classification and it is a property of an ABSENT lease, so
   // it is proved by removing one rather than by needing a spare roster name.
-  // The last roster name (stepfun-step-5-preview since 2026-09-25) is the one freed.
+  // The last roster name (stepfun-step-5-preview since grok-4.6 was quarantined 2026-10-13) is the one freed.
   const freed=ACTIVE_REVIEWERS.at(-1).name
   snapshot.delete(reviewActiveRef(freed));io.refs.delete(reviewActiveRef(freed))
   const withFree=reviewerCapacityReport(io,now)
-  assert.deepEqual(withFree.reviewers.map((row)=>row.classification),['live','stale-reclaimable','suspect-aged','unknown','live','live','free'])
-  assert.deepEqual(withFree.summary,{total:7,free:1,live:4,reclaimable:1,silenceProbed:0,silenceReclaimable:0,unknown:1})
+  assert.deepEqual(withFree.reviewers.map((row)=>row.classification),['live','stale-reclaimable','suspect-aged','unknown','live','free'])
+  assert.deepEqual(withFree.summary,{total:6,free:1,live:3,reclaimable:1,silenceProbed:0,silenceReclaimable:0,unknown:1})
 })
 
 function silentLeaseIo({heldSince='2026-09-04T10:00:00Z',activity=[]}={}){
@@ -2942,14 +2971,63 @@ test('a silence-released reviewer is re-drawn when it is the only name left (#34
   assert.ok(replacement.failureSha)
 })
 
-test('a non-silence release keeps the permanent exclusion and still refuses (fail-closed)',()=>{
+test('a hard (bytes-related) release keeps the permanent exclusion and still refuses (fail-closed)',()=>{
   const {io,request,assigned,leaseRef}=silentLeaseIo(),options={...request,failedSequence:assigned.sequence,confirmNoVerdict:true,confirmNoArtifact:true}
-  // Release with a provider-fault code while the lease is still live; no silence involved.
-  const released=releaseFailedReviewer({...options,failureCode:'insufficient_quota'},io)
+  // A reviewer that could not read these bytes is never re-drawn on this head.
+  const released=releaseFailedReviewer({...options,failureCode:'reviewer_cannot_read_repository'},io)
   assert.equal(released.reviewer,assigned.reviewer)
   assert.equal(io.refs.get(leaseRef)??null,null,'release clears the lease')
   const keep=ACTIVE_REVIEWERS.find((row)=>row.name===assigned.reviewer)
   io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,{...usableAdmission(row),usable:row.provider===keep.provider}]))
+  assert.throws(()=>replaceFailedReviewer({...options,failureCode:'reviewer_cannot_read_repository'},io),/no other reviewer is available/)
+})
+
+// #4284: quota, outage, wrapper and malformed-verdict failures describe the
+// provider or the local wrapper, not the bytes. With every never-failed name
+// unusable or busy, such a released name is retried LAST instead of emptying
+// the pool; a never-failed usable name is always preferred.
+for(const code of ['insufficient_quota','wrapper_terminal_failure','provider_unavailable','turn_limit_cancelled','reviewer_cannot_emit_governed_verdict']){
+  test(`a ${code} release is re-drawn only when no never-failed reviewer is usable (#4284)`,()=>{
+    const {io,request,assigned}=silentLeaseIo(),options={...request,failedSequence:assigned.sequence,confirmNoVerdict:true,confirmNoArtifact:true}
+    releaseFailedReviewer({...options,failureCode:code},io)
+    const keep=ACTIVE_REVIEWERS.find((row)=>row.name===assigned.reviewer)
+    io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,{...usableAdmission(row),usable:row.provider===keep.provider}]))
+    const redraw=replaceFailedReviewer({...options,failureCode:code},io)
+    assert.equal(redraw.reviewer,assigned.reviewer,'the retryable failed name is the last resort')
+  })
+}
+test('a never-failed usable reviewer is preferred over a retryable failed one (#4284)',()=>{
+  const {io,request,assigned}=silentLeaseIo(),options={...request,failedSequence:assigned.sequence,confirmNoVerdict:true,confirmNoArtifact:true}
+  releaseFailedReviewer({...options,failureCode:'wrapper_terminal_failure'},io)
+  const redraw=replaceFailedReviewer({...options,failureCode:'wrapper_terminal_failure'},io)
+  assert.notEqual(redraw.reviewer,assigned.reviewer)
+})
+test('a retryable code without a release record (failure-ref=self) stays a hard exclusion (#4284 review)',()=>{
+  const {io,request,assigned}=silentLeaseIo(),options={...request,failedSequence:assigned.sequence,confirmNoVerdict:true,confirmNoArtifact:true}
+  // No --release-failed-reviewer: the replacement record is its own failure evidence.
+  const first=replaceFailedReviewer({...options,failureCode:'wrapper_terminal_failure'},io)
+  assert.notEqual(first.reviewer,assigned.reviewer)
+  const second={...options,failedSequence:first.sequence}
+  releaseFailedReviewer({...second,failureCode:'wrapper_terminal_failure'},io)
+  const keep=ACTIVE_REVIEWERS.find((row)=>row.name===assigned.reviewer)
+  io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,{...usableAdmission(row),usable:row.provider===keep.provider}]))
+  assert.throws(()=>replaceFailedReviewer({...second,failureCode:'wrapper_terminal_failure'},io),/no other reviewer is available/,'the self-evidenced original never returns')
+})
+test('mixed history: a retryable release plus a hard release of the same name keeps it hard (#4284 review)',()=>{
+  const {io,request,assigned}=silentLeaseIo(),options={...request,failedSequence:assigned.sequence,confirmNoVerdict:true,confirmNoArtifact:true}
+  releaseFailedReviewer({...options,failureCode:'wrapper_terminal_failure'},io)
+  const keep=ACTIVE_REVIEWERS.find((row)=>row.name===assigned.reviewer)
+  io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,{...usableAdmission(row),usable:row.provider===keep.provider}]))
+  const redraw=replaceFailedReviewer({...options,failureCode:'wrapper_terminal_failure'},io)
+  assert.equal(redraw.reviewer,assigned.reviewer)
+  const second={...options,failedSequence:redraw.sequence}
+  releaseFailedReviewer({...second,failureCode:'reviewer_cannot_read_repository'},io)
+  assert.throws(()=>replaceFailedReviewer({...second,failureCode:'reviewer_cannot_read_repository'},io),/no other reviewer is available/)
+})
+test('a retryable failed name that live preflight marks unusable is still not drawn (#4284)',()=>{
+  const {io,request,assigned}=silentLeaseIo(),options={...request,failedSequence:assigned.sequence,confirmNoVerdict:true,confirmNoArtifact:true}
+  releaseFailedReviewer({...options,failureCode:'insufficient_quota'},io)
+  io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,{...usableAdmission(row),usable:false}]))
   assert.throws(()=>replaceFailedReviewer({...options,failureCode:'insufficient_quota'},io),/no other reviewer is available/)
 })
 
@@ -2966,8 +3044,8 @@ test('a silence-released provider that later fails with a non-silence code stays
   const redraw=replaceFailedReviewer({...options,failureCode:'silent_worker_observed'},io)
   assert.equal(redraw.reviewer,assigned.reviewer)
   const second={...options,failedSequence:redraw.sequence}
-  releaseFailedReviewer({...second,failureCode:'insufficient_quota'},io)
-  assert.throws(()=>replaceFailedReviewer({...second,failureCode:'insufficient_quota'},io),/no other reviewer is available/)
+  releaseFailedReviewer({...second,failureCode:'reviewer_cannot_read_repository'},io)
+  assert.throws(()=>replaceFailedReviewer({...second,failureCode:'reviewer_cannot_read_repository'},io),/no other reviewer is available/)
 })
 
 // Issue #3027 Step 7: the reviewer START watcher's unstarted mode.
@@ -3191,7 +3269,7 @@ test('release refuses a verdict or a changed lease under the mutex',()=>{
   const verdictIo=failedReviewIo()
   giveVerdict(verdictIo,{issue:failedReview.issue,pr:failedReview.pr,headSha:failedReview.headSha})
   assert.throws(()=>releaseFailedReviewer(replacementRequest,verdictIo),/verdict/)
-  const changed=failedReviewIo(),leaseRef=reviewActiveRef('grok-4.6'),real=changed.refs.get(leaseRef),commit=changed.getCommit(real)
+  const changed=failedReviewIo(),leaseRef=reviewActiveRef('glm-5.3'),real=changed.refs.get(leaseRef),commit=changed.getCommit(real)
   changed.getCommit=(sha)=>sha===real?{message:commit.message.replace('sequence=1','sequence=99')}:reviewIo().getCommit(sha)
   assert.throws(()=>releaseFailedReviewer(replacementRequest,changed),/does not match/)
 })
@@ -3228,7 +3306,7 @@ test('a governed replacement adopts immutable release evidence after capacity be
   const released=releaseFailedReviewer(replacementRequest,io),failureRef=[...io.refs.keys()].find((ref)=>ref.startsWith('refs/db-review-failures/'))
   assert.equal(io.refs.get(failureRef),released.failureSha)
   const replacement=replaceFailedReviewer(replacementRequest,io)
-  assert.equal(replacement.reviewer,'glm-5.3')
+  assert.equal(replacement.reviewer,'qwen-3.8-max')
   assert.equal(replacement.failureSha,released.failureSha,'replacement must adopt, not overwrite, the release evidence')
   assert.equal(io.refs.get(failureRef),released.failureSha)
   assert.equal(io.refs.get(reviewActiveRef(replacement.reviewer)),replacement.replacementSha)
@@ -3337,7 +3415,7 @@ test('partial reviewer replacement failure rolls back cursor and immutable evide
   assert.equal([...io.refs.keys()].some((ref)=>ref.startsWith('refs/db-review-failures/')),false)
 })
 
-const opts={task:'#1',owner:'agent',branch:'codex/x',worktree:'C:/w',objects:['table core.x'],leaseHours:12,requestId:'r1',mutexAttempts:1}
+const opts={task:'#1',owner:'agent',branch:'codex/x',worktree:'C:/w',objects:['table core.x'],leaseHours:0.5,requestId:'r1',mutexAttempts:1}
 
 test('GitHub create-if-absent mutex makes acquisition cross-host atomic', () => {
   const io=memoryIo()
@@ -3723,14 +3801,14 @@ test('manager assignment and replacement preserve repository-maintenance review 
   io.commentIssue=(_number,body)=>comments.push(body)
   const oldLog=console.log,oldError=console.error;console.log=()=>{};console.error=()=>{}
   try{
-    const reviewerAllowlist='grok-4.6,muse-spark-1.3-contributor'
+    const reviewerAllowlist='glm-5.3,gemini-3.8-flash-high'
     assert.equal(main(['--assign-reviewer','--issue','41','--pr','7','--head-sha',headSha,'--reviewer-allowlist',reviewerAllowlist],NOW,io),0)
     assert.equal(main(['--replace-failed-reviewer','--issue','41','--pr','7','--head-sha',headSha,'--failed-sequence','1','--failure-code','insufficient_quota','--confirm-no-verdict','--confirm-no-artifact','--reviewer-allowlist',reviewerAllowlist],NOW,io),0)
   }finally{console.log=oldLog;console.error=oldError}
   const assignmentSha=[...io.refs].find(([ref])=>ref.startsWith(REVIEW_ASSIGNMENT_REF_PREFIX))?.[1]
   const replacementSha=[...io.refs].find(([ref])=>ref.startsWith(REVIEW_REPLACEMENT_REF_PREFIX))?.[1]
-  assert.match(io.getCommit(assignmentSha).message,/allowlist=grok-4\.6,muse-spark-1\.3-contributor/)
-  assert.match(io.getCommit(replacementSha).message,/allowlist=grok-4\.6,muse-spark-1\.3-contributor/)
+  assert.match(io.getCommit(assignmentSha).message,/allowlist=glm-5\.3,gemini-3\.8-flash-high/)
+  assert.match(io.getCommit(replacementSha).message,/allowlist=glm-5\.3,gemini-3\.8-flash-high/)
   assert.equal(comments.length,0);assert.equal([...io.refs.keys()].some((ref)=>ref.startsWith('refs/db-claims/')),false)
   assert.equal(io.refs.has(EXCLUSIVE_REFS.preview),false)
 })
@@ -4564,13 +4642,13 @@ function renewalIo(overrides={}){
   io.prSources=()=>[{label:'PR #1060 "#853 OrderList"',objects:[...objects],versions:[version]}]
   return Object.assign(io,{issue,workIssue,version,head,objects},overrides)
 }
-const renewalOptions={claim:1058,issue:853,owner:'codex-issue-853-orderlist',branch:'codex/issue-853-orderlist',worktree:'C:\\repos\\shared-db-worktrees\\issue-853-orderlist',pr:1060,headSha:'a'.repeat(40),leaseHours:12,requestId:'renew-853',mutexAttempts:1}
+const renewalOptions={claim:1058,issue:853,owner:'codex-issue-853-orderlist',branch:'codex/issue-853-orderlist',worktree:'C:\\repos\\shared-db-worktrees\\issue-853-orderlist',pr:1060,headSha:'a'.repeat(40),leaseHours:0.5,requestId:'renew-853',mutexAttempts:1}
 
 test('#853-shaped expired claim renewal preserves every byte except expires_at',()=>{
   const io=renewalIo(),before=io.issue.body,result=renewExpiredClaim(renewalOptions,NOW,io)
   assert.equal(result.idempotent,false);assert.equal(result.version,io.version)
   assert.equal(io.issue.body.replace(/^expires_at:.*$/m,'expires_at: X'),before.replace(/^expires_at:.*$/m,'expires_at: X'))
-  assert.match(io.issue.body,/expires_at: 2026-08-15T08:00:00.000Z/)
+  assert.match(io.issue.body,/expires_at: 2026-08-14T20:30:00.000Z/)
 })
 
 test('expired claim renewal retains an unrelated historical lock without declaring it as a current write',()=>{
@@ -4712,8 +4790,8 @@ test('claim renewal rolls back readback failure while mutex-owned and refuses af
 })
 
 test('claim renewal enforces a bounded lease and real CLI wiring',()=>{
-  for(const leaseHours of [0,24.01,NaN])assert.throws(()=>renewExpiredClaim({...renewalOptions,leaseHours},NOW,renewalIo()),/no more than 24/)
-  const io=renewalIo(),args=['--renew-claim','--claim-number','1058','--issue','853','--owner',renewalOptions.owner,'--branch',renewalOptions.branch,'--worktree',renewalOptions.worktree,'--pr','1060','--head-sha',renewalOptions.headSha,'--lease-hours','12']
+  for(const leaseHours of [0,24.01,NaN])assert.throws(()=>renewExpiredClaim({...renewalOptions,leaseHours},NOW,renewalIo()),/no more than 0.5/)
+  const io=renewalIo(),args=['--renew-claim','--claim-number','1058','--issue','853','--owner',renewalOptions.owner,'--branch',renewalOptions.branch,'--worktree',renewalOptions.worktree,'--pr','1060','--head-sha',renewalOptions.headSha,'--lease-hours','0.5']
   assert.equal(main(args,NOW,io),0);assert.equal(parseAuthorLease(io.issue.body,NOW).active,true)
 })
 
@@ -4733,7 +4811,7 @@ function expiredPrRecoveryIo({issueNumber,claimNumber,prNumber,version,owner,bra
 
 const recovery2177={issueNumber:2177,claimNumber:2182,prNumber:2183,version:'20260904001147',owner:'claude-subagent-2177',branch:'claude/2177-coldlion-cust-sp',worktree:'C:\\repos\\shared-db\\.claude\\worktrees\\coldlion-cust-sp-2177',title:'CLAIM: #2177 ColdLion customer + salesperson field projections (owner ruling issue 2081, run c5519623574)',tables:['table coldlion.customer','table coldlion.salesperson'],children:['column coldlion.customer.customer_name','column coldlion.customer.currency_code','column coldlion.customer.payment_terms','column coldlion.customer.price_level','column coldlion.customer.salesperson_code','column coldlion.customer.ship_via','column coldlion.customer.tax_code','column coldlion.salesperson.active']}
 const recovery2175={issueNumber:2175,claimNumber:2184,prNumber:2185,version:'20260903030716',owner:'claude-opus-5-subagent-2175',branch:'claude/2175-coldlion-unit-5a',worktree:'C:\\repos\\shared-db\\.claude\\worktrees\\coldlion-5a-inv-prodtrack',title:'CLAIM: Issue #2175 ColdLion landing unit 5a: create coldlion.inventory and coldlion.prod_tracking landing tables from live-sampled shapes',tables:['table coldlion.inventory','table coldlion.prod_tracking'],children:['column coldlion.inventory.company_code','column coldlion.inventory.item_pkey','column coldlion.inventory.warehouse_code','column coldlion.inventory.inventory_qty','column coldlion.inventory.inventory_cost','column coldlion.prod_tracking.company_code','column coldlion.prod_tracking.prod_order_no','column coldlion.prod_tracking.order_date','column coldlion.prod_tracking.start_date','column coldlion.prod_tracking.cancel_date','column coldlion.prod_tracking.payload_hash','column coldlion.prod_tracking.source_updated_at']}
-function recoveryOptions(fixture){return {claim:fixture.claimNumber,issue:fixture.issueNumber,owner:fixture.owner,branch:fixture.branch,worktree:fixture.worktree,pr:fixture.prNumber,headSha:'a'.repeat(40),leaseHours:12,requestId:`recover-${fixture.issueNumber}`,mutexAttempts:1}}
+function recoveryOptions(fixture){return {claim:fixture.claimNumber,issue:fixture.issueNumber,owner:fixture.owner,branch:fixture.branch,worktree:fixture.worktree,pr:fixture.prNumber,headSha:'a'.repeat(40),leaseHours:0.5,requestId:`recover-${fixture.issueNumber}`,mutexAttempts:1}}
 
 test('#2177/#2182 expired recovery atomically appends eight PR-derived child columns and renews',()=>{
   const io=expiredPrRecoveryIo(recovery2177),before=io.claim.body,result=recoverExpiredClaimFromPr(recoveryOptions(recovery2177),NOW,io),lease=parseAuthorLease(io.claim.body,NOW)
@@ -4804,7 +4882,7 @@ test('THE DEADLOCK: an expired claim whose PR objects exceed it is refused by BO
 })
 
 test('REAL main command wires expired PR expansion and renewal as one recovery',()=>{
-  const io=expiredPrRecoveryIo(recovery2177),f=recovery2177,args=['--recover-expired-claim-from-pr','--claim-number',String(f.claimNumber),'--issue',String(f.issueNumber),'--owner',f.owner,'--branch',f.branch,'--worktree',f.worktree,'--pr',String(f.prNumber),'--head-sha','a'.repeat(40),'--lease-hours','12']
+  const io=expiredPrRecoveryIo(recovery2177),f=recovery2177,args=['--recover-expired-claim-from-pr','--claim-number',String(f.claimNumber),'--issue',String(f.issueNumber),'--owner',f.owner,'--branch',f.branch,'--worktree',f.worktree,'--pr',String(f.prNumber),'--head-sha','a'.repeat(40),'--lease-hours','0.5']
   assert.equal(main(args,NOW,io),0);assert.equal(parseAuthorLease(io.claim.body,NOW).active,true);assert.equal(io.updateCalls,1)
 })
 
@@ -4891,7 +4969,7 @@ function mergedReissueIo(overrides={}){
   io.mainSha=()=>main;io.compareCommits=()=>({status:'ahead',behind_by:0});io.reserveVersion=()=>({version:fresh})
   return Object.assign(io,{issue,old,fresh,merge,main,objects},overrides)
 }
-const mergedReissueArgs={issue:1645,claim:1656,sourcePr:1664,owner:'codex-agent issue-1645-1649',targetBranch:'codex/issue-1645-effective-filters-reissue',targetWorktree:'C:\\new',oldVersion:'20260827183011',leaseHours:12}
+const mergedReissueArgs={issue:1645,claim:1656,sourcePr:1664,owner:'codex-agent issue-1645-1649',targetBranch:'codex/issue-1645-effective-filters-reissue',targetWorktree:'C:\\new',oldVersion:'20260827183011',leaseHours:0.5}
 
 test('merged stranded claim reissue preserves the exact object lock and both permanent reservations',()=>{
   const io=mergedReissueIo(),result=reissueMergedStrandedClaim(mergedReissueArgs,NOW,io),lease=parseAuthorLease(io.issue.body,NOW)
@@ -4947,7 +5025,7 @@ test('merged stranded claim reissue resumes exact evidence stranded before the c
 })
 
 test('REAL main command wires the merged stranded claim reissue identities',()=>{
-  const io=mergedReissueIo(),args=['--reissue-merged-stranded-claim','--issue','1645','--claim-number','1656','--source-pr','1664','--owner',mergedReissueArgs.owner,'--target-branch',mergedReissueArgs.targetBranch,'--target-worktree',mergedReissueArgs.targetWorktree,'--old-version',mergedReissueArgs.oldVersion,'--lease-hours','12']
+  const io=mergedReissueIo(),args=['--reissue-merged-stranded-claim','--issue','1645','--claim-number','1656','--source-pr','1664','--owner',mergedReissueArgs.owner,'--target-branch',mergedReissueArgs.targetBranch,'--target-worktree',mergedReissueArgs.targetWorktree,'--old-version',mergedReissueArgs.oldVersion,'--lease-hours','0.5']
   assert.equal(main(args,NOW,io),0);assert.equal(parseAuthorLease(io.issue.body,NOW).version,io.fresh)
 })
 
@@ -5910,7 +5988,7 @@ test('slot 1 is the unchanged default: omitting --review-slot behaves exactly as
   const io=reviewIo(),request={issue:200,pr:300,headSha:'a'.repeat(40)}
   const implicit=assignNextReviewer(request,io)
   assert.equal(implicit.slot,1)
-  assert.equal(implicit.reviewer,'grok-4.6')
+  assert.equal(implicit.reviewer,'glm-5.3')
   const explicit=assignNextReviewer({...request,slot:1},io)
   assert.deepEqual(explicit,implicit)
 })
@@ -6158,24 +6236,24 @@ test("a sibling slot's verdict must NOT free a genuinely unknown-slot live lease
   // reclaimable by a stranger's verdict. Absence of a slot must never be
   // permission to reclaim.
   const io=reviewIo(),issue=2213,pr=2304,headSha='c5'.repeat(20)
-  const message=`db-coordination reviewer-replacement sequence=8 reviewer=grok-4.6 issue=${issue} pr=${pr} head=${headSha} failed-sequence=7 prior-sequence=7 failure-ref=${'b'.repeat(40)}`
+  const message=`db-coordination reviewer-replacement sequence=8 reviewer=glm-5.3 issue=${issue} pr=${pr} head=${headSha} failed-sequence=7 prior-sequence=7 failure-ref=${'b'.repeat(40)}`
   assert.equal(parseReviewLease({message}).slot,null,'this fixture must be the UNKNOWN-slot shape')
-  io.refs.set(reviewActiveRef('grok-4.6'),io.makeOwnerCommit(message))
+  io.refs.set(reviewActiveRef('glm-5.3'),io.makeOwnerCommit(message))
   io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:headSha}})
   // A stranger finishes slot 2. Our lease does not say it is not slot 2.
   giveVerdict(io,{issue,pr,headSha,slot:2})
   const busy=findBusyReviewers(io)
   assert.ok(busy,'busy scan must be readable')
-  assert.ok(busy.has('grok-4.6'),"a sibling slot's verdict must not free an unknown-slot lease")
-  assert.ok(!busy.stale.some((row)=>row.assignment.reviewer==='grok-4.6'),'and it must not be reclaimable')
-  assert.equal(reviewerCapacityReport(io).reviewers.find((row)=>row.reviewer==='grok-4.6').verdictPresent,false)
+  assert.ok(busy.has('glm-5.3'),"a sibling slot's verdict must not free an unknown-slot lease")
+  assert.ok(!busy.stale.some((row)=>row.assignment.reviewer==='glm-5.3'),'and it must not be reclaimable')
+  assert.equal(reviewerCapacityReport(io).reviewers.find((row)=>row.reviewer==='glm-5.3').verdictPresent,false)
   // Holding it conservatively must not strand it: the ordinary releases still
   // work. The head moves...
   const moved={...io,getPr:()=>({number:pr,state:'open',head:{sha:'9'.repeat(40)}})}
-  assert.ok(!findBusyReviewers(moved).has('grok-4.6'))
+  assert.ok(!findBusyReviewers(moved).has('glm-5.3'))
   // ...or the PR closes.
   const closed={...io,getPr:()=>({number:pr,state:'closed',head:{sha:headSha}})}
-  assert.ok(!findBusyReviewers(closed).has('grok-4.6'))
+  assert.ok(!findBusyReviewers(closed).has('glm-5.3'))
 })
 
 test('a replacement lease STATES its slot even for slot 1, so its own verdict still frees it (issue #2208 follow-up round 3)',()=>{
@@ -9792,9 +9870,10 @@ test('#2457 a refused mutex release still reports the completed assignment inste
 // Issue #2457: --replace-failed-reviewer is a reviewer DRAW too, and it was the
 // path that reproduced this twice on PR #2409. The replacement itself succeeded;
 // only the readback that proves the mutex release keeps answering with the
-// pre-deletion owner. That refusal must carry the completed result instead of
-// leaving the operator a bare "RECOVERY REQUIRED" for healthy state.
-test('#2457 a refused mutex release still reports the completed replacement instead of losing it',()=>{
+// pre-deletion owner. #4255: once a secondary ownership read (or the git
+// fallback) proves the ref is no longer ours, that IS a proved release -- the
+// replacement completes normally instead of refusing healthy state.
+test('#2457 a lagging replica after a real deletion completes the replacement instead of refusing',()=>{
   const io=failedReviewIo()
   let releasedOwner=null
   io.readReviewStates=(leases)=>new Map(leases.map((lease)=>[`${lease.issue}:${lease.pr}`,{issue:{state:'open'},pr:{state:'open',head:{sha:lease.headSha}},evidence:[]}]))
@@ -9806,21 +9885,73 @@ test('#2457 a refused mutex release still reports the completed replacement inst
   io.atomicReviewMutexRelease=(ownerSha)=>{io.atomicReviewRefs([{ref:MUTEX_REF,expected:ownerSha,sha:null}]);releasedOwner=ownerSha}
   io.readRefOverApi=(ref)=>(ref===MUTEX_REF&&releasedOwner)?releasedOwner:(io.refs.get(ref)??null)
   io.wait=()=>{}
-  let refused=null
-  assert.throws(()=>replaceFailedReviewer(replacementRequest,io),(error)=>(refused=error,
-    /could not be proved after atomic deletion/.test(error.message)&&
-    /THE OPERATION ITSELF COMPLETED/.test(error.message)&&
-    /"reviewer":/.test(error.message)&&
-    /"replacementSha":/.test(error.message)&&
-    Boolean(error.completedResult?.reviewer)&&
-    Boolean(error.completedResult?.replacementSha)))
-  // Durable state, not only the message: the replacement record the refusal
-  // names really exists at the ref it reports.
-  assert.ok(refused.completedResult.assignmentRef)
-  assert.equal(io.refs.get(refused.completedResult.assignmentRef),refused.completedResult.replacementSha)
+  const result=replaceFailedReviewer(replacementRequest,io)
+  assert.ok(result.reviewer)
+  assert.ok(result.assignmentRef)
+  assert.equal(io.refs.get(result.assignmentRef),result.replacementSha)
   // The deletion itself worked: refusing and telling the operator to retry would
   // draw a SECOND reviewer, which is exactly the harm the old message invited.
   assert.equal(io.refs.get(MUTEX_REF),undefined)
+})
+
+// Issue #4255: PR 4221 left refs/db-coordination/author-acquisition held by
+// `db-coordination reviewer-assignment-lock` commits when the process died or
+// the atomic release threw, blocking documents-only merge authorization on
+// unrelated PRs until recover-author-mutex.yml ran.
+test('#4255 an atomic-release throw falls back to the owner-verified git delete',()=>{
+  const io=reviewIo()
+  io.atomicReviewMutexRelease=()=>{throw new Error('atomic push failed: network reset')}
+  let gitReleased=null
+  io.releaseRefOverGit=(ref,sha)=>{gitReleased=[ref,sha];if(io.refs.get(ref)!==sha)return false;io.refs.delete(ref);return true}
+  const result=assignNextReviewer({issue:4255,pr:4221,headSha:'a'.repeat(40)},io)
+  assert.ok(result.reviewer)
+  assert.equal(gitReleased[0],MUTEX_REF)
+  assert.match(gitReleased[1],/^[0-9a-f]+$/)
+  assert.equal(io.refs.has(MUTEX_REF),false)
+})
+
+test('#4255 when the git fallback also fails but the ref is gone, release is still proved',()=>{
+  const io=reviewIo()
+  io.atomicReviewMutexRelease=()=>{io.refs.delete(MUTEX_REF);throw new Error('atomic push failed after delete was accepted')}
+  io.releaseRefOverGit=()=>{throw new Error('git push refused')}
+  const result=assignNextReviewer({issue:4256,pr:4222,headSha:'b'.repeat(40)},io)
+  assert.ok(result.reviewer)
+  assert.equal(io.refs.has(MUTEX_REF),false)
+})
+
+test('#4255 when every release path fails and we still own the ref, RECOVERY REQUIRED names the SHA',()=>{
+  const io=reviewIo()
+  io.atomicReviewMutexRelease=()=>{throw new Error('atomic push failed')}
+  io.releaseRefOverGit=()=>{throw new Error('git push refused')}
+  const ownerPattern=/RECOVERY REQUIRED: refs\/db-coordination\/author-acquisition expected SHA [0-9a-f]+/
+  assert.throws(()=>assignNextReviewer({issue:4257,pr:4223,headSha:'c'.repeat(40)},io),ownerPattern)
+  assert.equal(io.refs.has(MUTEX_REF),true,'an unproved release must never pretend the lock is free')
+})
+
+test('#4255 process-exit cleanup releases a held mutex over git without API quota',()=>{
+  const io=reviewIo()
+  const sha=io.makeOwnerCommit('db-coordination reviewer-assignment-lock issue=1 pr=2 head='+'d'.repeat(40))
+  io.refs.set(MUTEX_REF,sha)
+  let called=null
+  io.releaseRefOverGit=(ref,owner)=>{called=[ref,owner];io.refs.delete(ref);return true}
+  noteHeldMutex(sha,io)
+  assert.equal(releaseHeldMutexOnProcessExit(),true)
+  assert.deepEqual(called,[MUTEX_REF,sha])
+  assert.equal(io.refs.has(MUTEX_REF),false)
+  assert.equal(releaseHeldMutexOnProcessExit(),false,'a second call is a no-op')
+})
+
+test('#4255 process-exit cleanup never deletes a successor-owned mutex',()=>{
+  const io=reviewIo()
+  const sha=io.makeOwnerCommit('db-coordination reviewer-assignment-lock issue=1 pr=2 head='+'e'.repeat(40))
+  const rival='f'.repeat(40)
+  io.refs.set(MUTEX_REF,rival)
+  noteHeldMutex(sha,io)
+  let asked=null
+  io.releaseRefOverGit=(ref,owner)=>{asked=[ref,owner];return false}
+  releaseHeldMutexOnProcessExit()
+  assert.deepEqual(asked,[MUTEX_REF,sha])
+  assert.equal(io.refs.get(MUTEX_REF),rival)
 })
 
 
@@ -10374,12 +10505,12 @@ test('#498-12 a legacy lease and a wrong owner are two different refusals on res
   const io = memoryIo()
   io.openClaims = () => [{ number: 7, body: claimBodyText }]
   io.getIssue = () => ({ state: 'open', body: claimBodyText })
-  const { code, text } = refusalText(['--resume-author-lease', '--claim-number', '7', '--owner', 'agent-9', '--lease-hours', '4'], io)
+  const { code, text } = refusalText(['--resume-author-lease', '--claim-number', '7', '--owner', 'agent-9', '--lease-hours', '0.5'], io)
   assert.equal(code, 2)
   // It must not be the old combined "is legacy or belongs to a different owner".
   assert.doesNotMatch(text, /is legacy or belongs to a different owner/)
   assert.match(text, /the owner on record is "agent-7"/)
-  assert.match(text, /--resume-author-lease --claim-number 7 --owner "agent-7" --lease-hours <1-24>/)
+  assert.match(text, /--resume-author-lease --claim-number 7 --owner "agent-7" --lease-hours <0-0.5>/)
 })
 
 // --- issue #2824 hole 1: the sanctioned scope-status writer -----------------
@@ -11291,14 +11422,14 @@ test('Windows monotonic pause invokes supported command launcher and independent
 test('committed provider release retry repairs pause only without changing refs or original failure time',()=>{
  const io=failedReviewIo(),originalGet=io.getCommit
  io.getCommit=sha=>({...originalGet(sha),committedDate:'2026-10-06T18:00:00Z'})
- io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/${replacementRequest.issue}-${replacementRequest.pr}-${replacementRequest.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=${replacementRequest.issue} pr=${replacementRequest.pr} head=${replacementRequest.headSha} slot=1 sequence=1 reviewer=grok-4.6 at=2026-10-06T17:00:00Z`}}]
+ io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/${replacementRequest.issue}-${replacementRequest.pr}-${replacementRequest.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=${replacementRequest.issue} pr=${replacementRequest.pr} head=${replacementRequest.headSha} slot=1 sequence=1 reviewer=glm-5.3 at=2026-10-06T17:00:00Z`}}]
  io.readReviewStates=leases=>new Map(leases.map(lease=>[`${lease.issue}:${lease.pr}`,{issue:{state:'open'},pr:{state:'open',head:{sha:lease.headSha}},evidence:[]}]))
  io.readReviewRefs=refs=>new Map(refs.map(ref=>[ref,io.refs.get(ref)??null]))
  io.atomicReviewRefs=changes=>{for(const c of changes)assert.equal(io.refs.get(c.ref)??null,c.expected??null);for(const c of changes){if(c.sha===null)io.refs.delete(c.ref);else io.refs.set(c.ref,c.sha)}}
  io.atomicReviewMutexRelease=sha=>io.atomicReviewRefs([{ref:MUTEX_REF,expected:sha,sha:null}])
  let calls=0;io.pauseReviewerFailure=()=>{calls++;throw Error('protected store temporarily unavailable')}
  assert.throws(()=>releaseFailedReviewer(replacementRequest,io),/temporarily unavailable/)
- const snapshot=[...io.refs];assert.equal(io.refs.get(reviewActiveRef('grok-4.6'))??null,null)
+ const snapshot=[...io.refs];assert.equal(io.refs.get(reviewActiveRef('glm-5.3'))??null,null)
  io.pauseReviewerFailure=record=>{calls++;assert.equal(record.observedEpoch,1791309600);return{status:'expired'}}
  const result=releaseFailedReviewer(replacementRequest,io)
  assert.equal(result.alreadyReleased,true);assert.equal(result.pause.paused,false)
@@ -11309,10 +11440,10 @@ test('committed provider release retry repairs pause only without changing refs 
 
 test('string CLI replacement binds normalized original paid failure rather than new reviewer',()=>{
  const io=failedReviewIo(),get=io.getCommit;io.getCommit=sha=>({...get(sha),committedDate:'2026-10-06T18:00:00Z'})
- io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/9-109-${failedReview.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=9 pr=109 head=${failedReview.headSha} slot=1 sequence=1 reviewer=grok-4.6 at=2026-10-06T17:00:00Z`}}]
+ io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/9-109-${failedReview.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=9 pr=109 head=${failedReview.headSha} slot=1 sequence=1 reviewer=glm-5.3 at=2026-10-06T17:00:00Z`}}]
  let paused;io.pauseReviewerFailure=record=>{paused=record}
  const result=replaceFailedReviewer({...replacementRequest,issue:'9',pr:'109',failedSequence:'1',slot:'1',headSha:failedReview.headSha.toUpperCase()},io)
- assert.equal(paused.issue,9);assert.equal(paused.pr,109);assert.equal(paused.headSha,failedReview.headSha);assert.equal(paused.reviewer,'grok-4.6');assert.notEqual(result.reviewer,paused.reviewer);assert.equal(paused.observedEpoch,1791309600)
+ assert.equal(paused.issue,9);assert.equal(paused.pr,109);assert.equal(paused.headSha,failedReview.headSha);assert.equal(paused.reviewer,'glm-5.3');assert.notEqual(result.reviewer,paused.reviewer);assert.equal(paused.observedEpoch,1791309600)
 })
 
 test('string CLI release normalizes the exact original paid failure before releasing and pausing',()=>{
@@ -11321,12 +11452,12 @@ test('string CLI release normalizes the exact original paid failure before relea
  io.readReviewRefs=refs=>new Map(refs.map(ref=>[ref,io.refs.get(ref)??null]))
  io.atomicReviewRefs=changes=>{for(const c of changes)assert.equal(io.refs.get(c.ref)??null,c.expected??null);for(const c of changes){if(c.sha===null)io.refs.delete(c.ref);else io.refs.set(c.ref,c.sha)}}
  io.atomicReviewMutexRelease=sha=>io.atomicReviewRefs([{ref:MUTEX_REF,expected:sha,sha:null}])
- io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/9-109-${failedReview.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=9 pr=109 head=${failedReview.headSha} slot=1 sequence=1 reviewer=grok-4.6 at=2026-10-06T17:00:00Z`}}]
+ io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/9-109-${failedReview.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=9 pr=109 head=${failedReview.headSha} slot=1 sequence=1 reviewer=glm-5.3 at=2026-10-06T17:00:00Z`}}]
  let paused;io.pauseReviewerFailure=record=>{paused=record;return {status:'expired'}}
  const result=releaseFailedReviewer({...replacementRequest,issue:'9',pr:'109',failedSequence:'1',slot:'1',headSha:failedReview.headSha.toUpperCase()},io)
  assert.equal(result.headSha,failedReview.headSha)
  assert.equal(paused.issue,9);assert.equal(paused.pr,109);assert.equal(paused.failedSequence,1)
- assert.equal(paused.headSha,failedReview.headSha);assert.equal(paused.reviewer,'grok-4.6');assert.equal(paused.observedEpoch,1791309600)
+ assert.equal(paused.headSha,failedReview.headSha);assert.equal(paused.reviewer,'glm-5.3');assert.equal(paused.observedEpoch,1791309600)
  assert.equal(io.refs.get(`refs/db-review-failures/9-109-${failedReview.headSha}-1`),result.failureSha)
 })
 
@@ -11336,12 +11467,12 @@ test('uppercase string CLI release retry repairs the original pause without chan
  io.readReviewRefs=refs=>new Map(refs.map(ref=>[ref,io.refs.get(ref)??null]))
  io.atomicReviewRefs=changes=>{for(const c of changes)assert.equal(io.refs.get(c.ref)??null,c.expected??null);for(const c of changes){if(c.sha===null)io.refs.delete(c.ref);else io.refs.set(c.ref,c.sha)}}
  io.atomicReviewMutexRelease=sha=>io.atomicReviewRefs([{ref:MUTEX_REF,expected:sha,sha:null}])
- io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/9-109-${failedReview.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=9 pr=109 head=${failedReview.headSha} slot=1 sequence=1 reviewer=grok-4.6 at=2026-10-06T17:00:00Z`}}]
+ io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/9-109-${failedReview.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=9 pr=109 head=${failedReview.headSha} slot=1 sequence=1 reviewer=glm-5.3 at=2026-10-06T17:00:00Z`}}]
  const request={...replacementRequest,issue:'9',pr:'109',failedSequence:'1',slot:'1',headSha:failedReview.headSha.toUpperCase()}
  let calls=0;io.pauseReviewerFailure=record=>{calls++;assert.equal(record.headSha,failedReview.headSha);throw Error('original pause unavailable')}
  assert.throws(()=>releaseFailedReviewer(request,io),/original pause unavailable/)
  const snapshot=[...io.refs]
- io.pauseReviewerFailure=record=>{calls++;assert.equal(record.headSha,failedReview.headSha);assert.equal(record.observedEpoch,1791309600);assert.equal(record.reviewer,'grok-4.6');return {status:'expired'}}
+ io.pauseReviewerFailure=record=>{calls++;assert.equal(record.headSha,failedReview.headSha);assert.equal(record.observedEpoch,1791309600);assert.equal(record.reviewer,'glm-5.3');return {status:'expired'}}
  const result=releaseFailedReviewer(request,io)
  assert.equal(result.alreadyReleased,true);assert.equal(result.headSha,failedReview.headSha);assert.equal(result.pause.paused,false)
  assert.deepEqual([...io.refs],snapshot);assert.equal(calls,2)
@@ -11349,11 +11480,11 @@ test('uppercase string CLI release retry repairs the original pause without chan
 
 test('completed replacement pause failure repairs through exact immutable no-write release retry',()=>{
  const io=failedReviewIo(),get=io.getCommit;io.getCommit=sha=>({...get(sha),committedDate:'2026-10-06T18:00:00Z'})
- io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/9-109-${failedReview.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=9 pr=109 head=${failedReview.headSha} slot=1 sequence=1 reviewer=grok-4.6 at=2026-10-06T17:00:00Z`}}]
+ io.readPaidReviewStarts=()=>[{ref:`refs/db-review-started/9-109-${failedReview.headSha}-slot1-seq1`,sha:'a'.repeat(40),commit:{message:`db-coordination review-started issue=9 pr=109 head=${failedReview.headSha} slot=1 sequence=1 reviewer=glm-5.3 at=2026-10-06T17:00:00Z`}}]
  let calls=0;io.pauseReviewerFailure=()=>{calls++;throw Error('supported pause store unavailable')}
  assert.throws(()=>replaceFailedReviewer(replacementRequest,io),/pause store unavailable/)
  const snapshot=[...io.refs],cursor=io.refs.get(REVIEW_CURSOR_REF)
- io.pauseReviewerFailure=record=>{calls++;assert.equal(record.observedEpoch,1791309600);assert.equal(record.reviewer,'grok-4.6');return{status:'expired'}}
+ io.pauseReviewerFailure=record=>{calls++;assert.equal(record.observedEpoch,1791309600);assert.equal(record.reviewer,'glm-5.3');return{status:'expired'}}
  const result=releaseFailedReviewer(replacementRequest,io)
  assert.equal(result.alreadyReleased,true);assert.equal(result.pause.paused,false);assert.equal(calls,2)
  assert.deepEqual([...io.refs],snapshot);assert.equal(io.refs.get(REVIEW_CURSOR_REF),cursor)

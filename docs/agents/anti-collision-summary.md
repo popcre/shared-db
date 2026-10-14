@@ -10,6 +10,16 @@ preview rehearsal and its recovery lane:
 Read it in full before you claim a lane, author a migration, or rehearse on preview.** The five
 rules below are the operative summary.
 
+**Stopped-owner and check-in rule (2026-10-13, #3618):** new author permissions
+are at most thirty minutes. Explicitly check in through native `--check-in-author`
+every ten minutes and before protected actions; the migration gate verifies the
+actual confirmation timestamp. At normal completion, an external-block stop, or
+wrap-up, stop writers and finish native release or `--stop-author` readiness.
+An actual successor consumes the create-only ready receipt immediately through
+`--handoff-claim-author` (with `--remote-custody` when the original worktree is on
+another machine and absent here, #4288); it never waits out the former owner's deadline. Preserve
+object/version/source protection. See the current procedure in the full text.
+
 1. **There is no limit on how many unrelated migrations may be authored at once. Preview, merges,
    and production promotion remain one at a time** (owner ruling 2026-09-11, marker #2758, issue
    #2775: no limit on migration author lanes, ever). Exact object claims and version reservations
@@ -64,12 +74,13 @@ rules below are the operative summary.
      only when there is no verdict and no progress, or a concrete transport, coverage, or
      truncated-output failure. Never replace `REVISE` or reduce coverage: exhaust active providers
     not failed on the exact head, then fail closed with the exact blocker. The configured rotation is
-    Grok 4.6, GLM 5.3, Qwen 3.8 Max, Muse Spark 1.3 Contributor,
+    GLM 5.3, Qwen 3.8 Max, Muse Spark 1.3 Contributor,
     Gemini 3.8 Flash High, DeepSeek V4.1 Flash, and StepFun Step 5 (Linux machines only), minus the authoring engine (automation still keys this on the marker; see #3874) — exactly
     `ACTIVE_REVIEWERS` in `scripts/manage-migration-author-lanes.mjs`.
     **Preference (owner, 2026-09-27, non-orchestrator issue #3592):** the allocator rotates
-    among eligible non-Grok reviewers first; Grok stays active and is drawn only when that
-    preferred pool cannot take the exact review (also for slot 2 and replacements). Gemini
+    among eligible non-Grok reviewers first; Grok was drawn only when that
+    preferred pool could not take the exact review (also for slot 2 and replacements), and is
+    QUARANTINED since 2026-10-13 (xAI account out of credit), so it is not drawn at all. Gemini
     re-entered on 2026-09-06 (PR #2438) after a live re-qualification. Kimi K3
     was unpaused on 2026-09-07 (PR #2483) after a passing wrapper doctor; it
     is paused again as of 2026-09-22 (see below). Qwen 3.8 Max was unquarantined on 2026-09-07 by owner

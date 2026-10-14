@@ -338,7 +338,9 @@ export const RETIRED_REVIEWERS = Object.freeze(['glm-5.2', 'muse-spark-1.2-contr
 // They remain installed and callable by name outside the allocator. Reverse by
 // deleting each name from this list (and from the popcre/ai-devops
 // config/reviewer-registry.json mirror) under a later owner instruction.
-// Maintained pool is Muse, DeepSeek, GLM, StepFun (owner 2026-10-13, popcre/ai-devops#1714).
+// Maintained rotation pool is exactly Muse, DeepSeek, GLM, and StepFun
+// (owner instruction 2026-10-13, popcre/ai-devops#1714). Grok, Qwen, and
+// Gemini stay installed and callable by name but are not drawn.
 export const QUARANTINED_REVIEWERS = Object.freeze(['grok-4.6', 'qwen-3.8-max', 'gemini-3.8-flash-high'])
 
 // The single fact the gate was missing (#2078). A verdict is evidence only if the

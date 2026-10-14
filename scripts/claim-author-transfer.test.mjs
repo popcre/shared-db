@@ -627,3 +627,45 @@ test('CLI binds --remote-custody to --handoff-claim-author only (#4288 review)',
   try{assert.equal(main(['--renew-claim','--remote-custody','--issue','2110','--claim-number','3378'],NOW,io),2)}finally{console.error=error}
   assert.match(errors.at(-1),/--remote-custody is valid only with --handoff-claim-author/)
 })
+
+test('remote custody rides on the full receipt binding: each mismatch refuses (#4288 review round 2)',()=>{
+  const cases=[
+    ['branch',(io,a)=>({...a,branch:'codex/other'})],
+    ['original worktree',(io,a)=>({...a,worktree:'C:/elsewhere'})],
+    ['old owner',(io,a)=>({...a,oldOwner:'someone-else'})],
+    ['reservation',(io,a)=>{io.refs.set('refs/db-claims/'+VERSION,'e'.repeat(40));return a}],
+    ['execution not stopped',(io,a,stop)=>{const prefix='db-coordination author-handoff-ready ',sha=io.refs.get(stop.handoffReadyRef),rec=JSON.parse(io.getCommit(sha).message.slice(prefix.length));io.refs.set(stop.handoffReadyRef,io.makeOwnerCommit(prefix+JSON.stringify({...rec,execution_stopped:false})));return a}],
+  ]
+  for(const [name,mutate] of cases){
+    const {io,request,accept,stop}=remoteHandoff(),changed=mutate(io,accept,stop)
+    const before=io.getIssue(request.claim).body
+    assert.throws(()=>handoffClaimAuthor(changed,NOW,io),undefined,name)
+    assert.equal(io.getIssue(request.claim).body,before,name)
+  }
+})
+test('a stored handoff receipt with custody other than remote is refused on replay (#4288 review round 2)',()=>{
+  const {io,request,accept}=remoteHandoff()
+  handoffClaimAuthor(accept,NOW,io)
+  const ref=[...io.refs.keys()].find(r=>r.startsWith(CLAIM_AUTHOR_HANDOFF_REF_PREFIX)),prefix='db-coordination claim-author-voluntary-handoff '
+  const rec=JSON.parse(io.getCommit(io.refs.get(ref)).message.slice(prefix.length))
+  io.refs.set(ref,io.makeOwnerCommit(prefix+JSON.stringify({...rec,original_worktree_custody:'local'})))
+  assert.throws(()=>handoffClaimAuthor(accept,NOW,io),/invalid original worktree custody/)
+})
+test('a non-boolean remote custody flag is refused (#4288 review round 2)',()=>{
+  const {io,request,accept}=remoteHandoff()
+  unchanged(io,request.claim,()=>handoffClaimAuthor({...accept,remoteCustody:'true'},NOW,io),/must be a boolean/)
+})
+test('CLI --handoff-claim-author --remote-custody accepts end to end (#4288 review round 2)',()=>{
+  const {io,request,stop}=remoteHandoff(),dir=mkdtempSync(join(tmpdir(),'remote-handoff-'))
+  const quoteFile=join(dir,'quote.txt');writeFileSync(quoteFile,QUOTE+'\n')
+  const argv=['--handoff-claim-author','--remote-custody','--issue',String(request.issue),'--claim-number',String(request.claim),'--pr',String(request.pr),
+    '--head-sha',HEAD,'--old-owner',request.oldOwner,'--new-owner',request.newOwner,'--branch',request.branch,
+    '--worktree',request.worktree,'--target-worktree',request.targetWorktree,'--worktree-state','clean',
+    '--authorization-chat-id','new-author','--authorization-quote-file',quoteFile,'--recovery-artifact',request.recoveryArtifact,
+    '--recipient-chat-id',request.recipientChatId,'--handoff-ready-ref',stop.handoffReadyRef,'--request-id','cli-remote']
+  const log=console.log,error=console.error;console.log=()=>{};console.error=()=>{}
+  try{assert.equal(main(argv,NOW,io),0)}finally{console.log=log;console.error=error;rmSync(dir,{recursive:true,force:true})}
+  const lease=parseAuthorLease(io.getIssue(request.claim).body,NOW);assert.equal(lease.owner,request.newOwner)
+  const ref=[...io.refs.keys()].find(r=>r.startsWith(CLAIM_AUTHOR_HANDOFF_REF_PREFIX))
+  assert.equal(JSON.parse(io.getCommit(io.refs.get(ref)).message.split('claim-author-voluntary-handoff ')[1]).original_worktree_custody,'remote')
+})

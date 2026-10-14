@@ -2556,6 +2556,7 @@ function changeClaimAuthor(options,now,io,voluntary){
   // is the existing voluntary-handoff proof: readAuthorReady requires execution_stopped
   // and an author_session resolving to the owner, the recovery point must be exactly
   // artifact:<PR head>, and the live PR head/branch, body hash and reservation must match.
+  if(options.remoteCustody!==undefined&&typeof options.remoteCustody!=='boolean')throw new LaneError('remote custody flag must be a boolean')
   const remoteCustody=options.remoteCustody===true
   if(remoteCustody&&(!voluntary||!readyRef))throw new LaneError('remote custody acceptance requires a voluntary handoff with the original owner-signed ready receipt')
   if(voluntary&&!/^[A-Za-z0-9._-]{1,120}$/.test(requestId))throw new LaneError('voluntary handoff request ID has invalid shape')

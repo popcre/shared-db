@@ -7,7 +7,7 @@
   "base_sha": "9595a63fcc0c616687d858b0eef1b3864a9d265e",
   "dispatcher": "Codex coordinator 01a13b6d-f095-72f1-ab6b-fce664912065",
   "worker": "codex",
-  "branch": "codex/4294-dependency-regression",
+  "branch": "mimo/allowlist-widen-slot2",
   "worktree": "/home/ahazan/.codex/worktrees/review-dependency-4294/shared-db",
   "allowed_paths": [
     "scripts/lib/lanes/github-wire.mjs",

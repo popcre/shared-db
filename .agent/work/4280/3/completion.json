@@ -21,7 +21,7 @@
     {
       "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
       "exit_code": 0,
-      "evidence": "858 tests pass, 0 fail on the four-reviewer pool after merge with main."
+      "evidence": "858 tests pass, 0 fail on the four-reviewer pool after merge with main (rebind 2026-10-14)."
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",

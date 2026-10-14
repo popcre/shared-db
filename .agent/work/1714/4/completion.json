@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "work_issue": 1714,
+  "outcome": "ready-for-merge",
+  "pr": 4272,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/1714/4",
+  "contract_sha256": "b163662bba816774dfc2ea4798c754f7d79dfd451832fc8a81f01c461b52091f",
+  "head_sha": "9d3de51188644ab4a9d760433807f84dc69bd0dc",
+  "base_sha": "be192f32a35dbf250a4612c95f7f89e55c4aec04",
+  "files_changed": [
+    "scripts/lib/lanes/reviewer-roster.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "docs/verification/throughput-dispositions/scripts~lib~lanes~reviewer-roster.mjs.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "849 tests pass, 0 fail on the four-reviewer pool after merge with main."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK after disposition line-key refresh."
+    }
+  ],
+  "assumptions_resolved": [
+    "ACTIVE_REVIEWERS is exactly glm-5.3, muse-spark-1.3-contributor, deepseek-v4.1-flash, stepfun-step-5-preview.",
+    "Quarantine keeps REVIEWERS rows readable so durable verdicts naming qwen/gemini/grok still resolve."
+  ],
+  "stop_conditions_hit": []
+}

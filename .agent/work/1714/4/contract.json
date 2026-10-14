@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "work_issue": 1714,
+  "generation": 4,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Quarantine qwen-3.8-max and gemini-3.8-flash-high in the shared-db reviewer roster so ACTIVE_REVIEWERS is exactly Muse, DeepSeek, GLM, and StepFun (owner instruction 2026-10-13, popcre/ai-devops#1714). REVIEWERS rows stay so durable verdicts still resolve.",
+  "base_sha": "be192f32a35dbf250a4612c95f7f89e55c4aec04",
+  "dispatcher": "MiMo chat unknown on edge-dev",
+  "worker": "MiMo",
+  "branch": "mimo/1714-quarantine-qwen-gemini",
+  "worktree": "C:\\repos\\shared-db-worktrees\\wt-1714-roster",
+  "allowed_paths": [
+    ".agent/work/1714/4/completion.json",
+    ".agent/work/1714/4/contract.json",
+    "scripts/lib/lanes/reviewer-roster.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "docs/verification/throughput-dispositions/scripts~lib~lanes~reviewer-roster.mjs.json"
+  ],
+  "file_writes": [
+    ".agent/work/1714/4/completion.json",
+    ".agent/work/1714/4/contract.json",
+    "scripts/lib/lanes/reviewer-roster.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "docs/verification/throughput-dispositions/scripts~lib~lanes~reviewer-roster.mjs.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not change any migration, database object, workflow schedule, or live database row.",
+    "Do not retire or delete REVIEWERS rows.",
+    "Do not touch other issues code paths or claim other objects."
+  ],
+  "required_checks": [
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs"
+  ],
+  "assumptions": [
+    "Quarantine is reversible membership scope, not retirement; durable verdicts naming qwen/gemini/grok keep resolving through REVIEWERS.",
+    "The 2026-10-13 owner instruction replaces the earlier six-name rotation; StepFun is the fourth name in place of Grok."
+  ],
+  "stop_conditions": [
+    "Stop if the change would need to touch a file outside allowed_paths.",
+    "Stop if allocator tests fail for a reason unrelated to the roster membership change.",
+    "Stop on any gate refusal rather than weakening the gate."
+  ]
+}

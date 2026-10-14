@@ -628,20 +628,24 @@ test('CLI binds --remote-custody to --handoff-claim-author only (#4288 review)',
   assert.match(errors.at(-1),/--remote-custody is valid only with --handoff-claim-author/)
 })
 
-test('remote custody rides on the full receipt binding: each mismatch refuses (#4288 review round 2)',()=>{
-  const cases=[
-    ['branch',(io,a)=>({...a,branch:'codex/other'})],
-    ['original worktree',(io,a)=>({...a,worktree:'C:/elsewhere'})],
-    ['old owner',(io,a)=>({...a,oldOwner:'someone-else'})],
-    ['reservation',(io,a)=>{io.refs.set('refs/db-claims/'+VERSION,'e'.repeat(40));return a}],
-    ['execution not stopped',(io,a,stop)=>{const prefix='db-coordination author-handoff-ready ',sha=io.refs.get(stop.handoffReadyRef),rec=JSON.parse(io.getCommit(sha).message.slice(prefix.length));io.refs.set(stop.handoffReadyRef,io.makeOwnerCommit(prefix+JSON.stringify({...rec,execution_stopped:false})));return a}],
-  ]
-  for(const [name,mutate] of cases){
-    const {io,request,accept,stop}=remoteHandoff(),changed=mutate(io,accept,stop)
-    const before=io.getIssue(request.claim).body
-    assert.throws(()=>handoffClaimAuthor(changed,NOW,io),undefined,name)
-    assert.equal(io.getIssue(request.claim).body,before,name)
+// Each receipt field is forged on its own while the receipt stays self-consistent
+// (ref name, author session), so only the owner-consent binding can refuse it.
+function forgeReady(io,stop,patch){
+  const prefix='db-coordination author-handoff-ready ',rec={...JSON.parse(io.getCommit(io.refs.get(stop.handoffReadyRef)).message.slice(prefix.length)),...patch}
+  const ref='refs/db-author-handoff-ready/'+rec.claim+'-'+rec.version+'-'+rec.body_sha256.slice(0,24)
+  io.refs.set(ref,io.makeOwnerCommit(prefix+JSON.stringify(rec)));return ref
+}
+test('remote custody rides on the full receipt binding: each forged field refuses at the consent check (#4288 review round 3)',()=>{
+  const cases=[['issue',{issue:4242}],['pr',{pr:4243}],['head_sha',{head_sha:'f'.repeat(40)}],['branch',{branch:'codex/other'}],['worktree',{worktree:'C:/elsewhere'}],
+    ['owner',{owner:'other-owner',author_session:'other-owner'}],['reservation_sha',{reservation_sha:'e'.repeat(40)}],['version',{version:'20990101000000'}]]
+  for(const [name,patch] of cases){
+    const {io,request,accept,stop}=remoteHandoff(),ref=forgeReady(io,stop,patch)
+    unchanged(io,request.claim,()=>handoffClaimAuthor({...accept,handoffReadyRef:ref},NOW,io),/owner-issued ready consent differs from exact source, claim or actual recipient/)
   }
+})
+test('remote custody refuses a receipt whose execution was not stopped (#4288 review round 3)',()=>{
+  const {io,request,accept,stop}=remoteHandoff(),ref=forgeReady(io,stop,{execution_stopped:false})
+  unchanged(io,request.claim,()=>handoffClaimAuthor({...accept,handoffReadyRef:ref},NOW,io),/differ from their immutable identity/)
 })
 test('a stored handoff receipt with custody other than remote is refused on replay (#4288 review round 2)',()=>{
   const {io,request,accept}=remoteHandoff()

@@ -1,6 +1,6 @@
 # Review service recovery policy
 
-Owner-authorized implementation tracked on [#4297](https://github.com/popcre/shared-db/issues/4297), delivered as one atomic, independently reviewed PR #4294. PR #4294 source is incorporated with its history and original attribution; it is not a separately merged prerequisite. This tooling policy preserves the mandatory independent exact-head approval count and guarded merge.
+Owner-authorized implementation is tracked on [#4297](https://github.com/popcre/shared-db/issues/4297). The combined source was externally merged through PR #4294; remaining audit and conservative-counting repairs continue on that same work issue. Original source, history and attribution are preserved. The earlier external merge is not evidence of independent approval. This tooling policy preserves the mandatory independent exact-head approval count and guarded merge.
 
 ## Two distinct allowances
 

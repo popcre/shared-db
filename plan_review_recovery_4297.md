@@ -1,5 +1,20 @@
 # IMPLEMENTATION PLAN — review recovery (#4297, October 14, 2026 EDT)
 
+
+## STATUS — proof recorded October 14, 2026, 5:01 PM EDT
+
+| Step | Recorded state | Evidence / next action |
+|---|---|---|
+| Scope and delegation | DONE | Immutable generations1–13; bounded High/Extra High lanes. Do not re-plan. |
+| Failure accounting and either-slot assignment | DONE implementation | Combined source on main through4294; remaining count-only gap/diagnostic repair on4308. Do not rewrite completed source. |
+| Guarded terminal release and approval composition | DONE implementation | Exact tuple/CAS, private carry and negative/returned-slot behavioral gates pass. |
+| Adversarial and audit verification | DONE local | 1,289 behavioral passes, one existing skip; required truth-audit16/16 and Tools Offline throughput72/72. |
+| Independent approval and guarded delivery | OPEN at dispatch | PR4308 owns the assigned exact-head review, required CI and guarded merge. Earlier external4294 merge is not approval evidence. |
+| Merged-source live acceptance | PARTIAL at dispatch | Genuine slot2-first resolver and isolated historical refunds pass on5af/fad source; final4308 source and actual review execution still require proof. No live two-failure exhaustion pair was established. |
+| Model-effort comparison | DONE | No controlled benefit demonstrated for Extra High; High is the default for bounded mechanical work. |
+
+Start at the live acceptance checklist on [issue4297](https://github.com/popcre/shared-db/issues/4297) and [PR4308](https://github.com/popcre/shared-db/pull/4308), not at completed authoring. This dated table records dispatch-time proof; those live cards are authoritative for later approval, delivery and closure.
+
 ## 1. Ultimate goal
 Failed review services must not prevent healthy independent reviewers from reviewing unchanged work. Spending stays bounded and rejected work still needs repair. If any step conflicts with this goal, the goal wins — stop and flag it.
 
@@ -7,7 +22,7 @@ Failed review services must not prevent healthy independent reviewers from revie
 Canonical popcre/shared-db tooling coordinates shared schema review. This is zero-database repository maintenance in a dedicated current-upstream worktree. Node.js modules, GitHub immutable refs, allocator mutex and guarded merge are existing capabilities.
 
 ## 3. Trigger
-The review-recovery work addresses bounded paid-review exhaustion, independent reviewer assignment, owner-quoted fresh-slot policy widening, and valid review carry across equivalent content. The combined source and approval-composition repair are delivered atomically as PR #4294; PR #4294 source is incorporated with its original commit history and attribution, without a separate dependency merge.
+The review-recovery work addresses bounded paid-review exhaustion, independent reviewer assignment, owner-quoted fresh-slot policy widening, and valid review carry across equivalent content. The combined source and approval-composition repair were externally merged through PR #4294 with original history and attribution. PR #4308 completes the remaining genuine audit and conservative-counting repairs; both delivery and formal review remain separate proof obligations.
 
 ## 4. Scope
 Budget accounting, out-of-order assignments, automatic verified terminal releases, fresh-slot allowlist widening, carried-slot policy and exact-head approval composition, documentation, and adversarial tests. NOT migrations, production/database writes, historical proof fabrication, reviewer roster changes, removing gates, or paid automatic retry loops.

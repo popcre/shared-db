@@ -65,6 +65,7 @@
 import { execFileSync } from 'node:child_process'
 import { runGitHubCommand } from './lib/github-transport.mjs'
 import { readFileSync } from 'node:fs'
+import { ownerReviewerReuseAllowed } from './lib/lanes/owner-reviewer-reuse.mjs'
 import { pathToFileURL } from 'node:url'
 import { REPO, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_RETURN_REF_PREFIX, parseAssignmentRef, parseReviewCursor, parseReviewReturn, reviewReturnRef, reviewerReadsRepository, selectNewestCommitStatus } from './manage-migration-author-lanes.mjs'
 import { approvalLine, evidenceTiedToHead, refusalLine, trustedVerdictEvidence, unambiguouslyTiedToHead } from './lib/review-verdict.mjs'
@@ -288,7 +289,7 @@ export function evaluateExactHeadApproval(input) {
     for (const assignment of latestBySlot.values()) {
       const reviewer = approvals.find((row) => row.assignment_sha === assignment.sha)?.reviewer
       if (!reviewer) throw new ApprovalCheckError(`review slot ${assignment.slot} has no verified reviewer identity`)
-      if (providers.has(reviewer) && input.mergedAtHead !== true) throw new ApprovalCheckError(`review slots at exact head ${headSha} share reviewer ${reviewer}; independent approval refused`)
+      if (providers.has(reviewer) && input.mergedAtHead !== true && input.ownerReuse?.(reviewer) !== true) throw new ApprovalCheckError(`review slots at exact head ${headSha} share reviewer ${reviewer}; independent approval refused`)
       providers.add(reviewer)
     }
     return { approved: true, head_sha: headSha, pr: Number(pr), assignments: latestBySlot.size, approvals: new Set(approvals.map((row) => row.ref)).size, required_slots: requiredSlots }
@@ -554,7 +555,7 @@ export function gatherApprovalInput(env = process.env, deps = { json, pages }) {
   // carry their previous name too, so a migration renamed to a `.md` is still a
   // migration change. Unreadable input yields a list the classifier refuses.
   const changedFiles = changedPathsFromPullRequestFiles(readPages(`repos/${REPO}/pulls/${pr}/files?per_page=100`))
-  return { pr, headSha, evidence, assignments, returns, verdicts, changedFiles, priorHeads, mergeAudit: null, mergedAtHead }
+  return { pr, headSha, evidence, assignments, returns, verdicts, changedFiles, priorHeads, mergeAudit: null, mergedAtHead, ownerReuse: (reviewer) => ownerReviewerReuseAllowed({ pr: Number(pr), slot: 2, reviewer }) }
 }
 
 // A MERGE FROM MAIN DOES NOT VOID AN APPROVAL (orchestrator marker #2758, 2026-09-11).

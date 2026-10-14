@@ -2124,3 +2124,16 @@ number releases an unreadable record, by design, so it can never wedge merges); 
 --owner <text>` (or `--pr <n>`) ends it, and the production job's always() cleanup releases the
 freeze for its source PR. Release ownership is an accident guard, not a security boundary: the production
 job must be able to release a freeze it did not set.
+
+## Owner-named reviewer reuse on an open pull request (2026-10-14)
+
+Verbatim from Albert's chat (2026-10-14): "let Muse review twice but don't stop the other agent's approach"
+
+Extends the 2026-10-02 reuse ruling. A pull request listed in
+`config/owner-reviewer-reuse.json`, with the owner's verbatim quote and the
+named reviewer, may fill review slot 2 or later with that reviewer even while
+it holds another slot at the same head and the pull request is still open.
+Slot 1 is unaffected, an unlisted pull request stays strict, and a malformed or
+unreadable list grants nothing. Code: `scripts/lib/lanes/owner-reviewer-reuse.mjs`,
+consulted by `mergedPrReviewerReuseAllowed` and both approval gates. Remove an
+entry once its pull request merges. First entry: PR #4206 (#2336), Muse.

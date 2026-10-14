@@ -1,0 +1,13 @@
+{
+  "schema": "shared-db-owner-reviewer-reuse/v1",
+  "_comment": "Owner-named open pull requests whose later review slots may reuse a reviewer that holds another slot at the same exact head. Each entry quotes Albert verbatim. Remove an entry once its pull request merges.",
+  "entries": [
+    {
+      "pr": 4206,
+      "issue": 2336,
+      "reviewer": "muse-spark-1.3-contributor",
+      "owner_quote": "let Muse review twice but don't stop the other agent's approach",
+      "ruled_at": "2026-10-14"
+    }
+  ]
+}

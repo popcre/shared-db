@@ -1078,3 +1078,11 @@ test('#3505: the advisory context is distinct from the real grant context', () =
     /is not a lawful authorization/,
   )
 })
+
+test('2026-10-14 ruling: the ownerReuse callback excuses only the reviewer it names, and an unlisted PR gets none', () => {
+  const input = gatherApprovalInput({ PR_NUMBER: '1931' }, returnedSlotGithub({ redrawSequence: 9, redrawReviewer: 'kimi-k3' }))
+  assert.equal(input.ownerReuse('kimi-k3'), false, 'PR 1931 is not owner-listed')
+  assert.throws(() => evaluateExactHeadApproval(input), /share reviewer kimi-k3/)
+  assert.equal(evaluateExactHeadApproval({ ...input, ownerReuse: (r) => r === 'kimi-k3' }).approved, true)
+  assert.throws(() => evaluateExactHeadApproval({ ...input, ownerReuse: (r) => r === 'muse-spark-1.3-contributor' }), /share reviewer kimi-k3/)
+})

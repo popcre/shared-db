@@ -69,6 +69,7 @@ import { leaseHoldText, holdFacts, namedHold, urgentHoldReason, urgentHoldDetail
 export { leaseHoldText, holdFacts, namedHold, urgentHoldReason, urgentHoldDetail, acquireRef, readRefAfterWrite, readPrAfterPush, acquireMutex, requireOwnedRef, recoverStaleAuthorMutex, releaseOwnedRef, releaseMutexOnExit, releaseRefOnExit, releaseRefOverGit, noteHeldMutex, clearHeldMutex, releaseHeldMutexOnProcessExit }
 import { parseReviewCursor, sameVerdictRecord, recordReviewVerdict, nonVerdictReviewerReplacementCommand, nonReadingReviewerReplacementCommand, readReviewVerdicts, reviewActiveRef, parseReviewLease, parseReviewExclusion, REVIEW_EXCLUSION_GENERATION_LIMIT, reviewExclusionRef, reviewReinstatementRef, REVIEW_EXCLUSION_GENERATIONS, countDoctorPassLines, parseReviewReinstatement, parseReviewReturn, parseAssignmentRef, reviewReturnRef, readReviewReturns, retiredVerdictRef, reviewReturnsHeldBy, reviewLeaseRefForAssignment, activeLeaseRecordForAssignment, activeLeaseRecordForJob, reviewLeaseRefCandidates, leaseMatchesAssignment, leaseRefHoldsAssignment, resolveAssignmentLeaseRef, reviewerExclusions, retireVerdictsOrphanedByReturn, outstandingRetirements, reviewExclusionGenerationRows, liveExclusionGeneration } from './lib/lanes/review-records.mjs'
 export { parseReviewCursor, sameVerdictRecord, recordReviewVerdict, nonVerdictReviewerReplacementCommand, nonReadingReviewerReplacementCommand, readReviewVerdicts, reviewActiveRef, parseReviewLease, parseReviewExclusion, REVIEW_EXCLUSION_GENERATION_LIMIT, reviewExclusionRef, reviewReinstatementRef, REVIEW_EXCLUSION_GENERATIONS, countDoctorPassLines, parseReviewReinstatement, parseReviewReturn, parseAssignmentRef, reviewReturnRef, readReviewReturns, retiredVerdictRef, reviewReturnsHeldBy }
+import { ownerReviewerReuseAllowed } from './lib/lanes/owner-reviewer-reuse.mjs'
 import { findPrReviewAssignments, verdictOpensLine, evidenceTiedToHead, isApprovalFor, isVerdictFor, anyVerdictFor, gateAuthorizes, withArchivedVerdictMirror, DURABLE_VERDICT_REF_NAMESPACE, hasVerdictForHead, headVerdictBlocksReplacement, mergedReviewComparisonBase, resolveLaneApprovalBase, assertDurableReviewApproval, MUTEX_RELEASE_READBACK_DELAYS_MS, readDurableVerdictRefs, leaseVerdictOptions, assertReviewLeaseStillStale, isReviewAssignmentLive, mergedPrReviewerReuseAllowed } from './lib/lanes/review-approval.mjs'
 export { findPrReviewAssignments, verdictOpensLine, evidenceTiedToHead, isApprovalFor, isVerdictFor, anyVerdictFor, gateAuthorizes, withArchivedVerdictMirror, DURABLE_VERDICT_REF_NAMESPACE, hasVerdictForHead, headVerdictBlocksReplacement, mergedReviewComparisonBase, resolveLaneApprovalBase, assertDurableReviewApproval, mergedPrReviewerReuseAllowed }
 import { findBusyReviewers, reviewLeaseAgeHours, OWN_START_ONLY_ACTIVITY, REVIEW_REAP_REQUEST_LIMIT, REVIEW_REAP_BATCH, legacyLeaseTerminalReason, REVIEW_ARCHIVED_VERDICT_REF_PREFIX, REVIEW_VERDICT_ARCHIVE_BATCH, archivedVerdictRef, classifyVerdictForArchive, describeMovedAssignmentHead, pickReviewer, reviewSlotSuffix, inReviewReplacementNamespace, newestActivityTimestamp, silenceProbeRef, silenceReleaseRef, parseSilenceProbe, resolveSilentLease, abandonedLeases, verdictArchiveScan, readPullStateMap, countReasons, reviewerCapacityReportOperation, reviewerStartWatchLeasesOperation, selectArtifactFiles, selectArtifactJson } from './lib/lanes/review-leases.mjs'
@@ -2081,8 +2082,11 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
     // twice"): only on a MERGED pull request's post-merge slot >= 2.
     let mergedReuseMemo=null
     const mergedReuse=()=>mergedReuseMemo??=mergedPrReviewerReuseAllowed(request,io)
+    // Owner ruling 2026-10-14: an open PR listed in owner-reviewer-reuse.mjs may
+    // reuse only its owner-named reviewer in slot >= 2.
+    const ownerReuse=(reviewer)=>ownerReviewerReuseAllowed({pr:request.pr,slot:request.slot,reviewer})
     const assertDistinct=(reviewer)=>{
-      if(mergedReuse())return
+      if(mergedReuse()||ownerReuse(reviewer))return
       const {slotOne:first,peers}=resolvePeerSlots(request.issue,request.pr,request.headSha,request.slot,io)
       if(first?.reviewer===reviewer||[...peers.values()].some((row)=>row.reviewer===reviewer))throw new LaneError(`reviewer ${reviewer} already holds another review slot for this exact head; this slot cannot be assigned or retried. If the conflicting slot has no verdict or artifact, use --replace-failed-reviewer with --failure-code ${SLOT_INDEPENDENCE_CONFLICT} and its current sequence.`)
     }
@@ -2252,7 +2256,7 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
     // PR's post-merge slot >= 2, reuse one that already holds another slot on
     // this exact head. Every other exclusion still applies; same rotation order.
     const notTakenReuse=(row)=>eligibleNames.has(row.name)&&reviewerEmitsGovernedVerdict(row.name)&&(concurrentLeases||!busy.has(row.name))&&!exclusions.has(row.name)
-    const reviewer=rotation.find(notTaken)??OVERFLOW_REVIEWERS.find(notTaken)??(mergedReuse()?rotation.find(notTakenReuse)??OVERFLOW_REVIEWERS.find(notTakenReuse):undefined)
+    const reviewer=rotation.find(notTaken)??OVERFLOW_REVIEWERS.find(notTaken)??(mergedReuse()?rotation.find(notTakenReuse)??OVERFLOW_REVIEWERS.find(notTakenReuse):undefined)??rotation.find((row)=>notTakenReuse(row)&&ownerReuse(row.name))
     if(!reviewer){
       // #2694 review (slot 2, medium finding 9). The message used to recite a
       // fixed menu of causes, and `notTaken` implements only some of them: for

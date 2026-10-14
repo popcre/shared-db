@@ -435,7 +435,9 @@ export function gatherApprovalInput(env = process.env, deps = { json, pages }) {
   // `if(!reviewTargetIsRecordable(live,{pr,issue,headSha},io))throw` line), which for a
   // merged PR requires io.mergedPrReviewTarget(pr,issue) === true -- the verified
   // merged-PR issue binding. Pinned by scripts/merged-pr-issue-binding.test.mjs.
-  // Open PRs stay strict. The predicate matches mergedPrLive in the lanes script.
+  // Open PRs stay strict, except an owner-named PR/reviewer pair in
+  // scripts/lib/lanes/owner-reviewer-reuse.mjs (owner ruling 2026-10-14).
+  // The predicate matches mergedPrLive in the lanes script.
   const mergedAtHead = Boolean(livePr?.merged_at) && String(livePr?.state ?? '').toLowerCase() !== 'open' && /^[0-9a-f]{40}$/i.test(headSha) && String(livePr?.head?.sha ?? '').toLowerCase() === headSha.toLowerCase()
   const issueNumbers = new Set([pr])
   // Slot 2 assignments are suffixed `-slot<N>`, and a reviewer replaced after a
@@ -555,7 +557,7 @@ export function gatherApprovalInput(env = process.env, deps = { json, pages }) {
   // carry their previous name too, so a migration renamed to a `.md` is still a
   // migration change. Unreadable input yields a list the classifier refuses.
   const changedFiles = changedPathsFromPullRequestFiles(readPages(`repos/${REPO}/pulls/${pr}/files?per_page=100`))
-  return { pr, headSha, evidence, assignments, returns, verdicts, changedFiles, priorHeads, mergeAudit: null, mergedAtHead, ownerReuse: (reviewer) => ownerReviewerReuseAllowed({ pr: Number(pr), slot: 2, reviewer }) }
+  return { pr, headSha, evidence, assignments, returns, verdicts, changedFiles, priorHeads, mergeAudit: null, mergedAtHead, ownerReuse: (reviewer) => !mergedAtHead && ownerReviewerReuseAllowed({ pr: Number(pr), slot: 2, reviewer }) }
 }
 
 // A MERGE FROM MAIN DOES NOT VOID AN APPROVAL (orchestrator marker #2758, 2026-09-11).

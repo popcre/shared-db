@@ -355,9 +355,10 @@ export function assertDurableReviewApproval(issue,pr,headSha,io=githubIo,{includ
 // docs/owner-rulings.md. Reuse is allowed ONLY for review slot >= 2 on a pull
 // request that is already MERGED at this exact head (the post-merge
 // production-risk-assessment slot), proved through the verified merged-PR issue
-// binding. Open pull requests keep strict slot independence.
+// binding. Open pull requests keep strict slot independence, except the exact
+// owner-named PR and reviewer pairs in owner-reviewer-reuse.mjs (2026-10-14),
+// which callers check per reviewer; this function stays merged-only.
 export function mergedPrReviewerReuseAllowed(request,io){
-  if(ownerReviewerReuseAllowed({pr:request?.pr,slot:request?.slot}))return true
   if(!(Number(request?.slot)>=2)||typeof io?.mergedPrReviewTarget!=='function')return false
   let live
   try{live=io.getPr(Number(request.pr))}catch{return false}
@@ -441,7 +442,9 @@ export function assertExactDurableReviewApproval(issue,pr,headSha,io){
     // merged PR requires io.mergedPrReviewTarget(pr,issue) === true -- the verified
     // merged-PR issue binding. Pinned by scripts/merged-pr-issue-binding.test.mjs.
     // The allocator draws a shared reviewer only through that same binding.
-    if(reviewers.has(record.reviewer)&&!mergedPrAtHead(pr,head,io)&&!ownerReviewerReuseAllowed({pr,slot:2,reviewer:record.reviewer}))throw new LaneError(`review slots at exact head ${head} share reviewer ${record.reviewer}; independent approval refused`)
+    // Owner ruling 2026-10-14 (owner-reviewer-reuse.mjs): an OPEN pull request
+    // listed there may also share its owner-named reviewer across slots.
+    if(reviewers.has(record.reviewer)&&!mergedPrAtHead(pr,head,io)&&!(!mergedPrAtHead(pr,head,io)&&ownerReviewerReuseAllowed({pr,slot:2,reviewer:record.reviewer})))throw new LaneError(`review slots at exact head ${head} share reviewer ${record.reviewer}; independent approval refused`)
     reviewers.add(record.reviewer)
   }
   for(const assignment of latest.values())if(!verdicts.some((row)=>row.verdict==='APPROVE'&&row.assignment_sha===assignment.sha))throw new LaneError(`review slot ${assignment.slot} has no durable APPROVE for its latest exact-head assignment${disregardedNote}`)

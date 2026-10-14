@@ -112,8 +112,8 @@ test('GitHub coordination delete never replays after response loss and preserves
 const NOW = new Date('2026-08-14T20:00:00Z')
 const body = (objects, owner, expires = '2026-08-15T08:00:00.000Z') => claimBody({ version:`2026081420${owner.padStart(4,'0')}`, objects, owner:`agent-${owner}`, branch:`codex/${owner}`, worktree:`C:/w/${owner}`, expiresAt:new Date(expires) })
 
-function durableApprovalFixture({includeLatestReplacementVerdict=true,returnSlot=null,keepReturnedSlotVerdict=false,redraw=false,redrawVerdict=true}={}){
-  const issue=1824,pr=1931,headSha='a'.repeat(40),findingsBody='review findings',findingsRef=`https://github.com/u2giants/shared-db/pull/${pr}#issuecomment-1`
+function durableApprovalFixture({includeLatestReplacementVerdict=true,returnSlot=null,keepReturnedSlotVerdict=false,redraw=false,redrawVerdict=true,pr:prNumber=1931}={}){
+  const issue=1824,pr=prNumber,headSha='a'.repeat(40),findingsBody='review findings',findingsRef=`https://github.com/u2giants/shared-db/pull/${pr}#issuecomment-1`
   const assignment1='1'.repeat(40),assignment2='2'.repeat(40),replacement2='3'.repeat(40)
   const commits=new Map([
     [assignment1,{message:`db-coordination reviewer-cursor sequence=1 reviewer=kimi-k3 issue=${issue} pr=${pr} head=${headSha} slot=1`}],
@@ -12034,4 +12034,36 @@ test('targeted v2 reap keeps exact CAS guard against replacement after under-loc
  const f=exactReapFixture(),atomic=f.io.atomicReviewRefs.bind(f.io),replacement=f.io.makeOwnerCommit(`db-coordination reviewer-cursor sequence=2 reviewer=${f.options.reviewer} issue=3536 pr=4171 head=${f.options.headSha}`)
  f.io.atomicReviewRefs=edits=>{if(edits.some(row=>row.ref===f.ref&&row.sha===null))f.io.refs.set(f.ref,replacement);return atomic(edits)}
  assert.throws(()=>reapAbandonedReviewLeases({...f.options,applyRecovery:true},new Date(),f.io));assert.equal(f.io.refs.get(f.ref),replacement);assert.equal(f.io.refs.has(MUTEX_REF),false)
+})
+
+test('2026-10-14 ruling: an owner-listed open PR accepts its owner-named reviewer in two slots, and nothing else',()=>{
+  const swapTo=(name)=>(m)=>m.replace(/reviewer=kimi-k3/,`reviewer=${name}`).replace('"reviewer":"kimi-k3"',`"reviewer":"${name}"`)
+  for(const [pr,reviewer,allowed] of [[4206,'muse-spark-1.3-contributor',true],[1931,'muse-spark-1.3-contributor',false]]){
+    const fixture=durableApprovalFixture({pr}),original=fixture.io.getCommit,swap=swapTo(reviewer)
+    fixture.io.getCommit=(sha)=>(sha==='1'.repeat(40)||sha==='4'.repeat(40))?{...original(sha),message:swap(original(sha).message)}:original(sha)
+    fixture.io.getPr=()=>({state:'open',merged_at:null,head:{sha:fixture.headSha}})
+    if(allowed)assert.equal(assertDurableReviewApproval(fixture.issue,fixture.pr,fixture.headSha,fixture.io).length,3)
+    else assert.throws(()=>assertDurableReviewApproval(fixture.issue,fixture.pr,fixture.headSha,fixture.io),/share reviewer muse-spark-1.3-contributor/)
+  }
+})
+
+test('2026-10-14 ruling: an owner-listed open PR does not excuse a reviewer the owner did not name',()=>{
+  const fixture=durableApprovalFixture({pr:4206})
+  fixture.io.getPr=()=>({state:'open',merged_at:null,head:{sha:fixture.headSha}})
+  const replacement2='3'.repeat(40),original=fixture.io.getCommit
+  fixture.io.getCommit=(sha)=>sha===replacement2?{...original(sha),message:original(sha).message.replace('reviewer=muse-spark-1.3-contributor','reviewer=kimi-k3')}:sha==='6'.repeat(40)?{...original(sha),message:original(sha).message.replace('"reviewer":"muse-spark-1.3-contributor"','"reviewer":"kimi-k3"')}:original(sha)
+  assert.throws(()=>assertDurableReviewApproval(fixture.issue,fixture.pr,fixture.headSha,fixture.io),/share reviewer kimi-k3/)
+})
+
+test('2026-10-14 ruling: the allocator redraws only the owner-named reviewer for slot 2 of an owner-listed open PR',()=>{
+  for(const pr of [4206,4207]){
+    const io=withAtomicRefs(reviewIo()),headSha='d'.repeat(40)
+    io.requiresExactReviewHeadSha=true
+    io.getPr=()=>({number:pr,state:'open',head:{sha:headSha,ref:'codex/x'}})
+    const allow=['muse-spark-1.3-contributor']
+    const first=assignNextReviewer({issue:2336,pr,headSha,reviewerAllowlist:allow},io)
+    assert.equal(first.reviewer,'muse-spark-1.3-contributor')
+    if(pr===4206)assert.equal(assignNextReviewer({issue:2336,pr,headSha,slot:2,reviewerAllowlist:allow},io).reviewer,'muse-spark-1.3-contributor')
+    else assert.throws(()=>assignNextReviewer({issue:2336,pr,headSha,slot:2,reviewerAllowlist:allow},io),/no independent reviewer is available for slot 2|already holds another review slot/)
+  }
 })

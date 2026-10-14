@@ -5,9 +5,9 @@
 // nothing. Remove an entry once its pull request merges.
 export const OWNER_REVIEWER_REUSE = Object.freeze({
   schema: 'shared-db-owner-reviewer-reuse/v1',
-  entries: [
-    { pr: 4206, issue: 2336, reviewer: 'muse-spark-1.3-contributor', owner_quote: "let Muse review twice but don't stop the other agent's approach", ruled_at: '2026-10-14' },
-  ],
+  entries: Object.freeze([
+    Object.freeze({ pr: 4206, issue: 2336, reviewer: 'muse-spark-1.3-contributor', owner_quote: "let Muse review twice but don't stop the other agent's approach", ruled_at: '2026-10-14' }),
+  ]),
 })
 
 export function ownerReuseEntries(read = () => JSON.stringify(OWNER_REVIEWER_REUSE)) {

@@ -11749,6 +11749,70 @@ test('--ttl-minutes is refused with --release-promotion-freeze',()=>{
 })
 
 
+function addConservativePaidStarts(io,{issue,pr,paidAttempts}){
+  const priorHead='b'.repeat(40)
+  for(let sequence=1;sequence<=paidAttempts;sequence++){
+    const sha=io.makeOwnerCommit(`db-coordination review-started issue=${issue} pr=${pr} head=${priorHead} slot=1 sequence=${sequence} reviewer=glm-5.3 at=2026-10-06T18:00:00Z`)
+    io.refs.set(reviewStartedMarkerRef({issue,pr,headSha:priorHead,slot:1,sequence}),sha)
+  }
+  io.reviewContentComparison=()=>{throw new LaneError('review budget Git provenance refused: review budget conflict is outside the one canonical test append')}
+  return priorHead
+}
+
+function conservativeBudgetFixture({atomic=false,issue,pr,headSha,paidAttempts=1}){
+  const io=reviewIo()
+  if(atomic)withAtomicRefs(io)
+  io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:headSha,ref:'codex/budget'}})
+  const priorHead=addConservativePaidStarts(io,{issue,pr,paidAttempts})
+  return {io,priorHead}
+}
+
+test('conservative review-budget evidence is returned for fresh assignment and replacement draws only',()=>{
+  for(const atomic of [false,true]){
+    const issue=4600+Number(atomic),pr=4700+Number(atomic),headSha='c'.repeat(40)
+    const {io,priorHead}=conservativeBudgetFixture({atomic,issue,pr,headSha})
+    const expected={paidAttempts:1,remaining:1,conservativeHeads:[priorHead]}
+    const assigned=assignNextReviewer({issue,pr,headSha},io)
+    assert.deepEqual(assigned.budgetEvidence,expected,`${atomic?'atomic':'fallback'} fresh assignment reports the conservative head`)
+    const assignmentRef=`${REVIEW_ASSIGNMENT_REF_PREFIX}/${issue}-${pr}-${headSha}`
+    const assignmentSha=io.refs.get(assignmentRef),assignmentMessage=io.getCommit(assignmentSha).message
+    assert.match(assignmentMessage,new RegExp(`^db-coordination reviewer-cursor sequence=${assigned.sequence} reviewer=${assigned.reviewer} issue=${issue} pr=${pr} head=${headSha}$`))
+
+    const request={issue,pr,headSha,failedSequence:assigned.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true}
+    const replacement=replaceFailedReviewer(request,io)
+    assert.deepEqual(replacement.budgetEvidence,expected,`${atomic?'atomic':'fallback'} fresh replacement reports the conservative head`)
+    assert.equal(io.refs.get(assignmentRef),assignmentSha,'adding diagnostics cannot change the assignment ref')
+    assert.equal(io.getCommit(io.refs.get(assignmentRef)).message,assignmentMessage,'adding diagnostics cannot change the immutable assignment body')
+    assert.match(io.getCommit(replacement.replacementSha).message,/^db-coordination reviewer-failure-replacement /,'replacement evidence remains its established immutable record')
+  }
+
+  const ordinary=reviewIo(),headSha='d'.repeat(40)
+  ordinary.getPr=(number)=>({number:Number(number),state:'open',head:{sha:headSha,ref:'codex/budget'}})
+  const assigned=assignNextReviewer({issue:4800,pr:4801,headSha},ordinary)
+  assert.equal(Object.hasOwn(assigned,'budgetEvidence'),false,'no conservative history preserves the ordinary assignment response')
+  const replacement=replaceFailedReviewer({issue:4800,pr:4801,headSha,failedSequence:assigned.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true},ordinary)
+  assert.equal(Object.hasOwn(replacement,'budgetEvidence'),false,'no conservative history preserves the ordinary replacement response')
+})
+
+test('two conservatively classified paid starts still refuse assignment and replacement before mutation',()=>{
+  for(const atomic of [false,true]){
+    const issue=4900+Number(atomic),pr=5000+Number(atomic),headSha='e'.repeat(40)
+    const assignmentCase=conservativeBudgetFixture({atomic,issue,pr,headSha,paidAttempts:2})
+    const beforeAssignment=[...assignmentCase.io.refs]
+    assert.throws(()=>assignNextReviewer({issue,pr,headSha},assignmentCase.io),/two paid attempts already started for unchanged reviewed content/)
+    assert.deepEqual([...assignmentCase.io.refs],beforeAssignment,'two uncertain starts refuse before creating durable assignment state')
+
+    const replacementIo=reviewIo()
+    if(atomic)withAtomicRefs(replacementIo)
+    replacementIo.getPr=(number)=>({number:Number(number),state:'open',head:{sha:headSha,ref:'codex/budget'}})
+    const assigned=assignNextReviewer({issue,pr,headSha},replacementIo)
+    addConservativePaidStarts(replacementIo,{issue,pr,paidAttempts:2})
+    const beforeReplacement=[...replacementIo.refs]
+    assert.throws(()=>replaceFailedReviewer({issue,pr,headSha,failedSequence:assigned.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true},replacementIo),/two paid attempts already started for unchanged reviewed content/)
+    assert.deepEqual([...replacementIo.refs],beforeReplacement,'two uncertain starts refuse before creating durable replacement state')
+  }
+})
+
 test('assignment refuses third paid draw after evidence-only head change, but substantive change starts a round',()=>{
   const io=reviewIo(),request={issue:1767,pr:1800,headSha:'a'.repeat(40),slot:1}
   for(const sequence of [1,2]) {

@@ -23,3 +23,6 @@ Release does not launch another paid reviewer. The next supported assignment or 
 ## Verification and delivery
 
 Circuit-breaker, assignment-order, carried-slot, candidate-exhaustion, approval-composition and runner-release adversarial tests must pass. The complete combined source receives one independent review and required CI on PR #4294; no separate PR #4294 merge is a prerequisite. The independent review remains pinned to the final code head. Merged-source runtime verification is distinct from source tests and does not authorize a database write, production action or a retry of historical spent work. PR4206 and its licensing claims remain owned by their existing session.
+
+
+The allocator conservatively counts a historical start with the established narrow canonical merge-gap refusal as unchanged when no direct proof chain resolves it. It records conservativeHeads, never treats that result as substantive or a chain intermediate, and still refuses a third conservative round. All other provenance, lineage, binding and transport failures remain hard refusals. The source-provenance function itself is unchanged and still rejects foreign/noncanonical merges; this grants no changed-content proof, refund or additional allowance.

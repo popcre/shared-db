@@ -761,8 +761,8 @@ test('resolved metadata requires a valid source hash and all other bytes',t=>{
 
 // #4290 / PR #4206: after a branch refresh from main, an older reviewed head cannot be
 // re-merged against the moved main (merge gap), so its direct proof throws. It is
-// classified through a newer reviewed head whose direct proof holds; the link is derived
-// at the same operation base. Unprovable chains and non-gap failures still refuse.
+// classified through newer direct proofs when those establish a result; otherwise a
+// narrow unresolved merge gap spends the ordinary allowance conservatively.
 const GAP='review budget Git provenance refused: review budget conflict is outside the one canonical test append'
 function chainIo({heads,proofs,fail={}}){
   const rows=heads.map((h,i)=>row(i+1,h)),bases=new Set()
@@ -783,12 +783,26 @@ test('unchanged composition is still counted: two unchanged starts refuse a thir
 test('a substantive newer head makes the composed older head substantive',()=>{
   assert.equal(capacity(chainIo({heads:[old,reviewed],proofs:{'f>9':'substantive','e>f':'unchanged'}})).paidAttempts,0)
 })
-test('two substantive steps prove nothing (a revert) and the refusal stands',()=>{
-  assert.throws(()=>capacity(chainIo({heads:[old,reviewed],proofs:{'f>9':'substantive','e>f':'substantive'}})),/conflict is outside the one canonical test append/)
+test('two substantive links do not compose and the older unresolved start spends one attempt',()=>{
+  const x=chainIo({heads:[old,reviewed],proofs:{'f>9':'substantive','e>f':'substantive'}})
+  assert.deepEqual(capacity(x),{paidAttempts:1,remaining:1,conservativeHeads:[old]})
 })
-test('without a provable chain the original refusal stands',()=>{
-  assert.throws(()=>capacity(chainIo({heads:[old,reviewed],proofs:{'f>9':'unchanged'}})),/conflict is outside/)
-  assert.throws(()=>capacity(chainIo({heads:[old],proofs:{}})),/conflict is outside/)
+test('one unresolved merge-gap start consumes one existing attempt conservatively',()=>{
+  assert.deepEqual(capacity(chainIo({heads:[old],proofs:{}})),{paidAttempts:1,remaining:1,conservativeHeads:[old]})
+})
+test('exact-bound reviewer failure refunds an unresolved merge-gap start without conservative charging',()=>{
+  const x=chainIo({heads:[old,reviewed],proofs:{'f>9':'unchanged','e>f':'unchanged'}})
+  const failureSha='f'.repeat(39)+'1'
+  x.readRef=ref=>ref===`refs/db-review-failures/3536-4000-${old}-1`?failureSha:null
+  const getCommit=x.getCommit
+  x.getCommit=sha=>sha===failureSha?{message:failureMsg(1,{reviewer:'glm-5.3',h:old})}:getCommit(sha)
+  const result=capacity(x)
+  assert.equal(result.reinstated,1)
+  assert.deepEqual(result.failedReviewers,['glm-5.3'])
+  assert.equal('conservativeHeads' in result,false)
+})
+test('two unresolved merge-gap starts consume the full cap and refuse a third draw',()=>{
+  assert.throws(()=>capacity(chainIo({heads:[old,reviewed],proofs:{}})),/third draw refused/)
 })
 test('disagreeing chains are counted conservatively, independent of draw order',()=>{
   for(const heads of [[old,mid,reviewed],[old,reviewed,mid]])
@@ -796,9 +810,10 @@ test('disagreeing chains are counted conservatively, independent of draw order',
 })
 test('a chained result is never an intermediate (no multi-hop)',()=>{
   const o1='3'.repeat(40)
-  assert.throws(()=>capacity(chainIo({heads:[o1,mid,reviewed],proofs:{'f>9':'unchanged','8>f':'substantive','3>8':'substantive'}})),/conflict is outside/)
+  const x=chainIo({heads:[o1,mid,reviewed],proofs:{'f>9':'unchanged','8>f':'substantive','3>8':'unchanged'}})
+  assert.throws(()=>capacity(x),/third draw refused/)
 })
-for(const message of ['review budget Git provenance refused: review budget historical evidence mutated generation','review budget Git provenance refused: review budget canonical blob bytes unreadable or oversized','review budget Git provenance refused: review budget foreign intermediate evidence pair refused']){
+for(const message of ['git fetch failed','review budget Git provenance refused: review budget historical evidence mutated generation','review budget Git provenance refused: review budget canonical blob bytes unreadable or oversized','review budget Git provenance refused: review budget foreign intermediate evidence pair refused','review budget Git provenance refused: review budget noncanonical or foreign merge refused']){
   test(`a non-gap direct refusal is never bridged: ${message.slice(37)}`,()=>{
     assert.throws(()=>capacity(chainIo({heads:[old,reviewed],proofs:{'f>9':'unchanged','e>f':'substantive'},fail:{'e>9':message}})),new RegExp(message.slice(37)))
   })

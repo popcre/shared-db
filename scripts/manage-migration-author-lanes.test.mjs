@@ -12027,27 +12027,3 @@ test('targeted v2 reap keeps exact CAS guard against replacement after under-loc
  f.io.atomicReviewRefs=edits=>{if(edits.some(row=>row.ref===f.ref&&row.sha===null))f.io.refs.set(f.ref,replacement);return atomic(edits)}
  assert.throws(()=>reapAbandonedReviewLeases({...f.options,applyRecovery:true},new Date(),f.io));assert.equal(f.io.refs.get(f.ref),replacement);assert.equal(f.io.refs.has(MUTEX_REF),false)
 })
-
-// #4293: the lanes reviewLinkBase wrapper on real git (origin = a local bare repo).
-test('githubIo.reviewLinkBase reuses a known base, falls back to the PR base, and returns the merge base',async()=>{
-  const { githubIo } = await import('./manage-migration-author-lanes.mjs')
-  const { execFileSync } = await import('node:child_process')
-  const { mkdtempSync, rmSync } = await import('node:fs')
-  const { tmpdir } = await import('node:os'), { join } = await import('node:path')
-  const root=mkdtempSync(join(tmpdir(),'reviewlinkbase-')),bare=join(root,'origin.git'),work=join(root,'work')
-  const git=(cwd,...args)=>execFileSync('git',['-C',cwd,...args],{encoding:'utf8'}).trim()
-  const cwd=process.cwd()
-  try{
-    execFileSync('git',['init','-q','--bare',bare]);execFileSync('git',['init','-q','-b','main',work])
-    git(work,'config','user.email','t@t');git(work,'config','user.name','t');git(work,'remote','add','origin',bare)
-    git(work,'commit','-q','--allow-empty','-m','base');const drawBase=git(work,'rev-parse','HEAD')
-    git(work,'checkout','-q','-b','pr');git(work,'commit','-q','--allow-empty','-m','reviewed');const head=git(work,'rev-parse','HEAD')
-    git(work,'checkout','-q','main');git(work,'commit','-q','--allow-empty','-m','moved');const moved=git(work,'rev-parse','HEAD')
-    git(work,'push','-q','origin','main','pr')
-    process.chdir(work)
-    let reads=0;const io={getPr:()=>{reads++;return {base:{sha:moved}}}}
-    assert.equal(githubIo.reviewLinkBase.call(io,head,1,moved),drawBase);assert.equal(reads,0,'a known base needs no PR read')
-    assert.equal(githubIo.reviewLinkBase.call(io,head,1,null),drawBase);assert.equal(reads,1,'fallback reads the PR base once')
-    assert.throws(()=>githubIo.reviewLinkBase.call(io,'zz',1,moved),/link base inputs unreadable/)
-  }finally{process.chdir(cwd);rmSync(root,{recursive:true,force:true})}
-})

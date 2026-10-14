@@ -39,7 +39,7 @@ import { HISTORICAL_RESTORATIONS, validateHistoricalRestorationFile } from './hi
 import { AdmissionError, SERVICE_CLASSES, CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, STRUCTURAL_ROUTES, parseImpactBlock, evaluateAdmission, inspectPrStructuralChange, structuralWritesMatch, structuralWritesCovered } from './orchestrator-flow/admission.mjs'
 import { assertNamedHold, conflicts, describeLeaseHolder, formatHoldReason, HoldReasonError } from './lib/hold-reason.mjs'
 import { OUTCOME_STATES, OutcomeError, advanceOutcome, completeOutcome, verifyOutcomeAcceptance, outcomeEvent, outcomeHistory, repairOutcomeHistory } from './orchestrator-flow/outcome-lifecycle.mjs'
-import { assertPaidReviewCapacity, pauseActualReviewFailure, derivePaidContentProof, RETRYABLE_RELEASED_FAILURE_CODES, linkBaseOf } from './lib/lanes/review-circuit-breaker.mjs'
+import { assertPaidReviewCapacity, pauseActualReviewFailure, derivePaidContentProof, RETRYABLE_RELEASED_FAILURE_CODES } from './lib/lanes/review-circuit-breaker.mjs'
 export { RETRYABLE_RELEASED_FAILURE_CODES }
 const paidBudgetContractCaches=new WeakMap()
 import { isContentPreservingRefresh, prContentDigest, verifiedEvidencePaths } from './lib/pr-content-equivalence.mjs'
@@ -824,14 +824,6 @@ export const githubIo = {
   },
   // #4290: the merge base a newer reviewed head had with the PR base, so an older head
   // can be classified against it exactly as when that newer head was drawn.
-  // The newest protected-main commit the newer head contains; reuses the operation's
-  // already-read PR base (no extra GitHub request) and is cached per head by the caller.
-  reviewLinkBase(head,pr,knownBase=null) {
-    const base=/^[0-9a-f]{40}$/.test(String(knownBase??''))?knownBase:this.getPr(pr)?.base?.sha
-    if(!/^[0-9a-f]{40}$/.test(String(head??''))||!/^[0-9a-f]{40}$/.test(base??''))throw new LaneError('review circuit breaker: link base inputs unreadable')
-    execFileSync('git',['fetch','--no-tags','-q','origin',head,base],{stdio:['ignore','pipe','pipe'],timeout:GIT_COMMAND_TIMEOUT_MS,killSignal:'SIGKILL'})
-    return linkBaseOf(head,base,(args)=>String(execFileSync('git',args,{encoding:'utf8',timeout:GIT_COMMAND_TIMEOUT_MS,killSignal:'SIGKILL'})).trim())
-  },
   reviewContentComparison(before,after,pr,context={}) {
     const base=context.base??this.getPr(pr)?.base?.sha
     context.base=base
@@ -1635,7 +1627,7 @@ function reviewOperationIo(io){
       const cacheable=['listRefs','listReviewRefsPaged','getCommit','getPr','getIssue','getIssueComments','getPrReviews'].includes(key)
       const cacheKey=cacheable?`${String(key)}:${JSON.stringify(args)}`:null
       if(cacheable&&cache.has(cacheKey))return cache.get(cacheKey)
-      const result=value.apply(['reviewContentComparison','reviewLinkBase'].includes(key)?proxy:target,args)
+      const result=value.apply(key==='reviewContentComparison'?proxy:target,args)
       if(cacheable)cache.set(cacheKey,result)
       if(['createRef','updateRef','deleteRef'].includes(key))cache.delete(`readRef:${JSON.stringify([args[0]])}`)
       return result

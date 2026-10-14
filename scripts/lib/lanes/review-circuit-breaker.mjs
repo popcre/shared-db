@@ -500,19 +500,6 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
   }
 }
 
-// #4290: the newest protected-main commit a reviewed head contains. It is the head's
-// draw-time protected base whenever main only moves forward; it must itself be an
-// ancestor of the current protected base, otherwise main was rewritten and no link
-// may be judged against it.
-export function linkBaseOf(head, base, git) {
-  if(!/^[0-9a-f]{40}$/.test(String(head??''))||!/^[0-9a-f]{40}$/.test(String(base??'')))throw new LaneError('review circuit breaker: link base inputs unreadable')
-  let mergeBase=''
-  try{mergeBase=String(git(['merge-base',head,base])).trim()}catch{throw new LaneError('review circuit breaker: link base unreadable')}
-  if(!/^[0-9a-f]{40}$/.test(mergeBase))throw new LaneError('review circuit breaker: link base unreadable')
-  try{git(['merge-base','--is-ancestor',mergeBase,base])}catch{throw new LaneError('review circuit breaker: link base is not in protected main')}
-  return mergeBase
-}
-
 export function assertPaidReviewCapacity(request, io) {
   if(!Number.isInteger(request.pr)||request.pr<1||!Number.isInteger(request.slot)||request.slot<1)throw new LaneError('review circuit breaker: exact positive PR and slot required')
   const prefix=`${REVIEW_STARTED_REF_PREFIX}/`
@@ -523,7 +510,8 @@ export function assertPaidReviewCapacity(request, io) {
   let count=0,reinstated=0
   const comparisonContext={}
   // One proven classification of before->after content: 'unchanged' or 'substantive'.
-  const classify=(beforeHead,afterHead,context=comparisonContext)=>{
+  const classify=(beforeHead,afterHead)=>{
+    const context=comparisonContext
     if (typeof io.reviewContentComparison !== 'function') throw new LaneError('review circuit breaker: substantive content comparison unavailable')
     const comparison=io.reviewContentComparison(beforeHead,afterHead,request.pr,context)
     if (!comparison || !/^[0-9a-f]{64}$/.test(comparison.before) || !/^[0-9a-f]{64}$/.test(comparison.after)) throw new LaneError('review circuit breaker: substantive content proof unreadable')
@@ -538,37 +526,28 @@ export function assertPaidReviewCapacity(request, io) {
   // THROUGH a newer reviewed head of the same PR whose own classification is proven:
   // older->newer (pre-refresh, directly comparable) composed with newer->request. Only a
   // fully proven chain counts; anything else still refuses.
-  const proven=new Map(),linkBases=new Map()
-  // A chain may replace a direct proof only when the direct failure came from the
-  // provenance derivation itself (an older head that no longer re-merges against the
-  // moved main). Any binding/shape failure of a returned proof keeps refusing. Tampered
-  // history is still refused: the older head is the "before" of every link too, so its
-  // evidence and blob integrity are re-checked there and no chain can be proven.
-  const provenanceGap=(error)=>/^review budget Git provenance refused: /.test(String(error?.message??''))
+  const proven=new Map()
+  // Only the moved-main MERGE gap may be bridged: re-merging an older head against the
+  // current main conflicts outside the canonical append forms. Every other provenance
+  // refusal (evidence lineage, blob integrity, foreign pairs, ...) keeps refusing.
+  const provenanceGap=(error)=>/^review budget Git provenance refused: review budget (conflict is outside the one canonical test append|canonical append requires exactly one conflict|append marker ambiguity|append must be one EOF conflict|append cannot modify old lines or omit a parent)$/.test(String(error?.message??''))
   // Composition table: unchanged after unchanged is unchanged; a substantive step on
   // either side with an unchanged step on the other is substantive. Two substantive
   // steps prove nothing (the second may revert the first), so that chain is skipped.
   const compose=(link,kind)=>link==='unchanged'?kind:kind==='unchanged'?'substantive':null
-  const linkBase=(head)=>{
-    if(!linkBases.has(head)){
-      let base=null
-      try{base=io.reviewLinkBase(head,request.pr,comparisonContext.base)}catch{base=null}
-      linkBases.set(head,/^[0-9a-f]{40}$/.test(String(base??''))?base:null)
-    }
-    return linkBases.get(head)
-  }
-  // Returns {kind, direct}. Chained (and conservative disagreement) results are counted
-  // but never serve as intermediates for another chain.
+  // Returns {kind, direct}. A start whose direct proof hits the merge gap is classified
+  // through newer starts with DIRECT proofs; the older->newer link is derived at the same
+  // protected base as every other comparison in this operation (a reviewed head that has
+  // not absorbed main re-merges cleanly), so no second base is ever introduced. Chained
+  // results are counted but never serve as intermediates (no multi-hop).
   const classifyStart=(start)=>{
     try{return {kind:classify(start.headSha,request.headSha),direct:true}}catch(error){
-      if(!provenanceGap(error)||typeof io.reviewLinkBase!=='function')throw error
+      if(!provenanceGap(error))throw error
       const results=new Set()
       for(const [head,kind] of proven.entries()){
         if(head===start.headSha)continue
-        const base=linkBase(head)
-        if(!base)continue
         let link
-        try{link=classify(start.headSha,head,{base})}catch(linkError){if(provenanceGap(linkError))continue;throw linkError}
+        try{link=classify(start.headSha,head)}catch(linkError){if(provenanceGap(linkError))continue;throw linkError}
         const composed=compose(link,kind)
         if(composed)results.add(composed)
       }

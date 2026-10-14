@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "work_issue": 2530,
+  "outcome": "ready-for-merge",
+  "pr": 4305,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2530/1",
+  "contract_sha256": "96aeebb6ec2159f4c0d3cf3e5c74ece6c4dc8704367c8b26e9918a9c86d26398",
+  "head_sha": "c94032b33d2ffc78bbdcc01b7334f416884b751e",
+  "base_sha": "9595a63fcc0c616687d858b0eef1b3864a9d265e",
+  "files_changed": [
+    ".agent/work/2530/1/completion.json",
+    ".agent/work/2530/1/contract.json",
+    ".github/workflows/coldlion-promotion-contract-tests.yml",
+    ".github/workflows/database-contract-tests.yml",
+    ".github/workflows/documents-fast-ci.yml",
+    ".github/workflows/merge-queue-gate.yml",
+    ".github/workflows/migration-author-lease.yml",
+    ".github/workflows/pr-guards.yml",
+    ".github/workflows/shared-supabase-migrations.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/configure-merge-queue.mjs",
+    "scripts/configure-merge-queue.test.mjs",
+    "scripts/documents-fast-ci-workflow.test.mjs",
+    "scripts/merge-queue-contract.mjs",
+    "scripts/merge-queue-contract.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/check-merge-queue-workflows.test.mjs scripts/configure-merge-queue.test.mjs scripts/merge-queue-contract.test.mjs scripts/documents-fast-ci-workflow.test.mjs",
+      "exit_code": 0,
+      "evidence": "78 pass, 9 pre-existing Windows spawn-path failures unrelated to this change. All new assertions (bare merge_group, path filters, dual-rule shape) pass."
+    }
+  ],
+  "assumptions_resolved": [
+    "Bare merge_group: trigger form confirmed by test assertions and GitHub official example.",
+    "14 live contexts confirmed by live branch protection readback 2026-10-14."
+  ]
+}

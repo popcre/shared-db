@@ -2547,6 +2547,14 @@ function changeClaimAuthor(options,now,io,voluntary){
   if(!request.authorizationChatId||request.authorizationQuote.trim().length<20||request.authorizationQuote!==request.authorizationQuote.trim())throw new LaneError('operator adoption requires current-chat ID and verbatim user authorization quote')
   const recipientChatId=voluntary?String(options.recipientChatId??''):null
   const readyRef=voluntary?(options.handoffReadyRef??null):null,requestId=voluntary?String(options.requestId??'initial'):null
+  // Cross-machine acceptance (claim #4152 / PR #4206): the original owner stopped on
+  // another machine and signed an owner-ready receipt. The recipient cannot hold the
+  // original working copy, so custody is RECORDED as remote -- never recreated. It is
+  // accepted only for a voluntary handoff with that owner-signed receipt, a recovery
+  // point that is exactly the pushed PR head, an unchanged PR head, and an original
+  // worktree path that is genuinely absent here.
+  const remoteCustody=options.remoteCustody===true
+  if(remoteCustody&&(!voluntary||!readyRef))throw new LaneError('remote custody acceptance requires a voluntary handoff with the original owner-signed ready receipt')
   if(voluntary&&!/^[A-Za-z0-9._-]{1,120}$/.test(requestId))throw new LaneError('voluntary handoff request ID has invalid shape')
   if(voluntary&&(recipientChatId!==recipientChatId.trim()||request.oldWorktreeState!=='clean'||request.recoveryArtifact!==`artifact:${request.headSha}`||!resolveSessionAuthority({env:{SHARED_DB_SESSION_ID:recipientChatId},claimOwner:request.newOwner}).live))throw new LaneError('voluntary handoff requires exact recipient identity and clean checkpoint custody')
   const proofOptions={claim:request.claim,blockedOn:voluntary?request.recoveryArtifact:`issue:#${request.abandonmentIssue}`,worktreeState:request.oldWorktreeState}
@@ -2563,14 +2571,20 @@ function changeClaimAuthor(options,now,io,voluntary){
     renewalIssueScope(issue,lease,[request.issue],{allowClaimSuperset:true})
     const audit=adopted||voluntary?true:assertAbandonmentEvidence(proofOptions,lease,proofOptions.blockedOn,io)
     if(!audit)throw new LaneError('exact abandonment audit proof is absent')
-    if(!adopted){const observed=observedWorktreeState(request.oldWorktree,io);if(observed!==request.oldWorktreeState&&!(observed==='absent'&&request.oldWorktreeState==='remote'))throw new LaneError('old worktree state differs from explicit declaration')}
+    // Remote custody: the owner's signed state stays the declared one; what this machine
+    // observes (absent) is checked by the remote-custody block below.
+    if(!adopted&&!remoteCustody){const observed=observedWorktreeState(request.oldWorktree,io);if(observed!==request.oldWorktreeState&&!(observed==='absent'&&request.oldWorktreeState==='remote'))throw new LaneError('old worktree state differs from explicit declaration')}
     const marker=io.orchestratorFlowAdapter().resolveMarker()
     if(!marker?.live||marker.calling_task!==marker.task||marker.task!==request.authorizationChatId)throw new LaneError(`operator adoption chat ID does not match this declared session${marker?.live?'':`; ${sessionAuthorityRefusal(marker)}`}`)
     if(voluntary){
-      if(readyRef){const consent=readAuthorReady(readyRef,io),r=consent.record;if(!resolveSessionAuthority({env:{SHARED_DB_SESSION_ID:marker.task},claimOwner:request.newOwner}).live||marker.task!==recipientChatId||r.claim!==request.claim||r.issue!==request.issue||r.pr!==request.pr||r.head_sha!==request.headSha||r.owner!==request.oldOwner||r.branch!==request.branch||r.worktree!==request.oldWorktree||r.version!==lease.version||(!adopted&&r.body_sha256!==sha256(claim.body))||io.readRef('refs/db-claims/'+lease.version)!==r.reservation_sha)throw new LaneError('owner-issued ready consent differs from exact source, claim or actual recipient')}
+      if(readyRef){const consent=readAuthorReady(readyRef,io),r=consent.record;if(remoteCustody&&(r.execution_stopped!==true||!resolveSessionAuthority({env:{SHARED_DB_SESSION_ID:r.author_session},claimOwner:r.owner}).live))throw new LaneError('remote custody acceptance requires a ready receipt signed by the original owner session after it stopped');if(!resolveSessionAuthority({env:{SHARED_DB_SESSION_ID:marker.task},claimOwner:request.newOwner}).live||marker.task!==recipientChatId||r.claim!==request.claim||r.issue!==request.issue||r.pr!==request.pr||r.head_sha!==request.headSha||r.owner!==request.oldOwner||r.branch!==request.branch||r.worktree!==request.oldWorktree||r.version!==lease.version||(!adopted&&r.body_sha256!==sha256(claim.body))||io.readRef('refs/db-claims/'+lease.version)!==r.reservation_sha)throw new LaneError('owner-issued ready consent differs from exact source, claim or actual recipient')}
       else if(!marker?.live||marker.calling_task!==marker.task||!resolveSessionAuthority({env:{SHARED_DB_SESSION_ID:marker.task},claimOwner:request.oldOwner}).live)throw new LaneError('voluntary handoff must execute in the original owner session')
     }
-    if(voluntary&&(observedWorktreeState(request.oldWorktree,io)!=='clean'||!io.localClean(request.oldWorktree)||io.localHead(request.oldWorktree)!==request.headSha||io.localBranch(request.oldWorktree)!==request.branch))throw new LaneError('voluntary handoff original source custody changed')
+    if(voluntary&&remoteCustody){
+      const observed=observedWorktreeState(request.oldWorktree,io)
+      if(observed!=='absent')throw new LaneError(`remote custody acceptance refused: the original worktree is ${observed} on this machine; accept with local custody instead`)
+      if(request.recoveryArtifact!==`artifact:${request.headSha}`)throw new LaneError('remote custody acceptance requires the recovery point to be the exact pushed PR head')
+    }else if(voluntary&&(observedWorktreeState(request.oldWorktree,io)!=='clean'||!io.localClean(request.oldWorktree)||io.localHead(request.oldWorktree)!==request.headSha||io.localBranch(request.oldWorktree)!==request.branch))throw new LaneError('voluntary handoff original source custody changed')
     if(voluntary||request.oldWorktreeState!=='clean')requireDereferenceableRecoveryArtifact(request.recoveryArtifact,io)
     const pr=io.getPr(request.pr)
     const merged=voluntary&&Boolean(pr?.merged===true||pr?.merged_at)
@@ -2601,7 +2615,7 @@ function changeClaimAuthor(options,now,io,voluntary){
   let bodyChanged=false,evidenceCreated=false,beforeBody=null,newBody=null,ref=null,transferSha=null,completed=null,failure=null
   try{
     const current=io.getIssue(request.claim),currentLease=parseAuthorLease(current?.body??'',now)
-    const identity={issue:request.issue,claim:request.claim,pr:request.pr,head_sha:request.headSha,version:currentLease.version,old_owner:request.oldOwner,new_owner:request.newOwner,branch:request.branch,old_worktree:request.oldWorktree,target_worktree:request.targetWorktree,...(voluntary?{recipient_chat_id:recipientChatId,handoff_ready_ref:readyRef,request_id:requestId}:{abandonment_issue:request.abandonmentIssue}),old_worktree_state:request.oldWorktreeState}
+    const identity={issue:request.issue,claim:request.claim,pr:request.pr,head_sha:request.headSha,version:currentLease.version,old_owner:request.oldOwner,new_owner:request.newOwner,branch:request.branch,old_worktree:request.oldWorktree,target_worktree:request.targetWorktree,...(voluntary?{recipient_chat_id:recipientChatId,handoff_ready_ref:readyRef,request_id:requestId,...(remoteCustody?{original_worktree_custody:'remote'}:{})}:{abandonment_issue:request.abandonmentIssue}),old_worktree_state:request.oldWorktreeState}
     ref=`${voluntary?CLAIM_AUTHOR_HANDOFF_REF_PREFIX:CLAIM_AUTHOR_TRANSFER_REF_PREFIX}${request.claim}-${currentLease.version}-${sha256(canonicalJson(identity)).slice(0,20)}`
     const prior=transferRecord(ref,io,voluntary),fresh=verify(Boolean(prior))
     if(voluntary&&prior&&!fresh.adopted&&sha256(fresh.claim.body)!==prior.record.original_body_sha256)throw new LaneError('voluntary handoff original body differs from recorded receipt')
@@ -4667,6 +4681,7 @@ function parseArgs(argv) {
     else if (a === '--rebind-claim-worktree') out.rebindClaimWorktree = true
     else if (a === '--transfer-claim-author') out.transferClaimAuthor = true
     else if (a === '--handoff-claim-author') out.handoffClaimAuthor = true
+    else if (a === '--remote-custody') out.remoteCustody = true
     else if (a === '--check-in-author') out.checkInAuthor = true
     else if (a === '--stop-author') out.stopAuthor = true
     else if (a === '--reversion-active-claim' || a === '--supersede-active-claim-version') out.reversionClaim = true

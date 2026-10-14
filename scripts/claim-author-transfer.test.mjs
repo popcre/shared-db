@@ -553,3 +553,57 @@ test('check-in refuses an unreadable permanent reservation or a reservation move
     assert.equal(parseAuthorLease(io.getIssue(3378).body,NOW).capacityActive,true)
   }
 })
+
+// Cross-machine acceptance of an owner-signed voluntary handoff (claim #4152 / PR #4206):
+// the original working copy lives on the owner's machine, so custody is RECORDED as
+// remote, never recreated. Every refusal leaves the claim untouched.
+function remoteHandoff({oldWorktreeHere='absent'}={}){
+  const {io,request}=voluntaryFixture()
+  const stop=prepareAuthorHandoff({issue:request.issue,claim:request.claim,pr:request.pr,headSha:HEAD,owner:request.oldOwner,branch:request.branch,worktree:request.worktree},NOW,io)
+  io.orchestratorFlowAdapter=()=>({resolveMarker:()=>({live:true,task:'new-author',calling_task:'new-author'})})
+  io.localWorktreeState=(path)=>({state:path===request.worktree?oldWorktreeHere:'clean'})
+  io.localClean=(path)=>path!==request.worktree||oldWorktreeHere==='clean'
+  const accept={...request,authorizationChatId:'new-author',authorizationQuote:QUOTE,handoffReadyRef:stop.handoffReadyRef,remoteCustody:true}
+  return {io,request,accept,stop}
+}
+const unchanged=(io,claim,fn,pattern)=>{const before=io.getIssue(claim).body;assert.throws(fn,pattern);assert.equal(io.getIssue(claim).body,before);assert.equal([...io.refs.keys()].some(r=>r.startsWith(CLAIM_AUTHOR_HANDOFF_REF_PREFIX)),false)}
+
+test('remote custody: an owner-signed handoff is accepted from another machine and recorded as remote',()=>{
+  const {io,request,accept}=remoteHandoff()
+  const result=handoffClaimAuthor(accept,NOW,io),lease=parseAuthorLease(io.getIssue(request.claim).body,NOW)
+  assert.equal(lease.owner,request.newOwner);assert.equal(lease.worktree,request.targetWorktree);assert.equal(lease.version,VERSION)
+  const ref=[...io.refs.keys()].find(r=>r.startsWith(CLAIM_AUTHOR_HANDOFF_REF_PREFIX)),record=JSON.parse(io.getCommit(io.refs.get(ref)).message.split('claim-author-voluntary-handoff ')[1])
+  assert.equal(record.original_worktree_custody,'remote');assert.equal(record.recovery_artifact,'artifact:'+HEAD);assert.ok(result.sha)
+})
+test('remote custody refuses when the original worktree is actually present here',()=>{
+  const {io,request,accept}=remoteHandoff({oldWorktreeHere:'clean'})
+  unchanged(io,request.claim,()=>handoffClaimAuthor(accept,NOW,io),/original worktree is clean on this machine/)
+})
+test('remote custody refuses without the owner-signed ready receipt',()=>{
+  const {io,request,accept}=remoteHandoff()
+  unchanged(io,request.claim,()=>handoffClaimAuthor({...accept,handoffReadyRef:null},NOW,io),/requires a voluntary handoff with the original owner-signed ready receipt/)
+})
+test('remote custody refuses a recovery point that is not the exact pushed PR head',()=>{
+  const {io,request,accept}=remoteHandoff()
+  unchanged(io,request.claim,()=>handoffClaimAuthor({...accept,recoveryArtifact:'artifact:'+'e'.repeat(40)},NOW,io),/clean checkpoint custody|exact pushed PR head/)
+})
+test('remote custody refuses when the PR head moved after the handoff',()=>{
+  const {io,request,accept}=remoteHandoff()
+  io.getPr=()=>({state:'open',head:{sha:'f'.repeat(40),ref:request.branch},base:{sha:'b'.repeat(40)}})
+  unchanged(io,request.claim,()=>handoffClaimAuthor(accept,NOW,io),/head or branch changed/)
+})
+test('remote custody refuses a ready receipt not signed by the original owner session',()=>{
+  const {io,request,accept,stop}=remoteHandoff()
+  const sha=io.refs.get(stop.handoffReadyRef),message=io.getCommit(sha).message,prefix='db-coordination author-handoff-ready '
+  const forged={...JSON.parse(message.slice(prefix.length)),author_session:'someone-else'}
+  io.refs.set(stop.handoffReadyRef,io.makeOwnerCommit(prefix+JSON.stringify(forged)))
+  unchanged(io,request.claim,()=>handoffClaimAuthor(accept,NOW,io),/signed by the original owner session|differ from their immutable identity/)
+})
+test('without --remote-custody an absent original worktree still refuses (custody is never assumed)',()=>{
+  const {io,request,accept}=remoteHandoff()
+  unchanged(io,request.claim,()=>handoffClaimAuthor({...accept,remoteCustody:false},NOW,io),/original source custody changed|old worktree state differs/)
+})
+test('remote custody is refused on the operator-adoption (non-voluntary) path',()=>{
+  const {io,request,accept}=remoteHandoff()
+  unchanged(io,request.claim,()=>transferClaimAuthor({...accept,abandonmentIssue:4287,leaseHours:0.5},NOW,io),/requires a voluntary handoff/)
+})

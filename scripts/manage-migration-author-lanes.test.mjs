@@ -18,6 +18,7 @@ import { authorizeRepositoryMaintenanceStatus } from './manage-migration-author-
 import { mergedPrReviewerReuseAllowed, acquirePromotionFreeze, releasePromotionFreeze, readPromotionFreeze, PROMOTION_FREEZE_REF } from './manage-migration-author-lanes.mjs'
 import { SLOT_INDEPENDENCE_CONFLICT } from './manage-migration-author-lanes.mjs'
 import { canonicalReviewerAllowlist, REVIEWER_FALLBACK_PROVIDERS, orderedReviewers } from './manage-migration-author-lanes.mjs'
+import { inheritReviewerAllowlist, isReviewerAllowlistSuperset, sameReviewerAllowlist } from './manage-migration-author-lanes.mjs'
 import { parseAssignmentRef } from './manage-migration-author-lanes.mjs'
 import { setScopeStatus, wrongOwnerMessage } from './manage-migration-author-lanes.mjs'
 import { readyRecord, persistInitialReady } from './orchestrator-flow/reconcile.mjs'
@@ -912,6 +913,86 @@ test('#3291 later slots inherit slot one permissions and replacements cannot wid
   assert.deepEqual(replacement.reviewerAllowlist,allowed)
   assert.ok(allowed.includes(replacement.reviewer))
   assert.notEqual(replacement.reviewer,first.reviewer);assert.notEqual(replacement.reviewer,second.reviewer)
+})
+
+test('#4206 owner-quoted strict-superset widening draws slot 2 without re-drawing slot 1',()=>{
+  const io=withAtomicRefs(reviewIo()),head='a1'.repeat(20)
+  const narrow=['muse-spark-1.3-contributor']
+  const widened=['muse-spark-1.3-contributor','stepfun-step-5-preview']
+  io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:head,ref:'codex/2336-complete-support'}})
+  const first=assignNextReviewer({issue:2336,pr:4206,headSha:head,reviewerAllowlist:narrow},io)
+  assert.equal(first.reviewer,'muse-spark-1.3-contributor')
+  const firstSha=io.refs.get(`${REVIEW_ASSIGNMENT_REF_PREFIX}/2336-4206-${head}`)
+  const second=assignNextReviewer({issue:2336,pr:4206,headSha:head,slot:2,reviewerAllowlist:widened,ownerQuote:'use stepfun'},io)
+  assert.equal(second.reviewer,'stepfun-step-5-preview','slot 2 draws from the widened set, never the slot-1 holder')
+  assert.deepEqual([...second.reviewerAllowlist].sort(),[...widened].sort())
+  assert.equal(io.refs.get(`${REVIEW_ASSIGNMENT_REF_PREFIX}/2336-4206-${head}`),firstSha,'slot 1 durable assignment is untouched')
+  assert.equal(parseReviewCursor(io.getCommit(firstSha)).reviewerAllowlist.join(','),narrow.join(','))
+  const secondSha=io.refs.get(`${REVIEW_ASSIGNMENT_REF_PREFIX}/2336-4206-${head}-slot2`)
+  const parsed=parseReviewCursor(io.getCommit(secondSha))
+  assert.equal(parsed.ownerQuote,'use stepfun','the verbatim owner quote is recorded on the slot-2 assignment')
+  assert.deepEqual([...parsed.reviewerAllowlist].sort(),[...widened].sort())
+})
+
+test('#4206 owner-quoted widening still refuses a non-superset and a quoteless superset',()=>{
+  const io=withAtomicRefs(reviewIo()),head='a2'.repeat(20)
+  const narrow=['muse-spark-1.3-contributor']
+  const widened=['muse-spark-1.3-contributor','stepfun-step-5-preview']
+  io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:head,ref:'codex/x'}})
+  assignNextReviewer({issue:2336,pr:4206,headSha:head,reviewerAllowlist:narrow},io)
+  assert.throws(()=>assignNextReviewer({issue:2336,pr:4206,headSha:head,slot:2,reviewerAllowlist:widened},io),/does not match the durable assignment/,'a superset without the owner quote is still refused')
+  assert.throws(()=>assignNextReviewer({issue:2336,pr:4206,headSha:head,slot:2,reviewerAllowlist:['stepfun-step-5-preview'],ownerQuote:'use stepfun'},io),/does not match the durable assignment/,'a non-superset is never a widening')
+  assert.throws(()=>assignNextReviewer({issue:2336,pr:4206,headSha:head,slot:2,reviewerAllowlist:['stepfun-step-5-preview','gemini-3.8-flash-high'],ownerQuote:'use stepfun'},io),/does not match the durable assignment/,'a disjoint rewrite is never a widening')
+  assert.equal(io.refs.has(`${REVIEW_ASSIGNMENT_REF_PREFIX}/2336-4206-${head}-slot2`),false,'a refused widening consumes no slot-2 assignment')
+})
+
+test('#4206 a widened slot keeps its own policy on retry and on replacement without re-supplying the quote',()=>{
+  const io=withAtomicRefs(reviewIo()),head='a3'.repeat(20)
+  const narrow=['muse-spark-1.3-contributor']
+  // Three names so a replacement can still draw an independent reviewer after
+  // the widened slot's first holder fails (muse stays on slot 1).
+  const widened=['muse-spark-1.3-contributor','stepfun-step-5-preview','gemini-3.8-flash-high']
+  io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:head,ref:'codex/x'}})
+  assignNextReviewer({issue:2336,pr:4206,headSha:head,reviewerAllowlist:narrow},io)
+  const second=assignNextReviewer({issue:2336,pr:4206,headSha:head,slot:2,reviewerAllowlist:widened,ownerQuote:'use stepfun'},io)
+  assert.notEqual(second.reviewer,'muse-spark-1.3-contributor')
+  assert.deepEqual([...assignNextReviewer({issue:2336,pr:4206,headSha:head,slot:2},io).reviewerAllowlist].sort(),[...widened].sort(),'omitted retry inherits the widened durable policy')
+  assert.deepEqual([...assignNextReviewer({issue:2336,pr:4206,headSha:head,slot:2,reviewerAllowlist:widened},io).reviewerAllowlist].sort(),[...widened].sort(),'an identical explicit retry needs no quote')
+  assert.throws(()=>assignNextReviewer({issue:2336,pr:4206,headSha:head,slot:2,reviewerAllowlist:narrow},io),/does not match the durable assignment/,'a widened slot cannot be narrowed on retry')
+  const replacement=replaceFailedReviewer({issue:2336,pr:4206,headSha:head,slot:2,failedSequence:second.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true},io)
+  assert.deepEqual([...replacement.reviewerAllowlist].sort(),[...widened].sort())
+  assert.notEqual(replacement.reviewer,second.reviewer)
+  assert.throws(()=>replaceFailedReviewer({issue:2336,pr:4206,headSha:head,slot:2,failedSequence:second.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true,reviewerAllowlist:narrow},io),/does not match the durable assignment/,'a replacement cannot narrow a widened slot')
+})
+
+test('#4206 inheritReviewerAllowlist allows only an owner-quoted strict superset',()=>{
+  const narrow=Object.freeze(['muse-spark-1.3-contributor'])
+  const widened=Object.freeze(['muse-spark-1.3-contributor','stepfun-step-5-preview'])
+  assert.equal(isReviewerAllowlistSuperset(widened,narrow),true)
+  assert.equal(isReviewerAllowlistSuperset(narrow,narrow),false)
+  assert.equal(isReviewerAllowlistSuperset(narrow,widened),false)
+  assert.equal(isReviewerAllowlistSuperset(['stepfun-step-5-preview'],narrow),false)
+  assert.deepEqual(inheritReviewerAllowlist(null,narrow),narrow)
+  assert.deepEqual(inheritReviewerAllowlist(narrow,narrow),narrow)
+  assert.deepEqual(inheritReviewerAllowlist(widened,narrow,{ownerQuote:'use stepfun'}),widened)
+  assert.throws(()=>inheritReviewerAllowlist(widened,narrow),/does not match the durable assignment/)
+  assert.throws(()=>inheritReviewerAllowlist(widened,narrow,{ownerQuote:'   '}),/does not match the durable assignment/)
+  assert.throws(()=>inheritReviewerAllowlist(narrow,widened,{ownerQuote:'use stepfun'}),/does not match the durable assignment/)
+  assert.equal(sameReviewerAllowlist(widened,widened),true)
+  assert.equal(sameReviewerAllowlist(widened,narrow),false)
+})
+
+test('#4206 parseReviewCursor keeps single-line messages and returns the owner-quote body when present',()=>{
+  const single={message:`db-coordination reviewer-cursor sequence=1 reviewer=muse-spark-1.3-contributor issue=2336 pr=4206 head=${'ab'.repeat(20)} slot=1 allowlist=muse-spark-1.3-contributor`}
+  const parsedSingle=parseReviewCursor(single)
+  assert.equal(parsedSingle.reviewer,'muse-spark-1.3-contributor')
+  assert.equal(parsedSingle.ownerQuote,undefined)
+  const widened={message:`db-coordination reviewer-cursor sequence=2 reviewer=stepfun-step-5-preview issue=2336 pr=4206 head=${'ab'.repeat(20)} slot=2 allowlist=muse-spark-1.3-contributor,stepfun-step-5-preview\n\nuse stepfun`}
+  const parsed=parseReviewCursor(widened)
+  assert.equal(parsed.slot,2)
+  assert.equal(parsed.reviewer,'stepfun-step-5-preview')
+  assert.equal(parsed.ownerQuote,'use stepfun')
+  assert.deepEqual([...parsed.reviewerAllowlist].sort(),['muse-spark-1.3-contributor','stepfun-step-5-preview'].sort())
 })
 
 test('#3291 returned permissions survive unrelated cursor movement and an omitted redraw input',()=>{

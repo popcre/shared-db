@@ -51,8 +51,8 @@ import { assertDrawPromptContract, collectHandoffCollisions, preDrawHandoffCheck
 // the CLI, githubIo and the shared wire state, and re-exports every public name.
 import { MERGE_ADVISORY_CONTEXT, pendingRequiredContexts, selectNewestCommitStatus, REPO, AUTHOR_CAPACITY_STATES, AUTHORABLE_CAPACITY_STATES, WORKTREE_STATES, DEFAULT_LEASE_HOURS, MAX_AUTHOR_LEASE_HOURS, AUTHOR_CHECKIN_INTERVAL_MINUTES, MUTEX_STALE_AFTER_MS, MUTEX_REF, MUTEX_RECOVERY_ACTIVE_REF, RETIRED_CLAIM_REF_PREFIX, RETIREMENT_SCHEMA_VERSION, RETIREMENT_RECORD_PREFIX, RETIREMENT_DECISIONS, RETIREMENT_REF_ROW_LIMIT, REVIEW_CURSOR_REF, REVIEW_FAILURE_REF_PREFIX, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_ACTIVE_REF_PREFIX, REVIEW_ACTIVE_PARALLEL_REF_PREFIX, REVIEW_SILENCE_PROBE_REF_PREFIX, REVIEW_SILENCE_RELEASE_REF_PREFIX, REVIEW_QUEUE_REF_PREFIX, REVIEW_EXCLUSION_REF_PREFIX, REVIEW_EXCLUSION_REASONS, RETIRED_EXCLUSION_REASONS, RECORDABLE_EXCLUSION_REASONS, REVIEW_REINSTATEMENT_REF_PREFIX, REINSTATABLE_EXCLUSION_REASONS, REVIEW_RETURN_REF_PREFIX, REVIEW_RETIRED_VERDICT_REF_PREFIX, REVIEW_ACTIVE_CUTOVER_REF, REVIEW_SILENT_RECLAIM_REQUEST_LIMIT, REVIEW_SILENT_RECLAIM_MUTEX_SECTION_RESERVE, REVIEW_QUEUE_ASSIGNMENT_REQUEST_LIMIT, REVIEW_CAPACITY_REQUEST_LIMIT, REVIEW_QUOTA_RESERVE, REVIEW_LEASE_SUSPECT_HOURS, SILENCE_MIN_AGE_HOURS, SILENCE_CONFIRM_HOURS, REVIEW_STARTED_REF_PREFIX, UNSTARTED_MIN_AGE_HOURS, reviewStartedMarkerRef, reviewStartMarkerPresent, REVIEW_QUEUE_TTL_HOURS, REVIEW_QUEUE_ROW_LIMIT, REVIEW_REF_ROW_LIMIT, markReviewRefListingRefusal, isReviewRefListingRefusal, markLeaseReadFailure, isLeaseReadFailure, isCommandSizeFailure, RETIREMENT_LEGACY_SCHEMA_VERSIONS, RETIREMENT_PRESERVATION_FIELDS, RETIREMENT_PRESERVATION_STATES, REPO_OWNER, REPO_NAME } from './lib/lanes/constants.mjs'
 export { MERGE_ADVISORY_CONTEXT, pendingRequiredContexts, selectNewestCommitStatus, REPO, AUTHOR_CAPACITY_STATES, AUTHORABLE_CAPACITY_STATES, WORKTREE_STATES, DEFAULT_LEASE_HOURS, MAX_AUTHOR_LEASE_HOURS, AUTHOR_CHECKIN_INTERVAL_MINUTES, MUTEX_STALE_AFTER_MS, MUTEX_REF, MUTEX_RECOVERY_ACTIVE_REF, RETIRED_CLAIM_REF_PREFIX, RETIREMENT_SCHEMA_VERSION, RETIREMENT_RECORD_PREFIX, RETIREMENT_DECISIONS, RETIREMENT_REF_ROW_LIMIT, REVIEW_CURSOR_REF, REVIEW_FAILURE_REF_PREFIX, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_ACTIVE_REF_PREFIX, REVIEW_ACTIVE_PARALLEL_REF_PREFIX, REVIEW_SILENCE_PROBE_REF_PREFIX, REVIEW_SILENCE_RELEASE_REF_PREFIX, REVIEW_QUEUE_REF_PREFIX, REVIEW_EXCLUSION_REF_PREFIX, REVIEW_EXCLUSION_REASONS, RETIRED_EXCLUSION_REASONS, RECORDABLE_EXCLUSION_REASONS, REVIEW_REINSTATEMENT_REF_PREFIX, REINSTATABLE_EXCLUSION_REASONS, REVIEW_RETURN_REF_PREFIX, REVIEW_RETIRED_VERDICT_REF_PREFIX, REVIEW_ACTIVE_CUTOVER_REF, REVIEW_SILENT_RECLAIM_REQUEST_LIMIT, REVIEW_SILENT_RECLAIM_MUTEX_SECTION_RESERVE, REVIEW_QUEUE_ASSIGNMENT_REQUEST_LIMIT, REVIEW_CAPACITY_REQUEST_LIMIT, REVIEW_QUOTA_RESERVE, REVIEW_LEASE_SUSPECT_HOURS, SILENCE_MIN_AGE_HOURS, SILENCE_CONFIRM_HOURS, REVIEW_STARTED_REF_PREFIX, UNSTARTED_MIN_AGE_HOURS, reviewStartedMarkerRef, reviewStartMarkerPresent, REVIEW_QUEUE_TTL_HOURS, REVIEW_QUEUE_ROW_LIMIT, REVIEW_REF_ROW_LIMIT, markReviewRefListingRefusal, isReviewRefListingRefusal, markLeaseReadFailure, isLeaseReadFailure, isCommandSizeFailure, RETIREMENT_LEGACY_SCHEMA_VERSIONS, RETIREMENT_PRESERVATION_FIELDS, RETIREMENT_PRESERVATION_STATES }
-import { REVIEWERS, RETIRED_REVIEWERS, QUARANTINED_REVIEWERS, reviewerReadsRepository, reviewerEmitsGovernedVerdict, reviewerKnownNonReading, OVERFLOW_REVIEWERS, ACTIVE_REVIEWERS, canonicalReviewerAllowlist, ENGINE_REVIEWER_EXCLUSION, reviewersForOrchestrator, reviewerAdmissionAllowed, reconcilePreflightRows, allocatableReviewers, reviewerAllowlistSuffix, inheritReviewerAllowlist, reviewerAllowed, assertReviewerAllowlistConsistency, inheritReturnedReviewerAllowlist, REVIEWER_FALLBACK_PROVIDERS, authorEngineFromEnv, knownAuthorEngines, orderedReviewers, readSessionIdOrUnknown, drawOrder } from './lib/lanes/reviewer-roster.mjs'
-export { REVIEWERS, RETIRED_REVIEWERS, QUARANTINED_REVIEWERS, reviewerReadsRepository, reviewerEmitsGovernedVerdict, reviewerKnownNonReading, OVERFLOW_REVIEWERS, ACTIVE_REVIEWERS, canonicalReviewerAllowlist, ENGINE_REVIEWER_EXCLUSION, reviewersForOrchestrator, reviewerAdmissionAllowed, reconcilePreflightRows, allocatableReviewers, REVIEWER_FALLBACK_PROVIDERS, authorEngineFromEnv, knownAuthorEngines, orderedReviewers }
+import { REVIEWERS, RETIRED_REVIEWERS, QUARANTINED_REVIEWERS, reviewerReadsRepository, reviewerEmitsGovernedVerdict, reviewerKnownNonReading, OVERFLOW_REVIEWERS, ACTIVE_REVIEWERS, canonicalReviewerAllowlist, ENGINE_REVIEWER_EXCLUSION, reviewersForOrchestrator, reviewerAdmissionAllowed, reconcilePreflightRows, allocatableReviewers, reviewerAllowlistSuffix, inheritReviewerAllowlist, isReviewerAllowlistSuperset, sameReviewerAllowlist, reviewerAllowed, assertReviewerAllowlistConsistency, inheritReturnedReviewerAllowlist, REVIEWER_FALLBACK_PROVIDERS, authorEngineFromEnv, knownAuthorEngines, orderedReviewers, readSessionIdOrUnknown, drawOrder } from './lib/lanes/reviewer-roster.mjs'
+export { REVIEWERS, RETIRED_REVIEWERS, QUARANTINED_REVIEWERS, reviewerReadsRepository, reviewerEmitsGovernedVerdict, reviewerKnownNonReading, OVERFLOW_REVIEWERS, ACTIVE_REVIEWERS, canonicalReviewerAllowlist, ENGINE_REVIEWER_EXCLUSION, reviewersForOrchestrator, reviewerAdmissionAllowed, reconcilePreflightRows, allocatableReviewers, inheritReviewerAllowlist, isReviewerAllowlistSuperset, sameReviewerAllowlist, REVIEWER_FALLBACK_PROVIDERS, authorEngineFromEnv, knownAuthorEngines, orderedReviewers }
 import { EXCLUSIVE_REFS, REVIEW_TARGET_SUPERSEDED, SLOT_INDEPENDENCE_CONFLICT, TERMINAL_FAILURE_CODES, QUEUE_STATUSES, QUEUE_WORK_TYPES, QUEUE_ROUTES, ROUTES_BY_WORK_TYPE, NON_STRUCTURAL_EXITS, OUTSIDE_ORCHESTRATOR_EXITS, RETURN_ADDRESS_PATTERN, RETURNED_MARKER, RETURNED_COPY_MARKER, LEGACY_RETURNED_COPY_PATTERN, RETURNED_COPY_HEADER_LINES, returnedCopyProvenance, requiresReturnAddress, queueExit, parseQueueScope, COORDINATION_LABELS, WORK_LABEL, buildDynamicQueues, returnIssueToOwner, reviewTargetSuperseded, CLAIM_FIRST_ROUTES, readDependencyStates } from './lib/lanes/queue-routing.mjs'
 export { EXCLUSIVE_REFS, REVIEW_TARGET_SUPERSEDED, SLOT_INDEPENDENCE_CONFLICT, TERMINAL_FAILURE_CODES, QUEUE_STATUSES, QUEUE_WORK_TYPES, QUEUE_ROUTES, ROUTES_BY_WORK_TYPE, NON_STRUCTURAL_EXITS, OUTSIDE_ORCHESTRATOR_EXITS, RETURN_ADDRESS_PATTERN, RETURNED_MARKER, RETURNED_COPY_MARKER, LEGACY_RETURNED_COPY_PATTERN, RETURNED_COPY_HEADER_LINES, returnedCopyProvenance, requiresReturnAddress, queueExit, parseQueueScope, COORDINATION_LABELS, WORK_LABEL, buildDynamicQueues, returnIssueToOwner, CLAIM_FIRST_ROUTES, readDependencyStates }
 import { LaneError, validateClaimObjects, parseAuthorLease, assertLaneAvailable, claimBody, laneTreeReader } from './lib/lanes/claims.mjs'
@@ -2044,7 +2044,7 @@ function ensureReviewerQueueTurn(request,io,now=new Date()){
   }finally{if(acquired)finalizeReviewMutex(ownerSha,io)}
 }
 
-function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=null,admissionOptions=null},io){
+function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=null,ownerQuote='',admissionOptions=null},io){
   const headPattern=io?.requiresExactReviewHeadSha?/^[0-9a-f]{40}$/i:/^[0-9a-f]{7,40}$/i
   if(!Number.isInteger(Number(issue))||!Number.isInteger(Number(pr))||!headPattern.test(String(headSha??'')))throw new LaneError('review assignment requires issue, PR, and exact 40-character head SHA')
   if(!Number.isInteger(Number(slot))||Number(slot)<1)throw new LaneError('review assignment slot must be a positive integer (1 = first reviewer, 2 = second independent reviewer)')
@@ -2069,7 +2069,17 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
   // #1813's (issue #1798 round 3 / issue #1812).
   const {slotOne,peers:otherSlots}=resolvePeerSlots(request.issue,request.pr,request.headSha,request.slot,io)
   const excludedProviders=new Set([slotOne?.reviewer,...[...otherSlots.values()].map((row)=>row.reviewer)].filter(Boolean))
-  if(slotOne)requestedAllowlist=inheritReviewerAllowlist(requestedAllowlist,slotOne.reviewerAllowlist)
+  // Slot-one policy constrains a FRESH draw for later slots. A null request
+  // defers to this slot's own durable policy when one exists, and inherits
+  // slot one's at the fresh-draw site below. A strict superset is an
+  // owner-quoted widening and is applied only when this slot creates a new
+  // assignment. Anything else (subset, disjoint set, or a restriction of an
+  // unrestricted slot one) is still refused here.
+  if(slotOne&&requestedAllowlist!==null){
+    const recorded=slotOne.reviewerAllowlist??null
+    if(recorded===null)inheritReviewerAllowlist(requestedAllowlist,recorded)
+    else if(!sameReviewerAllowlist(requestedAllowlist,recorded)&&!isReviewerAllowlistSuperset(requestedAllowlist,recorded))throw new LaneError(`reviewer allowlist does not match the durable assignment (${recorded.join(',')})`)
+  }
   const preflightBusy=findBusyReviewers(io)
   if(!preflightBusy)throw new LaneError('active reviewer leases are unreadable; reviewer assignment refused before mutex acquisition')
   const ownerSha=io.makeOwnerCommit(`db-coordination reviewer-assignment-lock issue=${request.issue} pr=${request.pr} head=${request.headSha}${request.slot!==1?` slot=${request.slot}`:''}`)
@@ -2233,6 +2243,15 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
       if(!reviewerEmitsGovernedVerdict(current.reviewer))throw new LaneError(`reviewer ${current.reviewer} is assigned to this head but its wrapper cannot emit the governed VERDICT line. Draw another reviewer with the exact command: ${nonVerdictReviewerReplacementCommand({issue:current.issue,pr:current.pr,headSha:current.headSha,slot:request.slot},current.sequence)}`)
       return {...current,slot:request.slot,wrapper:REVIEWERS.find((r)=>r.name===current.reviewer)?.wrapper}
     }
+    // Fresh draw for this slot. Slot-one policy is inherited here (not earlier)
+    // so a later slot can carry an owner-quoted strict-superset widening, and so
+    // a retry of an already-widened slot keeps its own durable policy.
+    if(slotOne){
+      effectiveAllowlist=inheritReviewerAllowlist(requestedAllowlist,slotOne.reviewerAllowlist,{ownerQuote})
+      if(effectiveAllowlist)request.reviewerAllowlist=effectiveAllowlist
+      else delete request.reviewerAllowlist
+      eligibleNames=new Set(eligible.filter((row)=>reviewerAllowed(row.name,effectiveAllowlist)).map((row)=>row.name))
+    }
     assertPaidReviewCapacity(request,io)
     const sequence=(current?.sequence??0)+1
     // Ordinary path: rotate within the preferred pool. Grok is considered after
@@ -2275,7 +2294,10 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
       const detail=[...ACTIVE_REVIEWERS,...OVERFLOW_REVIEWERS].map((row)=>`${row.name} ${refusalFor(row.name)}`).join('; ')
       throw new LaneError(`${request.slot===1?'no reviewer is available':`no independent reviewer is available for slot ${request.slot}`}: ${detail}.`)
     }
-    const assignmentSha=io.makeOwnerCommit(`db-coordination reviewer-cursor sequence=${sequence} reviewer=${reviewer.name} issue=${request.issue} pr=${request.pr} head=${request.headSha}${request.slot!==1?` slot=${request.slot}`:''}${reviewerAllowlistSuffix(effectiveAllowlist)}`)
+    const assignmentSubject=`db-coordination reviewer-cursor sequence=${sequence} reviewer=${reviewer.name} issue=${request.issue} pr=${request.pr} head=${request.headSha}${request.slot!==1?` slot=${request.slot}`:''}${reviewerAllowlistSuffix(effectiveAllowlist)}`
+    // An owner-quoted allowlist widening records the verbatim quote as the
+    // assignment commit body so the durable policy change is auditable.
+    const assignmentSha=io.makeOwnerCommit(ownerQuote&&slotOne&&effectiveAllowlist&&!sameReviewerAllowlist(effectiveAllowlist,slotOne.reviewerAllowlist??null)?`${assignmentSubject}\n\n${ownerQuote.trim()}`:assignmentSubject)
     const leaseRef=reviewLeaseRefForAssignment({...request,reviewer:reviewer.name},concurrentLeases)
     const leaseSha=assignmentSha
     const selectedStale=busy.stale.find((row)=>row.ref===leaseRef)
@@ -2841,7 +2863,15 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
   let mergedReuseMemo=null
   const mergedReuse=()=>mergedReuseMemo??=(String(failureCode)!==SLOT_INDEPENDENCE_CONFLICT&&mergedPrReviewerReuseAllowed(request,io))
   const assertIndependent=(reviewer)=>{if(mergedReuse())return;if(peersNow().has(reviewer))throw new LaneError(`reviewer ${reviewer} already holds another review slot for this exact head; replacement refused. Replace this conflicting assignment with --failure-code ${SLOT_INDEPENDENCE_CONFLICT} and its current sequence.`)}
-  if(slotOne)requestedAllowlist=inheritReviewerAllowlist(requestedAllowlist,slotOne.reviewerAllowlist)
+  // Same deferred slot-one check as assignment: a strict superset may be this
+  // slot's already-widened durable policy (confirmed when that policy loads),
+  // and a null request defers to that policy. Only a non-superset mismatch is
+  // refused here. Replacement never widens a slot's own durable policy.
+  if(slotOne&&requestedAllowlist!==null){
+    const recorded=slotOne.reviewerAllowlist??null
+    if(recorded===null)inheritReviewerAllowlist(requestedAllowlist,recorded)
+    else if(!sameReviewerAllowlist(requestedAllowlist,recorded)&&!isReviewerAllowlistSuperset(requestedAllowlist,recorded))throw new LaneError(`reviewer allowlist does not match the durable assignment (${recorded.join(',')})`)
+  }
   const failureBase=`${REVIEW_FAILURE_REF_PREFIX}/${request.issue}-${request.pr}-${request.headSha}`
   const fixedRecords=io.readReviewRecords?.([replacementRef,assignmentRef,REVIEW_CURSOR_REF,assignmentVerdictRef,failureRef],replacementBase,failureBase)??null
   let ownerSha=null,mutexAcquired=false
@@ -4693,7 +4723,7 @@ function parseArgs(argv) {
     else if (a === '--confirm-stale') out.confirmStale = true
     else if (/^--acquire-(preview|preview-recovery|preview-rehearsal|merge|production)$/.test(a)) out.acquireExclusive = a.slice(10)
     else if (/^--release-(preview|preview-recovery|preview-rehearsal|merge|production)$/.test(a)) out.releaseExclusive = a.slice(10)
-    else if (['--task','--owner','--branch','--worktree','--issue','--pr','--head-sha','--owner-sha','--expected-sha','--released-claim','--active-claim','--source-pr','--target-pr','--target-branch','--target-worktree','--target-url','--description','--claim-number','--failed-sequence','--failure-code','--failing-check','--old-version','--reviewer','--reviewer-allowlist','--status','--wrapper','--version-pr-map','--blocked-on','--review-slot','--reason','--evidence','--evidence-sha','--verdict','--findings-ref','--replacement-sequence','--run-id','--artifact-id','--artifact-digest','--manifest-digest','--database-preview-classification-file','--worktree-state','--recovery-artifact','--hold-reason','--prompt','--prompt-file','--old-owner','--new-owner','--recipient-chat-id','--request-id','--handoff-ready-ref','--abandonment-issue','--authorization-chat-id','--authorization-quote-file'].includes(a)) { out[a.slice(2).replace(/-([a-z])/g, (_,c)=>c.toUpperCase())] = next(i); i++ }
+    else if (['--task','--owner','--branch','--worktree','--issue','--pr','--head-sha','--owner-sha','--expected-sha','--released-claim','--active-claim','--source-pr','--target-pr','--target-branch','--target-worktree','--target-url','--description','--claim-number','--failed-sequence','--failure-code','--failing-check','--old-version','--reviewer','--reviewer-allowlist','--status','--wrapper','--version-pr-map','--blocked-on','--review-slot','--reason','--evidence','--evidence-sha','--verdict','--findings-ref','--replacement-sequence','--run-id','--artifact-id','--artifact-digest','--manifest-digest','--database-preview-classification-file','--worktree-state','--recovery-artifact','--hold-reason','--prompt','--prompt-file','--old-owner','--new-owner','--recipient-chat-id','--request-id','--handoff-ready-ref','--abandonment-issue','--authorization-chat-id','--authorization-quote-file','--owner-quote-file'].includes(a)) { out[a.slice(2).replace(/-([a-z])/g, (_,c)=>c.toUpperCase())] = next(i); i++ }
     else if(a==='--confirm-local-dependency-unfixable')out.confirmLocalDependencyUnfixable=true
     else if(a==='--skip-doctor')out.skipDoctor=true
     else if(a==='--confirm-no-verdict')out.confirmNoVerdict=true
@@ -4871,7 +4901,7 @@ export function main(argv, now = new Date(), io = githubIo) {
     if(o.excludeReviewer){console.log(JSON.stringify(excludeReviewerForPr(o,io),null,2));return 0}
     if(o.reinstateReviewerExclusion){console.log(JSON.stringify(reinstateReviewerExclusion(o,io),null,2));return 0}
     if(o.reviewerPreflight){console.log(JSON.stringify(reviewerExecutionPreflight(o,io),null,2));return 0}
-    if(o.assignReviewer){assertReviewerDrawHandoff(o,io,{path:'assign'});console.log(JSON.stringify(assignWithMutexRetry({issue:o.issue,pr:o.pr,headSha:o.headSha,slot:o.reviewSlot!==undefined?Number(o.reviewSlot):1,reviewerAllowlist:o.reviewerAllowlist,admissionOptions:io.enforceAdmission===true?o:null},io),null,2));return 0}
+    if(o.assignReviewer){assertReviewerDrawHandoff(o,io,{path:'assign'});console.log(JSON.stringify(assignWithMutexRetry({issue:o.issue,pr:o.pr,headSha:o.headSha,slot:o.reviewSlot!==undefined?Number(o.reviewSlot):1,reviewerAllowlist:o.reviewerAllowlist,ownerQuote:o.ownerQuoteFile?readFileSync(o.ownerQuoteFile,'utf8').trim():'',admissionOptions:io.enforceAdmission===true?o:null},io),null,2));return 0}
     if(o.activateReviewCutover){console.log(JSON.stringify(activateReviewCutover(io),null,2));return 0}
     if (o.acquireExclusive) { if(o.acquireExclusive!=='merge')requireAdmissionArguments(o,io,{pr:o.pr??null});console.log(JSON.stringify(acquireExclusive(o.acquireExclusive, { owner:o.owner, pr:o.pr, headSha:o.headSha, versions:o.versions, versionPrMap:o.versionPrMap, admissionOptions:o }, io), null, 2)); return 0 }
     if (o.releaseExclusive) { if (!o.ownerSha) throw new LaneError('--owner-sha is required for safe release'); releaseOwnedRef(EXCLUSIVE_REFS[o.releaseExclusive], o.ownerSha, io); return 0 }

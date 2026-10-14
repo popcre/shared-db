@@ -299,7 +299,8 @@ export const REVIEWERS = Object.freeze([
 // API key), and a live review session ended with a well-formed `VERDICT:
 // APPROVE <head>` line. Its REVIEWERS row never moved, so no in-flight sequence
 // is reassigned; Grok is again the cost fallback (#3592) behind the others.
-export const RETIRED_REVIEWERS = Object.freeze(['glm-5.2', 'muse-spark-1.2-contributor', 'deepseek-chat', 'codex-gpt-5.6-sol', 'kimi-k3'])
+// Qwen dropped permanently by owner ruling 2026-10-13 ("drop qwen completely").
+export const RETIRED_REVIEWERS = Object.freeze(['glm-5.2', 'muse-spark-1.2-contributor', 'deepseek-chat', 'codex-gpt-5.6-sol', 'kimi-k3', 'qwen-3.8-max'])
 
 // Not retired -- quarantined pending a passing live qualification. Kept separate
 // from RETIRED_REVIEWERS on purpose: retirement is a permanent disposition,

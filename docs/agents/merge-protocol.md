@@ -42,21 +42,27 @@ Migration PRs still need two independent exact-head APPROVEs before merge and
 production; branch protection is never disabled.
 
 A **tree-identical re-push** — same git tree, or same pull request diff ignoring
-`.agent/` — keeps every existing review. Slot 1 is not re-drawn and no paid
-attempt is burned to re-pin the same bytes. Slot 2 may draw on the new head
-using the carried slot-1 assignment from a tree-identical or content-equivalent
-ancestor. The gate composes the ancestor's slot 1 with the new head's slot 2;
-each slot still owes its own APPROVE at its own head, providers stay
-independent, a return at the new head is never filled from the ancestor, and a
-slot re-drawn at the new head supersedes the ancestor's slot. A carried slot 1
-is not a third paid slot-1 draw.
+`.agent/` — keeps valid existing reviews. Slot 1 is not re-drawn and no paid
+attempt is burned to re-pin the same bytes. For equivalent content, the newest
+valid historical slot-1 assignment may carry forward; a replacement must have
+its exact failure binding verified. A returned or refused slot cannot be
+revived from an older assignment. The gate composes the ancestor's slot 1 with
+the new head's slot 2 only when both required slots have their own APPROVE and
+the reviewers are distinct. The newest valid assignment at each slot controls;
+a return or refusal blocks that slot until a newer valid assignment resolves
+it. An ancestor approval never fills a returned or refused new-head slot.
+Carried reviews do not consume another paid attempt.
 
-**Owner-quoted allowlist widening** (PR #4294): a strict superset of slot 1's
-durable reviewer allowlist plus a verbatim owner quote, recorded on the
-assignment commit body, lets an undrawn slot 2 draw without re-drawing slot 1.
-Slot 1's durable policy stays exactly as recorded; same-slot retries and
-replacements keep the slot's own policy and still refuse narrowing or quoteless
-widening.
+**Owner-quoted allowlist widening** (source history includes PR #4294; combined
+implementation in PR #4294): either required slot may be assigned first. The
+earliest live peer anchors policy for a new slot. A fresh slot 2-or-later draw
+may widen that policy only with a recorded verbatim owner quote and a strict
+superset allowlist; the quote is stored only when widening occurs. A slot's own
+durable policy remains exact on retry and replacement. Narrowing, disjoint
+policies, unquoted widening, and restricting an unrestricted peer are refused.
+Fresh peer, carried-history, and policy reads are rechecked under the assignment
+mutex. The combined source is delivered and independently reviewed in one
+atomic PR #4294; no separate dependency merge is required.
 
 ### 5.0-D Declare what a re-derived migration was derived from — `-- derived-from:` (issue #1608, added 2026-08-26)
 

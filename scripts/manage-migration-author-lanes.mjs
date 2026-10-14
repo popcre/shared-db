@@ -2058,28 +2058,17 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
   const concurrentLeases=Boolean(io.requiresExactReviewHeadSha)
   const {eligible,unusable}=allocatableReviewers(io)
   let effectiveAllowlist=requestedAllowlist,eligibleNames=new Set(eligible.filter((row)=>reviewerAllowed(row.name,effectiveAllowlist)).map((row)=>row.name))
-  // Slot >=2 needs a name to exclude BEFORE the mutex is taken: cheap, and it
-  // lets an ungoverned "assign slot 2 with no slot 1" request fail fast.
+  // Discover peer independence and durable task policy before taking the mutex.
+  // Either slot may be first; repeat the policy check under the owned mutex.
   //
-  // This branch reached the same slot-2 defect from the other side and moved
-  // this resolve INSIDE the lock. #1813 fixed it by raising the ceiling instead,
-  // and its REVIEW_MUTEX_SECTION_RESERVE is derived assuming the resolve is paid
-  // here, pre-mutex. Two fixes for one defect is worse than either, so this
-  // branch defers to the merged one: the resolve stays here, and the reserve is
-  // #1813's (issue #1798 round 3 / issue #1812).
-  const {slotOne,peers:otherSlots}=resolvePeerSlots(request.issue,request.pr,request.headSha,request.slot,io)
+  // Keep the initial discovery before the lock and recheck policy/independence
+  // inside it. The fallback path explicitly bypasses operation-cache listings;
+  // production's batched Git-ref reader takes a fresh snapshot on every call.
+  // Request-cost tests include both reads within the existing 25-request limit.
+  const {slotOne,peers:otherSlots,policyPeer,ownPolicy}=resolvePeerSlots(request.issue,request.pr,request.headSha,request.slot,io)
   const excludedProviders=new Set([slotOne?.reviewer,...[...otherSlots.values()].map((row)=>row.reviewer)].filter(Boolean))
-  // Slot-one policy constrains a FRESH draw for later slots. A null request
-  // defers to this slot's own durable policy when one exists, and inherits
-  // slot one's at the fresh-draw site below. A strict superset is an
-  // owner-quoted widening and is applied only when this slot creates a new
-  // assignment. Anything else (subset, disjoint set, or a restriction of an
-  // unrestricted slot one) is still refused here.
-  if(slotOne&&requestedAllowlist!==null){
-    const recorded=slotOne.reviewerAllowlist??null
-    if(recorded===null)inheritReviewerAllowlist(requestedAllowlist,recorded)
-    else if(!sameReviewerAllowlist(requestedAllowlist,recorded)&&!isReviewerAllowlistSuperset(requestedAllowlist,recorded))throw new LaneError(`reviewer allowlist does not match the durable assignment (${recorded.join(',')})`)
-  }
+  const policyAnchor=ownPolicy??policyPeer
+  if(policyAnchor)requestedAllowlist=inheritReviewerAllowlist(requestedAllowlist,policyAnchor.reviewerAllowlist,{ownerQuote:!ownPolicy&&request.slot>=2?ownerQuote:''})
   const preflightBusy=findBusyReviewers(io)
   if(!preflightBusy)throw new LaneError('active reviewer leases are unreadable; reviewer assignment refused before mutex acquisition')
   const ownerSha=io.makeOwnerCommit(`db-coordination reviewer-assignment-lock issue=${request.issue} pr=${request.pr} head=${request.headSha}${request.slot!==1?` slot=${request.slot}`:''}`)
@@ -2092,9 +2081,11 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
     let mergedReuseMemo=null
     const mergedReuse=()=>mergedReuseMemo??=mergedPrReviewerReuseAllowed(request,io)
     const assertDistinct=(reviewer)=>{
-      if(mergedReuse())return
-      const {slotOne:first,peers}=resolvePeerSlots(request.issue,request.pr,request.headSha,request.slot,io)
-      if(first?.reviewer===reviewer||[...peers.values()].some((row)=>row.reviewer===reviewer))throw new LaneError(`reviewer ${reviewer} already holds another review slot for this exact head; this slot cannot be assigned or retried. If the conflicting slot has no verdict or artifact, use --replace-failed-reviewer with --failure-code ${SLOT_INDEPENDENCE_CONFLICT} and its current sequence.`)
+      const {slotOne:first,peers,policyPeer:freshPeer,ownPolicy:freshOwn}=resolvePeerSlots(request.issue,request.pr,request.headSha,request.slot,io,{fresh:true})
+      const freshAnchor=freshOwn??freshPeer
+      if(freshAnchor&&policyAnchor&&!freshOwn&&!ownPolicy&&!sameReviewerAllowlist(freshAnchor.reviewerAllowlist??null,policyAnchor.reviewerAllowlist??null))throw new LaneError('reviewer task policy changed after mutex acquisition; retry assignment to inherit the recorded policy')
+      if(freshAnchor&&JSON.stringify(inheritReviewerAllowlist(effectiveAllowlist,freshAnchor.reviewerAllowlist,{ownerQuote:!freshOwn&&request.slot>=2?ownerQuote:''}))!==JSON.stringify(effectiveAllowlist))throw new LaneError('reviewer task policy changed after mutex acquisition; retry assignment to inherit the recorded policy')
+      if(!mergedReuse()&&(first?.reviewer===reviewer||[...peers.values()].some((row)=>row.reviewer===reviewer)))throw new LaneError(`reviewer ${reviewer} already holds another review slot for this exact head; this slot cannot be assigned or retried. If the conflicting slot has no verdict or artifact, use --replace-failed-reviewer with --failure-code ${SLOT_INDEPENDENCE_CONFLICT} and its current sequence.`)
     }
     if(admissionOptions)requirePrOperationRoute(admissionOptions,io,{pr,headSha,issue,mutexOwner:ownerSha,allowMerged:true,reviewSnapshot:true})
     const exclusions=reviewerExclusions(request.issue,request.pr,io,{fresh:true})
@@ -2243,16 +2234,11 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
       if(!reviewerEmitsGovernedVerdict(current.reviewer))throw new LaneError(`reviewer ${current.reviewer} is assigned to this head but its wrapper cannot emit the governed VERDICT line. Draw another reviewer with the exact command: ${nonVerdictReviewerReplacementCommand({issue:current.issue,pr:current.pr,headSha:current.headSha,slot:request.slot},current.sequence)}`)
       return {...current,slot:request.slot,wrapper:REVIEWERS.find((r)=>r.name===current.reviewer)?.wrapper}
     }
-    // Fresh draw for this slot. Slot-one policy is inherited here (not earlier)
-    // so a later slot can carry an owner-quoted strict-superset widening, and so
-    // a retry of an already-widened slot keeps its own durable policy.
-    if(slotOne){
-      effectiveAllowlist=inheritReviewerAllowlist(requestedAllowlist,slotOne.reviewerAllowlist,{ownerQuote})
-      if(effectiveAllowlist)request.reviewerAllowlist=effectiveAllowlist
-      else delete request.reviewerAllowlist
-      eligibleNames=new Set(eligible.filter((row)=>reviewerAllowed(row.name,effectiveAllowlist)).map((row)=>row.name))
-    }
-    assertPaidReviewCapacity(request,io)
+    const capacity=assertPaidReviewCapacity(request,io)
+    const exhaustedReviewers=new Set(capacity.exhaustedReviewers??[])
+    if(effectiveAllowlist)request.reviewerAllowlist=effectiveAllowlist
+    else delete request.reviewerAllowlist
+    eligibleNames=new Set(eligible.filter((row)=>reviewerAllowed(row.name,effectiveAllowlist)).map((row)=>row.name))
     const sequence=(current?.sequence??0)+1
     // Ordinary path: rotate within the preferred pool. Grok is considered after
     // that pool for this exact assignment (#3592). The durable sequence remains
@@ -2265,12 +2251,12 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
     // production protocol.  Lightweight historical fixtures may use short
     // heads, which cannot name a parallel lease and retain old serial rules.
     // #2831: a reviewer whose wrapper cannot emit a governed verdict is never drawn.
-    const notTaken=(row)=>eligibleNames.has(row.name)&&reviewerEmitsGovernedVerdict(row.name)&&(concurrentLeases||!busy.has(row.name))&&!excludedProviders.has(row.name)&&!exclusions.has(row.name)
+    const notTaken=(row)=>eligibleNames.has(row.name)&&!exhaustedReviewers.has(row.name)&&reviewerEmitsGovernedVerdict(row.name)&&(concurrentLeases||!busy.has(row.name))&&!excludedProviders.has(row.name)&&!exclusions.has(row.name)
     const rotation=drawOrder(sequence,io)
     // Owner ruling 2026-10-02: when no independent reviewer is left for a merged
     // PR's post-merge slot >= 2, reuse one that already holds another slot on
     // this exact head. Every other exclusion still applies; same rotation order.
-    const notTakenReuse=(row)=>eligibleNames.has(row.name)&&reviewerEmitsGovernedVerdict(row.name)&&(concurrentLeases||!busy.has(row.name))&&!exclusions.has(row.name)
+    const notTakenReuse=(row)=>eligibleNames.has(row.name)&&!exhaustedReviewers.has(row.name)&&reviewerEmitsGovernedVerdict(row.name)&&(concurrentLeases||!busy.has(row.name))&&!exclusions.has(row.name)
     const reviewer=rotation.find(notTaken)??OVERFLOW_REVIEWERS.find(notTaken)??(mergedReuse()?rotation.find(notTakenReuse)??OVERFLOW_REVIEWERS.find(notTakenReuse):undefined)
     if(!reviewer){
       // #2694 review (slot 2, medium finding 9). The message used to recite a
@@ -2282,6 +2268,7 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
       // provider is now given the reason `notTaken` ACTUALLY rejected it by,
       // tested in the same order the predicate tests them.
       const refusalFor=(name)=>{
+        if(exhaustedReviewers.has(name))return 'two verified service failures for unchanged content; repair reviewer service or use another eligible reviewer'
         if(!reviewerAllowed(name,effectiveAllowlist))return 'outside the durable task-local reviewer allowlist'
         if(unusable.has(name)){const state=unusable.get(name);return `unusable by ai-review-preflight (${state.status??state.failure_class??'unavailable'})`}
         if(!eligibleNames.has(name))return 'conflicts with the live orchestrator engine, or is retired or quarantined'
@@ -2297,7 +2284,8 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
     const assignmentSubject=`db-coordination reviewer-cursor sequence=${sequence} reviewer=${reviewer.name} issue=${request.issue} pr=${request.pr} head=${request.headSha}${request.slot!==1?` slot=${request.slot}`:''}${reviewerAllowlistSuffix(effectiveAllowlist)}`
     // An owner-quoted allowlist widening records the verbatim quote as the
     // assignment commit body so the durable policy change is auditable.
-    const assignmentSha=io.makeOwnerCommit(ownerQuote&&slotOne&&effectiveAllowlist&&!sameReviewerAllowlist(effectiveAllowlist,slotOne.reviewerAllowlist??null)?`${assignmentSubject}\n\n${ownerQuote.trim()}`:assignmentSubject)
+    const widenedPeerPolicy=!ownPolicy&&request.slot>=2&&policyPeer&&effectiveAllowlist&&!sameReviewerAllowlist(effectiveAllowlist,policyPeer.reviewerAllowlist??null)
+    const assignmentSha=io.makeOwnerCommit(widenedPeerPolicy&&ownerQuote.trim()?`${assignmentSubject}\n\n${ownerQuote.trim()}`:assignmentSubject)
     const leaseRef=reviewLeaseRefForAssignment({...request,reviewer:reviewer.name},concurrentLeases)
     const leaseSha=assignmentSha
     const selectedStale=busy.stale.find((row)=>row.ref===leaseRef)
@@ -2856,22 +2844,15 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
   const assignmentVerdictRef=assignmentRef.replace(REVIEW_ASSIGNMENT_REF_PREFIX,REVIEW_VERDICT_REF_PREFIX)
   // Slot >=2 must stay independent of slot 1 after a replacement, not only at
   // first assignment. Resolved read-only, pre-mutex, exactly as assignment does.
-  const {slotOne,peers:otherSlots}=resolvePeerSlots(request.issue,request.pr,request.headSha,request.slot,io)
+  const {slotOne,peers:otherSlots,policyPeer,ownPolicy}=resolvePeerSlots(request.issue,request.pr,request.headSha,request.slot,io)
   const excludedProviders=new Set([slotOne?.reviewer,...[...otherSlots.values()].map((row)=>row.reviewer)].filter(Boolean))
   const peersNow=()=>{const {slotOne:one,peers}=resolvePeerSlots(request.issue,request.pr,request.headSha,request.slot,io);return new Set([one?.reviewer,...[...peers.values()].map((row)=>row.reviewer)].filter(Boolean))}
   // Owner ruling 2026-10-02 (docs/owner-rulings.md): merged PR post-merge slot >= 2 may reuse a reviewer.
   let mergedReuseMemo=null
   const mergedReuse=()=>mergedReuseMemo??=(String(failureCode)!==SLOT_INDEPENDENCE_CONFLICT&&mergedPrReviewerReuseAllowed(request,io))
-  const assertIndependent=(reviewer)=>{if(mergedReuse())return;if(peersNow().has(reviewer))throw new LaneError(`reviewer ${reviewer} already holds another review slot for this exact head; replacement refused. Replace this conflicting assignment with --failure-code ${SLOT_INDEPENDENCE_CONFLICT} and its current sequence.`)}
-  // Same deferred slot-one check as assignment: a strict superset may be this
-  // slot's already-widened durable policy (confirmed when that policy loads),
-  // and a null request defers to that policy. Only a non-superset mismatch is
-  // refused here. Replacement never widens a slot's own durable policy.
-  if(slotOne&&requestedAllowlist!==null){
-    const recorded=slotOne.reviewerAllowlist??null
-    if(recorded===null)inheritReviewerAllowlist(requestedAllowlist,recorded)
-    else if(!sameReviewerAllowlist(requestedAllowlist,recorded)&&!isReviewerAllowlistSuperset(requestedAllowlist,recorded))throw new LaneError(`reviewer allowlist does not match the durable assignment (${recorded.join(',')})`)
-  }
+  const assertIndependent=(reviewer)=>{const fresh=resolvePeerSlots(request.issue,request.pr,request.headSha,request.slot,io,{fresh:true});const anchor=fresh.ownPolicy??fresh.policyPeer;if(anchor&&JSON.stringify(inheritReviewerAllowlist(requestedAllowlist,anchor.reviewerAllowlist))!==JSON.stringify(requestedAllowlist))throw new LaneError('reviewer task policy changed after mutex acquisition; retry replacement to inherit the recorded policy');if(mergedReuse())return;if(new Set([fresh.slotOne?.reviewer,...[...fresh.peers.values()].map(row=>row.reviewer)].filter(Boolean)).has(reviewer))throw new LaneError(`reviewer ${reviewer} already holds another review slot for this exact head; replacement refused. Replace this conflicting assignment with --failure-code ${SLOT_INDEPENDENCE_CONFLICT} and its current sequence.`)}
+  const policyAnchor=ownPolicy??policyPeer
+  if(policyAnchor)requestedAllowlist=inheritReviewerAllowlist(requestedAllowlist,policyAnchor.reviewerAllowlist)
   const failureBase=`${REVIEW_FAILURE_REF_PREFIX}/${request.issue}-${request.pr}-${request.headSha}`
   const fixedRecords=io.readReviewRecords?.([replacementRef,assignmentRef,REVIEW_CURSOR_REF,assignmentVerdictRef,failureRef],replacementBase,failureBase)??null
   let ownerSha=null,mutexAcquired=false
@@ -3081,7 +3062,8 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     // The failing check rides along in the immutable evidence, so a later reader
     // can tell a real provider outage from a stopped local service without
     // re-deriving it from memory.
-    assertPaidReviewCapacity(request,io)
+    const capacity=assertPaidReviewCapacity(request,io)
+    const exhaustedReviewers=new Set(capacity.exhaustedReviewers??[])
     const checkNote=String(failingCheck??'').trim()?` failing-check=${String(failingCheck).trim().replace(/\s+/g,'_')}`:''
     let failureSha
     // SKIP, DO NOT REFUSE (#1297). The rotation position is only a starting point.
@@ -3138,7 +3120,7 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     for(const excluded of [failedNames,hardFailedNames]){
       for(const [offset,candidate] of drawOrder(cursor.sequence+1,io).entries()){
         const candidateSequence=cursor.sequence+1+offset
-        if(!eligibleNames.has(candidate.name)||!reviewerEmitsGovernedVerdict(candidate.name)||excluded.has(candidate.name)||(!concurrentLeases&&preflightBusy.has(candidate.name))||excludedProviders.has(candidate.name)||preflightExclusions.has(candidate.name))continue
+        if(!eligibleNames.has(candidate.name)||exhaustedReviewers.has(candidate.name)||!reviewerEmitsGovernedVerdict(candidate.name)||excluded.has(candidate.name)||(!concurrentLeases&&preflightBusy.has(candidate.name))||excludedProviders.has(candidate.name)||preflightExclusions.has(candidate.name))continue
         sequence=candidateSequence;reviewer=candidate;break
       }
       if(reviewer)break
@@ -3149,18 +3131,18 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     if(!reviewer&&mergedReuse()){
       for(const [offset,candidate] of drawOrder(cursor.sequence+1,io).entries()){
         const candidateSequence=cursor.sequence+1+offset
-        if(!eligibleNames.has(candidate.name)||!reviewerEmitsGovernedVerdict(candidate.name)||failedNames.has(candidate.name)||(!concurrentLeases&&preflightBusy.has(candidate.name))||preflightExclusions.has(candidate.name))continue
+        if(!eligibleNames.has(candidate.name)||exhaustedReviewers.has(candidate.name)||!reviewerEmitsGovernedVerdict(candidate.name)||failedNames.has(candidate.name)||(!concurrentLeases&&preflightBusy.has(candidate.name))||preflightExclusions.has(candidate.name))continue
         sequence=candidateSequence;reviewer=candidate;break
       }
     }
     // Compatibility hook for historical configurations that had an overflow
     // provider. The approved 2026-08-28 roster has none.
     if(!reviewer){
-      const overflow=OVERFLOW_REVIEWERS.find((row)=>eligibleNames.has(row.name)&&reviewerEmitsGovernedVerdict(row.name)&&!failedNames.has(row.name)&&(concurrentLeases||!preflightBusy.has(row.name))&&!excludedProviders.has(row.name)&&!preflightExclusions.has(row.name))
+      const overflow=OVERFLOW_REVIEWERS.find((row)=>eligibleNames.has(row.name)&&!exhaustedReviewers.has(row.name)&&reviewerEmitsGovernedVerdict(row.name)&&!failedNames.has(row.name)&&(concurrentLeases||!preflightBusy.has(row.name))&&!excludedProviders.has(row.name)&&!preflightExclusions.has(row.name))
       if(overflow){sequence=cursor.sequence+1+ACTIVE_REVIEWERS.length;reviewer=overflow}
     }
     if(!reviewer&&mergedReuse()){
-      const overflow=OVERFLOW_REVIEWERS.find((row)=>eligibleNames.has(row.name)&&reviewerEmitsGovernedVerdict(row.name)&&!failedNames.has(row.name)&&(concurrentLeases||!preflightBusy.has(row.name))&&!preflightExclusions.has(row.name))
+      const overflow=OVERFLOW_REVIEWERS.find((row)=>eligibleNames.has(row.name)&&!exhaustedReviewers.has(row.name)&&reviewerEmitsGovernedVerdict(row.name)&&!failedNames.has(row.name)&&(concurrentLeases||!preflightBusy.has(row.name))&&!preflightExclusions.has(row.name))
       if(overflow){sequence=cursor.sequence+1+ACTIVE_REVIEWERS.length;reviewer=overflow}
     }
     if(!reviewer){
@@ -3171,7 +3153,7 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
       // reviewers, and only when busy is the sole reason. A provider excluded
       // for independence or eligibility is named under that real reason.
       const busyList=(concurrentLeases?[]:[...preflightBusy]).filter((name)=>!hardFailedNames.has(name)&&ACTIVE_REVIEWERS.some((row)=>row.name===name)&&eligibleNames.has(name)&&!excludedProviders.has(name)&&!preflightExclusions.has(name)).map((name)=>{const rows=preflightBusy.byReviewer?.get(name)??(preflightBusy.leases.get(name)?[preflightBusy.leases.get(name)]:[]);return `${name}${rows.map((row)=>` #${row.lease.issue}/PR #${row.lease.pr}`).join('')}`})
-      const unavailable=ACTIVE_REVIEWERS.map((row)=>row.name).filter((name)=>!hardFailedNames.has(name)&&(!eligibleNames.has(name)||excludedProviders.has(name)||preflightExclusions.has(name))).map((name)=>`${name} (${!eligibleNames.has(name)?(unusable.has(name)?`unusable by ai-review-preflight (${unusable.get(name)?.status})`:'ineligible'):excludedProviders.has(name)?'holds another slot on this pull request':'excluded for this issue'})`)
+      const unavailable=ACTIVE_REVIEWERS.map((row)=>row.name).filter((name)=>!hardFailedNames.has(name)&&(exhaustedReviewers.has(name)||!eligibleNames.has(name)||excludedProviders.has(name)||preflightExclusions.has(name))).map((name)=>`${name} (${exhaustedReviewers.has(name)?'two verified service failures for unchanged content':!eligibleNames.has(name)?(unusable.has(name)?`unusable by ai-review-preflight (${unusable.get(name)?.status})`:'ineligible'):excludedProviders.has(name)?'holds another slot on this pull request':'excluded for this issue'})`)
       const releaseCommand=failedReviewerReleaseCommand(request,{failureCode,failingCheck})
       const compatiblePrefix=request.slot===1?'no other reviewer is available':'no other independent reviewer is available for slot '+request.slot
       throw new LaneError(`${compatiblePrefix}; no replacement reviewer is available: ${failedList.length} of ${ACTIVE_REVIEWERS.length} already failed on this exact head (${failedList.join(', ')||'none'}); ${busyList.length} of ${ACTIVE_REVIEWERS.length} hold other live leases (${busyList.join(', ')||'none'}); ${unavailable.length} are otherwise ineligible or excluded (${unavailable.join(', ')||'none'}). If this failed holder must be freed before another terminal holder can be reclaimed, run ${releaseCommand}.`)

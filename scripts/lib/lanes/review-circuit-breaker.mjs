@@ -19,7 +19,7 @@ export const REINSTATABLE_FAILURE_CODES = Object.freeze(['wrapper_terminal_failu
 // Released failure codes that describe the provider, its wallet, or the local
 // wrapper rather than the reviewed bytes (#4284): the replacement draw retries
 // such a name last instead of excluding it from the head forever.
-export const RETRYABLE_RELEASED_FAILURE_CODES = Object.freeze(new Set([...REINSTATABLE_FAILURE_CODES,'reviewer_cannot_emit_governed_verdict']))
+export const RETRYABLE_RELEASED_FAILURE_CODES = Object.freeze([...REINSTATABLE_FAILURE_CODES,'reviewer_cannot_emit_governed_verdict'])
 export const REINSTATEMENT_CEILING = 2
 
 function reinstatedByFailure(start,io){

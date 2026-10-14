@@ -3050,9 +3050,10 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     // #2224 shape, a claim about the world recorded as permanent -- deadlocks
     // the slot once every other name has failed on the same head (#3492 on PR
     // #3309: 4 of 5 failed, the fifth holds the other slot). Such a sequence is
-    // re-eligible here. Every other terminal failure code, and any failure whose
-    // evidence is the replacement record itself (`failure-ref=self`), stays
-    // excluded fail-closed.
+    // re-eligible here. Any failure whose evidence is the replacement record
+    // itself (`failure-ref=self`) stays excluded fail-closed, and so does every
+    // terminal failure code outside RETRYABLE_RELEASED_FAILURE_CODES (#4284,
+    // below), which are retried only last and only from a real release record.
     const silenceReleasedSequences=new Set()
     if(releasedFailure?.failureCode==='silent_worker_observed')silenceReleasedSequences.add(request.failedSequence)
     // #4284: a released failure whose code describes the provider, wallet or
@@ -3062,7 +3063,7 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     // retried LAST -- only when no never-failed reviewer is drawable -- and is
     // still subject to live preflight usability and the paid circuit breaker.
     const retryableSequences=new Set()
-    if(RETRYABLE_RELEASED_FAILURE_CODES.has(releasedFailure?.failureCode))retryableSequences.add(request.failedSequence)
+    if(releasedFailure&&!releasedFailure.selfReplacement&&RETRYABLE_RELEASED_FAILURE_CODES.includes(releasedFailure.failureCode))retryableSequences.add(request.failedSequence)
     const bySequence=new Map([[initial.sequence,initial.reviewer],...parsedReplacements.map((row)=>[row.sequence,row.reviewer])])
     for(const row of parsedReplacements){
       if(!row.failureSha||row.failureSha===row.assignmentSha)continue
@@ -3074,7 +3075,7 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
       // failed sequence or reviewer differs never restores a name.
       if(release.issue!==request.issue||release.pr!==request.pr||release.headSha!==request.headSha||release.failedSequence!==row.failedSequence||release.reviewer!==bySequence.get(row.failedSequence))continue
       if(release.failureCode==='silent_worker_observed')silenceReleasedSequences.add(row.failedSequence)
-      if(RETRYABLE_RELEASED_FAILURE_CODES.has(release.failureCode))retryableSequences.add(row.failedSequence)
+      if(RETRYABLE_RELEASED_FAILURE_CODES.includes(release.failureCode))retryableSequences.add(row.failedSequence)
     }
     const failedNames=new Set(),hardFailedNames=new Set()
     const noteFailure=(name,failedSequence)=>{

@@ -2986,7 +2986,7 @@ test('a hard (bytes-related) release keeps the permanent exclusion and still ref
 // provider or the local wrapper, not the bytes. With every never-failed name
 // unusable or busy, such a released name is retried LAST instead of emptying
 // the pool; a never-failed usable name is always preferred.
-for(const code of ['insufficient_quota','wrapper_terminal_failure','provider_unavailable','reviewer_cannot_emit_governed_verdict']){
+for(const code of ['insufficient_quota','wrapper_terminal_failure','provider_unavailable','turn_limit_cancelled','reviewer_cannot_emit_governed_verdict']){
   test(`a ${code} release is re-drawn only when no never-failed reviewer is usable (#4284)`,()=>{
     const {io,request,assigned}=silentLeaseIo(),options={...request,failedSequence:assigned.sequence,confirmNoVerdict:true,confirmNoArtifact:true}
     releaseFailedReviewer({...options,failureCode:code},io)
@@ -3001,6 +3001,28 @@ test('a never-failed usable reviewer is preferred over a retryable failed one (#
   releaseFailedReviewer({...options,failureCode:'wrapper_terminal_failure'},io)
   const redraw=replaceFailedReviewer({...options,failureCode:'wrapper_terminal_failure'},io)
   assert.notEqual(redraw.reviewer,assigned.reviewer)
+})
+test('a retryable code without a release record (failure-ref=self) stays a hard exclusion (#4284 review)',()=>{
+  const {io,request,assigned}=silentLeaseIo(),options={...request,failedSequence:assigned.sequence,confirmNoVerdict:true,confirmNoArtifact:true}
+  // No --release-failed-reviewer: the replacement record is its own failure evidence.
+  const first=replaceFailedReviewer({...options,failureCode:'wrapper_terminal_failure'},io)
+  assert.notEqual(first.reviewer,assigned.reviewer)
+  const second={...options,failedSequence:first.sequence}
+  releaseFailedReviewer({...second,failureCode:'wrapper_terminal_failure'},io)
+  const keep=ACTIVE_REVIEWERS.find((row)=>row.name===assigned.reviewer)
+  io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,{...usableAdmission(row),usable:row.provider===keep.provider}]))
+  assert.throws(()=>replaceFailedReviewer({...second,failureCode:'wrapper_terminal_failure'},io),/no other reviewer is available/,'the self-evidenced original never returns')
+})
+test('mixed history: a retryable release plus a hard release of the same name keeps it hard (#4284 review)',()=>{
+  const {io,request,assigned}=silentLeaseIo(),options={...request,failedSequence:assigned.sequence,confirmNoVerdict:true,confirmNoArtifact:true}
+  releaseFailedReviewer({...options,failureCode:'wrapper_terminal_failure'},io)
+  const keep=ACTIVE_REVIEWERS.find((row)=>row.name===assigned.reviewer)
+  io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,{...usableAdmission(row),usable:row.provider===keep.provider}]))
+  const redraw=replaceFailedReviewer({...options,failureCode:'wrapper_terminal_failure'},io)
+  assert.equal(redraw.reviewer,assigned.reviewer)
+  const second={...options,failedSequence:redraw.sequence}
+  releaseFailedReviewer({...second,failureCode:'reviewer_cannot_read_repository'},io)
+  assert.throws(()=>replaceFailedReviewer({...second,failureCode:'reviewer_cannot_read_repository'},io),/no other reviewer is available/)
 })
 test('a retryable failed name that live preflight marks unusable is still not drawn (#4284)',()=>{
   const {io,request,assigned}=silentLeaseIo(),options={...request,failedSequence:assigned.sequence,confirmNoVerdict:true,confirmNoArtifact:true}

@@ -31,6 +31,11 @@
       "command": "exact original artifact/SQL hashes and newer-migration object overlap qualification",
       "exit_code": 0,
       "evidence": "Fresh original successful run/artifact ZIP and SQL file/statement hashes match; native assertLaneAvailable PASS for full 102 claimed objects against all three newer migrations at main9c44e6e0."
+    },
+    {
+      "command": "native canonical contract/completion and Git evidence validation",
+      "exit_code": 0,
+      "evidence": "Native sealed Git evidence verification PASS at provisional1e8ac0624; final canonical validation and pair-only seal verified before pushing final reviewed head."
     }
   ],
   "assumptions_resolved": [

@@ -1024,6 +1024,126 @@ test('#4206 owner-quoted widening draws slot 2 from a tree-identical head withou
   assert.deepEqual([...parsed.reviewerAllowlist].sort(),[...widened].sort())
 })
 
+test('#4297 carries the newest validated slot-1 replacement across a tree-identical head',()=>{
+  const io=withAtomicRefs(reviewIo()),issue=4297,pr=4298,headOld='d1'.repeat(20),headNew='d2'.repeat(20),tree='d3'.repeat(20)
+  io.getPr=()=>({number:pr,state:'open',head:{sha:headOld,ref:'codex/x'}})
+  const original=assignNextReviewer({issue,pr,headSha:headOld},io)
+  const replacement=replaceFailedReviewer({issue,pr,headSha:headOld,failedSequence:original.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true},io)
+  const replacementRef=[...io.refs.keys()].find((ref)=>ref.startsWith(`${REVIEW_REPLACEMENT_REF_PREFIX}/${issue}-${pr}-${headOld}`))
+  assert.ok(replacementRef)
+  const rawGetCommit=io.getCommit
+  io.getCommit=(sha)=>{
+    const commit=rawGetCommit(sha)
+    if(!commit&&[headOld,headNew].includes(String(sha).toLowerCase()))return {message:'',tree:{sha:tree}}
+    return commit?{...commit,tree:{sha:tree}}:commit
+  }
+  io.getPr=()=>({number:pr,state:'open',head:{sha:headNew,ref:'codex/x'}})
+  const second=assignNextReviewer({issue,pr,headSha:headNew,slot:2},io)
+  assert.notEqual(second.reviewer,replacement.reviewer,'the live replacement remains slot 1 and is excluded from slot 2')
+  assert.equal(io.refs.get(replacementRef),replacement.replacementSha,'the original-head replacement record remains unchanged')
+  assert.equal(io.refs.has(`${REVIEW_ASSIGNMENT_REF_PREFIX}/${issue}-${pr}-${headNew}`),false,'carrying slot 1 does not draw a new assignment')
+})
+
+test('#4297 historical slot-1 carry fails closed on a replacement/ref identity mismatch',()=>{
+  const headOld='e1'.repeat(20),headNew='e2'.repeat(20),{io,replacement,replacementRef}=replacementScenario(4297,4299,headOld)
+  const malformed=io.makeOwnerCommit(`db-coordination reviewer-replacement sequence=${replacement.sequence} reviewer=${replacement.reviewer} issue=4297 pr=4300 head=${headOld} slot=1 failed-sequence=${replacement.sequence} prior-sequence=${replacement.sequence} failure-ref=${'f'.repeat(40)}`)
+  io.refs.set(replacementRef,malformed)
+  const rawGetCommit=io.getCommit
+  io.getPr=()=>({number:4299,state:'open',head:{sha:headNew,ref:'codex/x'}})
+  io.getCommit=(sha)=>{
+    if(sha===malformed)return {message:`db-coordination reviewer-replacement sequence=${replacement.sequence} reviewer=${replacement.reviewer} issue=4297 pr=4300 head=${headOld} slot=1 failed-sequence=${replacement.sequence} prior-sequence=${replacement.sequence} failure-ref=${'f'.repeat(40)}`}
+    return rawGetCommit(sha)
+  }
+  assert.throws(()=>assignNextReviewer({issue:4297,pr:4299,headSha:headNew,slot:2},io),/historical slot 1 replacement does not match its ref identity/)
+})
+
+test('#4297 a returned newest historical replacement does not revive its failed original',()=>{
+  const headOld='e3'.repeat(20),headNew='e4'.repeat(20),tree='e5'.repeat(20)
+  const {io,first,replacement,replacementRef,evidenceSha}=replacementScenario(4297,4300,headOld)
+  const excluded=excludeReviewerForPr({issue:4297,pr:4300,reviewer:replacement.reviewer,reason:'independence-conflict',evidenceSha},io)
+  const returned=readReviewReturns(4297,4300,headOld,io)
+  assert.equal(returned.length,1)
+  assert.equal(returned[0].assignmentSha,evidenceSha)
+  assert.equal(returned[0].sequence,parseReviewCursor(io.getCommit(evidenceSha)).sequence)
+  assert.equal(returned[0].replacementSequence,replacement.failedSequence)
+  assert.ok(parseReviewCursor(io.getCommit(evidenceSha)).sequence>first.sequence)
+  const rawGetCommit=io.getCommit
+  io.getCommit=(sha)=>{
+    const commit=rawGetCommit(sha)
+    if(!commit&&[headOld,headNew].includes(String(sha).toLowerCase()))return {message:'',tree:{sha:tree}}
+    return commit?{...commit,tree:{sha:tree}}:commit
+  }
+  io.getPr=()=>({number:4300,state:'open',head:{sha:headNew,ref:'codex/x'}})
+  assert.ok(replacementRef)
+  assert.throws(()=>assignNextReviewer({issue:4297,pr:4300,headSha:headNew,slot:2},io),/requires slot 1 to already be assigned/)
+})
+
+test('#4297 carry uses trusted content proof after tree changes and refuses substantive changes',()=>{
+  const run=(kind,issue,pr)=>{
+    const io=withAtomicRefs(reviewIo()),headOld='f1'.repeat(20),headNew='f2'.repeat(20)
+    io.getPr=()=>({number:pr,state:'open',head:{sha:headOld,ref:'codex/x'}})
+    const first=assignNextReviewer({issue,pr,headSha:headOld},io)
+    const rawGetCommit=io.getCommit
+    io.getCommit=(sha)=>{
+      const commit=rawGetCommit(sha)
+      if(!commit&&[headOld,headNew].includes(String(sha).toLowerCase()))return {message:'',tree:{sha:sha===headOld?'a1'.repeat(20):'a2'.repeat(20)}}
+      return commit
+    }
+    io.reviewContentComparison=()=>({budgetProof:{kind}})
+    io.getPr=()=>({number:pr,state:'open',head:{sha:headNew,ref:'codex/x'}})
+    return {io,first,headNew,issue,pr}
+  }
+  const evidenceOnly=run('unchanged',4297,4301)
+  const carried=assignNextReviewer({issue:evidenceOnly.issue,pr:evidenceOnly.pr,headSha:evidenceOnly.headNew,slot:2},evidenceOnly.io)
+  assert.notEqual(carried.reviewer,evidenceOnly.first.reviewer,'trusted .agent-only/evidence equivalence carries the original peer')
+  const substantive=run('substantive',4297,4302)
+  assert.throws(()=>assignNextReviewer({issue:substantive.issue,pr:substantive.pr,headSha:substantive.headNew,slot:2},substantive.io),/requires slot 1 to already be assigned/)
+})
+
+test('#4297 a return on another historical head does not poison the matching carry',()=>{
+  const io=withAtomicRefs(reviewIo()),issue=4297,pr=4303,headOld='a3'.repeat(20),headReturned='a4'.repeat(20),headNew='a5'.repeat(20),tree='a6'.repeat(20)
+  io.getPr=()=>({number:pr,state:'open',head:{sha:headOld,ref:'codex/x'}})
+  const first=assignNextReviewer({issue,pr,headSha:headOld},io)
+  io.getPr=()=>({number:pr,state:'open',head:{sha:headReturned,ref:'codex/x'}})
+  const unrelated=assignNextReviewer({issue,pr,headSha:headReturned},io)
+  const unrelatedSha=io.refs.get(`${REVIEW_ASSIGNMENT_REF_PREFIX}/${issue}-${pr}-${headReturned}`)
+  excludeReviewerForPr({issue,pr,reviewer:unrelated.reviewer,reason:'independence-conflict',evidenceSha:unrelatedSha},io)
+  const rawGetCommit=io.getCommit
+  io.getCommit=(sha)=>{
+    const commit=rawGetCommit(sha)
+    if(!commit&&[headOld,headReturned,headNew].includes(String(sha).toLowerCase()))return {message:'',tree:{sha:tree}}
+    return commit?{...commit,tree:{sha:tree}}:commit
+  }
+  io.getPr=()=>({number:pr,state:'open',head:{sha:headNew,ref:'codex/x'}})
+  const second=assignNextReviewer({issue,pr,headSha:headNew,slot:2},io)
+  assert.notEqual(second.reviewer,first.reviewer)
+})
+
+test('#4297 historical carry uses the batched native record reader when available',()=>{
+  const io=withAtomicRefs(reviewIo()),issue=4297,pr=4304,headOld='b3'.repeat(20),headNew='b4'.repeat(20),tree='b5'.repeat(20)
+  io.getPr=()=>({number:pr,state:'open',head:{sha:headOld,ref:'codex/x'}})
+  const first=assignNextReviewer({issue,pr,headSha:headOld},io)
+  let batchedReads=0
+  io.readReviewRecords=(refs=[],prefix=null,dependentFailurePrefix=null,extraPrefix=null)=>{
+    batchedReads++
+    const prefixes=[prefix,extraPrefix].filter(Boolean)
+    const matching=[...io.refs].filter(([ref])=>prefixes.some((value)=>ref.startsWith(value))).map(([ref,sha])=>({ref,sha,commit:io.getCommit(sha)}))
+    const result=new Map([...new Set([...refs,...matching.map((row)=>row.ref)])].map((ref)=>{const sha=io.refs.get(ref);return [ref,sha?{sha,commit:io.getCommit(sha)}:null]}))
+    Object.defineProperty(result,'matching',{value:matching,enumerable:false})
+    return result
+  }
+  const rawGetCommit=io.getCommit
+  io.getCommit=(sha)=>{
+    const commit=rawGetCommit(sha)
+    if(!commit&&[headOld,headNew].includes(String(sha).toLowerCase()))return {message:'',tree:{sha:tree}}
+    return commit?{...commit,tree:{sha:tree}}:commit
+  }
+  io.getPr=()=>({number:pr,state:'open',head:{sha:headNew,ref:'codex/x'}})
+  const second=assignNextReviewer({issue,pr,headSha:headNew,slot:2},io)
+  assert.notEqual(second.reviewer,first.reviewer)
+  assert.ok(batchedReads>=2,'historical peers and exact return refs were fetched in bounded batches')
+})
+
 test('#3291 returned permissions survive unrelated cursor movement and an omitted redraw input',()=>{
   const io=withAtomicRefs(reviewIo()),head='8'.repeat(40),allowed=['muse-spark-1.3-contributor','deepseek-v4.1-flash']
   io.getPr=(number)=>({number:Number(number),state:'open',head:{sha:head,ref:'codex/x'}})

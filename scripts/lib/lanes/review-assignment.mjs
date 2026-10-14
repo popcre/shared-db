@@ -1,8 +1,9 @@
 // Split from scripts/manage-migration-author-lanes.mjs (issue #3726). Behavior-preserving move:
 // the entrypoint re-exports every public name defined here. Edit here, not there.
 import { LaneError } from './claims.mjs'
-import { MUTEX_REF, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_QUEUE_REF_PREFIX, REVIEW_QUEUE_TTL_HOURS, REVIEW_REPLACEMENT_REF_PREFIX } from './constants.mjs'
-import { parseAssignmentRef, parseReviewCursor, readReviewReturns } from './review-records.mjs'
+import { MUTEX_REF, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_FAILURE_REF_PREFIX, REVIEW_QUEUE_REF_PREFIX, REVIEW_QUEUE_TTL_HOURS, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_RETURN_REF_PREFIX } from './constants.mjs'
+import { parseAssignmentRef, parseReviewCursor, parseReviewReturn, reviewReturnRef, readReviewReturns } from './review-records.mjs'
+import { parseReviewReplacement, requireReplacementEvidence } from './review-replacement.mjs'
 import { assertReviewerAllowlistConsistency } from './reviewer-roster.mjs'
 import { reviewLeaseAgeHours } from './review-leases.mjs'
 import { releaseOwnedRef, requireOwnedRef } from './holds-and-refs.mjs'
@@ -28,7 +29,7 @@ function sameReviewContent(before,after,pr,io){
     return commit?.tree?.sha??commit?.commit?.tree?.sha??null
   }
   const left=treeOf(leftHead),right=treeOf(rightHead)
-  if(left&&right)return left===right
+  if(left&&right&&left===right)return true
   if(typeof io.reviewContentComparison!=='function')return false
   try{
     const comparison=io.reviewContentComparison(leftHead,rightHead,pr,{})
@@ -36,25 +37,76 @@ function sameReviewContent(before,after,pr,io){
   }catch{return false}
 }
 function findCarriedSlotOne(issue,pr,head,io){
-  const prefix=`${REVIEW_ASSIGNMENT_REF_PREFIX}/${Number(issue)}-${Number(pr)}-`
-  let rows=[]
-  if(typeof io.listRefs==='function')rows=io.listRefs(prefix)??[]
-  else if(typeof io.gitRemoteRefs==='function')rows=[...(io.gitRemoteRefs([`${prefix}*`])??[])].map(([ref,sha])=>({ref,sha}))
+  const base=`${Number(issue)}-${Number(pr)}-`
+  const assignmentPrefix=`${REVIEW_ASSIGNMENT_REF_PREFIX}/${base}`
+  const replacementPrefix=`${REVIEW_REPLACEMENT_REF_PREFIX}/${base}`
+  let records=null,rows=[]
+  if(typeof io.readReviewRecords==='function'){
+    const failurePrefix=`${REVIEW_FAILURE_REF_PREFIX}/${Number(issue)}-${Number(pr)}-`
+    records=io.readReviewRecords([],replacementPrefix,failurePrefix,assignmentPrefix)
+    rows=records.matching??[]
+  }else{
+    const list=(prefix)=>{
+      if(typeof io.listRefs==='function')return io.listRefs(prefix)??[]
+      if(typeof io.gitRemoteRefs==='function')return [...(io.gitRemoteRefs([`${prefix}*`])??[])].map(([ref,sha])=>({ref,sha}))
+      return []
+    }
+    rows=[...list(assignmentPrefix),...list(replacementPrefix)]
+  }
   const candidates=[]
+  const historicalHeads=new Set()
   for(const row of rows){
     const named=parseAssignmentRef(row.ref)
     if(!named||named.issue!==Number(issue)||named.pr!==Number(pr)||named.slot!==1||named.replacement)continue
+    historicalHeads.add(named.headSha)
     if(String(named.headSha).toLowerCase()===head)continue
-    const parsed=parseReviewCursor(row.commit??io.getCommit(row.sha))
-    if(parsed.issue!==named.issue||parsed.pr!==named.pr||String(parsed.headSha).toLowerCase()!==named.headSha||(parsed.slot??1)!==1)continue
-    candidates.push({...parsed,sha:row.sha,carriedFrom:named.headSha})
+    const parsed=parseReviewCursor(row.commit??records?.get(row.ref)?.commit??io.getCommit(row.sha))
+    if(parsed.issue!==named.issue||parsed.pr!==named.pr||String(parsed.headSha).toLowerCase()!==named.headSha||(parsed.slot??1)!==1)throw new LaneError('historical slot 1 assignment does not match its ref identity')
+    candidates.push({...parsed,sha:row.sha,carriedFrom:named.headSha,replacementSequence:null})
+  }
+  for(const row of rows){
+    const named=parseAssignmentRef(row.ref)
+    const legacyHead=[...historicalHeads].find((candidate)=>row.ref===`${replacementPrefix}${candidate}`)
+    const identity=named??(legacyHead?{replacement:true,issue:Number(issue),pr:Number(pr),headSha:legacyHead,slot:1,replacementSequence:null}:null)
+    if(!identity?.replacement||identity.issue!==Number(issue)||identity.pr!==Number(pr)||identity.slot!==1||!historicalHeads.has(identity.headSha)||identity.headSha===head)continue
+    const parsed=parseReviewCursor(row.commit??records?.get(row.ref)?.commit??io.getCommit(row.sha))
+    if(parsed.issue!==identity.issue||parsed.pr!==identity.pr||String(parsed.headSha).toLowerCase()!==identity.headSha||(parsed.slot!==null&&parsed.slot!==1))throw new LaneError('historical slot 1 replacement does not match its ref identity')
+    const replacement=parseReviewReplacement(row.commit??records?.get(row.ref)?.commit??io.getCommit(row.sha))
+    if(replacement.issue!==identity.issue||replacement.pr!==identity.pr||String(replacement.headSha).toLowerCase()!==identity.headSha||replacement.sequence!==parsed.sequence||identity.replacementSequence!==null&&replacement.failedSequence!==identity.replacementSequence)throw new LaneError('historical slot 1 replacement does not match its failure record')
+    requireReplacementEvidence({...replacement,recordSha:row.sha},io,records)
+    candidates.push({...parsed,sha:row.sha,carriedFrom:identity.headSha,replacementSequence:replacement.failedSequence})
   }
   // Newest slot-1 first: the latest drawn holder is the one a re-push of the
   // same bytes left standing. Stop at the first content match so a long history
   // of older heads never forces a full paid-content comparison walk.
   candidates.sort((a,b)=>b.sequence-a.sequence)
+  const checkedHeads=new Set()
   for(const candidate of candidates){
-    if(sameReviewContent(candidate.carriedFrom,head,Number(pr),io))return candidate
+    if(checkedHeads.has(candidate.carriedFrom))continue
+    checkedHeads.add(candidate.carriedFrom)
+    if(!sameReviewContent(candidate.carriedFrom,head,Number(pr),io))continue
+    assertReviewerAllowlistConsistency(candidates.filter((row)=>row.carriedFrom===candidate.carriedFrom))
+    let returns
+    const returnPrefix=`${REVIEW_RETURN_REF_PREFIX}/${Number(issue)}-${Number(pr)}-${candidate.carriedFrom}`
+    if(typeof io.readReviewRecords==='function'&&typeof io.listRefs==='function'){
+      const rows=io.listRefs(returnPrefix)??[],records=rows.length?io.readReviewRecords(rows.map((row)=>row.ref)):new Map()
+      returns=rows.map((row)=>{
+        const record=records.get(row.ref)
+        if(record?.sha&&record.sha!==row.sha)throw new LaneError('durable reviewer return changed during its batched read')
+        const parsed=parseReviewReturn(record?.commit??io.getCommit(row.sha))
+        if(parsed.issue!==Number(issue)||parsed.pr!==Number(pr)||parsed.headSha!==candidate.carriedFrom||row.ref!==reviewReturnRef(parsed))throw new LaneError('durable reviewer return does not match its ref identity')
+        return parsed
+      })
+    }else returns=readReviewReturns(issue,pr,candidate.carriedFrom,io)
+    const returned=returns.some((record)=>{
+      if(record.slot!==1)return false
+      if(record.assignmentSha===candidate.sha)return true
+      const assignment=parseReviewCursor(io.getCommit(record.assignmentSha))
+      if(assignment.issue!==Number(issue)||assignment.pr!==Number(pr)||String(assignment.headSha).toLowerCase()!==candidate.carriedFrom||(assignment.slot!==null&&assignment.slot!==1)||assignment.reviewer!==record.reviewer||(record.sequence!==null&&record.sequence!==assignment.sequence))throw new LaneError('historical reviewer return does not match its assignment record')
+      const sequence=record.sequence??assignment.sequence
+      return sequence>candidate.sequence
+    })
+    return returned?null:candidate
   }
   return null
 }

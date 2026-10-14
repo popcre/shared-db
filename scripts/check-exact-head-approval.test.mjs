@@ -616,6 +616,96 @@ test('POSITIVE CONTROL #2758: a head with a return of its own is never carried p
   assert.throws(() => evaluateApprovalWithRefresh(input, { contentPreservingRefresh: () => ({ ok: true, implementation_digest: 'e'.repeat(64) }) }), /reviewer records of its own/)
 })
 
+// COMPOSED CARRY (tree-identical re-push, #4206). Slot 1 stands at an equivalent
+// ancestor head; slot 2 is drawn at the new head. The bytes did not change, so
+// re-drawing slot 1 would burn a paid attempt for nothing. The gate combines the
+// ancestor's slot 1 with this head's slot 2; each still owes its own APPROVE at
+// its own head, and a return or refusal anywhere still stops the carry.
+const CARRY_OLD = 'c'.repeat(40), CARRY_NEW = 'd'.repeat(40)
+function composedCarryGithub({ slot2Reviewer = 'stepfun-step-5-preview', slot2Approved = true, migrations = true, redrawSlot1AtNew = false, returnAtNew = false, refuseAtOld = false, slot1Reviewer = 'muse-spark-1.3-contributor' } = {}) {
+  const issue = 2336, pr = 4206
+  const a1 = '1'.repeat(40), a2 = '2'.repeat(40), aRedraw = '9'.repeat(40), returnSha = '8'.repeat(40)
+  const findingsBody = 'review findings', findingsRef = `https://github.com/popcre/shared-db/pull/${pr}#issuecomment-1`
+  const digest = createHash('sha256').update(findingsBody).digest('hex')
+  const commits = new Map(), assignmentRefs = [], verdictRefs = [], returnRefs = []
+  const cursor = (sha, sequence, slot, reviewer, head) => commits.set(sha, { message: `db-coordination reviewer-cursor sequence=${sequence} reviewer=${reviewer} issue=${issue} pr=${pr} head=${head} slot=${slot}` })
+  const approve = (sha, slot, assignmentSha, reviewer, head, what = 'APPROVE') => {
+    const record = { verdict: what, head_sha: head, issue, pr, slot, reviewer, assignment_sha: assignmentSha, findings_digest: digest, findings_ref: findingsRef }
+    commits.set(sha, { message: `db-review-verdict ${JSON.stringify(record)}`, parents: [{ sha: assignmentSha }] })
+    verdictRefs.push({ ref: `refs/db-review-verdicts/${issue}-${pr}-${head}${slot === 1 ? '' : `-slot${slot}`}`, object: { sha } })
+  }
+  cursor(a1, 1, 1, slot1Reviewer, CARRY_OLD)
+  assignmentRefs.push({ ref: `refs/db-review-assignments/${issue}-${pr}-${CARRY_OLD}`, object: { sha: a1 } })
+  approve('4'.repeat(40), 1, a1, slot1Reviewer, CARRY_OLD, refuseAtOld ? 'REVISE' : 'APPROVE')
+  cursor(a2, 2, 2, slot2Reviewer, CARRY_NEW)
+  assignmentRefs.push({ ref: `refs/db-review-assignments/${issue}-${pr}-${CARRY_NEW}-slot2`, object: { sha: a2 } })
+  if (slot2Approved) approve('5'.repeat(40), 2, a2, slot2Reviewer, CARRY_NEW)
+  if (redrawSlot1AtNew) {
+    cursor(aRedraw, 3, 1, slot1Reviewer, CARRY_NEW)
+    assignmentRefs.push({ ref: `refs/db-review-assignments/${issue}-${pr}-${CARRY_NEW}`, object: { sha: aRedraw } })
+    approve('6'.repeat(40), 1, aRedraw, slot1Reviewer, CARRY_NEW)
+  }
+  if (returnAtNew) {
+    commits.set(returnSha, { message: `db-coordination reviewer-return reviewer=${slot2Reviewer} issue=${issue} pr=${pr} head=${CARRY_NEW} slot=2 assignment=${a2} sequence=2 reason=independence-conflict`, parents: [{ sha: a2 }] })
+    returnRefs.push({ ref: `refs/db-review-returns/${issue}-${pr}-${CARRY_NEW}-slot2-${a2}`, object: { sha: returnSha } })
+  }
+  const files = migrations ? [{ filename: 'supabase/migrations/20261014000000_add_thing.sql' }] : [{ filename: 'scripts/check-exact-head-approval.mjs' }]
+  return {
+    json: (args) => {
+      const endpoint = args[args.length - 1]
+      if (endpoint.includes('/git/matching-refs/db-review-assignments')) return assignmentRefs
+      if (endpoint.includes('/git/matching-refs/db-review-replacements')) return []
+      if (endpoint.includes('/git/matching-refs/db-review-returns')) return returnRefs
+      if (endpoint.includes('/git/matching-refs/db-review-verdicts')) return verdictRefs
+      if (endpoint.includes('/git/matching-refs/db-review-verdict-replacements')) return []
+      if (endpoint.includes('/git/matching-refs/db-review-archived-verdicts/')) return []
+      if (/\/git\/commits\/[0-9a-f]{40}$/.test(endpoint)) return commits.get(endpoint.split('/').pop())
+      if (endpoint.includes('/issues/comments/')) return { body: findingsBody }
+      if (/\/pulls\/\d+$/.test(endpoint)) return { head: { sha: CARRY_NEW } }
+      throw new Error(`unexpected endpoint ${endpoint}`)
+    },
+    pages: (endpoint) => (/\/pulls\/\d+\/files/.test(endpoint) ? files : []),
+  }
+}
+function composedCarryInput(options = {}) {
+  return gatherApprovalInput({ PR_NUMBER: '4206' }, composedCarryGithub(options))
+}
+
+test('#4206 composed carry: slot 1 at an equivalent ancestor plus slot 2 at the new head authorizes a migration PR', () => {
+  const input = composedCarryInput()
+  assert.equal(input.headSha, CARRY_NEW)
+  assert.throws(() => evaluateRaw(input), /owes required review slot\(s\) 1/)
+  const result = evaluateApprovalWithRefresh(input, { contentPreservingRefresh: (a, b) => (a === CARRY_OLD && b === CARRY_NEW ? { ok: true, implementation_digest: 'e'.repeat(64) } : { ok: false }) })
+  assert.equal(result.approved, true)
+  assert.equal(result.head_sha, CARRY_NEW)
+  assert.equal(result.carried_from, CARRY_OLD)
+  assert.equal(result.required_slots, 2)
+  assert.equal(result.assignments, 2)
+  assert.equal(result.approvals, 2)
+})
+
+test('#4206 composed carry: an undrawn slot 2 on a migration PR is still refused', () => {
+  const input = composedCarryInput({ slot2Approved: false })
+  assert.throws(() => evaluateApprovalWithRefresh(input, { contentPreservingRefresh: () => ({ ok: true, implementation_digest: 'e'.repeat(64) }) }), /slot 2 has no durable APPROVE|owes required review slot/)
+})
+
+test('#4206 composed carry: re-drawing slot 1 at the new head supersedes the ancestor', () => {
+  const input = composedCarryInput({ redrawSlot1AtNew: true })
+  const result = evaluateApprovalWithRefresh(input, { contentPreservingRefresh: () => ({ ok: true, implementation_digest: 'e'.repeat(64) }) })
+  assert.equal(result.approved, true)
+  assert.equal(result.carried_from, undefined, 'nothing is carried when this head owns both slots')
+})
+
+test('#4206 composed carry: a return at the new head is never filled from the ancestor', () => {
+  const input = composedCarryInput({ returnAtNew: true })
+  assert.throws(() => evaluateApprovalWithRefresh(input, { contentPreservingRefresh: () => ({ ok: true, implementation_digest: 'e'.repeat(64) }) }), /reviewer records of its own|durably returned|no live exact-head assignment/)
+})
+
+test('#4206 composed carry: a refusal at the ancestor is never carried past', () => {
+  const input = composedCarryInput({ refuseAtOld: true })
+  assert.throws(() => evaluateApprovalWithRefresh(input, { contentPreservingRefresh: () => ({ ok: true, implementation_digest: 'e'.repeat(64) }) }), /durable reviewer refusal/)
+})
+
 // The ref name only SELECTS the record; the commit is what is trusted, and it is
 // checked back against the name it is stored under. A return record filed under a
 // name that does not describe it decides which slot is charged, so a disagreement

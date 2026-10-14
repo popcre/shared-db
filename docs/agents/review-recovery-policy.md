@@ -12,7 +12,7 @@ This change does not introduce a budget reset or make an exhausted reviewer elig
 
 ## Independent assignments
 
-Either required slot can be assigned first. Every other live peer is checked before and under the assignment mutex to prevent duplicate reviewers. The earliest assigned peer provides initial task policy; each slot's existing immutable policy governs its retries and replacements. Requested policies that conflict with those durable records refuse. Provider eligibility, author-engine exclusion, immutable assignment records, compare-and-swap lease transitions and final exact-head approval count remain binding. Existing explicitly scoped merged-PR reviewer reuse remains unchanged.
+Either required slot can be assigned first. Every live peer is checked before and under the assignment mutex to prevent duplicate reviewers, and the earliest peer supplies initial task policy. A slot's own durable policy governs its retries and replacements exactly. A fresh slot 2-or-later draw may use a recorded nonempty owner quote to widen its earliest peer's allowlist by a strict superset; subsets, disjoint policies, and restricting an unrestricted peer remain refused. The quote is stored only on an assignment that actually widens policy. If slot 1 is absent at the current head, a tree-identical or content-equivalent prior slot-1 assignment is carried for independence and policy; no slot-1 prerequisite blocks a later slot. Fresh peer reads, including the carried assignment lookup, are repeated under the mutex. Provider eligibility, author-engine exclusion, immutable assignment records, compare-and-swap lease transitions and final exact-head approval count remain binding. Existing explicitly scoped merged-PR reviewer reuse remains unchanged.
 
 ## Automatic failure evidence
 
@@ -22,4 +22,4 @@ Release does not launch another paid reviewer. The next supported assignment or 
 
 ## Verification and delivery
 
-Circuit-breaker, assignment-order, candidate-exhaustion and runner-release adversarial tests must pass. The independent review remains pinned to the final code head. Merged-source runtime verification is distinct from source tests and does not authorize a database write, production action or a retry of historical spent work. PR4206 and its licensing claims remain owned by their existing session.
+Circuit-breaker, assignment-order, carried-slot, candidate-exhaustion and runner-release adversarial tests must pass. The independent review remains pinned to the final code head. Merged-source runtime verification is distinct from source tests and does not authorize a database write, production action or a retry of historical spent work. PR4206 and its licensing claims remain owned by their existing session.

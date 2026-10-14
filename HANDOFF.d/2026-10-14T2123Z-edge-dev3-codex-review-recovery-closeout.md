@@ -112,6 +112,8 @@ Housekeeping ran report-only:15 live worktrees,26 merged candidates,58 unknown;8
 - Main, PR heads, CI, pool capacity and other actors move; dates above are snapshots. Native full-history old-target queries can remain refused even when isolated real record refunds pass. A historical refund is not a new automatic-release runtime event. There is no established real unchanged-head two-failure exhaustion pair.
 - No controlled High-vs-Extra-High cost/speed study exists. High found meaningful defects but needed coordinator correction (including a misleading completion criticism, later retracted); Muse found the missed committed fixture path. Do not turn this into a general superiority claim.
 
+Closeout-only publication: [PR4309](https://github.com/popcre/shared-db/pull/4309) contains this prose handoff and has normal auto-merge requested. At5:35 PM EDT its documentation authorization and handoff contract were green; merge remained pending. The bounded waiter refuses `pr-wait` for the prose class and started no wait. Its additional whole-repository document scan reported existing broken historical handoff links (including `plan_pmt-metadata-element-normalization.md`); those unrelated links are deferred, not repaired during this scope freeze. Do not follow the installed waiter’s admin-merge suggestion: this repository forbids admin merges. Keep normal auto-merge, refresh actual state once a transition occurs, and record the eventual merge in4297. This dated snapshot does not claim the handoff is already on main.
+
 ## Part B — separate subagent records
 
 ### Agent assignment_evidence — original assignment/peer lane

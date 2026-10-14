@@ -46,7 +46,6 @@ on:
   # A draft PR's collision verdict comes from its latest push instead.
   pull_request:
   merge_group:
-    types: [checks_requested]
   push:
     branches: [main]
   workflow_dispatch:

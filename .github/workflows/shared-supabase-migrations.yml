@@ -10,7 +10,6 @@ on:
   # report on a merge group's synthetic commit (#2530).
   pull_request:
   merge_group:
-    types: [checks_requested]
   workflow_dispatch:
     inputs:
       target:

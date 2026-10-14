@@ -15,7 +15,10 @@ import { parseTerminalFailureEvidence, reviewerFailureRef } from './review-repla
 // the exact issue/PR/head/sequence/reviewer (and slot when recorded), produced
 // no review and does not spend the unchanged-content budget. Hard ceiling per
 // slot across the unchanged-content group so crashes can never loop forever.
-export const REINSTATABLE_FAILURE_CODES = Object.freeze(['wrapper_terminal_failure','provider_unavailable','insufficient_quota','turn_limit_cancelled'])
+// A broken local wrapper (Windows shim, spawn failure) is a cause-bound tooling
+// fault, same class as wrapper_terminal_failure: the provider never judged the
+// bytes. It must not burn the unchanged-content budget.
+export const REINSTATABLE_FAILURE_CODES = Object.freeze(['wrapper_terminal_failure','provider_unavailable','insufficient_quota','turn_limit_cancelled','reviewer_cannot_read_repository'])
 // Released failure codes that describe the provider, its wallet, or the local
 // wrapper rather than the reviewed bytes (#4284): the replacement draw retries
 // such a name last instead of excluding it from the head forever.

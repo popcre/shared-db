@@ -36,23 +36,40 @@ function sameReviewContent(before,after,pr,io){
   }catch{return false}
 }
 function findCarriedSlotOne(issue,pr,head,io){
-  const prefix=`${REVIEW_ASSIGNMENT_REF_PREFIX}/${Number(issue)}-${Number(pr)}-`
-  let rows=[]
-  if(typeof io.listRefs==='function')rows=io.listRefs(prefix)??[]
-  else if(typeof io.gitRemoteRefs==='function')rows=[...(io.gitRemoteRefs([`${prefix}*`])??[])].map(([ref,sha])=>({ref,sha}))
-  const candidates=[]
-  for(const row of rows){
+  const assignmentPrefix=`${REVIEW_ASSIGNMENT_REF_PREFIX}/${Number(issue)}-${Number(pr)}-`
+  const replacementPrefix=`${REVIEW_REPLACEMENT_REF_PREFIX}/${Number(issue)}-${Number(pr)}-`
+  const list=(prefix)=>{
+    if(typeof io.listRefs==='function')return io.listRefs(prefix)??[]
+    if(typeof io.gitRemoteRefs==='function')return [...(io.gitRemoteRefs([`${prefix}*`])??[])].map(([ref,sha])=>({ref,sha}))
+    return []
+  }
+  // Slot 1 at another head: the live holder is the newest replacement when one
+  // exists, otherwise the original assignment. Never carry a failed original
+  // past a replacement that superseded it (GLM review of #4294).
+  const byHead=new Map()
+  for(const row of list(assignmentPrefix)){
     const named=parseAssignmentRef(row.ref)
     if(!named||named.issue!==Number(issue)||named.pr!==Number(pr)||named.slot!==1||named.replacement)continue
     if(String(named.headSha).toLowerCase()===head)continue
     const parsed=parseReviewCursor(row.commit??io.getCommit(row.sha))
     if(parsed.issue!==named.issue||parsed.pr!==named.pr||String(parsed.headSha).toLowerCase()!==named.headSha||(parsed.slot??1)!==1)continue
-    candidates.push({...parsed,sha:row.sha,carriedFrom:named.headSha})
+    byHead.set(named.headSha.toLowerCase(),{...parsed,sha:row.sha,carriedFrom:named.headSha,replacementSequence:null})
   }
-  // Newest slot-1 first: the latest drawn holder is the one a re-push of the
-  // same bytes left standing. Stop at the first content match so a long history
-  // of older heads never forces a full paid-content comparison walk.
-  candidates.sort((a,b)=>b.sequence-a.sequence)
+  for(const row of list(replacementPrefix)){
+    const named=parseAssignmentRef(row.ref)
+    if(!named||named.issue!==Number(issue)||named.pr!==Number(pr)||named.slot!==1||!named.replacement)continue
+    if(String(named.headSha).toLowerCase()===head)continue
+    const parsed=parseReviewCursor(row.commit??io.getCommit(row.sha))
+    if(parsed.issue!==named.issue||parsed.pr!==named.pr||String(parsed.headSha).toLowerCase()!==named.headSha||(parsed.slot??1)!==1)continue
+    const prior=byHead.get(named.headSha.toLowerCase())
+    const replacementSequence=named.replacementSequence??parsed.sequence
+    if(!prior||Number(replacementSequence)>Number(prior.replacementSequence??prior.sequence)){
+      byHead.set(named.headSha.toLowerCase(),{...parsed,sha:row.sha,carriedFrom:named.headSha,replacementSequence})
+    }
+  }
+  const candidates=[...byHead.values()]
+  // Newest live holder first. Stop at the first content match.
+  candidates.sort((a,b)=>Number(b.replacementSequence??b.sequence)-Number(a.replacementSequence??a.sequence))
   for(const candidate of candidates){
     if(sameReviewContent(candidate.carriedFrom,head,Number(pr),io))return candidate
   }

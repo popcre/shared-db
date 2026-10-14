@@ -658,17 +658,26 @@ export function evaluateApprovalWithRefresh(input, { contentPreservingRefresh })
     }
     if (prior !== composable) continue
     const carriedAssignments = assignmentsAt(prior.headSha).filter((row) => !ownSlots.has(Number.isInteger(row.slot) && row.slot >= 1 ? row.slot : 1))
+    // A return at the carried ancestor is torn state: that slot was handed back
+    // and must not be composed as if it still stood (GLM review of #4294).
+    const carriedSlots = new Set(carriedAssignments.map((row) => Number.isInteger(row.slot) && row.slot >= 1 ? row.slot : 1))
+    const priorReturns = prior.returns ?? []
+    if (priorReturns.some((row) => carriedSlots.has(Number.isInteger(row?.slot) && row.slot >= 1 ? row.slot : 1))) continue
+    process.stderr.write(`DEBUG compose: prior=${prior.headSha} carried=${JSON.stringify(carriedAssignments.map((row) => ({ slot: row.slot, reviewer: row.reviewer, head: row.headSha })))} own=${JSON.stringify([...ownSlots])} assignCount=${(input.assignments ?? []).length}\n`)
     try {
       const result = evaluateExactHeadApproval({
         ...input,
-        returns: input.returns ?? [],
+        returns: [...(input.returns ?? []), ...priorReturns],
         verdicts: input.verdicts,
         carriedAssignments,
         carriedVerdicts: prior.verdicts ?? [],
         mergedAtHead: input.mergedAtHead === true,
       })
       return { ...result, head_sha: input.headSha, carried_from: prior.headSha, implementation_digest: digests.get(prior) }
-    } catch (error) { if (!(error instanceof ApprovalCheckError)) throw error }
+    } catch (error) {
+      process.stderr.write(`DEBUG compose eval failed: ${error.message}\n`)
+      if (!(error instanceof ApprovalCheckError)) throw error
+    }
   }
   throw exactError
 }

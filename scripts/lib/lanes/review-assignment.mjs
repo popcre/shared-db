@@ -14,6 +14,51 @@ import { assignNextReviewer, githubIo } from '../../manage-migration-author-lane
 // replacement listings are paid once and answer both questions. This is the
 // symmetry fix for #3427 -- previously slot 2's fill skipped higher peers and
 // a draw order like 1→3→2 could duplicate a provider.
+// When slot 1 is absent at the request head but already assigned at a
+// tree-identical ancestor (or content-equivalent) head of the same pull
+// request, that assignment carries forward for peer independence and allowlist
+// inheritance. The owner asked for slot 2 to be drawn without re-drawing slot 1
+// (verbatim 2026-10-13: "use stepfun"); a tree-identical re-push must not burn
+// a third paid slot-1 attempt just to re-pin the same bytes.
+function sameReviewContent(before,after,pr,io){
+  const leftHead=String(before).toLowerCase(),rightHead=String(after).toLowerCase()
+  if(leftHead===rightHead)return true
+  const treeOf=(sha)=>{
+    const commit=io.getCommit?.(sha)
+    return commit?.tree?.sha??commit?.commit?.tree?.sha??null
+  }
+  const left=treeOf(leftHead),right=treeOf(rightHead)
+  if(left&&right)return left===right
+  if(typeof io.reviewContentComparison!=='function')return false
+  try{
+    const comparison=io.reviewContentComparison(leftHead,rightHead,pr,{})
+    return comparison?.budgetProof?.kind==='unchanged'
+  }catch{return false}
+}
+function findCarriedSlotOne(issue,pr,head,io){
+  const prefix=`${REVIEW_ASSIGNMENT_REF_PREFIX}/${Number(issue)}-${Number(pr)}-`
+  let rows=[]
+  if(typeof io.listRefs==='function')rows=io.listRefs(prefix)??[]
+  else if(typeof io.gitRemoteRefs==='function')rows=[...(io.gitRemoteRefs([`${prefix}*`])??[])].map(([ref,sha])=>({ref,sha}))
+  const candidates=[]
+  for(const row of rows){
+    const named=parseAssignmentRef(row.ref)
+    if(!named||named.issue!==Number(issue)||named.pr!==Number(pr)||named.slot!==1||named.replacement)continue
+    if(String(named.headSha).toLowerCase()===head)continue
+    const parsed=parseReviewCursor(row.commit??io.getCommit(row.sha))
+    if(parsed.issue!==named.issue||parsed.pr!==named.pr||String(parsed.headSha).toLowerCase()!==named.headSha||(parsed.slot??1)!==1)continue
+    candidates.push({...parsed,sha:row.sha,carriedFrom:named.headSha})
+  }
+  // Newest slot-1 first: the latest drawn holder is the one a re-push of the
+  // same bytes left standing. Stop at the first content match so a long history
+  // of older heads never forces a full paid-content comparison walk.
+  candidates.sort((a,b)=>b.sequence-a.sequence)
+  for(const candidate of candidates){
+    if(sameReviewContent(candidate.carriedFrom,head,Number(pr),io))return candidate
+  }
+  return null
+}
+
 export function resolvePeerSlots(issue,pr,headSha,slot,io){
   const head=String(headSha).toLowerCase()
   const requesting=Number(slot)
@@ -51,6 +96,16 @@ export function resolvePeerSlots(issue,pr,headSha,slot,io){
     for(const row of readReviewReturns(issue,pr,head,io))returned.add(row.assignmentSha)
     for(const [slotNum,record] of [...peers])if(returned.has(record.sha))peers.delete(slotNum)
   }
+  const finish=()=>{
+    assertReviewerAllowlistConsistency(slotOneHistory)
+    filterReturned()
+    if(requesting>=2&&!slotOne){
+      slotOne=findCarriedSlotOne(issue,pr,head,io)
+      if(slotOne)slotOneHistory.push(slotOne)
+    }
+    if(requesting>=2&&!slotOne)throw missingSlotOne()
+    return {slotOne,peers}
+  }
   if(typeof io.readReviewRecords==='function'){
     // The batched reader lists both namespaces and hydrates all matching
     // commits in one snapshot, regardless of how high the live slot number is.
@@ -72,10 +127,7 @@ export function resolvePeerSlots(issue,pr,headSha,slot,io){
       const parsed=parseReviewCursor(record.commit??io.getCommit(record.sha))
       accept({ref,sha:record.sha},named,parsed)
     }
-    assertReviewerAllowlistConsistency(slotOneHistory)
-    filterReturned()
-    if(requesting>=2&&!slotOne)throw missingSlotOne()
-    return {slotOne,peers}
+    return finish()
   }
   if(typeof io.listRefs!=='function')throw new LaneError('peer review slot records cannot be listed; independent draw refused')
   const assignmentRows=io.listRefs(assignmentBase)
@@ -90,10 +142,7 @@ export function resolvePeerSlots(issue,pr,headSha,slot,io){
     if(!named?.replacement)continue
     accept(row,named,parseReviewCursor(row.commit??io.getCommit(row.sha)))
   }
-  assertReviewerAllowlistConsistency(slotOneHistory)
-  filterReturned()
-  if(requesting>=2&&!slotOne)throw missingSlotOne()
-  return {slotOne,peers}
+  return finish()
 }
 
 // AGENTS.md section 4 rule 2 is merge-first, so a migration reaching main and only

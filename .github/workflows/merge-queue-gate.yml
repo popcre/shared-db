@@ -13,7 +13,14 @@ name: Merge Queue Gate
 #      multiple, malformed, closed or wrong-base identities are refused;
 #   2. proves the exact reviewed PR head is an ANCESTOR of the synthetic group
 #      commit — the queue can never merge bytes that contain less than the
-#      reviewed head;
+#      reviewed head. The reviewed head is the AUTHORIZED implementation head
+#      (the commit carrying guarded-merge authorization), not blindly the live
+#      tip: a live tip that is implementation + an evidence-pair tail only is
+#      accepted the way `verifyGitEvidence` shapes a tail. Pair identity is
+#      the Agent work contract's job at admission; this gate only requires the
+#      tail files to be exactly one complete evidence pair. Containment binds
+#      to the authorized head, so a group built before the tail was pushed is
+#      still accepted and the tail may not be in the merged tree (canary #4321).
 #   3. requires the guarded merge lane's exact-head authorization status to be
 #      green on that PR head, then re-runs the SQL guards, production sidecars,
 #      live-proof probe, cross-PR object collision, migration lease, exact-head
@@ -121,36 +128,53 @@ jobs:
           set -euo pipefail
           facts="$(node scripts/merge-queue-contract.mjs --resolve-queue-pr)"
           echo "$facts"
+          tip="$(echo "$facts" | jq -r .headRefOid)"
           echo "pr=$(echo "$facts" | jq -r .number)" >> "$GITHUB_OUTPUT"
-          echo "head=$(echo "$facts" | jq -r .headRefOid)" >> "$GITHUB_OUTPUT"
+          echo "head=$tip" >> "$GITHUB_OUTPUT"
+          # Authorized head under the verifyGitEvidence ancestor+tail rule: the
+          # implementation commit carrying guarded-merge authorization, with at
+          # most this PR's own evidence pair after it (canary #4321).
+          auth="$(node scripts/merge-queue-contract.mjs --resolve-authorized-head --head-sha "$tip")"
+          echo "$auth"
+          echo "authorized_head=$(echo "$auth" | jq -r .authorizedHead)" >> "$GITHUB_OUTPUT"
+          echo "authorized_mode=$(echo "$auth" | jq -r .mode)" >> "$GITHUB_OUTPUT"
 
       - name: Prove the exact reviewed head is contained in the synthetic group commit
         if: github.event_name == 'merge_group'
         env:
           MERGE_GROUP_SHA: ${{ github.event.merge_group.head_sha }}
-          PR_HEAD: ${{ steps.queue.outputs.head }}
+          PR_HEAD: ${{ steps.queue.outputs.authorized_head }}
+          PR_TIP: ${{ steps.queue.outputs.head }}
+          AUTH_MODE: ${{ steps.queue.outputs.authorized_mode }}
         run: |
           set -euo pipefail
           git cat-file -e "${MERGE_GROUP_SHA}^{commit}"
           git cat-file -e "${PR_HEAD}^{commit}"
+          git cat-file -e "${PR_TIP}^{commit}"
           git merge-base --is-ancestor "$PR_HEAD" "$MERGE_GROUP_SHA" || {
             echo "REFUSED: merge group $MERGE_GROUP_SHA does not contain the exact authorized PR head $PR_HEAD." >&2
             exit 1
           }
-          echo "Group $MERGE_GROUP_SHA contains the exact reviewed head $PR_HEAD."
+          git merge-base --is-ancestor "$PR_HEAD" "$PR_TIP" || {
+            echo "REFUSED: live PR tip $PR_TIP is not a descendant of authorized head $PR_HEAD." >&2
+            exit 1
+          }
+          echo "Group $MERGE_GROUP_SHA contains the exact reviewed head $PR_HEAD (mode=$AUTH_MODE; live tip $PR_TIP)."
 
       - name: Revalidate exact reviewed PR head, claims, collisions, and migration order
         if: github.event_name == 'merge_group'
         env:
           GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
           PR_NUMBER: ${{ steps.queue.outputs.pr }}
-          REQUESTED_SHA: ${{ steps.queue.outputs.head }}
+          REQUESTED_SHA: ${{ steps.queue.outputs.authorized_head }}
         run: |
           set -euo pipefail
           git fetch --no-tags origin main
           # Newest-by-timestamp, never array order: a freeze revocation is a
           # second row on the same context and must win over the earlier
           # admission success. Shared helper keeps both readers aligned.
+          # REQUESTED_SHA is the authorized (implementation) head, not the live
+          # tip: authorization is bound to the reviewed head (plan §8).
           authorization="$(node scripts/merge-queue-contract.mjs --authorization-state --head-sha "$REQUESTED_SHA")"
           test "$authorization" = 'success' || {
             echo "REFUSED: exact PR head $REQUESTED_SHA carries no successful guarded merge authorization (newest state: ${authorization:-none})." >&2
@@ -242,8 +266,12 @@ jobs:
           set -euo pipefail
           facts="$(node scripts/merge-queue-contract.mjs --resolve-queue-pr)"
           echo "$facts"
+          tip="$(echo "$facts" | jq -r .headRefOid)"
           echo "pr=$(echo "$facts" | jq -r .number)" >> "$GITHUB_OUTPUT"
-          echo "head=$(echo "$facts" | jq -r .headRefOid)" >> "$GITHUB_OUTPUT"
+          echo "head=$tip" >> "$GITHUB_OUTPUT"
+          auth="$(node scripts/merge-queue-contract.mjs --resolve-authorized-head --head-sha "$tip")"
+          echo "$auth"
+          echo "authorized_head=$(echo "$auth" | jq -r .authorizedHead)" >> "$GITHUB_OUTPUT"
 
       - name: Acquire the exclusive merge lane through the actual mutation
         id: merge_lock
@@ -257,13 +285,13 @@ jobs:
           # cannot overlap the mutation this job owns.
           node scripts/manage-migration-author-lanes.mjs --acquire-merge \
             --owner "github-actions:${GITHUB_RUN_ID}" --pr "${{ steps.queue.outputs.pr }}" \
-            --head-sha "${{ steps.queue.outputs.head }}" > "$RUNNER_TEMP/merge-lock.json"
+            --head-sha "${{ steps.queue.outputs.authorized_head }}" > "$RUNNER_TEMP/merge-lock.json"
           echo "owner_sha=$(jq -r .ownerSha "$RUNNER_TEMP/merge-lock.json")" >> "$GITHUB_OUTPUT"
 
       - name: Re-check authorization and production interlock under the merge lock
         env:
           GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
-          REQUESTED_SHA: ${{ steps.queue.outputs.head }}
+          REQUESTED_SHA: ${{ steps.queue.outputs.authorized_head }}
         run: |
           set -euo pipefail
           # The hold is a no-wait zone: never sit on the merge lane for a quota

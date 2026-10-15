@@ -5,10 +5,17 @@
 --
 -- Six new plm tables, one trigger function, and a structural seed:
 -- 5 lists, 24 stages, 637 durations, 32 Linesheet option rows (16 enabled), 0 dependencies.
--- Access follows plm."FactoryTime": owner-only (server services), no browser grants.
--- RLS is enabled with no policies so a browser role can never read or write it.
--- Purely additive: no existing object is altered. Rollback: drop the six tables and
--- the function (no other object depends on them).
+-- Access: server services only. Like every plm table created since
+-- 20260710135975, service_role (BYPASSRLS) receives the schema's default grants; the
+-- owner (postgres, used by designflow-tracking today) keeps full access. anon and
+-- authenticated get no privilege, and RLS is enabled with no policies so a browser
+-- role can never read or write it even if a grant were added later.
+-- Purely additive: no existing object is altered, no foreign key to an existing table.
+-- Supabase applies the file in one transaction, so the closing count assertion rolls
+-- the whole migration back if the seed is wrong.
+-- Rollback: drop table plm.prod_stage_progress, plm.licensor_stage_option,
+-- plm.stage_dependency, plm.stage_duration, plm.stage, plm.stage_list (this also
+-- drops their triggers), then drop function plm.stage_catalog_bump_version().
 --
 -- Seed provenance (designflow-tracking docs/stage-catalog-seed/ on sandbox-albert):
 -- the sheet "Order Timeline Calculator", canonical product-type names already applied.
@@ -77,7 +84,7 @@ create table plm.licensor_stage_option (
 create table plm.prod_stage_progress (
   id bigint generated always as identity primary key,
   prod_order_header_id integer not null,
-  sku text null,
+  sku text null check (sku is null or sku <> ''),
   stage_id integer not null references plm.stage (id) on delete restrict,
   done_at date null,
   failed boolean not null default false,
@@ -88,7 +95,6 @@ create table plm.prod_stage_progress (
 
 create unique index prod_stage_progress_order_sku_stage_key
   on plm.prod_stage_progress (prod_order_header_id, coalesce(sku, ''), stage_id);
-create index stage_duration_stage_id_idx on plm.stage_duration (stage_id);
 create index stage_dependency_depends_on_idx on plm.stage_dependency (depends_on_stage_id);
 create index licensor_stage_option_stage_id_idx on plm.licensor_stage_option (stage_id);
 create index prod_stage_progress_stage_id_idx on plm.prod_stage_progress (stage_id);
@@ -106,20 +112,20 @@ revoke all on plm.stage_list, plm.stage, plm.stage_duration, plm.stage_dependenc
 comment on table plm.stage_list is 'Stage Catalog list (Design, Licensing, Sampling, Production, Shipping). Admin creates/deletes; maintainers (dflow.users ids) and admins edit. version bumps on any change to the list or its stages, durations, dependencies or licensor options. shared-db#4350.';
 comment on column plm.stage_list.maintainers is 'dflow.users.id values allowed to edit this list (admins always can).';
 comment on column plm.stage_list.version is 'Optimistic-concurrency version; bumped by plm.stage_catalog_bump_version().';
-comment on table plm.stage is 'One step of a stage list. No waits between stages: a needed date = next stage needed date minus this stage duration.';
+comment on table plm.stage is 'One step of a stage list. No waits between stages: a needed date = next stage needed date minus this stage duration. When duration_varies_by is set, durations come from plm.stage_duration; a scope with no row shows missing time (seeded so for Re-design, Re-sampling, and the Linesheet stages of licensors with no licensing times yet).';
 comment on column plm.stage.name is 'Shown in Last Completed.';
 comment on column plm.stage.pending_label is 'Noun shown in Waiting On.';
 comment on column plm.stage.default_duration is 'Duration in the list unit when it does not vary; NULL = not set yet (shown as missing time, never 0).';
 comment on column plm.stage.applies_to is 'all | licensed | non_licensed | on_resubmit (only while a licensor Resubmit is active at concept or PPS) | licensor_specific (only when plm.licensor_stage_option is enabled for the order licensor).';
 comment on column plm.stage.done_signal is 'Existing order field that marks the step done, from the code allow-list; NULL = user-added step ticked through plm.prod_stage_progress.';
 comment on column plm.stage.shown_on_tracker is 'Stage counted on Production Tracking; percent complete = done / shown stages that apply.';
-comment on column plm.stage.counts_toward_total is 'Included in timeline totals (Linesheet and resubmit stages are not).';
+comment on column plm.stage.counts_toward_total is 'Included in timeline totals. Seeded false for Linesheet, on_resubmit and zero-time tracker steps.';
 comment on column plm.stage.updated_by is 'dflow.users.id of the last editor.';
 comment on table plm.stage_duration is 'Per product type or per licensor duration of a stage, in the list unit; NULL duration = not set yet.';
 comment on table plm.stage_dependency is 'Stage A depends on stage B: hard = cannot start until B is done; soft = may start early by allowed_early_days. Filled by maintainers; seeded empty. Cycles rejected by the API.';
 comment on table plm.licensor_stage_option is 'Turns licensor_specific stages (Linesheet) on per licensor.';
 comment on table plm.prod_stage_progress is 'Done/failed ticks for user-added stages (done_signal NULL) per production order and optional SKU (NULL = PO level). prod_order_header_id = plm."ProdOrderHeader".id; no foreign key because that table is sync-owned.';
-comment on column plm.prod_stage_progress.sku is 'plm."ProdOrderDetail"."itemNo"; NULL = the whole PO.';
+comment on column plm.prod_stage_progress.sku is 'plm."ProdOrderDetail"."itemNo"; NULL = the whole PO (empty string refused). Uniqueness is the expression index prod_stage_progress_order_sku_stage_key on (prod_order_header_id, coalesce(sku, ''''), stage_id): upserts use ON CONFLICT (prod_order_header_id, coalesce(sku, ''''), stage_id).';
 
 insert into plm.stage_list (key, name, duration_unit, maintainers, position) values
   ('design', 'Design Stages', 'minutes', '{18}'::integer[], 1),

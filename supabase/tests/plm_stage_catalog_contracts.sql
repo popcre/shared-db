@@ -1,14 +1,20 @@
 begin;
 
--- shared-db#4350 (claim #4355): Stage Catalog seed counts, browser-role denial,
--- constraints and the version trigger. Rolled back.
+-- shared-db#4350 (claim #4355): Stage Catalog seed counts, access, the trigger
+-- function and every trigger path, and the constraints. Rolled back.
 do $$
 declare
+  v_tables text[] := array['plm.stage_list','plm.stage','plm.stage_duration',
+    'plm.stage_dependency','plm.licensor_stage_option','plm.prod_stage_progress'];
+  v_fn oid := to_regprocedure('plm.stage_catalog_bump_version()');
   v_list integer;
+  v_lic integer;
   v_stage integer;
-  v_before integer;
-  v_after integer;
+  v_stage2 integer;
+  v_new integer;
+  v integer;
 begin
+  -- Seed.
   if (select count(*) from plm.stage_list) <> 5
      or (select count(*) from plm.stage) <> 24
      or (select count(*) from plm.stage_duration) <> 637
@@ -16,7 +22,8 @@ begin
      or (select count(*) from plm.licensor_stage_option) <> 32
      or (select count(*) from plm.stage_dependency) <> 0
      or (select count(*) from plm.prod_stage_progress) <> 0
-     or (select count(*) from plm.stage where shown_on_tracker) <> 12 then
+     or (select count(*) from plm.stage where shown_on_tracker) <> 12
+     or (select count(*) from plm.stage where counts_toward_total) <> 10 then
     raise exception 'stage catalog seed counts are wrong';
   end if;
   if exists (select 1 from plm.stage_list where version <> 1) then
@@ -26,56 +33,113 @@ begin
     raise exception 'sampling maintainers must be Yuchen (36) and Ilona (41)';
   end if;
 
-  if (select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
-       where n.nspname = 'plm' and c.relrowsecurity
-         and c.relname in ('stage_list','stage','stage_duration','stage_dependency',
-                           'licensor_stage_option','prod_stage_progress')) <> 6 then
+  -- Access: RLS on, no policy, no browser privilege on any of the six tables.
+  if (select count(*) from unnest(v_tables) t(name)
+       where (select relrowsecurity from pg_class where oid = t.name::regclass)) <> 6 then
     raise exception 'all six stage catalog tables must have RLS enabled';
   end if;
-  if exists (select 1 from pg_roles r cross join unnest(array['plm.stage_list','plm.stage',
-               'plm.stage_duration','plm.stage_dependency','plm.licensor_stage_option',
-               'plm.prod_stage_progress']) t(name)
+  if exists (select 1 from pg_policy where polrelid = any (select t::regclass from unnest(v_tables) t)) then
+    raise exception 'stage catalog tables must have no RLS policy';
+  end if;
+  if exists (select 1 from pg_roles r cross join unnest(v_tables) t(name)
+             cross join unnest(array['select','insert','update','delete']) p(priv)
              where r.rolname in ('anon','authenticated')
-               and (has_table_privilege(r.rolname, t.name, 'select')
-                    or has_table_privilege(r.rolname, t.name, 'insert')
-                    or has_table_privilege(r.rolname, t.name, 'update')
-                    or has_table_privilege(r.rolname, t.name, 'delete'))) then
+               and has_table_privilege(r.rolname, t.name, p.priv)) then
     raise exception 'browser roles must have no privilege on the stage catalog';
   end if;
 
-  select id into v_list from plm.stage_list where key = 'production';
-  select id into v_stage from plm.stage where list_id = v_list and position = 1;
-  select version into v_before from plm.stage_list where id = v_list;
-  update plm.stage set pending_label = pending_label || ' x' where id = v_stage;
-  insert into plm.stage_duration (stage_id, scope_kind, scope_value, duration)
-    values (v_stage, 'product_type', 'contract-test', 1);
-  insert into plm.stage_dependency (stage_id, depends_on_stage_id, kind)
-    select v_stage, id, 'hard' from plm.stage where list_id = v_list and position = 2;
-  select version into v_after from plm.stage_list where id = v_list;
-  if v_after <> v_before + 3 then
-    raise exception 'version must bump once per change (before %, after %)', v_before, v_after;
+  -- Trigger function and the five triggers bound to it.
+  if v_fn is null or (select count(*) from pg_proc p where p.oid = v_fn
+       and not p.prosecdef and p.prorettype = 'trigger'::regtype
+       and 'search_path=""' = any (p.proconfig)) <> 1 then
+    raise exception 'plm.stage_catalog_bump_version must be security invoker, return trigger, empty search_path';
   end if;
+  if has_function_privilege('anon', v_fn, 'execute') or has_function_privilege('authenticated', v_fn, 'execute') then
+    raise exception 'browser roles must not execute the trigger function';
+  end if;
+  if (select count(*) from pg_trigger g
+       where g.tgfoid = v_fn and not g.tgisinternal
+         and (g.tgrelid, g.tgname) in (
+           ('plm.stage_list'::regclass, 'stage_list_bump_version'),
+           ('plm.stage'::regclass, 'stage_bump_version'),
+           ('plm.stage_duration'::regclass, 'stage_duration_bump_version'),
+           ('plm.stage_dependency'::regclass, 'stage_dependency_bump_version'),
+           ('plm.licensor_stage_option'::regclass, 'licensor_stage_option_bump_version'))) <> 5 then
+    raise exception 'the five version triggers must call plm.stage_catalog_bump_version';
+  end if;
+
+  -- Every trigger path bumps the owning list exactly once.
+  select id into v_list from plm.stage_list where key = 'production';
+  select id into v_lic from plm.stage_list where key = 'licensing';
+  select id into v_stage from plm.stage where list_id = v_list and position = 1;
+  select id into v_stage2 from plm.stage where list_id = v_list and position = 2;
+
+  update plm.stage set pending_label = pending_label || ' x' where id = v_stage;          -- stage update
+  insert into plm.stage (list_id, position, name, pending_label)
+    values (v_list, 99, 'contract-test', 'contract-test') returning id into v_new;     -- stage insert
+  insert into plm.stage_duration (stage_id, scope_kind, scope_value, duration)
+    values (v_stage, 'product_type', 'contract-test', 1);                             -- duration insert
+  delete from plm.stage_duration where stage_id = v_stage and scope_value = 'contract-test'; -- duration delete
+  insert into plm.stage_dependency (stage_id, depends_on_stage_id, kind)
+    values (v_stage, v_stage2, 'hard');                                               -- dependency insert
+  delete from plm.stage_dependency where stage_id = v_stage;                          -- dependency delete
+  delete from plm.stage where id = v_new;                                             -- stage delete
+  if (select version from plm.stage_list where id = v_list) <> 8 then
+    raise exception 'production list must be at version 8 after seven changes, found %',
+      (select version from plm.stage_list where id = v_list);
+  end if;
+
+  update plm.licensor_stage_option set enabled = not enabled where licensor_name = 'Disney'; -- 2 rows
+  delete from plm.licensor_stage_option where licensor_name = 'Peanuts';                     -- 2 rows
+  insert into plm.licensor_stage_option (licensor_name, stage_id)
+    select 'contract-test', id from plm.stage where list_id = v_lic and applies_to = 'licensor_specific'; -- 2 rows
+  if (select version from plm.stage_list where id = v_lic) <> 7 then
+    raise exception 'licensing list must be at version 7 after six option row changes, found %',
+      (select version from plm.stage_list where id = v_lic);
+  end if;
+  if exists (select 1 from plm.stage_list where key in ('design','sampling','shipping') and version <> 1) then
+    raise exception 'unrelated lists must not be bumped';
+  end if;
+
+  select version into v from plm.stage_list where id = v_list;
   update plm.stage_list set name = name where id = v_list;
-  if (select version from plm.stage_list where id = v_list) <> v_after then
+  if (select version from plm.stage_list where id = v_list) <> v then
     raise exception 'a no-op list update must not bump the version';
   end if;
   update plm.stage_list set name = name || ' x' where id = v_list;
-  if (select version from plm.stage_list where id = v_list) <> v_after + 1 then
+  if (select version from plm.stage_list where id = v_list) <> v + 1 then
     raise exception 'a list edit must bump the version once';
   end if;
 
+  -- Constraints.
   begin
     insert into plm.stage_dependency (stage_id, depends_on_stage_id, kind) values (v_stage, v_stage, 'soft');
     raise exception 'self dependency must be refused';
   exception when check_violation then null;
   end;
-
   insert into plm.prod_stage_progress (prod_order_header_id, sku, stage_id) values (-1, null, v_stage);
+  insert into plm.prod_stage_progress (prod_order_header_id, sku, stage_id) values (-1, 'SKU-A', v_stage);
+  insert into plm.prod_stage_progress (prod_order_header_id, sku, stage_id) values (-1, 'SKU-B', v_stage);
   begin
     insert into plm.prod_stage_progress (prod_order_header_id, sku, stage_id) values (-1, null, v_stage);
     raise exception 'duplicate PO-level progress must be refused';
   exception when unique_violation then null;
   end;
+  begin
+    insert into plm.prod_stage_progress (prod_order_header_id, sku, stage_id) values (-1, 'SKU-A', v_stage);
+    raise exception 'duplicate SKU progress must be refused';
+  exception when unique_violation then null;
+  end;
+  begin
+    insert into plm.prod_stage_progress (prod_order_header_id, sku, stage_id) values (-1, '', v_stage);
+    raise exception 'empty SKU must be refused';
+  exception when check_violation then null;
+  end;
+  insert into plm.prod_stage_progress (prod_order_header_id, sku, stage_id) values (-1, 'SKU-A', v_stage)
+    on conflict (prod_order_header_id, coalesce(sku, ''), stage_id) do update set done_at = current_date;
+  if (select count(*) from plm.prod_stage_progress where prod_order_header_id = -1) <> 3 then
+    raise exception 'progress upsert must update in place';
+  end if;
 end;
 $$;
 

@@ -365,7 +365,7 @@ export function readAuthorizationState(headSha, { repo, read = ghJson } = {}) {
 // (`report.head_sha`). The live tip may then carry only an evidence pair after
 // it. The merge-queue gate must bind containment and authorization to that
 // implementation head — never blindly to the live tip — or a legitimate
-// evidence tail makes the group look like it is missing the reviewed head
+// evidence tail makes the group look unlike the reviewed head
 // (canary #4321: live tip `e844a091`, authorized implementation `944ff07f`,
 // group parent `944ff07f`).
 //
@@ -431,8 +431,10 @@ export function resolveAuthorizedHead(prHeadSha, { isAncestor, changedFiles, fir
         mode: cumulativeTail.length === 0 ? 'ancestor' : 'evidence-tail',
       }
     }
-    // A complete evidence pair already spans candidate→tip. A second pair (or
-    // any non-evidence change) is not a tail this gate may walk through.
+    // A complete or conflicted evidence pair already spans candidate→tip, so
+    // do not walk further. A step that is only half a pair (plus non-evidence
+    // files) may still be walked through; the cumulative set-equality check at
+    // the acceptance boundary is what refuses an unlawful tail.
     if (pair?.state === 'current' || pair?.state === 'conflicted') break
     const stepFiles = [...changedFiles(candidate, current)].map(String)
     const stepPair = resolveEvidencePair(stepFiles)

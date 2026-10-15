@@ -18,7 +18,7 @@ import { loadReviewBrief, storeReviewBrief } from './lib/review-packet.mjs'
 import { GOVERNED_VERDICT_WRAPPERS, VERDICT_CONTRACT_FLAG_WRAPPERS, forbiddenGovernedSubcommand, wrapperBaseName } from './lib/reviewer-capabilities.mjs'
 import { REINSTATABLE_FAILURE_CODES } from './lib/lanes/review-circuit-breaker.mjs'
 
-export const GOVERNED_REVIEW_OPTIONS=Object.freeze(['issue','pr','headSha','reviewer','wrapper','worktree','reviewSlot','replacementSequence','assignmentId','skipDoctor'])
+export const GOVERNED_REVIEW_OPTIONS=Object.freeze(['issue','pr','headSha','reviewer','wrapper','worktree','reviewSlot','replacementSequence','assignmentId','skipDoctor','tests'])
 export function parseArgs(argv){
   const split=argv.indexOf('--'),own=split<0?argv:argv.slice(0,split),wrapperArgs=split<0?[]:argv.slice(split+1),out={wrapperArgs,slot:1}
   for(let i=0;i<own.length;i+=2){const raw=own[i];if(typeof raw==='string'&&raw.startsWith('--')){const name=raw.slice(2).replace(/-([a-z])/g,(_,c)=>c.toUpperCase());if(!GOVERNED_REVIEW_OPTIONS.includes(name))throw new Error(`unknown governed review argument ${raw}${name==='slot'?' (use --review-slot)':''}; supported: ${GOVERNED_REVIEW_OPTIONS.map((k)=>`--${k.replace(/[A-Z]/g,(c)=>`-${c.toLowerCase()}`)}`).join(', ')}`)}else throw new Error('governed review arguments must be --name value pairs followed by -- and wrapper arguments')
@@ -393,7 +393,9 @@ export function lifecyclePoolDispatch(options,source,implementer){
   const provider=lifecyclePoolProvider(options)
   if(!provider)return null
   if(!/^[a-z0-9-]+$/.test(String(implementer??'')))throw new Error('lifecycle-metered review requires a known implementing engine before the reviewer starts')
-  return {file:'ai-review',args:[provider,'final-check','--base',source.mergeBase,'--assert-head',source.headSha,'--implementer',implementer],env:{AI_REVIEW_IMPLEMENTER:implementer,AI_POOL_CALLER:implementer},provider}
+  const args=[provider,'final-check','--base',source.mergeBase,'--assert-head',source.headSha,'--implementer',implementer]
+  if(options.tests!==undefined){if(typeof options.tests!=='string'||!options.tests.trim())throw new Error('top-level --tests requires a nonempty command');args.push('--tests',options.tests)}
+  return {file:'ai-review',args,env:{AI_REVIEW_IMPLEMENTER:implementer,AI_POOL_CALLER:implementer},provider}
 }
 export function lifecyclePoolReportBody(stdout,{headSha,provider,worktree,sourceDigest,readReport=(path)=>readFileSync(path,'utf8')}={}){
   const output=String(stdout??'').trim(),lines=output.split(/\r?\n/),reported=nativeReviewPath(output)
@@ -409,7 +411,15 @@ export function lifecyclePoolReportBody(stdout,{headSha,provider,worktree,source
     const field=line.slice(prefix.length,-suffix.length)
     return label==='repository'?portableReviewPath(field)===portableReviewPath(realpathSync.native(worktree)):field===String(value)
   })
-  if(!report.startsWith(`# ${provider} pool review — final-check\n`)||!exact('provider',provider)||!exact('repository',worktree)||!exact('reviewed commit',String(headSha).toLowerCase())||!exact('source digest',sourceDigest))throw new Error('lifecycle review report does not bind the assigned provider, repository, exact head, and source digest')
+  const exactOnce=(label,value)=>{
+    const prefix=`| ${label} | \``,suffix='` |'
+    const fields=report.split(/\r?\n/).filter((line)=>line.startsWith(prefix)&&line.endsWith(suffix)).map((line)=>line.slice(prefix.length,-suffix.length))
+    return fields.length===1&&fields[0]===String(value)
+  }
+  const legacy=report.startsWith(`# ${provider} pool review — final-check\n`)
+  const nativeHeader=/^# ([a-z][a-z0-9-]*) final-check — (\d{8}T\d{6}-\d+-\d+)\r?\n/.exec(report)
+  const native=Boolean(nativeHeader&&nativeHeader[1]===provider&&exactOnce('run',nativeHeader[2])&&exactOnce('runner','ai-review-engine (review-lifecycle-core/1)'))
+  if((!legacy&&!native)||!exact('provider',provider)||!exact('repository',worktree)||!exact('reviewed commit',String(headSha).toLowerCase())||!exact('source digest',sourceDigest))throw new Error('lifecycle review report does not bind the assigned provider, repository, exact head, and source digest')
   const verdicts=[...report.matchAll(/^## Verdict\s*\r?\n\s*(APPROVE|REJECT|BLOCKED)\s*$/gm)]
   if(verdicts.length!==1)throw new Error('lifecycle review report must contain exactly one terminal verdict')
   const section=report.indexOf('\n## Result\n')
@@ -1075,6 +1085,7 @@ export function prepareGovernedReview(options,{env=process.env,github=readGitHub
   const named=String(options.headSha??'').trim().toLowerCase()
   if(named&&named!==live)throw new Error(`--head-sha ${named} is stale: pull request #${Number(options.pr)} is now at ${live}. No reviewer was started. Omit --head-sha to use the live head, after the reviewer assignment is moved to it.`)
   const poolProvider=lifecyclePoolProvider(options)
+  if(options.tests!==undefined&&!poolProvider)throw new Error('top-level --tests is supported only for lifecycle-metered pool reviewers; no reviewer was started')
   if(poolProvider&&!/^[a-z0-9-]+$/.test(lifecyclePoolImplementer(env)))throw new Error('lifecycle-metered review requires a known implementing engine before the reviewer starts')
   const callerEnv=poolProvider?{}:reviewCallerEnvironment(options.wrapper,env)
   return {options:{...options,headSha:live,wrapperArgs:poolProvider?[]:promptHeadContract(options.wrapperArgs??[],live,files,options.wrapper)},callerEnv}

@@ -31,6 +31,10 @@ test('active assigned pool reviewers dispatch through ai-review with explicit im
     file:'ai-review',args:['muse','final-check','--base','c'.repeat(40),'--assert-head','a'.repeat(40),'--implementer','codex'],
     env:{AI_REVIEW_IMPLEMENTER:'codex',AI_POOL_CALLER:'codex'},provider:'muse'
   })
+  const opaque='npm test -- --runInBand "suite with spaces"'
+  assert.deepEqual(lifecyclePoolDispatch({...assigned,tests:opaque},fixtureSource(assigned),'codex').args,
+    ['muse','final-check','--base','c'.repeat(40),'--assert-head','a'.repeat(40),'--implementer','codex','--tests',opaque])
+  assert.throws(()=>lifecyclePoolDispatch({...assigned,tests:''},fixtureSource(assigned),'codex'),/nonempty command/)
   assert.throws(()=>lifecyclePoolDispatch(assigned,fixtureSource(assigned),''),/known implementing engine/)
 })
 
@@ -50,17 +54,38 @@ test('lifecycle pool report is preserved only when it binds provider, repository
   }finally{rmSync(root,{recursive:true,force:true})}
 })
 
-test('governed runner records the pool report path and submits its exact-head verdict',()=>{
+test('native lifecycle-engine reports require exact mode, run, runner and source identity',()=>{
+  const root=mkdtempSync(join(tmpdir(),'shared-db-native-review-report-'))
+  try{
+    const directory=join(root,'.ai','reviews');mkdirSync(directory,{recursive:true})
+    const path=join(directory,'deepseek-final-check-report.md'),head='a'.repeat(40),digest='d'.repeat(64),run='20261015T100000-12345-32767'
+    const native=`# deepseek final-check — ${run}\n\n| field | value |\n|---|---|\n| provider | \`deepseek\` |\n| repository | \`${root}\` |\n| reviewed commit | \`${head}\` |\n| source digest | \`${digest}\` |\n| run | \`${run}\` |\n| runner | \`ai-review-engine (review-lifecycle-core/1)\` |\n\n## Result\n\nFindings and read coverage for ${head}.\n\n## Verdict\n\nAPPROVE\n`
+    const parse=(report,provider='deepseek',sourceDigest=digest)=>{writeFileSync(path,report);return lifecyclePoolReportBody(path,{headSha:head,provider,worktree:root,sourceDigest})}
+    assert.equal(parse(native).body,`Findings and read coverage for ${head}.\n\nVERDICT: APPROVE ${head}`)
+    assert.throws(()=>parse(native,'muse'),/does not bind/,'wrong assigned provider')
+    assert.throws(()=>parse(native.replace('final-check','security-review')),/does not bind/,'wrong mode')
+    assert.throws(()=>parse(native.replace(`| run | \`${run}\` |`,`| run | \`20261015T100001-12345-32767\` |`)),/does not bind/,'run field differs from header')
+    assert.throws(()=>parse(native.replace(`| run | \`${run}\` |`,`| run | \`${run}\` |\n| run | \`20261015T100001-12345-32767\` |`)),/does not bind/,'duplicate run fields')
+    assert.throws(()=>parse(native.replace('ai-review-engine (review-lifecycle-core/1)','ai-review-engine (other-core/1)')),/does not bind/,'wrong runner')
+    assert.throws(()=>parse(native.replace(`| run | \`${run}\` |`,`| run | \`not-a-run-id\` |`)),/does not bind/,'malformed run id')
+    assert.throws(()=>parse(native,'deepseek','e'.repeat(64)),/does not bind/,'wrong digest')
+    assert.throws(()=>parse(native.replace('APPROVE\n','APPROVE\n\n## Verdict\n\nREJECT\n')),/exactly one terminal verdict/,'multiple verdicts')
+    assert.throws(()=>lifecyclePoolReportBody(join(root,'outside.md'),{headSha:head,provider:'deepseek',worktree:root,sourceDigest:digest}),/outside the worktree/)
+  }finally{rmSync(root,{recursive:true,force:true})}
+})
+
+test('governed runner forwards local tests and records the native lifecycle report path and verdict',()=>{
   const root=mkdtempSync(join(tmpdir(),'shared-db-governed-pool-'))
   try{
-    const assigned={...options,reviewer:'muse-spark-1.3-contributor',wrapper:'ai-muse',worktree:root}
+    const tests='node --test "suite with spaces"'
+    const assigned={...options,reviewer:'muse-spark-1.3-contributor',wrapper:'ai-muse',worktree:root,tests}
     const reports=join(root,'.ai','reviews');mkdirSync(reports,{recursive:true})
     const reportPath=join(reports,'muse-final-check-report.md')
-    const head=assigned.headSha,digest=fixtureSource(assigned).sourceDigest
-    const report=`# muse pool review — final-check\n\n| field | value |\n|---|---|\n| provider | \`muse\` |\n| repository | \`${root}\` |\n| reviewed commit | \`${head}\` |\n| source digest | \`${digest}\` |\n\n## Result\n\nFindings on ${head}.\n\n## Verdict\n\nAPPROVE\n`
+    const head=assigned.headSha,digest=fixtureSource(assigned).sourceDigest,runId='20261015T100000-12345-32767'
+    const report=`# muse final-check — ${runId}\n\n| field | value |\n|---|---|\n| provider | \`muse\` |\n| repository | \`${root}\` |\n| reviewed commit | \`${head}\` |\n| source digest | \`${digest}\` |\n| run | \`${runId}\` |\n| runner | \`ai-review-engine (review-lifecycle-core/1)\` |\n\n## Result\n\nFindings on ${head}.\n\n## Verdict\n\nAPPROVE\n`
     let dispatch=null,recorded=null
     const result=executeGovernedReview(assigned,{
-      lifecyclePool:true,env:{CODEX_THREAD_ID:'codex-thread'},recordStart:(row)=>{assert.deepEqual(row.wrapperArgs,['muse','final-check','--base','c'.repeat(40),'--assert-head',head,'--implementer','codex']);return 'refs/db-review-started/fixture'},
+      lifecyclePool:true,env:{CODEX_THREAD_ID:'codex-thread'},recordStart:(row)=>{assert.deepEqual(row.wrapperArgs,['muse','final-check','--base','c'.repeat(40),'--assert-head',head,'--implementer','codex','--tests',tests]);return 'refs/db-review-started/fixture'},
       sourceResolver:fixtureSource,sourcePathOptions:fixturePaths,
       receiptFactory:()=>({path:'C:/review/.ai/reviews/source.json',read:()=>fixtureReceipt(assigned),bind:()=> 'C:/review/.ai/reviews/source.json.binding.json'}),
       preflight:()=>{},resolve:(name)=>name,measureReviewSize:()=>1,
@@ -76,7 +101,7 @@ test('governed runner records the pool report path and submits its exact-head ve
       record:(row)=>{recorded=row;return {ref:'refs/db-review-verdicts/fixture'}},
     })
     assert.equal(dispatch.command,'ai-review')
-    assert.deepEqual(dispatch.args,['muse','final-check','--base','c'.repeat(40),'--assert-head',head,'--implementer','codex'])
+    assert.deepEqual(dispatch.args,['muse','final-check','--base','c'.repeat(40),'--assert-head',head,'--implementer','codex','--tests',tests])
     assert.equal(dispatch.env.AI_REVIEW_IMPLEMENTER,'codex')
     assert.equal(recorded.verdict,'APPROVE')
     assert.equal(result.lifecycleReportPath,reportPath)
@@ -922,6 +947,9 @@ test('parseArgs refuses unknown arguments instead of silently defaulting the slo
   assert.throws(()=>parseArgs(['issue','1']),/--name value pairs/)
   const parsed=parseArgs(['--issue','1','--pr','2','--head-sha','a','--reviewer','r','--wrapper','w','--worktree','t','--review-slot','2','--replacement-sequence','3','--assignment-id','x','--skip-doctor','true','--','review','--slot','9'])
   assert.equal(parsed.slot,2);assert.equal(parsed.issue,1);assert.deepEqual(parsed.wrapperArgs,['review','--slot','9'])
+  const command='npm test -- --runInBand "suite with spaces"'
+  assert.equal(parseArgs(['--issue','1','--pr','2','--tests',command]).tests,command)
+  assert.equal(parseArgs(['--issue','1','--pr','2']).tests,undefined)
   assert.equal(parseArgs(['--issue','1','--pr','2']).slot,1)
 })
 

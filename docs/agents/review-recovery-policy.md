@@ -24,6 +24,8 @@ Release does not launch another paid reviewer. The next supported assignment or 
 
 For active assigned reviewers, the governed runner dispatches through the installed `ai-review` front door in `final-check` mode, naming the assigned provider, exact merge base, exact head and implementing engine. That front door starts the provider lifecycle before dispatch and writes the qualified report under the review worktree's `.ai/reviews` directory. The governed runner checks that the report binds the assigned provider, repository, source digest and head before it records the separate shared-db verdict. A missing, malformed or mismatched report produces no shared-db verdict. Manual lifecycle begin/finish, retrospective imports and direct provider calls do not satisfy delivery.
 
+An explicit top-level `--tests COMMAND` is forwarded as one opaque argument to this front door; it is never split or recovered from inherited wrapper arguments. When omitted, dispatch remains unchanged. Only the exact native engine report (`provider final-check — RUN`, matching run field and `ai-review-engine (review-lifecycle-core/1)` runner) and the established legacy pool report are accepted; both retain the report path, source identity, analysis and single-verdict checks.
+
 The preserved report path is the input to `ai-task-gates check --before ship --reviewer-approval <report>`. The ship gate independently verifies the completed lifecycle record, provider/implementer independence, exact source and action. A shared-db verdict comment or immutable lane artifact alone is not a substitute for this provider-neutral report.
 
 ## Verification and delivery

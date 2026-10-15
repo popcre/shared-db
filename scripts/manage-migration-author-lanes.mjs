@@ -1248,13 +1248,18 @@ export const githubIo = {
   },
 }
 
+
+function claimFirstAuthority(io,claimOwner){
+  if(typeof io?.resolveSessionAuthority==='function')return io.resolveSessionAuthority({claimOwner})
+  return resolveSessionAuthority(claimOwner===undefined?{}:{claimOwner})
+}
 function githubFlowAdapter(io,claimNumber=null,admissionOptions=null){
   const payload=(sha)=>{const message=io.getCommit(sha)?.message??'';const match=/^db-preview-(?:ready|outcome) ([\s\S]+)$/.exec(message);if(!match)throw new LaneError('preview coordination ref does not point to a recognized immutable payload');return JSON.parse(match[1])}
   return {
-    // Claim-first session authority (issue #3874) replaces the retired
-    // sole-orchestrator marker. Same shape ({live, task, calling_task, state}),
-    // fail closed: an undeclared SHARED_DB_SESSION_ID, or a named claim whose
-    // lease owner is not this session, is never live.
+    // Claim-first session identity (issue #3874). Same shape
+    // ({live, task, calling_task, state}), fail closed: an undeclared
+    // SHARED_DB_SESSION_ID, or a named claim whose lease owner is not this
+    // session, is never live. There is no role marker.
     resolveMarker(){
       if(claimNumber===null||claimNumber===undefined)return resolveSessionAuthority()
       let owner=null
@@ -2501,8 +2506,8 @@ export function prepareAuthorHandoff(options,now=new Date(),io=githubIo){
   if(![request.issue,request.claim,request.pr].every(n=>Number.isSafeInteger(n)&&n>0)||!/^[0-9a-f]{40}$/.test(request.headSha)||!request.owner||!request.branch||!request.worktree)throw new LaneError('stop-author requires exact claim, issue, source PR/head and owner custody')
   const artifact='artifact:'+request.headSha
   const prove=()=>{
-    const authority=io.orchestratorFlowAdapter().resolveMarker()
-    if(!authority?.live||authority.calling_task!==authority.task||!resolveSessionAuthority({env:{SHARED_DB_SESSION_ID:authority.task},claimOwner:request.owner}).live)throw new LaneError('stop-author must execute in the actual owner session')
+    const authority=claimFirstAuthority(io,request.owner)
+    if(!authority?.live||authority.calling_task!==authority.task)throw new LaneError('stop-author must execute in the actual owner session (claim-first session identity; no marker)')
     const claim=io.getIssue(request.claim),lease=parseAuthorLease(claim?.body??'',now)
     if(claim?.state!=='open'||workstreamKey(claim.title)!==`#${request.issue}`||lease.legacy||lease.owner!==request.owner||lease.branch!==request.branch||lease.worktree!==request.worktree||lease.relinquishmentMetadataLegacy)throw new LaneError('stop-author claim identity or custody differs')
     assertClaimNotRetired(lease.version,'handed off',io)
@@ -2590,11 +2595,11 @@ function changeClaimAuthor(options,now,io,voluntary){
     // Remote custody: the owner's signed state stays the declared one; what this machine
     // observes (absent) is checked by the remote-custody block below.
     if(!adopted&&!remoteCustody){const observed=observedWorktreeState(request.oldWorktree,io);if(observed!==request.oldWorktreeState&&!(observed==='absent'&&request.oldWorktreeState==='remote'))throw new LaneError('old worktree state differs from explicit declaration')}
-    const marker=io.orchestratorFlowAdapter().resolveMarker()
-    if(!marker?.live||marker.calling_task!==marker.task||marker.task!==request.authorizationChatId)throw new LaneError(`operator adoption chat ID does not match this declared session${marker?.live?'':`; ${sessionAuthorityRefusal(marker)}`}`)
+    const authority=claimFirstAuthority(io)
+    if(!authority?.live||authority.calling_task!==authority.task||authority.task!==request.authorizationChatId)throw new LaneError(`operator adoption chat ID does not match this declared session${authority?.live?'':`; ${sessionAuthorityRefusal(authority)}`}`)
     if(voluntary){
-      if(readyRef){const consent=readAuthorReady(readyRef,io),r=consent.record;if(!resolveSessionAuthority({env:{SHARED_DB_SESSION_ID:marker.task},claimOwner:request.newOwner}).live||marker.task!==recipientChatId||r.claim!==request.claim||r.issue!==request.issue||r.pr!==request.pr||r.head_sha!==request.headSha||r.owner!==request.oldOwner||r.branch!==request.branch||r.worktree!==request.oldWorktree||r.version!==lease.version||(!adopted&&r.body_sha256!==sha256(claim.body))||io.readRef('refs/db-claims/'+lease.version)!==r.reservation_sha)throw new LaneError('owner-issued ready consent differs from exact source, claim or actual recipient')}
-      else if(!marker?.live||marker.calling_task!==marker.task||!resolveSessionAuthority({env:{SHARED_DB_SESSION_ID:marker.task},claimOwner:request.oldOwner}).live)throw new LaneError('voluntary handoff must execute in the original owner session')
+      if(readyRef){const consent=readAuthorReady(readyRef,io),r=consent.record;if(!claimFirstAuthority(io,request.newOwner).live||authority.task!==recipientChatId||r.claim!==request.claim||r.issue!==request.issue||r.pr!==request.pr||r.head_sha!==request.headSha||r.owner!==request.oldOwner||r.branch!==request.branch||r.worktree!==request.oldWorktree||r.version!==lease.version||(!adopted&&r.body_sha256!==sha256(claim.body))||io.readRef('refs/db-claims/'+lease.version)!==r.reservation_sha)throw new LaneError('owner-issued ready consent differs from exact source, claim or actual recipient')}
+      else if(!authority?.live||authority.calling_task!==authority.task||!claimFirstAuthority(io,request.oldOwner).live)throw new LaneError('voluntary handoff must execute in the original owner session')
     }
     if(voluntary&&remoteCustody){
       const observed=observedWorktreeState(request.oldWorktree,io)
@@ -3676,8 +3681,8 @@ export function assertAbandonmentEvidence(options, lease, blocker, io) {
   // The worktree observation is the operator's own, stated explicitly. Inferring
   // it here would let a stale audit decide what the disk currently looks like.
   if(!options.worktreeState)throw new LaneError('acting on abandonment evidence requires an explicit --worktree-state')
-  const marker=typeof io.orchestratorFlowAdapter==='function'?io.orchestratorFlowAdapter().resolveMarker():null
-  if(!marker?.live||marker.calling_task!==marker.task)throw new LaneError(`acting on abandonment evidence: ${sessionAuthorityRefusal(marker)}`)
+  const authority=claimFirstAuthority(io)
+  if(!authority?.live||authority.calling_task!==authority.task)throw new LaneError(`acting on abandonment evidence: ${sessionAuthorityRefusal(authority)}`)
   return audit
 }
 
@@ -3832,12 +3837,13 @@ export function repairResumedClaim(options, now = new Date(), io = githubIo) {
 }
 
 function requireCheckinOwner(options,io){
-  const marker=io.orchestratorFlowAdapter().resolveMarker()
-  if(!marker?.live||marker.calling_task!==marker.task||!resolveSessionAuthority({env:{SHARED_DB_SESSION_ID:marker.task},claimOwner:options.owner}).live)throw new LaneError('author check-in must execute in the actual current owner session')
+  // Claim-first session identity (owner ruling 2026-10-02; no orchestrator, no marker).
+  const authority=claimFirstAuthority(io,options.owner)
+  if(!authority?.live||authority.calling_task!==authority.task)throw new LaneError('author check-in must execute in the actual current owner session (claim-first session identity; no marker)')
   const row=io.getIssue(Number(options.claim)),lease=parseAuthorLease(row?.body??'',options.checkinNow)
   if(row?.state!=='open'||lease.owner!==options.owner||lease.capacityState!=='active'||!lease.capacityActive)throw new LaneError('author check-in refuses stopped, expired, foreign or legacy execution')
   if(lease.branch!==options.branch||lease.worktree!==options.worktree||io.localHead(options.worktree)!==options.headSha||io.localBranch(options.worktree)!==options.branch)throw new LaneError('author check-in source custody differs')
-  return {row,lease,marker}
+  return {row,lease,authority}
 }
 export const AUTHOR_CHECKIN_MESSAGE='db-coordination author-checkin '
 export function authorCheckinRef(claim,body){const lease=parseAuthorLease(body);return `refs/db-author-checkins/${claim}-${lease.version}-${sha256(body).slice(0,24)}`}
@@ -3860,7 +3866,7 @@ export function checkInAuthor(options,now=new Date(),io=githubIo){
     const proof=requireCheckinOwner(request,io),pr=io.getPr(options.pr)
     const reservation=io.readRef('refs/db-claims/'+proof.lease.version)
     if(proof.lease.expiresAt.toISOString()!==renewed.expiresAt||!(pr?.state==='open'||pr?.merged===true||pr?.merged_at)||pr.head?.sha!==options.headSha||pr.head?.ref!==options.branch||!/^[0-9a-f]{40}$/.test(String(reservation))||!io.getCommit(reservation))throw new LaneError('renewed confirmation source or reservation changed')
-    const ref=authorCheckinRef(Number(options.claim),proof.row.body),record={schema_version:1,kind:'author-checkin',human_identity_authenticated:false,claim:Number(options.claim),issue:Number(options.issue),pr:Number(options.pr),head_sha:options.headSha,owner:options.owner,branch:options.branch,worktree:options.worktree,version:proof.lease.version,body_sha256:sha256(proof.row.body),expires_at:renewed.expiresAt,author_session:proof.marker.task,checked_in_at:now.toISOString()}
+    const ref=authorCheckinRef(Number(options.claim),proof.row.body),record={schema_version:1,kind:'author-checkin',human_identity_authenticated:false,claim:Number(options.claim),issue:Number(options.issue),pr:Number(options.pr),head_sha:options.headSha,owner:options.owner,branch:options.branch,worktree:options.worktree,version:proof.lease.version,body_sha256:sha256(proof.row.body),expires_at:renewed.expiresAt,author_session:proof.authority.task,checked_in_at:now.toISOString()}
     validateAuthorCheckin(record,{number:Number(options.claim),body:proof.row.body},now,{pr:options.pr,headSha:options.headSha})
     requireOwnedRef(MUTEX_REF,lock,io)
     let receiptSha=io.readRef(ref)
@@ -5093,7 +5099,7 @@ export function main(argv, now = new Date(), io = githubIo) {
         recoveryCodeUnchanged(toolSha,mainSha){
           return recoveryCodeUnchangedAt({toolSha,mainSha,extraPaths:RECOVERY_CODE_PATHS,readOnlyGit:args=>execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe']})})
         },
-        sessionAuthority:()=>io.orchestratorFlowAdapter().resolveMarker(),
+        sessionAuthority:()=>claimFirstAuthority(io),
         recoverySnapshot(sha){
           if(execFileSync('git',['cat-file','-t',sha],{encoding:'utf8'}).trim()!=='commit')return null
           const names=execFileSync('git',['ls-tree','-r','--name-only',sha],{encoding:'utf8'}).trim().split('\n')

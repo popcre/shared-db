@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "migration_version": "20261015150513",
+  "migration_sha256": "79195a52fc11565fabeeea0f09b0b5c3724ac73478fba7fa4c4d1f70bc7efbc2",
+  "marker_schema_version": 1,
+  "marker_reviews": [
+    {
+      "line_start": 128,
+      "line_end": 128,
+      "disposition": "checks",
+      "check_ids": ["licensing_support_forward"],
+      "reason": "The dynamic row-shaping statement stays bounded by the exact immutable forward function body, whose closed target identity predicate and body hash are asserted by this catalog contract."
+    }
+  ],
+  "checks": [
+    {
+      "id": "licensing_support_forward",
+      "kind": "catalog_contract",
+      "contract": "licensing_support_forward_v2",
+      "expected_count": 1
+    }
+  ]
+}

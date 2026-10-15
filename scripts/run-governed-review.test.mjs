@@ -3,7 +3,7 @@ import { currentRepository, expectedOperatorAssociation } from './lib/repository
 // Fixtures follow the resolved repository identity and its operator association (#3255).
 const THIS_REPO = currentRepository(), OPERATOR_ASSOCIATION = expectedOperatorAssociation()
 import test from 'node:test'
-import { parseArgs, runGovernedReview as executeGovernedReview, resolveReviewSource, reserveReviewReceipt, validateSourceReceipt, wrapperFailureReason, redactWrapperStderr, wrapperFailureLogText, writeWrapperFailureLog, wrapperSourceContractArgs, wrapperVerdictContractArgs, wrapperBaseName, codexReportPath, codexGovernedBody, verdictFromOutput, neutraliseVerdictLine, extraVerdictLines, PRESERVED_HEADER, resolveReplacementSequence } from './run-governed-review.mjs'
+import { parseArgs, runGovernedReview as executeGovernedReview, resolveReviewSource, reserveReviewReceipt, validateSourceReceipt, wrapperFailureReason, redactWrapperStderr, wrapperFailureLogText, writeWrapperFailureLog, wrapperSourceContractArgs, wrapperVerdictContractArgs, wrapperBaseName, codexReportPath, codexGovernedBody, verdictFromOutput, neutraliseVerdictLine, extraVerdictLines, PRESERVED_HEADER, resolveReplacementSequence, lifecyclePoolProvider, lifecyclePoolImplementer, lifecyclePoolDispatch, lifecyclePoolReportBody } from './run-governed-review.mjs'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, statSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -17,7 +17,73 @@ const fixtureFiles=[{filename:'source.txt',status:'modified'}]
 const fixtureSource=(input)=>({repository:THIS_REPO,pr:input.pr,baseRef:'develop',targetSha:'b'.repeat(40),headSha:input.headSha,mergeBase:'c'.repeat(40),files:fixtureFiles,fileSetSha256:createHash('sha256').update(JSON.stringify(fixtureFiles)).digest('hex'),sourceDigest:'d'.repeat(64)})
 const fixtureReceipt=(input)=>({schema_version:1,identity:{repository:input.worktree,base:'c'.repeat(40),head:input.headSha,source_digest:'d'.repeat(64)},packet_sha256:'e'.repeat(64)})
 const fixturePaths={platform:'win32',realpath:(path)=>path,lstat:()=>({isSymbolicLink:()=>false,isDirectory:()=>true})}
-function runGovernedReview(input,deps){return executeGovernedReview(input,{recordStart:()=>'refs/db-review-started/fixture',sourceResolver:fixtureSource,briefPreparer:(input)=>({wrapperArgs:input.wrapperArgs,env:{}}),sourcePathOptions:fixturePaths,receiptFactory:()=>({path:'C:/review/.ai/reviews/source.json',read:()=>fixtureReceipt(input),bind:()=> 'C:/review/.ai/reviews/source.json.binding.json'}),...deps})}
+function runGovernedReview(input,deps){return executeGovernedReview(input,{lifecyclePool:false,recordStart:()=>'refs/db-review-started/fixture',sourceResolver:fixtureSource,briefPreparer:(input)=>({wrapperArgs:input.wrapperArgs,env:{}}),sourcePathOptions:fixturePaths,receiptFactory:()=>({path:'C:/review/.ai/reviews/source.json',read:()=>fixtureReceipt(input),bind:()=> 'C:/review/.ai/reviews/source.json.binding.json'}),...deps})}
+
+test('active assigned pool reviewers dispatch through ai-review with explicit implementer and exact source',()=>{
+  const assigned={...options,reviewer:'muse-spark-1.3-contributor',wrapper:'ai-muse'}
+  assert.equal(lifecyclePoolProvider(assigned),'muse')
+  assert.equal(lifecyclePoolProvider({...assigned,wrapper:'ai-glm'}),null)
+  assert.equal(lifecyclePoolProvider({...assigned,reviewer:'muse-spark-1.2-contributor'}),null)
+  assert.equal(lifecyclePoolProvider({...options,reviewer:'kimi-k3',wrapper:'ai-kimi'}),null)
+  assert.equal(lifecyclePoolImplementer({CODEX_THREAD_ID:'codex-thread'}),'codex')
+  assert.equal(lifecyclePoolImplementer({CLAUDECODE:'1'}),'claude')
+  assert.deepEqual(lifecyclePoolDispatch(assigned,fixtureSource(assigned),'codex'),{
+    file:'ai-review',args:['muse','final-check','--base','c'.repeat(40),'--assert-head','a'.repeat(40),'--implementer','codex'],
+    env:{AI_REVIEW_IMPLEMENTER:'codex',AI_POOL_CALLER:'codex'},provider:'muse'
+  })
+  assert.throws(()=>lifecyclePoolDispatch(assigned,fixtureSource(assigned),''),/known implementing engine/)
+})
+
+test('lifecycle pool report is preserved only when it binds provider, repository, source digest and exact head',()=>{
+  const root=mkdtempSync(join(tmpdir(),'shared-db-pool-report-'))
+  try{
+    const directory=join(root,'.ai','reviews');mkdirSync(directory,{recursive:true})
+    const path=join(directory,'muse-final-check-report.md'),head='a'.repeat(40),digest='d'.repeat(64)
+    const report=`# muse pool review — final-check\n\n| field | value |\n|---|---|\n| provider | \`muse\` |\n| repository | \`${root}\` |\n| reviewed commit | \`${head}\` |\n| source digest | \`${digest}\` |\n\n## Result\n\nFindings for ${head}.\n\n## Verdict\n\nAPPROVE\n`
+    writeFileSync(path,report)
+    const parsed=lifecyclePoolReportBody(path,{headSha:head,provider:'muse',worktree:root,sourceDigest:digest})
+    assert.equal(parsed.reportPath,path)
+    assert.match(parsed.body,new RegExp(`VERDICT: APPROVE ${head}`))
+    assert.doesNotMatch(parsed.body,/^APPROVE$/m,'pool verdict heading is not copied into the shared-db findings comment')
+    assert.throws(()=>lifecyclePoolReportBody(path,{headSha:head,provider:'glm',worktree:root,sourceDigest:digest}),/does not bind/)
+    assert.throws(()=>lifecyclePoolReportBody(join(root,'outside.md'),{headSha:head,provider:'muse',worktree:root,sourceDigest:digest}),/outside the worktree/)
+  }finally{rmSync(root,{recursive:true,force:true})}
+})
+
+test('governed runner records the pool report path and submits its exact-head verdict',()=>{
+  const root=mkdtempSync(join(tmpdir(),'shared-db-governed-pool-'))
+  try{
+    const assigned={...options,reviewer:'muse-spark-1.3-contributor',wrapper:'ai-muse',worktree:root}
+    const reports=join(root,'.ai','reviews');mkdirSync(reports,{recursive:true})
+    const reportPath=join(reports,'muse-final-check-report.md')
+    const head=assigned.headSha,digest=fixtureSource(assigned).sourceDigest
+    const report=`# muse pool review — final-check\n\n| field | value |\n|---|---|\n| provider | \`muse\` |\n| repository | \`${root}\` |\n| reviewed commit | \`${head}\` |\n| source digest | \`${digest}\` |\n\n## Result\n\nFindings on ${head}.\n\n## Verdict\n\nAPPROVE\n`
+    let dispatch=null,recorded=null
+    const result=executeGovernedReview(assigned,{
+      lifecyclePool:true,env:{CODEX_THREAD_ID:'codex-thread'},recordStart:(row)=>{assert.deepEqual(row.wrapperArgs,['muse','final-check','--base','c'.repeat(40),'--assert-head',head,'--implementer','codex']);return 'refs/db-review-started/fixture'},
+      sourceResolver:fixtureSource,sourcePathOptions:fixturePaths,
+      receiptFactory:()=>({path:'C:/review/.ai/reviews/source.json',read:()=>fixtureReceipt(assigned),bind:()=> 'C:/review/.ai/reviews/source.json.binding.json'}),
+      preflight:()=>{},resolve:(name)=>name,measureReviewSize:()=>1,
+      spawn:(command,args,opts)=>{
+        if(command==='ai-review'){
+          dispatch={command,args,env:opts.env}
+          writeFileSync(reportPath,report)
+          return {status:0,stdout:`${reportPath}\n`}
+        }
+        assert.equal(command,'gh')
+        return {status:0,stdout:JSON.stringify({id:1,html_url:'https://github.com/popcre/shared-db/pull/2000#issuecomment-1'})}
+      },
+      record:(row)=>{recorded=row;return {ref:'refs/db-review-verdicts/fixture'}},
+    })
+    assert.equal(dispatch.command,'ai-review')
+    assert.deepEqual(dispatch.args,['muse','final-check','--base','c'.repeat(40),'--assert-head',head,'--implementer','codex'])
+    assert.equal(dispatch.env.AI_REVIEW_IMPLEMENTER,'codex')
+    assert.equal(recorded.verdict,'APPROVE')
+    assert.equal(result.lifecycleReportPath,reportPath)
+    assert.equal(recorded.verdict,'APPROVE')
+    assert.match(recorded.sourceEvidence.receiptPath,/source\.json$/)
+  }finally{rmSync(root,{recursive:true,force:true})}
+})
 
 test('all qualified wrappers receive immutable source arguments without rewriting prompt values',()=>{
   const source=fixtureSource(options)
@@ -936,6 +1002,16 @@ test('#498-17 live head is injected, a stale named head or stale prompt verdict 
   assert.equal(prepareGovernedReview({...base,headSha:live.toUpperCase()},{env:{CLAUDECODE:'1'},github,files:files(`VERDICT: APPROVE ${live}`)}).options.headSha,live)
   assert.deepEqual(promptHeadContract(['send','--prompt','go','--review'],live)[2].startsWith('go'),true)
   assert.throws(()=>prepareGovernedReview(base,{env:{CLAUDECODE:'1'},github:()=>({status:1,error:new Error('x')}),files:files('x')}),/could not read the live head/)
+})
+
+test('lifecycle pool assignments skip the direct-wrapper prompt contract and still require a known implementer',()=>{
+  const live='a'.repeat(40),base={pr:3031,reviewer:'muse-spark-1.3-contributor',wrapper:'ai-muse'}
+  const github=()=>({status:0,stdout:JSON.stringify({head:{sha:live}})})
+  const prepared=prepareGovernedReview(base,{env:{CODEX_THREAD_ID:'codex-thread'},github})
+  assert.equal(prepared.options.headSha,live)
+  assert.deepEqual(prepared.options.wrapperArgs,[])
+  assert.deepEqual(prepared.callerEnv,{})
+  assert.throws(()=>prepareGovernedReview(base,{env:{},github}),/known implementing engine before the reviewer starts/)
 })
 
 // Issue #3027 Step 7: the durable start marker is written before the provider launches and fails closed.

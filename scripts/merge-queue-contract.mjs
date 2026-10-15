@@ -392,13 +392,22 @@ export function resolveAuthorizedHead(prHeadSha, { isAncestor, changedFiles, fir
     return { authorizedHead: tip, evidenceTail: [], mode: 'exact' }
   }
 
+  // A lawful tail is EXACTLY one complete evidence pair — the same set-equality
+  // rule verifyGitEvidence enforces (acceptableEvidencePairs). resolveEvidencePair
+  // classifies by evidence paths only and would otherwise admit
+  // [pair + any non-evidence file] as "current", which would let the gate accept
+  // a merge group carrying unreviewed bytes beside the pair.
   const tailShapeAllowed = (files) => {
     if (files.length === 0) return true
     const pair = resolveEvidencePair(files)
     if (pair.state !== 'current') return false
+    const expected = [pair.contract, pair.completion].map(String).sort()
+    const actual = [...files].map(String).sort()
+    if (actual.length !== expected.length) return false
+    if (actual.some((file, index) => file !== expected[index])) return false
     if (workIssue == null) return true
-    // Keyed pairs must belong to the named work issue; the legacy pair is the
-    // shared gen-1 path and is admitted without an issue key.
+    // Keyed pairs must belong to the named work issue when the caller binds one;
+    // the legacy pair is the shared gen-1 path and is admitted without an issue key.
     if (pair.key == null || pair.key === 'legacy') return true
     return String(pair.key).startsWith(`${Number(workIssue)}/`)
   }
@@ -416,9 +425,10 @@ export function resolveAuthorizedHead(prHeadSha, { isAncestor, changedFiles, fir
       return {
         authorizedHead: candidate,
         evidenceTail: cumulativeTail,
-        // `exact` only when the authorized head IS the tip. An empty tree span
-        // over a different commit is still a walk, not an exact bind.
-        mode: candidate === tip ? 'exact' : (cumulativeTail.length === 0 ? 'ancestor' : 'evidence-tail'),
+        // `exact` is only the early return above (tip itself authorized).
+        // A walk always lands on an ancestor: empty tree span is `ancestor`,
+        // a pure evidence-pair tail is `evidence-tail`.
+        mode: cumulativeTail.length === 0 ? 'ancestor' : 'evidence-tail',
       }
     }
     // A complete evidence pair already spans candidate→tip. A second pair (or

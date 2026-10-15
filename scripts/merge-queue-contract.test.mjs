@@ -543,6 +543,34 @@ test('resolveAuthorizedHead: refuses a non-evidence tail over an authorized pare
   )
 })
 
+test('resolveAuthorizedHead: refuses a complete pair plus an extra non-evidence file', () => {
+  const impl = 'a'.repeat(40)
+  const tip = 'b'.repeat(40)
+  assert.throws(
+    () => resolveAuthorizedHead(tip, {
+      isAncestor: () => true,
+      changedFiles: () => ['.agent/completion.json', '.agent/contract.json', 'scripts/merge-queue-contract.mjs'],
+      firstParent: (sha) => (sha === tip ? impl : null),
+      readAuthorizationState: (sha) => (sha === impl ? 'success' : 'none'),
+    }),
+    /no authorized PR head found/,
+  )
+})
+
+test('resolveAuthorizedHead: refuses a complete pair plus an extra .agent file', () => {
+  const impl = 'c'.repeat(40)
+  const tip = 'd'.repeat(40)
+  assert.throws(
+    () => resolveAuthorizedHead(tip, {
+      isAncestor: () => true,
+      changedFiles: () => ['.agent/completion.json', '.agent/contract.json', '.agent/work/2530/1/completion.json'],
+      firstParent: (sha) => (sha === tip ? impl : null),
+      readAuthorizationState: (sha) => (sha === impl ? 'success' : 'none'),
+    }),
+    /no authorized PR head found/,
+  )
+})
+
 test('resolveAuthorizedHead: refuses when neither tip nor parent is authorized', () => {
   const impl = '7'.repeat(40)
   const tip = '8'.repeat(40)

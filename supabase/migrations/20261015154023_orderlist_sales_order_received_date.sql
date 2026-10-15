@@ -1,4 +1,5 @@
 -- Work issue #4336; exact object claim #4337 (version 20261015154023).
+-- derived-from: 20261009073649
 -- Full-result OrderList SO received date for sorting and the 12-month window.
 -- The date rule is unchanged from public.get_dam_order_sales_order_dates: exact primary
 -- ColdLion references, company EDGEHOME, one non-null full timestamp per Sales Order,

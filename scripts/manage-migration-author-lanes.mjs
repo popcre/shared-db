@@ -2059,7 +2059,7 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
   const {eligible,unusable}=allocatableReviewers(io)
   let effectiveAllowlist=requestedAllowlist,eligibleNames=new Set(eligible.filter((row)=>reviewerAllowed(row.name,effectiveAllowlist)).map((row)=>row.name))
   // Discover peer independence and durable task policy before taking the mutex.
-  // Either slot may be first; repeat the policy check under the owned mutex.
+  // A slot can be assigned first; repeat the policy check under the owned mutex.
   //
   // Keep the initial discovery before the lock and recheck policy/independence
   // inside it. The fallback path explicitly bypasses operation-cache listings;
@@ -5469,3 +5469,4 @@ export function validateOriginalPreviewApplyEvidence({issue,pr,versions,mergeCom
 }
 
 if (process.argv[1] && path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1])) process.exitCode = main(process.argv.slice(2))
+

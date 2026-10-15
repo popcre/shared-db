@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "work_issue": 4326,
+  "outcome": "ready-for-merge",
+  "pr": 4330,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4326/2",
+  "contract_sha256": "e5af06b070d9d8dee37e62611afbab9e468f58457bd0c45d21e396915f1c23b7",
+  "head_sha": "eae9268e5ef4ab155da2498231a27269e7ec62da",
+  "base_sha": "ab3b833b5bd35b93e5edc531b363aa83650803cf",
+  "files_changed": [
+    ".github/workflows/generate-database-types.yml",
+    "docs/development.md",
+    "docs/verification/throughput-dispositions/scripts~check-exact-head-approval.mjs.json",
+    "scripts/generated-types-proof.mjs",
+    "scripts/generated-types-proof.test.mjs",
+    "scripts/lib/lanes/retirement.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/generated-types-proof.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs",
+      "exit_code": 0,
+      "evidence": "103 passed, zero failed; adversarial source/head/schema/output/issue/artifact verification."
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "16 passed, zero failed."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=348 sources=98 derived_digest=e49e5ed7385f"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors."
+    }
+  ],
+  "assumptions_resolved": [
+    "Prospective contract published before source edits; all original frozen migration and queue sources unchanged.",
+    "Additional author-lane suite passed885/885 and workflow YAML parsed.",
+    "Root authenticated actual production project metadata and separately generated1452481bytes with localCLI2.118.0, SHA256f992e3d1dff1fc6685a9477ab65b74a18462bc26a1760a9fbd36cfa6193d321e. This is not the required postmerge Actions proof or proof of pinned2.105.0 workflow execution.",
+    "Existing default preview path preserved; production proof requires actual current main and exact scope/target/schema/output bindings."
+  ],
+  "stop_conditions_hit": []
+}

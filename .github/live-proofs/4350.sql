@@ -1,23 +1,16 @@
--- shared-db#4350 (claim #4355) live proof (read-only): the Stage Catalog tables exist
--- with the seeded shape, RLS on and no policy on all six, no browser-role privilege on
+-- shared-db#4350 (claim #4355) live proof (read-only): the six Stage Catalog tables exist,
+-- RLS on and no policy on all six, no browser-role privilege on
 -- any table or on the trigger function, the function is security invoker with an empty
 -- search_path and all five triggers call it, SKU progress is unique with empty SKU
--- refused, and the migration is in the ledger. Facts users may later edit (lists,
--- stages, durations, options, flags) are lower bounds; facts no edit path changes
--- before the API ships (dependencies and progress start empty) are checked from the
--- migration's own seed assertion through the ledger row instead of exact counts.
+-- refused, and the migration is in the ledger. No row is read: the probe runs as
+-- supabase_read_only_user, and RLS with no policy hides these rows from it
+-- (pg_read_all_data does not bypass RLS). Seed counts are proven by the migration's
+-- own closing assertion, which aborts the apply if any count is wrong, so the ledger
+-- row is the proof that the seed landed as specified.
 with t(name) as (values ('plm.stage_list'),('plm.stage'),('plm.stage_duration'),
   ('plm.stage_dependency'),('plm.licensor_stage_option'),('plm.prod_stage_progress'))
 select (
-  (select count(*) >= 5 from plm.stage_list)
-  and (select count(*) >= 24 from plm.stage)
-  and (select count(*) >= 600 from plm.stage_duration)
-  and (select count(*) >= 60 from plm.stage_duration where scope_kind = 'licensor')
-  and (select count(*) >= 32 from plm.licensor_stage_option)
-  and (select count(*) >= 1 from plm.licensor_stage_option where enabled)
-  and (select count(*) >= 1 from plm.stage where shown_on_tracker)
-  and exists (select 1 from plm.stage_list where key = 'sampling' and maintainers @> '{36,41}'::integer[])
-  and (select count(*) = 6 from t where (select relrowsecurity from pg_class where oid = t.name::regclass))
+  (select count(*) = 6 from t where (select relrowsecurity from pg_class where oid = t.name::regclass))
   and not exists (select 1 from pg_policy where polrelid in (select name::regclass from t))
   and not exists (select 1 from t cross join (values ('anon'),('authenticated')) r(role)
                   cross join (values ('select'),('insert'),('update'),('delete')) p(priv)

@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "work_issue": 2530,
+  "outcome": "ready-for-merge",
+  "pr": 4329,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2530/9",
+  "contract_sha256": "80b9fc3d3da6af3c8d2f267bfb226f8cd9b350fef785d7bd893748e82965152a",
+  "head_sha": "eff30c82296352fe5e92c2da4a1376fbf54e5c53",
+  "base_sha": "8717fc09f52b2b9a1a7002f371512e4b15283bd5",
+  "files_changed": [
+    ".github/workflows/merge-queue-gate.yml",
+    "scripts/merge-queue-contract.mjs",
+    "scripts/merge-queue-contract.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/merge-queue-contract.test.mjs",
+      "exit_code": 0,
+      "evidence": "30 pass including 6 resolveAuthorizedHead cases."
+    },
+    {
+      "command": "node --test scripts/agent-work-contract-git-evidence.test.mjs",
+      "exit_code": 0,
+      "evidence": "26 pass."
+    },
+    {
+      "command": "node --test scripts/configure-merge-queue.test.mjs",
+      "exit_code": 0,
+      "evidence": "15 pass."
+    }
+  ],
+  "assumptions_resolved": [
+    "Authorization binds to the implementation head; a pure evidence tail on the live tip is lawful (verifyGitEvidence)."
+  ],
+  "stop_conditions_hit": []
+}

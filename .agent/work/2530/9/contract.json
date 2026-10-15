@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "work_issue": 2530,
+  "generation": 9,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Bind the merge-queue gate to the authorized PR head under the verifyGitEvidence ancestor+evidence-tail rule.",
+  "base_sha": "8717fc09f52b2b9a1a7002f371512e4b15283bd5",
+  "dispatcher": "MiMo chat ffe5ec4d8a438ffeMsuIzWTbV4 on edge-dev",
+  "worker": "MiMo",
+  "branch": "mimo/2530-gate-evidence-tail",
+  "worktree": "D:\\repos\\shared-db-worktrees\\2530-gate-fix",
+  "allowed_paths": [
+    ".agent/work/2530/9/completion.json",
+    ".agent/work/2530/9/contract.json",
+    ".github/workflows/merge-queue-gate.yml",
+    "scripts/merge-queue-contract.mjs",
+    "scripts/merge-queue-contract.test.mjs"
+  ],
+  "file_writes": [
+    ".agent/work/2530/9/completion.json",
+    ".agent/work/2530/9/contract.json",
+    ".github/workflows/merge-queue-gate.yml",
+    "scripts/merge-queue-contract.mjs",
+    "scripts/merge-queue-contract.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not change any migration or database object."
+  ],
+  "required_checks": [
+    "node --test scripts/merge-queue-contract.test.mjs",
+    "node --test scripts/agent-work-contract-git-evidence.test.mjs",
+    "node --test scripts/configure-merge-queue.test.mjs"
+  ],
+  "assumptions": [
+    "Authorization binds to the implementation head; a pure evidence tail on the live tip is lawful (verifyGitEvidence)."
+  ],
+  "stop_conditions": [
+    "A change would weaken exact-head containment rather than re-bind it to the authorized head."
+  ]
+}

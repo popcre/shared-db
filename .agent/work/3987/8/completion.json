@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "work_issue": 3987,
+  "outcome": "ready-for-merge",
+  "pr": 3998,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3987/8",
+  "contract_sha256": "0de8de0cb8b4ecb18f761ee89db0c6630ae5b319d86e31226c6cdef92d4f2498",
+  "head_sha": "678ab5784acd3cb095b8e8eb4e80856a868585e9",
+  "base_sha": "7f198bb1b8c05cbbb2f5c2aab8c91c926144f1ab",
+  "files_changed": [
+    ".github/workflows/merge-queue-gate.yml",
+    ".github/workflows/pr-guards.yml",
+    "docs/merge-queue-operation.md",
+    "docs/verification/ci-audit-queue-context-retirement-20261006.json",
+    "docs/verification/main-required-status-checks-readback-20261006.json",
+    "docs/verification/main-required-status-checks.json",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/check-pr-object-collisions.mjs",
+    "scripts/check-pr-object-collisions.test.mjs",
+    "scripts/configure-merge-queue.mjs",
+    "scripts/configure-merge-queue.test.mjs",
+    "scripts/lib/required-check-readback.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/configure-merge-queue.test.mjs scripts/check-merge-queue-workflows.test.mjs scripts/orchestrator-flow/runner-lanes.test.mjs scripts/check-required-checks-preflight.test.mjs scripts/lib/required-check-readback.test.mjs scripts/check-pr-object-collisions.test.mjs",
+      "exit_code": 0,
+      "evidence": "Fresh original-PR recovery on 7f198bb1: 197 tests passed, zero failures, cancellations or skips."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=339 sources=95 derived_digest=6b2d82a5de11"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Own staged source and current-main diff whitespace checks pass."
+    }
+  ],
+  "assumptions_resolved": [
+    "Original remote3998 source and differing469 local custody preserved; original author inactive and root owns necessary authorized2530 recovery in independent worktree.",
+    "All twelve non.agent implementation blobs byte-identical to original7d; fresh197 tests and truth339/95 pass; no implementation rewrite or review-budget reset.",
+    "Original protected retirement bridge requires3998 identity; successor4170 remains draft. Its assigned source APPROVE is advisory only and does not authorize3998.",
+    "Original immutable generation5 and later prospective6/7 history remain preserved; current prospective8 published before recovery.",
+    "No settings write, queue activation, database action or fabricated canary. Fresh original3998 assigned review, genuine13 and legitimate protected-self14 remain pending.",
+    "Independent own worktree current-base declaration reviewer-safety; source evidence anchor precedes its two-file completion tail."
+  ],
+  "stop_conditions_hit": [],
+  "generation": 8
+}

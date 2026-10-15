@@ -398,13 +398,27 @@ export function lifecyclePoolDispatch(options,source,implementer){
   return {file:'ai-review',args,env:{AI_REVIEW_IMPLEMENTER:implementer,AI_POOL_CALLER:implementer},provider}
 }
 export function lifecyclePoolReportBody(stdout,{headSha,provider,worktree,sourceDigest,readReport=(path)=>readFileSync(path,'utf8')}={}){
-  const output=String(stdout??'').trim(),lines=output.split(/\r?\n/),reported=nativeReviewPath(output)
-  if(lines.length!==1||!reported||!isAbsolute(reported))throw new Error('lifecycle review did not return exactly one absolute report path')
+  // `ai-review` prints its terminal lifecycle record (pretty JSON) and then the
+  // report path on its last line. Accept a bare path, or exactly one completed
+  // lifecycle record that names the same path, provider and head; anything else
+  // still refuses. The record's report digest is checked against the bytes below.
+  const output=String(stdout??'').trim(),lines=output.split(/\r?\n/),pathLine=lines.at(-1)??'',reported=nativeReviewPath(pathLine)
+  let lifecycleRecord=null
+  if(lines.length>1){
+    try{lifecycleRecord=JSON.parse(lines.slice(0,-1).join('\n'))}catch{lifecycleRecord=null}
+    const ok=lifecycleRecord&&typeof lifecycleRecord==='object'&&!Array.isArray(lifecycleRecord)&&lifecycleRecord.status==='completed'&&
+      (lifecycleRecord.verdict==='APPROVE'||lifecycleRecord.verdict==='REJECT')&&lifecycleRecord.report_path===pathLine&&
+      lifecycleRecord.provider===provider&&String(lifecycleRecord.head??'').toLowerCase()===String(headSha??'').toLowerCase()&&
+      /^[0-9a-f]{64}$/.test(String(lifecycleRecord.report_sha256??''))
+    if(!ok)throw new Error('lifecycle review did not return exactly one absolute report path')
+  }
+  if(!reported||!isAbsolute(reported))throw new Error('lifecycle review did not return exactly one absolute report path')
   const reportRoot=resolvePath(worktree,'.ai','reviews'),reportPath=resolvePath(reported),leaf=relative(reportRoot,reportPath)
   if(!leaf||leaf==='..'||leaf.startsWith(`..${sep}`)||isAbsolute(leaf))throw new Error('lifecycle review report is outside the worktree review directory')
   const stat=lstatSync(reportPath)
   if(stat.isSymbolicLink()||!stat.isFile()||portableReviewPath(realpathSync.native(reportPath))!==portableReviewPath(reportPath))throw new Error('lifecycle review report is linked or not a regular file')
   const report=String(readReport(reportPath))
+  if(lifecycleRecord&&createHash('sha256').update(report).digest('hex')!==lifecycleRecord.report_sha256)throw new Error('lifecycle review record digest differs from the report bytes')
   const exact=(label,value)=>report.split(/\r?\n/).some((line)=>{
     const prefix=`| ${label} | \``,suffix='` |'
     if(!line.startsWith(prefix)||!line.endsWith(suffix))return false

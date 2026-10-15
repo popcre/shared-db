@@ -54,6 +54,32 @@ test('lifecycle pool report is preserved only when it binds provider, repository
   }finally{rmSync(root,{recursive:true,force:true})}
 })
 
+test('real ai-review stdout (terminal lifecycle record, then report path) is ingested only when the record binds the same report',()=>{
+  const root=mkdtempSync(join(tmpdir(),'shared-db-pool-stdout-'))
+  try{
+    const directory=join(root,'.ai','reviews');mkdirSync(directory,{recursive:true})
+    const path=join(directory,'deepseek-final-check-20261015T100000-12345-32767.md'),head='a'.repeat(40),digest='d'.repeat(64),run='20261015T100000-12345-32767'
+    const report=`# deepseek final-check — ${run}\n\n| field | value |\n|---|---|\n| provider | \`deepseek\` |\n| repository | \`${root}\` |\n| reviewed commit | \`${head}\` |\n| source digest | \`${digest}\` |\n| run | \`${run}\` |\n| runner | \`ai-review-engine\` (review-lifecycle-core/1) |\n\n## Result\n\nFindings for ${head}.\n\n## Verdict\n\nAPPROVE\n`
+    writeFileSync(path,report)
+    const sha=createHash('sha256').update(report).digest('hex')
+    const record=(extra={})=>JSON.stringify({schema_version:1,status:'completed',provider:'deepseek',head,verdict:'APPROVE',report_path:path,report_sha256:sha,...extra},null,2)
+    const ingest=(stdout)=>lifecyclePoolReportBody(stdout,{headSha:head,provider:'deepseek',worktree:root,sourceDigest:digest})
+    const parsed=ingest(`${record()}\n${path}\n`)
+    assert.equal(parsed.reportPath,path)
+    assert.match(parsed.body,new RegExp(`VERDICT: APPROVE ${head}$`))
+    assert.equal(ingest(path).reportPath,path,'a bare path is still accepted')
+    const refuse=/exactly one absolute report path/
+    assert.throws(()=>ingest(`${record({report_path:join(directory,'other.md')})}\n${path}`),refuse,'record names a different report')
+    assert.throws(()=>ingest(`${record({status:'failed'})}\n${path}`),refuse,'record not completed')
+    assert.throws(()=>ingest(`${record({verdict:'BLOCKED'})}\n${path}`),refuse,'record has no terminal verdict')
+    assert.throws(()=>ingest(`${record({provider:'glm'})}\n${path}`),refuse,'record names another provider')
+    assert.throws(()=>ingest(`${record({head:'b'.repeat(40)})}\n${path}`),refuse,'record names another head')
+    assert.throws(()=>ingest(`${record()}\n${record()}\n${path}`),refuse,'two records')
+    assert.throws(()=>ingest(`noise\n${path}`),refuse,'non-record preamble')
+    assert.throws(()=>ingest(`${record({report_sha256:'e'.repeat(64)})}\n${path}`),/digest differs/,'record digest must match the report bytes')
+  }finally{rmSync(root,{recursive:true,force:true})}
+})
+
 test('native lifecycle-engine reports require exact mode, run, runner and source identity',()=>{
   const root=mkdtempSync(join(tmpdir(),'shared-db-native-review-report-'))
   try{

@@ -18,9 +18,7 @@
     "docs/configuration.md",
     "docs/deployment.md",
     "docs/development.md",
-    "docs/verification/throughput-dispositions/scripts~check-exact-head-approval.mjs.json",
-    ".agent/work/4320/1/contract.json",
-    ".agent/work/4320/1/completion.json"
+    "docs/verification/throughput-dispositions/scripts~check-exact-head-approval.mjs.json"
   ],
   "db_reads": [],
   "db_writes": [],

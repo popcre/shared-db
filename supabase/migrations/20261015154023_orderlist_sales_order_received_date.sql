@@ -4,7 +4,7 @@
 -- The date rule is unchanged from public.get_dam_order_sales_order_dates: exact primary
 -- ColdLion references, company EDGEHOME, one non-null full timestamp per Sales Order,
 -- America/New_York date. Missing or conflicting stamps stay blank.
--- order_window_date falls back to Sent PO, then Start Ship, when the SO date is blank.
+-- order_window_date falls back to Sent PO, then Start Ship, then Prod PO Date, when the SO date is blank. Null only when all four are blank.
 begin;
 
 create or replace function dam.orderlist_sales_order_received_date(p_coldlion_source_id text)
@@ -122,7 +122,7 @@ SELECT pol.id AS order_line_id,
     pol.professional_photos AS snapshot_professional_photos,
     pol.contractual_sample_reorder AS snapshot_contractual_sample_reorder,
     so_date.sales_order_received_date,
-    coalesce(so_date.sales_order_received_date, po.sent_po_date, pol.start_ship_date) AS order_window_date
+    coalesce(so_date.sales_order_received_date, po.sent_po_date, pol.start_ship_date, po.order_date) AS order_window_date
    FROM plm.production_order_line pol
      JOIN plm.production_order po ON po.id = pol.production_order_id
      LEFT JOIN dam.dam_order_list_customer_directory cust ON cust.customer_id = po.company_id

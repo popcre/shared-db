@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "work_issue": 3617,
+  "outcome": "ready-for-merge",
+  "pr": 3666,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3617/4",
+  "contract_sha256": "9132336fa48a63fb5587e1420811bb953fc7ecfb597043b0781b884096c690be",
+  "base_sha": "fdb81f025a5087973b417c6d82e5c5fc4732a70a",
+  "head_sha": "08484121175206ffce554bb3f995b0f51661551b",
+  "files_changed": [
+    "scripts/lib/github-transport.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "781 tests, 781 pass, 0 fail at implementation head 084841211 on base fdb81f025; includes the four #3617 request-cost proofs (success, retry, refused admission, stale mutex)"
+    },
+    {
+      "command": "node --test scripts/reviewer-wire-budget.test.mjs",
+      "exit_code": 0,
+      "evidence": "4 tests, 4 pass, 0 fail at implementation head 084841211; reviewer wire budget unchanged by the cost counter"
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes-surface.test.mjs",
+      "exit_code": 0,
+      "evidence": "3 tests, 3 pass, 0 fail at implementation head 084841211; entrypoint exports and CLI path unchanged"
+    },
+    {
+      "command": "node --test scripts/lib/github-transport.test.mjs",
+      "exit_code": 0,
+      "evidence": "28 tests, 28 pass, 0 fail at implementation head 084841211; shared transport behavior unchanged apart from the cost counter"
+    }
+  ],
+  "assumptions_resolved": [
+    "The live measured preparation that identifies its own API cost and the background-call cost separately remains open and is named in the issue comment; this pair covers only the accounting counter and its four focused tests.",
+    "No extra GitHub request is issued to measure cost; the counter rides the existing transport and fails closed when a budget is exceeded.",
+    "Landing the counter in the shared transport keeps this change clear of other open protected-source pull requests while covering every gh call including retries."
+  ],
+  "stop_conditions_hit": [],
+  "notes": "Per-operation GitHub request-cost accounting for issue #3617 (repo-maintenance tooling only, no database structure change). Reimplemented on current main in scripts/lib/github-transport.mjs to avoid protected-source collision with other open PRs. Posted by MiMo chat ses-ffe5eecd82dedffe7RhHlWNjmi on edge-dev"
+}

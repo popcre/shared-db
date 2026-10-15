@@ -288,6 +288,30 @@ export function latchedRateLimitError(args, resetMs, wrapError) {
   return error
 }
 
+// Issue #3617: per-operation GitHub request-cost accounting. Credential-free: it
+// counts the gh calls this process already makes (every transport attempt,
+// including retries and rate-limit probes) and fails closed when an operation's
+// derived budget is exceeded. No extra GitHub request is issued to measure or
+// record the cost. Marker, admission, claim, review, preview and lock checks are
+// unchanged — only the accounting is added. The count is readable via
+// currentRequestCost so a preparer can report its own API cost separately from
+// background watchers on the same host.
+let operationRequestCost = null
+export function withRequestCostBudget(fn, limit, operation = 'operation') {
+  if (operationRequestCost) return fn(operationRequestCost)
+  if (!Number.isInteger(limit) || limit < 1) throw new GitHubTransportError(`request-cost budget limit must be a positive integer; got ${limit}`)
+  operationRequestCost = { count: 0, limit, operation }
+  try { return fn(operationRequestCost) } finally { operationRequestCost = null }
+}
+export function currentRequestCost() {
+  return operationRequestCost ? { count: operationRequestCost.count, limit: operationRequestCost.limit, operation: operationRequestCost.operation } : null
+}
+function consumeRequestCost() {
+  if (!operationRequestCost) return
+  if (operationRequestCost.count >= operationRequestCost.limit) throw new GitHubTransportError(`operation '${operationRequestCost.operation}' exhausted its ${operationRequestCost.limit}-request cost budget before request ${operationRequestCost.count + 1}; refusing rather than skipping any marker, admission, claim, review, preview, or lock check`)
+  operationRequestCost.count += 1
+}
+
 const MUTATING_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
 const MUTATING_SUBCOMMANDS = new Set([
   'merge', 'close', 'edit', 'comment', 'create', 'review', 'cancel', 'rerun', 'delete', 'reopen',
@@ -380,6 +404,7 @@ GitHub API rate limit exhausted (host-wide latch); waiting ${Math.ceil(delay / 1
       throw latchedRateLimitError(args, latchedReset, wrapError)
     }
     try {
+      consumeRequestCost()
       return executor('gh', args, spawnOptions)
     } catch (error) {
       const transient = isTransientGitHubTransport(error)
@@ -388,6 +413,7 @@ GitHub API rate limit exhausted (host-wide latch); waiting ${Math.ceil(delay / 1
         let delay = null
         let probe = null
         try {
+          consumeRequestCost()
           probe = executor('gh', ['api', '-i', 'rate_limit'], { encoding: 'utf8', maxBuffer, stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs, killSignal: 'SIGKILL' })
           delay = rateLimitResetDelayMs(probe, args, now())
         } catch {
@@ -398,6 +424,7 @@ GitHub API rate limit exhausted (host-wide latch); waiting ${Math.ceil(delay / 1
           // it is reading the wrong bucket (#3743). Ask a real endpoint.
           let real = null
           try {
+            consumeRequestCost()
             real = executor('gh', ['api', '-i', `repos/${repository}`], { encoding: 'utf8', maxBuffer, stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs, killSignal: 'SIGKILL' })
           } catch (probeError) {
             real = probeError?.stdout ?? null

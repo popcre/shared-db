@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "work_issue": 4297,
+  "outcome": "ready-for-merge",
+  "pr": 4308,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4297/13",
+  "contract_sha256": "8dc569b8d27a824ad3c80feaab68f3fbf633efc35cc3aa758ac15db5125c48e0",
+  "head_sha": "717722889b9a889e54f9204a4b4a5a5d73cdfc11",
+  "base_sha": "f7b141ab7c53132498d9e8a0c0c4802c67886a25",
+  "files_changed": [
+    "docs/agents/review-recovery-policy.md",
+    "docs/verification/throughput-dispositions/scripts~check-exact-head-approval.mjs.json",
+    "plan_review_recovery_4297.md",
+    "scripts/lib/lanes/review-circuit-breaker.mjs",
+    "scripts/lib/lanes/review-circuit-breaker.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/run-governed-review.mjs",
+    "scripts/run-governed-review.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/lib/lanes/review-circuit-breaker.test.mjs",
+      "exit_code": 0,
+      "evidence": "180 passed, zero failures; per-reviewer service failures, conservative merge-gap charging, exhausted-reviewer filtering and budget diagnostics."
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "887 passed, zero failures; assignment order, exact-head replacements, reviewer independence, conservative capacity and mutex revalidation."
+    },
+    {
+      "command": "node --test scripts/run-governed-review.test.mjs",
+      "exit_code": 0,
+      "evidence": "117 passed, zero failures, one existing skip; exact lifecycle dispatch, report binding, report-path retention, source identity, lease and verdict safeguards."
+    },
+    {
+      "command": "node --test scripts/check-exact-head-approval.test.mjs",
+      "exit_code": 0,
+      "evidence": "109 passed, zero failures; exact-head slot composition, carried reviews, returned-slot barriers and reviewer independence."
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "16 passed, zero failures."
+    }
+  ],
+  "assumptions_resolved": [
+    "Seven genuine remaining repair paths were authored under prospective12, retained in526db1c7f and inherited under13; all prior original20source paths are included in assigned review scope.",
+    "Current main5af6ca676 retained, including licensing/migration source and inherited11pair exactly unchanged; only current13pair is added by this follow-up.",
+    "PR4294 was merged externally while checks were red; that does not supply independent approval. This newPR is necessary because4294 is already merged, not a budget/history reset.",
+    "Unproved canonicalmergegap starts conservativelyspend ordinaryallowance, never provide source proof/directchain witness; existing derivePaidContentProof and non-gap refusals remain.",
+    "Diagnostics include only charged unprovedheads after exact causebound refund; durableassignment/return/refhistory remains unchanged.",
+    "Native read-only actual4294capacity charged old627once withremaining1, no refund or release ofunknownGLM; this observationdoesnotauthorizepaid review.",
+    "Source/test component blobs match the recorded passing gates; main integration adds only unrelated licensing bytes and prose, which remain preserved.",
+    "Assigned freshcurrenthead formalreview, requiredCI, guardedmerge and mergedsource liveproof remainpending; localreadiness outcome is not gateapproval or deliveryclaim.",
+    "Final plan STATUS is a dated dispatch-time snapshot pointing to issue4297 and PR4308 as later live authority; only prose changes after the recorded passing component tests, whose exact source/test blobs remain unchanged.",
+    "The final candidate routes eligible assigned reviewers through installed ai-review final-check with the assigned provider, current merge base, exact source head and implementing engine; only the lifecycle report matching provider, repository, source digest and head can accompany a shared-db verdict.",
+    "The existing PR retains its single generation13 evidence pair; the report is re-anchored to current main and the completed source head. The previously published generation14 ref remains immutable and is not added as a second PR pair.",
+    "The handoff document is preserved for a separate docs-only cleanup after code delivery so this source PR retains its one valid evidence pair."
+  ],
+  "stop_conditions_hit": []
+}

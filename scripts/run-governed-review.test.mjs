@@ -59,14 +59,19 @@ test('native lifecycle-engine reports require exact mode, run, runner and source
   try{
     const directory=join(root,'.ai','reviews');mkdirSync(directory,{recursive:true})
     const path=join(directory,'deepseek-final-check-report.md'),head='a'.repeat(40),digest='d'.repeat(64),run='20261015T100000-12345-32767'
-    const native=`# deepseek final-check — ${run}\n\n| field | value |\n|---|---|\n| provider | \`deepseek\` |\n| repository | \`${root}\` |\n| reviewed commit | \`${head}\` |\n| source digest | \`${digest}\` |\n| run | \`${run}\` |\n| runner | \`ai-review-engine (review-lifecycle-core/1)\` |\n\n## Result\n\nFindings and read coverage for ${head}.\n\n## Verdict\n\nAPPROVE\n`
+    const runnerRow='| runner | `ai-review-engine` (review-lifecycle-core/1) |'
+    const native=`# deepseek final-check — ${run}\n\n| field | value |\n|---|---|\n| provider | \`deepseek\` |\n| repository | \`${root}\` |\n| reviewed commit | \`${head}\` |\n| source digest | \`${digest}\` |\n| run | \`${run}\` |\n${runnerRow}\n\n## Result\n\nFindings and read coverage for ${head}.\n\n## Verdict\n\nAPPROVE\n`
     const parse=(report,provider='deepseek',sourceDigest=digest)=>{writeFileSync(path,report);return lifecyclePoolReportBody(path,{headSha:head,provider,worktree:root,sourceDigest})}
     assert.equal(parse(native).body,`Findings and read coverage for ${head}.\n\nVERDICT: APPROVE ${head}`)
     assert.throws(()=>parse(native,'muse'),/does not bind/,'wrong assigned provider')
     assert.throws(()=>parse(native.replace('final-check','security-review')),/does not bind/,'wrong mode')
     assert.throws(()=>parse(native.replace(`| run | \`${run}\` |`,`| run | \`20261015T100001-12345-32767\` |`)),/does not bind/,'run field differs from header')
     assert.throws(()=>parse(native.replace(`| run | \`${run}\` |`,`| run | \`${run}\` |\n| run | \`20261015T100001-12345-32767\` |`)),/does not bind/,'duplicate run fields')
-    assert.throws(()=>parse(native.replace('ai-review-engine (review-lifecycle-core/1)','ai-review-engine (other-core/1)')),/does not bind/,'wrong runner')
+    assert.throws(()=>parse(native.replace(runnerRow,'| runner | `ai-review-engine (review-lifecycle-core/1)` |')),/does not bind/,'rejects the old backtick-wrapped runner form')
+    assert.throws(()=>parse(native.replace(runnerRow,'| runner | ai-review-engine (review-lifecycle-core/2) |')),/does not bind/,'wrong runner version')
+    assert.throws(()=>parse(native.replace(runnerRow,'| runner |  |')),/does not bind/,'empty runner')
+    assert.throws(()=>parse(native.replace(runnerRow,'| runner | ai-review-engine (review-lifecycle-core/1) |')),/does not bind/,'bare engine field is not emitted by the producer')
+    assert.throws(()=>parse(native.replace(runnerRow,`${runnerRow}\n${runnerRow}`)),/does not bind/,'duplicate runner rows')
     assert.throws(()=>parse(native.replace(`| run | \`${run}\` |`,`| run | \`not-a-run-id\` |`)),/does not bind/,'malformed run id')
     assert.throws(()=>parse(native,'deepseek','e'.repeat(64)),/does not bind/,'wrong digest')
     assert.throws(()=>parse(native.replace('APPROVE\n','APPROVE\n\n## Verdict\n\nREJECT\n')),/exactly one terminal verdict/,'multiple verdicts')
@@ -82,7 +87,7 @@ test('governed runner forwards local tests and records the native lifecycle repo
     const reports=join(root,'.ai','reviews');mkdirSync(reports,{recursive:true})
     const reportPath=join(reports,'muse-final-check-report.md')
     const head=assigned.headSha,digest=fixtureSource(assigned).sourceDigest,runId='20261015T100000-12345-32767'
-    const report=`# muse final-check — ${runId}\n\n| field | value |\n|---|---|\n| provider | \`muse\` |\n| repository | \`${root}\` |\n| reviewed commit | \`${head}\` |\n| source digest | \`${digest}\` |\n| run | \`${runId}\` |\n| runner | \`ai-review-engine (review-lifecycle-core/1)\` |\n\n## Result\n\nFindings on ${head}.\n\n## Verdict\n\nAPPROVE\n`
+    const report=`# muse final-check — ${runId}\n\n| field | value |\n|---|---|\n| provider | \`muse\` |\n| repository | \`${root}\` |\n| reviewed commit | \`${head}\` |\n| source digest | \`${digest}\` |\n| run | \`${runId}\` |\n| runner | \`ai-review-engine\` (review-lifecycle-core/1) |\n\n## Result\n\nFindings on ${head}.\n\n## Verdict\n\nAPPROVE\n`
     let dispatch=null,recorded=null
     const result=executeGovernedReview(assigned,{
       lifecyclePool:true,env:{CODEX_THREAD_ID:'codex-thread'},recordStart:(row)=>{assert.deepEqual(row.wrapperArgs,['muse','final-check','--base','c'.repeat(40),'--assert-head',head,'--implementer','codex','--tests',tests]);return 'refs/db-review-started/fixture'},

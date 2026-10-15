@@ -416,9 +416,13 @@ export function lifecyclePoolReportBody(stdout,{headSha,provider,worktree,source
     const fields=report.split(/\r?\n/).filter((line)=>line.startsWith(prefix)&&line.endsWith(suffix)).map((line)=>line.slice(prefix.length,-suffix.length))
     return fields.length===1&&fields[0]===String(value)
   }
+  const exactNativeRunnerOnce=()=>{
+    const rows=report.split(/\r?\n/).filter((line)=>/^\s*\|\s*runner\s*\|/i.test(line))
+    return rows.length===1&&rows[0]==='| runner | `ai-review-engine` (review-lifecycle-core/1) |'
+  }
   const legacy=report.startsWith(`# ${provider} pool review — final-check\n`)
   const nativeHeader=/^# ([a-z][a-z0-9-]*) final-check — (\d{8}T\d{6}-\d+-\d+)\r?\n/.exec(report)
-  const native=Boolean(nativeHeader&&nativeHeader[1]===provider&&exactOnce('run',nativeHeader[2])&&exactOnce('runner','ai-review-engine (review-lifecycle-core/1)'))
+  const native=Boolean(nativeHeader&&nativeHeader[1]===provider&&exactOnce('run',nativeHeader[2])&&exactNativeRunnerOnce())
   if((!legacy&&!native)||!exact('provider',provider)||!exact('repository',worktree)||!exact('reviewed commit',String(headSha).toLowerCase())||!exact('source digest',sourceDigest))throw new Error('lifecycle review report does not bind the assigned provider, repository, exact head, and source digest')
   const verdicts=[...report.matchAll(/^## Verdict\s*\r?\n\s*(APPROVE|REJECT|BLOCKED)\s*$/gm)]
   if(verdicts.length!==1)throw new Error('lifecycle review report must contain exactly one terminal verdict')

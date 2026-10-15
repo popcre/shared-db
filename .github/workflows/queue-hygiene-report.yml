@@ -3,7 +3,7 @@
 #
 # WHY THIS WORKFLOW EXISTS
 # ------------------------
-# The interactive `--queue-audit` is an orchestrator instrument, not a monitor.
+# The interactive `--queue-audit` is a claim-first instrument, not a monitor.
 # It may comment `urgent_waiting_capacity` on issues, and it exits 2 whenever
 # dispatchable structural work exists — which is the NORMAL backed-up state this
 # whole program exists to relieve. Scheduling THAT would write from CI and fail

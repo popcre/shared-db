@@ -24,7 +24,7 @@
 # #2729), the migration, database and queue-gate workflows that hold locks or
 # production gates, migration-author-lease.yml (a global invalidator that
 # posts commit statuses), the issue-only half of destructive-analysis-guard.yml,
-# the scheduled alarm half of orchestrator-marker-guard.yml,
+# the scheduled alarm half of marker-guard.yml,
 # historical-item-mg-reclassification-tests.yml (its truth-audit identity is
 # pinned by the immutable 2026-08-28 cutover record), path-filtered advisory
 # workflows, and the pull_request_target documents route.
@@ -751,7 +751,7 @@ jobs:
           GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
         run: node scripts/check-pr-object-collisions.mjs
 
-  # The claim-first session identity guard was retired with the orchestrator role (#3874).
+  # The claim-first session identity guard was retired with the coordinator role (#3874).
   # ---- moved from .github/workflows/queue-sensitive-aggregate.yml (#3746) ----
   # Stable aggregate context for queue-sensitive required checks (issue #2729, ai-devops#401 Step 7).
   #

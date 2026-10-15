@@ -22,7 +22,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { canonicalJson } from './evidence-bundle.mjs'
-import { FlowSnapshotError, snapshotInputs, verifyFlowSnapshot } from './flow-snapshot.mjs'
+import { FlowSnapshotError, snapshotInputs, verifyFlowSnapshot } from './snapshot.mjs'
 import { currentRepository } from '../lib/repository-identity.mjs'
 import { ZERO_CLOSURE_WINDOW_MINUTES, defaultIo, gatherLiveInput, gh, runSnapshotCycle, stalledOutcomes, stalledRequests } from '../flow-snapshot.mjs'
 

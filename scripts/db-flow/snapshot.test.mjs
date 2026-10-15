@@ -9,7 +9,7 @@ import {
   publishSnapshotTransition,
   agentCheckInNotification,
   publishAgentCheckIn,
-} from './flow-snapshot.mjs'
+} from './snapshot.mjs'
 
 const input = () => ({
   marker: { issue: 2758, status: 'active', route_id: 'local_owner' },

@@ -3,7 +3,7 @@
  * Read-only production caller for the orchestrator snapshot library (issue #2728,
  * programme popcre/ai-devops#401 Step 4).
  *
- *   node scripts/flow-snapshot.mjs --orchestrator-snapshot [--repo owner/name]
+ *   node scripts/flow-snapshot.mjs --flow-snapshot [--repo owner/name]
  *        [--state-dir <absolute dir>] [--now <ISO>]
  *
  * It reads the live claim-first session identity, open claims, open PR heads and check
@@ -22,7 +22,7 @@ import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { canonicalJson } from './db-flow/evidence-bundle.mjs'
-import { buildFlowSnapshot, publishSnapshotTransition } from './db-flow/flow-snapshot.mjs'
+import { buildFlowSnapshot, publishSnapshotTransition } from './db-flow/snapshot.mjs'
 import { OUTCOME_STATES, trustedOutcomeComments } from './db-flow/outcome-lifecycle.mjs'
 import { formatHoldReason } from './lib/hold-reason.mjs'
 import { parseEventComment } from './db-coordination-events.mjs'
@@ -267,7 +267,7 @@ function checkSummary(rollup = []) {
 }
 
 // Exit 3 from the marker resolver, or a resolved marker with no route, means no orchestrator is running.
-export const NO_ORCHESTRATOR = /marker did not resolve \(exit 3\)|no open routable claim-first session identity/
+export const NO_ORCHESTRATOR = /marker did not resolve \(exit 3\)|claim-first session identity did not resolve \(exit 3\)|no open routable claim-first session identity/
 
 // allowNoMarker: the no-progress alarm must still evaluate stalls with no orchestrator, so it gets
 // marker: null. Every other caller keeps refusing, and any other read failure still throws.
@@ -323,7 +323,7 @@ export function gatherLiveInput(repo, io = defaultIo, { allowNoMarker = false } 
 export function main(argv = process.argv.slice(2), { io = defaultIo, stdout = console.log, stderr = console.error } = {}) {
   try {
     const value = (name) => { const index = argv.indexOf(name); return index >= 0 && argv[index + 1] ? argv[index + 1] : null }
-    if (!argv.includes('--orchestrator-snapshot')) throw new SnapshotCallerError('--orchestrator-snapshot is required')
+    if (!argv.includes('--flow-snapshot') && !argv.includes('--orchestrator-snapshot')) throw new SnapshotCallerError('--flow-snapshot is required')
     const repo = currentRepository(value('--repo'))
     const now = value('--now') ?? new Date().toISOString()
     const stateDir = value('--state-dir')

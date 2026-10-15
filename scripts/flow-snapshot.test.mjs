@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { coordinationEvent, formatEventComment } from './db-coordination-events.mjs'
 import { expectedOperatorAssociation } from './lib/repository-identity.mjs'
-import { buildFlowSnapshot, verifyFlowSnapshot } from './db-flow/flow-snapshot.mjs'
+import { buildFlowSnapshot, verifyFlowSnapshot } from './db-flow/snapshot.mjs'
 import { claimTitleIssues, defaultIo, fileEventStore, gatherLiveInput, gh, main, outcomeEventsFromComments, readyRequestCandidates, runSnapshotCycle, stalledOutcomes, stalledRequests } from './flow-snapshot.mjs'
 
 const NOW = '2026-09-15T12:00:00.000Z'
@@ -128,7 +128,7 @@ test('unchanged state produces zero output and no report; each transition wakes 
   try {
     const comments = { 800: [ownerComment(event(800, 'dispatched', 100))] }
     const lines = []
-    const run = (now) => main(['--orchestrator-snapshot', '--state-dir', dir, '--now', now], { io: fakeIo({ comments }), stdout: (line) => lines.push(JSON.parse(line)), stderr: (line) => lines.push(line) })
+    const run = (now) => main(['--flow-snapshot', '--state-dir', dir, '--now', now], { io: fakeIo({ comments }), stdout: (line) => lines.push(JSON.parse(line)), stderr: (line) => lines.push(line) })
     assert.equal(run(NOW), 0)
     assert.equal(lines.length, 1)
     assert.deepEqual(lines[0].wakes.map((w) => w.wake), ['state_changed', 'zero_closures_4h'])
@@ -227,7 +227,7 @@ test('a corrupt last-report.json re-emits exactly once and is replaced atomicall
   const dir = mkdtempSync(path.join(os.tmpdir(), 'orch-corrupt-'))
   try {
     const lines = []
-    const run = () => main(['--orchestrator-snapshot', '--state-dir', dir, '--now', NOW], { io: fakeIo(), stdout: (line) => lines.push(line), stderr: (line) => lines.push(line) })
+    const run = () => main(['--flow-snapshot', '--state-dir', dir, '--now', NOW], { io: fakeIo(), stdout: (line) => lines.push(line), stderr: (line) => lines.push(line) })
     writeFileSync(path.join(dir, 'last-report.json'), '{not json')
     assert.equal(run(), 0)
     assert.equal(lines.length, 1)
@@ -247,8 +247,8 @@ test('refuses without the flag', () => {
 test('#3874 with the orchestrator retired the CLI still reports, with marker: null', () => {
   const out = []
   const io = { ...fakeIo(), resolveMarker: defaultIo.resolveMarker }
-  assert.equal(main(['--orchestrator-snapshot'], { io, stdout: (l) => out.push(l), stderr: () => {} }), 0)
+  assert.equal(main(['--flow-snapshot'], { io, stdout: (l) => out.push(l), stderr: () => {} }), 0)
   assert.equal(JSON.parse(out[0]).status, 'no-orchestrator')
   const errors = []
-  assert.equal(main(['--orchestrator-snapshot'], { io: { ...fakeIo(), resolveMarker: () => { throw new Error('gh failed') } }, stdout: () => {}, stderr: (l) => errors.push(l) }), 2, 'a real read failure still refuses')
+  assert.equal(main(['--flow-snapshot'], { io: { ...fakeIo(), resolveMarker: () => { throw new Error('gh failed') } }, stdout: () => {}, stderr: (l) => errors.push(l) }), 2, 'a real read failure still refuses')
 })

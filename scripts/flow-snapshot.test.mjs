@@ -5,8 +5,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { coordinationEvent, formatEventComment } from './db-coordination-events.mjs'
 import { expectedOperatorAssociation } from './lib/repository-identity.mjs'
-import { buildOrchestratorSnapshot, verifyOrchestratorSnapshot } from './orchestrator-flow/orchestrator-snapshot.mjs'
-import { claimTitleIssues, defaultIo, fileEventStore, gatherLiveInput, gh, main, outcomeEventsFromComments, readyRequestCandidates, runSnapshotCycle, stalledOutcomes, stalledRequests } from './orchestrator-snapshot.mjs'
+import { buildFlowSnapshot, verifyFlowSnapshot } from './db-flow/flow-snapshot.mjs'
+import { claimTitleIssues, defaultIo, fileEventStore, gatherLiveInput, gh, main, outcomeEventsFromComments, readyRequestCandidates, runSnapshotCycle, stalledOutcomes, stalledRequests } from './flow-snapshot.mjs'
 
 const NOW = '2026-09-15T12:00:00.000Z'
 const minutesAgo = (m) => new Date(Date.parse(NOW) - m * 60000).toISOString()
@@ -119,8 +119,8 @@ test('successor reconstructs the exact active map from the live snapshot and ver
   assert.equal(successor.state.reviewer_leases.length, 1)
   assert.deepEqual(successor.state.eligible_queue, [{ issue: 700, labels: ['now'] }])
   assert.equal(successor.state.outcome_events.length, 1)
-  assert.deepEqual(verifyOrchestratorSnapshot(successor, { readCurrent: () => gatherLiveInput('o/r', io).input, now: NOW }).status, 'CURRENT')
-  assert.equal(buildOrchestratorSnapshot(gatherLiveInput('o/r', io).input).snapshot_id, successor.snapshot_id)
+  assert.deepEqual(verifyFlowSnapshot(successor, { readCurrent: () => gatherLiveInput('o/r', io).input, now: NOW }).status, 'CURRENT')
+  assert.equal(buildFlowSnapshot(gatherLiveInput('o/r', io).input).snapshot_id, successor.snapshot_id)
 })
 
 test('unchanged state produces zero output and no report; each transition wakes exactly once', () => {

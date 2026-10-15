@@ -294,7 +294,7 @@ $migration$;`
 })
 
 test('preview preparation must name the admitted issue and its source PR',()=>{
-  const io={enforceAdmission:true,orchestratorFlowAdapter:()=>{throw new Error('adapter must not be reached')}}
+  const io={enforceAdmission:true,flowAdapter:()=>{throw new Error('adapter must not be reached')}}
   const old=console.error;const messages=[];console.error=(m)=>messages.push(String(m))
   try{
     assert.equal(managerMain(['--prepare-preview-dispatch','41','--admit-issue','42','--pr','7'],new Date('2026-09-11T00:00:00Z'),io),2)

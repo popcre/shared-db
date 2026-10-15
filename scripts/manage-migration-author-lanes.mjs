@@ -21,31 +21,31 @@ import { gatherOpenPrObjects, normalizeObject, parseClaimBlock } from './check-d
 import { dependencyIssue, parseDependencyDeclarations, classifyDependencies, findCompletionRecord, findDependencyCycles, validateCompletionRecord, validateDependencyDeclaration, COMPLETION_FENCE, DependencyError } from './lib/work-dependencies.mjs'
 import { assertLease, evaluateRecovery, formatLeaseMessage, parseLeaseMessage, recoveredLeaseMetadata, LeaseError } from './lib/exclusive-lease.mjs'
 import { coordinationEvent, formatEventComment, parseEventComment, auditTimeline, renderTimeline } from './db-coordination-events.mjs'
-import { reconcileFlow, persistInitialReady, preparePreviewDispatch, repairPreviewReady, terminalizeReady, readyRecord, MODE_SEQUENCE, parseAbandonmentAudit, reportOnlyFlowIo, abandonmentAuditExit, AUDIT_EXIT_UNVERIFIABLE } from './orchestrator-flow/reconcile.mjs'
+import { reconcileFlow, persistInitialReady, preparePreviewDispatch, repairPreviewReady, terminalizeReady, readyRecord, MODE_SEQUENCE, parseAbandonmentAudit, reportOnlyFlowIo, abandonmentAuditExit, AUDIT_EXIT_UNVERIFIABLE } from './db-flow/reconcile.mjs'
 import { MERGE_SELF_CONTEXT } from './lib/merge-self-context.mjs'
-import { selectPreviewArtifacts } from './orchestrator-flow/preview-artifact-selection.mjs'
+import { selectPreviewArtifacts } from './db-flow/preview-artifact-selection.mjs'
 import { currentRepository, isThisRepositoryOrHistorical, isTrustedOperatorComment, repositoryCommentApiPath } from './lib/repository-identity.mjs'
 import { readRequiredCheckContexts } from './lib/required-check-readback.mjs'
 import { readSessionId, resolveSessionAuthority, sessionAuthorityRefusal } from './lib/session-authority.mjs'
 import { authorityReadEnv } from './lib/authority-token-read.mjs'
-import { buildEvidenceBundle, canonicalJson, sha256 } from './orchestrator-flow/evidence-bundle.mjs'
-import { assertDeliveryPreflightBeforeReview, runDeliveryPreflightGate } from './orchestrator-flow/delivery-preflight-gate.mjs'
-import { trustedEvidenceRegistryReader } from './orchestrator-flow/delivery-preflight.mjs'
-import { bindSenderPreviewClassification, databasePreviewRequiredFromEvidenceBundle, selectPreviewRoute, validatePreviewClassification } from './orchestrator-flow/select-preview-route.mjs'
-import { PROJECT_REFS } from './orchestrator-flow/read-preview-ledger.mjs'; import { verdictOpensLine as sharedVerdictOpensLine, evidenceTiedToHead as sharedEvidenceTiedToHead, isApprovalFor as sharedIsApprovalFor, isVerdictFor as sharedIsVerdictFor, anyVerdictFor as sharedAnyVerdictFor } from './lib/review-verdict.mjs'
+import { buildEvidenceBundle, canonicalJson, sha256 } from './db-flow/evidence-bundle.mjs'
+import { assertDeliveryPreflightBeforeReview, runDeliveryPreflightGate } from './db-flow/delivery-preflight-gate.mjs'
+import { trustedEvidenceRegistryReader } from './db-flow/delivery-preflight.mjs'
+import { bindSenderPreviewClassification, databasePreviewRequiredFromEvidenceBundle, selectPreviewRoute, validatePreviewClassification } from './db-flow/select-preview-route.mjs'
+import { PROJECT_REFS } from './db-flow/read-preview-ledger.mjs'; import { verdictOpensLine as sharedVerdictOpensLine, evidenceTiedToHead as sharedEvidenceTiedToHead, isApprovalFor as sharedIsApprovalFor, isVerdictFor as sharedIsVerdictFor, anyVerdictFor as sharedAnyVerdictFor } from './lib/review-verdict.mjs'
 import { REVIEW_VERDICT_REF_PREFIX, REVIEW_VERDICT_REPLACEMENT_REF_PREFIX, REVIEW_VERDICTS, assertFindingsRefForPr, findingsDigest, formatVerdictMessage, parseVerdictCommit, parseVerdictRef, validateVerdictArtifact, verdictRef } from './lib/review-verdict-artifact.mjs'
 import { changedPathsFromPullRequestFiles, classifyChangedPaths, classifyLightweightMergePullRequestFiles } from './lib/documents-only-change.mjs'
 import { HISTORICAL_RESTORATIONS, validateHistoricalRestorationFile } from './historical-migration-restorations.mjs'
-import { AdmissionError, SERVICE_CLASSES, CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, STRUCTURAL_ROUTES, parseImpactBlock, evaluateAdmission, inspectPrStructuralChange, structuralWritesMatch, structuralWritesCovered } from './orchestrator-flow/admission.mjs'
+import { AdmissionError, SERVICE_CLASSES, CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, STRUCTURAL_ROUTES, parseImpactBlock, evaluateAdmission, inspectPrStructuralChange, structuralWritesMatch, structuralWritesCovered } from './db-flow/admission.mjs'
 import { assertNamedHold, conflicts, describeLeaseHolder, formatHoldReason, HoldReasonError } from './lib/hold-reason.mjs'
-import { OUTCOME_STATES, OutcomeError, advanceOutcome, completeOutcome, verifyOutcomeAcceptance, outcomeEvent, outcomeHistory, repairOutcomeHistory } from './orchestrator-flow/outcome-lifecycle.mjs'
+import { OUTCOME_STATES, OutcomeError, advanceOutcome, completeOutcome, verifyOutcomeAcceptance, outcomeEvent, outcomeHistory, repairOutcomeHistory } from './db-flow/outcome-lifecycle.mjs'
 import { assertPaidReviewCapacity, pauseActualReviewFailure, derivePaidContentProof, RETRYABLE_RELEASED_FAILURE_CODES } from './lib/lanes/review-circuit-breaker.mjs'
 export { RETRYABLE_RELEASED_FAILURE_CODES }
 const paidBudgetContractCaches=new WeakMap()
 import { isContentPreservingRefresh, prContentDigest, verifiedEvidencePaths } from './lib/pr-content-equivalence.mjs'
 import { wrapperEmitsGovernedVerdict } from './lib/reviewer-capabilities.mjs'
 import { classifyBranchFreshness } from './check-main-tip-freshness.mjs'
-import { MigrationTrainError, TRAIN_REF_PREFIX, assertDispatchMatchesTrain, assertRecordedTrain, assertTrainProductionEvidence, proposeTrain, trainRecordRef, transitionTrain, validateTrain } from './orchestrator-flow/migration-train.mjs'
+import { MigrationTrainError, TRAIN_REF_PREFIX, assertDispatchMatchesTrain, assertRecordedTrain, assertTrainProductionEvidence, proposeTrain, trainRecordRef, transitionTrain, validateTrain } from './db-flow/migration-train.mjs'
 import { assertDrawPromptContract, collectHandoffCollisions, preDrawHandoffChecks } from './lib/reviewer-draw-readiness.mjs'
 // Cohesive modules split out of this file (issue #3726). This entrypoint keeps
 // the CLI, githubIo and the shared wire state, and re-exports every public name.
@@ -155,7 +155,7 @@ export function withReviewRequestBudget(fn,limit=REVIEW_OPERATION_REQUEST_LIMIT,
   reviewWireBudget={count:0,limit,operation}
   try{return fn(reviewWireBudget)}finally{reviewWireBudget=null;reviewCommitBase=null;freshDurableVerdictRefs=null;observedReviewQuota={};primedReviewStates=new Map()}
 }
-// Issue #2802: the structural-admission gate (scripts/orchestrator-flow/admission.mjs,
+// Issue #2802: the structural-admission gate (scripts/db-flow/admission.mjs,
 // landed in e7bec2fe on 2026-09-11) is NOT reviewer work, but its GitHub reads -- the
 // pull request, the linked work issue, the complete file list, file contents at the
 // exact head, the closing-issue link, the outcome history -- were charged to the
@@ -1203,10 +1203,10 @@ export const githubIo = {
   // independence now follows the AUTHORING session's engine, declared in
   // SHARED_DB_AUTHOR_ENGINE (e.g. claude, codex, glm, zcode). Unset, blank or
   // unknown values refuse (fail closed); see authorEngineFromEnv.
-  resolveOrchestratorEngine(){
+  resolveReviewEngine(){
     return authorEngineFromEnv(process.env.SHARED_DB_AUTHOR_ENGINE)
   },
-  orchestratorFlowAdapter(claimNumber,admissionOptions=null){ return githubFlowAdapter(this,claimNumber,admissionOptions) },
+  flowAdapter(claimNumber,admissionOptions=null){ return githubFlowAdapter(this,claimNumber,admissionOptions) },
   flowSnapshot(now=new Date(),{capacityOnly=false}={}){
     const claims=this.openClaims()
     // QUEUED-BEHIND IS COMPUTED ONCE, AND ONLY IF SOMETHING IS ACTUALLY EXPIRED.
@@ -1251,6 +1251,15 @@ export const githubIo = {
 
 function claimFirstAuthority(io,claimOwner){
   if(typeof io?.resolveSessionAuthority==='function')return io.resolveSessionAuthority({claimOwner})
+  if(typeof io?.resolveMarker==='function')return io.resolveMarker()
+  if(typeof io?.flowAdapter==='function'){
+    const adapter=io.flowAdapter()
+    if(adapter){
+      if(typeof adapter.resolveSessionAuthority==='function')return adapter.resolveSessionAuthority({claimOwner})
+      if(typeof adapter.resolveMarker==='function')return adapter.resolveMarker()
+      if(typeof adapter.resolveSession==='function')return adapter.resolveSession()
+    }
+  }
   return resolveSessionAuthority(claimOwner===undefined?{}:{claimOwner})
 }
 function githubFlowAdapter(io,claimNumber=null,admissionOptions=null){
@@ -4799,8 +4808,8 @@ export function main(argv, now = new Date(), io = githubIo) {
     }
     if(o.recoverMutex){console.log(JSON.stringify(recoverStaleAuthorMutex({expectedSha:o.expectedSha,confirmStale:o.confirmStale,serializedRecovery:process.env.GITHUB_ACTIONS==='true'&&process.env.AUTHOR_MUTEX_RECOVERY_SERIALIZED==='true',now},io),null,2));return 0}
     if(o.reconcileFlow){
-      if(typeof io.orchestratorFlowAdapter!=='function')throw new LaneError('reconcile runtime adapter is unavailable')
-      const result=reconcileFlow(io.flowSnapshot(now),io.orchestratorFlowAdapter());console.log(JSON.stringify(result,null,2))
+      if(typeof io.flowAdapter!=='function')throw new LaneError('reconcile runtime adapter is unavailable')
+      const result=reconcileFlow(io.flowSnapshot(now),io.flowAdapter());console.log(JSON.stringify(result,null,2))
       // PER DOMAIN, DETERMINISTICALLY. Exit 2 means "some domain's evidence was
       // absent or unreadable" -- either domain on its own is enough, and neither
       // can be masked by the other being fine. Written as an explicit scan of the
@@ -4828,9 +4837,9 @@ export function main(argv, now = new Date(), io = githubIo) {
       // unverifiable outranks expiry, so the refusal is mapped to 3 here. The
       // message is still printed in full; only the code it is filed under moves.
       try{
-        if(typeof io.orchestratorFlowAdapter!=='function')throw new LaneError('reconcile runtime adapter is unavailable')
+        if(typeof io.flowAdapter!=='function')throw new LaneError('reconcile runtime adapter is unavailable')
         if(io.previewLedger===undefined)io={...io,previewLedger:()=>livePreviewLedger({workflowPreviewRef:process.env.PREVIEW_PROJECT_REF})}
-        const result=reconcileFlow(io.flowSnapshot(now,{capacityOnly:true}),reportOnlyFlowIo(io.orchestratorFlowAdapter()),{capacityOnly:true})
+        const result=reconcileFlow(io.flowSnapshot(now,{capacityOnly:true}),reportOnlyFlowIo(io.flowAdapter()),{capacityOnly:true})
         console.log(JSON.stringify(result,null,2))
         return abandonmentAuditExit(result)
       }catch(error){
@@ -4839,15 +4848,15 @@ export function main(argv, now = new Date(), io = githubIo) {
       }
     }
     if(o.preparePreviewDispatch){
-      if(typeof io.orchestratorFlowAdapter!=='function')throw new LaneError('preview preparation runtime adapter is unavailable')
+      if(typeof io.flowAdapter!=='function')throw new LaneError('preview preparation runtime adapter is unavailable')
       requireAdmissionArguments(o,io,{pr:o.pr})
-      const result=preparePreviewDispatch(o.preparePreviewDispatch,io.orchestratorFlowAdapter(o.claimNumber,io.enforceAdmission===true?o:null))
+      const result=preparePreviewDispatch(o.preparePreviewDispatch,io.flowAdapter(o.claimNumber,io.enforceAdmission===true?o:null))
       console.log(JSON.stringify(result,null,2));return 0
     }
     if(o.repairPreviewReady){
       if(!o.issue)throw new LaneError('--repair-preview-ready requires --issue <n>')
-      if(typeof io.orchestratorFlowAdapter!=='function')throw new LaneError('preview repair runtime adapter is unavailable')
-      console.log(JSON.stringify(repairPreviewReady(o.repairPreviewReady,Number(o.issue),io.orchestratorFlowAdapter()),null,2));return 0
+      if(typeof io.flowAdapter!=='function')throw new LaneError('preview repair runtime adapter is unavailable')
+      console.log(JSON.stringify(repairPreviewReady(o.repairPreviewReady,Number(o.issue),io.flowAdapter()),null,2));return 0
     }
     if(o.terminalizeHistoricalPreviewReady){
       console.log(JSON.stringify(terminalizeHistoricalPreviewReady({readyId:o.terminalizeHistoricalPreviewReady,issue:o.issue,runId:o.runId,artifactId:o.artifactId,artifactDigest:o.artifactDigest,manifestDigest:o.manifestDigest},io),null,2));return 0

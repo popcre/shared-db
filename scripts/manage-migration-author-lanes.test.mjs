@@ -8,7 +8,7 @@ import { rebindClaimWorktree, claimWorktreeRebindRef } from './manage-migration-
 import { allocatableReviewers, reconcilePreflightRows } from './manage-migration-author-lanes.mjs'
 import { completeReviewerOperationRouteSnapshot, derivePrOperationRoute, reconcileReviewerOperationRouteFiles } from './manage-migration-author-lanes.mjs'
 import { validateHoldReasonRecord } from './lib/hold-reason.mjs'
-import { ENGINES } from './lib/orchestrator-routing.mjs'
+import { ENGINES } from './lib/engine-routing.mjs'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { REVIEW_VERDICT_REF_PREFIX, verdictRef } from './lib/review-verdict-artifact.mjs'
@@ -22,8 +22,8 @@ import { canonicalReviewerAllowlist, REVIEWER_FALLBACK_PROVIDERS, orderedReviewe
 import { inheritReviewerAllowlist, isReviewerAllowlistSuperset, sameReviewerAllowlist } from './manage-migration-author-lanes.mjs'
 import { parseAssignmentRef } from './manage-migration-author-lanes.mjs'
 import { setScopeStatus, wrongOwnerMessage } from './manage-migration-author-lanes.mjs'
-import { readyRecord, persistInitialReady } from './orchestrator-flow/reconcile.mjs'
-import { canonicalJson, sha256 } from './orchestrator-flow/evidence-bundle.mjs'
+import { readyRecord, persistInitialReady } from './db-flow/reconcile.mjs'
+import { canonicalJson, sha256 } from './db-flow/evidence-bundle.mjs'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -637,7 +637,7 @@ function reviewIo(){
   // Legacy fixtures below pin the historical full-roster order. Tests that
   // exercise the production preference order delete this test-only override.
   io.reviewerOrder=(sequence)=>Array.from({length:ACTIVE_REVIEWERS.length},(_,offset)=>ACTIVE_REVIEWERS[(sequence-1+offset)%ACTIVE_REVIEWERS.length])
-  io.resolveOrchestratorEngine=()=> 'claude'
+  io.resolveReviewEngine=()=> 'claude'
   io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,usableAdmission(row)]))
   io.refs.set(REVIEW_ACTIVE_CUTOVER_REF,'cutover-complete')
   io.makeOwnerCommit=(message)=>{const sha=(++seq).toString(16).padStart(40,'0');commits.set(sha,{message});return sha}
@@ -1914,7 +1914,7 @@ test('the roster records, per reviewer, whether its wrapper reads the repository
 // Issue #2127's marker-resolver tests were retired with the claim-first session identity (#3874).
 
 test('with no orchestrator running the full rotation is drawable (#2127)',()=>{
-  const io=reviewIo();io.resolveOrchestratorEngine=()=> null
+  const io=reviewIo();io.resolveReviewEngine=()=> null
   const assigned=[]
   for(let n=1;n<=ACTIVE_REVIEWERS.length;n++)assigned.push(assignNextReviewer({issue:7100+n,pr:8100+n,headSha:n.toString(16).padStart(40,'c')},io).reviewer)
   for(const row of ACTIVE_REVIEWERS)assert.ok(assigned.includes(row.name),`${row.name} must be drawable when no claim-first session identity is open`)
@@ -1941,7 +1941,7 @@ test('the orchestrator engine is never eligible to review its own work',()=>{
 // code. ZCode's engine is GLM-5.3, so a ZCode orchestrator must exclude the glm
 // reviewers exactly the way a Codex orchestrator excludes the codex reviewer.
 // The exclusion follows the MODEL ENGINE behind the harness, mapped through
-// ENGINES[...].reviewerExclusionEngine in lib/orchestrator-routing.mjs.
+// ENGINES[...].reviewerExclusionEngine in lib/engine-routing.mjs.
 
 test('a GLM-engine (ZCode) orchestrator never draws the glm reviewers (#3232)',()=>{
   // Both glm rows declare the family -- including the retained glm-5.2 label,
@@ -1967,7 +1967,7 @@ test('a GLM-engine (ZCode) orchestrator never draws the glm reviewers (#3232)',(
 })
 
 test('a ZCode orchestrator walks a full draw cycle without ever drawing glm (#3232)',()=>{
-  const io=reviewIo();io.resolveOrchestratorEngine=()=> 'zcode'
+  const io=reviewIo();io.resolveReviewEngine=()=> 'zcode'
   const assigned=[]
   for(let n=1;n<=ACTIVE_REVIEWERS.length;n++)assigned.push(assignNextReviewer({issue:7300+n,pr:8300+n,headSha:n.toString(16).padStart(40,'e')},io).reviewer)
   for(const name of assigned)assert.ok(!name.startsWith('glm-'),`a ZCode orchestrator drew ${name}`)
@@ -1996,7 +1996,7 @@ test('a Codex orchestrator draws the whole active roster and still refuses the r
   // claude map to themselves, so a live Codex or Claude orchestrator must still
   // cost the rotation nothing at all. If a future roster adds a reviewer whose
   // family is codex or claude, this assertion is the one that notices.
-  const io=reviewIo();io.resolveOrchestratorEngine=()=> 'codex'
+  const io=reviewIo();io.resolveReviewEngine=()=> 'codex'
   const assigned=[]
   for(let n=1;n<=ACTIVE_REVIEWERS.length;n++)assigned.push(assignNextReviewer({issue:700+n,pr:800+n,headSha:n.toString(16).padStart(40,'a')},io).reviewer)
   assert.deepEqual([...assigned].sort(),ACTIVE_REVIEWERS.map((row)=>row.name).sort(),'a Codex orchestrator must not narrow the current roster')
@@ -2017,7 +2017,7 @@ test('a Codex orchestrator draws the whole active roster and still refuses the r
   // own work', against REVIEWERS and a synthetic roster; the assertion above is
   // what would notice an engine-carrying name re-entering the active roster and
   // make this call site meaningful again.
-  const preflight={...preflightIo(),resolveOrchestratorEngine:()=> 'codex'}
+  const preflight={...preflightIo(),resolveReviewEngine:()=> 'codex'}
   assert.throws(()=>reviewerExecutionPreflight({reviewer:'codex-gpt-5.6-sol',wrapper:'ai-codex-review',worktree:'C:/review',headSha:failedReview.headSha},preflight),/approved reviewer/)
 })
 
@@ -2652,7 +2652,7 @@ test('assignment refuses a PR close arriving after mutex acquisition',()=>{
   assert.equal(io.refs.has(MUTEX_REF),false);assert.equal(io.refs.has(REVIEW_CURSOR_REF),false)
 })
 
-const preflightIo=()=>({resolveOrchestratorEngine:()=> 'claude',commandAvailable:()=>true,localHead:()=>failedReview.headSha,localClean:()=>true,reviewerDoctor:()=>({ok:true,failingChecks:[]})})
+const preflightIo=()=>({resolveReviewEngine:()=> 'claude',commandAvailable:()=>true,localHead:()=>failedReview.headSha,localClean:()=>true,reviewerDoctor:()=>({ok:true,failingChecks:[]})})
 const preflightRequest={reviewer:'deepseek-v4.1-flash',wrapper:'ai-deepseek-agent',worktree:'C:/review',headSha:failedReview.headSha}
 
 test('reviewer execution preflight enforces approved wrapper, clean worktree, and exact head',()=>{
@@ -7222,7 +7222,7 @@ function historicalTerminalIo(overrides={}){
     logs:[`preview\tProve historical preview recovery source\t2026-09-08T09:38:33Z ORIGINAL_RUN_MAP: ${manifest.historical_preview_original_run_map}`,`preview\tProve historical preview recovery source\t2026-09-08T09:38:33Z SOURCE_PR: ${manifest.historical_preview_source_pr}`,`preview\tProve historical preview recovery source\t2026-09-08T09:38:33Z MAIN_SHA: ${manifest.commit_sha}`,`preview\tAssert the target project ref is PREVIEW\t2026-09-08T09:38:30Z PREVIEW_ALLOWLIST: ${manifest.preview_allowlist}`,'preview\tReport the preview ledger delta\t2026-09-08T09:38:53Z - rows before: 626','preview\tReport the preview ledger delta\t2026-09-08T09:38:53Z - rows after:  626','preview\tReport the preview ledger delta\t2026-09-08T09:38:53Z - added: (none)','preview\tReport the preview ledger delta\t2026-09-08T09:38:53Z - removed: (none)'].join('\n'),
   }
   const flow={resolveMarker:()=>({live:true,task:'route',calling_task:'route'}),readRef:(ref)=>refs.get(ref)??null,createRef:(ref,digest,value)=>{if(refs.has(ref))return false;refs.set(ref,{digest,record:value});return true}}
-  return {record,runId,artifactId,artifactDigest,refs,evidence,io:{orchestratorFlowAdapter:()=>flow,previewApplyRun:()=>evidence},...overrides}
+  return {record,runId,artifactId,artifactDigest,refs,evidence,io:{flowAdapter:()=>flow,previewApplyRun:()=>evidence},...overrides}
 }
 
 function historicalTerminalArgs(fixture){return ['--terminalize-historical-preview-ready',fixture.record.ready_id,'--issue','2509','--run-id',fixture.runId,'--artifact-id',fixture.artifactId,'--artifact-digest',fixture.artifactDigest,'--manifest-digest',fixture.record.manifest_digest]}
@@ -7461,7 +7461,7 @@ test('two merged pull requests on one claim branch are still refused as ambiguou
 // independent verification passes missed it because neither drove the manifest into
 // the next stage. This test does, and it is the one that would have caught it.
 test('the merged-rehearsal candidate is accepted by the reconciler it is handed to',async()=>{
-  const {readyRecord}=await import('./orchestrator-flow/reconcile.mjs')
+  const {readyRecord}=await import('./db-flow/reconcile.mjs')
   const {io,mainSha}=mergedRehearsalIo()
   const record=readyRecord(deriveLivePreviewCandidate(1769,io))
   assert.equal(record.route,'merged_rehearsal')
@@ -7470,7 +7470,7 @@ test('the merged-rehearsal candidate is accepted by the reconciler it is handed 
 })
 
 test('the reconciler refuses a merged rehearsal that names a live author claim',async()=>{
-  const {readyRecord,ReconcileError}=await import('./orchestrator-flow/reconcile.mjs')
+  const {readyRecord,ReconcileError}=await import('./db-flow/reconcile.mjs')
   const {io}=mergedRehearsalIo()
   const candidate=deriveLivePreviewCandidate(1769,io)
   assert.throws(()=>readyRecord({...candidate,manifest:{...candidate.manifest,claim_pr:'1809'}}),(error)=>error instanceof ReconcileError&&/must not name a live author claim/.test(error.message))
@@ -9762,7 +9762,7 @@ test('an over-long lease snapshot is a determinate refusal, not transient unread
 // work issue already `dispatched` and refused "cannot advance outcome from dispatched to
 // dispatched", leaving a fresh claim protected for recovery. Dispatch is already satisfied.
 test('re-claim of an already dispatched work issue treats dispatch as satisfied',async()=>{
-  const {outcomeEvent}=await import('./orchestrator-flow/outcome-lifecycle.mjs')
+  const {outcomeEvent}=await import('./db-flow/outcome-lifecycle.mjs')
   const {formatEventComment}=await import('./db-coordination-events.mjs')
   const {io}=admittedReviewIo(),posted=[]
   const history=['entered','classified','dispatched'].map((state,index)=>({author_association:OPERATOR_ASSOCIATION,author:'u2giants',body:formatEventComment(outcomeEvent({issue:41,state,actor:'test',timestamp:new Date(Date.UTC(2026,8,11,0,index)).toISOString(),evidenceUrls:state==='dispatched'?['https://github.com/u2giants/shared-db/issues/2929']:[]}))}))
@@ -9996,9 +9996,9 @@ test('--abandonment-audit reports a refusal as unverifiable (3), not as an expir
   const errors=[],originalError=console.error
   console.error=(line)=>errors.push(String(line))
   try{
-    const noAdapter={...githubIo,flowSnapshot:()=>({issues:[]}),orchestratorFlowAdapter:null}
+    const noAdapter={...githubIo,flowSnapshot:()=>({issues:[]}),flowAdapter:null}
     assert.equal(main(['--abandonment-audit'],new Date('2026-09-16T00:00:00Z'),noAdapter),3,'a missing runtime adapter means the instrument could not read')
-    const unreadable={...githubIo,orchestratorFlowAdapter:()=>({}),flowSnapshot:()=>{throw new LaneError('claim title must identify exactly one work issue for capacity transition events')}}
+    const unreadable={...githubIo,flowAdapter:()=>({}),flowSnapshot:()=>{throw new LaneError('claim title must identify exactly one work issue for capacity transition events')}}
     assert.equal(main(['--abandonment-audit'],new Date('2026-09-16T00:00:00Z'),unreadable),3,'an unreadable snapshot means the instrument could not read')
     assert.equal(main([],new Date('2026-09-16T00:00:00Z'),githubIo),2,'every other refusal keeps the generic exit code')
   }finally{console.error=originalError}
@@ -10028,7 +10028,7 @@ test('issue 3027 a claim hold is accepted only when the claim and held work shar
 
 test('the no-progress alarm fallback label is a coordination label the queue audit excludes', async () => {
   const { COORDINATION_LABELS } = await import('./manage-migration-author-lanes.mjs')
-  const { FALLBACK_LABEL } = await import('./orchestrator-flow/no-progress-alarm.mjs')
+  const { FALLBACK_LABEL } = await import('./db-flow/no-progress-alarm.mjs')
   assert.ok(COORDINATION_LABELS.has(FALLBACK_LABEL))
 })
 
@@ -10516,7 +10516,7 @@ test('issue 2678: a doctor that names no check quotes the wrapper instead of bla
 // own title, nothing warned at claim time, and the claim had already spent a
 // permanent migration version before a later command refused it.
 test('#2448 a second issue reference in a claim title is refused at --claim time, before any version is spent',async()=>{
-  const {outcomeEvent}=await import('./orchestrator-flow/outcome-lifecycle.mjs')
+  const {outcomeEvent}=await import('./db-flow/outcome-lifecycle.mjs')
   const {formatEventComment}=await import('./db-coordination-events.mjs')
   const {io}=admittedReviewIo()
   // A COMPLETE fixture on purpose: without the guard this claim would otherwise
@@ -10547,7 +10547,7 @@ test('#2448 a second issue reference in a claim title is refused at --claim time
 // #3125. `--claim --objects` refused a valid claim whose writes were listed in a
 // different order from the admitted issue's (already sorted) writes.
 async function twoWriteAdmittedIo(){
-  const {outcomeEvent}=await import('./orchestrator-flow/outcome-lifecycle.mjs')
+  const {outcomeEvent}=await import('./db-flow/outcome-lifecycle.mjs')
   const {formatEventComment}=await import('./db-coordination-events.mjs')
   const {io}=admittedReviewIo()
   const body=['```db-work-scope','status: ready','work_type: structural','route: claim-first','service_class: standard-application','change_type: migration','application_return_to: u2giants/example-app','live_assertion: authenticated create-and-read succeeds','generated_types: not-applicable','outcome_stage: entered','priority: 5','depends_on:','writes:','  - table core.zeta','  - table core.alpha','```'].join('\n')
@@ -11540,7 +11540,7 @@ test('#2998 CLI: a fully valid handoff clears every readiness check and reaches 
 // #3874: the orchestrator role is retired. Reviewer independence follows the
 // authoring session's declared engine, and `claim-first` is a structural route.
 import { authorEngineFromEnv as __authorEngineFromEnv, knownAuthorEngines as __knownAuthorEngines, CLAIM_FIRST_ROUTES as __CLAIM_FIRST_ROUTES, ROUTES_BY_WORK_TYPE as __ROUTES_BY_WORK_TYPE, QUEUE_ROUTES as __QUEUE_ROUTES } from './manage-migration-author-lanes.mjs'
-import { STRUCTURAL_ROUTES as __STRUCTURAL_ROUTES } from './orchestrator-flow/admission.mjs'
+import { STRUCTURAL_ROUTES as __STRUCTURAL_ROUTES } from './db-flow/admission.mjs'
 test('#3874 author engine is mandatory and fails closed', () => {
   assert.throws(() => __authorEngineFromEnv(undefined), /SHARED_DB_AUTHOR_ENGINE is not set/)
   assert.throws(() => __authorEngineFromEnv('   '), /SHARED_DB_AUTHOR_ENGINE is not set/)
@@ -11561,9 +11561,9 @@ test('#3874 the real GitHub io reads SHARED_DB_AUTHOR_ENGINE and refuses when it
   const saved = process.env.SHARED_DB_AUTHOR_ENGINE
   try {
     delete process.env.SHARED_DB_AUTHOR_ENGINE
-    assert.throws(() => githubIo.resolveOrchestratorEngine(), /SHARED_DB_AUTHOR_ENGINE is not set/)
+    assert.throws(() => githubIo.resolveReviewEngine(), /SHARED_DB_AUTHOR_ENGINE is not set/)
     process.env.SHARED_DB_AUTHOR_ENGINE = 'codex'
-    assert.equal(githubIo.resolveOrchestratorEngine(), 'codex')
+    assert.equal(githubIo.resolveReviewEngine(), 'codex')
   } finally {
     if (saved === undefined) delete process.env.SHARED_DB_AUTHOR_ENGINE; else process.env.SHARED_DB_AUTHOR_ENGINE = saved
   }

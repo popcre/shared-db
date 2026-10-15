@@ -45,7 +45,7 @@ jobs:
         with:
           node-version: '22'
       - name: Prove the alarm before trusting it
-        run: node --test scripts/orchestrator-flow/no-progress-alarm.test.mjs scripts/orchestrator-snapshot.test.mjs
+        run: node --test scripts/db-flow/no-progress-alarm.test.mjs scripts/orchestrator-snapshot.test.mjs
       - name: Raise the alarm on a new stall
         env:
           GH_TOKEN: ${{ github.token }}
@@ -58,5 +58,5 @@ jobs:
           [ -n "${POST_ISSUE:-}" ] && args+=(--post-issue "$POST_ISSUE")
           [ -n "${NOW:-}" ] && args+=(--now "$NOW")
           [ -n "${STAGED_LABEL:-}" ] && args+=(--staged-label "$STAGED_LABEL")
-          node scripts/orchestrator-flow/no-progress-alarm.mjs "${args[@]}" | tee alarm.json
+          node scripts/db-flow/no-progress-alarm.mjs "${args[@]}" | tee alarm.json
           { echo '### No-progress alarm'; echo '```json'; grep -v '"body"' alarm.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

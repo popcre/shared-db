@@ -92,7 +92,7 @@ test('stage envelope rejects coercible fields and unknown assertions; verifier c
 })
 
 import { createStageEvidenceVerifier, publishStageEvent, stageEventRef, stageRevocationRef } from './work-stage-evidence.mjs'
-import { parseOutcomeEvidence, verifyOutcomeAcceptance, outcomeEvent } from '../orchestrator-flow/outcome-lifecycle.mjs'
+import { parseOutcomeEvidence, verifyOutcomeAcceptance, outcomeEvent } from '../db-flow/outcome-lifecycle.mjs'
 import { formatEventComment } from '../db-coordination-events.mjs'
 
 function runtimeIo() {

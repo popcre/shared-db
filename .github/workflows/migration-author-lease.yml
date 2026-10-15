@@ -35,12 +35,12 @@ jobs:
         shell: bash
         run: |
           shopt -s nullglob
-          flow_tests=(scripts/orchestrator-flow/*.test.mjs)
+          flow_tests=(scripts/db-flow/*.test.mjs)
           if (( ${#flow_tests[@]} == 0 )); then
             echo "No orchestrator-flow tests found" >&2
             exit 1
           fi
-          required=(scripts/orchestrator-flow/baseline-schema.test.mjs scripts/orchestrator-flow/capacity-state.test.mjs scripts/orchestrator-flow/coordination-audit.test.mjs scripts/orchestrator-flow/evidence-bundle.test.mjs scripts/orchestrator-flow/classify-invalidation.test.mjs scripts/orchestrator-flow/read-preview-ledger.test.mjs scripts/orchestrator-flow/preview-graph.test.mjs scripts/orchestrator-flow/select-preview-route.test.mjs scripts/orchestrator-flow/reviewer-allocation.test.mjs scripts/orchestrator-flow/qualify-change.test.mjs scripts/orchestrator-flow/reconcile.test.mjs scripts/orchestrator-flow/throughput-report.test.mjs)
+          required=(scripts/db-flow/baseline-schema.test.mjs scripts/db-flow/capacity-state.test.mjs scripts/db-flow/coordination-audit.test.mjs scripts/db-flow/evidence-bundle.test.mjs scripts/db-flow/classify-invalidation.test.mjs scripts/db-flow/read-preview-ledger.test.mjs scripts/db-flow/preview-graph.test.mjs scripts/db-flow/select-preview-route.test.mjs scripts/db-flow/reviewer-allocation.test.mjs scripts/db-flow/qualify-change.test.mjs scripts/db-flow/reconcile.test.mjs scripts/db-flow/throughput-report.test.mjs)
           for test_file in "${required[@]}"; do
             [[ -f "$test_file" ]] || { echo "Missing required orchestrator-flow test: $test_file" >&2; exit 1; }
           done

@@ -3,7 +3,7 @@
  * Read-only production caller for the orchestrator snapshot library (issue #2728,
  * programme popcre/ai-devops#401 Step 4).
  *
- *   node scripts/orchestrator-snapshot.mjs --orchestrator-snapshot [--repo owner/name]
+ *   node scripts/flow-snapshot.mjs --orchestrator-snapshot [--repo owner/name]
  *        [--state-dir <absolute dir>] [--now <ISO>]
  *
  * It reads the live claim-first session identity, open claims, open PR heads and check
@@ -21,9 +21,9 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { canonicalJson } from './orchestrator-flow/evidence-bundle.mjs'
-import { buildOrchestratorSnapshot, publishSnapshotTransition } from './orchestrator-flow/orchestrator-snapshot.mjs'
-import { OUTCOME_STATES, trustedOutcomeComments } from './orchestrator-flow/outcome-lifecycle.mjs'
+import { canonicalJson } from './db-flow/evidence-bundle.mjs'
+import { buildFlowSnapshot, publishSnapshotTransition } from './db-flow/flow-snapshot.mjs'
+import { OUTCOME_STATES, trustedOutcomeComments } from './db-flow/outcome-lifecycle.mjs'
 import { formatHoldReason } from './lib/hold-reason.mjs'
 import { parseEventComment } from './db-coordination-events.mjs'
 import { runGitHubCommand } from './lib/github-transport.mjs'
@@ -192,7 +192,7 @@ export function fileEventStore(dir) {
 export function runSnapshotCycle(input, { now, previous = null, store = null, sessionStarted = null } = {}) {
   const ownedIssues = [...new Set([...(input.claims ?? []).flatMap((claim) => [claim.issue, ...(claim.work_issues ?? [])])])]
   const alarms = stalledOutcomes(input.outcome_events, { now, ownedIssues, sessionStarted })
-  const snapshot = buildOrchestratorSnapshot(input, { capturedAt: now })
+  const snapshot = buildFlowSnapshot(input, { capturedAt: now })
   const key = reportKey(snapshot, alarms)
   const current = { report_key: key, snapshot_id: snapshot.snapshot_id, stalled: alarms.stalled_outcomes.map((row) => row.work_issue).sort((a, b) => a - b), zero_closures_4h: alarms.zero_closures_4h, snapshot }
   if (previous && previous.report_key === key) return { output: null, state: previous }

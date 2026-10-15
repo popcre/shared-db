@@ -4,7 +4,7 @@
 //   --alarm  [--repo r] [--now ISO] [--post-issue N] [--staged-label TEXT] [--dry-run]
 //   --resume --issue N [--repo r] [--max-age-minutes M]
 //
-// --alarm reads the live orchestrator state (scripts/orchestrator-snapshot.mjs), and when an
+// --alarm reads the live orchestrator state (scripts/flow-snapshot.mjs), and when an
 // owned outcome has had no stage transition for more than 120 minutes, or nothing closed in
 // four hours, posts ONE comment naming each stuck outcome, its blocker and the unblock action,
 // with the sealed snapshot attached. It is transition-only: the alarm key covers the stalled
@@ -22,16 +22,17 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { canonicalJson } from './evidence-bundle.mjs'
-import { OrchestratorSnapshotError, snapshotInputs, verifyOrchestratorSnapshot } from './orchestrator-snapshot.mjs'
+import { FlowSnapshotError, snapshotInputs, verifyFlowSnapshot } from './flow-snapshot.mjs'
 import { currentRepository } from '../lib/repository-identity.mjs'
-import { ZERO_CLOSURE_WINDOW_MINUTES, defaultIo, gatherLiveInput, gh, runSnapshotCycle, stalledOutcomes, stalledRequests } from '../orchestrator-snapshot.mjs'
+import { ZERO_CLOSURE_WINDOW_MINUTES, defaultIo, gatherLiveInput, gh, runSnapshotCycle, stalledOutcomes, stalledRequests } from '../flow-snapshot.mjs'
 
-export const FALLBACK_TITLE = 'Orchestrator no-progress alarm (no claim-first session identity)'
+export const FALLBACK_TITLE = 'No-progress alarm (no claim-first session identity)'
 // A coordination label, so the queue audit does not report the fallback issue as unlabelled work.
 export const FALLBACK_LABEL = 'orchestrator-alarm'
 
 export const ALARM_MARKER = 'db-no-progress-alarm'
-export const SNAPSHOT_LANG = 'db-orchestrator-snapshot'
+export const SNAPSHOT_LANG = 'db-flow-snapshot'
+export const LEGACY_SNAPSHOT_LANG = 'db-orchestrator-snapshot'
 export const TRUSTED_AUTHORS = Object.freeze(['OWNER', 'MEMBER', 'COLLABORATOR'])
 const sha256 = (value) => createHash('sha256').update(value).digest('hex')
 
@@ -68,8 +69,8 @@ export function renderAlarm({ output, key, now, stagedLabel = null }) {
     lines.push(`- #${row.work_issue} has been \`${row.state}\` for ${row.minutes_since_transition} minutes (since ${row.last_transition_at}). Blocker: ${blocker}. Unblock: ${action}.`)
   }
   if (output.zero_closures_4h) lines.push('- Nothing reached live_verified in the last 4 hours while outcomes are active.')
-  if (!output.snapshot) lines.push('', 'No claim-first session identity resolved, so no sealed snapshot is attached. Open or resume the orchestrator to own these outcomes.')
-  else lines.push('', `Resume from this snapshot: \`node scripts/orchestrator-flow/no-progress-alarm.mjs --resume --issue <this issue>\``, '', '```' + SNAPSHOT_LANG, JSON.stringify(output.snapshot), '```')
+  if (!output.snapshot) lines.push('', 'No claim-first session identity resolved, so no sealed snapshot is attached. Open a claim-first session to own these to own these outcomes.')
+  else lines.push('', `Resume from this snapshot: \`node scripts/db-flow/no-progress-alarm.mjs --resume --issue <this issue>\``, '', '```' + SNAPSHOT_LANG, JSON.stringify(output.snapshot), '```')
   return lines.join('\n')
 }
 
@@ -120,7 +121,7 @@ export function latestSnapshotFromComments(comments) {
   for (const comment of [...rows].reverse()) {
     const body = String(comment?.body ?? '')
     if (!body.includes(`<!-- ${ALARM_MARKER} `)) continue
-    const match = body.match(new RegExp('```' + SNAPSHOT_LANG + '\\s*\\n([\\s\\S]*?)\\n```'))
+    const match = body.match(new RegExp('```' + SNAPSHOT_LANG + '\\s*\\n([\\s\\S]*?)\\n```')) || body.match(new RegExp('```' + LEGACY_SNAPSHOT_LANG + '\\s*\\n([\\s\\S]*?)\\n```'))
     if (!match) continue
     try { return { snapshot: JSON.parse(match[1]), comment_url: comment.html_url ?? null } } catch { continue }
   }
@@ -129,16 +130,16 @@ export function latestSnapshotFromComments(comments) {
 
 export function runResume({ repo, issue, now, maxAgeMinutes = 24 * 60 }, io) {
   const found = latestSnapshotFromComments(io.issueComments(repo, issue))
-  if (!found) throw new OrchestratorSnapshotError(`no alarm snapshot on #${issue}`)
+  if (!found) throw new FlowSnapshotError(`no alarm snapshot on #${issue}`)
   const { snapshot } = found
   let live = null
   const readCurrent = () => {
     live ??= io.gatherLiveInput(repo)
-    if (!live.input.marker) throw new OrchestratorSnapshotError('no open routable claim-first session identity to resume against')
+    if (!live.input.marker) throw new FlowSnapshotError('no open routable claim-first session identity to resume against')
     return live.input
   }
   let currency
-  try { currency = verifyOrchestratorSnapshot(snapshot, { readCurrent, now, maxAgeMs: maxAgeMinutes * 60000 }) } catch (error) {
+  try { currency = verifyFlowSnapshot(snapshot, { readCurrent, now, maxAgeMs: maxAgeMinutes * 60000 }) } catch (error) {
     // The seal is always checked first; only freshness or drift may be reported and resumed past.
     if (!/stale|freshness/.test(error.message)) throw error
     currency = { status: 'DRIFTED', detail: error.message }

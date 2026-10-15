@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { FALLBACK_LABEL, FALLBACK_TITLE, alarmKey, findOrCreateFallback, latestSnapshotFromComments, main, postedKeys, runAlarm, runResume } from './no-progress-alarm.mjs'
-import { gatherLiveInput } from '../orchestrator-snapshot.mjs'
+import { gatherLiveInput } from '../flow-snapshot.mjs'
 
 const T0 = '2026-09-16T08:00:00.000Z'
 function input({ events = [{ event_id: 'e1', event_type: 'dispatched', work_issue: 11, timestamp: T0 }] } = {}) {

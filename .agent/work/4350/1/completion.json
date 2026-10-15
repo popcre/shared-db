@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "work_issue": 4350,
+  "outcome": "ready-for-merge",
+  "pr": 4352,
+  "migration_versions": ["20261015191454"],
+  "contract_ref": "refs/db-contracts/4350/1",
+  "contract_sha256": "d884413e4cabd017f527283318816fbff7350cb9ca9a04bea870191adf6ee3ae",
+  "base_sha": "3ed49af021719889abf6830d6048dd3d00a1e7cd",
+  "head_sha": "7686f0aea7b62f8d48097b0477c450cce89a2c13",
+  "files_changed": [".agent/work/4350/1/contract.json", ".github/live-proofs/4350.sql", "supabase/migrations/20261015191454_plm_stage_catalog.sql", "supabase/tests/plm_stage_catalog_contracts.sql"],
+  "db_reads": ["table dflow.users (ids of Ilona, Yuchen, Marcel)", "table plm.LicensingTime (live licensing durations win over the sheet)", "table plm.ProdOrderHeader (key type only)"],
+  "db_writes": ["table plm.stage_list", "table plm.stage", "table plm.stage_duration", "table plm.stage_dependency", "table plm.licensor_stage_option", "table plm.prod_stage_progress", "function plm.stage_catalog_bump_version"],
+  "checks": [
+    {"command": "bash scripts/check-sql.sh", "exit_code": 0, "evidence": "Static checks passed."},
+    {"command": "git diff --check origin/main...HEAD", "exit_code": 0, "evidence": "No whitespace errors."},
+    {"command": "node scripts/check-live-proof-probe.mjs", "exit_code": 0, "evidence": "Not applicable: outcome #4350 returns to popcre/designflow-tracking."},
+    {"command": "psql --set ON_ERROR_STOP=1 -f supabase/tests/plm_stage_catalog_contracts.sql", "exit_code": 0, "evidence": "Migration and contract test passed on a disposable postgres:15 container (counts 5|24|637|16|0); CI ephemeral database run pending on the PR."}
+  ],
+  "assumptions_resolved": ["maintainers integer[] because dflow.users.id is integer.", "Audit reuses app.AuditLog."],
+  "stop_conditions_hit": []
+}

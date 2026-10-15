@@ -11,7 +11,7 @@ from urllib.parse import urlsplit, urlunsplit
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
-MIGRATION = ROOT / 'supabase/migrations/20260911081204_dam_order_list_find_position.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261015201243_orderlist_so_date_sort.sql'
 
 
 def main():
@@ -29,7 +29,12 @@ def main():
             raise RuntimeError(result.stderr)
 
     migration = MIGRATION.read_text()
-    columns = re.findall(r"'([a-z_]+)'", migration.split('allowed_columns constant text[] := array[')[1].split('];')[0])
+    find_start = migration.index('create or replace function public.find_dam_order_list_row(')
+    find_end = migration.index('\n\ncommit;', find_start)
+    migration = migration[find_start:find_end]
+    allowed_columns = migration.split('allowed_columns constant text[] := array[')[1].split('];')[0]
+    sort_only_columns = migration.split('sort_only_columns constant text[] := array[')[1].split('];')[0]
+    columns = list(dict.fromkeys(re.findall(r"'([a-z_]+)'", allowed_columns + sort_only_columns)))
     dates = {c for c in columns if c.endswith('_date')} | {'etd', 'eta'}
     numbers = {'quantity_ordered', 'quantity_shipped', 'unit_cost', 'order_depth_inches', 'cases_reported', 'case_pack', 'assortment_component_ordinal'}
     booleans = {'close_tracking', 'contractual_sample_reorder'}
@@ -45,13 +50,13 @@ create policy owner_rows on public.find_fixture for select to authenticated usin
 grant select on public.find_fixture to authenticated;
 create view api.dam_order_list with (security_invoker=true) as select {','.join('"'+c+'"' for c in columns)} from public.find_fixture;
 grant select on api.dam_order_list to authenticated;
-insert into public.find_fixture(owner_id,order_line_id,order_date,sku,quantity_ordered,customer_name,vendor_name,snapshot_description)
+insert into public.find_fixture(owner_id,order_line_id,order_date,sales_order_received_date,sku,quantity_ordered,customer_name,vendor_name,snapshot_description)
 values
-('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','00000000-0000-0000-0000-000000000001','2026-09-03','ALPHA',20,'North','V1','plain'),
-('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','00000000-0000-0000-0000-000000000002','2026-09-02','TARGET',10,'North','V2','literal 100% _ '||chr(92)),
-('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','00000000-0000-0000-0000-000000000003','2026-09-02','target second',30,'South',null,'other'),
-('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','00000000-0000-0000-0000-000000000004',null,'ZETA',null,null,'V4',null),
-('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','00000000-0000-0000-0000-000000000005','2026-09-04','TARGET hidden',1,'North','hidden','hidden');
+('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','00000000-0000-0000-0000-000000000001','2026-09-03','2026-09-05','ALPHA',20,'North','V1','plain'),
+('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','00000000-0000-0000-0000-000000000002','2026-09-02','2026-09-03','TARGET',10,'North','V2','literal 100% _ '||chr(92)),
+('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','00000000-0000-0000-0000-000000000003','2026-09-02','2026-09-02','target second',30,'South',null,'other'),
+('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','00000000-0000-0000-0000-000000000004',null,null,'ZETA',null,null,'V4',null),
+('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','00000000-0000-0000-0000-000000000005','2026-09-04','2026-09-04','TARGET hidden',1,'North','hidden','hidden');
 """
     checks = r"""
 set role authenticated;
@@ -73,6 +78,8 @@ begin
     ('target','[{"column":"quantity_ordered","operator":"gt","value":10},{"column":"quantity_ordered","operator":"lt","value":31}]','[]',3,1),
     ('target','[{"column":"quantity_ordered","operator":"neq","value":20}]','[]',2,0),
     ('target','[]','[{"column":"order_date","ascending":true}]',2,0),
+    ('target','[]','[{"column":"sales_order_received_date","ascending":false}]',2,1),
+    ('target','[]','[{"column":"sales_order_received_date","ascending":true}]',3,0),
     ('%','[]','[]',2,1),
     ('_','[]','[]',2,1)
   ) as cases(search,filters,sort,id,idx) loop
@@ -102,6 +109,7 @@ begin
     ('[{"column":"sku; drop table public.find_fixture;--","operator":"eq","value":"x"}]','[]'),
     ('[{"column":"sku","operator":"eq) or true--","value":"x"}]','[]'),
     ('[]','[{"column":"sku","ascending":"desc;select 1"}]'),
+    ('[{"column":"sales_order_received_date","operator":"eq","value":"2026-09-03"}]','[]'),
     ('{}','[]'), ('[null]','[]'),
     ('[{"column":"sku","operator":"eq","value":{}}]','[]'),
     ('[{"column":"sku","operator":"is","value":"null"}]','[]')
@@ -130,7 +138,7 @@ reset role;
         run(url, f'CREATE DATABASE "{name}";')
         created = True
         run(test_url, fixture + migration + (ROOT/'supabase/tests/dam_order_list_find_position.sql').read_text() + checks)
-        print('OrderList Find: 14 expected-position cases, 4 independent ranking parity cases, wildcard/null/RLS/auth/injection contracts passed; 0 skipped.')
+        print('OrderList Find: 16 expected-position cases, 4 independent ranking parity cases, wildcard/null/RLS/auth/injection contracts passed; 0 skipped.')
     finally:
         if created:
             run(url, f'DROP DATABASE "{name}";')

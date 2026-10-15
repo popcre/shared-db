@@ -2581,7 +2581,9 @@ function changeClaimAuthor(options,now,io,voluntary){
     if(voluntary&&!readyRef&&!adopted&&!lease.active)throw new LaneError('voluntary handoff requires an unexpired explicitly relinquished owner lease; expired recovery remains separate')
     const quarantined=lease.capacityState==='relinquished'&&(voluntary||!lease.active)&&!lease.relinquishmentMetadataLegacy
     if(lease.legacy||(!adopted&&(lease.owner!==request.oldOwner||lease.worktree!==request.oldWorktree||(voluntary?!quarantined:(lease.capacityState!=='expired-unconfirmed'&&!quarantined))))||lease.branch!==request.branch)throw new LaneError('claim is not the exact expired old-author lease')
-    if(!adopted&&quarantined&&(lease.blockedOn!==proofOptions.blockedOn||lease.worktreeState!==request.oldWorktreeState||(lease.recoveryArtifact&&lease.recoveryArtifact!==request.recoveryArtifact)))throw new LaneError('quarantined claim does not match the exact abandonment blocker, worktree state or recovery artifact')
+    const sourceIssueBlocker=`issue:#${request.issue}`
+    const previouslyRelinquishedToSourceIssue=lease.blockedOn===sourceIssueBlocker&&request.oldWorktreeState==='clean'
+    if(!adopted&&quarantined&&((lease.blockedOn!==proofOptions.blockedOn&&!previouslyRelinquishedToSourceIssue)||lease.worktreeState!==request.oldWorktreeState||(lease.recoveryArtifact&&lease.recoveryArtifact!==request.recoveryArtifact)))throw new LaneError('quarantined claim does not match the exact abandonment blocker, worktree state or recovery artifact')
     assertClaimNotRetired(lease.version,'transferred',io)
     const issue=io.getIssue(request.issue)
     renewalIssueScope(issue,lease,[request.issue],{allowClaimSuperset:true})

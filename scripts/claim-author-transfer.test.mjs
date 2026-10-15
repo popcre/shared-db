@@ -81,6 +81,16 @@ test('exact quarantined successor adoption restores active capacity and removes 
   assert.equal(transferClaimAuthor(args,NOW,io).sha,result.sha)
 })
 
+test('clean quarantined claim already blocked on its exact work issue can be adopted with a matching abandonment audit',()=>{
+  const io=fixture();quarantine(io,{blockedOn:'issue:#2110',worktreeState:'clean',recoveryArtifact:ARTIFACT})
+  io.localWorktreeState=()=>({state:'clean'})
+  const result=transferClaimAuthor({...args,worktreeState:'clean'},NOW,io),after=parseAuthorLease(io.issues.get(3378).body,NOW)
+  assert.equal(result.idempotent,false)
+  assert.equal(after.owner,args.newOwner);assert.equal(after.worktree,args.targetWorktree)
+  assert.equal(after.version,VERSION);assert.deepEqual(after.objects,['table plm.art_piece_attachment'])
+  assert.equal(io.refs.get('refs/db-claims/'+VERSION),RESERVATION)
+})
+
 test('quarantined adoption refuses mismatched metadata and unexpired or legacy leases without changing the claim',()=>{
   for(const [overrides,pattern] of [
     [{blockedOn:'issue:#901'},/exact abandonment blocker/],

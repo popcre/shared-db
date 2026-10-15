@@ -1312,6 +1312,13 @@ this metadata repair. Neither repair nor its source merge authorizes adoption,
 source merge, preview replay or production. Issue #3618 owns this narrow bridge;
 future consolidation into the canonical claim module requires separate review.
 
+**Already-relinquished clean source-issue blocker:** operator adoption may use a
+separate exact abandonment audit when the quarantined claim already names its
+own work issue as `blocked_on`. The claim must still be clean on the exact PR
+head; all source, reservation, object-collision, audit, target-worktree and
+session-authorization checks remain required. Other blockers and non-clean
+worktrees still require their exact recorded recovery route.
+
 ### Immediate voluntary stop, succession and check-ins (#3618)
 
 Fresh author grants are at most thirty minutes. The native `--check-in-author`

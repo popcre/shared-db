@@ -249,25 +249,23 @@ export function evaluateExactHeadApproval(input) {
   const pinned = atThisHead.filter((row) => !returns.some((ret) => String(ret.assignmentSha ?? '').toLowerCase() === String(row.sha ?? '').toLowerCase()))
   if (!pinned.length) throw new ApprovalCheckError(`every reviewer assignment pinned to head ${headSha} was durably returned; a returned slot is an unapproved slot`)
 
-  // THE MINIMUM SLOT COUNT (issue #2837). The loop below demands an APPROVE for
-  // every slot it can SEE from pinned assignments -- but a slot that was never
-  // drawn is a slot it cannot see, so "every visible slot approved" equals two
-  // independent reviews only when two were drawn. PR #2746 (issue #2478) merged
+  // THE MINIMUM SLOT COUNT (issue #2837; owner 2026-10-14: "change the rules to
+  // only require one and proceed with only 1"). The loop below demands an
+  // APPROVE for every slot it can SEE from pinned assignments -- but a slot that
+  // was never drawn is a slot it cannot see. PR #2746 (issue #2478) merged
   // production-bound bytes on a single slot-1 verdict because slot 2 was never
-  // drawn across all nine heads, nothing required it, and the log line read like
-  // success. This file already names the failure class for a RETURNED slot; a
-  // never-drawn slot reaches the identical blind spot from the other side.
+  // drawn across all nine heads and nothing required it. That failure class is
+  // closed by requiring a named minimum, not by requiring two of them.
   //
-  // The required minimum comes from the same source AGENTS.md 6.x section 4
-  // uses: a change that touches supabase/migrations/ needs TWO independent
-  // reviews; every other change (scripts, docs, CI) needs ONE. It is judged from
-  // the pull request's own changed files -- the same list the documents-only
-  // lane reads above, renames carrying their previous name -- and, exactly like
-  // that lane, `changedFiles` absent entirely means every caller that predates
-  // the rule behaves as before (one slot). An undrawn required slot is a refusal
-  // naming the slot number, so it fails loudly instead of being invisible.
-  const migrationsTouched = (input.changedFiles ?? []).some((file) => String(file ?? '').replace(/\\/g, '/').startsWith('supabase/migrations/'))
-  const requiredSlots = Object.prototype.hasOwnProperty.call(input, 'changedFiles') && migrationsTouched ? 2 : 1
+  // Owner ruling (Albert, 2026-10-14 evening, verbatim: "change the rules to
+  // only require one and proceed with only 1"): EVERY pull request -- migrations,
+  // tooling, scripts, docs, CI alike -- requires exactly ONE independent
+  // exact-head APPROVE. Muse is the only reviewer going forward; Qwen stays
+  // dropped. Independence is unchanged in shape: if more than one slot is
+  // drawn, the providers must still be distinct. An undrawn required slot is a
+  // refusal naming the slot number, so it fails loudly instead of being
+  // invisible.
+  const requiredSlots = 1
   // CARRIED SLOTS FROM A CONTENT-EQUIVALENT PRIOR HEAD (tree-identical re-push).
   // A re-push of the same bytes must not burn a paid draw just to re-pin an
   // assignment an ancestor already holds. This head's own slots supersede the
@@ -280,7 +278,7 @@ export function evaluateExactHeadApproval(input) {
   const undrawnSlots = []
   for (let slot = 1; slot <= requiredSlots; slot += 1) if (!liveBySlot.has(slot) && !carriedBySlot.has(slot)) undrawnSlots.push(slot)
   if (undrawnSlots.length) {
-    throw new ApprovalCheckError(`head ${headSha} owes required review slot(s) ${undrawnSlots.join(', ')} that no assignment ever drew: this pull request's change requires ${requiredSlots} independent review slot(s) (AGENTS.md 6.x: migrations need two, scripts/docs/CI one), and a slot this gate cannot see is a slot it cannot require. Draw each missing required slot at this exact head in either order (--assign-reviewer); each assignment must record its own APPROVE.`)
+    throw new ApprovalCheckError(`head ${headSha} owes required review slot(s) ${undrawnSlots.join(', ')} that no assignment ever drew: this pull request's change requires ${requiredSlots} independent review slot(s) (owner 2026-10-14: one slot for every PR — migrations and tooling alike), and a slot this gate cannot see is a slot it cannot require. Draw each missing required slot at this exact head in either order (--assign-reviewer); each assignment must record its own APPROVE.`)
   }
   // Slots this head owns plus slots carried from a content-equivalent ancestor
   // together satisfy the minimum. Each still owes its own APPROVE below.

@@ -210,8 +210,10 @@ to "spend" only one review.
   newest valid slot-1 assignment for equivalent content. A returned or refused
   slot cannot be revived from an older assignment; the newest valid assignment
   at each required slot controls. Each composed approval still needs its own
-  exact-head APPROVE and distinct reviewers. Migrations still need two
-  independent exact-head APPROVEs; scripts/docs/CI need one. The combined
+  exact-head APPROVE and distinct reviewers. Every pull request — migrations,
+  scripts/docs/CI alike — needs one independent exact-head APPROVE (owner 2026-10-14:
+  "change the rules to only require one and proceed with only 1"). If more than
+  one slot is drawn, the providers must still be distinct. The combined
   recovery and carry implementation is delivered as one independently reviewed
   PR #4294; imported source retains its original history and attribution.
 - **The proposal in #3002 to accept a review bound to a head whose only later

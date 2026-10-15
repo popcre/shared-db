@@ -68,12 +68,14 @@ object/version/source protection. See the current procedure in the full text.
      Do not call a root cause proved without a rerunnable command or verification artifact; after
      ten minutes without proof, label it a `working hypothesis`. Do not announce a proved guard
      incident or close it while triage prints `LEDGER_MISSING`; create the minimal blocker stub
-     first. **Scripts/docs/CI-only work needs one independent reviewer (one review slot).**
-     Migrations, data movement, production applies, and security/RLS work still need **two**
-     independent exact-head APPROVEs. This is the same floor `scripts/check-exact-head-approval.mjs`
-     enforces from the pull request's own changed files (`requiredSlots`): a change touching
-     `supabase/migrations/` requires two; every other change requires one. No gate, test or helper
-     may demand two slots for a non-migration pull request.
+     first. **Every PR needs one independent reviewer (one review slot)** —
+     migrations, data movement, production applies, security/RLS, scripts, docs,
+     CI alike (owner 2026-10-14: "change the rules to only require one and
+     proceed with only 1"). This is the same floor
+     `scripts/check-exact-head-approval.mjs` enforces (`requiredSlots = 1`).
+     Independence is unchanged in shape: if more than one slot is drawn, the
+     providers must still be distinct. No gate, test or helper may demand two
+     slots.
    - Probe reviewer process/session updates and a non-empty output stream before waiting. Replace
      only when there is no verdict and no progress, or a concrete transport, coverage, or
      truncated-output failure. Never replace `REVISE` or reduce coverage: exhaust active providers

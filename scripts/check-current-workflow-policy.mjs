@@ -7,7 +7,7 @@ import { isDocumentsOnlyChange } from './lib/documents-only-change.mjs'
 import { EXCLUSIVE_REFS } from './manage-migration-author-lanes.mjs'
 
 export function expectedPolicy({ activation, approvalSource, documentsOnly = isDocumentsOnlyChange, exclusiveRefs = EXCLUSIVE_REFS }) {
-  const slots = approvalSource.match(/const requiredSlots\s*=\s*Object\.prototype\.hasOwnProperty\.call\(input,\s*'changedFiles'\)\s*&&\s*migrationsTouched\s*\?\s*(\d+)\s*:\s*(\d+)/)
+  const slots = approvalSource.match(/const requiredSlots\s*=\s*(\d+)/)
   if (!slots) throw new Error('Policy authority changed: derive review counts from the current gate before updating this check')
   if (typeof activation?.active !== 'boolean') throw new Error('Production activation authority is not a boolean')
   if (!['preview', 'merge', 'production'].every((key) => typeof exclusiveRefs[key] === 'string' && exclusiveRefs[key])) throw new Error('Exclusive mutation lane authority changed')
@@ -17,7 +17,7 @@ export function expectedPolicy({ activation, approvalSource, documentsOnly = isD
     authors: 'unlimited',
     'reviewer-concurrency': 'unlimited',
     'migration-reviews': slots[1],
-    'governed-code-reviews': slots[2],
+    'governed-code-reviews': slots[1],
     'standalone-plans': documentsOnly(['plan_policy_example.md']) ? 'documentation' : 'guarded',
     'agent-instructions': ['AGENTS.md', 'CLAUDE.md', 'skills/example/SKILL.md', '.claude/agents/example.md'].every((path) => !documentsOnly([path])) ? 'guarded' : 'unguarded',
     'automatic-production-policy': activation.active ? 'active' : 'inactive',

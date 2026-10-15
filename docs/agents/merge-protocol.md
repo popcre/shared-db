@@ -34,21 +34,24 @@ merge them promptly.
 ### Review slots and carried reviews (owner 2026-10-14)
 
 `scripts/check-exact-head-approval.mjs` is the single authority for how many
-independent exact-head APPROVEs a pull request needs. It reads the pull
-request's own changed files: a change touching `supabase/migrations/` needs
-**two**; every other change (scripts, docs, CI, tooling) needs **one**. No
-gate, test or helper may demand two slots for a non-migration pull request.
-Migration PRs still need two independent exact-head APPROVEs before merge and
-production; branch protection is never disabled.
+independent exact-head APPROVEs a pull request needs. Owner ruling (Albert,
+2026-10-14 evening, verbatim: "change the rules to only require one and proceed
+with only 1"): **every** pull request — migrations, tooling, scripts, docs, CI
+alike — needs **one**. Muse is the only reviewer going forward; Qwen stays
+dropped. Independence is unchanged in shape: if more than one slot is drawn, the
+providers must still be distinct. No gate, test or helper may demand two slots.
+Migration PRs no longer need two independent exact-head APPROVEs before merge
+and production; branch protection is never disabled.
 
 A **tree-identical re-push** — same git tree, or same pull request diff ignoring
 `.agent/` — keeps valid existing reviews. Slot 1 is not re-drawn and no paid
 attempt is burned to re-pin the same bytes. For equivalent content, the newest
 valid historical slot-1 assignment may carry forward; a replacement must have
 its exact failure binding verified. A returned or refused slot cannot be
-revived from an older assignment. The gate composes the ancestor's slot 1 with
-the new head's slot 2 only when both required slots have their own APPROVE and
-the reviewers are distinct. The newest valid assignment at each slot controls;
+revived from an older assignment. When more than one slot is drawn, the gate
+composes the ancestor's slot 1 with the new head's slot 2 only when each drawn
+slot has its own APPROVE and the reviewers are distinct. The newest valid
+assignment at each slot controls;
 a return or refusal blocks that slot until a newer valid assignment resolves
 it. An ancestor approval never fills a returned or refused new-head slot.
 Carried reviews do not consume another paid attempt.

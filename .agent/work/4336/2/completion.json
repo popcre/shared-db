@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "work_issue": 4336,
+  "outcome": "ready-for-merge",
+  "pr": 4360,
+  "migration_versions": ["20261015201243"],
+  "contract_ref": "refs/db-contracts/4336/2",
+  "contract_sha256": "c708ba9a75fccd3d0116aae69df1ad76faa12777980f3f10f02afce9f26eb63e",
+  "head_sha": "e9824822a80972b912543f8f545b07ecd66ad948",
+  "base_sha": "f479d4571c7307854ebf56fa5ec74fbdf14b3c00",
+  "files_changed": [
+    "scripts/test_order_list_find_position.py",
+    "supabase/migrations/20261015201243_orderlist_so_date_sort.sql",
+    "supabase/tests/dam_order_list_sales_order_date_sort.sql"
+  ],
+  "db_reads": ["table coldlion.order_history_line", "view api.dam_order_list"],
+  "db_writes": [
+    "view api.dam_order_list",
+    "function dam.orderlist_sales_order_received_date",
+    "function public.find_dam_order_list_row"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Guard B, issue #1235, verification-cost, EOL-reference and static checks passed at implementation head e9824822a80972b912543f8f545b07ecd66ad948."
+    },
+    {
+      "command": "TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:55439/postgres python3 scripts/test_order_list_find_position.py",
+      "exit_code": 0,
+      "evidence": "Disposable PostgreSQL 15 run: 16 expected positions, four independent ranking comparisons, and wildcard/null/RLS/authentication/injection contracts passed; 0 skipped. Container stopped after run."
+    }
+  ],
+  "assumptions_resolved": [
+    "The date follows the existing EDGEHOME primary ColdLion order-history rule and America/New_York calendar day.",
+    "SO Date is sort-only; the Find endpoint rejects it as a filter.",
+    "Find uses the same full-result ordering, nulls last and order_line_id tie-break as the grid sort."
+  ],
+  "stop_conditions_hit": []
+}

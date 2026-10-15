@@ -373,6 +373,7 @@ for(const [name,change,pattern] of [
  ['foreign caller',(io,r)=>{io.orchestratorFlowAdapter=()=>({resolveMarker:()=>({live:true,task:'root',calling_task:'root'})});r.authorizationChatId='root'},/original owner session/],
  ['recipient mismatch',(io,r)=>{r.recipientChatId='foreign'},/exact recipient/],
  ['still active',(io)=>{io.issues.get(3378).body=io.issues.get(3378).body.replace('capacity_state: relinquished','capacity_state: active').replace(/^(blocked_on|worktree_state|recovery):.*\n/gm,'')},/old-author lease/],
+ ['work issue blocker',(io)=>{io.issues.get(3378).body=io.issues.get(3378).body.replace('blocked_on: artifact:'+HEAD,'blocked_on: issue:#2110')},/exact abandonment blocker/],
  ['dirty original',(io)=>{io.localClean=p=>p!==args.worktree},/original source custody/],
  ['wrong original head',(io)=>{io.localHead=p=>p===args.worktree?'e'.repeat(40):HEAD},/original source custody/],
  ['wrong successor head',(io)=>{io.localHead=p=>p===args.targetWorktree?'e'.repeat(40):HEAD},/successor worktree/],

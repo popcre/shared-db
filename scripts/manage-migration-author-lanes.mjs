@@ -2582,7 +2582,7 @@ function changeClaimAuthor(options,now,io,voluntary){
     const quarantined=lease.capacityState==='relinquished'&&(voluntary||!lease.active)&&!lease.relinquishmentMetadataLegacy
     if(lease.legacy||(!adopted&&(lease.owner!==request.oldOwner||lease.worktree!==request.oldWorktree||(voluntary?!quarantined:(lease.capacityState!=='expired-unconfirmed'&&!quarantined))))||lease.branch!==request.branch)throw new LaneError('claim is not the exact expired old-author lease')
     const sourceIssueBlocker=`issue:#${request.issue}`
-    const previouslyRelinquishedToSourceIssue=lease.blockedOn===sourceIssueBlocker&&request.oldWorktreeState==='clean'
+    const previouslyRelinquishedToSourceIssue=!voluntary&&lease.blockedOn===sourceIssueBlocker&&request.oldWorktreeState==='clean'
     if(!adopted&&quarantined&&((lease.blockedOn!==proofOptions.blockedOn&&!previouslyRelinquishedToSourceIssue)||lease.worktreeState!==request.oldWorktreeState||(lease.recoveryArtifact&&lease.recoveryArtifact!==request.recoveryArtifact)))throw new LaneError('quarantined claim does not match the exact abandonment blocker, worktree state or recovery artifact')
     assertClaimNotRetired(lease.version,'transferred',io)
     const issue=io.getIssue(request.issue)

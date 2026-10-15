@@ -13,8 +13,10 @@ because the directory it archived into was never created.
 gh issue list --repo popcre/shared-db --label db-work
 ```
 
-Need database work done, or handing over work you started? **Open an issue** — see the
-`shared-db-orchestrator` and `shared-db-handover` skills. Needs a decision only Albert
+Need database work done, or handing over work you started? **Open an issue** and work
+claim-first (claim the exact objects on that issue and start). See the
+`shared-db-handover` skill for session close-out. `shared-db-orchestrator` is a
+retired-role legacy name only. Needs a decision only Albert
 can make? Add `needs-albert`.
 
 ## ⚠️ An EMPTY issue list is NOT proof there is no work

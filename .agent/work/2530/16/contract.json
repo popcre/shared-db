@@ -1,0 +1,50 @@
+{
+  "schema_version": 2,
+  "work_issue": 2530,
+  "generation": 16,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Bind the merge-queue gate to the authorized PR head under set-equality evidence-tail rule, bind merge-lane acquire to the live PR tip, and keep the exact-head-approval disposition catalogue current.",
+  "base_sha": "ab3b833b5bd35b93e5edc531b363aa83650803cf",
+  "dispatcher": "MiMo chat ffe5ec4d8a438ffeMsuIzWTbV4 on edge-dev",
+  "worker": "MiMo",
+  "branch": "mimo/2530-gate-evidence-tail-v3",
+  "worktree": "D:\\repos\\shared-db-worktrees\\2530-gate-fix",
+  "evidence_parent": {
+    "work_issue": 2530,
+    "generation": 15,
+    "contract_sha256": "b665ac4c229d95fd2bb702c9b4d3306f51ef8018b67171afff3f9a5d79ff021a"
+  },
+  "allowed_paths": [
+    ".agent/work/2530/16/completion.json",
+    ".agent/work/2530/16/contract.json",
+    ".github/workflows/merge-queue-gate.yml",
+    "docs/verification/throughput-dispositions/scripts~check-exact-head-approval.mjs.json",
+    "scripts/merge-queue-contract.mjs",
+    "scripts/merge-queue-contract.test.mjs"
+  ],
+  "file_writes": [
+    ".agent/work/2530/16/completion.json",
+    ".agent/work/2530/16/contract.json",
+    ".github/workflows/merge-queue-gate.yml",
+    "docs/verification/throughput-dispositions/scripts~check-exact-head-approval.mjs.json",
+    "scripts/merge-queue-contract.mjs",
+    "scripts/merge-queue-contract.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not change any migration or database object."
+  ],
+  "required_checks": [
+    "node --test scripts/merge-queue-contract.test.mjs"
+  ],
+  "assumptions": [
+    "Authorization binds to the implementation head; a pure evidence tail on the live tip is lawful.",
+    "A lawful tail is set-equality with one complete evidence pair, matching verifyGitEvidence.",
+    "acquireExclusive requires the live PR tip; authorization and interlock reads use the authorized head."
+  ],
+  "stop_conditions": [
+    "A change would weaken exact-head containment rather than re-bind it to the authorized head."
+  ]
+}

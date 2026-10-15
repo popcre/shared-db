@@ -743,7 +743,7 @@ test('#4206 composed carry: ordinary caller fields cannot inject ancestor assign
   assert.throws(() => evaluateRaw(input), /owes required review slot\(s\) 1/)
 })
 
-test('#4206 composed carry: a governed-code PR can compose a valid slot without migration quorum', () => {
+test('#4206 composed carry: a governed-code PR can compose a valid slot with a single required slot', () => {
   const input = composedCarryInput({ migrations: false })
   const result = evaluateApprovalWithRefresh(input, { contentPreservingRefresh: () => ({ ok: true, implementation_digest: 'e'.repeat(64) }) })
   assert.equal(result.approved, true)
@@ -1247,3 +1247,4 @@ test('#3505: the advisory context is distinct from the real grant context', () =
     /is not a lawful authorization/,
   )
 })
+

@@ -1,4 +1,4 @@
--- Issue #3298 claim #4204, version 20261013144638.
+-- Issue #3298 claim #4204, version 20261015132149.
 -- derived-from: none
 -- Migration A: additive least-privilege PM Jev activity-triage contract.
 -- Pilot v1 writes are administrator-only (admin-only matrix v1). No grant
@@ -1759,6 +1759,7 @@ drop trigger if exists pm_jev_source_changed on app.comment;
 create trigger pm_jev_source_changed
   after update of body on app.comment
   for each row execute function pim.pm_jev_source_changed_trg_fn();
+
 
 
 

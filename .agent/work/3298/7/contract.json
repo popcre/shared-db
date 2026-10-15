@@ -10,13 +10,13 @@
   "branch": "mimo/3298-jev-activity-triage-migration-a",
   "worktree": "C:/repos/shared-db/.ai/worktrees/3298-migration-a",
   "allowed_paths": [
-    "supabase/migrations/20261013144638_pm_jev_activity_triage_contract_a.sql",
+    "supabase/migrations/20261015132149_pm_jev_activity_triage_contract_a.sql",
     "supabase/tests/jev_activity_triage_contract_a.sql",
     ".agent/work/3298/7/contract.json",
     ".agent/work/3298/7/completion.json"
   ],
   "file_writes": [
-    "supabase/migrations/20261013144638_pm_jev_activity_triage_contract_a.sql",
+    "supabase/migrations/20261015132149_pm_jev_activity_triage_contract_a.sql",
     "supabase/tests/jev_activity_triage_contract_a.sql",
     ".agent/work/3298/7/contract.json",
     ".agent/work/3298/7/completion.json"
@@ -102,6 +102,7 @@
     "contract_sha256": "745b83a3871921c78071ea942293c590d8b0a493c93fecfa7279285bd5ac1057"
   }
 }
+
 
 
 

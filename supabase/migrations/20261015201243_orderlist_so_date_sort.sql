@@ -6,26 +6,108 @@
 -- America/New_York date. Missing or conflicting stamps stay blank.
 begin;
 
-create or replace function dam.orderlist_sales_order_received_date(p_coldlion_source_id text)
+do $dependencies$
+declare column_check record;
+begin
+  if not exists (
+    select 1 from pg_catalog.pg_class c
+    where c.oid=to_regclass('api.dam_order_list') and c.relkind='v'
+      and c.reloptions @> array['security_invoker=true']
+  ) then
+    raise exception '#4336 requires the security-invoker OrderList view';
+  end if;
+  for column_check in select * from (values
+    ('api.dam_order_list','order_line_id','uuid'),
+    ('api.dam_order_list','coldlion_source_id','text'),
+    ('coldlion.order_history_line','company_code','text'),
+    ('coldlion.order_history_line','sales_order_no','bigint'),
+    ('coldlion.order_history_line','created_time','timestamp with time zone'),
+    ('plm.production_order_line','id','uuid'),
+    ('plm.production_order_line_source_ref','production_order_line_id','uuid'),
+    ('plm.production_order_line_source_ref','source_system','text'),
+    ('plm.production_order_line_source_ref','source_id','text'),
+    ('plm.production_order_line_source_ref','is_primary','boolean')
+  ) expected(object_name,column_name,type_name)
+  loop
+    if not exists (
+      select 1 from pg_catalog.pg_attribute a
+      where a.attrelid=to_regclass(column_check.object_name)
+        and a.attname=column_check.column_name and not a.attisdropped
+        and a.atttypid=to_regtype(column_check.type_name)
+    ) then
+      raise exception '#4336 dependency missing or changed: %.% (%)',
+        column_check.object_name,column_check.column_name,column_check.type_name;
+    end if;
+  end loop;
+  if position('coldlion_ref.is_primary' in lower(pg_get_viewdef('api.dam_order_list'::regclass)))=0 then
+    raise exception '#4336 requires primary-only ColdLion references in OrderList';
+  end if;
+  if not exists (
+    select 1
+    from pg_catalog.pg_index i
+    join pg_catalog.pg_class idx on idx.oid=i.indexrelid
+    join pg_catalog.pg_attribute a on a.attrelid=i.indrelid and a.attname='sales_order_no' and not a.attisdropped
+    where i.indrelid=to_regclass('coldlion.order_history_line')
+      and idx.relname='coldlion_order_history_line_identity_unique'
+      and i.indisunique and i.indisvalid and i.indisready
+      and i.indnkeyatts=4
+      and i.indkey[0]=a.attnum
+  ) then
+    raise exception '#4336 requires the valid sales_order_no-leading history identity index';
+  end if;
+  if not exists (
+    select 1
+    from pg_catalog.pg_index i
+    join pg_catalog.pg_class idx on idx.oid=i.indexrelid
+    join pg_catalog.pg_attribute line_id on line_id.attrelid=i.indrelid and line_id.attname='production_order_line_id' and not line_id.attisdropped
+    join pg_catalog.pg_attribute source_system on source_system.attrelid=i.indrelid and source_system.attname='source_system' and not source_system.attisdropped
+    where i.indrelid=to_regclass('plm.production_order_line_source_ref')
+      and idx.relname='production_order_line_source_ref_primary_uidx'
+      and i.indisunique and i.indisvalid and i.indisready
+      and i.indnkeyatts=2
+      and i.indkey[0]=line_id.attnum and i.indkey[1]=source_system.attnum
+      and pg_get_expr(i.indpred,i.indrelid) ilike '%is_primary%'
+  ) then
+    raise exception '#4336 requires the valid primary-only OrderList source-reference index';
+  end if;
+end;
+$dependencies$;
+
+create or replace function dam.orderlist_sales_order_received_date(
+  p_order_line_id uuid,
+  p_coldlion_source_id text
+)
 returns date
 language sql stable strict security definer
 set search_path = pg_catalog
 as $$
-  select case when count(*) = count(h.created_time)
-    and count(distinct h.created_time) = 1
-    and min(h.created_time) > timestamptz '2000-01-01 00:00:00+00'
-  then (min(h.created_time) at time zone 'America/New_York')::date end
-  from coldlion.order_history_line h
-  where h.company_code = 'EDGEHOME'
-    and h.sales_order_no = case
-      when p_coldlion_source_id ~ '^coldlion:so:[1-9][0-9]{0,17}:line:[0-9]{1,10}:component:[1-9][0-9]{0,9}$'
-      then split_part(p_coldlion_source_id, ':', 3)::bigint end
+  select case when auth.uid() is not null or auth.role() = 'service_role' then (
+    select case when count(*) = count(h.created_time)
+      and count(distinct h.created_time) = 1
+      and min(h.created_time) > timestamptz '2000-01-01 00:00:00+00'
+    then (min(h.created_time) at time zone 'America/New_York')::date end
+    from coldlion.order_history_line h
+    where h.company_code = 'EDGEHOME'
+      and h.sales_order_no = case
+        when p_coldlion_source_id ~ '^coldlion:so:[1-9][0-9]{0,17}:line:[0-9]{1,10}:component:[1-9][0-9]{0,9}$'
+        then split_part(p_coldlion_source_id, ':', 3)::bigint end
+      and exists (
+        select 1
+        from plm.production_order_line pol
+        join plm.production_order_line_source_ref source_ref
+          on source_ref.production_order_line_id=pol.id
+         and source_ref.source_system='coldlion'
+         and source_ref.is_primary
+         and source_ref.source_id=p_coldlion_source_id
+        where pol.id=p_order_line_id
+      )
+  ) end
 $$;
 
-revoke all on function dam.orderlist_sales_order_received_date(text) from public, anon;
-grant execute on function dam.orderlist_sales_order_received_date(text) to authenticated;
-comment on function dam.orderlist_sales_order_received_date(text) is
-  'OrderList SO received date for one primary ColdLion source reference. Same rule as get_dam_order_sales_order_dates. #4336.';
+revoke all on function dam.orderlist_sales_order_received_date(uuid,text) from public, anon;
+grant execute on function dam.orderlist_sales_order_received_date(uuid,text) to authenticated, service_role;
+comment on function dam.orderlist_sales_order_received_date(uuid,text) is
+  'OrderList SO received date only for an authenticated caller (or service_role) and an exact primary ColdLion source reference bound to its canonical order line; this does not expose an arbitrary SO-number date oracle. The date uses the same EDGEHOME/full-timestamp/America-New_York rule as get_dam_order_sales_order_dates. #4336.';
 
 create or replace view api.dam_order_list with (security_invoker=true) as
 SELECT pol.id AS order_line_id,
@@ -141,7 +223,7 @@ SELECT pol.id AS order_line_id,
      LEFT JOIN dam.orderlist_customer_settings customer_settings ON customer_settings.customer_normalized=lower(btrim(coalesce(cust.customer_name,nullif(po.metadata->>'customer_name',''))))
      LEFT JOIN plm.production_order_line_source_ref google_ref ON google_ref.production_order_line_id = pol.id AND google_ref.source_system = 'google_order_list'::text AND google_ref.is_primary
      LEFT JOIN plm.production_order_line_source_ref coldlion_ref ON coldlion_ref.production_order_line_id = pol.id AND coldlion_ref.source_system = 'coldlion'::text AND coldlion_ref.is_primary
-     LEFT JOIN LATERAL (select dam.orderlist_sales_order_received_date(coldlion_ref.source_id) AS sales_order_received_date) so_date ON true;
+     LEFT JOIN LATERAL (select dam.orderlist_sales_order_received_date(pol.id,coldlion_ref.source_id) AS sales_order_received_date) so_date ON true;
 
 create or replace function public.find_dam_order_list_row(
   p_search text,

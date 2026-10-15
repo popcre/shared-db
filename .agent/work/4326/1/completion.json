@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "work_issue": 4326,
+  "outcome": "ready-for-merge",
+  "pr": 4328,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4326/1",
+  "contract_sha256": "f29e2cc581c44ca66d542afd606b294bd2249ab9bde5b384e4c2826f9be0040c",
+  "head_sha": "b0252ce1febb3e2a6f1345176b1fe51024a73052",
+  "base_sha": "8717fc09f52b2b9a1a7002f371512e4b15283bd5",
+  "files_changed": [
+    "scripts/shared_db_live_proof.py",
+    "scripts/test_shared_db_live_proof.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python3 -m unittest discover -s scripts -p test_shared_db_live_proof.py",
+      "exit_code": 0,
+      "evidence": "30 tests passed, including real Node import and hostile multi-statement refusal."
+    },
+    {
+      "command": "node --test scripts/check-live-proof-probe.test.mjs",
+      "exit_code": 0,
+      "evidence": "17 passed, zero failures."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors."
+    }
+  ],
+  "assumptions_resolved": [
+    "Preexisting separate exploratory prototype is disclosed in prospective delivery contract; candidate integration and Windows URL hardening followed its publication.",
+    "Actual bounded production proof at qsllyeztdwjgirsysgai returned passed=true with same-transaction read-only role/settings qualification; local unmerged read-only test is distinct from installed main."
+  ],
+  "stop_conditions_hit": []
+}

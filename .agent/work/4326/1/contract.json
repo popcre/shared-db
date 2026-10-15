@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "work_issue": 4326,
+  "generation": 1,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Integrate and harden the uncommitted live-proof import prototype under a prospective delivery contract, preserving the actual SQL lexer and bounded read-only proof capability.",
+  "base_sha": "8717fc09f52b2b9a1a7002f371512e4b15283bd5",
+  "dispatcher": "Codex chat 01a13fd0-6bf1-7a80-b1cc-818fe11cec0b on edge-dev3",
+  "worker": "Codex with bounded Luna integration",
+  "branch": "codex/eight-issues-resume-20261015",
+  "worktree": "/home/ahazan/.codex/worktrees/5bd0/shared-db",
+  "allowed_paths": [
+    "scripts/shared_db_live_proof.py",
+    "scripts/test_shared_db_live_proof.py",
+    ".agent/work/4326/1/contract.json",
+    ".agent/work/4326/1/completion.json"
+  ],
+  "file_writes": [
+    "scripts/shared_db_live_proof.py",
+    "scripts/test_shared_db_live_proof.py",
+    ".agent/work/4326/1/contract.json",
+    ".agent/work/4326/1/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No migration or database mutation, claim takeover, protection weakening or lexer/role bypass.",
+    "Do not overwrite the separate uncommitted prototype or prior frozen source/evidence."
+  ],
+  "required_checks": [
+    "python3 -m unittest discover -s scripts -p test_shared_db_live_proof.py",
+    "node --test scripts/check-live-proof-probe.test.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "An exploratory uncommitted two-file prototype and its test outputs predate this contract in the separate live-probe-import-fix worktree; this is disclosed, not retroactively authorized.",
+    "The governed deliverable begins here: integrate the candidate, correct Windows-safe module URL conversion, and add real hostile-SQL validation."
+  ],
+  "stop_conditions": [
+    "Stop on any SQL safety regression, unexpected scope or failed required check."
+  ]
+}

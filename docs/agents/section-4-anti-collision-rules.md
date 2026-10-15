@@ -479,9 +479,11 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    For new assignments, the shared cursor (the sequence counter is shared; which
    reviewer a draw lands on depends on what the drawing machine can run) rotates GLM
    5.3 → Qwen 3.8 Max → Muse Spark 1.3 Contributor → Gemini 3.8 Flash High → DeepSeek
-   V4.1 Flash → StepFun Step 5 → repeat, with Grok 4.6 kept active as the fallback drawn
-   only when none of those preferred reviewers can take the exact review (owner
-   preference 2026-09-27, #3592; applies to slot 2 and failed-reviewer replacements too),
+   V4.1 Flash → StepFun Step 5 → repeat. Grok 4.6 was the fallback drawn only when
+   none of those preferred reviewers could take the exact review (owner preference
+   2026-09-27, #3592), but it is QUARANTINED since 2026-10-13 (xAI account out of
+   credit; owner instruction "take grok out of the reviewer pool for now") and is
+   not drawable, even as a fallback, until removed from `QUARANTINED_REVIEWERS`;
    skipping any reviewer whose engine matches the live orchestrator, and on a
    non-Linux machine skipping StepFun (its preflight is `unsupported-platform`). GLM 5.3
    was restored on 2026-09-30 (owner instruction: "add GLM back into the
@@ -527,7 +529,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    with `readsRepository: true`, so every durable verdict it already recorded
    still authorizes a merge. **Qwen 3.8 Max was UNQUARANTINED on 2026-09-07** by
    owner instruction (ai-devops PR #316, merge `795902d8`) and is drawable again;
-   `QUARANTINED_REVIEWERS` is empty. The retired `glm-5.2` label is paused until
+   `QUARANTINED_REVIEWERS` holds only `grok-4.6` (since 2026-10-13, out of credit). The retired `glm-5.2` label is paused until
    an explicit owner instruction restores it.
 
    **DeepSeek V4.1 Flash (`deepseek-v4.1-flash`) is ACTIVE as of 2026-09-23**
@@ -634,7 +636,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    `already-reviewed` reason is retired. A new exclusion with it is refused, and a
    historical record of it still parses but never bars a draw -- the same
    reviewer may review the same pull request any number of times. Slot 2 of one
-   exact head must still be a different provider from slot 1 (two approvals).
+   exact head must still be a different provider from slot 1 (distinct reviewers when more than one slot is drawn).
    `independence-conflict` is an INDEPENDENCE guarantee -- a provider that is the
    orchestrating or authoring engine is never drawn, and no later evidence
    changes that. It is
@@ -1268,6 +1270,117 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
      Evidence capture does not authorize public storage of licensed, private, or
      sensitive source material.
 
+### Expired clean checkpoint blocker recovery (#3618)
+
+**2026-10-13 successor route:** cooperative stopped-owner handoff below takes
+priority when authentic owner-issued consent can be obtained. Do not wait for
+expiry or invent abandonment for work an owner voluntarily stopped. The expired
+checkpoint bridge remains available only for its original qualified case.
+
+`scripts/rebind-expired-claim-blocker.mjs` is a separate preserve-only bridge for
+an OPEN source PR whose clean, explicitly relinquished author claim has naturally
+expired but still names its exact source checkpoint as its blocker and recovery.
+It changes only `blocked_on` to an independently qualified, exact open and ready
+repository-maintenance abandonment audit on that same route, with exactly one
+active audit fence. Never repurpose an earlier audit for another claim.
+Owner, branch, worktree, expiry,
+capacity state, recovery, objects, source PR and permanent version stay unchanged.
+Active/unexpired, dirty, remote, legacy and resumed claims refuse. An ordinary
+external dependency blocker cannot be rebound through this operation.
+
+Before use, independently prove the original author's explicit terminal handoff
+or unavailability; idle status or expiry alone is insufficient. Preserve original
+custody and record the evidence on the same existing maintenance issue with the
+exact `abandonment-audit` fence. Declare the actual current session and supply
+the user's verbatim recovery instruction through `--authorization-quote-file`.
+The receipt records that human identity was not independently authenticated.
+Exact source/version/parser/collision/stage/worktree/audit/main-lineage checks
+run before and under the canonical mutex, and again after receipt creation.
+A create-only receipt binds both complete claim bodies and the audit body.
+Readback must prove the exact one-field change; a failure rolls back only while
+the mutex is still owned. Lock loss reports partial state without foreign rollback.
+An unreadable lock is unknown ownership, not permission to roll back. The error
+preserves `MUTATION_EVIDENCE`, the receipt and whether a fresh read sees the
+original body, rebound body, other bytes or unreadable state.
+Cleanup uses the canonical owner-verified API/git fallback. If both channels
+fail after successful mutation, the error includes `OPERATION_COMPLETED` and the
+actual immutable receipt rather than hiding the completed change; repair the
+exact held lock before continuing and never repeat a different request blindly.
+
+The existing author-transfer operation remains a separate, unchanged gate after
+this metadata repair. Neither repair nor its source merge authorizes adoption,
+source merge, preview replay or production. Issue #3618 owns this narrow bridge;
+future consolidation into the canonical claim module requires separate review.
+
+### Immediate voluntary stop, succession and check-ins (#3618)
+
+Fresh author grants are at most thirty minutes. The native `--check-in-author`
+entry point confirms the actual current owner, exact claim/issue/PR/head and
+local branch/head, re-proves canonical scope/source/reservation/collisions under
+the existing mutex, and creates a separate immutable owner confirmation bound
+to the full current claim body and a bounded expiry. Existing lease-body fields
+remain unchanged for older readers. Run it
+explicitly every ten minutes while execution is needed and before protected
+actions. The migration author gate refuses missing, future or older-than-ten-
+minute confirmation and any oversized grant. A process merely existing is not
+continued-need confirmation. A stopped or expired owner cannot use check-in to
+revive execution; normal recovery remains separate. Legacy claims stay readable
+and protective but must obtain a real confirmation before protected admission.
+
+On normal completion, external-block stop or wrap-up, first stop all source
+writers. Fully delivered/live-accepted work uses its existing native release
+gate. Unfinished clean source uses `--stop-author` with exact claim/issue/PR/head,
+owner, branch and original worktree. The actual owner relinquishes execution
+capacity and publishes a create-only `refs/db-author-handoff-ready/` receipt.
+That receipt pins the complete stopped claim-body hash, source head, permanent
+version/reservation, custody, former deadline and actual issuer session; it names
+no prospective successor. Re-read both claim and receipt before ending. Dirty,
+remote, legacy or ambiguous custody remains preserved and explicitly blocked
+until its governed recovery proof passes. Never discard source/object protection.
+
+An actual recipient uses `--handoff-claim-author` with exact original/successor
+custody, its real identity, recipient identity, user instruction and ready ref.
+Without a ready ref only the actual original owner can execute the direct
+cooperative handoff. This is not abandonment and requires no elapsed deadline.
+Original and successor must genuinely be clean at the same source branch/head
+(except under remote custody below, where the original's clean state is the one
+the owner signed and its path must be absent on the accepting machine); use
+independent repository/worktree custody when Git cannot attach a branch twice.
+Never force a duplicate checkout or discard the original.
+
+**Remote custody (#4288).** When the original owner stopped on another machine,
+the recipient adds `--remote-custody` (valid only with `--handoff-claim-author`
+and a ready ref). It is accepted only when the owner-signed ready receipt binds
+the exact source, the recovery point is exactly the pushed PR head
+(`artifact:<head>`), the live PR head/branch are unchanged, and the original
+worktree path is genuinely **absent** on the accepting machine; the successor
+worktree must still be clean at the exact head. The handoff receipt records
+`original_worktree_custody: remote`. Never recreate the original path to satisfy
+local custody. All other handoff inputs stay mandatory: `--worktree-state clean`
+(the owner-signed state of the original, not an observation from this machine),
+`--worktree <recorded original path>`, `--target-worktree`, `--recipient-chat-id`,
+`--request-id`, `--recovery-artifact artifact:<head>`, `--authorization-chat-id`
+and `--authorization-quote-file`.
+
+Acceptance re-proves source/version/parser/custody/main ancestry, scope, entire
+claim body, ready evidence, permanent reservation, foreign collisions and stages
+under the canonical mutex. A distinct create-only acceptance receipt binds both
+full claim bodies and the ready-ref SHA. It records the old deadline and gives
+the successor a new real-time grant of at most thirty minutes, with explicit
+confirmation. Ownership, worktree and execution state move atomically; objects,
+source and permanent version remain protected. Open and merged source proofs
+remain distinct; merged sources use the canonical exact-head structural parser
+and main-history verification, never a fake open-PR entry.
+
+Replays require unchanged receipts and exact body readback. A resumed or edited
+old claim invalidates ready consent. A failed first attempt whose recorded grant
+has elapsed retains its evidence and may use a fresh request ID only while the
+original stopped claim remains unchanged. Rollback occurs only under owned lock;
+unknown/lost ownership reports partial evidence instead of foreign rollback.
+Owned cleanup uses the canonical API/git fallback and exposes a proven completed
+receipt if cleanup fails. Wrap-up freshly verifies native release, ready consent
+or actual succession; notes and a closed chat alone are not successful cleanup.
+
 ### Expired merged-source custody recovery (#3618)
 
 The explicit `scripts/transfer-expired-merged-claim-author.mjs` entry point handles only an expired-unconfirmed claim whose exact source pull request is already merged. The ordinary lane manager and ordinary open-source transfer remain unchanged. This capability does not establish abandonment or authorize live adoption by itself.
@@ -1277,3 +1390,4 @@ The operator must independently prove the exact open repository-maintenance aban
 The operation acquires the canonical mutex, records a create-only recovery receipt before changing the claim, rechecks the complete evidence under that mutex, verifies the resulting claim and permanent reservation, and preserves its receipt for exact replay. A partial claim update is rolled back only while mutex ownership still holds. It never applies database changes or releases a protected production claim. The receipt explicitly records that human identity was not independently authenticated.
 
 Owner: work issue #3618. This narrow standalone module is the recovery boundary; future consolidation into the canonical transfer module requires separately reviewed scope. No original claim may be adopted merely because this tooling is installed.
+

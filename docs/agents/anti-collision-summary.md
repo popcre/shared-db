@@ -10,6 +10,16 @@ preview rehearsal and its recovery lane:
 Read it in full before you claim a lane, author a migration, or rehearse on preview.** The five
 rules below are the operative summary.
 
+**Stopped-owner and check-in rule (2026-10-13, #3618):** new author permissions
+are at most thirty minutes. Explicitly check in through native `--check-in-author`
+every ten minutes and before protected actions; the migration gate verifies the
+actual confirmation timestamp. At normal completion, an external-block stop, or
+wrap-up, stop writers and finish native release or `--stop-author` readiness.
+An actual successor consumes the create-only ready receipt immediately through
+`--handoff-claim-author` (with `--remote-custody` when the original worktree is on
+another machine and absent here, #4288); it never waits out the former owner's deadline. Preserve
+object/version/source protection. See the current procedure in the full text.
+
 1. **There is no limit on how many unrelated migrations may be authored at once. Preview, merges,
    and production promotion remain one at a time** (owner ruling 2026-09-11, marker #2758, issue
    #2775: no limit on migration author lanes, ever). Exact object claims and version reservations
@@ -58,18 +68,20 @@ rules below are the operative summary.
      Do not call a root cause proved without a rerunnable command or verification artifact; after
      ten minutes without proof, label it a `working hypothesis`. Do not announce a proved guard
      incident or close it while triage prints `LEDGER_MISSING`; create the minimal blocker stub
-     first. Scripts/docs/CI-only work needs one independent reviewer. Migrations, data movement,
-     production applies, and security/RLS work still need two.
+     first. **Owner ruling 2026-10-14: one independent exact-head APPROVE is enough for every
+     change, including migrations.** This is the floor `scripts/check-exact-head-approval.mjs`
+     enforces (`requiredSlots = 1`). No gate, test or helper may demand two slots.
    - Probe reviewer process/session updates and a non-empty output stream before waiting. Replace
      only when there is no verdict and no progress, or a concrete transport, coverage, or
      truncated-output failure. Never replace `REVISE` or reduce coverage: exhaust active providers
     not failed on the exact head, then fail closed with the exact blocker. The configured rotation is
-    Grok 4.6, GLM 5.3, Qwen 3.8 Max, Muse Spark 1.3 Contributor,
+    GLM 5.3, Qwen 3.8 Max, Muse Spark 1.3 Contributor,
     Gemini 3.8 Flash High, DeepSeek V4.1 Flash, and StepFun Step 5 (Linux machines only), minus the authoring engine (automation still keys this on the marker; see #3874) — exactly
     `ACTIVE_REVIEWERS` in `scripts/manage-migration-author-lanes.mjs`.
     **Preference (owner, 2026-09-27, non-orchestrator issue #3592):** the allocator rotates
-    among eligible non-Grok reviewers first; Grok stays active and is drawn only when that
-    preferred pool cannot take the exact review (also for slot 2 and replacements). Gemini
+    among eligible non-Grok reviewers first; Grok was drawn only when that
+    preferred pool could not take the exact review (also for slot 2 and replacements), and is
+    QUARANTINED since 2026-10-13 (xAI account out of credit), so it is not drawn at all. Gemini
     re-entered on 2026-09-06 (PR #2438) after a live re-qualification. Kimi K3
     was unpaused on 2026-09-07 (PR #2483) after a passing wrapper doctor; it
     is paused again as of 2026-09-22 (see below). Qwen 3.8 Max was unquarantined on 2026-09-07 by owner
@@ -124,7 +136,11 @@ rules below are the operative summary.
    again.
 
    ⚠️ **Merging requires an APPROVE pinned to the EXACT head being merged, and the merge gate now enforces it (#1816, 2026-08-29).** A reviewer assignment is not an approval, and an approval of an earlier head is not an approval of these bytes: answering a `REJECT` with a new commit requires a fresh exact-head review before that commit can merge. Enforced by `scripts/check-exact-head-approval.mjs`, run twice in `guarded-migration-merge` (up front, then re-proven under the merge lock). Before this it was convention only, and PR #1809 merged unapproved bytes onto `main`. Free-text verdicts are unauthorized by default and count only from GitHub's OWNER, MEMBER or COLLABORATOR associations. The gate still does **not** prove the assigned provider is the commenter, because assignment refs do not carry an identity that can be bound to GitHub authorship. Do not cite a pass as proof of who reviewed. Full limits in `docs/agents/section-4-anti-collision-rules.md`. ⚠️ **One exemption, added 2026-09-02 (#2102): a documents-only pull request draws no reviewer and the gate requires no verdict for it — see rule 18. Rulebook files are not documents.** ⚠️ **Merged-PR audit mode (#2839, PR #3375):** running the gate with `APPROVAL_AUDIT=merged` on a merged pull request does not re-read reviewer verdicts; it passes only if the newest `Migration guarded merge authorization` status on the exact head, at or before `merged_at`, is a `github-actions[bot]` success carrying the guarded lane's description (or the documents-only lane's, when the PR's files still classify documents-only). Open PRs refuse in this mode, closed-unmerged PRs refuse, and without the variable the gate stays the live verdict check for every caller. Known limit: the merge commit SHA is recorded but not bound to the authorized head.
-   ⚠️ **Refreshing from main keeps the APPROVE (#2758, 2026-09-11).** An APPROVE recorded at head A still counts at a later head B when A is an ancestor of B and the pull request's own diff against its merge base with main is byte-identical at both, ignoring only `.agent/` evidence files (`scripts/lib/pr-content-equivalence.mjs`, used by the merge gate and the preview gate). **The exclusion is the whole `.agent/` tree**, so it still covers the per-pull-request evidence paths `.agent/work/<work_issue>/<generation>/` introduced by #2708 (2026-09-20); an APPROVE carried forward across a refresh is unchanged by that move. Any change of the author's own, even whitespace in SQL, needs a new review, as does main editing a file the pull request also edits; a refusal at any equivalent head (found through its assignments, returns or verdicts) is never carried past, and a head with reviewer records of its own (an assignment, return or verdict) is judged on those alone. By the same rule, a main that moved after dispatch no longer stops the guarded merge when the pull request touches no file or migration version main changed, merges into it cleanly, and keeps its own diff; and a production promotion no longer rejects its preview proof because main later gained another migration's verification sidecar, unless that migration names an object the promoted migration names.
+   ⚠️ **Refreshing from main keeps the APPROVE (#2758, 2026-09-11; tree-identical re-push and composed carry added 2026-10-14).** An APPROVE recorded at head A still counts at a later head B when A is an ancestor of B and the pull request's own diff against its merge base with main is byte-identical at both, ignoring only `.agent/` evidence files (`scripts/lib/pr-content-equivalence.mjs`, used by the merge gate and the preview gate). **The exclusion is the whole `.agent/` tree**, so it still covers the per-pull-request evidence paths `.agent/work/<work_issue>/<generation>/` introduced by #2708 (2026-09-20); an APPROVE carried forward across a refresh is unchanged by that move. Any change of the author's own, even whitespace in SQL, needs a new review, as does main editing a file the pull request also edits; a refusal at any equivalent head (found through its assignments, returns or verdicts) is never carried past. By the same rule, a main that moved after dispatch no longer stops the guarded merge when the pull request touches no file or migration version main changed, merges into it cleanly, and keeps its own diff; and a production promotion no longer rejects its preview proof because main later gained another migration's verification sidecar, unless that migration names an object the promoted migration names.
+
+   ⚠️ **A tree-identical re-push keeps valid existing reviews (#4206; owner 2026-10-14: "change the rules so that we don't need 2 reviews").** When the git tree is unchanged, or the pull request diff is unchanged ignoring `.agent/`, slot 1 is not re-drawn and no paid attempt is burned to re-pin the same bytes. For equivalent content, the newest valid historical slot-1 assignment may carry forward; the latest valid replacement is used, with its failure binding verified. A returned or refused slot is never revived from an older assignment. A new-head assignment or return controls that slot; an ancestor approval cannot fill a returned or refused new-head slot. Carried reviews do not consume another paid attempt.
+
+   ⚠️ **Owner-quoted allowlist widening for a fresh later draw (source history includes PR #4294).** For a new slot, the earliest live peer anchors policy; a fresh later draw may widen that policy only with a recorded verbatim owner quote and a strict-superset allowlist. A slot's own durable policy controls its retries and replacements exactly. The quote is stored only when widening actually occurs. Narrowing, disjoint policies, unquoted widening, or restricting an unrestricted peer are refused. Fresh peer, carried-history and policy reads are rechecked under the assignment mutex.
 
    **Merge first, then rehearse on preview from merged `main`, then promote.** A rehearsal runs
    **once** — an applied version can never be applied again, so a re-dispatch and a GitHub

@@ -3,7 +3,7 @@ import { currentRepository, expectedOperatorAssociation } from './lib/repository
 // Fixtures follow the resolved repository identity and its operator association (#3255).
 const THIS_REPO = currentRepository(), OPERATOR_ASSOCIATION = expectedOperatorAssociation()
 import test from 'node:test'
-import { parseArgs, runGovernedReview as executeGovernedReview, resolveReviewSource, reserveReviewReceipt, validateSourceReceipt, wrapperFailureReason, redactWrapperStderr, wrapperFailureLogText, writeWrapperFailureLog, wrapperSourceContractArgs, wrapperVerdictContractArgs, wrapperBaseName, codexReportPath, codexGovernedBody, verdictFromOutput, neutraliseVerdictLine, extraVerdictLines, PRESERVED_HEADER, resolveReplacementSequence, lifecyclePoolProvider, lifecyclePoolImplementer, lifecyclePoolDispatch, lifecyclePoolReportBody } from './run-governed-review.mjs'
+import { GOVERNED_REVIEW_OPTIONS, parseArgs, runGovernedReview as executeGovernedReview, resolveReviewSource, reserveReviewReceipt, validateSourceReceipt, wrapperFailureReason, redactWrapperStderr, wrapperFailureLogText, writeWrapperFailureLog, wrapperSourceContractArgs, wrapperVerdictContractArgs, wrapperBaseName, codexReportPath, codexGovernedBody, verdictFromOutput, neutraliseVerdictLine, extraVerdictLines, PRESERVED_HEADER, resolveReplacementSequence, lifecyclePoolProvider, lifecyclePoolImplementer, lifecyclePoolDispatch, lifecyclePoolReportBody } from './run-governed-review.mjs'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, statSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -947,6 +947,8 @@ test('issue 2729: other wrapper failures stay plain refusals with no reroute dec
 })
 
 test('parseArgs refuses unknown arguments instead of silently defaulting the slot (#2467)',()=>{
+  assert.ok(GOVERNED_REVIEW_OPTIONS.every((flag)=>flag.startsWith('--')))
+  assert.ok(GOVERNED_REVIEW_OPTIONS.includes('--tests'))
   assert.throws(()=>parseArgs(['--issue','1','--pr','2','--slot','2','--','review']),/unknown governed review argument --slot \(use --review-slot\)/)
   assert.throws(()=>parseArgs(['--issue','1','--bogus','x']),/unknown governed review argument --bogus/)
   assert.throws(()=>parseArgs(['issue','1']),/--name value pairs/)
@@ -956,6 +958,8 @@ test('parseArgs refuses unknown arguments instead of silently defaulting the slo
   assert.equal(parseArgs(['--issue','1','--pr','2','--tests',command]).tests,command)
   assert.equal(parseArgs(['--issue','1','--pr','2']).tests,undefined)
   assert.equal(parseArgs(['--issue','1','--pr','2']).slot,1)
+  assert.equal(parseArgs(['--issue','1','--pr','2','--headSha','legacy']).headSha,'legacy')
+  assert.throws(()=>parseArgs(['--issue','1','--unknown','x']),/supported: --issue, --pr, --head-sha/)
 })
 
 test('a wrapper call missing new <session-name> is refused with the usage line (#498)',()=>{

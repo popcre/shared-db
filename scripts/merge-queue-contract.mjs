@@ -31,6 +31,8 @@
 // hard-coded: it resolves through scripts/lib/repository-identity.mjs.
 import { runGitHubCommand } from './lib/github-transport.mjs'
 import { resolveRepositoryIdentity, RepositoryIdentityError } from './lib/repository-identity.mjs'
+import { resolveEvidencePair } from './lib/agent-evidence-paths.mjs'
+import { execFileSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 
 export class MergeQueueError extends Error {}
@@ -355,6 +357,90 @@ export function readAuthorizationRow(headSha, { repo, read = ghJson } = {}) {
 export function readAuthorizationState(headSha, { repo, read = ghJson } = {}) {
   return readAuthorizationRow(headSha, { repo, read })?.state ?? null
 }
+
+// Resolve the AUTHORIZED PR head from the live tip using the same ancestor +
+// evidence-tail rule `verifyGitEvidence` enforces (scripts/
+// agent-work-contract-git-evidence.mjs). The guarded merge lane posts
+// `Migration guarded merge authorization` on the implementation commit
+// (`report.head_sha`). The live tip may then carry only this pull request's
+// evidence pair after it. The merge-queue gate must bind containment and
+// authorization to that implementation head — never blindly to the live tip —
+// or a legitimate evidence tail makes the group look like it is missing the
+// reviewed head (canary #4321: live tip `e844a091`, authorized implementation
+// `944ff07f`, group parent `944ff07f`).
+//
+// Returns `{ authorizedHead, evidenceTail, mode }` where mode is `exact` when
+// the tip itself is authorized, or `evidence-tail` when only the pair follows.
+export function resolveAuthorizedHead(prHeadSha, { isAncestor, changedFiles, firstParent, readAuthorizationState, maxWalk = 6 } = {}) {
+  if (!/^[0-9a-f]{40}$/i.test(String(prHeadSha ?? ''))) {
+    throw new MergeQueueError('resolving the authorized PR head requires a 40-character live tip SHA')
+  }
+  if (typeof isAncestor !== 'function' || typeof changedFiles !== 'function' || typeof firstParent !== 'function' || typeof readAuthorizationState !== 'function') {
+    throw new MergeQueueError('resolveAuthorizedHead requires isAncestor, changedFiles, firstParent, and readAuthorizationState')
+  }
+  const tip = String(prHeadSha).toLowerCase()
+  const tipState = readAuthorizationState(tip)
+  if (tipState === 'success') {
+    return { authorizedHead: tip, evidenceTail: [], mode: 'exact' }
+  }
+
+  let current = tip
+  for (let step = 0; step < maxWalk; step++) {
+    const parent = firstParent(current)
+    if (!/^[0-9a-f]{40}$/i.test(String(parent ?? ''))) break
+    const candidate = String(parent).toLowerCase()
+    if (!isAncestor(candidate, tip)) break
+    const cumulativeTail = [...changedFiles(candidate, tip)].map(String).sort()
+    const pairState = cumulativeTail.length === 0 ? 'inherited' : resolveEvidencePair(cumulativeTail).state
+    const tailAllowed = cumulativeTail.length === 0 || pairState === 'current'
+    if (tailAllowed && readAuthorizationState(candidate) === 'success') {
+      return {
+        authorizedHead: candidate,
+        evidenceTail: cumulativeTail,
+        mode: cumulativeTail.length === 0 ? 'exact' : 'evidence-tail',
+      }
+    }
+    // A complete evidence pair already spans candidate→tip. A second pair (or
+    // any non-evidence change) is not a tail this gate may walk through.
+    if (pairState === 'current' || pairState === 'conflicted') break
+    const stepFiles = [...changedFiles(candidate, current)].map(String)
+    const stepPair = resolveEvidencePair(stepFiles)
+    if (stepFiles.length > 0 && stepPair.state !== 'partial' && stepPair.state !== 'current') break
+    current = candidate
+  }
+
+  throw new MergeQueueError(
+    `no authorized PR head found at or under live tip ${tip}: the tip carries no successful guarded merge authorization, ` +
+    'and the commits below it are not a pure evidence-pair tail over an authorized implementation head (verifyGitEvidence ancestor+tail)',
+  )
+}
+
+// Live git IO for the authorized-head walk. First-parent only: an evidence
+// tail is a linear addition on the implementation, never a merge.
+export function gitAuthorizedHeadIo() {
+  const git = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  return {
+    isAncestor(ancestor, descendant) {
+      try {
+        execFileSync('git', ['merge-base', '--is-ancestor', ancestor, descendant], { stdio: 'ignore' })
+        return true
+      } catch {
+        return false
+      }
+    },
+    changedFiles(from, to) {
+      const out = git(['diff', '--name-only', from, to])
+      return out ? out.split(/\r?\n/).filter(Boolean) : []
+    },
+    firstParent(sha) {
+      try {
+        return git(['rev-parse', `${sha}^1`])
+      } catch {
+        return null
+      }
+    },
+  }
+}
 export function latestContextState(rows, context) {
   return latestContextRow(rows, context)?.state ?? null
 }
@@ -431,6 +517,8 @@ export const USAGE = `Usage:
                                                               Print the NEWEST PR-head authorization state
   node scripts/merge-queue-contract.mjs --authorization-row --head-sha <pr-head>
                                                               Print the NEWEST state|description pair
+  node scripts/merge-queue-contract.mjs --resolve-authorized-head --head-sha <live-tip>
+                                                              Resolve the authorized head under an evidence tail
   node scripts/merge-queue-contract.mjs --recheck-interlock --head-sha <pr-head>
                                                               Re-read PR-head authorization and production
                                                               interlock under the merge lock at the mutation
@@ -458,6 +546,16 @@ export async function main(argv, env = process.env, deps = {}) {
     const row = readQueuePullRequest(number, { repo, read })
     verifyQueuePullRequest(number, row)
     console.log(JSON.stringify({ number: row.number, baseRefName: row.baseRefName, headRefOid: row.headRefOid }))
+    return 0
+  }
+
+  if (argv.includes('--resolve-authorized-head')) {
+    const tip = flagValue(argv, '--head-sha')
+    const resolved = resolveAuthorizedHead(tip, {
+      ...gitAuthorizedHeadIo(),
+      readAuthorizationState: (sha) => readAuthorizationState(sha, { repo, read }),
+    })
+    console.log(JSON.stringify(resolved))
     return 0
   }
 

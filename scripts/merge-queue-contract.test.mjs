@@ -26,6 +26,7 @@ import {
   readPullRequestFiles,
   recheckQueueInterlock,
   rehearsalState,
+  resolveAuthorizedHead,
   verifyQueuePullRequest,
 } from './merge-queue-contract.mjs'
 
@@ -480,4 +481,85 @@ test('required_status_checks compare: policy flags exact, contexts by name set, 
   }), false)
   assert.equal(requiredStatusChecksEqual(null), false)
   assert.equal(requiredStatusChecksEqual([]), false)
+})
+
+// Authorized head under the verifyGitEvidence ancestor+tail rule (canary #4321).
+// Authorization binds to the implementation commit; the live tip may carry only
+// this PR's own evidence pair after it.
+test('resolveAuthorizedHead: the tip itself when it carries authorization', () => {
+  const tip = 'a'.repeat(40)
+  const resolved = resolveAuthorizedHead(tip, {
+    isAncestor: () => true,
+    changedFiles: () => [],
+    firstParent: () => 'b'.repeat(40),
+    readAuthorizationState: (sha) => (sha === tip ? 'success' : 'none'),
+  })
+  assert.deepEqual(resolved, { authorizedHead: tip, evidenceTail: [], mode: 'exact' })
+})
+
+test('resolveAuthorizedHead: implementation head when the tip is a pure evidence tail', () => {
+  const impl = '1'.repeat(40)
+  const tip = '2'.repeat(40)
+  const pair = [
+    '.agent/work/2530/7/completion.json',
+    '.agent/work/2530/7/contract.json',
+  ]
+  const resolved = resolveAuthorizedHead(tip, {
+    isAncestor: (ancestor, descendant) => ancestor === impl && descendant === tip,
+    changedFiles: (from, to) => (from === impl && to === tip ? pair : []),
+    firstParent: (sha) => (sha === tip ? impl : null),
+    readAuthorizationState: (sha) => (sha === impl ? 'success' : 'none'),
+  })
+  assert.equal(resolved.authorizedHead, impl)
+  assert.equal(resolved.mode, 'evidence-tail')
+  assert.deepEqual(resolved.evidenceTail, pair)
+})
+
+test('resolveAuthorizedHead: legacy evidence pair is also a lawful tail', () => {
+  const impl = '3'.repeat(40)
+  const tip = '4'.repeat(40)
+  const pair = ['.agent/completion.json', '.agent/contract.json']
+  const resolved = resolveAuthorizedHead(tip, {
+    isAncestor: () => true,
+    changedFiles: () => pair,
+    firstParent: (sha) => (sha === tip ? impl : null),
+    readAuthorizationState: (sha) => (sha === impl ? 'success' : 'none'),
+  })
+  assert.equal(resolved.authorizedHead, impl)
+  assert.equal(resolved.mode, 'evidence-tail')
+})
+
+test('resolveAuthorizedHead: refuses a non-evidence tail over an authorized parent', () => {
+  const impl = '5'.repeat(40)
+  const tip = '6'.repeat(40)
+  assert.throws(
+    () => resolveAuthorizedHead(tip, {
+      isAncestor: () => true,
+      changedFiles: () => ['scripts/merge-queue-contract.mjs'],
+      firstParent: (sha) => (sha === tip ? impl : null),
+      readAuthorizationState: (sha) => (sha === impl ? 'success' : 'none'),
+    }),
+    /no authorized PR head found/,
+  )
+})
+
+test('resolveAuthorizedHead: refuses when neither tip nor parent is authorized', () => {
+  const impl = '7'.repeat(40)
+  const tip = '8'.repeat(40)
+  assert.throws(
+    () => resolveAuthorizedHead(tip, {
+      isAncestor: () => true,
+      changedFiles: () => [],
+      firstParent: (sha) => (sha === tip ? impl : null),
+      readAuthorizationState: () => 'failure',
+    }),
+    /no authorized PR head found/,
+  )
+})
+
+test('resolveAuthorizedHead: refuses a malformed tip and missing IO', () => {
+  assert.throws(() => resolveAuthorizedHead('nope', {
+    isAncestor: () => true, changedFiles: () => [], firstParent: () => null, readAuthorizationState: () => 'success',
+  }), /40-character live tip/)
+  assert.throws(() => resolveAuthorizedHead('a'.repeat(40), {}), /requires isAncestor/)
 })

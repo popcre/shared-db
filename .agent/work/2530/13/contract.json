@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "work_issue": 2530,
+  "generation": 13,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Bind the merge-queue gate to the authorized PR head under the verifyGitEvidence ancestor+evidence-tail rule, and refresh the exact-head-approval disposition site so Tools offline tests pass.",
+  "base_sha": "ab3b833b5bd35b93e5edc531b363aa83650803cf",
+  "dispatcher": "MiMo chat ffe5ec4d8a438ffeMsuIzWTbV4 on edge-dev",
+  "worker": "MiMo",
+  "branch": "mimo/2530-gate-evidence-tail-v3",
+  "worktree": "D:\\repos\\shared-db-worktrees\\2530-gate-fix",
+  "allowed_paths": [
+    ".agent/work/2530/13/completion.json",
+    ".agent/work/2530/13/contract.json",
+    ".github/workflows/merge-queue-gate.yml",
+    "docs/verification/throughput-dispositions/scripts~check-exact-head-approval.mjs.json",
+    "scripts/merge-queue-contract.mjs",
+    "scripts/merge-queue-contract.test.mjs"
+  ],
+  "file_writes": [
+    ".agent/work/2530/13/completion.json",
+    ".agent/work/2530/13/contract.json",
+    ".github/workflows/merge-queue-gate.yml",
+    "docs/verification/throughput-dispositions/scripts~check-exact-head-approval.mjs.json",
+    "scripts/merge-queue-contract.mjs",
+    "scripts/merge-queue-contract.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not change any migration or database object."
+  ],
+  "required_checks": [
+    "node --test scripts/merge-queue-contract.test.mjs"
+  ],
+  "assumptions": [
+    "Authorization binds to the implementation head; a pure evidence tail on the live tip is lawful.",
+    "A stale disposition catalogue entry is a docs/verification repair, not a semantic site change."
+  ],
+  "stop_conditions": [
+    "A change would weaken exact-head containment rather than re-bind it to the authorized head."
+  ]
+}

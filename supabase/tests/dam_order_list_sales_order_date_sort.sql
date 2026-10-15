@@ -1,7 +1,8 @@
 -- The SO Date sort key is exposed through the existing invoker-safe OrderList view.
 do $$
 declare helper pg_proc; find_fn pg_proc; view_options text[]; view_sql text;
-  allowed_filter_columns text; sort_only_columns text; plan_line text; plain_plan text := '';
+  allowed_filter_columns text; sort_only_columns text; plan_line text;
+  plain_plan text := ''; count_plan text := '';
 begin
   if not exists (
     select 1 from information_schema.columns
@@ -74,6 +75,13 @@ begin
   if plain_plan ilike '%orderlist_sales_order_received_date%' then
     raise exception 'An ordinary OrderList projection evaluates the SO-date helper: %',plain_plan;
   end if;
+  for plan_line in execute 'explain (costs off) select count(*) from api.dam_order_list'
+  loop
+    count_plan := count_plan || plan_line || E'\n';
+  end loop;
+  if count_plan ilike '%orderlist_sales_order_received_date%' then
+    raise exception 'An ordinary OrderList count evaluates the SO-date helper: %',count_plan;
+  end if;
 end $$;
 
 -- Exercise the real view/helper/Find path against disposable rows in the CI database.
@@ -120,6 +128,10 @@ begin
   end loop;
   perform set_config('request.jwt.claim.role','authenticated',true);
   perform set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',true);
+  if (select count(*) from api.dam_order_list
+      where sku='ORDERLIST-SO-DATE-SORT-TEST') <> 4 then
+    raise exception 'real OrderList view did not return all four integration rows';
+  end if;
   for i in 1..4 loop
     select sales_order_received_date into found_date
       from api.dam_order_list where order_line_id=row_ids[i];

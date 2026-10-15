@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "work_issue": 2530,
+  "generation": 7,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Docs-only merge-queue live dispatch canary for issue #2530 Step 9.",
+  "base_sha": "d0c99556fe5364d5ce67066cc206c66ec2619ba2",
+  "dispatcher": "MiMo chat ffe5ec4d8a438ffeMsuIzWTbV4 on edge-dev",
+  "worker": "MiMo",
+  "branch": "mimo/2530-mq-canary-20261015",
+  "worktree": "D:\\\\repos\\\\shared-db-worktrees\\\\2530-canary-20261015",
+  "allowed_paths": [
+    ".agent/work/2530/7/completion.json",
+    ".agent/work/2530/7/contract.json",
+    "docs/verification/merge-queue-canary-20261015T080722Z.md"
+  ],
+  "file_writes": [
+    ".agent/work/2530/7/completion.json",
+    ".agent/work/2530/7/contract.json",
+    "docs/verification/merge-queue-canary-20261015T080722Z.md"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not change any migration or database object."
+  ],
+  "required_checks": [
+    "true"
+  ],
+  "assumptions": [
+    "Docs-only canary is sufficient to prove merge_group dispatch."
+  ],
+  "stop_conditions": [
+    "Zero merge_group runs within 5 minutes of enqueue."
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "work_issue": 2530,
+  "outcome": "ready-for-merge",
+  "pr": 4321,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2530/7",
+  "contract_sha256": "f49530f3a4dba6ccd798968138b7a695ff28150468964f7f230e40234593fff5",
+  "head_sha": "944ff07fd89f45721a67d167c00478778f13754a",
+  "base_sha": "d0c99556fe5364d5ce67066cc206c66ec2619ba2",
+  "files_changed": [
+    "docs/verification/merge-queue-canary-20261015T080722Z.md"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "true",
+      "exit_code": 0,
+      "evidence": "Docs-only canary; merge_group dispatch probe already observed 8 workflow runs on synthetic SHA 6ff65dda."
+    }
+  ],
+  "assumptions_resolved": [
+    "Merge_group dispatch works with bare triggers."
+  ],
+  "stop_conditions_hit": []
+}

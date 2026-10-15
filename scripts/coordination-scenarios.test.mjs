@@ -279,7 +279,7 @@ for (const row of CONTRACT_SCENARIOS) {
 const at = (m) => new Date(Date.UTC(2026, 7, 23, 12, m)).toISOString()
 const ev = (type, minute, over = {}) => ({
   schema_version: 1, event_id: `${type}-${minute}`, event_type: type, timestamp: at(minute),
-  work_issue: 42, actor: 'orchestrator', result: 'succeeded', ...over,
+  work_issue: 42, actor: 'claim-first', result: 'succeeded', ...over,
 })
 
 const TIMELINE_SCENARIOS = [

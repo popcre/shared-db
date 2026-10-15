@@ -3,7 +3,7 @@
 # WHY THIS WORKFLOW EXISTS
 # ------------------------
 # On 2026-08-13 six migrations were found merged to `main` and never applied to
-# production. Nothing reported it. An orchestrator read the LIVE production
+# production. Nothing reported it. A coordinator read the LIVE production
 # catalog, saw one Disney landing table where Paramount had twenty, and told the
 # business owner Disney's model had never been built. Seventeen Disney tables
 # existed as reviewed, merged SQL that had simply never been switched on.

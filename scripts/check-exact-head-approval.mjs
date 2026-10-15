@@ -8,7 +8,7 @@
 // Why this file exists (#1816): the guarded-migration-merge workflow proved head
 // identity, base currency, object collisions and the author lease, but never once
 // asked whether the bytes being merged had been approved. The exact-head rule was
-// enforced by convention in the orchestrator's instructions and by the PREVIEW
+// enforced by convention in claim-first instructions and by the PREVIEW
 // gate -- which, under merge-first (AGENTS.md section 4 rule 2), only runs AFTER
 // the merge. So the sequence
 //
@@ -45,7 +45,7 @@
 // forgery, but that still does not bind the assigned provider to the commenter. The word
 // "independent" here describes the assignment PROCESS -- the rotation in
 // `manage-migration-author-lanes.mjs`, which picks the reviewer and refuses the
-// live orchestrator's own engine -- and is not a property this file verifies.
+// live session engine -- and is not a property this file verifies.
 // One deliberate limit remains: fenced or indented code containing a verdict line
 // counts.
 //

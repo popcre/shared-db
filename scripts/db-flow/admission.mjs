@@ -13,7 +13,7 @@ export class AdmissionError extends Error {
 export const SERVICE_CLASSES = Object.freeze(['urgent-application', 'standard-application', 'maintenance'])
 // The two ROUTES a structural change may be admitted under (issue #3199 Phase
 // B2). `claim-first` is the full triage path; `self-service-additive`
-// admits the same structural work WITHOUT orchestrator triage when the merge-time
+// admits the same structural work WITHOUT coordinator triage when the merge-time
 // boundary classifier (scripts/check-self-service-additive-lane.mjs) holds —
 // additive objects confined to the app-owned {crm,pim,dam,plm} schemas. Every other
 // gate (claim, object locks, version reservation, reviewers, serial lanes,

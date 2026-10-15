@@ -20,7 +20,7 @@ const contract = (over = {}) => ({
   route: 'claim-first',
   goal: 'add the licensor bridge table',
   base_sha: 'abc1234',
-  dispatcher: 'shared-db-orchestrator',
+  dispatcher: 'claim-first',
   worker: 'codex',
   branch: 'codex/issue-42',
   worktree: '.claude/worktrees/issue-42',

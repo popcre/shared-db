@@ -9,7 +9,7 @@
 //   20260811060000, 20260811070000. Nothing anywhere reported that.
 //
 //   The damage was not a broken database. The damage was a WRONG CONCLUSION.
-//   An orchestrator read the LIVE production catalog, saw one Disney landing
+//   A coordinator read the LIVE production catalog, saw one Disney landing
 //   table where Paramount had twenty, and told the business owner that Disney's
 //   model had never been built. Seventeen Disney tables existed as reviewed,
 //   merged SQL that had simply never been switched on. The owner had to push

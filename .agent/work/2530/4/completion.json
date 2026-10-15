@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "work_issue": 2530,
+  "outcome": "ready-for-merge",
+  "pr": 4312,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2530/4",
+  "contract_sha256": "1ee8cae69509a41de5b9c159e09a4a6ff2e463051a8ad8f836a4077219e334a3",
+  "head_sha": "30ab4cf968011ecc068dd6f0d9f3b61ec8b8b8d4",
+  "base_sha": "f7b141ab7c53132498d9e8a0c0c4802c67886a25",
+  "files_changed": [
+    "docs/verification/throughput-dispositions/scripts~check-exact-head-approval.mjs.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "16 pass, 0 fail including current_repository_catalogues_follow_current_discovery."
+    }
+  ],
+  "assumptions_resolved": [
+    "The single PATTERN hit in check-exact-head-approval.mjs is refusal-message text; catalogue records it as excluded."
+  ],
+  "stop_conditions_hit": []
+}

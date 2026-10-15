@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "work_issue": 2530,
+  "generation": 4,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Unblock #2530 merge-queue PR #4305: add the missing throughput truth-audit disposition catalogue for scripts/check-exact-head-approval.mjs so Tools offline tests pass on the PR merge with current main.",
+  "base_sha": "f7b141ab7c53132498d9e8a0c0c4802c67886a25",
+  "dispatcher": "MiMo chat ffe5ec4d8a438ffeMsuIzWTbV4 on edge-dev",
+  "worker": "MiMo",
+  "branch": "mimo/2530-disposition-catalogue-unblock",
+  "worktree": "D:\\\\repos\\\\shared-db-worktrees\\\\2530-catalogue-unblock",
+  "allowed_paths": [
+    ".agent/work/2530/4/completion.json",
+    ".agent/work/2530/4/contract.json",
+    "docs/verification/throughput-dispositions/scripts~check-exact-head-approval.mjs.json"
+  ],
+  "file_writes": [
+    ".agent/work/2530/4/completion.json",
+    ".agent/work/2530/4/contract.json",
+    "docs/verification/throughput-dispositions/scripts~check-exact-head-approval.mjs.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not change any migration, database object, or live database row.",
+    "Do not edit check-exact-head-approval.mjs behavior or any required check."
+  ],
+  "required_checks": [
+    "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs"
+  ],
+  "assumptions": [
+    "The single PATTERN hit in check-exact-head-approval.mjs is refusal-message text, not a missing production migration."
+  ],
+  "stop_conditions": [
+    "Refuse if discover() finds additional sources lacking catalogues beyond check-exact-head-approval.mjs."
+  ]
+}

@@ -36,5 +36,4 @@ chips — moved to **`AGENTS.md` §12**, byte-identically, on 2026-08-07.
 ## History
 
 The full 5,539-line file: `git show 360b85b3eec79c5f498cf9e669350737db27e6ab:COORDINATOR_INTAKE.md`.
-Nothing was deleted; all 71 open blocks became 63 issues, and the arithmetic is in
-`plan_coordinator-queue-to-github-issues.md`.
+Nothing was deleted; all 71 open blocks became 63 issues, and the arithmetic is in `plan_coordinator-queue-to-github-issues.md`.

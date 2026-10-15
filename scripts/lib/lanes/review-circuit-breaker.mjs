@@ -529,8 +529,9 @@ export function assertPaidReviewCapacity(request, io) {
   // changed conflict), so its direct classification is unprovable. It is then classified
   // THROUGH a newer reviewed head of the same PR whose own classification is proven:
   // older->newer (pre-refresh, directly comparable) composed with newer->request. Only a
-  // fully proven chain counts; anything else still refuses.
-  const proven=new Map()
+  // fully proven chain establishes changed content; a narrow unresolved merge gap
+  // consumes the ordinary allowance conservatively as unchanged content.
+  const proven=new Map(),unprovedHeads=new Set(),conservativeHeads=new Set()
   // Only the moved-main MERGE gap may be bridged: re-merging an older head against the
   // current main conflicts outside the canonical append forms. Every other provenance
   // refusal (evidence lineage, blob integrity, foreign pairs, ...) keeps refusing.
@@ -555,7 +556,10 @@ export function assertPaidReviewCapacity(request, io) {
         const composed=compose(link,kind)
         if(composed)results.add(composed)
       }
-      if(!results.size)throw error
+      // Unproved merge-gap content spends the ordinary allowance as unchanged.
+      // This is never a substantive proof or a chaining intermediate, and it
+      // does not suppress any non-gap transport, binding or evidence refusal.
+      if(!results.size)return {kind:'unchanged',direct:false,conservative:true}
       // Every provable chain must agree; on disagreement count conservatively (as
       // unchanged), which can only spend capacity, never grant an extra paid review.
       return {kind:results.size===1?[...results][0]:'unchanged',direct:false}
@@ -569,7 +573,7 @@ export function assertPaidReviewCapacity(request, io) {
     const result=classifyStart(start)
     // Only DIRECT proofs serve as chain intermediates (no multi-hop): every link is then
     // one step from a head whose classification against the request was proven directly.
-    kinds.set(start,result.kind);if(result.direct)proven.set(start.headSha,result.kind)
+    kinds.set(start,result.kind);if(result.direct)proven.set(start.headSha,result.kind);if(result.conservative)unprovedHeads.add(start.headSha)
   }
   for (const start of starts) {
     const same=start.headSha===request.headSha||kinds.get(start)==='unchanged'
@@ -579,10 +583,11 @@ export function assertPaidReviewCapacity(request, io) {
       failuresByReviewer.set(start.reviewer,(failuresByReviewer.get(start.reviewer)??0)+1)
       continue
     }
+    if(unprovedHeads.has(start.headSha))conservativeHeads.add(start.headSha)
     count++
   }
   if(count>=2) throw new LaneError(`review circuit breaker: two paid attempts already started for unchanged reviewed content in slot ${request.slot}; third draw refused pending substantive repair or supported cause-bound reinstatement proof`)
-  const result={paidAttempts:count,remaining:2-count,...(reinstated?{reinstated}:{})}
+  const result={paidAttempts:count,remaining:2-count,...(reinstated?{reinstated}:{}),...(conservativeHeads.size?{conservativeHeads:[...conservativeHeads].sort()}: {})}
   if(failuresByReviewer.size){
     result.failedReviewers=[...failuresByReviewer.keys()].sort()
     result.exhaustedReviewers=[...failuresByReviewer].filter(([,failures])=>failures>=REVIEWER_FAILURE_CEILING).map(([reviewer])=>reviewer).sort()

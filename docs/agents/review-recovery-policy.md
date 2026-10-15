@@ -1,6 +1,6 @@
 # Review service recovery policy
 
-Owner-authorized implementation tracked on [#4297](https://github.com/popcre/shared-db/issues/4297), delivered as one atomic, independently reviewed PR #4294. PR #4294 source is incorporated with its history and original attribution; it is not a separately merged prerequisite. This tooling policy preserves the mandatory independent exact-head approval count and guarded merge.
+Owner-authorized implementation is tracked on [#4297](https://github.com/popcre/shared-db/issues/4297). The combined source was externally merged through PR #4294; remaining audit and conservative-counting repairs continue on that same work issue. Original source, history and attribution are preserved. The earlier external merge is not evidence of independent approval. This tooling policy requires one independent exact-head approval for every change, including migrations (owner ruling §6.27), and preserves guarded merge. Every drawn slot still owes its own qualifying verdict.
 
 ## Two distinct allowances
 
@@ -20,6 +20,15 @@ The governed runner records a paid-start marker before invoking a reviewer. When
 
 Release does not launch another paid reviewer. The next supported assignment or replacement chooses an eligible independent reviewer within both allowances. A direct inline replacement that has not first recorded its failure remains conservatively subject to existing capacity checks; automatic guarded release closes this path for recognized runner failures.
 
+## Lifecycle-recorded delivery
+
+For active assigned reviewers, the governed runner dispatches through the installed `ai-review` front door in `final-check` mode, naming the assigned provider, exact merge base, exact head and implementing engine. That front door starts the provider lifecycle before dispatch and writes the qualified report under the review worktree's `.ai/reviews` directory. The governed runner checks that the report binds the assigned provider, repository, source digest and head before it records the separate shared-db verdict. A missing, malformed or mismatched report produces no shared-db verdict. Manual lifecycle begin/finish, retrospective imports and direct provider calls do not satisfy delivery.
+
+The preserved report path is the input to `ai-task-gates check --before ship --reviewer-approval <report>`. The ship gate independently verifies the completed lifecycle record, provider/implementer independence, exact source and action. A shared-db verdict comment or immutable lane artifact alone is not a substitute for this provider-neutral report.
+
 ## Verification and delivery
 
-Circuit-breaker, assignment-order, carried-slot, candidate-exhaustion, approval-composition and runner-release adversarial tests must pass. The complete combined source receives one independent review and required CI on PR #4294; no separate PR #4294 merge is a prerequisite. The independent review remains pinned to the final code head. Merged-source runtime verification is distinct from source tests and does not authorize a database write, production action or a retry of historical spent work. PR4206 and its licensing claims remain owned by their existing session.
+Circuit-breaker, assignment-order, carried-slot, candidate-exhaustion, approval-composition and runner-release adversarial tests must pass. The complete combined source receives one independent lifecycle-recorded review and required CI on PR #4308; the already-merged PR #4294 remains inherited source, not a delivery prerequisite. The independent review remains pinned to the final code head. Merged-source runtime verification is distinct from source tests and does not authorize a database write, production action or a retry of historical spent work. PR4206 and its licensing claims remain owned by their existing session.
+
+
+The allocator conservatively counts a historical start with the established narrow canonical merge-gap refusal as unchanged when no direct proof chain resolves it. It records conservativeHeads, never treats that result as substantive or a chain intermediate, and still refuses a third conservative round. All other provenance, lineage, binding and transport failures remain hard refusals. The source-provenance function itself is unchanged and still rejects foreign/noncanonical merges; this grants no changed-content proof, refund or additional allowance.

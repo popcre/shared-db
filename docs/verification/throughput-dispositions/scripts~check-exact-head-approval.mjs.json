@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "source": "scripts/check-exact-head-approval.mjs",
+  "sites": [
+    {
+      "site": "scripts/check-exact-head-approval.mjs:281",
+      "semantic_key": "scripts/check-exact-head-approval.mjs:0525aa9bf04ab8f99fdec76ca124df5c42ca5dc94a23a39569958db2e91d9141:context-94557c3b583ad3e0cbd4bf0a8f87516049917010cb9c07dabf573fd6240b2846",
+      "line_sha256": "0525aa9bf04ab8f99fdec76ca124df5c42ca5dc94a23a39569958db2e91d9141",
+      "disposition": "excluded",
+      "reason": "Fail-closed refusal text that names an undrawn required review slot. The word 'missing' is prose inside an ApprovalCheckError message documenting what the gate refuses, not a missing-artifact call site that needs enrichment."
+    }
+  ]
+}

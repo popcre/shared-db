@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "work_issue": 2530,
+  "outcome": "ready-for-merge",
+  "pr": 4331,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2530/12",
+  "contract_sha256": "746f2fcde34d89aedd223be73503bb524372f967926c11e142303622ba755873",
+  "head_sha": "09a51fb543348fbfb6a9954595b5937e0b9a51cc",
+  "base_sha": "ab3b833b5bd35b93e5edc531b363aa83650803cf",
+  "files_changed": [
+    ".github/workflows/merge-queue-gate.yml",
+    "docs/verification/throughput-dispositions/scripts~check-exact-head-approval.mjs.json",
+    "scripts/merge-queue-contract.mjs",
+    "scripts/merge-queue-contract.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/merge-queue-contract.test.mjs",
+      "exit_code": 0,
+      "evidence": "32 pass including resolveAuthorizedHead workIssue and mode cases."
+    }
+  ],
+  "assumptions_resolved": [
+    "Tail files must be exactly one complete evidence pair; pair identity is the Agent work contract's job at admission.",
+    "Disposition catalogue refresh keeps the required Tools offline tests context green on this PR."
+  ],
+  "stop_conditions_hit": []
+}

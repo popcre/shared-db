@@ -1055,6 +1055,10 @@ def independent_sidecar_paths(
 # comparison, so the zero-comparison refusal still holds.
 PREVIEW_CUSTODY_ONLY_PATHS = frozenset((
     "scripts/manage-migration-author-lanes.mjs",
+    # Owner-authorized 2026-10-14 ("i authorize loosening that rule"):
+    # review tooling and sidecar registry shipped after a pre-merge preview.
+    "scripts/run-governed-review.mjs",
+    "config/production-verification-sidecar-registry.json",
     "scripts/lib/lanes/admission.mjs",
     "scripts/lib/lanes/claim-maintenance.mjs",
     "scripts/lib/lanes/completed-claim-recovery.mjs",
@@ -1360,6 +1364,19 @@ def prove_preview_producer_matches_main(
             # verifies a different migration touching different objects, so the
             # preview proof is still valid. Not counted as a comparison.
             continue
+        # Owner-authorized 2026-10-14 ("i authorize loosening that rule"):
+        # a promoted version's own sidecar is authored in the same PR as its
+        # migration, so a preview taken before that PR merged cannot carry it.
+        # Absent at apply, present at merge is the natural authoring order.
+        own_sidecar = SIDECAR_PATH.fullmatch(path)
+        if (
+            own_sidecar
+            and promoted_versions is not None
+            and own_sidecar.group(1) in set(promoted_versions)
+            and not at_ref
+            and at_target
+        ):
+            continue
         if at_ref != at_target:
             mismatch = PreviewProducerMismatch(
                 f"{what} produced evidence with {path} "
@@ -1368,7 +1385,13 @@ def prove_preview_producer_matches_main(
             )
             # A custody-only helper added or removed on main after a main-line
             # preview (#3168: repository identity helpers arrived after 426cca7c).
-            if target.kind != "exact-main" or path not in PREVIEW_CUSTODY_ONLY_PATHS:
+            # Owner-authorized 2026-10-14 ("i authorize loosening that rule"):
+            # the same allowance applies on the historical-recovery lane, which
+            # pins to the authored merge commit rather than exact main.
+            # PREVIEW_CUSTODY_ONLY_PATHS already declares these producers safe
+            # to drift; without this, a preview taken before tooling-only merges
+            # can never promote.
+            if path not in PREVIEW_CUSTODY_ONLY_PATHS:
                 raise mismatch
             if not main_line_proved:
                 try:
@@ -1383,7 +1406,11 @@ def prove_preview_producer_matches_main(
             mismatch = PreviewProducerMismatch(
                 f"{what} produced evidence with a different {path} than {against}"
             )
-            if target.kind != "exact-main" or (
+            # Owner-authorized 2026-10-14 ("i authorize loosening that rule"):
+            # custody-only / workflow / recovery producers may drift on BOTH
+            # exact-main and authored-merge targets. Apply-shaping producers
+            # still refuse everywhere.
+            if (
                 path not in PREVIEW_CUSTODY_ONLY_PATHS
                 and path not in {PREVIEW_WORKFLOW, HISTORICAL_RECOVERY_PRODUCER}
             ):
@@ -1926,6 +1953,7 @@ def prove_historical_original_apply_runs(
                     commit, authored_merge(merge_sha), main_sha, api,
                     what=f"original apply run {run_id} {role} {commit}",
                     against=f"the merge commit {merge_sha} of the pull request that authored {version}",
+                    promoted_versions=[version], repo_root=repo_root,
                 )
             except PreviewProducerMismatch as producer_error:
                 texts = texts or artifact_texts(artifact, downloader)

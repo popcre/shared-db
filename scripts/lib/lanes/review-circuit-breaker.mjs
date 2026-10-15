@@ -36,7 +36,12 @@ function reinstatedByFailure(start,io){
   try{failure=parseTerminalFailureEvidence(commit)}catch{throw new LaneError('review circuit breaker: reinstatement failure evidence unreadable')}
   const message=String(commit?.message??commit?.commit?.message??'')
   const slot=/ slot=(\d+) /.exec(message)
-  if(!failure||failure.issue!==start.issue||failure.pr!==start.pr||failure.headSha!==start.headSha||failure.failedSequence!==start.sequence||failure.reviewer!==start.reviewer||(slot&&Number(slot[1])!==start.slot)||!/ verdict=none artifact=none( replacement=none)?$/.test(message))throw new LaneError('review circuit breaker: reinstatement failure binding mismatch')
+  const terminalTail=failure?.historicalProof
+    ? message.split('\n').length===2 && / proof=historical-terminal-v1 verdict=none artifact=none replacement=none$/.test(message.split('\n')[0])
+    : / verdict=none artifact=none( replacement=none)?$/.test(message)
+  const proof=failure?.historicalProof
+  const proofStartMatches=!proof||(proof.start_ref===start.ref&&proof.start_sha===start.sha&&proof.started_at===start.startedAt&&proof.slot===start.slot&&proof.current_head_sha!==start.headSha)
+  if(!failure||failure.issue!==start.issue||failure.pr!==start.pr||failure.headSha!==start.headSha||failure.failedSequence!==start.sequence||failure.reviewer!==start.reviewer||(slot&&Number(slot[1])!==start.slot)||!proofStartMatches||!terminalTail)throw new LaneError('review circuit breaker: reinstatement failure binding mismatch')
   return REINSTATABLE_FAILURE_CODES.includes(failure.failureCode)
 }
 
@@ -45,10 +50,10 @@ export function paidStart(row, commit) {
   if (!tuple || !/^[0-9a-f]{40}$/.test(row.sha)) throw new LaneError('review circuit breaker: malformed immutable start ref')
   const [, issue, pr, headSha, slot, sequence] = tuple
   const message = String(commit?.message ?? commit?.commit?.message ?? '')
-  const start = /^db-coordination review-started issue=(\d+) pr=(\d+) head=([0-9a-f]{40}) slot=(\d+) sequence=(\d+) reviewer=([a-z0-9.-]+) at=(\S+)(?: session=([A-Za-z0-9._-]+) receipt-path=sha256:[0-9a-f]{64} source=sha256:[0-9a-f]{64})?$/.exec(message)
+  const start = /^db-coordination review-started issue=(\d+) pr=(\d+) head=([0-9a-f]{40}) slot=(\d+) sequence=(\d+) reviewer=([a-z0-9.-]+) at=(\S+)(?: session=([A-Za-z0-9._-]+) receipt-path=sha256:([0-9a-f]{64}) source=sha256:([0-9a-f]{64}))?$/.exec(message)
   if (start) {
     if (start.slice(1,6).join(':') !== tuple.slice(1).join(':') || !Number.isFinite(Date.parse(start[7]))) throw new LaneError('review circuit breaker: start record binding mismatch')
-    return {issue:Number(issue),pr:Number(pr),headSha,slot:Number(slot),sequence:Number(sequence),reviewer:start[6]}
+    return {issue:Number(issue),pr:Number(pr),headSha,slot:Number(slot),sequence:Number(sequence),reviewer:start[6],startedAt:start[7],session:start[8]??null,receiptPathSha256:start[9]??null,sourceDigest:start[10]??null,ref:row.ref,sha:row.sha}
   }
   // Only the established atomic unstarted reclaim / independence conflict can
   // occupy a start marker without spending a provider attempt.

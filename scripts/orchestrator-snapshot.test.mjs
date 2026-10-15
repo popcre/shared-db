@@ -34,7 +34,7 @@ function fakeIo({ comments = {}, claims = [[900, 'CLAIM: #800 thing'], [901, 'CL
 
 test('issue 3148 only a request the queue audit itself would admit alarms after 30 minutes', () => {
   const admission = 'service_class: standard-application\nchange_type: migration\napplication_return_to: u2giants/example-app\nlive_assertion: authenticated create-and-read succeeds\ngenerated_types: not-applicable\npriority: 5\n'
-  const scope = (status, extra = '', fields = admission) => '```db-work-scope\nstatus: ' + status + '\nwork_type: structural\nroute: shared-db-orchestrator\n' + fields + extra + 'writes:\n  - table core.a\n```'
+  const scope = (status, extra = '', fields = admission) => '```db-work-scope\nstatus: ' + status + '\nwork_type: structural\nroute: claim-first\n' + fields + extra + 'writes:\n  - table core.a\n```'
   const base = fakeIo()
   const issues = [
     { number: 950, body: scope('ready'), created_at: minutesAgo(31), labels: [{ name: 'db-work' }], comments: 0 },
@@ -45,7 +45,7 @@ test('issue 3148 only a request the queue audit itself would admit alarms after 
     { number: 955, body: scope('ready'), created_at: minutesAgo(30), labels: [], comments: 0 },
     { number: 956, body: scope('ready'), created_at: minutesAgo(600), labels: [{ name: 'db-claim' }], comments: 0 },
     { number: 957, body: scope('ready').replace('work_type: structural', 'work_type: repo-maintenance'), created_at: minutesAgo(600), labels: [], comments: 0 },
-    { number: 958, body: scope('ready').replace('route: shared-db-orchestrator', 'route: repo-maintenance'), created_at: minutesAgo(600), labels: [], comments: 0 },
+    { number: 958, body: scope('ready').replace('route: claim-first', 'route: repo-maintenance'), created_at: minutesAgo(600), labels: [], comments: 0 },
     { number: 959, body: scope('ready') + '\n' + scope('ready'), created_at: minutesAgo(600), labels: [], comments: 0 },
     { number: 960, body: scope('ready', 'depends_on: #9999\n'), created_at: minutesAgo(600), labels: [], comments: 0 },
     { number: 961, body: scope('ready', '', 'priority: 5\n'), created_at: minutesAgo(600), labels: [], comments: 0 },

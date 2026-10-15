@@ -6,7 +6,7 @@
  *   node scripts/orchestrator-snapshot.mjs --orchestrator-snapshot [--repo owner/name]
  *        [--state-dir <absolute dir>] [--now <ISO>]
  *
- * It reads the live orchestrator marker, open claims, open PR heads and check
+ * It reads the live claim-first session identity, open claims, open PR heads and check
  * rollups, reviewer lease refs, exclusive stage lock refs, outcome events on the
  * owned issues, and the now/next eligible queue. It never writes to GitHub.
  *
@@ -217,7 +217,7 @@ export const defaultIo = {
   // NO_ORCHESTRATOR, and both the CLI and the no-progress alarm call
   // gatherLiveInput with allowNoMarker so they report with marker: null.
   resolveMarker() {
-    throw new SnapshotCallerError('orchestrator marker did not resolve (exit 3): the orchestrator role is retired (#3874)')
+    throw new SnapshotCallerError('claim-first session identity did not resolve (exit 3): the orchestrator role is retired (#3874)')
   },
   // The queue audit's own dependency proof, including merge-in-main evidence for closed dependencies.
   dependencyStates(numbers) {
@@ -267,7 +267,7 @@ function checkSummary(rollup = []) {
 }
 
 // Exit 3 from the marker resolver, or a resolved marker with no route, means no orchestrator is running.
-export const NO_ORCHESTRATOR = /marker did not resolve \(exit 3\)|no open routable orchestrator marker/
+export const NO_ORCHESTRATOR = /marker did not resolve \(exit 3\)|no open routable claim-first session identity/
 
 // allowNoMarker: the no-progress alarm must still evaluate stalls with no orchestrator, so it gets
 // marker: null. Every other caller keeps refusing, and any other read failure still throws.
@@ -275,7 +275,7 @@ export function gatherLiveInput(repo, io = defaultIo, { allowNoMarker = false } 
   let resolved = null
   try {
     resolved = io.resolveMarker(repo)
-    if (!Number.isInteger(resolved?.marker) || !resolved?.routing?.routeId) throw new SnapshotCallerError('no open routable orchestrator marker')
+    if (!Number.isInteger(resolved?.marker) || !resolved?.routing?.routeId) throw new SnapshotCallerError('no open routable claim-first session identity')
   } catch (error) {
     if (!allowNoMarker || !NO_ORCHESTRATOR.test(String(error?.message))) throw error
     resolved = null
@@ -328,7 +328,7 @@ export function main(argv = process.argv.slice(2), { io = defaultIo, stdout = co
     const now = value('--now') ?? new Date().toISOString()
     const stateDir = value('--state-dir')
     if (stateDir && !path.isAbsolute(stateDir)) throw new SnapshotCallerError('--state-dir must be an absolute path')
-    // The orchestrator marker is retired (#3874): the CLI reports with no marker.
+    // The claim-first session identity is retired (#3874): the CLI reports with no marker.
     const { input, sessionStarted } = gatherLiveInput(repo, io, { allowNoMarker: true })
     // A sealed orchestrator snapshot is bound to a marker, and there is none any
     // more. Say so plainly and exit 0 instead of failing every run; stall

@@ -339,7 +339,7 @@ test('the guarded command revalidates the whole abandonment tuple before it writ
     'a reclassified audit issue':{auditWorkType:'documentation'},
     'an audit naming a different claim':{auditOverrides:{claim:'#99'}},
     'an audit naming a different owner':{auditOverrides:{owner:'somebody-else'}},
-    'no live orchestrator marker':{marker:{live:false,task:'t',calling_task:'t'}},
+    'no live claim-first session identity':{marker:{live:false,task:'t',calling_task:'t'}},
     'a displaced marker':{marker:{live:true,task:'successor',calling_task:'displaced'}},
   }
   for(const [name,override] of Object.entries(refusals))

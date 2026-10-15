@@ -17,7 +17,7 @@ const LIVE = Object.freeze({
   ],
 })
 
-const THE_TWO = ['Orchestrator marker guard', 'Cancelled work guard']
+const THE_TWO = ['claim-first session identity guard', 'Cancelled work guard']
 
 function io(sequence) {
   const calls = []
@@ -124,7 +124,7 @@ test('the rendered plan states the mode, preserves strict visibly, and shows no 
   const text = renderPlan(planUnion(LIVE, THE_TWO), { repo: DEFAULT_REPO, branch: 'main', apply: false })
   assert.match(text, /DRY RUN/)
   assert.match(text, /strict: false {2}\(PRESERVED EXACTLY/)
-  assert.match(text, /\+ Orchestrator marker guard/)
+  assert.match(text, /\+ claim-first session identity guard/)
   assert.match(text, /\+ Cancelled work guard/)
   assert.match(text, /no context removed, no context renamed/)
   assert.doesNotMatch(text, /^\s*- /m, 'a removal line must never appear; this tool only adds')

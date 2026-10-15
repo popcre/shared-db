@@ -20,7 +20,7 @@ function fixture(overrides={}){
     version:VERSION,objects:['table plm.art_piece_attachment'],owner:args.oldOwner,branch:args.branch,
     worktree:args.worktree,expiresAt:new Date('2026-09-26T00:00:00Z'),
   })}
-  const work={number:2110,state:'open',body:['```db-work-scope','status: ready','work_type: structural','route: shared-db-orchestrator','priority: 1','writes:','  - table plm.art_piece_attachment','```'].join('\n')}
+  const work={number:2110,state:'open',body:['```db-work-scope','status: ready','work_type: structural','route: claim-first','priority: 1','writes:','  - table plm.art_piece_attachment','```'].join('\n')}
   const audit={number:900,state:'open',body:['```db-work-scope','status: ready','work_type: repo-maintenance','route: repo-maintenance','priority: 1','objects:','```','','```abandonment-audit','claim: 3378','pr: 3391','head_sha: '+HEAD,'owner: old-author','```'].join('\n')}
   const issues=new Map([[3378,claim],[2110,work],[900,audit]]),refs=new Map([['refs/db-claims/'+VERSION,RESERVATION]]),commits=new Map([[RESERVATION,{message:'db-coordination permanent version reservation'}]])
   let serial=0

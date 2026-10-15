@@ -101,7 +101,7 @@ const CONTRADICTIONS = [
     id: 'retired-orchestrator-routing',
     // The orchestrator role was retired (owner ruling 2026-10-02, AGENTS.md §0.0-D,
     // issue #3874). A skill that still tells a session to stop because it is not the
-    // orchestrator, or to resolve the orchestrator marker before routing, is drift.
+    // orchestrator, or to resolve the claim-first session identity before routing, is drift.
     pattern: /not started as the orchestrator|check-orchestrator-marker\.mjs\s+--resolve|--label\s+coordinator-marker/i,
     agents: 'AGENTS.md §0.0-D — there is no orchestrator; structural work is claim-first',
     why: 'Sessions following orchestrator routing stop and wait for a role that no longer exists, so structural work never starts.',

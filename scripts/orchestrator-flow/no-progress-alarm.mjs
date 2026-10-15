@@ -9,7 +9,7 @@
 // four hours, posts ONE comment naming each stuck outcome, its blocker and the unblock action,
 // with the sealed snapshot attached. It is transition-only: the alarm key covers the stalled
 // set and the zero-closure flag, and a key already posted on the target issue is never
-// reposted. Without --post-issue the target is the live orchestrator marker; when no marker
+// reposted. Without --post-issue the target is the live claim-first session identity; when no marker
 // resolves, stalls are still evaluated and the alarm goes to one stable fallback issue, created
 // once. A run that can neither evaluate nor post exits non-zero.
 //
@@ -26,7 +26,7 @@ import { OrchestratorSnapshotError, snapshotInputs, verifyOrchestratorSnapshot }
 import { currentRepository } from '../lib/repository-identity.mjs'
 import { ZERO_CLOSURE_WINDOW_MINUTES, defaultIo, gatherLiveInput, gh, runSnapshotCycle, stalledOutcomes, stalledRequests } from '../orchestrator-snapshot.mjs'
 
-export const FALLBACK_TITLE = 'Orchestrator no-progress alarm (no orchestrator marker)'
+export const FALLBACK_TITLE = 'Orchestrator no-progress alarm (no claim-first session identity)'
 // A coordination label, so the queue audit does not report the fallback issue as unlabelled work.
 export const FALLBACK_LABEL = 'orchestrator-alarm'
 
@@ -68,7 +68,7 @@ export function renderAlarm({ output, key, now, stagedLabel = null }) {
     lines.push(`- #${row.work_issue} has been \`${row.state}\` for ${row.minutes_since_transition} minutes (since ${row.last_transition_at}). Blocker: ${blocker}. Unblock: ${action}.`)
   }
   if (output.zero_closures_4h) lines.push('- Nothing reached live_verified in the last 4 hours while outcomes are active.')
-  if (!output.snapshot) lines.push('', 'No orchestrator marker resolved, so no sealed snapshot is attached. Open or resume the orchestrator to own these outcomes.')
+  if (!output.snapshot) lines.push('', 'No claim-first session identity resolved, so no sealed snapshot is attached. Open or resume the orchestrator to own these outcomes.')
   else lines.push('', `Resume from this snapshot: \`node scripts/orchestrator-flow/no-progress-alarm.mjs --resume --issue <this issue>\``, '', '```' + SNAPSHOT_LANG, JSON.stringify(output.snapshot), '```')
   return lines.join('\n')
 }
@@ -134,7 +134,7 @@ export function runResume({ repo, issue, now, maxAgeMinutes = 24 * 60 }, io) {
   let live = null
   const readCurrent = () => {
     live ??= io.gatherLiveInput(repo)
-    if (!live.input.marker) throw new OrchestratorSnapshotError('no open routable orchestrator marker to resume against')
+    if (!live.input.marker) throw new OrchestratorSnapshotError('no open routable claim-first session identity to resume against')
     return live.input
   }
   let currency
@@ -165,7 +165,7 @@ export const liveIo = {
   fallbackIssue(repo) {
     return findOrCreateFallback(defaultIo.openIssues(repo), () => {
       const file = path.join(mkdtempSync(path.join(os.tmpdir(), 'alarm-')), 'issue.md')
-      writeFileSync(file, 'Stable target for the no-progress alarm while no orchestrator marker resolves (ai-devops#401 Step 4). Created once by the alarm workflow; keep it open.')
+      writeFileSync(file, 'Stable target for the no-progress alarm while no claim-first session identity resolves (ai-devops#401 Step 4). Created once by the alarm workflow; keep it open.')
       return JSON.parse(gh(['api', '-X', 'POST', `repos/${repo}/issues`, '-f', `title=${FALLBACK_TITLE}`, '-F', `body=@${file}`, '-f', `labels[]=${FALLBACK_LABEL}`]))
     })
   },

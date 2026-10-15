@@ -364,7 +364,7 @@ export function captureOperational(gh, source, markerRunner) {
   }
 }
 
-/** The orchestrator marker is retired (issue #3874): there is never one to record. */
+/** The claim-first session identity is retired (issue #3874): there is never one to record. */
 export function defaultMarkerRunner() {
   return { state: 'none', marker: null, exitCode: 3 }
 }

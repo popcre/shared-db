@@ -580,7 +580,7 @@ export function gatherApprovalInput(env = process.env, deps = { json, pages }) {
   return { pr, headSha, evidence, assignments, returns, verdicts, changedFiles, priorHeads, mergeAudit: null, mergedAtHead }
 }
 
-// A MERGE FROM MAIN DOES NOT VOID AN APPROVAL (orchestrator marker #2758, 2026-09-11).
+// A MERGE FROM MAIN DOES NOT VOID AN APPROVAL (claim-first session identity #2758, 2026-09-11).
 //
 // Every merge to main forced every other open pull request to merge main, and the
 // new head voided its APPROVE, so each needed a fresh draw and review after every

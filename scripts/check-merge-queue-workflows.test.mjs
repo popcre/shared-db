@@ -94,9 +94,9 @@ const MIRROR = JSON.parse(readFileSync(new URL('../docs/verification/main-requir
 // dated readback artifact below (16 contexts, strict false), so nothing is pending.
 const KNOWN_LIVE_ADDITIONS = []
 // Contexts still present in the dated mirror but no longer live-required and no
-// longer emitted: the orchestrator marker guard was retired with the role (#3874);
+// longer emitted: the claim-first session identity guard was retired with the role (#3874);
 // live branch protection already omitted it (made advisory 2026-09-28).
-const RETIRED_MIRROR_CONTEXTS = new Set(['Orchestrator marker guard', 'Agent work contract'])
+const RETIRED_MIRROR_CONTEXTS = new Set(['claim-first session identity guard', 'Agent work contract'])
 
 // context -> emitter. kind 'check-run': the workflow job named `job` reports
 // the context on whatever commit it runs on, so merge_group coverage means the

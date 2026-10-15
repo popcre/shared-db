@@ -109,7 +109,7 @@ function runtimeIo() {
     issueComments: () => comments,
     commentIssue: (issue, body) => { calls.push('commentIssue'); comments.push({ author: 'u2giants', author_association: expectedOperatorAssociation(), body }) },
     getIssueComments: () => [evidenceComment], getIssue: () => ({ body: 'scope' }),
-    parseScope: () => ({ workType: 'structural', route: 'shared-db-orchestrator', applicationReturnTo: 'popcre/shared-db', liveAssertion: 'business behavior works', generatedTypes: 'required', writes: ['public.example'] }),
+    parseScope: () => ({ workType: 'structural', route: 'claim-first', applicationReturnTo: 'popcre/shared-db', liveAssertion: 'business behavior works', generatedTypes: 'required', writes: ['public.example'] }),
     prStructuralInspection: () => ({ objects: ['public.example'] }),
     parseOutcomeEvidence: body => { calls.push('parseOutcomeEvidence'); return parseOutcomeEvidence(body) },
     verifyProductionApply: () => { calls.push('verifyProductionApply'); return true },

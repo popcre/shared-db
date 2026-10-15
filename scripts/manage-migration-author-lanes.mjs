@@ -1199,7 +1199,7 @@ export const githubIo = {
     return reconcilePreflightRows(output,reviewers)
   },
   // The orchestrator role is retired (owner ruling 2026-10-02, issue #3874), so
-  // reviewer assignment no longer reads the orchestrator marker. Reviewer
+  // reviewer assignment no longer reads the claim-first session identity. Reviewer
   // independence now follows the AUTHORING session's engine, declared in
   // SHARED_DB_AUTHOR_ENGINE (e.g. claude, codex, glm, zcode). Unset, blank or
   // unknown values refuse (fail closed); see authorEngineFromEnv.
@@ -4449,7 +4449,7 @@ export function acquireExclusive(kind, metadata, io = githubIo) {
         if (changesMigration) throw new LaneError(`exclusive merge lane requires exactly one live author claim for a pull request that changes migrations${claimsSeen()}`)
       }
       if (kind === 'merge' && pr.base?.sha !== io.mainSha?.()) {
-        // #2758 (orchestrator marker, 2026-09-11): main may move independently
+        // #2758 (claim-first session identity, 2026-09-11): main may move independently
         // of this pull request. `check-main-tip-freshness.mjs --contains` is the
         // authoritative judge and already ran in guarded-migration-merge before
         // this acquisition. Re-ask the same question here so a direct

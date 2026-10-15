@@ -591,6 +591,6 @@ export function allocatableReviewers(io){
   }
 }
 
-// The orchestrator marker resolver (issue #2127) was retired with the role
+// The claim-first session identity resolver (issue #2127) was retired with the role
 // (issue #3874); session authority lives in lib/session-authority.mjs.
 export function readSessionIdOrUnknown(){const id=readSessionId();return typeof id==='string'?id:'unknown-session'}

@@ -62,7 +62,7 @@ const serializedIo = (io = {}) => {
   }
 }
 const scopeBody = ({ service='standard-application', change='migration', stage='entered', object='table core.example', returnTo='u2giants/example-app', live='authenticated create-and-read succeeds', generated='not-applicable', extra='' } = {}) => [
-  '```db-work-scope', 'status: ready', 'work_type: structural', 'route: shared-db-orchestrator',
+  '```db-work-scope', 'status: ready', 'work_type: structural', 'route: claim-first',
   `service_class: ${service}`, `change_type: ${change}`, `application_return_to: ${returnTo}`,
   `live_assertion: ${live}`, `generated_types: ${generated}`, `outcome_stage: ${stage}`,
   'priority: 5', 'depends_on:', 'writes:', `  - ${object}`, '```', extra,
@@ -94,7 +94,7 @@ test('all four urgent impacts qualify only with environment, evidence, and appli
   }
   let row=issue(scopeBody({service:'urgent-application'}));assert.throws(()=>evaluateAdmission(row,parseQueueScope(row.body),null),/requires a db-impact/)
   row=issue(scopeBody({returnTo:''}));assert.throws(()=>evaluateAdmission(row,parseQueueScope(row.body),null),/application_return_to/)
-  assert.throws(()=>parseQueueScope(scopeBody({object:''}).replace('  - \n','').replace('work_type: structural','work_type: repo-maintenance').replace('route: shared-db-orchestrator','route: repo-maintenance').replace('service_class: standard-application','service_class: urgent-application').replace('application_return_to: u2giants/example-app\n','')),/cannot self-promote/)
+  assert.throws(()=>parseQueueScope(scopeBody({object:''}).replace('  - \n','').replace('work_type: structural','work_type: repo-maintenance').replace('route: claim-first','route: repo-maintenance').replace('service_class: standard-application','service_class: urgent-application').replace('application_return_to: u2giants/example-app\n','')),/cannot self-promote/)
 })
 
 test('actual pull request files must contain a migration before reviewer or shared-stage admission', () => {
@@ -226,14 +226,14 @@ test('production admission requires the source PR so actual SQL is rechecked',()
 })
 
 test('legacy in-flight structural PRs remain executable but cannot enter as new claims',()=>{
-  const legacy=issue(['```db-work-scope','status: ready','work_type: structural','route: shared-db-orchestrator','priority: 5','depends_on:','writes:','  - table core.example','```'].join('\n'))
+  const legacy=issue(['```db-work-scope','status: ready','work_type: structural','route: claim-first','priority: 5','depends_on:','writes:','  - table core.example','```'].join('\n'))
   const io={getIssue:()=>legacy,closingIssuesForPr:()=>[{number:41,state:'open'}],getPr:()=>({head:{sha:'a'.repeat(40)}}),getPrFiles:()=>[{filename:'supabase/migrations/20260911120000_example.sql',status:'added'}],getFileAt:()=>'create table core.example(id bigint);'}
   assert.equal(admitIssue(41,io,{pr:7,allowLegacy:true}).legacy,true)
   assert.throws(()=>admitIssue(41,io),/change_type/)
 })
 
 test('workflow resolver and PR-backed acquire preserve the same bounded legacy admission',()=>{
-  const legacy=issue(['```db-work-scope','status: ready','work_type: structural','route: shared-db-orchestrator','priority: 5','depends_on:','writes:','  - table core.example','```'].join('\n'))
+  const legacy=issue(['```db-work-scope','status: ready','work_type: structural','route: claim-first','priority: 5','depends_on:','writes:','  - table core.example','```'].join('\n'))
   const base={getIssue:()=>legacy,closingIssuesForPr:()=>[{number:41,state:'open'}],getPr:()=>({head:{sha:'a'.repeat(40)}}),getPrFiles:()=>[{filename:'supabase/migrations/20260911120000_example.sql',status:'added'}],getFileAt:()=>'create table core.example(id bigint);'}
   assert.equal(admitIssue(41,base,{pr:7,allowLegacy:true}).legacy,true)
   assert.equal(resolveAdmittedIssueForPr(7,serializedIo(base)).admission,'admitted')
@@ -245,14 +245,14 @@ test('workflow resolver and PR-backed acquire preserve the same bounded legacy a
 })
 
 test('standalone PR-backed admission preserves bounded legacy parity',()=>{
-  const body=['```db-work-scope','status: ready','work_type: structural','route: shared-db-orchestrator','priority: 5','depends_on:','writes:','  - table core.example','```'].join('\n')
+  const body=['```db-work-scope','status: ready','work_type: structural','route: claim-first','priority: 5','depends_on:','writes:','  - table core.example','```'].join('\n')
   const make=(createdAt)=>serializedIo({getIssue:()=>issue(body),closingIssuesForPr:()=>[{number:41,state:'open'}],getPr:()=>({head:{sha:'a'.repeat(40)}}),getPrFiles:()=>[{filename:'supabase/migrations/20260911120000_example.sql',status:'added'}],getFileAt:()=>'create table core.example(id bigint);',...(createdAt?{getIssue:()=>({...issue(body),createdAt})}:{})})
   const oldLog=console.log,oldError=console.error;console.log=()=>{};console.error=()=>{}
   try{assert.equal(managerMain(['--admit-issue','41','--pr','7'],new Date(),make()),0);assert.equal(managerMain(['--admit-issue','41','--pr','7'],new Date(),make('2026-09-11T18:00:00Z')),2)}finally{console.log=oldLog;console.error=oldError}
 })
 
 test('an issue created after the legacy cutover cannot skip the admission fields by naming a PR',()=>{
-  const body=['```db-work-scope','status: ready','work_type: structural','route: shared-db-orchestrator','priority: 5','depends_on:','writes:','  - table core.example','```'].join('\n')
+  const body=['```db-work-scope','status: ready','work_type: structural','route: claim-first','priority: 5','depends_on:','writes:','  - table core.example','```'].join('\n')
   const base={closingIssuesForPr:()=>[{number:41,state:'open'}],getPr:()=>({head:{sha:'a'.repeat(40)}}),getPrFiles:()=>[{filename:'supabase/migrations/20260911120000_example.sql',status:'added'}],getFileAt:()=>'create table core.example(id bigint);'}
   for(const stamp of [{created_at:'2026-09-11T18:00:00Z'},{createdAt:'2026-09-12T00:00:00Z'},{}]){
     const row={number:41,state:'open',title:'structural outcome',body,...stamp}
@@ -338,7 +338,7 @@ test('repository-maintenance admission refusal cannot consume a lane or shared s
 })
 
 test('legacy issues remain protected if already claimed but are never offered as new dispatches',()=>{
-  const legacy=issue(['```db-work-scope','status: ready','work_type: structural','route: shared-db-orchestrator','priority: 5','depends_on:','writes:','  - table core.example','```'].join('\n'))
+  const legacy=issue(['```db-work-scope','status: ready','work_type: structural','route: claim-first','priority: 5','depends_on:','writes:','  - table core.example','```'].join('\n'))
   const result=buildDynamicQueues([legacy],[])
   assert.deepEqual(result.dispatchable,[])
   assert.equal(result.skipped.find((row)=>row.issue===41)?.reason,'missing-required-admission-fields')
@@ -981,7 +981,7 @@ test('outcome comments trust only the operator login with the owner-implied asso
 })
 
 test('self-service-additive admission confines writes to the {crm,pim,dam,plm} app-owned schemas (#3199 round-2 review)', () => {
-  const laneBody = (object) => scopeBody({ object }).replace('route: shared-db-orchestrator', 'route: self-service-additive')
+  const laneBody = (object) => scopeBody({ object }).replace('route: claim-first', 'route: self-service-additive')
   const shared = issue(laneBody('table core.customer_ext'))
   assert.throws(() => evaluateAdmission(shared, parseQueueScope(shared.body), null), /writes outside the \{crm,pim,dam,plm\} app-owned schemas: table core\.customer_ext/)
   const schemaless = issue(laneBody('schema crm'))
@@ -994,13 +994,13 @@ test('self-service-additive admission confines writes to the {crm,pim,dam,plm} a
 
 test('the outcome lifecycle completes BOTH structural routes (#3199 round-2 review High)', () => {
   const build = (route) => {
-    const io = { getIssue: () => issue(scopeBody({ object: 'table crm.note' }).replace('route: shared-db-orchestrator', `route: ${route}`), 41) }
+    const io = { getIssue: () => issue(scopeBody({ object: 'table crm.note' }).replace('route: claim-first', `route: ${route}`), 41) }
     return io
   }
   // The self-service route must clear the same route gate the orchestrator
   // route clears; before the fix this threw 'only an admitted structural
   // outcome can complete' for route self-service-additive.
-  const admitted = scopeBody({ object: 'table crm.note' }).replace('route: shared-db-orchestrator', 'route: self-service-additive')
+  const admitted = scopeBody({ object: 'table crm.note' }).replace('route: claim-first', 'route: self-service-additive')
   for (const route of ['shared-db-orchestrator', 'self-service-additive']) {
     const row = issue(admitted)
     const io = { getIssue: () => row }

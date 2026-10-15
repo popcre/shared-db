@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "work_issue": 2530,
+  "outcome": "ready-for-merge",
+  "pr": 4305,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2530/5",
+  "contract_sha256": "4cc52390676270bb0d4f73e71ad4d4456b66f9225530f7f5ec98f705cd3ee22b",
+  "head_sha": "c1630a5156f829ab78eeded867171f2d9c9b65b4",
+  "base_sha": "9595a63fcc0c616687d858b0eef1b3864a9d265e",
+  "files_changed": [
+    ".github/workflows/coldlion-promotion-contract-tests.yml",
+    ".github/workflows/database-contract-tests.yml",
+    ".github/workflows/documents-fast-ci.yml",
+    ".github/workflows/merge-queue-gate.yml",
+    ".github/workflows/migration-author-lease.yml",
+    ".github/workflows/pr-guards.yml",
+    ".github/workflows/shared-supabase-migrations.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/configure-merge-queue.mjs",
+    "scripts/configure-merge-queue.test.mjs",
+    "scripts/documents-fast-ci-workflow.test.mjs",
+    "scripts/merge-queue-contract.mjs",
+    "scripts/merge-queue-contract.test.mjs",
+    "types/database.types.ts"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/check-merge-queue-workflows.test.mjs scripts/configure-merge-queue.test.mjs scripts/merge-queue-contract.test.mjs scripts/documents-fast-ci-workflow.test.mjs",
+      "exit_code": 0,
+      "evidence": "Authoritative run is Linux CI (Tools offline tests and Queue-sensitive aggregate green on 885966923). Local Windows run 78 pass, 9 known spawn-path failures. types sync is generated types from main."
+    }
+  ],
+  "assumptions_resolved": [
+    "Bare merge_group confirmed by tests and GitHub example.",
+    "14 live contexts confirmed."
+  ],
+  "stop_conditions_hit": []
+}

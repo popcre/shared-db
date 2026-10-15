@@ -112,7 +112,7 @@ revoke all on plm.stage_list, plm.stage, plm.stage_duration, plm.stage_dependenc
 comment on table plm.stage_list is 'Stage Catalog list (Design, Licensing, Sampling, Production, Shipping). Admin creates/deletes; maintainers (dflow.users ids) and admins edit. version bumps on any change to the list or its stages, durations, dependencies or licensor options. shared-db#4350.';
 comment on column plm.stage_list.maintainers is 'dflow.users.id values allowed to edit this list (admins always can).';
 comment on column plm.stage_list.version is 'Optimistic-concurrency version; bumped by plm.stage_catalog_bump_version().';
-comment on table plm.stage is 'One step of a stage list. No waits between stages: a needed date = next stage needed date minus this stage duration. When duration_varies_by is set, durations come from plm.stage_duration; a scope with no row shows missing time (seeded so for Re-design, Re-sampling, and the Linesheet stages of licensors with no licensing times yet).';
+comment on table plm.stage is 'One step of a stage list. No waits between stages: a needed date = next stage needed date minus this stage duration. When duration_varies_by is set, durations come from plm.stage_duration; a scope with no row shows missing time (seeded so for Re-design and Re-sampling, and for all five licensing stages of Steal a Brain Rot and Aardman Animations, which have no licensing times yet). updated_by is a dflow.users.id; updated_at and updated_by are set by the designflow-tracking API on every edit.';
 comment on column plm.stage.name is 'Shown in Last Completed.';
 comment on column plm.stage.pending_label is 'Noun shown in Waiting On.';
 comment on column plm.stage.default_duration is 'Duration in the list unit when it does not vary; NULL = not set yet (shown as missing time, never 0).';
@@ -124,7 +124,7 @@ comment on column plm.stage.updated_by is 'dflow.users.id of the last editor.';
 comment on table plm.stage_duration is 'Per product type or per licensor duration of a stage, in the list unit; NULL duration = not set yet.';
 comment on table plm.stage_dependency is 'Stage A depends on stage B: hard = cannot start until B is done; soft = may start early by allowed_early_days. Filled by maintainers; seeded empty. Cycles rejected by the API.';
 comment on table plm.licensor_stage_option is 'Turns licensor_specific stages (Linesheet) on per licensor.';
-comment on table plm.prod_stage_progress is 'Done/failed ticks for user-added stages (done_signal NULL) per production order and optional SKU (NULL = PO level). prod_order_header_id = plm."ProdOrderHeader".id; no foreign key because that table is sync-owned.';
+comment on table plm.prod_stage_progress is 'Done/failed ticks for user-added stages (done_signal NULL) per production order and optional SKU (NULL = PO level). prod_order_header_id = plm."ProdOrderHeader".id; no foreign key because that table is sync-owned. updated_by is a dflow.users.id; updated_at and updated_by are set by the designflow-tracking API on every write, including upserts.';
 comment on column plm.prod_stage_progress.sku is 'plm."ProdOrderDetail"."itemNo"; NULL = the whole PO (empty string refused). Uniqueness is the expression index prod_stage_progress_order_sku_stage_key on (prod_order_header_id, coalesce(sku, ''''), stage_id): upserts use ON CONFLICT (prod_order_header_id, coalesce(sku, ''''), stage_id).';
 
 insert into plm.stage_list (key, name, duration_unit, maintainers, position) values

@@ -101,6 +101,37 @@ begin
     raise exception 'unrelated lists must not be bumped';
   end if;
 
+  -- Cross-list paths: each change bumps every list it touches, exactly once.
+  select id into v_new from plm.stage where list_id = (select id from plm.stage_list where key = 'sampling') and position = 2;
+  insert into plm.stage_dependency (stage_id, depends_on_stage_id, kind)
+    values (v_stage, v_new, 'soft');                                                  -- production depends on sampling
+  if (select version from plm.stage_list where key = 'sampling') <> 2
+     or (select version from plm.stage_list where id = v_list) <> 9 then
+    raise exception 'a cross-list dependency insert must bump both lists once';
+  end if;
+  update plm.stage_dependency set allowed_early_days = 2 where stage_id = v_stage and depends_on_stage_id = v_new; -- dependency update
+  if (select version from plm.stage_list where key = 'sampling') <> 3
+     or (select version from plm.stage_list where id = v_list) <> 10 then
+    raise exception 'a cross-list dependency update must bump both lists once';
+  end if;
+  update plm.stage_duration set duration = duration + 1
+   where id = (select min(d.id) from plm.stage_duration d join plm.stage s on s.id = d.stage_id
+               where s.list_id = (select id from plm.stage_list where key = 'design'));    -- duration update
+  if (select version from plm.stage_list where key = 'design') <> 2 then
+    raise exception 'a duration update must bump its list once';
+  end if;
+  update plm.stage set list_id = (select id from plm.stage_list where key = 'shipping'), position = 50
+   where id = v_stage2;                                                               -- stage moves lists
+  if (select version from plm.stage_list where key = 'shipping') <> 2
+     or (select version from plm.stage_list where id = v_list) <> 11 then
+    raise exception 'moving a stage between lists must bump both lists once';
+  end if;
+  delete from plm.stage_list where key = 'shipping';                                  -- list delete cascades
+  if exists (select 1 from plm.stage where id = v_stage2)
+     or exists (select 1 from plm.stage_dependency where stage_id = v_stage2 or depends_on_stage_id = v_stage2) then
+    raise exception 'deleting a list must cascade to its stages and their dependencies';
+  end if;
+
   select version into v from plm.stage_list where id = v_list;
   update plm.stage_list set name = name where id = v_list;
   if (select version from plm.stage_list where id = v_list) <> v then

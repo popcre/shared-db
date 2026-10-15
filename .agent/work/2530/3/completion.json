@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "work_issue": 2530,
+  "outcome": "ready-for-merge",
+  "pr": 4305,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2530/3",
+  "contract_sha256": "7434c8bb09b92d24fea2242483187edb882f39d539cbe50234fbbc6f720650e7",
+  "head_sha": "c81d81abe6a2f124ef9b71776cfe14ddc234fdfa",
+  "base_sha": "9595a63fcc0c616687d858b0eef1b3864a9d265e",
+  "files_changed": [
+    ".github/workflows/coldlion-promotion-contract-tests.yml",
+    ".github/workflows/database-contract-tests.yml",
+    ".github/workflows/documents-fast-ci.yml",
+    ".github/workflows/merge-queue-gate.yml",
+    ".github/workflows/migration-author-lease.yml",
+    ".github/workflows/pr-guards.yml",
+    ".github/workflows/shared-supabase-migrations.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/configure-merge-queue.mjs",
+    "scripts/configure-merge-queue.test.mjs",
+    "scripts/documents-fast-ci-workflow.test.mjs",
+    "scripts/merge-queue-contract.mjs",
+    "scripts/merge-queue-contract.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/check-merge-queue-workflows.test.mjs scripts/configure-merge-queue.test.mjs scripts/merge-queue-contract.test.mjs scripts/documents-fast-ci-workflow.test.mjs",
+      "exit_code": 0,
+      "evidence": "Authoritative run is Linux CI (14/14 green on this head family). Local Windows run: 78 pass, 9 fail — all 9 are the known spawn-path double-prefix (C:\\\\C:\\\\) defect in check-merge-queue-workflows.test.mjs, unrelated to bare merge_group / dual-rule changes. Those assertions pass."
+    }
+  ],
+  "assumptions_resolved": [
+    "Bare merge_group: trigger form confirmed by test assertions and GitHub official example.",
+    "14 live contexts confirmed by live branch protection readback 2026-10-14."
+  ],
+  "stop_conditions_hit": []
+}

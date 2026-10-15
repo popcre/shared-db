@@ -50,12 +50,22 @@ begin
 
   -- Trigger function and the five triggers bound to it.
   if v_fn is null or (select count(*) from pg_proc p where p.oid = v_fn
-       and not p.prosecdef and p.prorettype = 'trigger'::regtype
+       and not p.prosecdef and p.prorettype = 'trigger'::regtype and p.provolatile = 'v'
        and 'search_path=""' = any (p.proconfig)) <> 1 then
     raise exception 'plm.stage_catalog_bump_version must be security invoker, return trigger, empty search_path';
   end if;
   if has_function_privilege('anon', v_fn, 'execute') or has_function_privilege('authenticated', v_fn, 'execute') then
     raise exception 'browser roles must not execute the trigger function';
+  end if;
+  if exists (select 1 from pg_roles where rolname = 'service_role')
+     and not has_function_privilege('service_role', v_fn, 'execute') then
+    raise exception 'service_role must execute the trigger function so its writes can fire the triggers';
+  end if;
+  -- Timing and events: stage_list BEFORE UPDATE (type 19); children AFTER INSERT/UPDATE/DELETE (type 29).
+  if (select tgtype from pg_trigger where tgrelid = 'plm.stage_list'::regclass and tgname = 'stage_list_bump_version') <> 19
+     or exists (select 1 from pg_trigger where tgfoid = v_fn and not tgisinternal
+                  and tgrelid <> 'plm.stage_list'::regclass and tgtype <> 29) then
+    raise exception 'trigger timing or events are wrong';
   end if;
   if (select count(*) from pg_trigger g
        where g.tgfoid = v_fn and not g.tgisinternal

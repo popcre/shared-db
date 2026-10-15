@@ -6,7 +6,7 @@
 -- Six new plm tables, one trigger function, and a structural seed:
 -- 5 lists, 24 stages, 637 durations, 32 Linesheet option rows (16 enabled), 0 dependencies.
 -- Access: server services only. Like every plm table created since
--- 20260710135975, service_role (BYPASSRLS) receives the schema's default grants; the
+-- 20260710135975, service_role (BYPASSRLS) receives the schema's default table grants plus EXECUTE on the trigger function; the
 -- owner (postgres, used by designflow-tracking today) keeps full access. anon and
 -- authenticated get no privilege, and RLS is enabled with no policies so a browser
 -- role can never read or write it even if a grant were added later.
@@ -119,7 +119,7 @@ comment on column plm.stage.default_duration is 'Duration in the list unit when 
 comment on column plm.stage.applies_to is 'all | licensed | non_licensed | on_resubmit (only while a licensor Resubmit is active at concept or PPS) | licensor_specific (only when plm.licensor_stage_option is enabled for the order licensor).';
 comment on column plm.stage.done_signal is 'Existing order field that marks the step done, from the code allow-list; NULL = user-added step ticked through plm.prod_stage_progress.';
 comment on column plm.stage.shown_on_tracker is 'Stage counted on Production Tracking; percent complete = done / shown stages that apply.';
-comment on column plm.stage.counts_toward_total is 'Included in timeline totals. Seeded false for Linesheet, on_resubmit and zero-time tracker steps.';
+comment on column plm.stage.counts_toward_total is 'Included in timeline totals. Seeded false for Linesheet, on_resubmit and zero-time steps (including Factory Prep).';
 comment on column plm.stage.updated_by is 'dflow.users.id of the last editor.';
 comment on table plm.stage_duration is 'Per product type or per licensor duration of a stage, in the list unit; NULL duration = not set yet.';
 comment on table plm.stage_dependency is 'Stage A depends on stage B: hard = cannot start until B is done; soft = may start early by allowed_early_days. Filled by maintainers; seeded empty. Cycles rejected by the API.';
@@ -880,6 +880,9 @@ $$;
 
 comment on function plm.stage_catalog_bump_version() is 'Bumps plm.stage_list.version on any change to a list or its stages, durations, dependencies or licensor options. shared-db#4350.';
 revoke all on function plm.stage_catalog_bump_version() from public, anon, authenticated;
+-- service_role writes these tables through its schema default grants, so it must be able
+-- to fire the triggers (precedent: 20260830203342_opa_durable_entity_lifecycle.sql).
+grant execute on function plm.stage_catalog_bump_version() to service_role;
 
 -- Triggers are created after the seed so every list starts at version 1.
 create trigger stage_list_bump_version before update on plm.stage_list

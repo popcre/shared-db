@@ -17,10 +17,11 @@ select (
                   where has_table_privilege(r.role, t.name, p.priv))
   and (select count(*) = 1 from pg_proc p
         where p.oid = to_regprocedure('plm.stage_catalog_bump_version()')
-          and not p.prosecdef and p.prorettype = 'trigger'::regtype
+          and not p.prosecdef and p.prorettype = 'trigger'::regtype and p.provolatile = 'v'
           and 'search_path=""' = any (p.proconfig))
   and not has_function_privilege('anon', 'plm.stage_catalog_bump_version()', 'execute')
   and not has_function_privilege('authenticated', 'plm.stage_catalog_bump_version()', 'execute')
+  and has_function_privilege('service_role', 'plm.stage_catalog_bump_version()', 'execute')
   and (select count(*) = 5 from pg_trigger g
         where g.tgfoid = to_regprocedure('plm.stage_catalog_bump_version()') and not g.tgisinternal)
   and exists (select 1 from pg_index i where i.indexrelid = 'plm.prod_stage_progress_order_sku_stage_key'::regclass

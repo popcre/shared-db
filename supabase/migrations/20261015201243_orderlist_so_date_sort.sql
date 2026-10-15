@@ -39,6 +39,23 @@ begin
         column_check.object_name,column_check.column_name,column_check.type_name;
     end if;
   end loop;
+  if to_regprocedure('auth.uid()') is null
+     or to_regprocedure('auth.role()') is null then
+    raise exception '#4336 requires auth.uid() and auth.role() for the SO-date helper access gate';
+  end if;
+  if not exists (
+    select 1
+    from pg_catalog.pg_constraint constraint_row
+    join pg_catalog.pg_attribute id_column
+      on id_column.attrelid=constraint_row.conrelid
+     and id_column.attname='id'
+     and not id_column.attisdropped
+    where constraint_row.conrelid=to_regclass('plm.production_order_line')
+      and constraint_row.contype='p'
+      and constraint_row.conkey=array[id_column.attnum]::smallint[]
+  ) then
+    raise exception '#4336 requires the production-order-line primary key used by exact source binding';
+  end if;
   if position('coldlion_ref.is_primary' in lower(pg_get_viewdef('api.dam_order_list'::regclass)))=0 then
     raise exception '#4336 requires primary-only ColdLion references in OrderList';
   end if;

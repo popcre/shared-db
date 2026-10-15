@@ -132,7 +132,7 @@ end;
    if op->>'kind'='entity_source'
       and op->>'target'='core.taxonomy_source_ref'
       and op->'before'->'rows'->0 is not null
-      and not ((op->'before'->'rows'->0) @> op->'after')
+      and not ((op->'before'->'rows'->0) @> (op->'after'))
       and op->'after'->'missing_since'='null'::jsonb
       and (
        (op->'after'->>'last_seen_at')::timestamptz is not distinct from

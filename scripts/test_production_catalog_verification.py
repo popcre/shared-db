@@ -1661,7 +1661,7 @@ class BehavioralSidecarTests(unittest.TestCase):
         expression = CATALOG_CONTRACTS["licensing_support_forward_v2"]
         version = "20261015150513"
         old_body = "3097938f8dad64d35f35931967ef3b67"
-        new_body = "f3a0d879614bae881a1ed60413917c56"
+        new_body = "a5354f0ae3337cf3636473be4711351a"
         old_branch = (
             f"not exists(select 1 from supabase_migrations.schema_migrations where version='{version}')"
             f"\n      and exists(select 1 from pg_proc p where p.oid=to_regprocedure("
@@ -1712,7 +1712,7 @@ class BehavioralSidecarTests(unittest.TestCase):
 
         live = (REPO / ".github/live-proofs/2336.sql").read_text()
         self.assertIn(f"where version='{version}'", live)
-        self.assertIn("md5(prosrc)='f3a0d879614bae881a1ed60413917c56'", live)
+        self.assertIn("md5(prosrc)='a5354f0ae3337cf3636473be4711351a'", live)
         self.assertIn("('plm.licensing_consolidation_plan_immutable()','3097938f8dad64d35f35931967ef3b67')", live)
 
     def test_catalog_contract_is_named_hash_bound_and_select_only(self):

@@ -1140,7 +1140,7 @@ and not exists(select 1 from (values
 and ((not exists(select 1 from supabase_migrations.schema_migrations where version='20261015150513')
       and exists(select 1 from pg_proc p where p.oid=to_regprocedure('plm.licensing_consolidation_plan_immutable()') and md5(p.prosrc)='3097938f8dad64d35f35931967ef3b67'))
   or (exists(select 1 from supabase_migrations.schema_migrations where version='20261015150513')
-      and exists(select 1 from pg_proc p where p.oid=to_regprocedure('plm.licensing_consolidation_plan_immutable()') and md5(p.prosrc)='f3a0d879614bae881a1ed60413917c56')))
+      and exists(select 1 from pg_proc p where p.oid=to_regprocedure('plm.licensing_consolidation_plan_immutable()') and md5(p.prosrc)='a5354f0ae3337cf3636473be4711351a')))
 and not exists(select 1 from (values
 ('core.property_character_source_edge_source_retirement_idx','CREATE INDEX property_character_source_edge_source_retirement_idx ON core.property_character_source_edge USING btree (source_system, id) WHERE (is_current AND (evidence_kind = ''direct_source_assertion''::core.relationship_evidence_kind))'),
 ('core.property_franchise_source_edge_source_retirement_idx','CREATE INDEX property_franchise_source_edge_source_retirement_idx ON core.property_franchise_source_edge USING btree (source_system, id) WHERE (is_current AND (evidence_kind = ''direct_source_assertion''::core.relationship_evidence_kind))'),

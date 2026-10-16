@@ -3404,7 +3404,9 @@ function replaceFailedReviewerOperation({issue,pr,headSha,failedSequence,failure
     noteFailure(original.reviewer,request.failedSequence)
     for(const row of parsedReplacements)noteFailure(bySequence.get(row.failedSequence),row.failedSequence)
     let sequence=null, reviewer=null
-    for(const excluded of [failedNames,hardFailedNames]){
+    // Owner 2026-10-16 (#4399): prefer unfailed names, then retryable failures, then
+    // last-resort hard-failed names so a small roster can never report the pool exhausted.
+    for(const excluded of [failedNames,hardFailedNames,new Set()]){
       for(const [offset,candidate] of drawOrder(cursor.sequence+1,io).entries()){
         const candidateSequence=cursor.sequence+1+offset
         if(!eligibleNames.has(candidate.name)||exhaustedReviewers.has(candidate.name)||!reviewerEmitsGovernedVerdict(candidate.name)||excluded.has(candidate.name)||(!concurrentLeases&&preflightBusy.has(candidate.name))||excludedProviders.has(candidate.name)||preflightExclusions.has(candidate.name))continue

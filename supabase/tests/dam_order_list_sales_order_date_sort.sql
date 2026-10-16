@@ -3,6 +3,7 @@ do $$
 declare helper pg_proc; find_fn pg_proc; view_options text[]; view_sql text;
   allowed_filter_columns text; sort_only_columns text; plan_line text;
   plain_plan text := ''; count_plan text := '';
+  ordinary_projection text; bounded_plan text; block_offset integer;
 begin
   if not exists (
     select 1 from information_schema.columns
@@ -68,20 +69,43 @@ begin
     raise exception 'Find must keep SO Date sort-only with nulls-last sorting and stable line-ID ties';
   end if;
   for plan_line in execute
-    'explain (costs off) select order_line_id, order_id, production_order_number, sku, order_date, quantity_ordered from api.dam_order_list'
+    'explain (costs off, verbose) select order_line_id, order_id, production_order_number, sku, order_date, quantity_ordered from api.dam_order_list'
   loop
     plain_plan := plain_plan || plan_line || E'\n';
   end loop;
   if plain_plan ilike '%orderlist_sales_order_received_date%' then
     raise exception 'An ordinary OrderList projection evaluates the SO-date helper: %',plain_plan;
   end if;
-  for plan_line in execute 'explain (costs off) select count(*) from api.dam_order_list'
+  for plan_line in execute 'explain (costs off, verbose) select count(*) from api.dam_order_list'
   loop
     count_plan := count_plan || plan_line || E'\n';
   end loop;
   if count_plan ilike '%orderlist_sales_order_received_date%' then
     raise exception 'An ordinary OrderList count evaluates the SO-date helper: %',count_plan;
   end if;
+  -- The grid reads 500-row blocks with a default Start Ship sort. Use every
+  -- ordinary view column, a superset of its compact projection, so pagination
+  -- and ordering cannot silently pull the sort-only helper into normal loads.
+  select string_agg(format('%I',column_name),', ' order by ordinal_position)
+  into strict ordinary_projection
+  from information_schema.columns
+  where table_schema='api' and table_name='dam_order_list'
+    and column_name <> 'sales_order_received_date';
+  if ordinary_projection is null then
+    raise exception 'The ordinary OrderList projection must not be empty';
+  end if;
+  foreach block_offset in array array[0,500,1000] loop
+    bounded_plan := '';
+    for plan_line in execute format(
+      'explain (costs off, verbose) select %s from api.dam_order_list order by start_ship_date desc nulls last, order_line_id asc nulls last limit 500 offset %s',
+      ordinary_projection,block_offset)
+    loop
+      bounded_plan := bounded_plan || plan_line || E'\n';
+    end loop;
+    if bounded_plan ilike '%orderlist_sales_order_received_date%' then
+      raise exception 'Ordinary OrderList block at offset % evaluates the SO-date helper: %',block_offset,bounded_plan;
+    end if;
+  end loop;
 end $$;
 
 -- Exercise the real view/helper/Find path against disposable rows in the CI database.

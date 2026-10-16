@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "work_issue": 4326,
+  "outcome": "ready-for-merge",
+  "pr": 4330,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4326/7",
+  "contract_sha256": "5d49e39d54962fbf63da86181113bb323df3244e3ebf4dd63478b090274df4db",
+  "head_sha": "e700877beefc939313cd9d42ffac44bcba849555",
+  "base_sha": "154361984687def51366c2c539d7467b1ad64098",
+  "files_changed": [
+    ".github/workflows/generate-database-types.yml",
+    "config/orchestrator-global-invalidators-v1.json",
+    "docs/development.md",
+    "scripts/generated-types-proof.mjs",
+    "scripts/generated-types-proof.test.mjs",
+    "scripts/lib/lanes/retirement.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/orchestrator-flow/admission-outcome.test.mjs",
+    "scripts/production_business_risk_gate.py",
+    "scripts/shared_db_live_proof.py",
+    "scripts/test_shared_db_live_proof.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/generated-types-proof.test.mjs scripts/orchestrator-flow/admission-outcome.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "1003 passed, 0 failed at exact integrated source head e700877beefc939313cd9d42ffac44bcba849555."
+    },
+    {
+      "command": "node --test scripts/orchestrator-flow/evidence-bundle.test.mjs",
+      "exit_code": 0,
+      "evidence": "6 passed, 0 failed."
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "16 passed, 0 failed."
+    },
+    {
+      "command": "python3 -m unittest scripts.test_production_business_risk_gate.ProductionBusinessRiskGateTests.test_preview_producer_paths_cover_the_whole_executed_closure",
+      "exit_code": 0,
+      "evidence": "Ran 1 test; OK."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=353 sources=98 derived_digest=7d5729fa5373"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors."
+    },
+    {
+      "command": "python3 -m unittest discover -s scripts -p test_shared_db_live_proof.py",
+      "exit_code": 0,
+      "evidence": "Ran 30 tests; OK. Output: ACCEPTANCE PROBE QUALIFIED; production acceptance remains separate."
+    },
+    {
+      "command": "node --test scripts/check-live-proof-probe.test.mjs",
+      "exit_code": 0,
+      "evidence": "17 passed, 0 failed."
+    }
+  ],
+  "assumptions_resolved": [
+    "The integrated source implementation is exactly e700877beefc939313cd9d42ffac44bcba849555, based on origin/main 154361984687def51366c2c539d7467b1ad64098; the 11-file implementation list is derived from Git between those exact commits.",
+    "The combined producer/lifecycle suite passed 1003/1003 at the integrated source head. The proof-lexer acceptance test suite passed 30/30 and its live-proof probe regression passed 17/17.",
+    "The completion covers local source and synthetic regression evidence only. No production generated-types job, live proof, database access, paid review, or publication was performed in this pass; prior native review records remain unchanged and are not asserted as approval of the combined source head."
+  ],
+  "stop_conditions_hit": []
+}

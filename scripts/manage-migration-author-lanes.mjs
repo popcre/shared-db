@@ -2896,7 +2896,7 @@ function historicalFailureProof(options,{request,original,currentHead,io}){
   const receiptHash=start.receiptPathSha256
   if(!receiptHash||!start.sourceDigest)throw new LaneError('original paid start lacks its source receipt binding')
   const receipt=parseHistoricalReceipt(options.historicalSourceReceipt,{...start,receiptPathSha256:receiptHash},request.headSha)
-  const reviewer=reviewersForOrchestrator(io.resolveOrchestratorEngine?.()).find(row=>row.name===original.reviewer)
+  const reviewer=reviewersForOrchestrator(io.resolveReviewEngine?.()).find(row=>row.name===original.reviewer)
   if(!reviewer?.wrapper)throw new LaneError('original reviewer wrapper mapping is unavailable')
   const diagnostic=parseHistoricalWrapperDiagnostic(options.historicalTerminalFailureLog,{pr:request.pr,headSha:request.headSha,reviewer:original.reviewer,startedAt:start.startedAt})
   const startBinding=historicalStartBinding({request,original,sourceReceipt:{...receipt,receiptPathSha256:receiptHash},diagnostic,starts})

@@ -137,3 +137,22 @@ test("the stop rule never fires mid-month when windows within one month stage ro
   // At October's boundary the month is correctly non-empty.
   assert.equal(closesStagedMonth(octB, nov) && forwardStopReached(counters), false);
 });
+
+import { headerTrackWindow as headerWindowUnderTest } from "./coldlion-landing/lib/order-intake-windows.mjs";
+import { buildPageUrl as buildUrlUnderTest } from "./coldlion-landing/lib/http.mjs";
+
+test("header tracks hold a wide start window and filter the last week through tomorrow", () => {
+  const created = headerWindowUnderTest("2026-10-16", "created");
+  assert.deepEqual(created, {
+    from: "2019-01-01",
+    to: "2028-04-01",
+    filters: { createdFrom: "2026-10-09", createdTo: "2026-10-17" },
+  });
+  const modified = headerWindowUnderTest("2026-10-16", "modified");
+  assert.deepEqual(modified.filters, { modifiedFrom: "2026-10-09", modifiedTo: "2026-10-17" });
+  assert.throws(() => headerWindowUnderTest("2026-10-16", "forward"), /unknown header track/);
+  const url = buildUrlUnderTest({ endpoint: "/orderHistory", stage: null }, modified, 0);
+  assert.equal(url.searchParams.get("fromDate"), "2019-01-01");
+  assert.equal(url.searchParams.get("modifiedFrom"), "2026-10-09");
+  assert.equal(url.searchParams.get("modifiedTo"), "2026-10-17");
+});

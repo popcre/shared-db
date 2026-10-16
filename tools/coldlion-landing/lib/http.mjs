@@ -40,6 +40,10 @@ export function buildPageUrl(scope, window, page, { companyCode = COMPANY_CODE, 
   url.searchParams.set("fromDate", window.from);
   url.searchParams.set("toDate", window.to);
   if (scope.stage) url.searchParams.set("stageCode", scope.stage);
+  // /orderHistory header filters (ColdLion, 2026-10-16): createdFrom/createdTo and
+  // modifiedFrom/modifiedTo narrow by the sales order HEADER's timestamps, ANDed with
+  // the start-date window, which stays required.
+  for (const [key, value] of Object.entries(window.filters ?? {})) url.searchParams.set(key, value);
   url.searchParams.set("page", String(page));
   url.searchParams.set("size", String(size));
   return url;
@@ -55,6 +59,7 @@ export function requestParams(scope, window, page, { companyCode = COMPANY_CODE,
     size,
   };
   if (scope.stage) params.stageCode = scope.stage;
+  Object.assign(params, window.filters ?? {});
   return params;
 }
 

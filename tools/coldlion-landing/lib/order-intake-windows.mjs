@@ -107,3 +107,40 @@ export function recordStagedWindow(stagedByMonth, window, stagedRows) {
   stagedByMonth[month] = (stagedByMonth[month] ?? 0) + stagedRows;
   return stagedByMonth;
 }
+
+
+// ---------------------------------------------------------------------------------
+// Header-timestamp tracks (ColdLion added createdFrom/createdTo and
+// modifiedFrom/modifiedTo to /orderHistory on 2026-10-16; live-probed the same day).
+// The filters key on the sales order HEADER, so one call finds every order entered or
+// changed recently whatever its ERP start date: new orders beyond the forward cap, and
+// edits to orders older than the trailing weeks, which the start-date tracks miss.
+// fromDate/toDate stay required by the vendor, so the start window is held wide.
+// These tracks ADD to trailing + forward; detection is still salesOrderNo novelty.
+// ---------------------------------------------------------------------------------
+
+export const HEADER_TRACKS = Object.freeze(["created", "modified"]);
+export const HEADER_LOOKBACK_DAYS = 7;
+export const HEADER_START_WINDOW_FROM = "2019-01-01";
+
+function addDays(isoValue, days) {
+  const value = parseIsoDate(isoValue, "date");
+  value.setUTCDate(value.getUTCDate() + days);
+  return isoDate(value);
+}
+
+/**
+ * The window for one header track: the wide start-date window plus the header filter
+ * covering the last HEADER_LOOKBACK_DAYS through tomorrow (so an inclusive or exclusive
+ * vendor upper bound both include today). The lookback re-covers missed hourly runs.
+ */
+export function headerTrackWindow(asOfIso, track, { lookbackDays = HEADER_LOOKBACK_DAYS } = {}) {
+  if (!HEADER_TRACKS.includes(track)) throw new Error(`unknown header track ${track}`);
+  const from = addDays(asOfIso, -lookbackDays);
+  const to = addDays(asOfIso, 1);
+  return {
+    from: HEADER_START_WINDOW_FROM,
+    to: forwardCapDate(asOfIso),
+    filters: { [`${track}From`]: from, [`${track}To`]: to },
+  };
+}

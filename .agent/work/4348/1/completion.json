@@ -7,7 +7,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/4348/1",
   "contract_sha256": "d9e2891ac5d2e9cae42ec0ca7842257f64bbdb34c91a44c7cf2452688c4806e0",
-  "head_sha": "b16142c61904c4f7e6ca558abcbf4890998dea5d",
+  "head_sha": "abb5aff7802196b014883216770213bb4fb7b2b0",
   "base_sha": "5a9fbac76bf630790c5249fb42639544f2d277f3",
   "files_changed": [
     ".github/ISSUE_TEMPLATE/author-lane-abandonment.md",
@@ -229,16 +229,17 @@
     {
       "command": "node --test scripts/claim-author-transfer.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/lib/session-authority.test.mjs scripts/queue-hygiene-report.test.mjs",
       "exit_code": 0,
-      "evidence": "{\"passed\": 1008, \"failed\": 0} at b16142c6"
+      "evidence": "{\"passed\": 1008, \"failed\": 0} at abb5aff7"
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK: call_sites=354 sources=98 at b16142c6"
+      "evidence": "truth audit OK: call_sites=354 sources=98 at abb5aff7"
     }
   ],
   "assumptions_resolved": [
-    "Contract published before this implementation commit; late-contract origin disclosed in its assumptions."
+    "Contract published before this implementation commit; late-contract origin disclosed in its assumptions.",
+    "Includes the unsigned paginated-routing fix 199752010 pushed by another session at 11:58 AM EDT, tightened to keep the renamed-file prior-filename guard, with tests."
   ],
   "stop_conditions_hit": []
 }

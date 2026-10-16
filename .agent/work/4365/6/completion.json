@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "work_issue": 4365,
+  "outcome": "ready-for-merge",
+  "reason": "Required source checks are complete. Independent current-head review, PR CI and guarded merge are separate pending gates.",
+  "pr": 4357,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4365/6",
+  "contract_sha256": "ae5b4c5978ef2efd9e0127543932c655a689f4743d5a219493a49d6baa972038",
+  "head_sha": "8856d21e406ace8a4d49c17ae4c1b51e30da8357",
+  "base_sha": "e241459ab805a1219b76534d425741e1f87fa44c",
+  "files_changed": [
+    "docs/agents/section-4-anti-collision-rules.md",
+    "scripts/claim-author-transfer.test.mjs",
+    "scripts/lib/session-authority.mjs",
+    "scripts/lib/session-authority.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/queue-hygiene-report.mjs",
+    "scripts/queue-hygiene-report.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/lib/session-authority.test.mjs scripts/queue-hygiene-report.test.mjs scripts/claim-author-transfer.test.mjs",
+      "exit_code": 0,
+      "evidence": "{\"passed\": 995, \"failed\": 0} at 8856d21e"
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=353 sources=98 at 8856d21e"
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation 6 fixes governed GLM REJECT M1 (seq 6601, head 2d3f83e8): the ready receipt records the on-record owner; the mixed-spelling stop-author test now drives handoffClaimAuthor to acceptance and fails without the fix."
+  ],
+  "stop_conditions_hit": []
+}

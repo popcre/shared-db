@@ -307,3 +307,5 @@ bare workflow `gh api` read, or a per-file Contents URL, and runs in
 `tools-offline-tests.yml`. Its own tests feed it a known-dirty tree containing each
 forbidden shape and assert it refuses, *before* asserting anything about the real tree —
 a green run on clean input proves nothing.
+
+[Shared release hold reduction plan](../../plan_shared_release_hold_reduction.md)

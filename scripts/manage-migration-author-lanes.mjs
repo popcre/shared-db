@@ -87,6 +87,8 @@ import { workIssuesFromRows, openIssueNumbersFromRows, memoizePrFiles, closedCla
 // (the GitHub signature form). Both name one UUID and one machine; nothing else
 // is treated as equal, so an alias, a different UUID or machine never matches.
 const CLAUDE_OWNER_FORMS=[/^claude-chat-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})@([A-Za-z0-9][A-Za-z0-9._-]{0,119})$/,/^Claude chat ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}) on ([A-Za-z0-9][A-Za-z0-9._-]{0,119})$/]
+// The GitHub signature spelling for a Claude owner label, or null for any other owner.
+function claudeSignature(label){const key=claudeOwnerKey(label);if(!key)return null;const at=key.indexOf('@');return `Claude chat ${key.slice(0,at)} on ${key.slice(at+1)}`}
 function claudeOwnerKey(label){for(const re of CLAUDE_OWNER_FORMS){const m=re.exec(String(label??''));if(m)return `${m[1]}@${m[2]}`}return null}
 export function parkComment({claim,lease,pr}){
   return [
@@ -97,7 +99,7 @@ export function parkComment({claim,lease,pr}){
     `2. Re-claim the same objects (${(lease.objects??[]).join(', ')||'see the released claim'}) with a new claim.`,
     `3. Migration version ${lease.version} stays permanently reserved and is never reused; pick a new version and rename the migration.`,
     '',
-    `Posted by ${lease.owner} (owner of claim #${claim}) via manage-migration-author-lanes --park`,
+    `Posted by ${claudeSignature(lease.owner)??lease.owner} (owner of claim #${claim}) via manage-migration-author-lanes --park`,
   ].join('\n')
 }
 export function sameOwnerLabel(onRecord,supplied){
@@ -3917,7 +3919,7 @@ export function relinquishAuthorLease(options, now = new Date(), io = githubIo) 
     if(before?.state!=='open'||before.body!==matches[0].body)throw new LaneError('claim changed concurrently before capacity relinquishment')
     const lease=parseAuthorLease(before.body,now)
     if(lease.legacy)throw new LaneError('legacy claim capacity cannot be relinquished')
-    if(lease.owner!==options.owner)throw new LaneError(wrongOwnerMessage({claim:options.claim,onRecord:lease.owner,supplied:options.owner,command:laneCommand(['--relinquish-author-lease','--claim-number',String(options.claim),'--owner',JSON.stringify(String(lease.owner??'')),'--blocked-on','<blocker>','--worktree-state','<clean|dirty|remote|absent>'])}))
+    if(!sameOwnerLabel(lease.owner,options.owner))throw new LaneError(wrongOwnerMessage({claim:options.claim,onRecord:lease.owner,supplied:options.owner,command:laneCommand(['--relinquish-author-lease','--claim-number',String(options.claim),'--owner',JSON.stringify(String(lease.owner??'')),'--blocked-on','<blocker>','--worktree-state','<clean|dirty|remote|absent>'])}))
     const blocker=validateCapacityBlocker(options.blockedOn,io)
     const evidence=assertAbandonmentEvidence(options,lease,blocker,io)
     const recoveryArtifact=options.recoveryArtifact?requireDereferenceableRecoveryArtifact(options.recoveryArtifact,io):null
@@ -4084,7 +4086,7 @@ export function checkInAuthor(options,now=new Date(),io=githubIo){
     const proof=requireCheckinOwner(request,io),pr=io.getPr(options.pr)
     const reservation=io.readRef('refs/db-claims/'+proof.lease.version)
     if(proof.lease.expiresAt.toISOString()!==renewed.expiresAt||!(pr?.state==='open'||pr?.merged===true||pr?.merged_at)||pr.head?.sha!==options.headSha||pr.head?.ref!==options.branch||!/^[0-9a-f]{40}$/.test(String(reservation))||!io.getCommit(reservation))throw new LaneError('renewed confirmation source or reservation changed')
-    const ref=authorCheckinRef(Number(options.claim),proof.row.body),record={schema_version:1,kind:'author-checkin',human_identity_authenticated:false,claim:Number(options.claim),issue:Number(options.issue),pr:Number(options.pr),head_sha:options.headSha,owner:options.owner,branch:options.branch,worktree:options.worktree,version:proof.lease.version,body_sha256:sha256(proof.row.body),expires_at:renewed.expiresAt,author_session:proof.marker.task,checked_in_at:now.toISOString()}
+    const ref=authorCheckinRef(Number(options.claim),proof.row.body),record={schema_version:1,kind:'author-checkin',human_identity_authenticated:false,claim:Number(options.claim),issue:Number(options.issue),pr:Number(options.pr),head_sha:options.headSha,owner:proof.lease.owner,branch:options.branch,worktree:options.worktree,version:proof.lease.version,body_sha256:sha256(proof.row.body),expires_at:renewed.expiresAt,author_session:proof.marker.task,checked_in_at:now.toISOString()}
     validateAuthorCheckin(record,{number:Number(options.claim),body:proof.row.body},now,{pr:options.pr,headSha:options.headSha})
     requireOwnedRef(MUTEX_REF,lock,io)
     let receiptSha=io.readRef(ref)
@@ -4113,7 +4115,7 @@ export function renewExpiredClaim(options, now = new Date(), io = githubIo) {
     const lease=parseAuthorLease(before.body,now)
     if(lease.legacy)throw new LaneError('legacy claim leases cannot be renewed')
     if(lease.relinquishmentMetadataLegacy)throw new LaneError('legacy relinquished claim must be reconciled with --relinquish-author-lease before this mutation')
-    if(lease.owner!==options.owner||lease.branch!==options.branch||lease.worktree!==options.worktree)throw new LaneError('claim owner, branch, or worktree mismatch')
+    if(!sameOwnerLabel(lease.owner,options.owner)||lease.branch!==options.branch||lease.worktree!==options.worktree)throw new LaneError('claim owner, branch, or worktree mismatch')
     assertClaimNotRetired(lease.version,'renewed',io)
     const expectedBody=replaceLeaseExpiry(before.body,desiredExpiry)
     if(options.checkin)requireCheckinOwner({...options,checkinNow:now},io)
@@ -4184,7 +4186,7 @@ export function recoverExpiredClaimFromPr(options, now = new Date(), io = github
     if(lease.legacy||lease.active)throw new LaneError('target claim lease must be non-legacy and expired')
     if(lease.relinquishmentMetadataLegacy)throw new LaneError('legacy relinquished claim must be reconciled with --relinquish-author-lease before this mutation')
     assertClaimNotRetired(lease.version,'recovered from expiry',io)
-    if(lease.owner!==options.owner||lease.branch!==options.branch||lease.worktree!==options.worktree)throw new LaneError('claim owner, branch, or worktree mismatch')
+    if(!sameOwnerLabel(lease.owner,options.owner)||lease.branch!==options.branch||lease.worktree!==options.worktree)throw new LaneError('claim owner, branch, or worktree mismatch')
     if(!io.readRef(`refs/db-claims/${lease.version}`))throw new LaneError('permanent version reservation is unreadable')
     const workIssue=io.getIssue(options.issue)
     const issueUncovered=renewalIssueScope(workIssue,lease,[Number(options.issue)],{allowClaimSuperset:true,allowIssueExpansion:true}).uncovered??[]
@@ -4942,6 +4944,7 @@ function parseArgs(argv) {
     else if (a === '--lease-hours') { out.leaseHours = Number(next(i)); i++ }
     else throw new LaneError(`unknown argument: ${a}`)
   }
+  if(out.park&&out.releaseClaim===undefined)throw new LaneError('--park only applies to --release-claim')
   return out
 }
 

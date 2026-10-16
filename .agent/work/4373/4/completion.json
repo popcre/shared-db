@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "work_issue": 4373,
+  "outcome": "ready-for-merge",
+  "reason": "Required source checks are complete. Independent current-head review, PR CI, preview reconciliation and guarded merge are separate pending gates.",
+  "pr": 4386,
+  "migration_versions": [
+    "20261016210024"
+  ],
+  "contract_ref": "refs/db-contracts/4373/4",
+  "contract_sha256": "3c970694f6d2a44fe4eeae765ba6f00b1a08635bbb2ab892398bd2af90c273c8",
+  "head_sha": "bf85bd77b3fc72ead0f87abfc409ad54bb3dfaae",
+  "base_sha": "46fbb9194216dca4a5af76fa76c1b7fd226495e4",
+  "files_changed": [
+    "HANDOFF.d/2026-10-16T1150Z-edge-dev3-codex-stage-catalog-coordination.md",
+    "supabase/migrations/20261016210024_plm_stage_tracker_order_options.sql",
+    "supabase/tests/20261016012631_plm_stage_tracker_order_options.sql",
+    "supabase/tests/plm_stage_catalog_contracts.sql"
+  ],
+  "db_reads": [
+    "table plm.stage_list",
+    "table plm.stage"
+  ],
+  "db_writes": [
+    "table plm.prod_stage_option",
+    "table plm.stage",
+    "column plm.stage.tracker_position",
+    "column plm.stage.done_signal"
+  ],
+  "checks": [
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "clean at bf85bd77b3fc"
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed at bf85bd77b3fc"
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation 4 re-anchors the coordination handoff to #4379; the supabase/tests suite passed in PR CI at the generation-3 head with identical SQL/tests."
+  ],
+  "stop_conditions_hit": []
+}

@@ -1,0 +1,64 @@
+{
+  "schema_version": 2,
+  "generation": 1,
+  "evidence_parent": null,
+  "work_issue": 4379,
+  "work_type": "structural",
+  "route": "claim-first",
+  "goal": "Prospectively reimplement and qualify nullable positive milestone catalog identity under fresh claim4383/version20261016042622, retaining old global index and all business history.",
+  "base_sha": "e241459ab805a1219b76534d425741e1f87fa44c",
+  "dispatcher": "Codex coordinator chat 01a14247-5120-71f0-a78d-b9d477b46304 on edge-dev3",
+  "worker": "Codex delegated implementation agent /root/api under same coordinator session",
+  "branch": "codex/stage-milestone-identity-prospective",
+  "worktree": "/home/ahazan/.codex/worktrees/stage-milestone-identity-prospective",
+  "allowed_paths": [
+    "supabase/migrations/20261016042622_plm_milestone_catalog_identity.sql",
+    "supabase/tests/plm_milestone_catalog_identity_contracts.sql",
+    ".agent/work/4379/1/contract.json",
+    ".agent/work/4379/1/completion.json"
+  ],
+  "file_writes": [
+    "supabase/migrations/20261016042622_plm_milestone_catalog_identity.sql",
+    "supabase/tests/plm_milestone_catalog_identity_contracts.sql",
+    ".agent/work/4379/1/contract.json",
+    ".agent/work/4379/1/completion.json"
+  ],
+  "db_reads": [
+    "table plm.stage",
+    "table plm.\"ProdOrderHeader\"",
+    "table plm.\"FactoryTime\"",
+    "table plm.prod_order_milestone_schedule"
+  ],
+  "db_writes": [
+    "table plm.prod_order_milestone_schedule",
+    "column plm.prod_order_milestone_schedule.stage_id",
+    "index plm.prod_order_milestone_schedule_catalog_stage_key",
+    "index plm.prod_order_milestone_schedule_legacy_name_key"
+  ],
+  "prohibited_actions": [
+    "No source implementation or copying before genuine native contract publication and readback.",
+    "No expanded DDL/object scope; no alteration of original source/ref/reviews/artifacts or retired versions.",
+    "No manual ledger edits, production commands, case-extension configuration, contract backdating or grandfather exemption.",
+    "No source push/new PR/review/deployment without coordinator sequencing."
+  ],
+  "required_checks": [
+    "git diff --check",
+    "python3 /tmp/codex-stage-api/prospective-schema-a-postgres-proof.py /home/ahazan/.codex/worktrees/stage-milestone-identity-prospective 20261016042622"
+  ],
+  "assumptions": [
+    "Original PR4381/head334f26eff22cb63bc2bca6d62daba9f216474792 and retired claim4380/version20261016032112 are historical NONAUTHORIZING input only; original implementation predated genuine prework publication and missing-prework failure is preserved.",
+    "Fresh native claim4383 is authoritative for exact original four objects. Nullable positive integer stage_id only; no FK, backfill, old-global-index removal, RLS/grant/history change.",
+    "Read-only proof found original version20261016032112 and schedule.stage_id absent on shared preview mvpkijzfmfcxhnzqogzs, actual sandbox xupnyeifmpsacrqahwwm and shared production qsllyeztdwjgirsysgai. This is dated metadata evidence, not future installation.",
+    "Compatible application writers must be verified before a SEPARATE governed old-global-index removal. Preserve old writer operation throughout additive migration.",
+    "Independent need4373 extension remains a staged application dependency; no silent new DDL or fabricated issue dependency is introduced by this contract.",
+    "Independent local fixture dependencies: synthetic minimal ProdOrderHeader and FactoryTime plus anon/authenticated/service_role roles; apply canonical schedule20260917022233 and factory-index20260917035654 before identity migration; execute all three canonical contracts. Positive-ID constraint removal must fail at zero catalog identity was accepted and transaction rollback must restore protection.",
+    "Required checks are actual executable local commands run after implementation and before completion; successful report.check.command must exactly match each string and actual exit0. Private test harnesses already exist and parse successfully; scripts read future source after genuine publication, never claim tests already executed on absent implementation.",
+    "Allocator-assigned exact-head review, user-required Muse, normal CI, guarded preview, actual target live proof and application production4251 are SEPARATE later gates, not completion-check success claims."
+  ],
+  "stop_conditions": [
+    "Any admission/claim/version/collision refusal, stale author lease, base movement or object-scope expansion.",
+    "Any original source/ref mutation, contract backdating, missing genuine publication, unreviewed live write or old-global-index removal.",
+    "Actual application production cutover4251 and later index-removal gates remain independently unresolved; never claim them complete here.",
+    "Before any local PostgreSQL execution, protected shared-db task declaration/database gate must authorize exact new head and source digest. Historical334 approval cannot authorize prospective source; obtain fresh native seal as required. Do not run if refused."
+  ]
+}

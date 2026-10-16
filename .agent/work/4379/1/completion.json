@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "work_issue": 4379,
+  "outcome": "ready-for-merge",
+  "pr": 4384,
+  "head_sha": "fc30612c0781efc6958a26863fecc63caab516af",
+  "base_sha": "e241459ab805a1219b76534d425741e1f87fa44c",
+  "migration_versions": [
+    "20261016042622"
+  ],
+  "contract_ref": "refs/db-contracts/4379/1",
+  "contract_sha256": "dc6ace449ea82aa7ee711551c06776f9820e5c218cf9ddcc82a9dcec0aac953b",
+  "files_changed": [
+    "supabase/migrations/20261016042622_plm_milestone_catalog_identity.sql",
+    "supabase/tests/plm_milestone_catalog_identity_contracts.sql"
+  ],
+  "db_reads": [
+    "table plm.stage",
+    "table plm.\"ProdOrderHeader\"",
+    "table plm.\"FactoryTime\"",
+    "table plm.prod_order_milestone_schedule"
+  ],
+  "db_writes": [
+    "table plm.prod_order_milestone_schedule",
+    "column plm.prod_order_milestone_schedule.stage_id",
+    "index plm.prod_order_milestone_schedule_catalog_stage_key",
+    "index plm.prod_order_milestone_schedule_legacy_name_key"
+  ],
+  "checks": [
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "/tmp/codex-stage-api/prospective4379-static.log SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855; no whitespace errors"
+    },
+    {
+      "command": "python3 /tmp/codex-stage-api/prospective-schema-a-postgres-proof.py /home/ahazan/.codex/worktrees/stage-milestone-identity-prospective 20261016042622",
+      "exit_code": 0,
+      "evidence": "/tmp/codex-stage-api/prospective4379-postgres.log SHA256 84cdc42df7bb25daefaba7d920d48e01d23502257b444d4da82b49df752a862d; PostgreSQL17 migration+three canonical contracts+row/history/RLS/ACL/FK preservation+positive-check mutation sensitivity PASS; owned network-none container removed"
+    }
+  ],
+  "assumptions_resolved": [
+    "Genuine published prework ref predates implementation source; originals retired and preserved, not retroactively authorized.",
+    "Pinned scratch driver/image hashes retained /tmp/codex-stage-api/prospective-driver-hashes.txt; postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24.",
+    "Fresh independent exact-head source security APPROVE opened protected local database gate; old reports not reused.",
+    "Outcome is native premerge implementation evidence only; formal allocator/Muse review, CI, preview, actual sandbox/live/production remain OPEN. Draft PR not release authorization."
+  ],
+  "stop_conditions_hit": []
+}

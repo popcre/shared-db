@@ -8,21 +8,21 @@ import { createHash } from 'node:crypto'
 import { contractHash } from '../../agent-work-contract.mjs'
 import { reviewStartedMarkerRef } from './constants.mjs'
 import { reviewLeaseRefForAssignment } from './review-records.mjs'
-import { qualifyCompletedUnrecordable, declaredDispositionOwner, readCompletedDescriptor, protectedDispositionBytes, completedUnrecordableRef, parseCompletedUnrecordable, readCompletedUnrecordable, assertReviewNotDisposed, commitCompletedDisposition } from './review-completed-unrecordable.mjs'
+import { qualifyCompletedUnrecordable, declaredDispositionOwner, readCompletedDescriptor, protectedDispositionBytes, completedUnrecordableRef, parseCompletedUnrecordable, readCompletedUnrecordable, assertReviewNotDisposed, commitCompletedDisposition, assertNoDisposedNegativeReuse } from './review-completed-unrecordable.mjs'
 const owner='01a14247-5120-71f0-a78d-b9d477b46304',machine='fixture-host',reviewer='muse-spark-1.3-contributor'
 const env={SHARED_DB_SESSION_ID:owner,CODEX_THREAD_ID:owner},dispatcher=`Codex coordinator chat ${owner} on ${machine}`
 const hash=s=>createHash('sha256').update(s).digest('hex')
 const H='a'.repeat(40),S='b'.repeat(40),A='c'.repeat(40),C='d'.repeat(40),M='e'.repeat(40)
 const tuple={issue:4385,pr:4387,headSha:H,slot:1,sequence:6603,reviewer}
 const write=(p,v)=>{mkdirSync(path.dirname(p),{recursive:true,mode:0o700});writeFileSync(p,typeof v==='string'?v:JSON.stringify(v),{mode:0o600})}
-function fixture(t,{completionOverrides={}}={}){
+function fixture(t,{completionOverrides={},originalDispatcher=dispatcher}={}){
  const dir=mkdtempSync(path.join(tmpdir(),'completed-review-'));t.after(()=>rmSync(dir,{recursive:true,force:true}))
  const root=path.join(dir,'source');mkdirSync(root)
  const git=args=>execFileSync('git',['-C',root,...args],{encoding:'utf8',stdio:['ignore','pipe','pipe']})
  git(['init','-q']);git(['config','user.name','Fixture']);git(['config','user.email','fixture@example.invalid']);git(['remote','add','origin','https://github.com/popcre/shared-db.git'])
  const commit=(date)=>{git(['add','--all']);execFileSync('git',['-C',root,'commit','-qm','fixture'],{env:{...process.env,GIT_AUTHOR_DATE:date,GIT_COMMITTER_DATE:date},stdio:'pipe'});return git(['rev-parse','HEAD']).trim()}
  write(path.join(root,'.gitignore'),'.ai/\n');const base=commit('2026-10-15T01:00:00Z')
- const contract={schema_version:2,generation:1,evidence_parent:null,work_issue:4385,work_type:'repo-maintenance',route:'repo-maintenance',goal:'fixture repair',base_sha:base,dispatcher,worker:'Codex',branch:'codex/fixture',worktree:root,allowed_paths:['app.txt','.agent/work/4385/1/**'],file_writes:['app.txt','.agent/work/4385/1/**'],db_reads:[],db_writes:[],prohibited_actions:['no production'],required_checks:['node --test fixture.test.mjs'],assumptions:['fixture only'],stop_conditions:['stop on mismatch']}
+ const contract={schema_version:2,generation:1,evidence_parent:null,work_issue:4385,work_type:'repo-maintenance',route:'repo-maintenance',goal:'fixture repair',base_sha:base,dispatcher:originalDispatcher,worker:'Codex',branch:'codex/fixture',worktree:root,allowed_paths:['app.txt','.agent/work/4385/1/**'],file_writes:['app.txt','.agent/work/4385/1/**'],db_reads:[],db_writes:[],prohibited_actions:['no production'],required_checks:['node --test fixture.test.mjs'],assumptions:['fixture only'],stop_conditions:['stop on mismatch']}
  write(path.join(root,'app.txt'),'genuine fix\n');const impl=commit('2026-10-15T01:02:00Z')
  const report={schema_version:1,work_issue:4385,outcome:'ready-for-merge',pr:4387,migration_versions:[],contract_ref:'refs/db-contracts/4385/1',contract_sha256:contractHash(contract),head_sha:impl,files_changed:['app.txt'],db_reads:[],db_writes:[],checks:[{command:'node --test fixture.test.mjs',exit_code:0,evidence:'synthetic test'}],assumptions_resolved:[],stop_conditions_hit:[],...completionOverrides}
  write(path.join(root,'.agent/work/4385/1/contract.json'),contract);write(path.join(root,'.agent/work/4385/1/completion.json'),report);const head=commit('2026-10-15T01:03:00Z')
@@ -41,12 +41,12 @@ function fixture(t,{completionOverrides={}}={}){
  const io={readRef:r=>{reads++;return refs.get(r)??null},getCommit:s=>{reads++;assert.ok(commits.has(s));return commits.get(s)},getPr:()=>({number:4387,state:'open',head:{sha:head,ref:'codex/fixture',repo:{full_name:'popcre/shared-db'}},base:{sha:base,ref:'main',repo:{full_name:'popcre/shared-db'}}}),readReviewRecords:rs=>new Map(rs.map(r=>[r,refs.has(r)?{sha:refs.get(r),commit:commits.get(refs.get(r))}:null])),makeOwnerCommit:message=>{writes++;commits.set(M,{message});return M},readReviewRefs:rs=>new Map(rs.map(r=>[r,refs.get(r)??null])),atomicReviewRefs:changes=>{writes++;for(const c of changes)assert.equal(refs.get(c.ref)??null,c.expected);for(const c of changes)c.sha?refs.set(c.ref,c.sha):refs.delete(c.ref)}}
  io.listRefs=prefix=>[...refs].filter(([r])=>r.startsWith(prefix)).map(([ref,sha])=>({ref,sha}))
  io.readPaidReviewStarts=()=>[{ref:startRef,sha:S,commit:commits.get(S)}]
- const deps={env:{...env,AI_REVIEW_LIFECYCLE_DIR:stateRoot},machine,packetRead:args=>{assert.ok(['verify-retained','resolve'].includes(args[0]));return args[0]==='resolve'?JSON.stringify({repository:root,head,source_digest:sourceDigest}):''}}
+ const deps={env:{...env,AI_REVIEW_LIFECYCLE_DIR:stateRoot},machine,packetRead:args=>{assert.ok(['verify-retained','resolve'].includes(args[0]));if(args[0]==='resolve')assert.deepEqual(args,['resolve',root,'--base',base,'--assert-head',head],'native packet resolve takes a positional repository');return args[0]==='resolve'?JSON.stringify({repository:root,head,source_digest:sourceDigest}):''}}
  return {root,dir,request,options:{...request,completedUnrecordableEvidenceFile:descriptor},descriptor,d,contract,lifecycle,lifecycleFile,reportPath,receipt,packetDir,sourceDigest,refs,commits,io,deps,leaseRef,startRef,assignmentRef,writes:()=>writes,reads:()=>reads,git}
 }
 test('strict original dispatcher identifies only the actual declared session and machine',()=>{
- assert.deepEqual(declaredDispositionOwner(dispatcher,{env,machine}),{declared_owner:owner,machine,human_identity_authenticated:false})
- for(const d of [dispatcher+'\n',' '+dispatcher,dispatcher+' extra',dispatcher.replace('coordinator ',''),dispatcher.toUpperCase()])assert.throws(()=>declaredDispositionOwner(d,{env,machine}),/ownership-unproven/)
+ for(const value of [dispatcher,dispatcher.replace('coordinator ','')])assert.deepEqual(declaredDispositionOwner(value,{env,machine}),{declared_owner:owner,machine,human_identity_authenticated:false})
+ for(const d of [dispatcher+'\n',' '+dispatcher,dispatcher+' extra',dispatcher.replace('coordinator ','helper '),dispatcher.toUpperCase()])assert.throws(()=>declaredDispositionOwner(d,{env,machine}),/ownership-unproven/)
  for(const e of [{},{...env,SHARED_DB_SESSION_ID:owner+' '},{...env,CODEX_THREAD_ID:'another'}])assert.throws(()=>declaredDispositionOwner(dispatcher,{env:e,machine}),/ownership-unproven/)
  assert.throws(()=>declaredDispositionOwner(dispatcher,{env,machine:'other'}),/ownership-unproven/)
 })
@@ -135,8 +135,8 @@ test('REAL native reader inventories dispositions in the same two remote reads a
 })
 
 import { disposeCompletedUnrecordableReview, runGitHubCommand, MUTEX_REF, releaseHeldMutexOnProcessExit } from '../../manage-migration-author-lanes.mjs'
-function operationFixture(t){
- const f=fixture(t),labels=[]
+function operationFixture(t,{replacement=false}={}){
+ const f=replacement?replacementFixture(t):fixture(t),labels=[]
  const wire=(n,label)=>{for(let i=0;i<n;i++)runGitHubCommand(['api','synthetic-fixture'],{executor:()=>{labels.push(label);return '{}'}})}
  for(const name of ['getPr','getCommit','readRef','createRef']){
   const original=f.io[name]??((ref,sha)=>{if(f.refs.has(ref))return false;f.refs.set(ref,sha);return true})
@@ -317,4 +317,116 @@ test('another slot native terminal state does not erase this independently held 
 test('malformed native terminal inventory cannot disappear as absence',t=>{
  const f=fixture(t);f.refs.set(`refs/db-review-failures/4385-4387-${f.request.headSha}-unknown`,C)
  assert.throws(()=>qualifyCompletedUnrecordable(f.options,f.io,f.deps),/identity malformed/)
+})
+
+// A genuine native-shaped initial GLM start/release and canonical Muse successor.
+function replacementFixture(t,{originalDispatcher=dispatcher.replace('coordinator ','')}={}){
+ const f=fixture(t,{originalDispatcher}),R='2'.repeat(40),F='3'.repeat(40),P='4'.repeat(40),sequence=6600
+ const failureRef=`refs/db-review-failures/4385-4387-${f.request.headSha}-${sequence}`
+ const replacementRef=`refs/db-review-replacements/4385-4387-${f.request.headSha}-${sequence}`
+ const initialRequest={...f.request,sequence,reviewer:'glm-5.3'},initialStartRef=reviewStartedMarkerRef(initialRequest)
+ f.commits.set(A,{message:`db-coordination reviewer-cursor sequence=${sequence} reviewer=glm-5.3 issue=4385 pr=4387 head=${f.request.headSha} slot=1`})
+ f.commits.set(F,{message:`db-coordination reviewer-failure-release reviewer=glm-5.3 issue=4385 pr=4387 head=${f.request.headSha} failed-sequence=${sequence} code=wrapper_terminal_failure verdict=none artifact=none replacement=none`})
+ f.commits.set(R,{message:`db-coordination reviewer-replacement sequence=6603 reviewer=${reviewer} issue=4385 pr=4387 head=${f.request.headSha} slot=1 failed-sequence=${sequence} prior-sequence=6602 failure-ref=${F}`})
+ f.commits.set(P,{message:`db-coordination review-started issue=4385 pr=4387 head=${f.request.headSha} slot=1 sequence=${sequence} reviewer=glm-5.3 at=2026-10-15T01:03:30Z session=- receipt-path=sha256:${'2'.repeat(64)} source=sha256:${f.sourceDigest}`})
+ f.refs.set(failureRef,F);f.refs.set(replacementRef,R);f.refs.set(initialStartRef,P);f.refs.set(f.leaseRef,R)
+ f.io.readPaidReviewStarts=()=>[{ref:initialStartRef,sha:P,commit:f.commits.get(P)},{ref:f.startRef,sha:S,commit:f.commits.get(S)}]
+ return {...f,R,F,P,failureRef,replacementRef,initialStartRef,initialRequest}
+}
+for(const originalDispatcher of [dispatcher,dispatcher.replace('coordinator ','')])test(`schema2 canonical replacement preserves exact original dispatcher: ${originalDispatcher.split(' chat')[0]}`,t=>{
+ const f=replacementFixture(t,{originalDispatcher}),p=qualifyCompletedUnrecordable(f.options,f.io,f.deps)
+ assert.equal(p.record.schema_version,2);assert.equal(p.record.declared_dispatcher,originalDispatcher);assert.equal(p.record.bindings.length,7)
+ assert.deepEqual(p.record.bindings.map(b=>b.ref),[f.d.contract_ref,f.assignmentRef,f.initialStartRef,f.failureRef,f.replacementRef,f.startRef,f.leaseRef])
+ assert.equal(p.record.bindings[6].sha,f.R);assert.equal(f.writes(),0)
+ assert.deepEqual(parseCompletedUnrecordable({message:`db-coordination completed-unrecordable\n${JSON.stringify(p.record)}`},f.request),p.record)
+})
+test('ordinary original Codex dispatcher uses explicit schema2 with four ordered initial bindings',t=>{
+ const originalDispatcher=dispatcher.replace('coordinator ',''),f=fixture(t,{originalDispatcher}),p=qualifyCompletedUnrecordable(f.options,f.io,f.deps)
+ assert.equal(p.record.schema_version,2);assert.equal(p.record.declared_dispatcher,originalDispatcher);assert.equal(p.record.bindings.length,4)
+ assert.equal(parseCompletedUnrecordable({message:`db-coordination completed-unrecordable\n${JSON.stringify(p.record)}`}).declared_dispatcher,originalDispatcher)
+})
+for(const mutation of ['releaseAbsent','replacementAbsent','startAbsent','wrongFailureSha','wrongInitialReviewer','wrongReleaseReviewer','wrongReleaseSequence','unsupportedCause','decisionPresent','badPriorSequence','wrongReplacementSequence','legacyAlias','multihop','changedInitialDigest'])test(`schema2 replacement refuses ${mutation} before writes`,t=>{
+ const f=replacementFixture(t)
+ if(mutation==='releaseAbsent')f.refs.delete(f.failureRef)
+ if(mutation==='replacementAbsent')f.refs.delete(f.replacementRef)
+ if(mutation==='startAbsent')f.refs.delete(f.initialStartRef)
+ if(mutation==='wrongFailureSha')f.commits.get(f.R).message=f.commits.get(f.R).message.replace(f.F,C)
+ if(mutation==='wrongInitialReviewer')f.commits.get(A).message=f.commits.get(A).message.replace('glm-5.3','step-5-preview')
+ if(mutation==='wrongReleaseReviewer')f.commits.get(f.F).message=f.commits.get(f.F).message.replace('glm-5.3','step-5-preview')
+ if(mutation==='wrongReleaseSequence')f.commits.get(f.F).message=f.commits.get(f.F).message.replace('failed-sequence=6600','failed-sequence=6599')
+ if(mutation==='unsupportedCause')f.commits.get(f.F).message=f.commits.get(f.F).message.replace('wrapper_terminal_failure','reviewer_cannot_emit_governed_verdict')
+ if(mutation==='decisionPresent')f.commits.get(f.F).message=f.commits.get(f.F).message.replace('verdict=none','verdict=APPROVE')
+ if(mutation==='badPriorSequence')f.commits.get(f.R).message=f.commits.get(f.R).message.replace('prior-sequence=6602','prior-sequence=6603')
+ if(mutation==='wrongReplacementSequence')f.commits.get(f.R).message=f.commits.get(f.R).message.replace('sequence=6603','sequence=6604')
+ if(mutation==='legacyAlias'){f.refs.set(f.replacementRef.replace(/-6600$/,''),f.R);f.refs.delete(f.replacementRef)}
+ if(mutation==='multihop')f.refs.set(f.replacementRef.replace(/-6600$/,'-6601'),f.R)
+ if(mutation==='changedInitialDigest')f.commits.get(f.P).message=f.commits.get(f.P).message.replace(f.sourceDigest,'0'.repeat(64))
+ assert.throws(()=>qualifyCompletedUnrecordable(f.options,f.io,f.deps));assert.equal(f.writes(),0)
+})
+for(const mutate of ['dispatcher','bindingOrder','bindingDuplicate','failureTuple','leaseSha','schemaDowngrade'])test(`schema2 durable record rejects ${mutate}`,t=>{
+ const f=replacementFixture(t),p=qualifyCompletedUnrecordable(f.options,f.io,f.deps),r=structuredClone(p.record)
+ if(mutate==='dispatcher')r.declared_dispatcher+='\n'
+ if(mutate==='bindingOrder')[r.bindings[2],r.bindings[3]]=[r.bindings[3],r.bindings[2]]
+ if(mutate==='bindingDuplicate')r.bindings[2]={...r.bindings[1]}
+ if(mutate==='failureTuple')r.bindings[3].ref=r.bindings[3].ref.replace('4385-4387','4385-4388')
+ if(mutate==='leaseSha')r.bindings[6].sha=A
+ if(mutate==='schemaDowngrade')r.schema_version=1
+ assert.throws(()=>parseCompletedUnrecordable({message:`db-coordination completed-unrecordable\n${JSON.stringify(r)}`}))
+})
+for(const provider of ['muse-spark-1.3-contributor','glm-5.3'])test(`schema2 refuses an extra ${provider} start even after original completion`,t=>{
+ const f=replacementFixture(t),extra={...f.request,sequence:6604,reviewer:provider},extraRef=reviewStartedMarkerRef(extra),T='5'.repeat(40)
+ f.commits.set(T,{message:`db-coordination review-started issue=4385 pr=4387 head=${f.request.headSha} slot=1 sequence=6604 reviewer=${provider} at=2026-10-15T01:07:00Z session=- receipt-path=sha256:${'3'.repeat(64)} source=sha256:${f.sourceDigest}`})
+ const previous=f.io.readPaidReviewStarts;f.io.readPaidReviewStarts=()=>[...previous(),{ref:extraRef,sha:T,commit:f.commits.get(T)}]
+ assert.throws(()=>qualifyCompletedUnrecordable(f.options,f.io,f.deps),/another same-slot/);assert.equal(f.writes(),0)
+})
+test('schema2 capacity fails closed before disposition when an earlier equivalent decision consumes the remaining round',t=>{
+ const f=replacementFixture(t),T='5'.repeat(40),oldHead='6'.repeat(40),oldRef=reviewStartedMarkerRef({...f.request,headSha:oldHead,sequence:6599})
+ f.commits.set(T,{message:`db-coordination review-started issue=4385 pr=4387 head=${oldHead} slot=1 sequence=6599 reviewer=${reviewer} at=2026-10-15T01:03:00Z session=- receipt-path=sha256:${'3'.repeat(64)} source=sha256:${f.sourceDigest}`})
+ const previous=f.io.readPaidReviewStarts;f.io.readPaidReviewStarts=()=>[{ref:oldRef,sha:T,commit:f.commits.get(T)},...previous()]
+ f.io.reviewContentComparison=(before,after)=>({before:f.sourceDigest,after:f.sourceDigest,budgetProof:{schema:1,before,after,protectedMain:f.request.headSha,kind:'unchanged'}})
+ assert.throws(()=>qualifyCompletedUnrecordable(f.options,f.io,f.deps),/two paid attempts/);assert.equal(f.writes(),0)
+})
+for(const applyRecovery of [false,true])test(`schema2 native operation stays within unchanged25 request ceiling: apply=${applyRecovery}`,t=>{
+ const f=operationFixture(t,{replacement:true}),before=new Map(f.refs)
+ const result=disposeCompletedUnrecordableReview({...f.options,applyRecovery},f.io,{qualify:f.qualify})
+ assert.equal(result.authorizing,false);assert.equal(result.paid_attempt_consumed,true);assert.ok(f.labels.length<=25,JSON.stringify(f.labels))
+ for(const ref of [f.d.contract_ref,f.assignmentRef,f.initialStartRef,f.failureRef,f.replacementRef,f.startRef])assert.equal(f.refs.get(ref),before.get(ref))
+ assert.equal(f.refs.has(f.leaseRef),!applyRecovery)
+})
+for(const changed of ['failure','replacement','initialStart'])test(`schema2 locked qualification refuses changed ${changed} evidence without disposition`,t=>{
+ const f=operationFixture(t,{replacement:true}),create=f.io.createRef,target=changed==='failure'?f.failureRef:changed==='replacement'?f.replacementRef:f.initialStartRef
+ f.io.createRef=(ref,sha)=>{const made=create(ref,sha);if(ref===MUTEX_REF&&made)f.refs.set(target,C);return made}
+ assert.throws(()=>disposeCompletedUnrecordableReview({...f.options,applyRecovery:true},f.io,{qualify:f.qualify}));assert.equal(f.refs.get(f.leaseRef),f.R);assert.equal(f.refs.has(completedUnrecordableRef(f.request)),false)
+})
+test('schema2 consumed replacement stays idempotent and cannot be attributed to the other original spelling',t=>{
+ const f=replacementFixture(t),p=qualifyCompletedUnrecordable(f.options,f.io,f.deps);f.refs.set('refs/mutex',H)
+ commitCompletedDisposition(p,H,f.io,'refs/mutex');assert.ok(qualifyCompletedUnrecordable(f.options,f.io,f.deps).prior)
+ const record=JSON.parse(f.commits.get(M).message.split('\n').slice(1).join('\n'));record.declared_dispatcher=dispatcher
+ f.commits.get(M).message=`db-coordination completed-unrecordable\n${JSON.stringify(record)}`
+ assert.throws(()=>qualifyCompletedUnrecordable(f.options,f.io,f.deps),/differs from the exact original proof/)
+})
+
+test('schema2 exact-start inventory preserves supported null tombstones without charging or admitting another paid start',t=>{
+ const f=replacementFixture(t),T='5'.repeat(40),ref=reviewStartedMarkerRef({...f.request,sequence:6604})
+ const message=`db-coordination reviewer-silence-release reviewer=${reviewer} issue=4385 pr=4387 head=${f.request.headSha} sequence=6604 code=silent_worker_observed probe=${C} observed-at=2026-10-15T01:06:00Z confirmed-at=2026-10-15T01:07:00Z verdict=none artifact=none replacement=none`
+ const previous=f.io.readPaidReviewStarts;f.io.readPaidReviewStarts=()=>[...previous(),{ref,sha:T,commit:{message}}]
+ assert.equal(qualifyCompletedUnrecordable(f.options,f.io,f.deps).record.bindings.length,7);assert.equal(f.writes(),0)
+})
+
+test('schema2 preserves native REJECT and blocks metadata-only laundering',t=>{
+ const f=replacementFixture(t);f.lifecycle.verdict='REJECT'
+ const body=readFileSync(f.reportPath,'utf8').replace('## Verdict\nAPPROVE','## Verdict\nREJECT');write(f.reportPath,body);f.lifecycle.report_sha256=hash(body);write(f.lifecycleFile,f.lifecycle)
+ const p=qualifyCompletedUnrecordable(f.options,f.io,f.deps);f.refs.set('refs/mutex',H)
+ const result=commitCompletedDisposition(p,H,f.io,'refs/mutex');assert.equal(result.observed_verdict,'REJECT');assert.equal(result.authorizing,false)
+ const headSha='6'.repeat(40);f.io.reviewContentComparison=()=>({budgetProof:{kind:'unchanged',before:f.request.headSha,after:headSha}})
+ assert.throws(()=>assertNoDisposedNegativeReuse({...f.request,headSha},f.io),/genuine code-correction/)
+})
+test('unsupported native REVISE lifecycle refuses before writes; durable REVISE reader stays negative',t=>{
+ const f=replacementFixture(t),p=qualifyCompletedUnrecordable(f.options,f.io,f.deps)
+ f.lifecycle.verdict='REVISE';const body=readFileSync(f.reportPath,'utf8').replace('## Verdict\nAPPROVE','## Verdict\nREVISE');write(f.reportPath,body);f.lifecycle.report_sha256=hash(body);write(f.lifecycleFile,f.lifecycle)
+ assert.throws(()=>qualifyCompletedUnrecordable(f.options,f.io,f.deps),/lifecycle review/);assert.equal(f.writes(),0)
+ // Reader compatibility is separate from qualification of a real native run.
+ const record={...p.record,observed_verdict:'REVISE'};f.commits.set(M,{message:`db-coordination completed-unrecordable\n${JSON.stringify(record)}`});f.refs.set(p.ref,M)
+ assert.equal(readCompletedUnrecordable(f.request,f.io).observed_verdict,'REVISE')
+ assert.throws(()=>assertNoDisposedNegativeReuse({...f.request,headSha:'6'.repeat(40)},f.io),/genuine code-correction/)
 })

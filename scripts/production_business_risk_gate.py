@@ -715,6 +715,10 @@ PREVIEW_PRODUCER_PATHS = (
     # Loaded by the outcome lifecycle imported by the lane manager. Bind the
     # exact incident authorization to the same producer identity as its reader.
     "config/outcome-timestamp-recovery.json",
+    # Owner no-reviewer policy (Albert, 2026-10-15) read by the exact-head
+    # approval gate. Changing it changes whether a merge may proceed without an
+    # external reviewer, so its bytes must bind to the same producer proof.
+    "config/owner-no-reviewer-policy.json",
     # READ, NOT EXECUTED -- and therefore invisible to the executed-closure
     # walk, which follows invocations and imports. The Supabase CLI reads this
     # file on every `link`, `migration list` and `db push` the preview job runs,

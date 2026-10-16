@@ -7,8 +7,8 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/4348/1",
   "contract_sha256": "d9e2891ac5d2e9cae42ec0ca7842257f64bbdb34c91a44c7cf2452688c4806e0",
-  "head_sha": "544e39537718ac8ece37dc04d3bec799cc3a97a7",
-  "base_sha": "5a9fbac76bf630790c5249fb42639544f2d277f3",
+  "head_sha": "e8c234d930df281aabe96e2a48d023f27053a47c",
+  "base_sha": "50be2a9fd136a3ddb1f5e1f030fd18c59a31cdee",
   "files_changed": [
     ".github/ISSUE_TEMPLATE/author-lane-abandonment.md",
     ".github/workflows/author-lane-abandonment-audit.yml",
@@ -229,12 +229,12 @@
     {
       "command": "node --test scripts/claim-author-transfer.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/lib/session-authority.test.mjs scripts/queue-hygiene-report.test.mjs",
       "exit_code": 0,
-      "evidence": "{\"passed\": 1009, \"failed\": 0} at 544e3953"
+      "evidence": "{\"passed\": 1009, \"failed\": 0} at e8c234d9"
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK at 544e3953"
+      "evidence": "truth audit OK at e8c234d9"
     }
   ],
   "assumptions_resolved": [

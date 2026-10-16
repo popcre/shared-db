@@ -10,7 +10,7 @@ A paid start is still recorded for diagnostics and provenance. Immutable termina
 
 Supported service failures are wrapper_terminal_failure, provider_unavailable, insufficient_quota, turn_limit_cancelled and reviewer_cannot_read_repository. Every proven failure is bound to its exact issue, PR, head, sequence, reviewer and slot and kept in immutable history. Failures never remove a reviewer from the draw. Provider-unavailable and insufficient-quota events may still use the existing monotonic provider pause path for outage courtesy; that pause is not a pool-exhaustion stop.
 
-When no clean independent candidate remains, a hard-failed name on that head may be redrawn as a last resort so a small roster cannot report the pool exhausted. Same-head slot distinctness, preflight usability, quarantine/retire roster, and exact-head verdicts stay binding.
+When no never-failed independent candidate remains, a retryable released failure (quota, outage, wrapper, turn-limit, repository-read) may be redrawn last (#4284). Hard exclusions — confirmed unfixable local dependency, failure-ref=self without a release record — stay fail-closed and are never redrawn. Same-head slot distinctness, preflight usability, quarantine/retire roster, and exact-head verdicts stay binding.
 
 ## Independent assignments
 

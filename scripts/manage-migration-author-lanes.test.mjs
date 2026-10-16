@@ -3202,7 +3202,7 @@ test('a chained replacement skips TWO already-failed providers to reach the last
   assert.deepEqual(replaceFailedReviewer({...replacementRequest,failedSequence:first.sequence},io),second)
 })
 
-test('replacement retries a previously failed name after the rotation is spent (uncapped)',()=>{
+test('replacement exhausts the active rotation, then refuses (hard exclusions stay fail-closed)',()=>{
   const io=failedReviewIo()
   const seen=['glm-5.3']
   let failedSequence=replacementRequest.failedSequence
@@ -3212,10 +3212,8 @@ test('replacement retries a previously failed name after the rotation is spent (
     seen.push(step.reviewer);failedSequence=step.sequence
   }
   assert.deepEqual(seen,ACTIVE_REVIEWERS.map((r)=>r.name))
-  // Owner 2026-10-16 (#4399): no pool-exhaustion stop. A further replacement
-  // redraws a previously failed name instead of refusing.
-  const retry=replaceFailedReviewer({...replacementRequest,failedSequence},io)
-  assert.ok(ACTIVE_REVIEWERS.some((row)=>row.name===retry.reviewer))
+  // failure-ref=self replacements are hard exclusions (#4284) and stay fail-closed.
+  assert.throws(()=>replaceFailedReviewer({...replacementRequest,failedSequence},io),/no other reviewer is available/)
 })
 
 test('release frees a terminally failed lease when every reviewer slot is full',()=>{
@@ -7962,11 +7960,8 @@ test('a slot-2 replacement never falls back onto slot 1\'s own reviewer (issue #
     heads.set(pr,headSha)
     io.refs.set(reviewActiveRef(row.name),io.makeOwnerCommit(`db-coordination reviewer-lease generation=${index+1} reviewer=${row.name} issue=${issue} pr=${pr} head=${headSha} sequence=${900+index}`))
   })
-  // Owner 2026-10-16 (#4399): spend is uncapped, so a failed name may be
-  // redrawn — but NEVER slot 1's own reviewer (independence, issue #1832).
-  const redraw=replaceFailedReviewer({...request,slot:2,failedSequence:firstReplacement.sequence,...failure},io)
-  assert.notEqual(redraw.reviewer,slotOne.reviewer,'slot 2 must never fall back onto slot 1\'s own reviewer')
-  // Slot 1 is untouched by the redraw.
+  assert.throws(()=>replaceFailedReviewer({...request,slot:2,failedSequence:firstReplacement.sequence,...failure},io),/no other independent reviewer is available for slot 2/)
+  // Slot 1 is untouched by the refusal.
   assert.deepEqual(assignNextReviewer(request,io),slotOne)
 })
 

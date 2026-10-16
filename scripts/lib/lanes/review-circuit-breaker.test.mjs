@@ -153,6 +153,82 @@ test('real Git source-equivalent rewrite preserves count while a custom merge re
  const after=f.git(['rev-parse','HEAD']).trim()
  assert.throws(()=>derivePaidContentProof(f.before,after,main,f.git),/noncanonical/)
 })
+
+function forwardCheckpointFixture(t,{foreign=false,earlierFix=false}={}){
+ const f=realGitFixture(t)
+ const anchor=earlierFix?f.commit('earlier-fix.txt','valid earlier author fix\n'):f.before
+ f.git(['switch','main']);const main=f.commit('main-only.txt','protected main\n')
+ let incoming='main'
+ if(foreign){f.git(['switch','-qc','foreign']);f.commit('foreign.txt','untrusted ancestry\n');incoming='foreign'}
+ f.git(['switch','feature']);f.git(['merge','--no-commit',incoming])
+ writeFileSync(path.join(f.dir,'mixed.txt'),'unreviewed edit inside merge\n');f.git(['add','mixed.txt']);f.git(['commit','-qm','mixed upstream merge'])
+ const mixed=f.git(['rev-parse','HEAD']).trim()
+ const restore=({partial=false,mode=null,unverified=false}={})=>{
+  f.git(['rm','mixed.txt']);if(foreign)f.git(['rm','foreign.txt'])
+  if(partial){writeFileSync(path.join(f.dir,'leftover.txt'),'not restored\n');f.git(['add','leftover.txt'])}
+  if(mode){const blob=f.git(['rev-parse','HEAD:app.txt']).trim();f.git(['update-index','--cacheinfo',`${mode},${blob},app.txt`])}
+  if(unverified){mkdirSync(path.join(f.dir,'.agent'),{recursive:true});writeFileSync(path.join(f.dir,'.agent/unverified.txt'),'not a contract\n');f.git(['add','.agent/unverified.txt'])}
+  f.git(['commit','-qm','restore canonical source without rewriting history']);return f.git(['rev-parse','HEAD']).trim()
+ }
+ return {...f,anchor,main,mixed,restore}
+}
+test('forward canonical checkpoint permits a later standalone repair without accepting the mixed merge',t=>{
+ const f=forwardCheckpointFixture(t)
+ assert.throws(()=>derivePaidContentProof(f.before,f.mixed,f.main,f.git),/noncanonical/)
+ const checkpoint=f.restore(),after=f.commit('mixed.txt','unreviewed edit inside merge\n')
+ const proof=derivePaidContentProof(f.before,after,f.main,f.git)
+ assert.equal(proof.kind,'substantive');assert.equal(proof.canonicalRecovery.anchor,f.anchor)
+ assert.equal(proof.canonicalRecovery.mixedMerge,f.mixed);assert.equal(proof.canonicalRecovery.checkpoint,checkpoint)
+ assert.equal(proof.witness.commit,after);assert.notEqual(proof.witness.commit,f.mixed)
+ // Even if a historical review already saw the mixed source, restoring and
+ // replaying those same bytes cannot manufacture a fresh content group.
+ const alreadySeen=derivePaidContentProof(f.mixed,after,f.main,f.git)
+ assert.equal(alreadySeen.kind,'unchanged')
+ const starts=[1,2].map(n=>({...row(n,f.mixed),commit:{message:message(n,f.mixed)}}))
+ assert.throws(()=>assertPaidReviewCapacity({...request,headSha:after},{...io(starts),reviewContentComparison:()=>({before:digest,after:'d'.repeat(64),budgetProof:alreadySeen})}),/third draw refused/)
+})
+test('forward restoration alone, empty commits and evidence-only followups retain both charged rounds',t=>{
+ const f=forwardCheckpointFixture(t);f.restore()
+ const starts=[1,2].map(n=>({...row(n,f.before),commit:{message:message(n,f.before)}}))
+ const check=()=>{
+  const after=f.git(['rev-parse','HEAD']).trim(),proof=derivePaidContentProof(f.before,after,f.main,f.git,['evidence.txt'])
+  assert.equal(proof.kind,'unchanged')
+  const api={...io(starts),reviewContentComparison:()=>({before:digest,after:'d'.repeat(64),budgetProof:proof})}
+  assert.throws(()=>assertPaidReviewCapacity({...request,headSha:after},api),/third draw refused/)
+  assert.equal(starts.length,2)
+ }
+ check();f.git(['commit','--allow-empty','-qm','empty followup']);check();f.commit('evidence.txt','evidence only\n');check()
+})
+test('forward recovery also proves historical paid heads before valid earlier authored fixes',t=>{
+ const f=forwardCheckpointFixture(t,{earlierFix:true}),checkpoint=f.restore(),after=f.commit('later-fix.txt','standalone fix\n')
+ const proof=derivePaidContentProof(f.before,after,f.main,f.git)
+ assert.equal(proof.kind,'substantive');assert.equal(proof.canonicalRecovery.anchor,f.anchor)
+ assert.notEqual(f.before,f.anchor);assert.equal(proof.canonicalRecovery.checkpoint,checkpoint)
+ for(const before of [f.before,f.anchor])assert.equal(derivePaidContentProof(before,after,f.main,f.git).kind,'substantive')
+})
+test('partial forward restoration cannot hide a mixed merge behind a genuine later edit',t=>{
+ const f=forwardCheckpointFixture(t);f.restore({partial:true});const after=f.commit('later-fix.txt','genuine later edit\n')
+ assert.throws(()=>derivePaidContentProof(f.before,after,f.main,f.git),/noncanonical/)
+})
+for(const mode of ['100755','120000'])test(`forward checkpoint refuses source mode drift ${mode}`,t=>{
+ const f=forwardCheckpointFixture(t);f.restore({mode});const after=f.commit('later-fix.txt','genuine later edit\n')
+ assert.throws(()=>derivePaidContentProof(f.before,after,f.main,f.git),/noncanonical/)
+})
+test('foreign merge remains refused even after exact source restoration and a standalone repair',t=>{
+ const f=forwardCheckpointFixture(t,{foreign:true});f.restore();const after=f.commit('later-fix.txt','genuine later edit\n')
+ assert.throws(()=>derivePaidContentProof(f.before,after,f.main,f.git),/foreign merge/)
+})
+test('unverified agent bytes cannot be excluded to create a forward checkpoint',t=>{
+ const f=forwardCheckpointFixture(t);f.restore({unverified:true});const after=f.commit('later-fix.txt','genuine later edit\n')
+ assert.throws(()=>derivePaidContentProof(f.before,after,f.main,f.git),/unverified|historical|evidence|noncanonical/)
+})
+test('two mixed merges remain refused after complete forward restoration',t=>{
+ const f=forwardCheckpointFixture(t)
+ f.git(['switch','main']);const main=f.commit('main-next.txt','protected next change\n')
+ f.git(['switch','feature']);f.git(['merge','--no-commit','main']);writeFileSync(path.join(f.dir,'mixed-next.txt'),'second mixed edit\n');f.git(['add','mixed-next.txt']);f.git(['commit','-qm','second mixed merge'])
+ f.git(['rm','mixed.txt','mixed-next.txt']);f.git(['commit','-qm','restore both mixed merges']);const after=f.commit('later-fix.txt','standalone repair\n')
+ assert.throws(()=>derivePaidContentProof(f.before,after,main,f.git),/noncanonical/)
+})
 test('real Git offset-only main merge preserves count, but conflicting main ancestry refuses',t=>{
  const f=realGitFixture(t);f.git(['switch','main']);const main=f.commit('app.txt','inserted\ncontext\nseparator1\nseparator2\nauthor\nend\n')
  f.git(['switch','feature']);f.git(['merge','-qm','offset refresh','main']);const after=f.git(['rev-parse','HEAD']).trim()
@@ -514,6 +590,15 @@ test('producer pin overlap accepts protected lines interleaved inside the pin bl
 function failureMsg(seq,{code='wrapper_terminal_failure',reviewer='glm-5.3',h=head,issue=3536,pr=4000,slot=1}={}){return`db-coordination reviewer-failure-replacement sequence=${seq+100} reviewer=kimi-k3 issue=${issue} pr=${pr} head=${h} slot=${slot} failed-sequence=${seq} prior-sequence=${seq} failure-ref=self failed-reviewer=${reviewer} code=${code} verdict=none artifact=none`}
 function reinstateIo(rows,failures){const x=io(rows);x.readRef=ref=>{const m=/^refs\/db-review-failures\/(\d+)-(\d+)-[0-9a-f]{40}-(\d+)$/.exec(ref);return m&&failures[m[3]]?'f'.repeat(39)+m[3].slice(-1):null};const base=x.getCommit;x.getCommit=sha=>sha.startsWith('f'.repeat(39))?{message:Object.entries(failures).find(([k])=>k.slice(-1)===sha.slice(-1))[1]}:base(sha);return x}
 test('reinstated verdict-less reviewer crash is not counted',()=>{const r=assertPaidReviewCapacity(request,reinstateIo([row(1),row(2)],{1:failureMsg(1),2:`db-coordination reviewer-failure-release reviewer=glm-5.3 issue=3536 pr=4000 head=${head} failed-sequence=2 code=provider_unavailable verdict=none artifact=none replacement=none`}));assert.equal(r.remaining,2);assert.equal(r.reinstated,2)})
+test('native historical 6531 preparation failure is removed while earlier 6526 verdict remains charged',()=>{
+ const issue=4297,pr=4308,reviewed='d'.repeat(40),current='e'.repeat(40),startSha=String(6531).padStart(40,'0'),failureSha='2'.repeat(40)
+ const starts=[6526,6531].map((sequence)=>({ref:`refs/db-review-started/${issue}-${pr}-${reviewed}-slot1-seq${sequence}`,sha:String(sequence).padStart(40,'0'),commit:{message:`db-coordination review-started issue=${issue} pr=${pr} head=${reviewed} slot=1 sequence=${sequence} reviewer=deepseek-v4.1-flash at=2026-10-15T03:32:${sequence===6526?'20':'32'}.171Z session=historical receipt-path=sha256:${'a'.repeat(64)} source=sha256:${'b'.repeat(64)}`}}))
+ const proof={schema_version:1,binding_kind:'unique-temporal',slot:1,start_ref:`refs/db-review-started/${issue}-${pr}-${reviewed}-slot1-seq6531`,start_sha:startSha,started_at:'2026-10-15T03:32:32.171Z',current_head_sha:current,receipt_path_sha256:'a'.repeat(64),source_receipt_sha256:'c'.repeat(64),source_digest:'b'.repeat(64),diagnostic_path_sha256:'d'.repeat(64),diagnostic_sha256:'e'.repeat(64),diagnostic_at:'2026-10-15T03:32:56.625Z',diagnostic_wrapper:'ai-deepseek-agent',exit_status:1,signal:'none',spawn_error:'none',phase:'packet-build',error:'source-receipt-conflict',provider_activity:'none',verdict:'none',artifact:'none'}
+ const failureMessage=`db-coordination reviewer-failure-release reviewer=deepseek-v4.1-flash issue=${issue} pr=${pr} head=${reviewed} slot=1 failed-sequence=6531 code=wrapper_terminal_failure proof=historical-terminal-v1 verdict=none artifact=none replacement=none\nhistorical-terminal-failure-proof=${JSON.stringify(proof)}`
+ const x={listRefs:()=>starts,readRef:ref=>ref.endsWith('-6531')?failureSha:null,getCommit:sha=>sha===failureSha?{message:failureMessage}:starts.find(start=>start.sha===sha)?.commit,reviewContentComparison:()=>({before:digest,after:digest,budgetProof:{schema:1,before:reviewed,after:current,protectedMain:reviewed,kind:'unchanged'}})}
+ const actualRequest={issue,pr,headSha:current,slot:1},result=assertPaidReviewCapacity(actualRequest,x)
+ assert.deepEqual({paidAttempts:result.paidAttempts,remaining:result.remaining,reinstated:result.reinstated},{paidAttempts:1,remaining:1,reinstated:1})
+})
 test('cause-bound failures exceed the former global cap and count separately per reviewer',()=>{
  const failed={1:failureMsg(1),2:failureMsg(2,{code:'provider_unavailable'}),3:failureMsg(3,{code:'insufficient_quota',reviewer:'stepfun-step-5-preview'}),4:failureMsg(4,{code:'turn_limit_cancelled',reviewer:'muse-spark-1.3-contributor'})}
  const starts=[reviewerRow(1,'glm-5.3'),reviewerRow(2,'glm-5.3'),reviewerRow(3,'stepfun-step-5-preview'),reviewerRow(4,'muse-spark-1.3-contributor')]
@@ -761,8 +846,8 @@ test('resolved metadata requires a valid source hash and all other bytes',t=>{
 
 // #4290 / PR #4206: after a branch refresh from main, an older reviewed head cannot be
 // re-merged against the moved main (merge gap), so its direct proof throws. It is
-// classified through a newer reviewed head whose direct proof holds; the link is derived
-// at the same operation base. Unprovable chains and non-gap failures still refuse.
+// classified through newer direct proofs when those establish a result; otherwise a
+// narrow unresolved merge gap spends the ordinary allowance conservatively.
 const GAP='review budget Git provenance refused: review budget conflict is outside the one canonical test append'
 function chainIo({heads,proofs,fail={}}){
   const rows=heads.map((h,i)=>row(i+1,h)),bases=new Set()
@@ -783,12 +868,26 @@ test('unchanged composition is still counted: two unchanged starts refuse a thir
 test('a substantive newer head makes the composed older head substantive',()=>{
   assert.equal(capacity(chainIo({heads:[old,reviewed],proofs:{'f>9':'substantive','e>f':'unchanged'}})).paidAttempts,0)
 })
-test('two substantive steps prove nothing (a revert) and the refusal stands',()=>{
-  assert.throws(()=>capacity(chainIo({heads:[old,reviewed],proofs:{'f>9':'substantive','e>f':'substantive'}})),/conflict is outside the one canonical test append/)
+test('two substantive links do not compose and the older unresolved start spends one attempt',()=>{
+  const x=chainIo({heads:[old,reviewed],proofs:{'f>9':'substantive','e>f':'substantive'}})
+  assert.deepEqual(capacity(x),{paidAttempts:1,remaining:1,conservativeHeads:[old]})
 })
-test('without a provable chain the original refusal stands',()=>{
-  assert.throws(()=>capacity(chainIo({heads:[old,reviewed],proofs:{'f>9':'unchanged'}})),/conflict is outside/)
-  assert.throws(()=>capacity(chainIo({heads:[old],proofs:{}})),/conflict is outside/)
+test('one unresolved merge-gap start consumes one existing attempt conservatively',()=>{
+  assert.deepEqual(capacity(chainIo({heads:[old],proofs:{}})),{paidAttempts:1,remaining:1,conservativeHeads:[old]})
+})
+test('exact-bound reviewer failure refunds an unresolved merge-gap start without conservative charging',()=>{
+  const x=chainIo({heads:[old,reviewed],proofs:{'f>9':'unchanged','e>f':'unchanged'}})
+  const failureSha='f'.repeat(39)+'1'
+  x.readRef=ref=>ref===`refs/db-review-failures/3536-4000-${old}-1`?failureSha:null
+  const getCommit=x.getCommit
+  x.getCommit=sha=>sha===failureSha?{message:failureMsg(1,{reviewer:'glm-5.3',h:old})}:getCommit(sha)
+  const result=capacity(x)
+  assert.equal(result.reinstated,1)
+  assert.deepEqual(result.failedReviewers,['glm-5.3'])
+  assert.equal('conservativeHeads' in result,false)
+})
+test('two unresolved merge-gap starts consume the full cap and refuse a third draw',()=>{
+  assert.throws(()=>capacity(chainIo({heads:[old,reviewed],proofs:{}})),/third draw refused/)
 })
 test('disagreeing chains are counted conservatively, independent of draw order',()=>{
   for(const heads of [[old,mid,reviewed],[old,reviewed,mid]])
@@ -796,9 +895,10 @@ test('disagreeing chains are counted conservatively, independent of draw order',
 })
 test('a chained result is never an intermediate (no multi-hop)',()=>{
   const o1='3'.repeat(40)
-  assert.throws(()=>capacity(chainIo({heads:[o1,mid,reviewed],proofs:{'f>9':'unchanged','8>f':'substantive','3>8':'substantive'}})),/conflict is outside/)
+  const x=chainIo({heads:[o1,mid,reviewed],proofs:{'f>9':'unchanged','8>f':'substantive','3>8':'unchanged'}})
+  assert.throws(()=>capacity(x),/third draw refused/)
 })
-for(const message of ['review budget Git provenance refused: review budget historical evidence mutated generation','review budget Git provenance refused: review budget canonical blob bytes unreadable or oversized','review budget Git provenance refused: review budget foreign intermediate evidence pair refused']){
+for(const message of ['git fetch failed','review budget Git provenance refused: review budget historical evidence mutated generation','review budget Git provenance refused: review budget canonical blob bytes unreadable or oversized','review budget Git provenance refused: review budget foreign intermediate evidence pair refused','review budget Git provenance refused: review budget noncanonical or foreign merge refused']){
   test(`a non-gap direct refusal is never bridged: ${message.slice(37)}`,()=>{
     assert.throws(()=>capacity(chainIo({heads:[old,reviewed],proofs:{'f>9':'unchanged','e>f':'substantive'},fail:{'e>9':message}})),new RegExp(message.slice(37)))
   })

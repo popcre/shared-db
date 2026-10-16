@@ -36,7 +36,12 @@ function reinstatedByFailure(start,io){
   try{failure=parseTerminalFailureEvidence(commit)}catch{throw new LaneError('review circuit breaker: reinstatement failure evidence unreadable')}
   const message=String(commit?.message??commit?.commit?.message??'')
   const slot=/ slot=(\d+) /.exec(message)
-  if(!failure||failure.issue!==start.issue||failure.pr!==start.pr||failure.headSha!==start.headSha||failure.failedSequence!==start.sequence||failure.reviewer!==start.reviewer||(slot&&Number(slot[1])!==start.slot)||!/ verdict=none artifact=none( replacement=none)?$/.test(message))throw new LaneError('review circuit breaker: reinstatement failure binding mismatch')
+  const terminalTail=failure?.historicalProof
+    ? message.split('\n').length===2 && / proof=historical-terminal-v1 verdict=none artifact=none replacement=none$/.test(message.split('\n')[0])
+    : / verdict=none artifact=none( replacement=none)?$/.test(message)
+  const proof=failure?.historicalProof
+  const proofStartMatches=!proof||(proof.start_ref===start.ref&&proof.start_sha===start.sha&&proof.started_at===start.startedAt&&proof.slot===start.slot&&proof.current_head_sha!==start.headSha)
+  if(!failure||failure.issue!==start.issue||failure.pr!==start.pr||failure.headSha!==start.headSha||failure.failedSequence!==start.sequence||failure.reviewer!==start.reviewer||(slot&&Number(slot[1])!==start.slot)||!proofStartMatches||!terminalTail)throw new LaneError('review circuit breaker: reinstatement failure binding mismatch')
   return REINSTATABLE_FAILURE_CODES.includes(failure.failureCode)
 }
 
@@ -45,10 +50,10 @@ export function paidStart(row, commit) {
   if (!tuple || !/^[0-9a-f]{40}$/.test(row.sha)) throw new LaneError('review circuit breaker: malformed immutable start ref')
   const [, issue, pr, headSha, slot, sequence] = tuple
   const message = String(commit?.message ?? commit?.commit?.message ?? '')
-  const start = /^db-coordination review-started issue=(\d+) pr=(\d+) head=([0-9a-f]{40}) slot=(\d+) sequence=(\d+) reviewer=([a-z0-9.-]+) at=(\S+)(?: session=([A-Za-z0-9._-]+) receipt-path=sha256:[0-9a-f]{64} source=sha256:[0-9a-f]{64})?$/.exec(message)
+  const start = /^db-coordination review-started issue=(\d+) pr=(\d+) head=([0-9a-f]{40}) slot=(\d+) sequence=(\d+) reviewer=([a-z0-9.-]+) at=(\S+)(?: session=([A-Za-z0-9._-]+) receipt-path=sha256:([0-9a-f]{64}) source=sha256:([0-9a-f]{64}))?$/.exec(message)
   if (start) {
     if (start.slice(1,6).join(':') !== tuple.slice(1).join(':') || !Number.isFinite(Date.parse(start[7]))) throw new LaneError('review circuit breaker: start record binding mismatch')
-    return {issue:Number(issue),pr:Number(pr),headSha,slot:Number(slot),sequence:Number(sequence),reviewer:start[6]}
+    return {issue:Number(issue),pr:Number(pr),headSha,slot:Number(slot),sequence:Number(sequence),reviewer:start[6],startedAt:start[7],session:start[8]??null,receiptPathSha256:start[9]??null,sourceDigest:start[10]??null,ref:row.ref,sha:row.sha}
   }
   // Only the established atomic unstarted reclaim / independence conflict can
   // occupy a start marker without spending a provider attempt.
@@ -437,12 +442,42 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
     if(intermediate.length && equal(expected,after))return {schema:1,before,after,protectedMain,kind:'unchanged',canonicalAppends,canonicalPinOverlaps,canonicalImportUnions,canonicalRegistryUnions,...(supersededCheckPrefixes.length?{supersededCheckPrefixes}:{})}
 
     if (index < 0 || index >= 1000) throw new LaneError('review budget complete first-parent ancestry unavailable')
+    const history=rows.slice(0,index).map((commit,position)=>({commit,position,parents:run(['rev-list','--parents','-n','1',commit]).split(' ').slice(1)}))
+    const mixed=[]
+    for(const row of history){
+      if(row.parents.length===2){
+        // A later restoration never makes foreign ancestry trustworthy.
+        if(!ancestor(row.parents[1],protectedMain))throw new LaneError('review budget noncanonical or foreign merge refused')
+        if(!equal(merge(...row.parents),row.commit))mixed.push(row)
+      }else if(row.parents.length!==1)throw new LaneError('review budget ambiguous merge provenance refused')
+    }
+    let canonicalRecovery=null
+    if(mixed.length){
+      if(mixed.length!==1)throw new LaneError('review budget noncanonical or foreign merge refused')
+      const row=mixed[0],anchor=row.parents[0],projection=merge(anchor,incorporatedMain)
+      // Forward recovery must first restore the COMPLETE clean canonical source
+      // tree. A conflict-specific projection, partial revert, or caller-supplied
+      // checkpoint cannot stand in for that proof. Metadata exclusions above
+      // have already passed their immutable contract/evidence checks.
+      if(typeof projection!=='string'||!sha.test(projection))throw new LaneError('review budget noncanonical or foreign merge refused')
+      for(let position=row.position-1;position>=0;position-=1){
+        if(equal(projection,rows[position])){
+          canonicalRecovery={anchor,mixedMerge:row.commit,checkpoint:rows[position],checkpointPosition:position,mergePosition:row.position,incorporatedMain}
+          break
+        }
+      }
+      if(!canonicalRecovery)throw new LaneError('review budget noncanonical or foreign merge refused')
+    }
     const authorCandidates=[]
     let authored = false,witness=null
-    for (const commit of rows.slice(0,index)) {
-      const parents = run(['rev-list','--parents','-n','1',commit]).split(' ').slice(1)
+    for (const {commit,position,parents} of history) {
+      // Neither the mixed merge nor the commits that neutralized it can supply
+      // authored capacity. Earlier valid edits and later standalone edits still
+      // need the existing surviving-source witness. All historical paid starts
+      // remain in the accounting input; the checkpoint refunds nothing.
+      if(canonicalRecovery&&position>=canonicalRecovery.checkpointPosition&&position<=canonicalRecovery.mergePosition)continue
       if (parents.length === 2) {
-        if (!ancestor(parents[1],protectedMain) || !equal(merge(...parents),commit)) throw new LaneError('review budget noncanonical or foreign merge refused')
+        if (!equal(merge(...parents),commit)) throw new LaneError('review budget noncanonical or foreign merge refused')
       } else if (parents.length === 1) {
         if (!ancestor(commit,protectedMain)) {
           authorCandidates.push({commit,parent:parents[0]})
@@ -497,7 +532,7 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
       }
     }
     if (!authored) throw new LaneError('review budget surviving author source edit unavailable')
-    return {schema:1,before,after,protectedMain,kind:'substantive',historyCount:index,witness,canonicalAppends,canonicalPinOverlaps,canonicalImportUnions,canonicalRegistryUnions,...(supersededCheckPrefixes.length?{supersededCheckPrefixes}:{})}
+    return {schema:1,before,after,protectedMain,kind:'substantive',historyCount:index,witness,canonicalAppends,canonicalPinOverlaps,canonicalImportUnions,canonicalRegistryUnions,...(canonicalRecovery?{canonicalRecovery}:{}),...(supersededCheckPrefixes.length?{supersededCheckPrefixes}:{})}
   } catch (error) {
     throw new LaneError(`review budget Git provenance refused: ${String(error?.message??error).split('\n')[0]}`)
   }
@@ -529,8 +564,9 @@ export function assertPaidReviewCapacity(request, io) {
   // changed conflict), so its direct classification is unprovable. It is then classified
   // THROUGH a newer reviewed head of the same PR whose own classification is proven:
   // older->newer (pre-refresh, directly comparable) composed with newer->request. Only a
-  // fully proven chain counts; anything else still refuses.
-  const proven=new Map()
+  // fully proven chain establishes changed content; a narrow unresolved merge gap
+  // consumes the ordinary allowance conservatively as unchanged content.
+  const proven=new Map(),unprovedHeads=new Set(),conservativeHeads=new Set()
   // Only the moved-main MERGE gap may be bridged: re-merging an older head against the
   // current main conflicts outside the canonical append forms. Every other provenance
   // refusal (evidence lineage, blob integrity, foreign pairs, ...) keeps refusing.
@@ -555,7 +591,10 @@ export function assertPaidReviewCapacity(request, io) {
         const composed=compose(link,kind)
         if(composed)results.add(composed)
       }
-      if(!results.size)throw error
+      // Unproved merge-gap content spends the ordinary allowance as unchanged.
+      // This is never a substantive proof or a chaining intermediate, and it
+      // does not suppress any non-gap transport, binding or evidence refusal.
+      if(!results.size)return {kind:'unchanged',direct:false,conservative:true}
       // Every provable chain must agree; on disagreement count conservatively (as
       // unchanged), which can only spend capacity, never grant an extra paid review.
       return {kind:results.size===1?[...results][0]:'unchanged',direct:false}
@@ -569,7 +608,7 @@ export function assertPaidReviewCapacity(request, io) {
     const result=classifyStart(start)
     // Only DIRECT proofs serve as chain intermediates (no multi-hop): every link is then
     // one step from a head whose classification against the request was proven directly.
-    kinds.set(start,result.kind);if(result.direct)proven.set(start.headSha,result.kind)
+    kinds.set(start,result.kind);if(result.direct)proven.set(start.headSha,result.kind);if(result.conservative)unprovedHeads.add(start.headSha)
   }
   for (const start of starts) {
     const same=start.headSha===request.headSha||kinds.get(start)==='unchanged'
@@ -579,10 +618,11 @@ export function assertPaidReviewCapacity(request, io) {
       failuresByReviewer.set(start.reviewer,(failuresByReviewer.get(start.reviewer)??0)+1)
       continue
     }
+    if(unprovedHeads.has(start.headSha))conservativeHeads.add(start.headSha)
     count++
   }
   if(count>=2) throw new LaneError(`review circuit breaker: two paid attempts already started for unchanged reviewed content in slot ${request.slot}; third draw refused pending substantive repair or supported cause-bound reinstatement proof`)
-  const result={paidAttempts:count,remaining:2-count,...(reinstated?{reinstated}:{})}
+  const result={paidAttempts:count,remaining:2-count,...(reinstated?{reinstated}:{}),...(conservativeHeads.size?{conservativeHeads:[...conservativeHeads].sort()}: {})}
   if(failuresByReviewer.size){
     result.failedReviewers=[...failuresByReviewer.keys()].sort()
     result.exhaustedReviewers=[...failuresByReviewer].filter(([,failures])=>failures>=REVIEWER_FAILURE_CEILING).map(([reviewer])=>reviewer).sort()

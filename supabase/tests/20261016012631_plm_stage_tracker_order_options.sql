@@ -1,4 +1,5 @@
 begin;
+-- shared-db#4373 (claim #4402): Stage Catalog tracker order, done signals and per-order options. Rolled back.
 do $$
 begin
   assert to_regclass('plm.prod_stage_option') is not null, 'order options table missing';
@@ -10,7 +11,7 @@ end $$;
 do $$
 begin
  assert (select count(*)=12 from plm.stage where tracker_position is not null), 'seed tracker slots';
- assert (select tracker_position=4 from plm.stage where done_signal='pps_done'), 'PPS remains interleaved';
+ assert coalesce((select tracker_position=4 from plm.stage where done_signal='pps_done'),false), 'PPS remains interleaved';
  assert (select count(*)=2 from plm.stage where done_signal in ('concept_submitted','concept_resubmitted')), 'licensing event bindings';
 end $$;
 rollback;

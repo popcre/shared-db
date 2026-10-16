@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "work_issue": 4397,
+  "outcome": "ready-for-merge",
+  "reason": "Required source checks are complete. Independent current-head review, PR CI and guarded merge are separate pending gates.",
+  "pr": 4401,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4397/2",
+  "contract_sha256": "75cb40b2c2f5ca644f1973003249ae34dfa1e6cd56fb2db303bc3ea59a50a294",
+  "head_sha": "344f6da06ff4436272b3aef71d8930ca5612c1b1",
+  "base_sha": "7f85a9dfa67b63b2396056deca2aebcb34f66f7a",
+  "files_changed": [
+    "scripts/lib/lanes/review-circuit-breaker.mjs",
+    "scripts/lib/lanes/review-circuit-breaker.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/lib/lanes/review-circuit-breaker.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "{\"passed\": 1111, \"failed\": 0} at 344f6da0"
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK at 344f6da0"
+    }
+  ],
+  "assumptions_resolved": [
+    "Both new #4397 generation-2 tests fail without the change and pass with it."
+  ],
+  "stop_conditions_hit": []
+}

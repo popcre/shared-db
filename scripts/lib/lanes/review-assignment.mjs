@@ -1,3 +1,4 @@
+import { readCompletedUnrecordable } from './review-completed-unrecordable.mjs'
 // Split from scripts/manage-migration-author-lanes.mjs (issue #3726). Behavior-preserving move:
 // the entrypoint re-exports every public name defined here. Edit here, not there.
 import { LaneError } from './claims.mjs'
@@ -88,6 +89,8 @@ function findCarriedSlotOne(issue,pr,head,io,{fresh=false}={}){
     if(checkedHeads.has(candidate.carriedFrom))continue
     checkedHeads.add(candidate.carriedFrom)
     if(!sameReviewContent(candidate.carriedFrom,head,Number(pr),io))continue
+    const disposed=readCompletedUnrecordable({...candidate,headSha:candidate.carriedFrom,slot:1},io)
+    if(disposed){if(disposed.observed_verdict!=='APPROVE')throw new LaneError('negative completed review cannot gain approval without genuine rejected-code correction');return null}
     assertReviewerAllowlistConsistency(candidates.filter((row)=>row.carriedFrom===candidate.carriedFrom))
     let returns
     const returnPrefix=`${REVIEW_RETURN_REF_PREFIX}/${Number(issue)}-${Number(pr)}-${candidate.carriedFrom}`
@@ -183,6 +186,8 @@ function findCarriedSlotOne(issue,pr,head,io,{fresh=false}={}){
     for(const [slotNum,record] of [...peers])if(returned.has(record.sha))peers.delete(slotNum)
   }
   const finish=()=>{
+    if(slotOne&&readCompletedUnrecordable({...slotOne,issue:Number(issue),pr:Number(pr),headSha:head,slot:1},io))slotOne=null
+    for(const [number,row] of [...peers])if(readCompletedUnrecordable({...row,issue:Number(issue),pr:Number(pr),headSha:head,slot:number},io))peers.delete(number)
     assertReviewerAllowlistConsistency(slotOneHistory)
     assertReviewerAllowlistConsistency(ownPolicyHistory)
     for(const history of peerPolicyHistory.values())assertReviewerAllowlistConsistency(history)

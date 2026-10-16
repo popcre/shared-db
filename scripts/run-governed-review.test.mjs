@@ -1696,3 +1696,13 @@ test('GLM diagnostic cannot attribute quota to another or unbound wrapper',()=>{
   for(const wrapper of ['ai-stepfun','ai-muse',undefined])assert.equal(wrapperFailureReason({stderr:ACTUAL_GLM_QUOTA_DIAGNOSTIC},wrapper),'wrapper stderr was present but its reason was not recognized; inspect the exact wrapper session')
   assert.match(wrapperFailureReason({stderr:ACTUAL_GLM_QUOTA_DIAGNOSTIC},'ai-glm'),/^insufficient_quota:/)
 })
+
+import { completedUnrecordableRef as completedSourceDispositionRef } from './lib/lanes/review-completed-unrecordable.mjs'
+test('a disposed exact paid start cannot launch or continue even if a lease reader returns the old holder',()=>{
+ const tuple={issue:4297,pr:4999,headSha:'a'.repeat(40),slot:1,sequence:6603,reviewer:'muse-spark-1.3-contributor'}
+ const record={schema_version:1,kind:'completed-unrecordable-missing-source-receipt',...tuple,observed_verdict:'APPROVE',authorizing:false,paid_attempt_consumed:true,human_identity_authenticated:false,declared_owner:'01a14247-5120-71f0-a78d-b9d477b46304',machine:'fixture-host',bindings:['refs/db-contracts/4297/1','refs/db-review-assignments/fixture','refs/db-review-started/fixture','refs/db-review-active-v2/fixture'].map(ref=>({ref,sha:'b'.repeat(40)})),proof_sha256:'c'.repeat(64)}
+ const ref=completedSourceDispositionRef(tuple);let writes=0
+ const io={readRef:r=>r===ref?'d'.repeat(40):null,getCommit:()=>({message:`db-coordination completed-unrecordable\n${JSON.stringify(record)}`}),makeOwnerCommit:()=>{writes++;return 'e'.repeat(40)},createRef:()=>{writes++;return true}}
+ for(const wrapperArgs of [[],['ask','old-session','continue']])assert.throws(()=>recordReviewStart({...tuple,wrapper:'ai-muse',wrapperArgs},io,Date.now(),()=>tuple),/disposed/)
+ assert.equal(writes,0)
+})

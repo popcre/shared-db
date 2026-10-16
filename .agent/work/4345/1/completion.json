@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "work_issue": 4345,
+  "outcome": "ready-for-merge",
+  "pr": 4346,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4345/1",
+  "contract_sha256": "8b1fc6dbdb79d3468036fd0e8acbfe9ebd292bce3fc07a992046deaa2abf7ec2",
+  "base_sha": "154361984687def51366c2c539d7467b1ad64098",
+  "head_sha": "50f90a074fe2108417367035721696c6451c589d",
+  "files_changed": [
+    "scripts/lib/session-authority.mjs",
+    "scripts/lib/session-authority.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/lib/session-authority.test.mjs",
+      "exit_code": 0,
+      "evidence": "11 tests passed, 0 failed at integration head 50f90a074fe2108417367035721696c6451c589d"
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "900 tests passed, 0 failed; protected claim, reviewer, production-lane and merge-lane regression suite."
+    },
+    {
+      "command": "git diff --check origin/main...HEAD",
+      "exit_code": 0,
+      "evidence": "Exit 0 with no whitespace errors at the same integration head."
+    }
+  ],
+  "assumptions_resolved": [
+    "Albert explicitly answered \"keep both\" in this chat, retaining PopDAM PR417 and shared-db PR4346.",
+    "The implementation was drafted before this contract was published at existing head 392eb6da35655450d99bbc4aa00da232bbfb8c49; this contract prospectively scopes integration and verification, not its original authorship.",
+    "PR4357 includes this change but remains separately owned; this PR can land first without editing its source.",
+    "No old local-only reviewer finding is treated as a durable approval."
+  ],
+  "stop_conditions_hit": []
+}

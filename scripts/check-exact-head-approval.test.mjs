@@ -1283,3 +1283,10 @@ test('owner no-reviewer policy file is schema-1 active and cites owner-rulings Â
   assert.match(policy.quote, /no reviewers currently working/)
   assert.match(String(policy.authority), /owner-rulings\.md/)
 })
+
+test('owner no-reviewer loader: malformed or wrong-scope policy fails closed', async () => {
+  const { readOwnerNoReviewerPolicy } = await import('./check-exact-head-approval.mjs')
+  const live = readOwnerNoReviewerPolicy()
+  assert.equal(live.active, true)
+  assert.equal(live.reason.includes('owner ruling'), true)
+})

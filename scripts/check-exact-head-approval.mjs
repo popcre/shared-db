@@ -79,12 +79,16 @@ const COMPOSED_CARRY = Symbol('composed approval carry')
 
 /** Owner no-reviewer policy (Albert, 2026-10-15). Missing or malformed file
  *  means NO exemption — fail closed to the reviewer requirement. */
-function readOwnerNoReviewerPolicy() {
+export function readOwnerNoReviewerPolicy() {
   try {
     const raw = readFileSync(new URL('../config/owner-no-reviewer-policy.json', import.meta.url), 'utf8')
     const policy = JSON.parse(raw)
     if (policy?.schema_version !== 1 || policy?.active !== true || typeof policy?.quote !== 'string' || policy.quote.length < 10) {
       return { active: false, reason: 'owner no-reviewer policy file is present but not an active schema-1 record' }
+    }
+    // Scope is binding (docs/owner-rulings.md §6.28): popcre/shared-db only.
+    if (policy.scope !== REPO) {
+      return { active: false, reason: 'owner no-reviewer policy file scope does not match this repository' }
     }
     return { active: true, reason: `owner ruling ${policy.decided_at}: ${policy.quote}` }
   } catch {

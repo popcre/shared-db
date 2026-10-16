@@ -919,3 +919,16 @@ test('a proof naming a base other than the operation base refuses',()=>{
 test('duplicate-head starts are each counted',()=>{
   assert.throws(()=>capacity(chainIo({heads:[old,old,reviewed],proofs:{'f>9':'substantive','e>f':'substantive','e>9':'unchanged'}})),/third draw refused/)
 })
+
+// #4297: a disposition is neither a provider outage nor a refund. Use the real
+// Git projection across ordinary main integration and genuine evidence successors.
+for(const count of [1,2])test(`completed-unrecordable keeps ${count} actual Git unchanged-content starts charged`,t=>{
+ const f=generationsFixture(t,{repair:false,ordinaryRetirement:true}),proof=f.proof()
+ assert.equal(proof.kind,'unchanged')
+ const starts=Array.from({length:count},(_,i)=>({...row(i+1,f.before),ref:row(i+1,f.before).ref.replace('-4000-','-3999-'),commit:{message:message(i+1,f.before).replace('pr=4000','pr=3999')}}))
+ let dispositionReads=0
+ const context={readPaidReviewStarts:()=>starts,readRef:ref=>{if(ref.startsWith('refs/db-review-dispositions/')){dispositionReads++;return 'f'.repeat(40)}return null},reviewContentComparison:()=>({before:digest,after:digest,budgetProof:proof})}
+ if(count===1)assert.deepEqual(assertPaidReviewCapacity({...request,pr:3999,headSha:f.after},context),{paidAttempts:1,remaining:1})
+ else assert.throws(()=>assertPaidReviewCapacity({...request,pr:3999,headSha:f.after},context),/third draw refused/)
+ assert.equal(dispositionReads,0,'disposition namespace cannot cause reinstatement or capacity reset')
+})

@@ -129,3 +129,18 @@ Albert. All technical decisions use stated engineering criteria/reviewer gates;
 §0 explicitly states none and preserves the settled scope.
 
 Posted by Codex chat 01a144d8-b318-7ed0-af97-e852be49d231 on hetz
+
+## Design revision after substantive Muse critique — October 16, 2026 EDT
+
+The original plan publication merged as66695385. Muse subsequently found six
+implementation-design blockers; safe publication was not feasibility approval.
+The owner requested corrections and another Muse debate. Revised plan §8.1
+chooses receipt/quarantine/cleanup, drift, event-liveness and rollout contracts;
+step6 adopts #4039 without permitting merges under a production lease; step8
+splits buildable safety fixes from an explicitly gated fencing experiment.
+[Debate ledger](../docs/investigations/shared-release-holds-design-debate.md)
+contains all finding dispositions, substantive disagreements and follow-up outcome.
+No runtime feature is implemented. Next gate: continue the existing named Muse
+conversation and record its actual verdict before publishing this revision.
+
+Posted by Codex chat 01a144d8-b318-7ed0-af97-e852be49d231 on hetz

@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "work_issue": 4336,
+  "outcome": "ready-for-merge",
+  "pr": 4360,
+  "migration_versions": [
+    "20261015201243"
+  ],
+  "contract_ref": "refs/db-contracts/4336/9",
+  "contract_sha256": "a644b94ed6eba70a1c7e4ee445434c87925ae8241a07e6ca37056398bab6c88e",
+  "base_sha": "e241459ab805a1219b76534d425741e1f87fa44c",
+  "files_changed": [
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production-verification-sidecars/20261015201243.json",
+    "scripts/test_order_list_find_position.py",
+    "supabase/migrations/20261015201243_orderlist_so_date_sort.sql",
+    "supabase/tests/dam_order_list_sales_order_date_sort.sql"
+  ],
+  "db_reads": [
+    "table coldlion.order_history_line",
+    "table plm.production_order_line",
+    "table plm.production_order_line_source_ref",
+    "view api.dam_order_list"
+  ],
+  "db_writes": [
+    "view api.dam_order_list",
+    "function dam.orderlist_sales_order_received_date",
+    "function public.find_dam_order_list_row"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL checks passed at fe0a55b82f864fbb70fc15e4ced184212e4ea869; optional live-ledger B2 remains skipped because no shared DATABASE_URL was configured."
+    },
+    {
+      "command": "TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:55439/postgres python3 scripts/test_order_list_find_position.py",
+      "exit_code": 0,
+      "evidence": "Disposable task-owned Docker PostgreSQL via a loopback-only psql bridge: 18 position cases, four ranking parity cases, NY dates, duplicate/conflicting/missing history, company scope, exact-line binding, authentication and service_role passed; zero skipped at fe0a55b82f864fbb70fc15e4ced184212e4ea869."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "Production sidecar validation exited 0; version 20261015201243 retains marker 337 and its original migration bytes."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Whitespace check passed at fe0a55b82f864fbb70fc15e4ced184212e4ea869."
+    }
+  ],
+  "assumptions_resolved": [
+    "SO Date remains the exact-primary ColdLion EDGEHOME created-time rule displayed in America/New_York.",
+    "Conflicting, missing, wrong-company, and incomplete timestamps stay blank and sort last.",
+    "SO Date remains unavailable as a filter; Find accepts it only as a sort key.",
+    "The helper binds the source reference to the exact canonical order line and grants execution to authenticated and service_role only.",
+    "Review clearance precedes gated pre-merge preview acceptance. Merged-main rehearsal remains a separate production-promotion gate. Neither preview nor production has been applied by this session.",
+    "Merged repair #4372/e241459ab805a1219b76534d425741e1f87fa44c is incorporated through a pure canonical merge. Checkpoint 01326d199edc04a67f1deab828330b0657ab032f restores the complete clean projection before standalone replay fe0a55b82f864fbb70fc15e4ced184212e4ea869. Original commits, starts, refusals and paid-history records remain untouched.",
+    "The migration remains byte-identical to original head 9c088585ab77abb2749a0352e6b81af083cbcc36; no preview or production schema apply occurred."
+  ],
+  "stop_conditions_hit": [],
+  "head_sha": "fe0a55b82f864fbb70fc15e4ced184212e4ea869",
+  "pending_acceptance": [
+    "Actual current-source provenance/admission and a fresh exact-head governed lifecycle review",
+    "Current-head CI including actual-view verbose projection/count and bounded 500-row plan contracts",
+    "Clean pre-merge preview dry-run/apply, full-result date ordering, performance and Find parity; dependent application behavior against preview",
+    "Guarded merge, merged-main preview rehearsal and governed production result",
+    "Application control update, release and ordinary-viewer live proof"
+  ]
+}

@@ -36,6 +36,7 @@ import { PROJECT_REFS } from './orchestrator-flow/read-preview-ledger.mjs'; impo
 import { REVIEW_VERDICT_REF_PREFIX, REVIEW_VERDICT_REPLACEMENT_REF_PREFIX, REVIEW_VERDICTS, assertFindingsRefForPr, findingsDigest, formatVerdictMessage, parseVerdictCommit, parseVerdictRef, validateVerdictArtifact, verdictRef } from './lib/review-verdict-artifact.mjs'
 import { changedPathsFromPullRequestFiles, classifyChangedPaths, classifyLightweightMergePullRequestFiles } from './lib/documents-only-change.mjs'
 import { HISTORICAL_RESTORATIONS, validateHistoricalRestorationFile } from './historical-migration-restorations.mjs'
+import { matchesGeneratedTypesWorkflowRun, selectGeneratedTypesArtifactEntries } from './generated-types-proof.mjs'
 import { AdmissionError, SERVICE_CLASSES, CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, STRUCTURAL_ROUTES, parseImpactBlock, evaluateAdmission, inspectPrStructuralChange, structuralWritesMatch, structuralWritesCovered } from './orchestrator-flow/admission.mjs'
 import { assertNamedHold, conflicts, describeLeaseHolder, formatHoldReason, HoldReasonError } from './lib/hold-reason.mjs'
 import { OUTCOME_STATES, OutcomeError, advanceOutcome, completeOutcome, verifyOutcomeAcceptance, outcomeEvent, outcomeHistory, repairOutcomeHistory } from './orchestrator-flow/outcome-lifecycle.mjs'
@@ -59,8 +60,8 @@ import { LaneError, validateClaimObjects, parseAuthorLease, assertLaneAvailable,
 export { LaneError, validateClaimObjects, parseAuthorLease, assertLaneAvailable, claimBody }
 import { EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, createRefWithReadback, deleteRefWithReadback, parseGitRemoteRefs, parseGitCommitBatch, readGitCommits, parseGhIncludeResponse, parseLinkHeader, hasNextPageLink, isConfirmedRefAbsence, currentMainMaxVersion, reviewRecordRefs, assertReviewerDrawIsWarranted, assertReviewerDrawReadiness, gh, hasLabel, ghJson, ghRefListing, reviewStateEntry, completeReviewStatePages, gitRemoteRefRows, GIT_COMMAND_TIMEOUT_MS, authorityGhJson } from './lib/lanes/github-wire.mjs'
 export { EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, createRefWithReadback, deleteRefWithReadback, parseGitRemoteRefs, parseGitCommitBatch, readGitCommits, parseGhIncludeResponse, parseLinkHeader, hasNextPageLink, isConfirmedRefAbsence, currentMainMaxVersion, reviewRecordRefs, assertReviewerDrawIsWarranted, assertReviewerDrawReadiness, GIT_COMMAND_TIMEOUT_MS }
-import { LEGACY_GUARDED_CLEANUP_CLOSE_REASON, CLAIM_CLOSE_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, RETIREMENT_CLOSE_REASON, retiredClaimRef, normalizeRetirementIdentity, validateRetirementRecord, formatRetirementRecord, parseRetirementRecord, isVersionRetired, readRetirementRecord, assertClaimNotRetired, assertRetirementIdentityAvailable, createRetirementTombstone, retiredReopenedClaims, matchesLiveProof, matchesGeneratedTypesProof, requireClaimCloseReason, assertReviewerDrawHandoff } from './lib/lanes/retirement.mjs'
-export { LEGACY_GUARDED_CLEANUP_CLOSE_REASON, CLAIM_CLOSE_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, RETIREMENT_CLOSE_REASON, retiredClaimRef, normalizeRetirementIdentity, validateRetirementRecord, formatRetirementRecord, parseRetirementRecord, isVersionRetired, readRetirementRecord, assertClaimNotRetired, assertRetirementIdentityAvailable, createRetirementTombstone, retiredReopenedClaims, matchesLiveProof, matchesGeneratedTypesProof, assertReviewerDrawHandoff }
+import { LEGACY_GUARDED_CLEANUP_CLOSE_REASON, CLAIM_CLOSE_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, RETIREMENT_CLOSE_REASON, retiredClaimRef, normalizeRetirementIdentity, validateRetirementRecord, formatRetirementRecord, parseRetirementRecord, isVersionRetired, readRetirementRecord, assertClaimNotRetired, assertRetirementIdentityAvailable, createRetirementTombstone, retiredReopenedClaims, matchesLiveProof, matchesGeneratedTypesProof, matchesGeneratedTypesArtifact, requireClaimCloseReason, assertReviewerDrawHandoff } from './lib/lanes/retirement.mjs'
+export { LEGACY_GUARDED_CLEANUP_CLOSE_REASON, CLAIM_CLOSE_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, RETIREMENT_CLOSE_REASON, retiredClaimRef, normalizeRetirementIdentity, validateRetirementRecord, formatRetirementRecord, parseRetirementRecord, isVersionRetired, readRetirementRecord, assertClaimNotRetired, assertRetirementIdentityAvailable, createRetirementTombstone, retiredReopenedClaims, matchesLiveProof, matchesGeneratedTypesProof, matchesGeneratedTypesArtifact, assertReviewerDrawHandoff }
 import { flowCapacityFacts, deriveLiveNoDatabasePreview, databasePreviewAdmission, readDatabasePreviewClassificationFile, withDatabasePreviewClassificationFile, deriveLivePreviewCandidate, terminalizeHistoricalPreviewReady, livePreviewLedger } from './lib/lanes/preview-admission.mjs'
 export { flowCapacityFacts, deriveLiveNoDatabasePreview, databasePreviewAdmission, readDatabasePreviewClassificationFile, withDatabasePreviewClassificationFile, deriveLivePreviewCandidate, terminalizeHistoricalPreviewReady }
 import { REVIEWER_DOCTOR_TIMEOUT_MS, REVIEWER_PREFLIGHT_TIMEOUT_MS, parseDoctorFailures, summarizeDoctorOutput, unnamedDoctorFailure, doctorSpawnPlan, doctorTimeoutFailingChecks, pickExecutableCandidate, resolveCommandPath } from './lib/lanes/reviewer-doctor.mjs'
@@ -215,14 +216,43 @@ export function runGitHubCommand(args,{executor=execFileSync,wait=(ms)=>Atomics.
     wrapError:(detail)=>new LaneError(`GitHub command failed: ${detail}`),
   })
 }
-function ghPaginated(endpoint) {
+const ADMISSION_ISSUE_COMMENT_MAX_PAGES=5, GITHUB_REST_PAGE_SIZE=100
+function isAdmissionIssueCommentEndpoint(endpoint){
+  const value=String(endpoint)
+  return value.startsWith(`repos/${REPO}/issues/`)&&/^repos\/[^/]+\/[^/]+\/issues\/[1-9]\d*\/comments\?per_page=100$/.test(value)
+}
+function readAdmissionIssueCommentPages(endpoint,readJson){
+  const comments=[],commentIds=new Set(),pageSignatures=new Set()
+  for(let pageNumber=1;pageNumber<=ADMISSION_ISSUE_COMMENT_MAX_PAGES;pageNumber++){
+    const pageEndpoint=`${endpoint}&page=${pageNumber}`
+    const page=readJson(['api',pageEndpoint])
+    if(!Array.isArray(page)||page.length>GITHUB_REST_PAGE_SIZE)throw new LaneError(`GitHub admission comment page ${pageNumber} for ${endpoint} was incomplete or malformed`)
+    const ids=page.map((comment)=>{
+      const id=String(comment?.id??'')
+      if(!/^[1-9]\d*$/.test(id))throw new LaneError(`GitHub admission comment page ${pageNumber} for ${endpoint} contains a row without a valid comment id`)
+      return id
+    })
+    const signature=JSON.stringify(ids)
+    if(pageSignatures.has(signature))throw new LaneError(`GitHub admission comment page ${pageNumber} for ${endpoint} repeats an earlier page`)
+    pageSignatures.add(signature)
+    for(const id of ids){
+      if(commentIds.has(id))throw new LaneError(`GitHub admission comment pages for ${endpoint} contain duplicate comment id ${id}`)
+      commentIds.add(id)
+    }
+    comments.push(...page)
+    if(page.length<GITHUB_REST_PAGE_SIZE)return comments
+  }
+  throw new LaneError(`GitHub admission comment history for ${endpoint} reached the ${ADMISSION_ISSUE_COMMENT_MAX_PAGES}-page limit without a short final page; refusing incomplete history`)
+}
+function ghPaginated(endpoint,{readJson=ghJson}={}) {
   if(reviewWireBudget){
-    const page=ghJson(['api',endpoint])
+    if(String(reviewWireBudget.operation??'').endsWith('-admission-gate')&&isAdmissionIssueCommentEndpoint(endpoint))return readAdmissionIssueCommentPages(endpoint,readJson)
+    const page=readJson(['api',endpoint])
     if(!Array.isArray(page))throw new LaneError(`GitHub page for ${endpoint} was incomplete or malformed`)
-    if(page.length>=100)throw new LaneError(`GitHub page for ${endpoint} reached 100 rows; reviewer operation refuses possible pagination`)
+    if(page.length>=GITHUB_REST_PAGE_SIZE)throw new LaneError(`GitHub page for ${endpoint} reached 100 rows; reviewer operation refuses possible pagination`)
     return page
   }
-  const pages = ghJson(['api', '--paginate', '--slurp', endpoint])
+  const pages = readJson(['api', '--paginate', '--slurp', endpoint])
   if (!Array.isArray(pages) || pages.some((page) => !Array.isArray(page))) throw new LaneError(`GitHub pagination for ${endpoint} was incomplete or malformed`)
   return pages.flat()
 }
@@ -1020,7 +1050,7 @@ export const githubIo = {
   createClaim(title, body) { return gh(['issue', 'create', '--repo', REPO, '--label', 'db-claim', '--title', `CLAIM: ${title}`, '--body', body]).trim() },
   createIssueIn(repo, title, body) { return gh(['issue','create','--repo',repo,'--title',title,'--body',body]).trim() },
   commentIssue(number, body) { gh(['issue','comment',String(number),'--repo',REPO,'--body',body]) },
-  issueComments(number) { return ghPaginated(`repos/${REPO}/issues/${number}/comments?per_page=100`).map((c)=>({ body:c.body, author_association:c.author_association, author:c.user?.login, id:c.id, created_at:c.created_at, updated_at:c.updated_at })) },
+  issueComments(number,{readJson=ghJson}={}) { return ghPaginated(`repos/${REPO}/issues/${number}/comments?per_page=100`,{readJson}).map((c)=>({ body:c.body, author_association:c.author_association, author:c.user?.login, id:c.id, created_at:c.created_at, updated_at:c.updated_at })) },
   readOutcomeEvidence(ref) {
     let path
     try{path=repositoryCommentApiPath(ref,REPO)}catch(error){throw new LaneError(`outcome evidence refused: ${error.message}`)}
@@ -1063,15 +1093,18 @@ export const githubIo = {
   },
   verifyGeneratedTypes(evidence){
     const match=/^https:\/\/github\.com\/([^/]+\/[^/]+)\/actions\/runs\/(\d+)$/.exec(String(evidence?.generated_types_evidence??''))
-    if(!match||match[1].toLowerCase()!==String(evidence.application_repository).toLowerCase())return false
+    if(!match||match[1].toLowerCase()!==REPO.toLowerCase()||match[1].toLowerCase()!==String(evidence.application_repository).toLowerCase())return false
     const run=ghJson(['api',`repos/${match[1]}/actions/runs/${match[2]}`])
-    if(run?.conclusion!=='success'||String(run?.head_sha??'').toLowerCase()!==String(evidence.application_commit_sha).toLowerCase())return false
+    if(!matchesGeneratedTypesWorkflowRun(run,evidence))return false
     const artifacts=ghJson(['api',`repos/${match[1]}/actions/runs/${match[2]}/artifacts`])?.artifacts
     const artifact=Array.isArray(artifacts)?artifacts.find((row)=>Number(row.id)===Number(evidence.generated_types_artifact_id)):null
     const expectedName=`shared-db-generated-types-${evidence.work_issue}-${String(evidence.application_commit_sha).toLowerCase()}`
     if(!(artifact?.name===expectedName&&artifact.expired===false&&String(artifact.digest??'').toLowerCase()===String(evidence.generated_types_artifact_digest).toLowerCase()))return false
-    const proof=this.readArtifactJson(match[1],artifact.id,'db-generated-types-proof.json')
-    return matchesGeneratedTypesProof(proof,evidence)
+    let entries
+    try{entries=readZipEntries(gh(['api',`repos/${match[1]}/actions/artifacts/${Number(artifact.id)}/zip`],{encoding:null,maxBuffer:20*1024*1024}))}catch{return false}
+    const selected=selectGeneratedTypesArtifactEntries(entries)
+    if(!selected)return false
+    return matchesGeneratedTypesArtifact(selected.proof,selected.typescriptBytes,evidence)
   },
   readArtifactJson(repository,id,expectedFile){
     const entries=readZipEntries(gh(['api',`repos/${repository}/actions/artifacts/${Number(id)}/zip`],{encoding:null,maxBuffer:20*1024*1024}))
@@ -3741,8 +3774,31 @@ function requirePrOperationRoute(options,io,args){
   if(io.enforceAdmission!==true)return null
   return withoutReviewRequestBudget(()=>requirePrOperationRouteGate(options,io,args))
 }
+function proveLightweightDocumentsOnlyMerge(prNumber,headSha,io){
+  // Preserve the existing owner exemption for ordinary prose merges without
+  // supplying database authority. Every uncertainty falls through to normal
+  // structural/nonclosing routing, which remains fail-closed.
+  try{
+    const identity=(pr)=>({number:pr?.number,state:pr?.state,headSha:pr?.head?.sha,headRef:pr?.head?.ref,
+      headRepo:pr?.head?.repo?.full_name,baseSha:pr?.base?.sha,baseRef:pr?.base?.ref,baseRepo:pr?.base?.repo?.full_name})
+    const first=io.getPr?.(prNumber),before=identity(first),baseSha=before.baseSha
+    if(Number(before.number)!==Number(prNumber)||before.state!=='open'||before.headSha!==headSha||
+      !/^[0-9a-f]{40}$/.test(String(headSha))||!before.headRef||before.headRepo!==REPO||
+      !/^[0-9a-f]{40}$/.test(String(baseSha))||before.baseRef!=='main'||before.baseRepo!==REPO)return false
+    const closing=io.closingIssuesForPr?.(prNumber)
+    if(!Array.isArray(closing)||closing.length!==0)return false
+    const files=io.comparePullRequestFiles?.(baseSha,headSha)
+    if(!Array.isArray(files)||!classifyLightweightMergePullRequestFiles(files).documentsOnly)return false
+    const after=identity(io.getPr?.(prNumber))
+    return JSON.stringify(after)===JSON.stringify(before)
+  }catch{return false}
+}
 function requirePrOperationRouteGate(options,io,{pr,headSha,issue,mutexOwner,allowMerged=false,reviewSnapshot=false,resolveStructuralIssue=false}){
   if(mutexOwner)requireOwnedRef(MUTEX_REF,mutexOwner,io)
+  if(resolveStructuralIssue&&proveLightweightDocumentsOnlyMerge(pr,headSha,io)){
+    requireOwnedRef(MUTEX_REF,mutexOwner,io)
+    return {route:'documents-only',issue:null,headSha}
+  }
   const snapshot=reviewSnapshot&&typeof io.readReviewerOperationRoute==='function'?io.readReviewerOperationRoute(pr):null
   const route=derivePrOperationRoute(pr,io,{headSha,issue,allowMerged,snapshot})
   if(route.route==='repo-maintenance')return route

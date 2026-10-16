@@ -107,7 +107,7 @@ and not exists(select 1 from (values
 ('plm.apply_licensing_support_operation(uuid,text,jsonb)','b46df036d388f8145826aba74dc0c830'),
 ('plm.licensing_consolidation_capture_snapshot(text,uuid)','3c60cbc197bc3919056e765d3e9dbc12'),
 ('plm.licensing_consolidation_operation_state(jsonb)','9436d56877f281b437345ae2967fe073'),
-('plm.licensing_consolidation_plan_immutable()','3097938f8dad64d35f35931967ef3b67'),
+('plm.licensing_consolidation_plan_immutable()','a5354f0ae3337cf3636473be4711351a'),
 ('plm.licensing_operation_identity_predicate(jsonb)','ea67528b1eb6b0b34b608e6c406c2baf'),
 ('plm.plan_licensing_consolidation(text,uuid,text)','210117bd0c0e30a2ae41abc89893b640'),
 ('plm.plan_licensing_consolidation_rollback(uuid,text)','0c92970d93133067f2c45552ba756b28')

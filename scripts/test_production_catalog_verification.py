@@ -1712,8 +1712,23 @@ class BehavioralSidecarTests(unittest.TestCase):
 
         live = (REPO / ".github/live-proofs/2336.sql").read_text()
         self.assertIn(f"where version='{version}'", live)
-        self.assertIn("md5(prosrc)='a5354f0ae3337cf3636473be4711351a'", live)
-        self.assertIn("('plm.licensing_consolidation_plan_immutable()','3097938f8dad64d35f35931967ef3b67')", live)
+        bodies = re.findall(
+            rb"create or replace function plm\.licensing_consolidation_plan_immutable\(\).*?as \$immutable\$(.*?)\$immutable\$;",
+            migration.read_bytes(), re.S,
+        )
+        self.assertEqual(len(bodies), 1)
+        expected_body = hashlib.md5(bodies[0]).hexdigest()
+        # Every independent proof condition must accept the actual applied body.
+        # Matching the positive guard alone misses a contradictory pins table.
+        table_pins = re.findall(
+            r"\('plm\.licensing_consolidation_plan_immutable\(\)','([0-9a-f]{32})'\)", live,
+        )
+        direct_pins = re.findall(
+            r"\(select md5\(prosrc\)='([0-9a-f]{32})' from pg_proc where oid=to_regprocedure\('plm\.licensing_consolidation_plan_immutable\(\)'\)\)",
+            live,
+        )
+        self.assertEqual(table_pins, [expected_body])
+        self.assertEqual(direct_pins, [expected_body])
 
     def test_catalog_contract_is_named_hash_bound_and_select_only(self):
         def change(sidecar):

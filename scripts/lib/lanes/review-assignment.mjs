@@ -263,6 +263,24 @@ export function projectReviewerOperationRouteSnapshot(data){
 }
 
 export function completeReviewerOperationRouteSnapshot(data,readRestFiles){
+  const row=data?.data?.repository?.pullRequest
+  const filesConn=row?.files
+  // A pull request over one GraphQL file page (first:100) is still routable:
+  // REST getPrFiles returns the complete inventory. project() refuses a
+  // partial page so a silent truncation can never hide a migration; complete()
+  // is the caller that owns the full read.
+  if(filesConn?.pageInfo?.hasNextPage===true){
+    if(typeof readRestFiles!=='function')throw new LaneError('reviewer operation routing snapshot is incomplete or paginated')
+    const restFiles=readRestFiles()
+    if(!Array.isArray(restFiles)||!restFiles.length)throw new LaneError('reviewer operation routing snapshot is incomplete or paginated')
+    const linked=row.closingIssuesReferences
+    if(!Array.isArray(linked?.nodes)||linked.pageInfo?.hasNextPage!==false)throw new LaneError('reviewer operation routing snapshot is incomplete or paginated')
+    return {
+      pr:{state:String(row.state??'').toLowerCase(),merged_at:row.merged===true?row.mergedAt:null,head:{sha:row.headRefOid}},
+      files:restFiles.map(({filename,status,previous_filename})=>previous_filename===undefined?{filename,status}:{filename,status,previous_filename}),
+      linkedIssues:linked.nodes.map((item)=>({number:item?.number,state:String(item?.state??'').toLowerCase(),body:item?.body,createdAt:item?.createdAt})),
+    }
+  }
   let snapshot=projectReviewerOperationRouteSnapshot(data)
   // GraphQL has no prior filename. A rename needs the complete REST inventory
   // before either side of its path can be classified under the reviewer mutex.

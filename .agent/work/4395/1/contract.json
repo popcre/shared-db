@@ -1,0 +1,39 @@
+{
+  "schema_version": 2,
+  "work_issue": 4395,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Repair dead predecessor links in owner-transfer handoff and record GLM F2/F3 hygiene follow-ups",
+  "base_sha": "50be2a9fd136a3ddb1f5e1f030fd18c59a31cdee",
+  "dispatcher": "MiMo handoff-hygiene session",
+  "worker": "mimo",
+  "branch": "mimo/4241-handoff-hygiene",
+  "worktree": "D:/repos/shared-db-worktrees/4241-hygiene",
+  "allowed_paths": [
+    "HANDOFF.d/2026-10-13T1804Z-edge-dev3-codex-eight-issues-owner-transfer.md",
+    ".agent/work/4395/1/contract.json",
+    ".agent/work/4395/1/completion.json"
+  ],
+  "file_writes": [
+    "HANDOFF.d/2026-10-13T1804Z-edge-dev3-codex-eight-issues-owner-transfer.md",
+    ".agent/work/4395/1/contract.json",
+    ".agent/work/4395/1/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "do not touch database",
+    "do not rewrite HANDOFF.md"
+  ],
+  "required_checks": [
+    "node --test scripts/check-handoff-contract.test.mjs"
+  ],
+  "assumptions": [
+    "#4241 tracking issue stays open"
+  ],
+  "stop_conditions": [
+    "stop if a citation would strand live work"
+  ],
+  "generation": 1,
+  "evidence_parent": null
+}

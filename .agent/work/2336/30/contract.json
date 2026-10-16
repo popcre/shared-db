@@ -1,0 +1,101 @@
+{
+  "allowed_paths": [
+    "supabase/migrations/20261016003614_licensing_recovery_timestamp.sql",
+    "supabase/tests/licensing_consolidation_contracts.sql",
+    ".github/live-proofs/2336.sql",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "scripts/production-verification-sidecars/20261016003614.json",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    ".agent/work/2336/30/contract.json",
+    ".agent/work/2336/30/completion.json"
+  ],
+  "assumptions": [
+    "Actual claim4367 was natively resumed by its exact owner at 8:46 AM EDT on October16,2026 for real source requalification, not for idle capacity. Closed predecessor4334 and its spent ready receipt are not replayed.",
+    "Main778dc192f4a0ede1889c6a595b08b47425657cd1 was ordinarily merged. Current implementation74e0394464fa6ad38a4f4985af2b3328cd4114af preserves original recovery SQL SHA25614bbbec4565275a7ee5ba11e1ef3f3df59e8ee184fac9ed90786e67b1190f73b. Frozen original20261013130102 SQL and3998/4170 remain untouched.",
+    "PR4330 and PR4370 are merged. Actual production read-only types run38902878336 and complete native artifact verification passed at main778dc192; this does not assert #2336 schema or application acceptance.",
+    "Local source regression, sidecar/truth and static SQL checks were rerun at exact implementation74e0394464fa6ad38a4f4985af2b3328cd4114af. Prior local replay/quarantine caveats remain historical evidence; hosted preview, automatic promotion and live production acceptance remain required."
+  ],
+  "base_sha": "778dc192f4a0ede1889c6a595b08b47425657cd1",
+  "branch": "codex/eight-resume-01a14221",
+  "db_reads": [
+    "function core.bump_taxonomy_source_ref_last_seen",
+    "function plm.apply_licensing_consolidation",
+    "function plm.apply_licensing_support_operation",
+    "function plm.licensing_consolidation_operation_state",
+    "function plm.licensing_operation_identity_predicate",
+    "function plm.plan_licensing_consolidation",
+    "function plm.plan_licensing_consolidation_rollback",
+    "table core.character",
+    "table core.franchise",
+    "table core.property",
+    "table core.property_alias",
+    "table core.property_character_associations",
+    "table core.property_character_source_edge",
+    "table core.property_franchise",
+    "table core.property_franchise_source_edge",
+    "table core.property_style_guide",
+    "table core.property_style_guide_source_edge",
+    "table core.style_guide",
+    "table core.style_guide_character",
+    "table core.style_guide_character_source_edge",
+    "table core.taxonomy_source_ref",
+    "table dam.asset",
+    "table dam.asset_character",
+    "table dam.asset_character_source_edge",
+    "table dam.asset_franchise",
+    "table dam.asset_franchise_source_edge",
+    "table dam.asset_property",
+    "table dam.asset_property_source_edge",
+    "table dam.asset_style_guide",
+    "table dam.asset_style_guide_source_edge",
+    "table plm.licensing_consolidation_plan"
+  ],
+  "db_writes": [
+    "function plm.licensing_consolidation_plan_immutable"
+  ],
+  "dispatcher": "Codex chat 01a14221-9c2c-7dd3-9047-dfaced175779 on edge-dev3",
+  "evidence_parent": {
+    "work_issue": 2336,
+    "generation": 29,
+    "contract_sha256": "e9819818b49fe45bec6d43b83b5b798165eb518d4a6b950f2e4da49043eb0440"
+  },
+  "file_writes": [
+    "supabase/migrations/20261016003614_licensing_recovery_timestamp.sql",
+    "supabase/tests/licensing_consolidation_contracts.sql",
+    ".github/live-proofs/2336.sql",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "scripts/production-verification-sidecars/20261016003614.json",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    ".agent/work/2336/30/contract.json",
+    ".agent/work/2336/30/completion.json"
+  ],
+  "generation": 30,
+  "goal": "Complete preserved #2336 timestamp recovery under actual claim4367 custody using genuinely merged pager/types prerequisites, fresh source qualification, guarded delivery, automatic bounded promotion and actual post-apply live proof.",
+  "prohibited_actions": [
+    "Never edit/replay frozen20261013130102 SQL or original2336/3998/4170 source/reviews/budgets/claims.",
+    "No broad omission of last_seen_at or any other planned integrity field; no changed grants/roles/volatility/targets/history/deletion.",
+    "No production/preview/manual SQL, credentials, curated merge, paid review, claim manipulation or source publication by subagents.",
+    "No fake full-native success from reduced PG model; all required CI/live gates remain separate.",
+    "Do not broaden the normalization predicate, alter old applied source, weaken integrity guards, or mark quarantined expected failures as ordinary passing tests.",
+    "Do not relax timestamp/audit/no-op/retry/tamper assertions or change canonical production source identities to fit the old erroneous fixture."
+  ],
+  "required_checks": [
+    "python3 -m unittest scripts.test_production_catalog_verification scripts.test_shared_db_live_proof scripts.test_migration_derivation",
+    "node scripts/check-production-verification-sidecars.mjs",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "git diff --check"
+  ],
+  "route": "claim-first",
+  "schema_version": 2,
+  "stop_conditions": [
+    "Stop source changes if scope widens, frozen bytes differ, native gate refuses or owner check-in is older than ten minutes."
+  ],
+  "work_issue": 2336,
+  "work_type": "structural",
+  "worker": "Codex chat 01a14221-9c2c-7dd3-9047-dfaced175779 on edge-dev3 performs implementation, review coordination and delivery; Luna 6 High supplies bounded read-only checks",
+  "worktree": "/home/ahazan/.codex/worktrees/resume-01a14221/shared-db"
+}

@@ -7,7 +7,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/4348/1",
   "contract_sha256": "d9e2891ac5d2e9cae42ec0ca7842257f64bbdb34c91a44c7cf2452688c4806e0",
-  "head_sha": "e8c234d930df281aabe96e2a48d023f27053a47c",
+  "head_sha": "a4cc2fe2b0d7006d546d279b67ba4e80fba73731",
   "base_sha": "50be2a9fd136a3ddb1f5e1f030fd18c59a31cdee",
   "files_changed": [
     ".github/ISSUE_TEMPLATE/author-lane-abandonment.md",
@@ -26,7 +26,6 @@
     "AGENTS.md",
     "COORDINATOR_INTAKE.md",
     "config/orchestrator-global-invalidators-v1.json",
-    "config/owner-no-reviewer-policy.json",
     "docs/agents/active-contracts-and-plans.md",
     "docs/agents/anti-collision-summary.md",
     "docs/agents/orchestrator.md",
@@ -48,7 +47,6 @@
     "docs/verification/throughput-dispositions/scripts~apply_attempt_recovery.py.json",
     "docs/verification/throughput-dispositions/scripts~atomic_migration_apply.py.json",
     "docs/verification/throughput-dispositions/scripts~check-documents-ci-route.mjs.json",
-    "docs/verification/throughput-dispositions/scripts~check-exact-head-approval.mjs.json",
     "docs/verification/throughput-dispositions/scripts~check-migration-pr-lease.mjs.json",
     "docs/verification/throughput-dispositions/scripts~check-required-checks-preflight.mjs.json",
     "docs/verification/throughput-dispositions/scripts~check-review-parallelism-brief.mjs.json",
@@ -205,7 +203,6 @@
     "scripts/lib/work-stage-evidence.test.mjs",
     "scripts/manage-migration-author-lanes.mjs",
     "scripts/manage-migration-author-lanes.test.mjs",
-    "scripts/merge-queue-contract.mjs",
     "scripts/production_business_risk_gate.py",
     "scripts/queue-hygiene-report.test.mjs",
     "scripts/reap-merged-worktrees.mjs",
@@ -216,7 +213,6 @@
     "scripts/run-governed-review.test.mjs",
     "scripts/test_production_migration_guard.py",
     "scripts/throughput-guard/check-throughput-truth-audit-context.test.mjs",
-    "scripts/update-required-checks.test.mjs",
     "scripts/work-stage-manager-integration.test.mjs",
     "tools/coldlion-landing/lib/order-intake-write.mjs",
     "tools/intake-inventory.mjs",
@@ -229,18 +225,19 @@
     {
       "command": "node --test scripts/claim-author-transfer.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/lib/session-authority.test.mjs scripts/queue-hygiene-report.test.mjs",
       "exit_code": 0,
-      "evidence": "{\"passed\": 1009, \"failed\": 0} at e8c234d9"
+      "evidence": "{\"passed\": 1009, \"failed\": 0} at a4cc2fe2; wider run 1651 pass"
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "truth audit OK at e8c234d9"
+      "evidence": "truth audit OK: call_sites=353 at a4cc2fe2"
     }
   ],
   "assumptions_resolved": [
     "Contract published before this implementation commit; late-contract origin disclosed in its assumptions.",
     "Includes the unsigned paginated-routing fix 199752010 pushed by another session at 11:58 AM EDT, tightened to keep the renamed-file prior-filename guard, with tests.",
-    "Includes MiMo commit 87828dd (paged PR file inventory) with a new test; MiMo told to stop per Albert verbatim: \"You finish the second change. Tell the MiMo chat to stop.\""
+    "Includes MiMo commit 87828dd (paged PR file inventory) with a new test; MiMo told to stop per Albert verbatim: \"You finish the second change. Tell the MiMo chat to stop.\"",
+    "GLM REJECT seq 6625 addressed: the owner-no-reviewer exemption is removed from this change entirely (not part of #4348; reviews still required); legacy fallback alarm title matched; wording fixes."
   ],
   "stop_conditions_hit": []
 }

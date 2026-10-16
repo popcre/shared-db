@@ -1,9 +1,9 @@
-name: Orchestrator no-progress alarm
+name: No-progress alarm
 
 # Two-hour no-progress alarm (issue #3027, programme popcre/ai-devops#401 Step 4).
-# Every 30 minutes it reads the live orchestrator state and, when an owned outcome has had no
+# Every 30 minutes it reads the live claim-first coordination state and, when an owned outcome has had no
 # stage transition for more than 120 minutes or nothing closed in four hours, posts one comment
-# on the orchestrator marker naming each stuck outcome, its blocker and the unblock action, with
+# on the claim-first session identity naming each stuck outcome, its blocker and the unblock action, with
 # the sealed snapshot a successor resumes from. Transition-only: an alarm already posted on the
 # target issue is never reposted. It also names a ready structural request the queue audit would
 # admit but that has had no `entered` event for more than 30 minutes (issue #3148). It reads GitHub and writes one issue comment; nothing else.
@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       post_issue:
-        description: 'Post to this issue instead of the orchestrator marker (canary). Empty = marker.'
+        description: 'Post to this issue instead of the claim-first session identity (canary). Empty = marker.'
         required: false
         default: ''
       now:
@@ -31,7 +31,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: orchestrator-no-progress-alarm
+  group: no-progress-alarm
   cancel-in-progress: false
 
 jobs:
@@ -45,7 +45,7 @@ jobs:
         with:
           node-version: '22'
       - name: Prove the alarm before trusting it
-        run: node --test scripts/orchestrator-flow/no-progress-alarm.test.mjs scripts/orchestrator-snapshot.test.mjs
+        run: node --test scripts/db-flow/no-progress-alarm.test.mjs scripts/flow-snapshot.test.mjs
       - name: Raise the alarm on a new stall
         env:
           GH_TOKEN: ${{ github.token }}
@@ -58,5 +58,5 @@ jobs:
           [ -n "${POST_ISSUE:-}" ] && args+=(--post-issue "$POST_ISSUE")
           [ -n "${NOW:-}" ] && args+=(--now "$NOW")
           [ -n "${STAGED_LABEL:-}" ] && args+=(--staged-label "$STAGED_LABEL")
-          node scripts/orchestrator-flow/no-progress-alarm.mjs "${args[@]}" | tee alarm.json
+          node scripts/db-flow/no-progress-alarm.mjs "${args[@]}" | tee alarm.json
           { echo '### No-progress alarm'; echo '```json'; grep -v '"body"' alarm.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

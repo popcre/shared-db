@@ -24,7 +24,7 @@
 # #2729), the migration, database and queue-gate workflows that hold locks or
 # production gates, migration-author-lease.yml (a global invalidator that
 # posts commit statuses), the issue-only half of destructive-analysis-guard.yml,
-# the scheduled alarm half of orchestrator-marker-guard.yml,
+# the scheduled alarm half of marker-guard.yml,
 # historical-item-mg-reclassification-tests.yml (its truth-audit identity is
 # pinned by the immutable 2026-08-28 cutover record), path-filtered advisory
 # workflows, and the pull_request_target documents route.
@@ -476,7 +476,7 @@ jobs:
   # Why this workflow exists (added 2026-08-07, plan_coordinator-queue-to-github-issues.md).
   #
   # Step 5 of that plan requires the updated skills to reach EVERY machine before step 8
-  # reduces the orchestrator queue to a pointer. The failure it guards is silent: a machine
+  # reduces the coordination queue to a pointer. The failure it guards is silent: a machine
   # still running the old skill appends its handover to the pointer, the file grows a body,
   # and the queue this migration deletes is rebuilt live, mid-migration, with nothing raising
   # a hand.
@@ -525,7 +525,7 @@ jobs:
         # guard whose own tests are not run is a guard nobody has proven fires.
         run: node --test scripts/check-intake-pointer.test.mjs
 
-      - name: Check the orchestrator queue has not grown back
+      - name: Check the coordination queue has not grown back
         run: node scripts/check-intake-pointer.mjs
 
   # ---- moved from .github/workflows/destructive-analysis-guard.yml (#3746) ----
@@ -751,7 +751,7 @@ jobs:
           GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
         run: node scripts/check-pr-object-collisions.mjs
 
-  # The orchestrator marker guard was retired with the orchestrator role (#3874).
+  # The Orchestrator marker guard was retired with the coordinator role (#3874).
   # ---- moved from .github/workflows/queue-sensitive-aggregate.yml (#3746) ----
   # Stable aggregate context for queue-sensitive required checks (issue #2729, ai-devops#401 Step 7).
   #
@@ -760,7 +760,7 @@ jobs:
   # up. A replacement run reports "<context> [lane <label>]", so this job is the one stable context:
   # it passes only when every registered assertion has exactly one successful run for the PR head,
   # and it refuses when an assertion is absent, duplicated or failed. Lanes are declared in
-  # scripts/orchestrator-flow/runner-lanes.json. Read-only: it only lists check runs.
+  # scripts/db-flow/runner-lanes.json. Read-only: it only lists check runs.
   queue-sensitive-aggregate:
     name: Queue-sensitive checks (aggregate)
     if: contains(fromJSON('["pull_request", "merge_group"]'), github.event_name)
@@ -781,7 +781,7 @@ jobs:
           # On merge_group the asserted head is the synthetic group commit,
           # which is where the lane jobs report when triggered by the group.
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
-        run: node scripts/orchestrator-flow/runner-lanes.mjs --aggregate --repo "$REPO" --head-sha "$HEAD_SHA" --timeout-minutes 50
+        run: node scripts/db-flow/runner-lanes.mjs --aggregate --repo "$REPO" --head-sha "$HEAD_SHA" --timeout-minutes 50
 
   # ---- moved from .github/workflows/pii-forward-guard.yml (#3746) ----
   # Guard: no NEW email-shaped personal identifiers enter this PUBLIC repository.

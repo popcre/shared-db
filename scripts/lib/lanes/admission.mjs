@@ -1,7 +1,7 @@
 // Split from scripts/manage-migration-author-lanes.mjs (issue #3726). Behavior-preserving move:
 // the entrypoint re-exports every public name defined here. Edit here, not there.
 import { isTrustedOperatorComment } from '../../lib/repository-identity.mjs'
-import { AdmissionError, STRUCTURAL_ROUTES, evaluateAdmission, parseImpactBlock, inspectPrStructuralChange, structuralWritesMatch, NON_STRUCTURAL_CHANGE_TYPES } from '../../orchestrator-flow/admission.mjs'
+import { AdmissionError, STRUCTURAL_ROUTES, evaluateAdmission, parseImpactBlock, inspectPrStructuralChange, inspectPrCuratedDataChange, structuralWritesMatch, NON_STRUCTURAL_CHANGE_TYPES } from '../../orchestrator-flow/admission.mjs'
 import { findCompletionRecord } from '../../lib/work-dependencies.mjs'
 import { outcomeHistory, OutcomeError, OUTCOME_STATES, advanceOutcome } from '../../orchestrator-flow/outcome-lifecycle.mjs'
 import { coordinationEvent, formatEventComment } from '../../db-coordination-events.mjs'
@@ -33,7 +33,11 @@ export function admitIssue(number, io = githubIo, { pr = null, actor = 'manage-m
     if(pr!==null){
       livePr=io.getPr(Number(pr))
       const linked=io.closingIssuesForPr(Number(pr))
-      if(!Array.isArray(linked)||linked.length!==1||Number(linked[0]?.number)!==Number(number))throw new AdmissionError(`pull request #${pr} must close exactly admitted issue #${number}`)
+      if(!Array.isArray(linked)||linked.length>1)throw new AdmissionError(`pull request #${pr} must close exactly admitted issue #${number}`)
+      if(linked.length===0){
+        const binding=derivePrOperationRoute(Number(pr),io,{headSha:livePr?.head?.sha,issue:Number(number)})
+        if(binding.route!=='structural'||binding.issue!==Number(number))throw new AdmissionError(`pull request #${pr} requires verified nonclosing structural identity #${number}`)
+      }else if(Number(linked[0]?.number)!==Number(number))throw new AdmissionError(`pull request #${pr} must close exactly admitted issue #${number}`)
       if(String(issue?.state??'').toLowerCase()==='closed'){
         if(!livePr?.merged_at||typeof io.updateIssue!=='function')throw new AdmissionError(`issue #${number} is closed and cannot be admitted`)
         const completion=typeof io.issueComments==='function'
@@ -59,10 +63,15 @@ export function admitIssue(number, io = githubIo, { pr = null, actor = 'manage-m
       if(!head)throw new AdmissionError('pull request exact head is unreadable')
       const files=io.getPrFiles(Number(pr)).map((file)=>/^supabase\/migrations\/\d{14}_[^/]+\.sql$/.test(String(file?.filename??file?.path??''))&&file?.status!=='removed'
         ?{...file,content:io.getFileAt(file.filename??file.path,head)}:file)
+      if(admitted.curated){
+        const inspection=inspectPrCuratedDataChange(files,issue,scope)
+        admitted={...admitted,actual_objects:[],reads:inspection.reads,row_writes:inspection.row_writes,row_reads:inspection.row_reads,migrations:inspection.migrations}
+      }else{
       const inspection=inspectPrStructuralChange(files)
       const declared=[...scope.writes].sort()
       if(!structuralWritesMatch(inspection,declared))throw new AdmissionError(`pull request #${pr} structural objects must exactly match admitted issue #${number} writes`)
       admitted={...admitted,actual_objects:inspection.objects,migrations:inspection.migrations}
+      }
     }
     if(reopenAfterValidation){
       io.updateIssue(Number(number),{state:'open'})
@@ -286,8 +295,10 @@ export function derivePrOperationRoute(pr, io = githubIo, { headSha = null, issu
   if(!Array.isArray(linked)||linked.length>1)throw new LaneError(`pull request must close exactly one work issue; found ${Array.isArray(linked)?linked.length:'an unreadable set'}`)
   let nonclosing=null
   if(linked.length===0){
-    if(structural||files.some(file=>file.status==='renamed'||file.previous_filename!==undefined)||typeof io.verifyNonclosingMaintenanceBinding!=='function')throw new LaneError('pull request must close exactly one work issue; found 0')
-    nonclosing=io.verifyNonclosingMaintenanceBinding({pr:Number(pr),headSha:livePr.head.sha,files,issue})
+    const verifier=structural?io.verifyNonclosingStructuralBinding:io.verifyNonclosingMaintenanceBinding
+    if(files.some(file=>file.status==='renamed'||file.previous_filename!==undefined)||typeof verifier!=='function')throw new LaneError('pull request must close exactly one work issue; found 0')
+    nonclosing=verifier.call(io,{pr:Number(pr),headSha:livePr.head.sha,files,issue})
+    if(structural&&nonclosing?.route!=='structural')throw new LaneError('nonclosing structural binding is unreadable')
     if(nonclosing?.headSha!==livePr.head.sha||!Number.isInteger(nonclosing?.issue)||nonclosing.issue<1)throw new LaneError('nonclosing maintenance binding is unreadable')
   }
   const linkedNumber=nonclosing?.issue??Number(linked[0]?.number)

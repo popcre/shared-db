@@ -63,7 +63,6 @@ name: Database Contract Tests
 on:
   pull_request:
   merge_group:
-    types: [checks_requested]
   push:
     branches: [main]
   workflow_dispatch:
@@ -319,8 +318,9 @@ jobs:
           shopt -s nullglob
           MIGS=("$RUNNER_TEMP"/migrations/*.sql)
           mkdir -p "$RUNNER_TEMP/migration-logs"
-          OK=0; BAD=0
+          OK=0; BAD=0; SKIPPED=0
           : > "$RUNNER_TEMP/failed-migrations.txt"
+          : > "$RUNNER_TEMP/skipped-retired-unit6.txt"
           # THE PROVEN-APPLIED RECORD (issue #2537). One basename per line, appended the
           # moment a migration really applies, in either pass. The pass-2 ordering repair
           # reads it to tell a routine body that a LATER migration genuinely installed
@@ -338,6 +338,29 @@ jobs:
             > "$RUNNER_TEMP/ledger-init.log" 2>&1
           for m in "${MIGS[@]}"; do
             base="$(basename "$m")"
+            # UNIT6_RETIRED_SKIP_BEGIN: exact never-installed source only, not all retirements.
+            if [ "${base%%_*}" = "20261005025111" ]; then
+              if ! python - "$RUNNER_TEMP/migrations/20261011224904_coldlion_unit6_consumer_contracts_safe.sql" <<'PY_UNIT6'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'scripts')
+          from production_migration_guard import HARD_BLOCKED, RETIRED_VERSION_REASONS
+          old = '20261005025111'
+          successor = Path(sys.argv[1])
+          reason = RETIRED_VERSION_REASONS.get(old, '')
+          if old not in HARD_BLOCKED or '20261011224904' not in reason or 'preview and production never applied original' not in reason or 'retirement6328e126316baca16b7f3d842f79a769599f478c' not in reason or successor.name != '20261011224904_coldlion_unit6_consumer_contracts_safe.sql' or not successor.is_file():
+              raise SystemExit('REFUSED: exact never-installed unit6 retirement/successor proof missing')
+          PY_UNIT6
+              then
+                echo "::error::cannot verify never-installed unit6 retirement before replay skip" >&2
+                exit 2
+              fi
+              echo "$base" >> "$RUNNER_TEMP/skipped-retired-unit6.txt"
+              SKIPPED=$((SKIPPED+1))
+              echo "::notice::skipped never-installed retired original $base; no apply or ledger insertion"
+              continue
+            fi
+            # UNIT6_RETIRED_SKIP_END
             # --single-transaction matches how the Supabase CLI applies a migration: the
             # file lands whole or not at all, so a half-applied file can never leave a
             # schema that no real database would ever have.
@@ -361,7 +384,7 @@ jobs:
           # still moved aside that test failed for a reason that had nothing to do with the
           # database -- a false failure is as bad as a false pass.
           mv "$RUNNER_TEMP"/migrations/*.sql supabase/migrations/
-          echo "Pass 1 replayed ${#MIGS[@]} migrations: $OK applied, $BAD failed."
+          echo "Pass 1 considered ${#MIGS[@]} migrations: $OK applied, $BAD failed, $SKIPPED retired originals skipped."
           {
             echo "## Migration replay, pass 1 (empty database, no baseline)"
             echo ""
@@ -370,6 +393,7 @@ jobs:
             echo "| migration files | ${#MIGS[@]} |"
             echo "| applied | $OK |"
             echo "| did NOT replay | $BAD |"
+            echo "| never-installed retired original skipped | $SKIPPED |"
             echo ""
             if [ "$BAD" -gt 0 ]; then
               echo "A migration that cannot replay from empty is NOT necessarily broken in the"
@@ -472,10 +496,33 @@ jobs:
           set -uo pipefail
           mkdir -p "$RUNNER_TEMP/migration-logs-pass2"
           PASS1_BAD=$(wc -l < "$RUNNER_TEMP/failed-migrations.txt" | tr -d ' ')
-          OK=0; BAD=0
+          OK=0; BAD=0; SKIPPED=0
           : > "$RUNNER_TEMP/failed-migrations-pass2.txt"
           while read -r base; do
             [ -n "$base" ] || continue
+            # UNIT6_RETIRED_SKIP_BEGIN: exact never-installed source only, not all retirements.
+            if [ "${base%%_*}" = "20261005025111" ]; then
+              if ! python - "supabase/migrations/20261011224904_coldlion_unit6_consumer_contracts_safe.sql" <<'PY_UNIT6'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'scripts')
+          from production_migration_guard import HARD_BLOCKED, RETIRED_VERSION_REASONS
+          old = '20261005025111'
+          successor = Path(sys.argv[1])
+          reason = RETIRED_VERSION_REASONS.get(old, '')
+          if old not in HARD_BLOCKED or '20261011224904' not in reason or 'preview and production never applied original' not in reason or 'retirement6328e126316baca16b7f3d842f79a769599f478c' not in reason or successor.name != '20261011224904_coldlion_unit6_consumer_contracts_safe.sql' or not successor.is_file():
+              raise SystemExit('REFUSED: exact never-installed unit6 retirement/successor proof missing')
+          PY_UNIT6
+              then
+                echo "::error::cannot verify never-installed unit6 retirement before replay skip" >&2
+                exit 2
+              fi
+              echo "$base" >> "$RUNNER_TEMP/skipped-retired-unit6.txt"
+              SKIPPED=$((SKIPPED+1))
+              echo "::notice::skipped never-installed retired original $base; no apply or ledger insertion"
+              continue
+            fi
+            # UNIT6_RETIRED_SKIP_END
             m="supabase/migrations/$base"
             if [ ! -f "$m" ]; then
               echo "::error::pass 2 cannot find $m" >&2; BAD=$((BAD+1)); continue
@@ -553,6 +600,7 @@ jobs:
             echo "| failed in pass 1 | $PASS1_BAD |"
             echo "| now apply | $OK |"
             echo "| STILL do not replay | $BAD |"
+            echo "| never-installed retired original skipped | $SKIPPED |"
             echo ""
             if [ "$BAD" -gt 0 ]; then
               echo "<details><summary>Still failing after the baseline -- with the first error of each</summary>"
@@ -773,6 +821,7 @@ jobs:
           path: |
             ${{ runner.temp }}/db-start.log
             ${{ runner.temp }}/applied-migrations.txt
+            ${{ runner.temp }}/skipped-retired-unit6.txt
             ${{ runner.temp }}/failed-migrations.txt
             ${{ runner.temp }}/failed-migrations-pass2.txt
             ${{ runner.temp }}/migration-logs/

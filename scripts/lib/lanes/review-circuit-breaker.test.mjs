@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { paidStart, assertPaidReviewCapacity, pauseActualReviewFailure, derivePaidContentProof } from './review-circuit-breaker.mjs'
@@ -5,13 +6,28 @@ const head='a'.repeat(40), next='b'.repeat(40), digest='c'.repeat(64)
 const request={issue:3536,pr:4000,headSha:head,slot:1}
 function row(seq=1,h=head,slot=1){return{ref:`refs/db-review-started/3536-4000-${h}-slot${slot}-seq${seq}`,sha:String(seq).padStart(40,'0')}}
 function message(seq=1,h=head,slot=1){return`db-coordination review-started issue=3536 pr=4000 head=${h} slot=${slot} sequence=${seq} reviewer=glm-5.3 at=2026-10-06T18:00:00.000Z`}
+function reviewerRow(seq,reviewer,h=head,slot=1){return{...row(seq,h,slot),commit:{message:message(seq,h,slot).replace('reviewer=glm-5.3',`reviewer=${reviewer}`)}}}
+function issueRow(seq,issue){return{...row(seq),ref:row(seq).ref.replace('3536-',`${issue}-`),commit:{message:message(seq).replace('issue=3536',`issue=${issue}`)}}}
 function io(rows){return{listRefs:()=>rows,getCommit:sha=>({message:message(Number(sha))}),reviewContentComparison:()=>({before:digest,after:digest,budgetProof:{schema:1,before:head,after:next,protectedMain:head,kind:'unchanged'}})}}
-test('zero and one paid attempts retain capacity',()=>{assert.equal(assertPaidReviewCapacity(request,io([])).remaining,2);assert.equal(assertPaidReviewCapacity(request,io([row()])).remaining,1)})
+test('zero and one paid attempts retain capacity',()=>{assert.deepEqual(assertPaidReviewCapacity(request,io([])),{paidAttempts:0,remaining:2});assert.equal(assertPaidReviewCapacity(request,io([row()])).remaining,1)})
 test('third paid draw refuses unchanged exact head',()=>assert.throws(()=>assertPaidReviewCapacity(request,io([row(),row(2)])),/third draw refused/))
 test('evidence-only or empty-head refresh cannot reset cap',()=>assert.throws(()=>assertPaidReviewCapacity({...request,headSha:next},io([row(),row(2)])),/third draw refused/))
 test('substantive byte change starts another round',()=>{const x=io([row(),row(2)]);x.reviewContentComparison=()=>({before:digest,after:'d'.repeat(64),budgetProof:{schema:1,before:head,after:next,protectedMain:head,kind:'substantive',historyCount:1}});assert.equal(assertPaidReviewCapacity({...request,headSha:next},x).remaining,2)})
 test('unknown, malformed and failed comparison cannot reset',()=>{for(const proof of [null,{before:'unknown',after:digest}]){const x=io([row(),row(2)]);x.reviewContentComparison=()=>proof;assert.throws(()=>assertPaidReviewCapacity({...request,headSha:next},x),/proof unreadable/)}const x=io([row()]);x.reviewContentComparison=()=>{throw Error('fetch failed')};assert.throws(()=>assertPaidReviewCapacity({...request,headSha:next},x),/fetch failed/)})
 test('independent slots have separate paid caps',()=>{const x=io([row(1,head,2),row(2,head,2)]);x.getCommit=sha=>({message:message(Number(sha),head,2)});assert.equal(assertPaidReviewCapacity(request,x).remaining,2)})
+// A carried slot 1 (assignment standing at a tree-identical ancestor) is not a
+// paid draw. Drawing slot 2 at the new head must not be blocked by slot 1's
+// exhausted unchanged-content cap: the caps are per slot, and the carry writes
+// no start at all (#4206).
+test('carried slot 1 plus a new slot 2 draw on tree-identical content is allowed',()=>{
+  const x=io([row(1,head,1),row(2,head,1)])
+  x.getCommit=sha=>({message:message(Number(sha),head,Number(sha)===1||Number(sha)===2?1:2)})
+  x.reviewContentComparison=()=>({before:digest,after:digest,budgetProof:{schema:1,before:head,after:next,protectedMain:head,kind:'unchanged'}})
+  // Slot 1 has two paid starts on unchanged content: a third slot-1 draw refuses.
+  assert.throws(()=>assertPaidReviewCapacity({...request,slot:1,headSha:next},x),/third draw refused/)
+  // Slot 2 is empty at both heads: the first slot-2 draw is allowed.
+  assert.equal(assertPaidReviewCapacity({...request,slot:2,headSha:next},x).remaining,2)
+})
 test('tampered scope, time or record refuses',()=>{for(const text of [message().replace('pr=4000','pr=4001'),message().replace('2026-10-06T18:00:00.000Z','unknown'),'PASS doctor repaired'])assert.throws(()=>paidStart(row(),{message:text}),/binding mismatch|unrecognized/)})
 test('unstarted atomic reclaim is not a paid attempt',()=>{const text=`db-coordination reviewer-silence-release reviewer=glm-5.3 issue=3536 pr=4000 head=${head} sequence=1 code=silent_worker_observed probe=${'e'.repeat(40)} observed-at=2026-10-06T17:00:00Z confirmed-at=2026-10-06T18:00:00Z verdict=none artifact=none replacement=none`;assert.equal(paidStart(row(),{message:text}),null);assert.throws(()=>paidStart(row(),{message:text.replace('sequence=1','sequence=2')}),/unrecognized/)})
 test('quoted or repeated doctor PASS never provides a reset',()=>{const x=io([row(),row(2)]);x.reinstatement=()=>({output:'PASS',fresh:true});assert.throws(()=>assertPaidReviewCapacity(request,x),/third draw refused/)})
@@ -23,9 +39,10 @@ test('pre-start independent-slot conflict is skipped only with exact scope',()=>
  assert.throws(()=>paidStart(row(),{message:text.replace('slot_independence_conflict','provider_unavailable')}),/unrecognized/)
 })
 
-test('changing work issue cannot reset the same PR paid cap',()=>{
+test('changing work issue cannot reset the same PR paid cap and issue must be exact',()=>{
  const x=io([row(),row(2)])
  assert.throws(()=>assertPaidReviewCapacity({...request,issue:3537},x),/third draw refused/)
+ for(const issue of [NaN,'3536',0,-1])assert.throws(()=>assertPaidReviewCapacity({...request,issue},x),/exact positive issue/)
 })
 
 test('actual quota/outage release pauses only exact paid provider failure',()=>{
@@ -66,7 +83,7 @@ test('provider pause refuses unknown immutable timestamp and reports expired ori
 
 test('exact row ceiling and malformed PR cannot be accepted as complete paid history',()=>{
  assert.throws(()=>assertPaidReviewCapacity(request,io(Array.from({length:1000},()=>row()))),/may be truncated/)
- for(const pr of [NaN,'4000',0,-1])assert.throws(()=>assertPaidReviewCapacity({...request,pr},io([])),/exact positive PR/)
+ for(const pr of [NaN,'4000',0,-1])assert.throws(()=>assertPaidReviewCapacity({...request,pr},io([])),/exact positive issue, PR and slot/)
 })
 
 import {execFileSync} from 'node:child_process'
@@ -248,29 +265,59 @@ test('zero-byte added file supplies no surviving source byte witness',t=>{
 
 import {contractHash} from '../../agent-work-contract.mjs'
 import {verifiedEvidencePaths} from '../pr-content-equivalence.mjs'
-function generationsFixture(t,{repair=true,revert=false,bad=null,publishedOnly=false}={}){
+function generationsFixture(t,{repair=true,revert=false,bad=null,publishedOnly=false,ordinaryRetirement=false,checkPrefix=false,prefixFailure=null}={}){
  const f=realGitFixture(t),sha=()=>f.git(['rev-parse','HEAD']).trim()
  const contract=(generation,parent)=>({schema_version:2,generation,work_issue:3536,work_type:'repo-maintenance',route:'repo-maintenance',goal:'Fixture source proof',base_sha:f.base,dispatcher:'fixture',worker:'fixture',branch:'feature',worktree:f.dir,allowed_paths:['app.txt','.agent/work/3536/**'],file_writes:['app.txt','.agent/work/3536/**'],db_reads:[],db_writes:[],prohibited_actions:[],required_checks:['fixture'],assumptions:[],stop_conditions:['Stop on unknown'],evidence_parent:parent})
  const root=contract(312,{work_issue:3536,generation:311,contract_sha256:'a'.repeat(64)})
+ if(prefixFailure==='baseline')root.required_checks.push('fixture-second')
  const writePair=(c,implementation)=>{
   const dir=path.join(f.dir,`.agent/work/3536/${c.generation}`);mkdirSync(dir,{recursive:true})
   const report={schema_version:1,work_issue:3536,outcome:'ready-for-merge',pr:3999,migration_versions:[],contract_ref:`refs/db-contracts/3536/${c.generation}`,contract_sha256:contractHash(c),head_sha:implementation,base_sha:f.base,files_changed:['app.txt'],db_reads:[],db_writes:[],checks:[{command:'fixture',exit_code:0,evidence:'Controlled fixture'}],assumptions_resolved:[],stop_conditions_hit:[]}
-  if(c.generation===317){if(bad==='hash')report.contract_sha256='b'.repeat(64);if(bad==='pr')report.pr=4000;if(bad==='issue')report.work_issue=3537}
+  if(c.generation===317){if(bad==='hash')report.contract_sha256='b'.repeat(64);if(bad==='pr')report.pr=4000;if(bad==='issue')report.work_issue=3537;if(bad==='parent')c.evidence_parent.contract_sha256='b'.repeat(64)}
   writeFileSync(path.join(dir,'contract.json'),JSON.stringify(c));writeFileSync(path.join(dir,'completion.json'),JSON.stringify(report))
-  f.git(['add',`.agent/work/3536/${c.generation}`]);if(c.generation===317 && bad==='mode'){f.git(['update-index','--chmod=+x','.agent/work/3536/317/completion.json']);chmodSync(path.join(dir,'completion.json'),0o755)};f.git(['commit','-qm','fixture exact pair']);return sha()
+  if(c.generation===317 && bad==='missing')rmSync(path.join(dir,'completion.json'));if(c.generation===317 && bad==='tail'){writeFileSync(path.join(f.dir,'unrelated-tail.txt'),'not canonical evidence\n');f.git(['add','unrelated-tail.txt'])};f.git(['add',`.agent/work/3536/${c.generation}`]);if(c.generation===317 && bad==='mode'){f.git(['update-index','--chmod=+x','.agent/work/3536/317/completion.json']);chmodSync(path.join(dir,'completion.json'),0o755)};f.git(['commit','-qm','fixture exact pair']);return sha()
+ }
+ const finishPrefix=c=>{
+  const file=path.join(f.dir,`.agent/work/3536/${c.generation}/completion.json`)
+  const original=readFileSync(file,'utf8'),r=JSON.parse(original)
+  if(prefixFailure==='no-complete')return
+  if(prefixFailure==='changed-source')f.commit('app.txt','context\nseparator1\nseparator2\nintervening unbound source\nend\n')
+  if(prefixFailure==='source-head')r.head_sha=f.commit('app.txt','context\nseparator1\nseparator2\ndifferent implementation\nend\n')
+  r.checks=[{command:'fixture',exit_code:0,evidence:'Controlled fixture'},{command:'fixture-second',exit_code:0,evidence:'Completed unchanged-source check'}]
+  if(prefixFailure==='evidence-drift')r.checks[0].evidence='Rewritten earlier evidence'
+  if(prefixFailure==='reordered-checks')r.checks.reverse()
+  if(prefixFailure==='report-field')r.assumptions_resolved=['New unrelated report fact']
+  writeFileSync(file,JSON.stringify(r));f.git(['add',file]);f.git(['commit','-qm','complete only the same-source canonical check list'])
+  if(prefixFailure==='revert-prefix'){writeFileSync(file,original);f.git(['add',file]);f.git(['commit','-qm','revert to incomplete prefix after completion'])}
  }
  const before=writePair(root,sha())
+ if(prefixFailure==='baseline')finishPrefix(root)
  const published=contract(315,{work_issue:3536,generation:312,contract_sha256:contractHash(root)})
  const middle=contract(317,{work_issue:3536,generation:publishedOnly?315:312,contract_sha256:contractHash(publishedOnly?published:root)})
+ if(checkPrefix)middle.required_checks.push('fixture-second')
  f.git(['rm','-r','.agent/work/3536/312']);f.git(['commit','-qm','retire baseline metadata']);writePair(middle,sha())
+ if(checkPrefix){
+  if(['failed-check','implementation-file'].includes(prefixFailure)){
+   const file=path.join(f.dir,'.agent/work/3536/317/completion.json'),r=JSON.parse(readFileSync(file,'utf8'))
+   if(prefixFailure==='failed-check')r.checks[0].exit_code=1
+   else r.files_changed=[]
+   writeFileSync(file,JSON.stringify(r));f.git(['add',file]);f.git(['commit','-qm','retain invalid preliminary record'])
+  }
+  finishPrefix(middle)
+ }
  f.git(['switch','main']);const main=f.commit('app.txt','main context\nseparator1\nseparator2\nauthor\nend\n')
- f.git(['switch','feature']);f.git(['merge','--no-commit','main']);f.git(['rm','-r','.agent/work/3536/317'])
+ f.git(['switch','feature']);if(ordinaryRetirement && ['unknownDeletion','foreignDeletion'].includes(bad)){
+ const file=bad==='unknownDeletion'?'.agent/unknown-retired.txt':'.agent/work/3537/317/contract.json';mkdirSync(path.dirname(path.join(f.dir,file)),{recursive:true});f.commit(file,'unowned metadata\n');f.git(['rm',file]);f.git(['commit','-qm','ordinary unknown or foreign retirement'])
+ };if(ordinaryRetirement && bad==='mutation'){
+ const file='.agent/work/3536/317/contract.json';const mutated=JSON.parse(readFileSync(path.join(f.dir,file),'utf8'));mutated.goal='mutated generation';writeFileSync(path.join(f.dir,file),JSON.stringify(mutated));f.git(['add',file]);f.git(['commit','-qm','mutated historical generation'])
+ };if(ordinaryRetirement){f.git(['rm','-r','.agent/work/3536/317']);f.git(['commit','-qm','ordinary owned intermediate retirement'])};f.git(['merge','--no-commit','main']);if(!ordinaryRetirement)f.git(['rm','-r','.agent/work/3536/317'])
  if(bad==='custom'){writeFileSync(path.join(f.dir,'app.txt'),'custom conflict content\n');f.git(['add','app.txt'])}
  f.git(['commit','-qm','main refresh and retire exact intermediate metadata'])
  const expected='main context\nseparator1\nseparator2\nfixed\nend\n'
  if(repair)f.commit('app.txt','main context\nseparator1\nseparator2\ngenuine safety repair\nend\n')
  if(revert)f.commit('app.txt',expected)
  const last=contract(319,{work_issue:3536,generation:317,contract_sha256:contractHash(middle)})
+ if(prefixFailure==='endpoint')last.required_checks.push('fixture-second')
  const after=writePair(last,sha())
  return {...f,before,after,main,published,proof:()=>derivePaidContentProof(before,after,main,f.git,verifiedEvidencePaths(before,after,{gitRunner:f.git}),3999)}
 }
@@ -288,6 +335,34 @@ test('actual repaired endpoint ignores preserved incomplete tail without authent
  assert.equal(f.git(['diff','--name-only',implementation,incomplete]).trim(),'.agent/work/3536/319/completion.json')
  assert.equal(derivePaidContentProof(f.before,after,f.main,f.git,verifiedEvidencePaths(f.before,after,{gitRunner:f.git}),3999).kind,'substantive')
  assert.throws(()=>generationsFixture(t,{bad:'hash'}).proof(),/hash|completion/,'invalid removed317 remains refused')
+})
+test('ordinary owned pair retirement with canonical merge authenticates surviving repair',t=>{
+ const f=generationsFixture(t,{ordinaryRetirement:true});assert.equal(f.proof().kind,'substantive')
+})
+test('removed intermediate successful check prefix needs a later complete identical-source tail',t=>{
+ const f=generationsFixture(t,{checkPrefix:true,ordinaryRetirement:true}),proof=f.proof()
+ assert.equal(proof.kind,'substantive');assert.equal(proof.witness.path,'app.txt')
+ assert.equal(proof.supersededCheckPrefixes.length,1)
+ const receipt=proof.supersededCheckPrefixes[0]
+ assert.equal(receipt.generation,317);assert.match(receipt.provisionalReportJsonSha256,/^[0-9a-f]{64}$/)
+ assert.notEqual(receipt.provisionalReportJsonSha256,receipt.completeReportJsonSha256)
+})
+for(const input of [{repair:false},{repair:true,revert:true}])test(`superseded check prefix cannot witness ${input.repair?'net-reverted':'unchanged'} source`,t=>{
+ const proof=generationsFixture(t,{...input,checkPrefix:true,ordinaryRetirement:true}).proof()
+ assert.equal(proof.kind,'unchanged');assert.equal(proof.witness,undefined)
+})
+for(const prefixFailure of ['failed-check','no-complete','changed-source','source-head','evidence-drift','reordered-checks','report-field','revert-prefix','implementation-file','baseline','endpoint'])test(`successful check-prefix supersession refuses ${prefixFailure}`,t=>{
+ assert.throws(()=>generationsFixture(t,{checkPrefix:true,prefixFailure,ordinaryRetirement:true}).proof(),/historical|completion|hash|ancestor|tail|source|scope|identity|file proof/)
+})
+for(const [name,input] of [['metadata only',{repair:false}],['net reverted',{repair:true,revert:true}]])test(`ordinary canonical retirement keeps ${name} unchanged`,t=>{
+ assert.equal(generationsFixture(t,{...input,ordinaryRetirement:true}).proof().kind,'unchanged')
+})
+for(const bad of ['hash','pr','issue','mode','custom','parent','missing','tail','mutation','unknownDeletion','foreignDeletion'])test(`ordinary canonical retirement refuses ${bad}`,t=>{
+ assert.throws(()=>generationsFixture(t,{bad,ordinaryRetirement:true}).proof(),/historical|foreign|noncanonical|unverified|scope|ancestor|tail|hash|identity/)
+})
+test('ordinary canonical retirement refuses unrelated unknown agent metadata',t=>{
+ const f=generationsFixture(t,{ordinaryRetirement:true});f.commit('.agent/unknown.txt','unowned metadata\n');const after=f.git(['rev-parse','HEAD']).trim()
+ assert.throws(()=>derivePaidContentProof(f.before,after,f.main,f.git,verifiedEvidencePaths(f.before,after,{gitRunner:f.git}),3999),/unknown|unverified/)
 })
 test('actual Git312 to317 to319 authentic intermediate pair permits surviving source repair',t=>{
  const f=generationsFixture(t),proof=f.proof();assert.equal(proof.kind,'substantive');assert.equal(proof.witness.path,'app.txt')
@@ -436,9 +511,311 @@ test('producer pin overlap accepts protected lines interleaved inside the pin bl
 })
 
 // Cause-bound reinstatement (#3536/#3999).
-function failureMsg(seq,{code='wrapper_terminal_failure',reviewer='glm-5.3',h=head,pr=4000,slot=1}={}){return`db-coordination reviewer-failure-replacement sequence=${seq+100} reviewer=kimi-k3 issue=3536 pr=${pr} head=${h} slot=${slot} failed-sequence=${seq} prior-sequence=${seq} failure-ref=self failed-reviewer=${reviewer} code=${code} verdict=none artifact=none`}
-function reinstateIo(rows,failures){const x=io(rows);x.readRef=ref=>{const m=/^refs\/db-review-failures\/3536-4000-[0-9a-f]{40}-(\d+)$/.exec(ref);return m&&failures[m[1]]?'f'.repeat(39)+m[1].slice(-1):null};const base=x.getCommit;x.getCommit=sha=>sha.startsWith('f'.repeat(39))?{message:Object.entries(failures).find(([k])=>k.slice(-1)===sha.slice(-1))[1]}:base(sha);return x}
+function failureMsg(seq,{code='wrapper_terminal_failure',reviewer='glm-5.3',h=head,issue=3536,pr=4000,slot=1}={}){return`db-coordination reviewer-failure-replacement sequence=${seq+100} reviewer=kimi-k3 issue=${issue} pr=${pr} head=${h} slot=${slot} failed-sequence=${seq} prior-sequence=${seq} failure-ref=self failed-reviewer=${reviewer} code=${code} verdict=none artifact=none`}
+function reinstateIo(rows,failures){const x=io(rows);x.readRef=ref=>{const m=/^refs\/db-review-failures\/(\d+)-(\d+)-[0-9a-f]{40}-(\d+)$/.exec(ref);return m&&failures[m[3]]?'f'.repeat(39)+m[3].slice(-1):null};const base=x.getCommit;x.getCommit=sha=>sha.startsWith('f'.repeat(39))?{message:Object.entries(failures).find(([k])=>k.slice(-1)===sha.slice(-1))[1]}:base(sha);return x}
 test('reinstated verdict-less reviewer crash is not counted',()=>{const r=assertPaidReviewCapacity(request,reinstateIo([row(1),row(2)],{1:failureMsg(1),2:`db-coordination reviewer-failure-release reviewer=glm-5.3 issue=3536 pr=4000 head=${head} failed-sequence=2 code=provider_unavailable verdict=none artifact=none replacement=none`}));assert.equal(r.remaining,2);assert.equal(r.reinstated,2)})
+test('cause-bound failures exceed the former global cap and count separately per reviewer',()=>{
+ const failed={1:failureMsg(1),2:failureMsg(2,{code:'provider_unavailable'}),3:failureMsg(3,{code:'insufficient_quota',reviewer:'stepfun-step-5-preview'}),4:failureMsg(4,{code:'turn_limit_cancelled',reviewer:'muse-spark-1.3-contributor'})}
+ const starts=[reviewerRow(1,'glm-5.3'),reviewerRow(2,'glm-5.3'),reviewerRow(3,'stepfun-step-5-preview'),reviewerRow(4,'muse-spark-1.3-contributor')]
+ const result=assertPaidReviewCapacity(request,reinstateIo(starts,failed))
+ assert.deepEqual(result,{paidAttempts:0,remaining:2,reinstated:4,failedReviewers:['glm-5.3','muse-spark-1.3-contributor','stepfun-step-5-preview'],exhaustedReviewers:['glm-5.3']})
+})
+test('exact-bound repository-read failures refund starts and exhaust the reviewer at two',()=>{
+ const reviewer='qwen-code'
+ const failed={
+  1:failureMsg(1,{code:'reviewer_cannot_read_repository',reviewer}),
+  2:failureMsg(2,{code:'reviewer_cannot_read_repository',reviewer})
+ }
+ const starts=[reviewerRow(1,reviewer),reviewerRow(2,reviewer)]
+ assert.deepEqual(assertPaidReviewCapacity(request,reinstateIo(starts,failed)),{
+  paidAttempts:0,remaining:2,reinstated:2,failedReviewers:[reviewer],exhaustedReviewers:[reviewer]
+ })
+})
+test('repository-read failure with verdict or mismatched reviewer binding is refused',()=>{
+ const reviewer='qwen-code',starts=[reviewerRow(1,reviewer)]
+ const verdict=reinstateIo(starts,{1:failureMsg(1,{code:'reviewer_cannot_read_repository',reviewer}).replace('verdict=none','verdict=APPROVE')})
+ assert.throws(()=>assertPaidReviewCapacity(request,verdict),/reinstatement failure (binding mismatch|evidence unreadable)/)
+ const mismatch=reinstateIo(starts,{1:failureMsg(1,{code:'reviewer_cannot_read_repository',reviewer:'other-reviewer'})})
+ assert.throws(()=>assertPaidReviewCapacity(request,mismatch),/reinstatement failure binding mismatch/)
+})
+test('unrecognized failure stays counted and adds no new failure fields',()=>{
+ const x=reinstateIo([row(1)],{1:failureMsg(1,{code:'local_dependency_unavailable'})})
+ assert.deepEqual(assertPaidReviewCapacity(request,x),{paidAttempts:1,remaining:1})
+})
+test('verified failures on an unchanged refreshed head stay bound and provider exhaustion persists',()=>{
+ const starts=[reviewerRow(1,'glm-5.3'),reviewerRow(2,'glm-5.3')]
+ const result=assertPaidReviewCapacity({...request,headSha:next},reinstateIo(starts,{1:failureMsg(1),2:failureMsg(2)}))
+ assert.deepEqual(result,{paidAttempts:0,remaining:2,reinstated:2,failedReviewers:['glm-5.3'],exhaustedReviewers:['glm-5.3']})
+})
+test('exhausted provider failure counts carry across issue switches with original start binding',()=>{
+ const starts=[issueRow(1,3536),issueRow(2,3536)]
+ const result=assertPaidReviewCapacity({...request,issue:3537},reinstateIo(starts,{1:failureMsg(1),2:failureMsg(2)}))
+ assert.deepEqual(result,{paidAttempts:0,remaining:2,reinstated:2,failedReviewers:['glm-5.3'],exhaustedReviewers:['glm-5.3']})
+})
+test('substantive content change drops old failure counts without adding failure fields',()=>{
+ const x=reinstateIo([reviewerRow(1,'glm-5.3')],{1:failureMsg(1)})
+ x.reviewContentComparison=()=>({before:digest,after:'d'.repeat(64),budgetProof:{schema:1,before:head,after:next,protectedMain:head,kind:'substantive',historyCount:1}})
+ assert.deepEqual(assertPaidReviewCapacity({...request,headSha:next},x),{paidAttempts:0,remaining:2})
+})
 test('start without reinstatable failure (verdict-bearing or non-reviewer cause) still counts',()=>{assert.throws(()=>assertPaidReviewCapacity(request,reinstateIo([row(1),row(2)],{})),/third draw refused/);assert.throws(()=>assertPaidReviewCapacity(request,reinstateIo([row(1),row(2)],{1:failureMsg(1,{code:'local_dependency_unavailable'})})),/third draw refused/)})
 test('mismatched or unreadable reinstatement binding refuses',()=>{for(const text of [failureMsg(1,{reviewer:'kimi-k3'}),failureMsg(1,{slot:2}),failureMsg(1,{h:next}),failureMsg(1).replace('verdict=none','verdict=APPROVE'),'garbage'])assert.throws(()=>assertPaidReviewCapacity(request,reinstateIo([row(1)],{1:text})),/reinstatement failure (binding mismatch|evidence unreadable)/)})
-test('reinstatement ceiling bounds crash loops',()=>{const f={1:failureMsg(1),2:failureMsg(2),3:failureMsg(3)};assert.equal(assertPaidReviewCapacity(request,reinstateIo([row(1),row(2),row(3)],f)).remaining,1);assert.throws(()=>assertPaidReviewCapacity(request,reinstateIo([row(1),row(2),row(3),row(4)],{...f,4:failureMsg(4)})),/third draw refused/)})
+function namedImportFixture(t,{variant='',repair=false,revert=false}={}){
+ const dir=mkdtempSync(path.join(tmpdir(),'review-budget-import-real-'));t.after(()=>rmSync(dir,{recursive:true,force:true}))
+ const git=args=>execFileSync('git',args,{cwd:dir,encoding:'utf8',stdio:['ignore','pipe','pipe']})
+ git(['init','-q','-b','main']);git(['config','user.name','Fixture']);git(['config','user.email','fixture@example.test']);git(['config','core.autocrlf','false']);git(['config','core.fileMode','false'])
+ const file='scripts/orchestrator-flow/admission-outcome.test.mjs';mkdirSync(path.join(dir,'scripts/orchestrator-flow'),{recursive:true})
+ const bindings='evaluateAdmission, parseImpactBlock, STRUCTURAL_CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, assertPrCarriesStructuralChange, inspectPrStructuralChange'
+ const line=extra=>`import { ${bindings}${extra} } from './admission.mjs'\n`
+ const body='\n// stable protected body\n'
+ const write=text=>writeFileSync(path.join(dir,file),text)
+ const commit=()=>{git(['add','.']);git(['commit','-qm','fixture']);return git(['rev-parse','HEAD']).trim()}
+ write(line('')+body);writeFileSync(path.join(dir,'app.txt'),'base');writeFileSync(path.join(dir,'other.txt'),'base');commit()
+ git(['switch','-qc','feature']);let author=line(', structuralWritesMatch')
+ if(variant==='alias')author=author.replace('structuralWritesMatch','structuralWritesMatch as renamed')
+ if(variant==='unknown')author=line(', unknownCapability')
+ if(variant==='default')author=author.replace('import {','import defaultValue, {')
+ if(variant==='multiline')author=author.replace(', structuralWritesMatch',',\n structuralWritesMatch')
+ if(variant==='comment')author=author.replace('structuralWritesMatch','/* inserted */ structuralWritesMatch')
+ if(variant==='baseOrder')author=author.replace('evaluateAdmission, parseImpactBlock','parseImpactBlock, evaluateAdmission')
+ if(variant==='dynamic')author="const module = await import('./admission.mjs')\n"
+ if(variant==='attributes')writeFileSync(path.join(dir,'.gitattributes'),file+' merge=union\n')
+ if(variant==='module')author=author.replace('./admission.mjs','./other.mjs')
+ if(variant==='duplicate')author+=line(', structuralWritesMatch')
+ write(author+(variant==='bodyConflict'?'\n// author body\n':body));writeFileSync(path.join(dir,'app.txt'),'implementation');if(variant==='extraConflict')writeFileSync(path.join(dir,'other.txt'),'author');const before=commit()
+ if(repair){writeFileSync(path.join(dir,'app.txt'),'repair');commit()}
+ if(revert){writeFileSync(path.join(dir,'app.txt'),'implementation');commit()}
+ git(['switch','main']);write(line(', inspectPrCuratedDataChange')+(variant==='bodyConflict'?'\n// protected body\n':body));if(variant==='extraConflict')writeFileSync(path.join(dir,'other.txt'),'protected');const main=commit()
+ git(['switch','feature']);assert.throws(()=>git(['merge','--no-commit','main']))
+ let merged=line(', structuralWritesMatch, inspectPrCuratedDataChange')+body
+ if(variant==='omitted')merged=line(', structuralWritesMatch')+body
+ if(variant==='reordered')merged=line(', inspectPrCuratedDataChange, structuralWritesMatch')+body
+ if(variant==='bodyEdit')merged+='// unreviewed resolution edit\n'
+ write(merged);if(variant==='extraConflict')writeFileSync(path.join(dir,'other.txt'),'manual resolution')
+ if(variant==='mode'){git(['add',file]);git(['update-index','--chmod=+x',file]);git(['commit','-qm','fixture']);return {git,before,after:git(['rev-parse','HEAD']).trim(),main}}
+ return {git,before,after:commit(),main,dir,file}
+}
+test('exact protected and author named imports preserve unchanged paid starts',t=>{
+ const f=namedImportFixture(t),proof=derivePaidContentProof(f.before,f.after,f.main,f.git)
+ assert.equal(proof.kind,'unchanged');assert.equal(proof.canonicalImportUnions.length,1)
+ const rows=[1,2].map(n=>({...row(n,f.before),commit:{message:message(n,f.before)}}))
+ assert.throws(()=>assertPaidReviewCapacity({...request,headSha:f.after},{listRefs:()=>rows,reviewContentComparison:()=>({before:digest,after:'d'.repeat(64),budgetProof:proof})}),/third draw refused/)
+})
+test('named import union retains genuine surviving repair and refuses a reverted reset',t=>{
+ for(const revert of [false,true]){const f=namedImportFixture(t,{repair:true,revert});const proof=derivePaidContentProof(f.before,f.after,f.main,f.git);assert.equal(proof.kind,revert?'unchanged':'substantive');if(!revert)assert.equal(proof.witness.path,'app.txt')}
+})
+for(const variant of ['alias','unknown','module','duplicate','default','multiline','comment','baseOrder','dynamic','bodyConflict','extraConflict','omitted','reordered','bodyEdit','mode'])test(`named import union refuses ${variant}`,t=>{
+ const f=namedImportFixture(t,{variant});assert.throws(()=>derivePaidContentProof(f.before,f.after,f.main,f.git),/provenance refused/)
+})
+test('named import union refuses missing Git objects and false protected ancestry',t=>{
+ const f=namedImportFixture(t)
+ assert.throws(()=>derivePaidContentProof(f.before,f.after,'f'.repeat(40),f.git),/provenance refused/)
+ assert.throws(()=>derivePaidContentProof(f.before,f.after,f.before,f.git),/provenance refused/)
+})
+test('named import union authenticates returned conflict stage blobs',t=>{
+ const f=namedImportFixture(t),forged=args=>{try{return f.git(args)}catch(error){if(args[0]==='merge-tree'&&error.status===1)error.stdout=error.stdout.replace(/100644 [0-9a-f]{40} 2\t/,'100644 '+ 'f'.repeat(40)+' 2\t');throw error}}
+ assert.throws(()=>derivePaidContentProof(f.before,f.after,f.main,forged),/provenance refused/)
+})
+test('named import union refuses custom merge attributes and symlink resolution',t=>{
+ const attributes=namedImportFixture(t);writeFileSync(path.join(attributes.dir,'.gitattributes'),attributes.file+' merge=union\n');assert.throws(()=>derivePaidContentProof(attributes.before,attributes.after,attributes.main,attributes.git),/provenance refused/)
+ const link=namedImportFixture(t),blob=link.git(['rev-parse',`${link.after}:${link.file}`]).trim();link.git(['update-index','--cacheinfo',`120000,${blob},${link.file}`]);link.git(['commit','-qm','symlink resolution']);const after=link.git(['rev-parse','HEAD']).trim();assert.throws(()=>derivePaidContentProof(link.before,after,link.main,link.git),/provenance refused/)
+})
+
+function sidecarRegistryFixture(t,{variant=null,repair=false,metadata=null}={}){
+ const f=realGitFixture(t),file='config/production-verification-sidecar-registry.json'
+ mkdirSync(path.join(f.dir,'config'),{recursive:true})
+ const original=[{version:'20261010000000',issue:null}],author={version:'20261011220717',issue:4210},upstream={version:'20261011201710',issue:4172}
+ const encode=items=>JSON.stringify({schema_version:1,sidecars:items},null,2)+'\n'
+ const metadataFile='config/detector-baseline.json',sourceFile='detector.txt'
+ const pin=(source,extra='stable')=>JSON.stringify({hash:createHash('sha256').update(source).digest('hex'),extra},null,2)+'\n'
+ const originalSource='original\nseparator1\nseparator2\nend\n',authorSource='author\nseparator1\nseparator2\nend\n',mainSource='original\nseparator1\nseparator2\nprotected\n'
+ if(metadata){
+   f.commit(sourceFile,originalSource);f.commit(metadataFile,pin(originalSource))
+   f.commit('config/review-carry-forward-stored-hashes-v1.json',JSON.stringify({schema_version:1,entries:[{file:metadataFile,field:'hash',source:sourceFile}]})+'\n')
+ }
+ const base=f.commit(file,encode(original))
+ f.git(['switch','-qc','registry-author',base])
+ if(metadata){f.commit(sourceFile,authorSource);writeFileSync(path.join(f.dir,metadataFile),metadata==='stale'?pin(originalSource):pin(authorSource,metadata==='other-bytes'?'changed':'stable'));f.git(['add',metadataFile]);f.git(['commit','--allow-empty','-qm','author pin'])}
+
+ const shared={version:'20261011110000',issue:555}
+ if(variant==='author-missing-issue')author.issue=null
+ const authorAdditions=variant==='union-size'?Array.from({length:500},(_,i)=>({version:String(20261011230000+i),issue:600+i})):[...(variant==='same-overlap'?[shared]:[]),author]
+ const before=f.commit(file,encode([...original,...authorAdditions]))
+ if(repair)f.commit('app.txt','context\nreal repaired source\nend\n')
+ if(variant==='extra-conflict')f.commit('app.txt','author conflict\n')
+ if(variant==='custom')f.commit('.gitattributes',file+' merge=union\n')
+ f.git(['switch','-qc','registry-main',base])
+ if(metadata){f.commit(sourceFile,mainSource);f.commit(metadataFile,pin(mainSource))}
+ let entries=[...original,upstream],text
+ if(variant==='base-remove')entries=[upstream]
+ if(variant==='union-size')entries=[...original,...Array.from({length:500},(_,i)=>({version:String(20261011120000+i),issue:1200+i}))]
+ if(variant==='unsorted')entries=[...original,upstream,{version:'20261011120000',issue:556}]
+ if(variant==='base-edit')entries=[{...original[0],issue:900},upstream]
+ if(variant==='overlap')entries=[...original,{...author,issue:900}]
+ if(variant==='same-overlap')entries=[...original,shared,upstream]
+ if(variant==='duplicate')entries=[...original,upstream,upstream]
+ if(variant==='numeric-version')entries=[...original,{...upstream,version:Number(upstream.version)}]
+ if(variant==='missing-issue')entries=[...original,{...upstream,issue:null}]
+ if(variant==='bad-issue')entries=[...original,{...upstream,issue:-1}]
+ if(variant==='unknown-field')entries=[...original,{...upstream,extra:true}]
+ text=encode(entries)
+ if(variant==='noncanonical')text=JSON.stringify(JSON.parse(text))+'\n'
+ if(variant==='header')text=JSON.stringify({schema_version:2,sidecars:entries},null,2)+'\n'
+ let main=f.commit(file,text)
+ if(variant==='extra-conflict')main=f.commit('app.txt','protected conflict\n')
+ if(variant==='mode'){f.git(['update-index','--chmod=+x',file]);f.git(['commit','-qm','registry mode']);main=f.git(['rev-parse','HEAD']).trim()}
+ f.git(['switch','registry-author'])
+ if(variant==='custom')f.git(['merge','--no-commit','registry-main']);else assert.throws(()=>f.git(['merge','--no-commit','registry-main']),/./)
+ if(metadata){const mergedSource=readFileSync(path.join(f.dir,sourceFile),'utf8');writeFileSync(path.join(f.dir,metadataFile),pin(mergedSource));f.git(['add',metadataFile])}
+ if(variant==='extra-conflict'){writeFileSync(path.join(f.dir,'app.txt'),'resolved conflict\n');f.git(['add','app.txt'])}
+ let union=encode([...original,upstream,author])
+ if(variant==='bad-resolution')union=encode([...original,author])
+ if(variant==='drop-author')union=encode([...original,upstream])
+ if(variant==='union-size')union=encode([...entries,...authorAdditions])
+ f.commit(file,union)
+ const after=f.git(['rev-parse','HEAD']).trim()
+ return {...f,file,before,main,after}
+}
+test('canonical sidecar append union preserves spent attempts',t=>{
+ const f=sidecarRegistryFixture(t),proof=derivePaidContentProof(f.before,f.after,f.main,f.git)
+ assert.equal(proof.kind,'unchanged');assert.equal(proof.canonicalRegistryUnions.length,1)
+ const rows=[1,2].map(n=>({...row(n,f.before),commit:{message:message(n,f.before)}}))
+ assert.throws(()=>assertPaidReviewCapacity({...request,headSha:f.after},{listRefs:()=>rows,reviewContentComparison:()=>({before:digest,after:'d'.repeat(64),budgetProof:proof})}),/third draw refused/)
+})
+test('sidecar union authenticates genuine surviving source repair',t=>{
+ const f=sidecarRegistryFixture(t,{repair:true}),proof=derivePaidContentProof(f.before,f.after,f.main,f.git)
+ assert.equal(proof.kind,'substantive');assert.equal(proof.witness.path,'app.txt');assert.ok(proof.canonicalRegistryUnions.length>0)
+})
+for(const variant of ['author-missing-issue','union-size','drop-author','extra-conflict','custom','base-edit','base-remove','unsorted','mode','overlap','same-overlap','duplicate','numeric-version','missing-issue','bad-issue','unknown-field','noncanonical','header','bad-resolution'])test(`sidecar union refuses ${variant}`,t=>{
+ const f=sidecarRegistryFixture(t,{variant});assert.throws(()=>derivePaidContentProof(f.before,f.after,f.main,f.git),/provenance refused/)
+})
+
+test('authenticated evidence retirement retains registry proof shape',t=>{
+ const proof=generationsFixture(t,{repair:false,ordinaryRetirement:true}).proof();assert.equal(proof.kind,'unchanged');assert.deepEqual(proof.canonicalRegistryUnions,[])
+})
+
+for(const [kind,fixture] of [['registry',sidecarRegistryFixture],['import',namedImportFixture]])for(const change of ['rewrite','revert','delete'])test(`${kind} canonical merge followed by ${change} cannot mint paid attempts`,t=>{
+ const f=fixture(t)
+ if(change==='delete')f.git(['rm',f.file])
+ else {const text=change==='revert'?f.git(['show',`${f.before}:${f.file}`]):'regular post-merge rewrite\n';writeFileSync(path.join(f.dir,f.file),text);f.git(['add',f.file])}
+ f.git(['commit','-qm','post-merge canonical file change']);const after=f.git(['rev-parse','HEAD']).trim()
+ assert.throws(()=>derivePaidContentProof(f.before,after,f.main,f.git),change==='delete'?/canonical blob missing/:/surviving author source edit unavailable/)
+})
+
+// Real generated source blobs are larger than the JSON evidence bound.
+test('large ordinary source preserves exact surviving authored witness', t=>{
+ const f=realGitFixture(t), source='generated source line\n'.repeat(60000)
+ const before=f.commit('types.txt',source+'original\n')
+ const after=f.commit('types.txt',source+'genuine repair\n')
+ const git=args=>execFileSync('git',args,{cwd:f.dir,encoding:'utf8',stdio:['ignore','pipe','pipe'],maxBuffer:4*1024*1024})
+ const proof=derivePaidContentProof(before,after,f.base,git)
+ assert.equal(proof.kind,'substantive');assert.equal(proof.witness.path,'types.txt')
+ assert.equal(proof.witness.blob,git(['rev-parse',after+':types.txt']).trim())
+})
+test('ordinary source above explicit4MiB bound still refuses',t=>{
+ const f=realGitFixture(t), source='x'.repeat(4*1024*1024+1)
+ const before=f.commit('types.txt',source)
+ const after=f.commit('types.txt',source+'genuine repair')
+ const git=args=>execFileSync('git',args,{cwd:f.dir,encoding:'utf8',stdio:['ignore','pipe','pipe'],maxBuffer:8*1024*1024})
+ assert.throws(()=>derivePaidContentProof(before,after,f.base,git),/canonical blob bytes unreadable or oversized/)
+})
+
+test('shipped reader refuses oversized provenance without returning partial witness',async t=>{
+ const {paidReviewGitReader}=await import('../../manage-migration-author-lanes.mjs')
+ const f=realGitFixture(t), source='x'.repeat(4*1024*1024+65536)
+ const before=f.commit('types.txt',source),after=f.commit('types.txt',source+'repair')
+ assert.throws(()=>derivePaidContentProof(before,after,f.base,args=>paidReviewGitReader(['-C',f.dir,...args])),/Git provenance refused:.*ENOBUFS/)
+})
+
+test('registered authenticated hash conflict plus exact registry union preserves paid caps',t=>{
+ const f=sidecarRegistryFixture(t,{metadata:'valid'}),proof=derivePaidContentProof(f.before,f.after,f.main,f.git)
+ assert.equal(proof.kind,'unchanged');assert.equal(proof.canonicalRegistryUnions.length,1)
+ assert.throws(()=>assertPaidReviewCapacity({...request,headSha:f.after},{...io([row(),row(2)]),reviewContentComparison:()=>({before:digest,after:digest,budgetProof:{...proof,before:head}})}),/third draw refused/)
+})
+test('registered hash conflict cannot conceal substantive authored repair',t=>{
+ const f=sidecarRegistryFixture(t,{metadata:'valid',repair:true}),proof=derivePaidContentProof(f.before,f.after,f.main,f.git)
+ assert.equal(proof.kind,'substantive');assert.equal(proof.witness.path,'app.txt')
+})
+for(const metadata of ['stale','other-bytes'])test(`stored hash conflict refuses ${metadata}`,t=>{
+ const f=sidecarRegistryFixture(t,{metadata});assert.throws(()=>derivePaidContentProof(f.before,f.after,f.main,f.git),/provenance refused/)
+})
+test('authenticated stored hash does not admit an additional source conflict',t=>{
+ const f=sidecarRegistryFixture(t,{metadata:'valid',variant:'extra-conflict'})
+ assert.throws(()=>derivePaidContentProof(f.before,f.after,f.main,f.git),/conflict is outside/)
+})
+test('stored hash reconstruction authenticates original stages',t=>{
+ const f=sidecarRegistryFixture(t,{metadata:'valid'})
+ const forged=args=>{try{return f.git(args)}catch(error){if(args[0]==='merge-tree'&&error.status===1)error.stdout=error.stdout.replace(/100644 [0-9a-f]{40} 2\tconfig\/detector-baseline.json/,'100644 '+'f'.repeat(40)+' 2\tconfig/detector-baseline.json');throw error}}
+ assert.throws(()=>derivePaidContentProof(f.before,f.after,f.main,forged),/stored hash conflict stages/)
+})
+test('resolved metadata requires a valid source hash and all other bytes',t=>{
+ for(const wrong of ['stale','other-bytes','mode']){
+  const f=sidecarRegistryFixture(t,{metadata:'valid'})
+  const file='config/detector-baseline.json',record=JSON.parse(readFileSync(path.join(f.dir,file),'utf8'))
+  if(wrong==='stale')record.hash='f'.repeat(64)
+  if(wrong==='other-bytes')record.extra='changed'
+  if(wrong==='mode'){f.git(['update-index','--chmod=+x',file]);f.git(['commit','-qm','metadata mode'])}
+  else f.commit(file,JSON.stringify(record,null,2)+'\n')
+  assert.throws(()=>derivePaidContentProof(f.before,f.git(['rev-parse','HEAD']).trim(),f.main,f.git),/provenance refused/)
+ }
+})
+
+// #4290 / PR #4206: after a branch refresh from main, an older reviewed head cannot be
+// re-merged against the moved main (merge gap), so its direct proof throws. It is
+// classified through a newer reviewed head whose direct proof holds; the link is derived
+// at the same operation base. Unprovable chains and non-gap failures still refuse.
+const GAP='review budget Git provenance refused: review budget conflict is outside the one canonical test append'
+function chainIo({heads,proofs,fail={}}){
+  const rows=heads.map((h,i)=>row(i+1,h)),bases=new Set()
+  return {listRefs:()=>rows,getCommit:sha=>({message:message(Number(sha),heads[Number(sha)-1])}),bases,
+    reviewContentComparison:(before,after,pr,ctx)=>{ctx.base??=head;bases.add(ctx.base);const key=`${before[0]}>${after[0]}`
+      if(fail[key])throw new Error(fail[key]);const kind=proofs[key];if(!kind)throw new Error(GAP)
+      return {before:digest,after:digest,budgetProof:{schema:1,before,after,protectedMain:ctx.base,kind,historyCount:1}}}}
+}
+const old='e'.repeat(40),reviewed='f'.repeat(40),fresh='9'.repeat(40),mid='8'.repeat(40)
+const capacity=(x)=>assertPaidReviewCapacity({...request,headSha:fresh},x)
+test('an older head behind the merge gap composes through a newer direct proof (substantive older edit)',()=>{
+  const x=chainIo({heads:[old,reviewed],proofs:{'f>9':'unchanged','e>f':'substantive'}})
+  assert.equal(capacity(x).paidAttempts,1);assert.deepEqual([...x.bases],[head],'one base for every comparison')
+})
+test('unchanged composition is still counted: two unchanged starts refuse a third draw',()=>{
+  assert.throws(()=>capacity(chainIo({heads:[old,reviewed],proofs:{'f>9':'unchanged','e>f':'unchanged'}})),/third draw refused/)
+})
+test('a substantive newer head makes the composed older head substantive',()=>{
+  assert.equal(capacity(chainIo({heads:[old,reviewed],proofs:{'f>9':'substantive','e>f':'unchanged'}})).paidAttempts,0)
+})
+test('two substantive steps prove nothing (a revert) and the refusal stands',()=>{
+  assert.throws(()=>capacity(chainIo({heads:[old,reviewed],proofs:{'f>9':'substantive','e>f':'substantive'}})),/conflict is outside the one canonical test append/)
+})
+test('without a provable chain the original refusal stands',()=>{
+  assert.throws(()=>capacity(chainIo({heads:[old,reviewed],proofs:{'f>9':'unchanged'}})),/conflict is outside/)
+  assert.throws(()=>capacity(chainIo({heads:[old],proofs:{}})),/conflict is outside/)
+})
+test('disagreeing chains are counted conservatively, independent of draw order',()=>{
+  for(const heads of [[old,mid,reviewed],[old,reviewed,mid]])
+    assert.throws(()=>capacity(chainIo({heads,proofs:{'f>9':'unchanged','8>9':'unchanged','e>f':'substantive','e>8':'unchanged'}})),/third draw refused/)
+})
+test('a chained result is never an intermediate (no multi-hop)',()=>{
+  const o1='3'.repeat(40)
+  assert.throws(()=>capacity(chainIo({heads:[o1,mid,reviewed],proofs:{'f>9':'unchanged','8>f':'substantive','3>8':'substantive'}})),/conflict is outside/)
+})
+for(const message of ['review budget Git provenance refused: review budget historical evidence mutated generation','review budget Git provenance refused: review budget canonical blob bytes unreadable or oversized','review budget Git provenance refused: review budget foreign intermediate evidence pair refused']){
+  test(`a non-gap direct refusal is never bridged: ${message.slice(37)}`,()=>{
+    assert.throws(()=>capacity(chainIo({heads:[old,reviewed],proofs:{'f>9':'unchanged','e>f':'substantive'},fail:{'e>9':message}})),new RegExp(message.slice(37)))
+  })
+  test(`a non-gap link refusal refuses instead of trying the next chain: ${message.slice(37)}`,()=>{
+    assert.throws(()=>capacity(chainIo({heads:[old,mid,reviewed],proofs:{'f>9':'unchanged','8>9':'unchanged','e>8':'substantive'},fail:{'e>f':message}})),new RegExp(message.slice(37)))
+  })
+}
+test('a malformed returned proof is never bridged',()=>{
+  const x=chainIo({heads:[old,reviewed],proofs:{'f>9':'unchanged','e>f':'substantive'}}),compare=x.reviewContentComparison
+  x.reviewContentComparison=(b,a,pr,ctx)=>b[0]==='e'&&a[0]==='9'?{before:digest,after:digest,budgetProof:{schema:1,before:reviewed,after:a,protectedMain:head,kind:'unchanged'}}:compare(b,a,pr,ctx)
+  assert.throws(()=>capacity(x),/author-owned Git provenance proof unreadable/)
+})
+test('a proof naming a base other than the operation base refuses',()=>{
+  const x=chainIo({heads:[old,reviewed],proofs:{'f>9':'unchanged','e>f':'substantive'}}),compare=x.reviewContentComparison
+  x.reviewContentComparison=(b,a,pr,ctx)=>{const r=compare(b,a,pr,ctx);if(b[0]==='e')r.budgetProof.protectedMain='4'.repeat(40);return r}
+  assert.throws(()=>capacity(x),/author-owned Git provenance proof unreadable/)
+})
+test('duplicate-head starts are each counted',()=>{
+  assert.throws(()=>capacity(chainIo({heads:[old,old,reviewed],proofs:{'f>9':'substantive','e>f':'substantive','e>9':'unchanged'}})),/third draw refused/)
+})

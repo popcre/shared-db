@@ -1514,7 +1514,8 @@ test('10,000 historical assignments do not change bounded availability cost',()=
   // The fresh second scan closes the stale task-policy race without raising
   // the existing wire ceiling or reading unrelated historical assignments.
   assert.equal(large.historyScans,2);assert.equal(empty.requests,large.requests)
-  assert.equal(large.requests,22,JSON.stringify(large));assert.equal(large.activeReads,0,JSON.stringify(large))
+  // Legacy unbatched adapters pay one real disposition inventory read; still O(1), below25.
+  assert.equal(large.requests,23,JSON.stringify(large));assert.equal(large.activeReads,0,JSON.stringify(large))
 })
 
 test('complete assignment stays inside the real wire-attempt budget',()=>{
@@ -1549,6 +1550,7 @@ test('complete assignment stays inside the real wire-attempt budget',()=>{
   }
   const make=io.makeOwnerCommit
   io.makeOwnerCommit=(message)=>{wire(1);baseLoaded=true;return make(message)}
+  installDispositionCostSnapshot(io,rawGetCommit)
   const result=assignNextReviewer({issue:1767,pr:1800,headSha:'a'.repeat(40),admissionOptions:{pr:1800}},io)
   assert.ok(result.reviewer);assert.ok(attempts<=REVIEW_OPERATION_REQUEST_LIMIT,`used ${attempts} wire attempts`)
   // An exclusion-bearing draw now reads returned policy once, even when every
@@ -1587,6 +1589,7 @@ test('complete slot-2 assignment stays inside the real wire-attempt budget (issu
   }
   const make=io.makeOwnerCommit
   io.makeOwnerCommit=(message)=>{wire(1);return make(message)}
+  installDispositionCostSnapshot(io,rawGetCommit)
   const first=assignNextReviewer({issue:1722,pr:1748,headSha:'a'.repeat(40)},io)
   attempts=0
   const second=assignNextReviewer({issue:1722,pr:1748,headSha:'a'.repeat(40),slot:2},io)
@@ -1643,6 +1646,7 @@ test('complete replacement stays inside the real wire-attempt budget',()=>{
   io.readReviewRecords=(refs,prefix)=>{wire(prefix?2:1,'readReviewRecords');const result=new Map(refs.map((ref)=>{const sha=io.refs.get(ref);return [ref,sha?{sha,commit:rawGetCommit(sha)}:null]}));Object.defineProperty(result,'matching',{value:prefix?[...io.refs.entries()].filter(([ref])=>ref.startsWith(prefix)).map(([ref,sha])=>({ref,sha})):[]});return result}
   for(const name of ['readRef','listRefs','getCommit','getPr','getIssue','getIssueComments','getPrReviews','createRef','updateRef','deleteRef']){const fn=io[name];io[name]=(...args)=>{wire(1,`${name}:${String(args[0])}`);return fn(...args)}}
   const make=io.makeOwnerCommit;io.makeOwnerCommit=(message)=>{wire(1,'commit');baseLoaded=true;return make(message)}
+  installDispositionCostSnapshot(io,rawGetCommit)
   // Baseline preflight is 8 requests, including the exact create-only verdict
   // ref check. Five additional fixed-record reads make 13; reserve 11 must
   // refuse because it exceeds the request ceiling. Reserve 10 would
@@ -2517,6 +2521,7 @@ test('three terminal providers do not grow replacement preflight past the fixed 
   io.readReviewRecords=(refs,prefix,dependentFailurePrefix)=>{wire(prefix?2:1,'readReviewRecords');const matching=prefix?[...io.refs.entries()].filter(([ref])=>ref.startsWith(prefix)).map(([ref,sha])=>({ref,sha,commit:rawGetCommit(sha)})):[];const dependent=dependentFailurePrefix?matching.flatMap(({ref})=>{const suffix=ref.startsWith(`${prefix}-`)?ref.slice(prefix.length+1):'';return /^\d+$/.test(suffix)?[`${dependentFailurePrefix}-${suffix}`]:[]}):[];const result=new Map(reviewRecordRefs([...refs,...dependent],matching).map((ref)=>{const sha=io.refs.get(ref);return [ref,sha?{sha,commit:rawGetCommit(sha)}:null]}));Object.defineProperty(result,'matching',{value:matching});return result}
   for(const name of ['readRef','getCommit','createRef']){const fn=io[name];io[name]=(...args)=>{wire(1,`${name}:${String(args[0])}`);return fn(...args)}}
   const make=io.makeOwnerCommit;io.makeOwnerCommit=(message)=>{wire(1,'commit');return make(message)}
+  installDispositionCostSnapshot(io,rawGetCommit)
   const first=replaceFailedReviewer(replacementRequest,io)
   const second=replaceFailedReviewer({...replacementRequest,failedSequence:first.sequence},io)
   attempts=0;labels.length=0
@@ -2528,7 +2533,7 @@ test('three terminal providers do not grow replacement preflight past the fixed 
   assert.equal(attempts,23,`third terminal-provider replacement wire accounting drifted: ${labels.join(',')}`)
   assert.ok(attempts<=REVIEW_OPERATION_REQUEST_LIMIT,`third terminal-provider replacement used ${attempts} wire attempts`)
   const source=readFileSync(new URL('./manage-migration-author-lanes.mjs',import.meta.url),'utf8')
-  assert.match(source,/const allRefs=reviewRecordRefs\(\[\.\.\.refs,\.\.\.dependentFailures\],matches\)/,'the production batch must include every immutable matching replacement, predecessor failure and verdict ref')
+  assert.match(source,/const allRefs=reviewRecordRefs\(\[\.\.\.refs,\.\.\.dependentFailures\],\[\.\.\.matches,\.\.\.dispositions\]\)/,'the production batch must include every immutable matching replacement, predecessor failure and verdict ref')
   assert.match(source,/record\?\.sha===row\.sha&&record\?\.commit\?\.message\?record\.commit:undefined/,'matching replacement rows may reuse a batched commit only after exact SHA and message validation')
 })
 
@@ -2599,6 +2604,7 @@ test('released slot-2 replacement with slot-1 approval and a reinstated reviewer
   for(const name of ['readRef','listRefs','getCommit','createRef']){const fn=io[name];io[name]=(...args)=>{wire(1,`${name}:${String(args[0])}`);return fn(...args)}}
   const make=io.makeOwnerCommit;io.makeOwnerCommit=(message)=>{wire(1,'commit');return make(message)}
 
+  installDispositionCostSnapshot(io,rawGetCommit)
   const replacement=replaceFailedReviewer(releasedRequest,io)
   assert.equal(replacement.reviewer,'glm-5.3','the reinstated independent reviewer must be drawable again')
   assert.equal(replacement.failureSha,released.failureSha,'the replacement must adopt the immutable release record')
@@ -6915,6 +6921,7 @@ test('complete slot-2 assignment stays inside the real wire-attempt budget',()=>
     assert.ok(attempts<honestCost,`refusal must happen before the budget is spent, used ${attempts}`)
     return
   }
+  installDispositionCostSnapshot(io,rawGetCommit)
   let result
   try{result=assignNextReviewer({...request,slot:2},io)}catch(error){throw new Error(`${error.message}; used ${attempts} wire attempts so far`)}
   assert.equal(result.slot,2)
@@ -7733,6 +7740,7 @@ test('a complete slot-2 replacement stays inside the real wire-attempt budget (i
   io.readReviewRecords=(refs,prefix)=>{wire(prefix?2:1,'readReviewRecords');const result=new Map(refs.map((ref)=>{const sha=io.refs.get(ref);return [ref,sha?{sha,commit:rawGetCommit(sha)}:null]}));Object.defineProperty(result,'matching',{value:prefix?[...io.refs.entries()].filter(([ref])=>ref.startsWith(prefix)).map(([ref,sha])=>({ref,sha})):[]});return result}
   for(const name of ['readRef','listRefs','getCommit','getPr','getIssue','getIssueComments','getPrReviews','createRef','updateRef','deleteRef']){const fn=io[name];io[name]=(...args)=>{wire(1,`${name}:${String(args[0])}`);return fn(...args)}}
   const make=io.makeOwnerCommit;io.makeOwnerCommit=(message)=>{wire(1,'commit');return make(message)}
+  installDispositionCostSnapshot(io,rawGetCommit)
   let result
   try{result=replaceFailedReviewer({...request,slot:2,failedSequence:slotTwo.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true},io)}
   catch(error){throw new Error(`${error.message}; calls=${labels.join(',')}`)}
@@ -9226,6 +9234,7 @@ test('a created verdict ref that reads back absent is retried, not burned', () =
   let verdictReads=0
   const io=verdictIo({readRef(ref){
     if(ref.startsWith('refs/db-review-assignments/'))return 'c'.repeat(40)
+    if(ref.startsWith('refs/db-review-active-v2/'))return null
     if(ref.startsWith('refs/db-review-active/'))return 'c'.repeat(40)
     return ++verdictReads<=3 ? null : 'b'.repeat(40)
   }})
@@ -9243,6 +9252,8 @@ test('#2694 a verdict accepts its own parallel exact-head lease even when no leg
     return ++verdictReads<=3 ? null : 'b'.repeat(40)
   }})
   io.requiresExactReviewHeadSha=true
+  io.readReviewRefs=()=>new Map()
+  io.atomicReviewRefs=changes=>{assert.equal(changes.length,2);assert.equal(changes[0].expected,null);assert.equal(changes[1].sha,null);assert.equal(changes[1].expected,'c'.repeat(40))}
   const result=recordReviewVerdict(VERDICT_OPTS,io)
   assert.equal(result.verdict,'APPROVE')
 })
@@ -9250,6 +9261,7 @@ test('#2694 a verdict accepts its own parallel exact-head lease even when no leg
 test('a standing verdict with a genuinely different record still refuses, and is marked created', () => {
   const io=verdictIo({readRef(ref){
     if(ref.startsWith('refs/db-review-assignments/'))return 'c'.repeat(40)
+    if(ref.startsWith('refs/db-review-active-v2/'))return null
     if(ref.startsWith('refs/db-review-active/'))return 'c'.repeat(40)
     return null
   }})
@@ -9466,6 +9478,7 @@ test('#2694 a recorded verdict releases its own assignment-keyed lease',()=>{
 
 test('#2694 a verdict never fails because its lease could not be released',()=>{
   const io=verdictLeaseIo()
+  const held=io.refs.get(io.leaseRef);io.refs.delete(io.leaseRef);io.refs.set('refs/db-review-active/muse-spark-1.2-contributor',held)
   io.atomicReviewRefs=()=>{throw new LaneError('transport down')}
   io.deleteRef=()=>{throw new LaneError('transport down')}
   const result=recordReviewVerdict(VERDICT_OPTS,io)
@@ -12583,4 +12596,114 @@ test('targeted v2 reap keeps exact CAS guard against replacement after under-loc
  const f=exactReapFixture(),atomic=f.io.atomicReviewRefs.bind(f.io),replacement=f.io.makeOwnerCommit(`db-coordination reviewer-cursor sequence=2 reviewer=${f.options.reviewer} issue=3536 pr=4171 head=${f.options.headSha}`)
  f.io.atomicReviewRefs=edits=>{if(edits.some(row=>row.ref===f.ref&&row.sha===null))f.io.refs.set(f.ref,replacement);return atomic(edits)}
  assert.throws(()=>reapAbandonedReviewLeases({...f.options,applyRecovery:true},new Date(),f.io));assert.equal(f.io.refs.get(f.ref),replacement);assert.equal(f.io.refs.has(MUTEX_REF),false)
+})
+
+// #4297: model the native expanded batch return, preserving the existing wire
+// ceiling assertions. Disposition names ride the same remote inventory and commit
+// hydration, never a free-standing additional namespace request. Explicit legacy
+// adapters are separately tested to refuse rather than bypass the evidence read.
+function installDispositionCostSnapshot(io,rawCommit=io.getCommit){
+  const old=io.readReviewRecords,immutable=new Map()
+  const hydrate=sha=>{if(!immutable.has(sha))immutable.set(sha,rawCommit(sha));return immutable.get(sha)}
+  io.readReviewRecords=(refs=[],prefix=null,dependentFailurePrefix=null,extraPrefix=null)=>{
+    let result
+    if(old)result=old(refs,prefix,dependentFailurePrefix,extraPrefix)
+    else{
+      const prefixes=[prefix,extraPrefix].filter(Boolean)
+      // Conservatively retain the historical two inventory-read charges in
+      // these cost fixtures; the real native adapter below proves one combined
+      // inventory plus its fixed-ref snapshot, with no disposition-only call.
+      const matching=prefixes.flatMap(p=>io.listRefs(p)).map(r=>({...r,commit:r.commit??hydrate(r.sha)}))
+      if(!prefixes.length&&refs.length)io.listRefs(refs[0].slice(0,refs[0].lastIndexOf('-')+1))
+      result=new Map([...new Set([...refs,...matching.map(r=>r.ref)])].map(ref=>{const sha=io.refs.get(ref);return [ref,sha?{sha,commit:hydrate(sha)}:null]}))
+      Object.defineProperty(result,'matching',{value:matching})
+    }
+    const match=/^refs\/db-review-(?:assignments|replacements)\/(\d+)-(\d+)-/.exec(prefix??extraPrefix??'')
+    if(match){
+      const p=`refs/db-review-dispositions/${match[1]}-${match[2]}-`,rows=[...io.refs].filter(([ref])=>ref.startsWith(p)).map(([ref,sha])=>({ref,sha}))
+      for(const row of rows)result.set(row.ref,{sha:row.sha,commit:hydrate(row.sha)})
+      Object.defineProperty(result,'dispositionSnapshot',{value:{prefix:p,rows,records:result}})
+    }
+    return result
+  }
+}
+
+import { completedUnrecordableRef } from './lib/lanes/review-completed-unrecordable.mjs'
+import { recordReviewVerdict as recordCompletedVerdict } from './lib/lanes/review-records.mjs'
+function completedDispositionFixture({verdict='APPROVE',legacy=true}={}){
+ const io=withAtomicRefs(reviewIo()),head='7'.repeat(40),request={issue:4297,pr:4999,headSha:head}
+ io.requiresExactReviewHeadSha=!legacy
+ io.getPr=()=>({number:request.pr,state:'open',head:{sha:head}})
+ const muse=ACTIVE_REVIEWERS.find(r=>r.provider==='muse')
+ io.reviewerOrder=()=>[muse,...ACTIVE_REVIEWERS.filter(r=>r!==muse)]
+ const assigned=assignNextReviewer(request,io),tuple={...request,slot:1,sequence:assigned.sequence,reviewer:assigned.reviewer}
+ const assignmentRef=`${REVIEW_ASSIGNMENT_REF_PREFIX}/${request.issue}-${request.pr}-${head}`,assignmentSha=io.refs.get(assignmentRef)
+ const startRef=`refs/db-review-started/${request.issue}-${request.pr}-${head}-slot1-seq${assigned.sequence}`,startSha=io.makeOwnerCommit(`db-coordination review-started issue=${request.issue} pr=${request.pr} head=${head} slot=1 sequence=${assigned.sequence} reviewer=${assigned.reviewer} at=2026-10-15T01:00:00Z`)
+ io.refs.set(startRef,startSha)
+ const leaseRef=reviewActiveRef(assigned.reviewer,{...assigned,slot:1})
+ // This intentionally seeds actual v2 history even through the legacy adapter:
+ // no io flag may make that durable decision disappear.
+ io.refs.delete(reviewActiveRef(assigned.reviewer));io.refs.delete(leaseRef)
+ const record={schema_version:1,kind:'completed-unrecordable-missing-source-receipt',...tuple,observed_verdict:verdict,authorizing:false,paid_attempt_consumed:true,human_identity_authenticated:false,declared_owner:'01a14247-5120-71f0-a78d-b9d477b46304',machine:'fixture-host',bindings:[{ref:'refs/db-contracts/4297/1',sha:'a'.repeat(40)},{ref:assignmentRef,sha:assignmentSha},{ref:startRef,sha:startSha},{ref:leaseRef,sha:assignmentSha}],proof_sha256:'b'.repeat(64)}
+ const dispositionRef=completedUnrecordableRef(tuple),dispositionSha=io.makeOwnerCommit(`db-coordination completed-unrecordable\n${JSON.stringify(record)}`);io.refs.set(dispositionRef,dispositionSha)
+ return {io,request,assigned,tuple,record,dispositionRef,dispositionSha,leaseRef,assignmentRef,assignmentSha,startRef,startSha}
+}
+for(const legacy of [true,false])for(const action of ['assign','replace','release','record'])test(`completed v2 history cannot ${action} through ${legacy?'legacy':'native'} adapter`,()=>{
+ const f=completedDispositionFixture({legacy}),before=[...f.io.refs].sort()
+ const failure={...f.request,failedSequence:f.assigned.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true}
+ const invoke=action==='assign'?()=>assignNextReviewer(f.request,f.io):action==='replace'?()=>replaceFailedReviewer(failure,f.io):action==='release'?()=>releaseFailedReviewer(failure,f.io):()=>recordCompletedVerdict({...f.request,slot:1,verdict:'APPROVE',findingsRef:'https://github.com/popcre/shared-db/pull/4999#issuecomment-1'},f.io)
+ assert.throws(invoke,/completed|disposed/)
+ assert.deepEqual([...f.io.refs].sort(),before,'no assignment, start, disposition or foreign lease changed')
+})
+test('disposed latest equivalent slot1 cannot resurrect an older carried assignment',()=>{
+ const f=completedDispositionFixture(),next='8'.repeat(40)
+ f.io.getPr=()=>({number:f.request.pr,state:'open',head:{sha:next}})
+ f.io.reviewContentComparison=()=>({before:'a'.repeat(64),after:'a'.repeat(64),budgetProof:{kind:'unchanged'}})
+ const olderHead='6'.repeat(40),olderRef=`${REVIEW_ASSIGNMENT_REF_PREFIX}/4297-4999-${olderHead}`
+ const older=f.io.makeOwnerCommit(`db-coordination reviewer-cursor sequence=1 reviewer=glm-5.3 issue=4297 pr=4999 head=${olderHead}`);f.io.refs.set(olderRef,older)
+ const peers=resolvePeerSlots(4297,4999,next,2,f.io)
+ assert.equal(peers.slotOne,null,'latest disposed content match ends carry search, rather than falling back to older authority')
+ assert.equal(f.io.refs.get(f.startRef),f.startSha)
+})
+test('new head/evidence cannot launder a disposed negative decision',()=>{
+ const f=completedDispositionFixture({verdict:'REJECT'}),next='8'.repeat(40)
+ f.io.getPr=()=>({number:f.request.pr,state:'open',head:{sha:next}})
+ f.io.reviewContentComparison=()=>({before:'a'.repeat(64),after:'a'.repeat(64),budgetProof:{schema:1,before:f.request.headSha,after:next,protectedMain:f.request.headSha,kind:'unchanged'}})
+ const before=[...f.io.refs].sort();assert.throws(()=>assignNextReviewer({...f.request,headSha:next},f.io),/negative|correction/);assert.deepEqual([...f.io.refs].sort(),before)
+})
+test('fresh mutex-held disposition snapshot closes a completed-after-preflight race',()=>{
+ const f=completedDispositionFixture({legacy:false}),recordSha=f.dispositionSha
+ f.io.refs.delete(f.dispositionRef)
+ // Restore the held v2 lease while the preflight sees no disposition.
+ f.io.refs.set(f.leaseRef,f.assignmentSha)
+ installDispositionCostSnapshot(f.io,f.io.getCommit)
+ const create=f.io.createRef;let raced=false
+ f.io.createRef=(ref,sha)=>{const result=create(ref,sha);if(ref===MUTEX_REF&&result&&!raced){raced=true;f.io.refs.set(f.dispositionRef,recordSha);f.io.refs.delete(f.leaseRef)}return result}
+ assert.throws(()=>assignNextReviewer(f.request,f.io),/completed|disposed/)
+ assert.equal(raced,true);assert.equal(f.io.refs.get(f.dispositionRef),recordSha);assert.equal(f.io.refs.has(f.leaseRef),false)
+ assert.equal(f.io.refs.get(f.assignmentRef),f.assignmentSha);assert.equal(f.io.refs.get(f.startRef),f.startSha)
+})
+test('disposition CLI refuses unrelated evidence/mixed modes before any IO',()=>{
+ const blind=new Proxy({},{get(){throw new Error('IO must not run')}})
+ for(const args of [['--sequence','6603'],['--completed-unrecordable-evidence-file','/private/descriptor'],['--dispose-completed-unrecordable-review','--assign-reviewer'],['--dispose-completed-unrecordable-review','--confirm-no-verdict']])assert.equal(main(args,new Date(),blind),2)
+})
+
+test('#4297 v2 verdict consumes lease atomically and reconciles lost success without voiding findings',()=>{
+ const io=verdictLeaseIo(),atomic=io.atomicReviewRefs;let pushes=0
+ io.atomicReviewRefs=changes=>{pushes++;assert.equal(changes.length,2);atomic(changes);throw new LaneError('lost atomic success response')}
+ const result=recordReviewVerdict(VERDICT_OPTS,io)
+ assert.equal(result.verdict,'APPROVE');assert.equal(result.lease_released,true,'exact absent lease readback proves atomic consumption after response loss')
+ assert.equal(io.refs.has(io.leaseRef),false);assert.equal(pushes,1)
+ assert.equal(recordReviewVerdict(VERDICT_OPTS,io).verdict,'APPROVE');assert.equal(pushes,1,'standing artifact never republishes')
+})
+test('#4297 v2 verdict refuses absent atomic capability before creating a verdict commit',()=>{
+ const io=verdictLeaseIo();io.atomicReviewRefs=undefined;io.makeReviewVerdictCommit=()=>assert.fail('must refuse before commit')
+ assert.throws(()=>recordReviewVerdict(VERDICT_OPTS,io),/atomic lease consumption/)
+ assert.equal(io.refs.get(io.leaseRef),'c'.repeat(40))
+})
+test('#4297 losing v2 verdict cannot publish after disposition consumed the lease',()=>{
+ const io=verdictLeaseIo(),atomic=io.atomicReviewRefs;let attempts=0
+ io.atomicReviewRefs=changes=>{attempts++;io.refs.delete(io.leaseRef);atomic(changes)}
+ assert.throws(()=>recordReviewVerdict(VERDICT_OPTS,io),error=>Boolean(error.verdictArtifactCreated?.confirmed===false))
+ assert.equal(attempts,1);assert.equal([...io.refs.keys()].some(r=>r.startsWith('refs/db-review-verdicts/')),false)
 })

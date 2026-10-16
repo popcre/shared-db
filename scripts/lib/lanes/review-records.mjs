@@ -1,3 +1,4 @@
+import { assertReviewNotDisposed } from './review-completed-unrecordable.mjs'
 // Split from scripts/manage-migration-author-lanes.mjs (issue #3726). Behavior-preserving move:
 // the entrypoint re-exports every public name defined here. Edit here, not there.
 import { REVIEW_VERDICTS, verdictRef, parseVerdictCommit, validateVerdictArtifact, assertFindingsRefForPr, findingsDigest, formatVerdictMessage, REVIEW_VERDICT_REF_PREFIX, REVIEW_VERDICT_REPLACEMENT_REF_PREFIX, parseVerdictRef } from '../../lib/review-verdict-artifact.mjs'
@@ -88,6 +89,7 @@ export function recordReviewVerdict(options,io=githubIo){
   const assignmentSha=io.readRef(assignmentRef)
   if(!assignmentSha)throw new LaneError('the exact durable reviewer assignment does not exist')
   const assignment=parseReviewCursor(io.getCommit(assignmentSha))
+  assertReviewNotDisposed({...assignment,slot},io)
   if(assignment.issue!==issue||assignment.pr!==pr||assignment.headSha.toLowerCase()!==headSha||(assignment.slot!==null&&assignment.slot!==slot))throw new LaneError('the assignment record disagrees with the requested verdict tuple')
   // #2078. Refuse BEFORE any commit or ref is created, and before the lease and
   // PR reads, so a reviewer that cannot open the code leaves no artifact at all.
@@ -119,7 +121,9 @@ export function recordReviewVerdict(options,io=githubIo){
   // which is what repairs a release that failed on an earlier attempt.
   // `releaseRecordedVerdictLease` is compare-and-delete: a ref that does not
   // hold THIS assignment SHA is left exactly as it is.
-  const finish=(validated)=>({...validated,lease_ref:activeRef,lease_released:releaseRecordedVerdictLease(activeRef,assignmentSha,io)})
+  const consumesV2=holdsParallel&&activeRef.startsWith(`${REVIEW_ACTIVE_PARALLEL_REF_PREFIX}/`)
+  let atomicallyReleased=false
+  const finish=(validated)=>({...validated,lease_ref:activeRef,lease_released:atomicallyReleased||releaseRecordedVerdictLease(activeRef,assignmentSha,io)})
   const live=io.getPr(pr)
   if(!reviewTargetIsRecordable(live,{pr,issue,headSha},io))throw new LaneError('review target is no longer the exact open PR head')
   const ref=verdictRef({issue,pr,headSha,slot,replacementSequence})
@@ -168,12 +172,18 @@ export function recordReviewVerdict(options,io=githubIo){
     const causeSha=parallelLeaseSha??legacyLeaseSha
     throw new LaneError(`reviewer does not hold the exact active lease; late or conflicting verdict refused${reviewActiveLeaseCause(assignment.reviewer,causeSha,{issue,pr,headSha},io,causeRef)}`)
   }
+  if(consumesV2&&(typeof io.atomicReviewRefs!=='function'||typeof io.readReviewRefs!=='function'))throw new LaneError('v2 verdict publication requires atomic lease consumption')
   try{assertFindingsRefForPr(findingsRef,pr)}catch(error){throw new LaneError(error.message)}
   const findingsBody=io.readFindings(findingsRef)
   if(!String(findingsBody??'').trim())throw new LaneError('durable reviewer findings are unreadable or empty')
   const record={verdict,head_sha:headSha,issue,pr,slot,reviewer:assignment.reviewer,assignment_sha:assignmentSha,findings_digest:findingsDigest(findingsBody),findings_ref:findingsRef}
   const sha=io.makeReviewVerdictCommit(formatVerdictMessage(record),assignmentSha)
-  try{if(!io.createRef(ref,sha))throw new Error('create returned false')}catch(error){
+  try{
+    if(consumesV2){
+      io.atomicReviewRefs([{ref,expected:null,sha},{ref:activeRef,expected:assignmentSha,sha:null}])
+      atomicallyReleased=true
+    }else if(!io.createRef(ref,sha))throw new Error('create returned false')
+  }catch(error){
     // #2464 (muse-spark, PR #2468). A FAILED create does not mean nothing was
     // created. The create can land and still report an error -- a dropped
     // response, a proxy timeout -- in which case the winner of this "race" is
@@ -205,6 +215,7 @@ export function recordReviewVerdict(options,io=githubIo){
     if(!winner){const absent=new LaneError('create-only verdict ref failed and no winner could be read; the ref may still hold the commit this round created, so nothing may be voided and this must not be retried blindly');absent.verdictArtifactCreated={ref,sha,confirmed:false};throw absent}
     const markIfOurs=(failure)=>{if(winner===sha)failure.verdictArtifactCreated={ref,sha,confirmed:true};return failure}
     try{
+      if(consumesV2&&winner===sha){const leases=io.readReviewRefs([activeRef]);atomicallyReleased=leases instanceof Map&&leases.has(activeRef)&&leases.get(activeRef)===null}
       const winnerRecord=parseVerdictCommit(io.getCommit(winner))
       const winnerBody=io.readFindings(winnerRecord.findings_ref)
       const validated=validateVerdictArtifact({ref,sha:winner,commit:io.getCommit(winner),findingsBody:winnerBody,activeLeaseSha:assignmentSha,assignment:{sha:assignmentSha,reviewer:assignment.reviewer}})

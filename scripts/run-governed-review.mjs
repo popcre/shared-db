@@ -16,6 +16,7 @@ import { withTurnBudget, changedMigrationLines, turnBudgetDiagnostic } from './l
 import { REVIEW_CALLER_VARIABLES, reviewCallerEnvironment } from './lib/reviewer-caller-env.mjs'
 import { loadReviewBrief, storeReviewBrief } from './lib/review-packet.mjs'
 import { GOVERNED_VERDICT_WRAPPERS, VERDICT_CONTRACT_FLAG_WRAPPERS, forbiddenGovernedSubcommand, wrapperBaseName } from './lib/reviewer-capabilities.mjs'
+import { assertReviewNotDisposed } from './lib/lanes/review-completed-unrecordable.mjs'
 import { REINSTATABLE_FAILURE_CODES } from './lib/lanes/review-circuit-breaker.mjs'
 
 export const GOVERNED_REVIEW_OPTIONS=Object.freeze(['--issue','--pr','--head-sha','--reviewer','--wrapper','--worktree','--review-slot','--replacement-sequence','--assignment-id','--skip-doctor','--tests'])
@@ -918,6 +919,7 @@ export function recordReviewStart(options,io,at=Date.now(),leaseHeld=reviewLease
   if(!Number.isInteger(Number(request.issue))||!Number.isInteger(Number(request.pr))||!/^[0-9a-f]{40}$/.test(request.headSha))throw new Error('review start marker requires exact issue, PR, and head; no reviewer was started')
   const lease=leaseHeld(request,io)
   if(!lease)throw new Error('no held reviewer lease matches this review; no reviewer was started')
+  assertReviewNotDisposed({...request,sequence:lease.sequence,reviewer:lease.reviewer},io)
   const ref=reviewStartedRef(request,lease.sequence)
   if(!ref.startsWith(`${REVIEW_STARTED_REF_PREFIX}/`))throw new Error('review start marker is outside its namespace')
   const prefix='db-coordination review-started '

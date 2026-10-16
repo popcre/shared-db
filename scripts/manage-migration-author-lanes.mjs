@@ -274,6 +274,20 @@ function readAdmissionIssueCommentPages(endpoint,readJson){
 function ghPaginated(endpoint,{readJson=ghJson}={}) {
   if(reviewWireBudget){
     if(String(reviewWireBudget.operation??'').endsWith('-admission-gate')&&isAdmissionIssueCommentEndpoint(endpoint))return readAdmissionIssueCommentPages(endpoint,readJson)
+    // Pull-request file inventories may exceed one REST page (a large docs or
+    // catalogue sweep). Follow pages for that endpoint only, fail closed past a
+    // small page cap, and keep every other endpoint single-page.
+    if(/\/pulls\/\d+\/files/.test(endpoint)){
+      const rows=[]
+      for(let page=1;page<=10;page+=1){
+        const sep=endpoint.includes('?')?'&':'?'
+        const chunk=readJson(['api',`${endpoint}${sep}page=${page}`])
+        if(!Array.isArray(chunk))throw new LaneError(`GitHub page for ${endpoint} was incomplete or malformed`)
+        rows.push(...chunk)
+        if(chunk.length<GITHUB_REST_PAGE_SIZE)return rows
+      }
+      throw new LaneError(`GitHub page for ${endpoint} exceeded the 10-page file-inventory cap; reviewer operation refuses an unreadable inventory`)
+    }
     const page=readJson(['api',endpoint])
     if(!Array.isArray(page))throw new LaneError(`GitHub page for ${endpoint} was incomplete or malformed`)
     if(page.length>=GITHUB_REST_PAGE_SIZE)throw new LaneError(`GitHub page for ${endpoint} reached 100 rows; reviewer operation refuses possible pagination`)

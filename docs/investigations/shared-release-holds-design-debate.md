@@ -84,8 +84,28 @@ real possible outcome. Its bounded new punch list is addressed below.
 | N10 deletion invariant | Accepted. Audit namespace excluded from all janitors until separately reviewed retention; explicit deletion-selector regression. §8.1A/tests. |
 | N11 ledger pointers | Accepted. P4 points to§3; P1/M7 now corrected across the full plan. |
 
-No unresolved business choice. The next same-session turn must verify these actual
-corrections and any remaining contradictions before publication. Research GO and
-all ten runtime implementation outcomes remain unproved and open.
+No unresolved business choice. Round-2 corrections are committed in
+`d35663b7296c930c1319753b51790c0965c99baf`; they have NOT received a subsequent
+completed Muse verification. Research GO and all ten runtime implementation
+outcomes remain unproved and open.
+
+## Supported continuation blocked — October 16, 2026, 11:03 AM EDT
+
+The additional same-session verification request failed local source preflight
+before snapshot/provider launch because its asserted head was abbreviated. The
+wrapper had already replaced the active-turn descriptor. Correcting the input
+cannot resume: native state is `preparation_failed`, and supported `reconcile`
+refuses because no exact successful retained process exists for this failed
+invocation. Both earlier completed debates remain valid for their actual source
+heads, never for the unreviewed correction head. No provider replacement, metadata
+restore, replay, synthetic approval or fence bypass is authorized.
+
+Recorded under the existing [Muse recovery issue #674](https://github.com/popcre/ai-devops/issues/674#issuecomment-6218354939).
+Codex chat `01a144d8-b318-7ed0-af97-e852be49d231` owns this plan's publication
+blocker; the toolkit's existing recovery owner retains its separate workstream.
+Native shipment gate refuses absent an exact-head assigned approval. Revision
+publication is NOT complete. Preserve the same conversation and qualified native
+recovery evidence; resume verification only through a supported repaired path.
+No shared release hold or database writer was acquired for this revision.
 
 Posted by Codex chat 01a144d8-b318-7ed0-af97-e852be49d231 on hetz

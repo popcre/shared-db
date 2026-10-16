@@ -148,4 +148,28 @@ and conservative crash cleanup. No runtime feature is implemented. Next gate:
 same-session verification of these corrections, then exact-head publication review
 and normal PR merge; all implementation/live acceptance remains open on #3779.
 
+### Current blocking state — October16, 2026, 11:03 AM EDT
+
+Revision branch `codex/shared-release-holds-design-revision` contains local owned
+commits `73e5f794` and `d35663b7`; it is not pushed and has no PR. All three changed
+paths are prose: plan, this handoff, debate ledger. Existing main publication
+`66695385` remains authoritative until a normally approved revision lands.
+
+A further Muse `ask` failed BEFORE provider launch on an abbreviated asserted
+head. Correcting to full head cannot resume because the wrapper already set
+`preparation_failed` and cleared the current retained descriptor. Native transcript
+was inspected; supported reconcile refuses without a successful retained process.
+The incident is preserved on [existing #674](https://github.com/popcre/ai-devops/issues/674#issuecomment-6218354939).
+Do not restore archived metadata manually, substitute a provider/session, invent
+approval or retry around this fence. Both genuine earlier completed reports remain
+private and available for their exact source. The corrected round2 source has not
+received a completed follow-up verification.
+
+Shipment gate explicitly refuses absent assigned exact-head approval. Owner of
+this publication blocker is Codex chat `01a144d8-b318-7ed0-af97-e852be49d231`.
+Resume only after supported same-session pre-provider recovery exists, then finish
+the debate, exact-head final publication review, push/PR/normal merge and #3779
+publication evidence. Runtime implementation remains entirely open; this is not
+acceptance of any of the four optimizations. No stage lease is held.
+
 Posted by Codex chat 01a144d8-b318-7ed0-af97-e852be49d231 on hetz

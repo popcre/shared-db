@@ -608,6 +608,7 @@ PREVIEW_PRODUCER_PATHS = (
     # Runs FIRST in the preview job, to acquire the lane, before any evidence
     # byte exists. Unpinned, it was a complete forgery path.
     "scripts/manage-migration-author-lanes.mjs",
+    "scripts/generated-types-proof.mjs",
     # Existing normal canonical validators now used by authenticated nonclosing routing.
     "scripts/agent-work-contract-git-evidence.mjs",
     "scripts/agent-work-contract.mjs",
@@ -2944,7 +2945,7 @@ def decide_business_risk(
 
 
 # ---------------------------------------------------------------------------
-# PRODUCTION WITHOUT A SHARED-PREVIEW APPLY (orchestrator marker #2758).
+# PRODUCTION WITHOUT A SHARED-PREVIEW APPLY (claim-first session #2758).
 #
 # OWNER REQUEST: a merged migration may go to production without a preview
 # rehearsal when the exact merged SQL already passed the ephemeral database CI

@@ -103,8 +103,8 @@ jobs:
           GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          if [ -f scripts/orchestrator-flow/preview-route-canary.mjs ]; then
-            node scripts/orchestrator-flow/preview-route-canary.mjs --receiver --pr "$PR_NUMBER"
+          if [ -f scripts/db-flow/preview-route-canary.mjs ]; then
+            node scripts/db-flow/preview-route-canary.mjs --receiver --pr "$PR_NUMBER"
           fi
 
       - name: Re-prove and authorize under the repository-maintenance mutex

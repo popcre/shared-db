@@ -3770,8 +3770,31 @@ function requirePrOperationRoute(options,io,args){
   if(io.enforceAdmission!==true)return null
   return withoutReviewRequestBudget(()=>requirePrOperationRouteGate(options,io,args))
 }
+function proveLightweightDocumentsOnlyMerge(prNumber,headSha,io){
+  // Preserve the existing owner exemption for ordinary prose merges without
+  // supplying database authority. Every uncertainty falls through to normal
+  // structural/nonclosing routing, which remains fail-closed.
+  try{
+    const identity=(pr)=>({number:pr?.number,state:pr?.state,headSha:pr?.head?.sha,headRef:pr?.head?.ref,
+      headRepo:pr?.head?.repo?.full_name,baseSha:pr?.base?.sha,baseRef:pr?.base?.ref,baseRepo:pr?.base?.repo?.full_name})
+    const first=io.getPr?.(prNumber),before=identity(first),baseSha=before.baseSha
+    if(Number(before.number)!==Number(prNumber)||before.state!=='open'||before.headSha!==headSha||
+      !/^[0-9a-f]{40}$/.test(String(headSha))||!before.headRef||before.headRepo!==REPO||
+      !/^[0-9a-f]{40}$/.test(String(baseSha))||before.baseRef!=='main'||before.baseRepo!==REPO)return false
+    const closing=io.closingIssuesForPr?.(prNumber)
+    if(!Array.isArray(closing)||closing.length!==0)return false
+    const files=io.comparePullRequestFiles?.(baseSha,headSha)
+    if(!Array.isArray(files)||!classifyLightweightMergePullRequestFiles(files).documentsOnly)return false
+    const after=identity(io.getPr?.(prNumber))
+    return JSON.stringify(after)===JSON.stringify(before)
+  }catch{return false}
+}
 function requirePrOperationRouteGate(options,io,{pr,headSha,issue,mutexOwner,allowMerged=false,reviewSnapshot=false,resolveStructuralIssue=false}){
   if(mutexOwner)requireOwnedRef(MUTEX_REF,mutexOwner,io)
+  if(resolveStructuralIssue&&proveLightweightDocumentsOnlyMerge(pr,headSha,io)){
+    requireOwnedRef(MUTEX_REF,mutexOwner,io)
+    return {route:'documents-only',issue:null,headSha}
+  }
   const snapshot=reviewSnapshot&&typeof io.readReviewerOperationRoute==='function'?io.readReviewerOperationRoute(pr):null
   const route=derivePrOperationRoute(pr,io,{headSha,issue,allowMerged,snapshot})
   if(route.route==='repo-maintenance')return route

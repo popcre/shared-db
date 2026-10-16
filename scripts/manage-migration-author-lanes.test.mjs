@@ -4248,6 +4248,68 @@ test('guarded merge derives and admits its one live linked structural issue',()=
   assert.ok(result.ownerSha);assert.ok(io.refs.has(EXCLUSIVE_REFS.merge));assert.equal(io.refs.has(MUTEX_REF),false)
 })
 
+function documentsOnlyAdmissionIo(files){
+  const io=memoryIo(),head='a'.repeat(40),base='b'.repeat(40)
+  io.enforceAdmission=true
+  io.getPr=()=>{assert.ok(io.refs.has(MUTEX_REF),'PR identity must be read under the author mutex');return {number:7,state:'open',head:{sha:head,ref:'codex/docs',repo:{full_name:THIS_REPO}},base:{sha:base,ref:'main',repo:{full_name:THIS_REPO}}}}
+  io.mainSha=()=>base
+  io.closingIssuesForPr=()=>[]
+  io.comparePullRequestFiles=(baseSha,headSha)=>{
+    assert.ok(io.refs.has(MUTEX_REF),'exact file inventory must be read under the author mutex')
+    assert.equal(baseSha,base);assert.equal(headSha,head)
+    return files
+  }
+  io.getPrFiles=()=>files
+  return {io,head,base}
+}
+
+test('guarded merge admits an exact live prose-only PR without issue or evidence pair',()=>{
+  const row={filename:'HANDOFF.d/checkpoint.md',status:'added',additions:1,deletions:0,changes:1,patch:'@@ -0,0 +1 @@\n+Checkpoint records current custody.'}
+  const {io,head}=documentsOnlyAdmissionIo([row])
+  let prReads=0;const getPr=io.getPr;io.getPr=(...args)=>{prReads++;return getPr(...args)}
+  const lock=acquireExclusive('merge',{owner:'docs',pr:7,headSha:head,admissionOptions:{pr:7}},io)
+  assert.ok(lock.ownerSha)
+  assert.ok(io.refs.has(EXCLUSIVE_REFS.merge))
+  assert.equal(io.refs.has(MUTEX_REF),false)
+  assert.ok(prReads>=3,'live PR identity is read before and after inventory and again under the merge lane')
+})
+
+test('guarded merge keeps ordinary strong admission for executable instruction migration and malformed documentation diffs',()=>{
+  const cases=[
+    [{filename:'scripts/tool.mjs',status:'modified',additions:1,deletions:0,changes:1,patch:'@@ -1 +1 @@\n-export const oldValue = 1\n+export const newValue = 2'},'executable source'],
+    [{filename:'AGENTS.md',status:'modified',additions:1,deletions:0,changes:1,patch:'@@ -1 +1 @@\n-old instruction\n+new instruction'},'instruction-bearing content'],
+    [{filename:'supabase/migrations/20261016120000_change.sql',status:'added',additions:1,deletions:0,changes:1,patch:'@@ -0,0 +1 @@\n+create table core.example(id integer);'},'migration'],
+  ]
+  for(const [row,label] of cases){
+    const {io,head}=documentsOnlyAdmissionIo([row])
+    assert.throws(()=>acquireExclusive('merge',{owner:'docs',pr:7,headSha:head,admissionOptions:{pr:7}},io),/exactly one|nonclosing|structural|issue/i,label)
+    assert.equal(io.refs.has(EXCLUSIVE_REFS.merge),false,label)
+    assert.equal(io.refs.has(MUTEX_REF),false,`${label}: mutex released on refusal`)
+  }
+  const malformed=documentsOnlyAdmissionIo(null)
+  malformed.io.comparePullRequestFiles=()=>null
+  assert.throws(()=>acquireExclusive('merge',{owner:'docs',pr:7,headSha:malformed.head,admissionOptions:{pr:7}},malformed.io),/exactly one|nonclosing|structural|issue|inventory/i)
+  assert.equal(malformed.io.refs.has(MUTEX_REF),false,'malformed inventory: mutex released on refusal')
+})
+
+test('guarded merge falls through to strong admission if the PR moves during prose inventory proof',()=>{
+  const {io,head}=documentsOnlyAdmissionIo([{filename:'HANDOFF.d/checkpoint.md',status:'added',additions:1,deletions:0,changes:1,patch:'@@ -0,0 +1 @@\n+checkpoint'}])
+  const getPr=io.getPr;let reads=0
+  io.getPr=(number)=>{reads++;const pr=getPr(number);if(reads>=2)pr.head.sha='c'.repeat(40);return pr}
+  assert.throws(()=>acquireExclusive('merge',{owner:'docs',pr:7,headSha:head,admissionOptions:{pr:7}},io),/exact head|exact-head|head SHA|changed/i)
+  assert.equal(io.refs.has(EXCLUSIVE_REFS.merge),false)
+  assert.equal(io.refs.has(MUTEX_REF),false,'changed PR: mutex released on refusal')
+})
+
+test('guarded merge does not skip admission for a prose PR linked to a work issue',()=>{
+  const {io,head}=documentsOnlyAdmissionIo([{filename:'HANDOFF.d/checkpoint.md',status:'added',additions:1,deletions:0,changes:1,patch:'@@ -0,0 +1 @@\n+checkpoint'}])
+  io.closingIssuesForPr=()=>[{number:41}]
+  io.getIssue=()=>{throw new Error('linked issue admission must remain active')}
+  assert.throws(()=>acquireExclusive('merge',{owner:'docs',pr:7,headSha:head,admissionOptions:{pr:7}},io),/linked issue admission must remain active/)
+  assert.equal(io.refs.has(EXCLUSIVE_REFS.merge),false)
+  assert.equal(io.refs.has(MUTEX_REF),false,'linked issue: mutex released on refusal')
+})
+
 test('guarded merge cannot route unknown inventory as repository maintenance',()=>{
   const io=memoryIo(),head='a'.repeat(40);io.enforceAdmission=true
   io.getPr=()=>({number:7,state:'open',head:{sha:head,ref:'codex/tooling'},base:{sha:'main'}})

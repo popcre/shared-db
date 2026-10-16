@@ -271,7 +271,7 @@ function readAdmissionIssueCommentPages(endpoint,readJson){
   }
   throw new LaneError(`GitHub admission comment history for ${endpoint} reached the ${ADMISSION_ISSUE_COMMENT_MAX_PAGES}-page limit without a short final page; refusing incomplete history`)
 }
-function ghPaginated(endpoint,{readJson=ghJson}={}) {
+export function ghPaginated(endpoint,{readJson=ghJson}={}) {
   if(reviewWireBudget){
     if(String(reviewWireBudget.operation??'').endsWith('-admission-gate')&&isAdmissionIssueCommentEndpoint(endpoint))return readAdmissionIssueCommentPages(endpoint,readJson)
     // Pull-request file inventories may exceed one REST page (a large docs or

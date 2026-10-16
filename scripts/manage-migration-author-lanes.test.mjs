@@ -12780,3 +12780,18 @@ test('#4365: the park note signs a Claude owner in signature form; --park alone 
   const refused=refusalText(['--park'],memoryIo())
   assert.equal(refused.code,2);assert.match(refused.text,/--park only applies to --release-claim/)
 })
+
+test('#4348 reviewer-budget PR file inventory follows pages and fails closed past the cap',async()=>{
+  const {ghPaginated,withReviewRequestBudget}=await import('./manage-migration-author-lanes.mjs')
+  const row=(i)=>({filename:`docs/f${i}.md`,status:'modified'})
+  const pages={1:Array.from({length:100},(_,i)=>row(i)),2:Array.from({length:12},(_,i)=>row(100+i))}
+  const seen=[]
+  const readJson=([,url])=>{seen.push(url);return pages[Number(/page=(\d+)$/.exec(url)[1])]??[]}
+  const rows=withReviewRequestBudget(()=>ghPaginated('repos/x/y/pulls/7/files?per_page=100',{readJson}),50,'test-op')
+  assert.equal(rows.length,112)
+  assert.deepEqual(seen,['repos/x/y/pulls/7/files?per_page=100&page=1','repos/x/y/pulls/7/files?per_page=100&page=2'])
+  const full=()=>Array.from({length:100},(_,i)=>row(i))
+  assert.throws(()=>withReviewRequestBudget(()=>ghPaginated('repos/x/y/pulls/7/files?per_page=100',{readJson:full}),50,'test-op'),/10-page file-inventory cap/)
+  assert.throws(()=>withReviewRequestBudget(()=>ghPaginated('repos/x/y/pulls/7/files?per_page=100',{readJson:()=>null}),50,'test-op'),/incomplete or malformed/)
+  assert.throws(()=>withReviewRequestBudget(()=>ghPaginated('repos/x/y/issues/7/labels?per_page=100',{readJson:full}),50,'test-op'),/reached 100 rows/)
+})

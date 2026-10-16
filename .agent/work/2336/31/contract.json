@@ -1,0 +1,102 @@
+{
+  "allowed_paths": [
+    "supabase/migrations/20261016003614_licensing_recovery_timestamp.sql",
+    "supabase/tests/licensing_consolidation_contracts.sql",
+    ".github/live-proofs/2336.sql",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "scripts/production-verification-sidecars/20261016003614.json",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    ".agent/work/2336/31/contract.json",
+    ".agent/work/2336/31/completion.json"
+  ],
+  "assumptions": [
+    "Genuine Muse6610 REJECT at head196e27e1de1d19e2a684338dde2acb55246fa438 is preserved at durable verdict9cf5892698c276a7de3b7e29a61711a1a7352fd6. It is not replayed, relabelled or erased.",
+    "Implementation8bbece0ee93856a29526c15f5c44d6f9e1719016 materially fixes the inconsistent live-proof tuple pin, strengthens the existing regression to derive the actual migration function-body MD5 and compare both independent proof pins, and moves only this new sidecar registry entry to the end. The regression failed on the contradictory old pins and passes with the correction.",
+    "Recovery SQL SHA25614bbbec4565275a7ee5ba11e1ef3f3df59e8ee184fac9ed90786e67b1190f73b remains byte-identical. Frozen original20261013130102, PR3998 and PR4170 are untouched. All earlier contract refs remain immutable.",
+    "Fresh337 Python tests,82 sidecars,353-callsite/98-source truth audit, static SQL and whitespace checks pass on exact implementation8bbece0. Native evidence protocol intentionally records implementation head; a final evidence-only pair tail has a distinct PR tip and is separately Git-validated.",
+    "Main778dc192 contains the genuine pager/types prerequisites. Actual read-only production-generated types run38902878336 and complete native artifact verification passed; #2336 preview/apply/production-functional proof and post-apply regenerated types remain open."
+  ],
+  "base_sha": "778dc192f4a0ede1889c6a595b08b47425657cd1",
+  "branch": "codex/eight-resume-01a14221",
+  "db_reads": [
+    "function core.bump_taxonomy_source_ref_last_seen",
+    "function plm.apply_licensing_consolidation",
+    "function plm.apply_licensing_support_operation",
+    "function plm.licensing_consolidation_operation_state",
+    "function plm.licensing_operation_identity_predicate",
+    "function plm.plan_licensing_consolidation",
+    "function plm.plan_licensing_consolidation_rollback",
+    "table core.character",
+    "table core.franchise",
+    "table core.property",
+    "table core.property_alias",
+    "table core.property_character_associations",
+    "table core.property_character_source_edge",
+    "table core.property_franchise",
+    "table core.property_franchise_source_edge",
+    "table core.property_style_guide",
+    "table core.property_style_guide_source_edge",
+    "table core.style_guide",
+    "table core.style_guide_character",
+    "table core.style_guide_character_source_edge",
+    "table core.taxonomy_source_ref",
+    "table dam.asset",
+    "table dam.asset_character",
+    "table dam.asset_character_source_edge",
+    "table dam.asset_franchise",
+    "table dam.asset_franchise_source_edge",
+    "table dam.asset_property",
+    "table dam.asset_property_source_edge",
+    "table dam.asset_style_guide",
+    "table dam.asset_style_guide_source_edge",
+    "table plm.licensing_consolidation_plan"
+  ],
+  "db_writes": [
+    "function plm.licensing_consolidation_plan_immutable"
+  ],
+  "dispatcher": "Codex chat 01a14221-9c2c-7dd3-9047-dfaced175779 on edge-dev3",
+  "evidence_parent": {
+    "work_issue": 2336,
+    "generation": 30,
+    "contract_sha256": "e5345d4700d38877657f0aa781bc9f1bdbced82996ba17de4c4227f19607d7ff"
+  },
+  "file_writes": [
+    "supabase/migrations/20261016003614_licensing_recovery_timestamp.sql",
+    "supabase/tests/licensing_consolidation_contracts.sql",
+    ".github/live-proofs/2336.sql",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "scripts/production-verification-sidecars/20261016003614.json",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    ".agent/work/2336/31/contract.json",
+    ".agent/work/2336/31/completion.json"
+  ],
+  "generation": 31,
+  "goal": "Complete preserved #2336 recovery with consistent post-apply live proof: resolve the genuine Muse6610 rejection by binding every immutable-function proof condition to the exact frozen recovery body, then fresh review, guarded rehearsal/promotion and actual live acceptance.",
+  "prohibited_actions": [
+    "Never edit/replay frozen20261013130102 SQL or original2336/3998/4170 source/reviews/budgets/claims.",
+    "No broad omission of last_seen_at or any other planned integrity field; no changed grants/roles/volatility/targets/history/deletion.",
+    "No production/preview/manual SQL, credentials, curated merge, paid review, claim manipulation or source publication by subagents.",
+    "No fake full-native success from reduced PG model; all required CI/live gates remain separate.",
+    "Do not broaden the normalization predicate, alter old applied source, weaken integrity guards, or mark quarantined expected failures as ordinary passing tests.",
+    "Do not relax timestamp/audit/no-op/retry/tamper assertions or change canonical production source identities to fit the old erroneous fixture."
+  ],
+  "required_checks": [
+    "python3 -m unittest scripts.test_production_catalog_verification scripts.test_shared_db_live_proof scripts.test_migration_derivation",
+    "node scripts/check-production-verification-sidecars.mjs",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "git diff --check"
+  ],
+  "route": "claim-first",
+  "schema_version": 2,
+  "stop_conditions": [
+    "Stop source changes if scope widens, frozen bytes differ, native gate refuses or owner check-in is older than ten minutes."
+  ],
+  "work_issue": 2336,
+  "work_type": "structural",
+  "worker": "Codex chat 01a14221-9c2c-7dd3-9047-dfaced175779 on edge-dev3 performs implementation, review coordination and delivery; Luna 6 High supplies bounded read-only checks",
+  "worktree": "/home/ahazan/.codex/worktrees/resume-01a14221/shared-db"
+}

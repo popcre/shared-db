@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "work_issue": 2336,
+  "outcome": "ready-for-merge",
+  "pr": 4368,
+  "migration_versions": [
+    "20261016003614"
+  ],
+  "contract_ref": "refs/db-contracts/2336/31",
+  "contract_sha256": "2b06b95c54797c5e460d5452c60e1653fdd54439c010b240f03315c987a5b08d",
+  "head_sha": "8bbece0ee93856a29526c15f5c44d6f9e1719016",
+  "base_sha": "778dc192f4a0ede1889c6a595b08b47425657cd1",
+  "files_changed": [
+    ".github/live-proofs/2336.sql",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20261016003614.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "supabase/migrations/20261016003614_licensing_recovery_timestamp.sql",
+    "supabase/tests/licensing_consolidation_contracts.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python3 -m unittest scripts.test_production_catalog_verification scripts.test_shared_db_live_proof scripts.test_migration_derivation",
+      "exit_code": 0,
+      "evidence": "337 tests passed at exact implementation8bbece0ee93856a29526c15f5c44d6f9e1719016; acceptance qualification is not production acceptance."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs",
+      "exit_code": 0,
+      "evidence": "OK:82 sidecars, exact20261016003614 SQL digest and marker verified."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK:call_sites=353 sources=98 derived_digest=7d5729fa5373."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed; no DATABASE_URL or database execution was used."
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation31 published create-only at refs/db-contracts/2336/31 commitf6c456462233bd860ec025ece4be923ce8e3d99e. Immutable generations29/30 and genuine Muse6610 REJECT are preserved.",
+    "The previous live proof required incompatible old and new bodies. The extended semantic regression derives MD5 directly from the frozen migration function and checks both independent SQL proof pins. It genuinely failed for the old tuple pin and passes for the corrected proof.",
+    "Actual implementation8bbece0ee93856a29526c15f5c44d6f9e1719016 changes the proof tuple pin, its semantic regression, and only the new registry entry position. Frozen migration SQL remains SHA25614bbbec4565275a7ee5ba11e1ef3f3df59e8ee184fac9ed90786e67b1190f73b.",
+    "Fresh337 Python tests,82-sidecar validation,truth353/98,staticSQL and whitespace checks pass at this implementation. Full historical SQL replay caveats are not relabelled as fresh proof. Production schema apply, actual functional acceptance and post-apply regenerated types remain required.",
+    "Completion head is the implementation commit by native protocol; the evidence-only final pair is separately validated against the exact source diff and PR tip. No old review approval or budget is revived."
+  ],
+  "stop_conditions_hit": []
+}

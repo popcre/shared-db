@@ -128,4 +128,4 @@ authority, access, acceptance, rollback and ownership. No deployment is claimed.
 Albert. All technical decisions use stated engineering criteria/reviewer gates;
 §0 explicitly states none and preserves the settled scope.
 
-Posted by Codex chat 01a1425d-a395-77f2-812e-bbb8ff1facdc on hetz
+Posted by Codex chat 01a144d8-b318-7ed0-af97-e852be49d231 on hetz

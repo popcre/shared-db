@@ -5,7 +5,7 @@
 Planning baseline: **October 16, 2026, 9:17 AM EDT**, protected main
 `778dc192f4a0ede1889c6a595b08b47425657cd1`. This is a **proposal, not activated policy**.
 Tracker: [existing release-preparation outcome #3779](https://github.com/popcre/shared-db/issues/3779).
-Planning owner: Codex chat `01a1425d-a395-77f2-812e-bbb8ff1facdc` on `hetz`.
+Planning owner: Codex chat `01a144d8-b318-7ed0-af97-e852be49d231` on `hetz`.
 Implementation ownership has not been transferred by this document. Start at **step 1**.
 Every implementation row remains open until its evidence is recorded here and on #3779.
 Do not mark an implementation done because this plan was published.

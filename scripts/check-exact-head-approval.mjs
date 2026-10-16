@@ -234,7 +234,7 @@ export function evaluateExactHeadApproval(input) {
     return { approved: true, head_sha: headSha, pr: Number(pr), documents_only: true, reason: documents.reason, assignments: 0, approvals: 0 }
   }
 
-  // OWNER RULING (Albert Hazan, 2026-10-15, verbatim: "the new rules say this
+  // OWNER RULING (Albert Hazan, 2026-10-16, verbatim: "the new rules say this
   // repo does not get reveiwers anymore"). Shared-db no longer draws or requires
   // an external reviewer APPROVE. The exemption is from the reviewer POOL only:
   // every other required check, the guarded merge lane, and the merge lock still

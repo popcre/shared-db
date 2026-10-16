@@ -7,5 +7,7 @@
   "quote": "if there are no reviewers currently working then skip the merge-gate assignment",
   "prior_quote": "the new rules say this repo does not get reveiwers anymore",
   "effect": "Pull requests in this repository do not draw or require an external reviewer APPROVE when no reviewers are currently working. Merge remains gated by every other required check, the guarded merge lane, and the merge lock. A durable reviewer refusal already recorded at the head still blocks.",
-  "supersedes": "owner ruling 2026-10-14 one-review minimum for this repository only"
+  "authority": "docs/owner-rulings.md §6.28",
+  "bootstrap": "i allow one assignment to bootstrap that policy onto main",
+  "supersedes": "owner ruling 2026-10-14 one-review minimum for this repository only (docs/owner-rulings.md §6.27)"
 }

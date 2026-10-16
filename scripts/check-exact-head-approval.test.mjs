@@ -1248,3 +1248,38 @@ test('#3505: the advisory context is distinct from the real grant context', () =
   )
 })
 
+
+test('owner no-reviewer policy: inactive or missing policy still requires an assignment', () => {
+  const input = { pr: 2102, headSha: NEW, assignments: [], verdicts: [], ownerNoReviewerPolicy: { active: false, reason: 'off' } }
+  assert.throws(() => evaluateRaw(input), /no reviewer was ever assigned head/)
+})
+
+test('owner no-reviewer policy: active policy approves with no assignment and records the reason', () => {
+  const input = {
+    pr: 2102, headSha: NEW, assignments: [], verdicts: [],
+    ownerNoReviewerPolicy: { active: true, reason: 'owner ruling 2026-10-16: if there are no reviewers currently working then skip the merge-gate assignment' },
+  }
+  const result = evaluateRaw(input)
+  assert.equal(result.approved, true)
+  assert.equal(result.owner_no_reviewer, true)
+  assert.equal(result.assignments, 0)
+})
+
+test('owner no-reviewer policy: a durable refusal at the head still blocks', () => {
+  const input = {
+    pr: 2102, headSha: NEW, assignments: [], 
+    verdicts: [{ pr: 2102, head_sha: NEW, verdict: 'REVISE', ref: 'refs/db-review-verdicts/x', reviewer: 'glm-5.3', validated: true }],
+    ownerNoReviewerPolicy: { active: true, reason: 'owner ruling 2026-10-16: skip merge-gate assignment' },
+  }
+  // requireDurableVerdictInput / artifact validation may refuse first; either way it must not approve.
+  assert.throws(() => evaluateRaw(input), ApprovalCheckError)
+})
+
+test('owner no-reviewer policy file is schema-1 active and cites owner-rulings §6.28', () => {
+  const policy = JSON.parse(readFileSync(new URL('../config/owner-no-reviewer-policy.json', import.meta.url), 'utf8'))
+  assert.equal(policy.schema_version, 1)
+  assert.equal(policy.active, true)
+  assert.equal(policy.scope, 'popcre/shared-db')
+  assert.match(policy.quote, /no reviewers currently working/)
+  assert.match(String(policy.authority), /owner-rulings\.md/)
+})

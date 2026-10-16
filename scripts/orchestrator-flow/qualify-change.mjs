@@ -4,12 +4,13 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { selectPreviewRoute } from './select-preview-route.mjs'
+import { pythonExecutable } from '../lib/python-executable.mjs'
 
 export class QualificationError extends Error {}
 
 export function pythonDiagnostics(input,{executor=execFileSync}={}){
   const program=`import json,sys\nfrom pathlib import Path\nsys.path.insert(0,'scripts')\nfrom production_business_risk_gate import diagnose_risk_coverage\nfrom production_catalog_verification import diagnose_catalog_coverage\np=json.load(sys.stdin); root=Path(p['repo']); allow=p['allowlist']; print(json.dumps({'risk':diagnose_risk_coverage(root,allow),'catalog':diagnose_catalog_coverage(root,allow)},sort_keys=True))`
-  let raw;try{raw=executor('python',['-c',program],{cwd:input.repo,encoding:'utf8',input:JSON.stringify(input),stdio:['pipe','pipe','pipe']})}catch(error){throw new QualificationError(`Python diagnostics failed: ${error.message}`)}
+  let raw;try{raw=executor(pythonExecutable(),['-c',program],{cwd:input.repo,encoding:'utf8',input:JSON.stringify(input),stdio:['pipe','pipe','pipe']})}catch(error){throw new QualificationError(`Python diagnostics failed: ${error.message}`)}
   try{return JSON.parse(raw)}catch{throw new QualificationError('Python diagnostics returned malformed JSON')}
 }
 

@@ -8,7 +8,7 @@ import { rebindClaimWorktree, claimWorktreeRebindRef } from './manage-migration-
 import { allocatableReviewers, reconcilePreflightRows } from './manage-migration-author-lanes.mjs'
 import { completeReviewerOperationRouteSnapshot, derivePrOperationRoute, reconcileReviewerOperationRouteFiles } from './manage-migration-author-lanes.mjs'
 import { validateHoldReasonRecord } from './lib/hold-reason.mjs'
-import { ENGINES } from './lib/orchestrator-routing.mjs'
+import { ENGINES } from './lib/engine-routing.mjs'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { REVIEW_VERDICT_REF_PREFIX, verdictRef } from './lib/review-verdict-artifact.mjs'
@@ -22,13 +22,13 @@ import { canonicalReviewerAllowlist, REVIEWER_FALLBACK_PROVIDERS, orderedReviewe
 import { inheritReviewerAllowlist, isReviewerAllowlistSuperset, sameReviewerAllowlist } from './manage-migration-author-lanes.mjs'
 import { parseAssignmentRef } from './manage-migration-author-lanes.mjs'
 import { setScopeStatus, wrongOwnerMessage } from './manage-migration-author-lanes.mjs'
-import { readyRecord, persistInitialReady } from './orchestrator-flow/reconcile.mjs'
-import { canonicalJson, sha256 } from './orchestrator-flow/evidence-bundle.mjs'
+import { readyRecord, persistInitialReady } from './db-flow/reconcile.mjs'
+import { canonicalJson, sha256 } from './db-flow/evidence-bundle.mjs'
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { assertUnambiguousClaimTitle, claimCoversObject, renewalIssueScope, CLAIM_CLOSE_REASONS, RECORDABLE_EXCLUSION_REASONS, RETIRED_EXCLUSION_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, LEGACY_GUARDED_CLEANUP_CLOSE_REASON, ACTIVE_REVIEWERS, OVERFLOW_REVIEWERS, reviewersForOrchestrator, findBusyReviewers, reviewerCapacityReport, reviewLeaseAgeHours, activityFingerprintForLease, probeSilentReviewer, reclaimSilentReviewer, SILENCE_MIN_AGE_HOURS, SILENCE_CONFIRM_HOURS, REVIEW_SILENCE_PROBE_REF_PREFIX, REVIEW_SILENCE_RELEASE_REF_PREFIX, REVIEW_QUEUE_REF_PREFIX, pickReviewer, addedMigrationVersions, assertMergeCommitInMainHistory, REVIEWERS, RETIRED_REVIEWERS, QUARANTINED_REVIEWERS, acquireAuthorLane, acquireExclusive, assertLaneAvailable, assignNextReviewer, assertDurableReviewApproval, buildDynamicQueues, claimBody, closedClaimAuthoredOnMain, currentMainMaxVersion, queueExit, NON_STRUCTURAL_EXITS, OUTSIDE_ORCHESTRATOR_EXITS, conflicts, completeWork, requiresReturnAddress, returnIssueToOwner, RETURNED_MARKER, createRefWithReadback, deleteRefWithReadback, expandActiveClaimFromIssue, expandActiveClaimFromPr, EXCLUSIVE_REFS, githubIo, isConfirmedRefAbsence, LaneError, main, MUTEX_RECOVERY_ACTIVE_REF, MUTEX_REF, parseAuthorLease, parseQueueScope, parseReviewCursor, readPrAfterPush, readRefAfterWrite, recoverExpiredClaimFromPr, recoverSameOwnerSplit, recoverStaleAuthorMutex, reissueMergedStrandedClaim, releaseOwnedRef, releaseFailedReviewer, replaceFailedReviewer, failedReviewerReleaseCommand, requireOwnedRef, renewExpiredClaim, reviewerExecutionPreflight, reversionActiveClaim, runGitHubCommand, withReviewRequestBudget, supersedeActiveClaimVersion, REVIEW_CURSOR_REF, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_FAILURE_REF_PREFIX, validateClaimObjects, parseDoctorFailures, TERMINAL_FAILURE_CODES, doctorSpawnPlan, doctorTimeoutFailingChecks, resolveCommandPath, summarizeDoctorOutput, pickExecutableCandidate, REVIEWER_DOCTOR_TIMEOUT_MS, REVIEWER_PREFLIGHT_TIMEOUT_MS, findPrReviewAssignments, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_ACTIVE_REF_PREFIX, REVIEW_ACTIVE_CUTOVER_REF, reviewActiveRef, parseReviewLease, EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, deriveLivePreviewCandidate, validateOriginalPreviewApplyEvidence, projectReviewPr, projectReviewerOperationRouteSnapshot, reviewStateGraphqlFields, REVIEW_OPERATION_REQUEST_LIMIT, REVIEW_MUTEX_SECTION_RESERVE, REVIEW_SILENT_RECLAIM_REQUEST_LIMIT, REVIEW_SILENT_RECLAIM_MUTEX_SECTION_RESERVE, inReviewReplacementNamespace, activateReviewCutover, REVIEW_REF_ROW_LIMIT, parseGhIncludeResponse, hasNextPageLink, parseLinkHeader, excludeReviewerForPr, parseReviewExclusion, REVIEW_EXCLUSION_REF_PREFIX, reinstateReviewerExclusion, parseReviewReinstatement, REVIEW_REINSTATEMENT_REF_PREFIX, REINSTATABLE_EXCLUSION_REASONS, reviewExclusionRef, reviewReinstatementRef, REVIEW_EXCLUSION_GENERATION_LIMIT, countDoctorPassLines, REVIEW_RETURN_REF_PREFIX, parseReviewReturn, readReviewReturns, reviewReturnRef, reviewRecordRefs, retiredVerdictRef, REVIEW_RETIRED_VERDICT_REF_PREFIX, reviewerReadsRepository, reviewerEmitsGovernedVerdict, readReviewVerdicts, nonReadingReviewerReplacementCommand, hasVerdictForHead, headVerdictBlocksReplacement, reviewerKnownNonReading, DURABLE_VERDICT_REF_NAMESPACE, recordReviewVerdict, markReviewRefListingRefusal, isReviewRefListingRefusal, markLeaseReadFailure, isLeaseReadFailure, REVIEW_TARGET_SUPERSEDED, reapAbandonedReviewLeases, withArchivedVerdictMirror, legacyLeaseTerminalReason, isCommandSizeFailure, archiveOldReviewVerdicts, classifyVerdictForArchive, archivedVerdictRef, REVIEW_ARCHIVED_VERDICT_REF_PREFIX, reviewStartedMarkerRef, reviewerStartWatchLeases, RETURNED_COPY_MARKER, returnedCopyProvenance, REPO, noteHeldMutex, clearHeldMutex, releaseHeldMutexOnProcessExit } from './manage-migration-author-lanes.mjs'
+import { assertUnambiguousClaimTitle, claimCoversObject, renewalIssueScope, CLAIM_CLOSE_REASONS, RECORDABLE_EXCLUSION_REASONS, RETIRED_EXCLUSION_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, LEGACY_GUARDED_CLEANUP_CLOSE_REASON, ACTIVE_REVIEWERS, OVERFLOW_REVIEWERS, reviewersForOrchestrator, findBusyReviewers, reviewerCapacityReport, reviewLeaseAgeHours, activityFingerprintForLease, probeSilentReviewer, reclaimSilentReviewer, SILENCE_MIN_AGE_HOURS, SILENCE_CONFIRM_HOURS, REVIEW_SILENCE_PROBE_REF_PREFIX, REVIEW_SILENCE_RELEASE_REF_PREFIX, REVIEW_QUEUE_REF_PREFIX, pickReviewer, addedMigrationVersions, assertMergeCommitInMainHistory, REVIEWERS, RETIRED_REVIEWERS, QUARANTINED_REVIEWERS, acquireAuthorLane, acquireExclusive, assertLaneAvailable, assignNextReviewer, assertDurableReviewApproval, buildDynamicQueues, claimBody, closedClaimAuthoredOnMain, currentMainMaxVersion, queueExit, NON_STRUCTURAL_EXITS, OUTSIDE_ORCHESTRATOR_EXITS, conflicts, completeWork, requiresReturnAddress, returnIssueToOwner, RETURNED_MARKER, createRefWithReadback, deleteRefWithReadback, expandActiveClaimFromIssue, expandActiveClaimFromPr, EXCLUSIVE_REFS, githubIo, isConfirmedRefAbsence, LaneError, main, MUTEX_RECOVERY_ACTIVE_REF, MUTEX_REF, parseAuthorLease, parseQueueScope, parseReviewCursor, readPrAfterPush, readRefAfterWrite, recoverExpiredClaimFromPr, recoverSameOwnerSplit, recoverStaleAuthorMutex, reissueMergedStrandedClaim, releaseOwnedRef, releaseFailedReviewer, replaceFailedReviewer, failedReviewerReleaseCommand, requireOwnedRef, renewExpiredClaim, reviewerExecutionPreflight, reversionActiveClaim, runGitHubCommand, withReviewRequestBudget, supersedeActiveClaimVersion, REVIEW_CURSOR_REF, REVIEW_REPLACEMENT_REF_PREFIX, REVIEW_FAILURE_REF_PREFIX, validateClaimObjects, parseDoctorFailures, TERMINAL_FAILURE_CODES, doctorSpawnPlan, doctorTimeoutFailingChecks, resolveCommandPath, summarizeDoctorOutput, pickExecutableCandidate, REVIEWER_DOCTOR_TIMEOUT_MS, REVIEWER_PREFLIGHT_TIMEOUT_MS, findPrReviewAssignments, REVIEW_ASSIGNMENT_REF_PREFIX, REVIEW_ACTIVE_REF_PREFIX, REVIEW_ACTIVE_CUTOVER_REF, reviewActiveRef, parseReviewLease, EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, deriveLivePreviewCandidate, validateOriginalPreviewApplyEvidence, projectReviewPr, projectReviewerOperationRouteSnapshot, reviewStateGraphqlFields, REVIEW_OPERATION_REQUEST_LIMIT, REVIEW_MUTEX_SECTION_RESERVE, REVIEW_SILENT_RECLAIM_REQUEST_LIMIT, REVIEW_SILENT_RECLAIM_MUTEX_SECTION_RESERVE, inReviewReplacementNamespace, activateReviewCutover, REVIEW_REF_ROW_LIMIT, parseGhIncludeResponse, hasNextPageLink, parseLinkHeader, excludeReviewerForPr, parseReviewExclusion, REVIEW_EXCLUSION_REF_PREFIX, reinstateReviewerExclusion, parseReviewReinstatement, REVIEW_REINSTATEMENT_REF_PREFIX, REINSTATABLE_EXCLUSION_REASONS, reviewExclusionRef, reviewReinstatementRef, REVIEW_EXCLUSION_GENERATION_LIMIT, countDoctorPassLines, REVIEW_RETURN_REF_PREFIX, parseReviewReturn, readReviewReturns, reviewReturnRef, reviewRecordRefs, retiredVerdictRef, REVIEW_RETIRED_VERDICT_REF_PREFIX, reviewerReadsRepository, reviewerEmitsGovernedVerdict, readReviewVerdicts, nonReadingReviewerReplacementCommand, hasVerdictForHead, headVerdictBlocksReplacement, reviewerKnownNonReading, DURABLE_VERDICT_REF_NAMESPACE, recordReviewVerdict, markReviewRefListingRefusal, isReviewRefListingRefusal, markLeaseReadFailure, isLeaseReadFailure, REVIEW_TARGET_SUPERSEDED, reapAbandonedReviewLeases, withArchivedVerdictMirror, legacyLeaseTerminalReason, isCommandSizeFailure, archiveOldReviewVerdicts, classifyVerdictForArchive, archivedVerdictRef, REVIEW_ARCHIVED_VERDICT_REF_PREFIX, reviewStartedMarkerRef, reviewerStartWatchLeases, RETURNED_COPY_MARKER, returnedCopyProvenance, REPO, noteHeldMutex, clearHeldMutex, releaseHeldMutexOnProcessExit, sameOwnerLabel, parkComment } from './manage-migration-author-lanes.mjs'
 import { readDatabasePreviewClassificationFile, withDatabasePreviewClassificationFile, databasePreviewAdmission, buildDatabasePreviewFileSnapshot } from './manage-migration-author-lanes.mjs'
 import { parseReviewRelease } from './lib/lanes/review-replacement.mjs'
 import { qualifyHistoricalReviewerFailure } from './manage-migration-author-lanes.mjs'
@@ -283,21 +283,21 @@ test('a re-drawn assignment without its own APPROVE still leaves the slot red',(
 const scope = (status, workType, route, priority, objects=[], depends='') => `\`\`\`db-work-scope\nstatus: ${status}\nwork_type: ${workType}\nroute: ${route}\n${workType==='structural'?'service_class: standard-application\nchange_type: migration\napplication_return_to: u2giants/example-app\nlive_assertion: authenticated create-and-read succeeds\ngenerated_types: not-applicable\n':''}priority: ${priority}\ndepends_on: ${depends}\nobjects:\n${objects.map((x)=>`  - ${x}`).join('\n')}\n\`\`\``
 
 test('queue scope keeps status, work type, and route separate',()=>{
-  assert.deepEqual(parseQueueScope(scope('ready','structural','shared-db-orchestrator',9,['table core.a'],'#12, 13')), {status:'ready',workType:'structural',route:'shared-db-orchestrator',priority:9,dependencies:[12,13],returnTo:null,writes:['table core.a'],reads:[],legacyObjects:['table core.a'],objects:['table core.a'],serviceClass:'standard-application',changeType:'migration',applicationReturnTo:'u2giants/example-app',liveAssertion:'authenticated create-and-read succeeds',generatedTypes:'not-applicable',outcomeStage:'entered'})
-  assert.throws(()=>parseQueueScope(scope('ready','structural','shared-db-orchestrator',1)),/must list at least one write/)
-  assert.throws(()=>parseQueueScope(scope('waiting','structural','shared-db-orchestrator',1,['table core.a'])),/status must be/)
+  assert.deepEqual(parseQueueScope(scope('ready','structural','claim-first',9,['table core.a'],'#12, 13')), {status:'ready',workType:'structural',route:'claim-first',priority:9,dependencies:[12,13],returnTo:null,writes:['table core.a'],reads:[],legacyObjects:['table core.a'],objects:['table core.a'],serviceClass:'standard-application',changeType:'migration',applicationReturnTo:'u2giants/example-app',liveAssertion:'authenticated create-and-read succeeds',generatedTypes:'not-applicable',outcomeStage:'entered'})
+  assert.throws(()=>parseQueueScope(scope('ready','structural','claim-first',1)),/must list at least one write/)
+  assert.throws(()=>parseQueueScope(scope('waiting','structural','claim-first',1,['table core.a'])),/status must be/)
   assert.throws(()=>parseQueueScope(scope('ready','source-data','shared-db-orchestrator',1)),/not valid/)
   assert.throws(()=>parseQueueScope(scope('ready','source-data','source-data-session',1,['table plm.nbcu_right'])),/must not claim/)
   assert.throws(()=>parseQueueScope(`\`\`\`db-work-scope\nstate: eligible\npriority: 1\nobjects:\n  - table core.a\n\`\`\``),/state is retired/)
-  assert.throws(()=>parseQueueScope(`${scope('ready','structural','shared-db-orchestrator',1,['table core.a'])}\n${scope('blocked','repo-maintenance','repo-maintenance',1)}`),/exactly one/)
+  assert.throws(()=>parseQueueScope(`${scope('ready','structural','claim-first',1,['table core.a'])}\n${scope('blocked','repo-maintenance','repo-maintenance',1)}`),/exactly one/)
 })
 
 test('dynamic queues serialize overlapping work and refill every empty lane',()=>{
   const issues=[
-    {number:1,title:'a',body:scope('ready','structural','shared-db-orchestrator',10,['table core.a'])},
-    {number:2,title:'a later',body:scope('ready','structural','shared-db-orchestrator',8,['table core.a'])},
-    {number:3,title:'b',body:scope('ready','structural','shared-db-orchestrator',7,['table core.b'])},
-    {number:4,title:'c',body:scope('ready','structural','shared-db-orchestrator',6,['table core.c'])},
+    {number:1,title:'a',body:scope('ready','structural','claim-first',10,['table core.a'])},
+    {number:2,title:'a later',body:scope('ready','structural','claim-first',8,['table core.a'])},
+    {number:3,title:'b',body:scope('ready','structural','claim-first',7,['table core.b'])},
+    {number:4,title:'c',body:scope('ready','structural','claim-first',6,['table core.c'])},
   ]
   const result=buildDynamicQueues(issues,[],NOW)
   assert.equal(result.fullyAudited,true)
@@ -307,26 +307,26 @@ test('dynamic queues serialize overlapping work and refill every empty lane',()=
 
 test('queue priority favors the issue that unblocks the most downstream work, then the oldest issue',()=>{
   const issues=[
-    {number:100,createdAt:'2026-08-04T00:00:00Z',title:'old but no dependents',body:scope('ready','structural','shared-db-orchestrator',999,['table core.a'])},
-    {number:200,createdAt:'2026-08-03T00:00:00Z',title:'older equal blocker',body:scope('ready','structural','shared-db-orchestrator',1,['table core.a'])},
-    {number:300,createdAt:'2026-08-02T00:00:00Z',title:'depends on 200',body:scope('ready','structural','shared-db-orchestrator',1,['table core.b'],'#200')},
-    {number:400,createdAt:'2026-08-05T00:00:00Z',title:'larger blocker',body:scope('ready','structural','shared-db-orchestrator',1,['table core.a'])},
-    {number:500,createdAt:'2026-08-06T00:00:00Z',title:'depends on 400',body:scope('ready','structural','shared-db-orchestrator',1,['table core.c'],'#400')},
-    {number:600,createdAt:'2026-08-07T00:00:00Z',title:'transitively depends on 400',body:scope('ready','structural','shared-db-orchestrator',1,['table core.d'],'#500')},
+    {number:100,createdAt:'2026-08-04T00:00:00Z',title:'old but no dependents',body:scope('ready','structural','claim-first',999,['table core.a'])},
+    {number:200,createdAt:'2026-08-03T00:00:00Z',title:'older equal blocker',body:scope('ready','structural','claim-first',1,['table core.a'])},
+    {number:300,createdAt:'2026-08-02T00:00:00Z',title:'depends on 200',body:scope('ready','structural','claim-first',1,['table core.b'],'#200')},
+    {number:400,createdAt:'2026-08-05T00:00:00Z',title:'larger blocker',body:scope('ready','structural','claim-first',1,['table core.a'])},
+    {number:500,createdAt:'2026-08-06T00:00:00Z',title:'depends on 400',body:scope('ready','structural','claim-first',1,['table core.c'],'#400')},
+    {number:600,createdAt:'2026-08-07T00:00:00Z',title:'transitively depends on 400',body:scope('ready','structural','claim-first',1,['table core.d'],'#500')},
   ]
   const result=buildDynamicQueues(issues,[],NOW)
   assert.deepEqual(result.blockerCounts,{100:0,200:1,300:0,400:2,500:1,600:0})
   assert.equal(result.queues.find((queue)=>queue.queued.includes(400)).queued[0],400,'two downstream issues outrank every older or manually higher-priority issue')
 
   const ageTie=buildDynamicQueues([
-    {number:700,createdAt:'2026-08-10T00:00:00Z',title:'newer',body:scope('ready','structural','shared-db-orchestrator',999,['table core.z'])},
-    {number:800,createdAt:'2026-08-01T00:00:00Z',title:'older',body:scope('ready','structural','shared-db-orchestrator',1,['table core.z'])},
+    {number:700,createdAt:'2026-08-10T00:00:00Z',title:'newer',body:scope('ready','structural','claim-first',999,['table core.z'])},
+    {number:800,createdAt:'2026-08-01T00:00:00Z',title:'older',body:scope('ready','structural','claim-first',1,['table core.z'])},
   ],[],NOW)
   assert.deepEqual(ageTie.queues.find((queue)=>queue.queued.includes(800)).queued,[800,700])
 })
 
 test('an open issue whose closed claim version is on main is never dispatched as fresh authoring',()=>{
-  const issue={number:1769,title:'WWE tables awaiting promotion',body:scope('ready','structural','shared-db-orchestrator',700,['schema plm'])}
+  const issue={number:1769,title:'WWE tables awaiting promotion',body:scope('ready','structural','claim-first',700,['schema plm'])}
   const positiveControl=buildDynamicQueues([issue],[],NOW)
   assert.deepEqual(positiveControl.dispatchable,[1769], 'without merged-claim evidence the known issue goes red')
   const guarded=buildDynamicQueues([issue],[],NOW,[1769],null,new Map(),new Set([1769]))
@@ -365,12 +365,12 @@ test('authored-on-main requires the closed claim own reserved version, not a lat
 
 test('dynamic queues fill inactive lanes before queueing behind active claims',()=>{
   const claims=[{number:31,body:body(['table core.a'],'31')},{number:32,body:body(['table core.b'],'32')}]
-  const one=buildDynamicQueues([{number:40,title:'c',body:scope('ready','structural','shared-db-orchestrator',9,['table core.c'])}],claims,NOW)
+  const one=buildDynamicQueues([{number:40,title:'c',body:scope('ready','structural','claim-first',9,['table core.c'])}],claims,NOW)
   assert.deepEqual(one.dispatchable,[40])
   assert.equal(one.queues.find((q)=>q.queued.includes(40)).active,null)
   const two=buildDynamicQueues([
-    {number:40,title:'c',body:scope('ready','structural','shared-db-orchestrator',9,['table core.c'])},
-    {number:41,title:'d',body:scope('ready','structural','shared-db-orchestrator',8,['table core.d'])},
+    {number:40,title:'c',body:scope('ready','structural','claim-first',9,['table core.c'])},
+    {number:41,title:'d',body:scope('ready','structural','claim-first',8,['table core.d'])},
   ],[{number:31,body:body(['table core.a'],'31')}],NOW)
   assert.deepEqual(new Set(two.dispatchable),new Set([40,41]))
 })
@@ -378,7 +378,7 @@ test('dynamic queues fill inactive lanes before queueing behind active claims',(
 test('queue audit names expired active claims, queued work, and pull-request state',()=>{
   const expired=body(['table core.a'],'31','2026-08-13T08:00:00.000Z')
   const result=buildDynamicQueues(
-    [{number:40,title:'waiting',body:scope('ready','structural','shared-db-orchestrator',9,['table core.a'])}],
+    [{number:40,title:'waiting',body:scope('ready','structural','claim-first',9,['table core.a'])}],
     [{number:31,body:expired}],
     NOW,
     [40],
@@ -394,8 +394,8 @@ test('queue audit names expired active claims, queued work, and pull-request sta
 
 test('status and non-structural routes never consume a migration-author lane',()=>{
   const issues=[
-    {number:10,title:'open dependency',body:scope('blocked','structural','shared-db-orchestrator',9,['table core.blocked'])},
-    {number:11,title:'dependent',body:scope('ready','structural','shared-db-orchestrator',8,['table core.x'],'#10')},
+    {number:10,title:'open dependency',body:scope('blocked','structural','claim-first',9,['table core.blocked'])},
+    {number:11,title:'dependent',body:scope('ready','structural','claim-first',8,['table core.x'],'#10')},
     {number:12,title:'owner',body:scope('owner-decision','security-settings','owner-only',7)},
     {number:13,title:'data',body:scope('ready','application-data','application-session',6)},
     {number:14,title:'app',body:scope('ready','repo-maintenance','repo-maintenance',5)},
@@ -447,7 +447,7 @@ test('every work type keeps an exit, so a new one cannot be added without a rout
 
 test('the queue audit names every open issue that fails the shape test with its exit',()=>{
   const issues=[
-    {number:50,title:'structure',body:scope('ready','structural','shared-db-orchestrator',9,['table core.a'])},
+    {number:50,title:'structure',body:scope('ready','structural','claim-first',9,['table core.a'])},
     {number:51,title:'row cleanup',body:scope('ready','application-data','application-session',8)},
     {number:52,title:'ci guard defect',body:scope('ready','repo-maintenance','repo-maintenance',7)},
     {number:53,title:'owner question',body:scope('owner-decision','security-settings','owner-only',6)},
@@ -490,7 +490,7 @@ test('a reject exit without a return address is reported and fails the audit',()
 
 test('return_to is validated when present and never allowed on structural work',()=>{
   assert.throws(()=>parseQueueScope(scope('ready','application-data','application-session',1).replace('route: application-session','route: application-session\nreturn_to: not a repo')),/owner\/repo slug/)
-  assert.throws(()=>parseQueueScope(scope('ready','structural','shared-db-orchestrator',1,['table core.a']).replace('priority: 1','return_to: u2giants/popdam3\npriority: 1')),/must not carry a return_to/)
+  assert.throws(()=>parseQueueScope(scope('ready','structural','claim-first',1,['table core.a']).replace('priority: 1','return_to: u2giants/popdam3\npriority: 1')),/must not carry a return_to/)
 })
 
 test('returning a rejected issue files it in the owning repo BEFORE closing it here',()=>{
@@ -529,7 +529,7 @@ test('return refuses fork work, a missing address, and a second return',()=>{
 })
 
 test('dependency on an open non-db-work issue prevents dispatch',()=>{
-  const issues=[{number:11,title:'dependent',body:scope('ready','structural','shared-db-orchestrator',8,['table core.x'],'#99')}]
+  const issues=[{number:11,title:'dependent',body:scope('ready','structural','claim-first',8,['table core.x'],'#99')}]
   const result=buildDynamicQueues(issues,[],NOW,[11,99])
   assert.deepEqual(result.dispatchable,[])
   assert.match(result.skipped[0].reason,/99/)
@@ -639,7 +639,7 @@ function reviewIo(){
   // Legacy fixtures below pin the historical full-roster order. Tests that
   // exercise the production preference order delete this test-only override.
   io.reviewerOrder=(sequence)=>Array.from({length:ACTIVE_REVIEWERS.length},(_,offset)=>ACTIVE_REVIEWERS[(sequence-1+offset)%ACTIVE_REVIEWERS.length])
-  io.resolveOrchestratorEngine=()=> 'claude'
+  io.resolveReviewEngine=()=> 'claude'
   io.reviewerUsability=(reviewers)=>new Map(reviewers.map((row)=>[row.provider,usableAdmission(row)]))
   io.refs.set(REVIEW_ACTIVE_CUTOVER_REF,'cutover-complete')
   io.makeOwnerCommit=(message)=>{const sha=(++seq).toString(16).padStart(40,'0');commits.set(sha,{message});return sha}
@@ -707,7 +707,7 @@ test('#396 admission accepts matching explicit model/profile overrides without c
 
 function admittedReviewIo({closeOnMutex=false}={}){
   const io=reviewIo(),headSha='a'.repeat(40);let issueState='open',mutexCreates=0
-  const body=['```db-work-scope','status: ready','work_type: structural','route: shared-db-orchestrator','service_class: standard-application','change_type: migration','application_return_to: u2giants/example-app','live_assertion: authenticated create-and-read succeeds','generated_types: not-applicable','outcome_stage: entered','priority: 5','depends_on:','writes:','  - table core.example','```'].join('\n')
+  const body=['```db-work-scope','status: ready','work_type: structural','route: claim-first','service_class: standard-application','change_type: migration','application_return_to: u2giants/example-app','live_assertion: authenticated create-and-read succeeds','generated_types: not-applicable','outcome_stage: entered','priority: 5','depends_on:','writes:','  - table core.example','```'].join('\n')
   io.enforceAdmission=true
   io.getIssue=()=>({number:41,state:issueState,title:'review admission',body,createdAt:'2026-09-11T00:00:00Z'})
   io.closingIssuesForPr=()=>[{number:41,state:issueState}]
@@ -1983,13 +1983,13 @@ test('the roster records, per reviewer, whether its wrapper reads the repository
 })
 
 // ---------------------------------------------------------------------------
-// Issue #2127's marker-resolver tests were retired with the orchestrator marker (#3874).
+// Issue #2127's marker-resolver tests were retired with the claim-first session identity (#3874).
 
 test('with no orchestrator running the full rotation is drawable (#2127)',()=>{
-  const io=reviewIo();io.resolveOrchestratorEngine=()=> null
+  const io=reviewIo();io.resolveReviewEngine=()=> null
   const assigned=[]
   for(let n=1;n<=ACTIVE_REVIEWERS.length;n++)assigned.push(assignNextReviewer({issue:7100+n,pr:8100+n,headSha:n.toString(16).padStart(40,'c')},io).reviewer)
-  for(const row of ACTIVE_REVIEWERS)assert.ok(assigned.includes(row.name),`${row.name} must be drawable when no orchestrator marker is open`)
+  for(const row of ACTIVE_REVIEWERS)assert.ok(assigned.includes(row.name),`${row.name} must be drawable when no claim-first session identity is open`)
   // An io with no resolver at all is still UNREADABLE and still refuses --
   // `undefined` must never be read as "no orchestrator is running".
   assert.throws(()=>reviewersForOrchestrator(undefined),/engine is unreadable/)
@@ -2013,7 +2013,7 @@ test('the orchestrator engine is never eligible to review its own work',()=>{
 // code. ZCode's engine is GLM-5.3, so a ZCode orchestrator must exclude the glm
 // reviewers exactly the way a Codex orchestrator excludes the codex reviewer.
 // The exclusion follows the MODEL ENGINE behind the harness, mapped through
-// ENGINES[...].reviewerExclusionEngine in lib/orchestrator-routing.mjs.
+// ENGINES[...].reviewerExclusionEngine in lib/engine-routing.mjs.
 
 test('a GLM-engine (ZCode) orchestrator never draws the glm reviewers (#3232)',()=>{
   // Both glm rows declare the family -- including the retained glm-5.2 label,
@@ -2039,7 +2039,7 @@ test('a GLM-engine (ZCode) orchestrator never draws the glm reviewers (#3232)',(
 })
 
 test('a ZCode orchestrator walks a full draw cycle without ever drawing glm (#3232)',()=>{
-  const io=reviewIo();io.resolveOrchestratorEngine=()=> 'zcode'
+  const io=reviewIo();io.resolveReviewEngine=()=> 'zcode'
   const assigned=[]
   for(let n=1;n<=ACTIVE_REVIEWERS.length;n++)assigned.push(assignNextReviewer({issue:7300+n,pr:8300+n,headSha:n.toString(16).padStart(40,'e')},io).reviewer)
   for(const name of assigned)assert.ok(!name.startsWith('glm-'),`a ZCode orchestrator drew ${name}`)
@@ -2068,7 +2068,7 @@ test('a Codex orchestrator draws the whole active roster and still refuses the r
   // claude map to themselves, so a live Codex or Claude orchestrator must still
   // cost the rotation nothing at all. If a future roster adds a reviewer whose
   // family is codex or claude, this assertion is the one that notices.
-  const io=reviewIo();io.resolveOrchestratorEngine=()=> 'codex'
+  const io=reviewIo();io.resolveReviewEngine=()=> 'codex'
   const assigned=[]
   for(let n=1;n<=ACTIVE_REVIEWERS.length;n++)assigned.push(assignNextReviewer({issue:700+n,pr:800+n,headSha:n.toString(16).padStart(40,'a')},io).reviewer)
   assert.deepEqual([...assigned].sort(),ACTIVE_REVIEWERS.map((row)=>row.name).sort(),'a Codex orchestrator must not narrow the current roster')
@@ -2089,7 +2089,7 @@ test('a Codex orchestrator draws the whole active roster and still refuses the r
   // own work', against REVIEWERS and a synthetic roster; the assertion above is
   // what would notice an engine-carrying name re-entering the active roster and
   // make this call site meaningful again.
-  const preflight={...preflightIo(),resolveOrchestratorEngine:()=> 'codex'}
+  const preflight={...preflightIo(),resolveReviewEngine:()=> 'codex'}
   assert.throws(()=>reviewerExecutionPreflight({reviewer:'codex-gpt-5.6-sol',wrapper:'ai-codex-review',worktree:'C:/review',headSha:failedReview.headSha},preflight),/approved reviewer/)
 })
 
@@ -2854,7 +2854,7 @@ test('assignment refuses a PR close arriving after mutex acquisition',()=>{
   assert.equal(io.refs.has(MUTEX_REF),false);assert.equal(io.refs.has(REVIEW_CURSOR_REF),false)
 })
 
-const preflightIo=()=>({resolveOrchestratorEngine:()=> 'claude',commandAvailable:()=>true,localHead:()=>failedReview.headSha,localClean:()=>true,reviewerDoctor:()=>({ok:true,failingChecks:[]})})
+const preflightIo=()=>({resolveReviewEngine:()=> 'claude',commandAvailable:()=>true,localHead:()=>failedReview.headSha,localClean:()=>true,reviewerDoctor:()=>({ok:true,failingChecks:[]})})
 const preflightRequest={reviewer:'deepseek-v4.1-flash',wrapper:'ai-deepseek-agent',worktree:'C:/review',headSha:failedReview.headSha}
 
 test('reviewer execution preflight enforces approved wrapper, clean worktree, and exact head',()=>{
@@ -3973,7 +3973,7 @@ test('issue 3027 every stage-lease refusal names the exact lease holder', () => 
 
 test('issue 3027 a hold naming an unrelated production refuses while the held production lease is accepted', () => {
   const io=memoryIo()
-  const scopeBody=['```db-work-scope','status: ready','work_type: structural','route: shared-db-orchestrator','service_class: standard-application','change_type: migration','application_return_to: u2giants/example-app','live_assertion: authenticated create-and-read succeeds','generated_types: not-applicable','outcome_stage: entered','priority: 5','depends_on:','writes:','  - table core.mine','```'].join('\n')
+  const scopeBody=['```db-work-scope','status: ready','work_type: structural','route: claim-first','service_class: standard-application','change_type: migration','application_return_to: u2giants/example-app','live_assertion: authenticated create-and-read succeeds','generated_types: not-applicable','outcome_stage: entered','priority: 5','depends_on:','writes:','  - table core.mine','```'].join('\n')
   io.getIssue=(n)=>Number(n)===50?{number:50,state:'open',body:scopeBody}:{number:Number(n),state:'open',body:''}
   io.openClaims=()=>[{number:60,body:body(['table core.other'],'1','2099-01-01T00:00:00Z')}]
   assert.throws(()=>namedHold(50,'lease:production',io),/names a lease nobody holds/)
@@ -4205,7 +4205,16 @@ test('reviewer routing fetches prior paths for mixed rename and deletion invento
   assert.throws(()=>completeReviewerOperationRouteSnapshot(data,()=>[{...rest[0],filename:'docs/other.json'},rest[1]]),/inventories disagree/)
   assert.throws(()=>completeReviewerOperationRouteSnapshot(data,()=>[{filename:'docs/new.json',status:'renamed'},rest[1]]),/prior filename is unreadable/)
   const truncated=structuredClone(data);truncated.data.repository.pullRequest.files.pageInfo.hasNextPage=true
-  assert.throws(()=>completeReviewerOperationRouteSnapshot(truncated,()=>rest),/incomplete or paginated/)
+  // #4348: a pull request over one GraphQL file page routes from the complete REST inventory.
+  const paged=completeReviewerOperationRouteSnapshot(truncated,()=>rest)
+  assert.deepEqual(paged.files,rest)
+  assert.equal(derivePrOperationRoute(7,{}, {headSha:'a'.repeat(40),issue:41,snapshot:paged}).route,'repo-maintenance')
+  assert.equal(derivePrOperationRoute(7,{}, {headSha:'a'.repeat(40),issue:41,snapshot:completeReviewerOperationRouteSnapshot(truncated,()=>[...rest,{filename:'supabase/migrations/20990101000000_x.sql',status:'added'}])}).route,'structural')
+  assert.throws(()=>completeReviewerOperationRouteSnapshot(truncated),/incomplete or paginated/)
+  assert.throws(()=>completeReviewerOperationRouteSnapshot(truncated,()=>[]),/incomplete or paginated/)
+  assert.throws(()=>completeReviewerOperationRouteSnapshot(truncated,()=>[{filename:'docs/new.json',status:'renamed'}]),/prior filename is unreadable/)
+  const unlinked=structuredClone(truncated);unlinked.data.repository.pullRequest.closingIssuesReferences.pageInfo.hasNextPage=true
+  assert.throws(()=>completeReviewerOperationRouteSnapshot(unlinked,()=>rest),/incomplete or paginated/)
   assert.throws(()=>completeReviewerOperationRouteSnapshot(data,()=>{throw new LaneError('REST inventory reached 100 rows')}),/reached 100 rows/)
   const noRename=structuredClone(data);noRename.data.repository.pullRequest.files.nodes=[{path:'docs/gone.json',changeType:'DELETED'}]
   completeReviewerOperationRouteSnapshot(noRename,()=>{throw new Error('must not read REST without a rename')})
@@ -4713,6 +4722,56 @@ test('explicit claim release is mutex-protected, owner-confirmed, and refuses an
   assert.equal(closed,null)
 })
 
+test('--park closes (never deletes) the open PR with a resume note, then releases under the same guards',()=>{
+  const io=memoryIo();const events=[]
+  io.openClaims=()=>[{number:7,body:body(['table core.x'],'7')}]
+  io.openPulls=()=>[{number:2409,head:{ref:'codex/7'}},{number:2410,head:{ref:'other'}}]
+  io.closeClaim=(n,r)=>events.push(['claim',n,r])
+  io.closePull=(n,c)=>{assert.equal(io.refs.has(MUTEX_REF),true);events.push(['pr',n,c])}
+  // wrong owner still refuses before anything is touched
+  assert.equal(main(['--release-claim','7','--owner','agent-9','--confirm-finished','--park'],NOW,io),2)
+  assert.deepEqual(events,[])
+  // park + retire is refused
+  assert.equal(main(['--release-claim','7','--owner','agent-7','--confirm-finished','--park','--retire','owner-terminated'],NOW,io),2)
+  assert.deepEqual(events,[])
+  assert.equal(main(['--release-claim','7','--owner','agent-7','--confirm-finished','--park'],NOW,io),0)
+  assert.deepEqual(events.map(e=>e.slice(0,2)),[['pr',2409],['claim',7]])
+  assert.match(events[0][2],/Reopen pull request #2409/)
+  assert.match(events[0][2],/stays permanently reserved/)
+  assert.match(events[0][2],/branch `codex\/7` is kept/)
+  assert.equal(events[1][2],CLAIM_CLOSE_REASONS.explicitRelease)
+  assert.equal(io.refs.has(MUTEX_REF),false)
+  // without --park the refusal names the way out
+  events.length=0
+  const o=memoryIo();o.openClaims=io.openClaims;o.openPulls=io.openPulls;o.closeClaim=()=>{assert.fail('closed without --park')}
+  const refused=refusalText(['--release-claim','7','--owner','agent-7','--confirm-finished'],o)
+  assert.equal(refused.code,2);assert.match(refused.text,/add --park/)
+})
+
+test('--park with no open PR is an ordinary release',()=>{
+  const io=memoryIo();let pulls=0,closed=null
+  io.openClaims=()=>[{number:7,body:body(['table core.x'],'7')}]
+  io.closePull=()=>{pulls++};io.closeClaim=(n)=>{closed=n}
+  assert.equal(main(['--release-claim','7','--owner','agent-7','--confirm-finished','--park'],NOW,io),0)
+  assert.equal(pulls,0);assert.equal(closed,7)
+})
+
+test('both Claude owner-label spellings name the same exact session and nothing else',()=>{
+  const id='250902fb-e85f-45d3-a62c-9c18cb217d1e'
+  assert.equal(sameOwnerLabel(`claude-chat-${id}@hetz`,`Claude chat ${id} on hetz`),true)
+  assert.equal(sameOwnerLabel(`Claude chat ${id} on hetz`,`claude-chat-${id}@hetz`),true)
+  assert.equal(sameOwnerLabel(`claude-chat-${id}@hetz`,`Claude chat ${id} on edge-dev3`),false)
+  assert.equal(sameOwnerLabel(`claude-chat-${id}@hetz`,`Claude chat 00000000-e85f-45d3-a62c-9c18cb217d1e on hetz`),false)
+  assert.equal(sameOwnerLabel(`claude-chat-${id}@hetz`,`claude chat ${id} on hetz`),false)
+  assert.equal(sameOwnerLabel('agent-7','agent-7'),true)
+  assert.equal(sameOwnerLabel('',''),false)
+  const io=memoryIo();let closed=null
+  io.openClaims=()=>[{number:7,body:claimBody({version:'20260814200007',objects:['table core.x'],owner:`claude-chat-${id}@hetz`,branch:'codex/7',worktree:'C:/w/7',expiresAt:new Date('2026-08-15T08:00:00.000Z')})}]
+  io.closeClaim=(n)=>{closed=n}
+  assert.equal(main(['--release-claim','7','--owner',`Claude chat ${id} on hetz`,'--confirm-finished'],NOW,io),0)
+  assert.equal(closed,7)
+})
+
 // ISSUE #2454. Duplicate claims on one branch cannot be cleared by the ordinary
 // release path, because that path refuses any branch with an open PR — and the
 // duplicate's branch legitimately has one. The narrow path below proves, from
@@ -5122,7 +5181,7 @@ test('same-owner split recovery rolls both issue mutations back after partial re
 
 function expansionIo(overrides={}){
   const io=memoryIo(),issue={number:1063,state:'open',title:'CLAIM: #853 index',body:claimBody({version:'20260816063532',objects:['index plm.item_upper_trim_item_number_idx'],owner:'codex-issue-853-orderlist',branch:'codex/issue-853-orderlist-index',worktree:'C:\\repos\\shared-db-wt-853-index',expiresAt:new Date('2026-08-17T00:00:00Z')})}
-  const workIssue={number:853,state:'open',body:'```db-work-scope\nstatus: ready\nwork_type: structural\nroute: shared-db-orchestrator\npriority: 1\ndepends_on:\nobjects:\n  - table plm.item\n```'}
+  const workIssue={number:853,state:'open',body:'```db-work-scope\nstatus: ready\nwork_type: structural\nroute: claim-first\npriority: 1\ndepends_on:\nobjects:\n  - table plm.item\n```'}
   io.refs.set('refs/db-claims/20260816063532','reserved');io.getIssue=(n)=>structuredClone(Number(n)===853?workIssue:issue);io.updateIssue=(_n,fields)=>{Object.assign(issue,fields);return structuredClone(issue)}
   io.getPr=()=>({state:'open',head:{sha:'a'.repeat(40),ref:'codex/issue-853-orderlist-index'}});io.getPrFiles=()=>[{status:'added',filename:'supabase/migrations/20260816063532_index.sql'}];io.openClaims=()=>[structuredClone(issue)]
   io.prSources=()=>[{label:'PR #1065 [DRAFT] "index"',objects:['index plm.item_upper_trim_item_number_idx','table plm.item'],versions:['20260816063532']}]
@@ -5175,7 +5234,7 @@ function renewalIo(overrides={}){
   const io=memoryIo(),version='20260816045130',head='a'.repeat(40),objects=['table plm.style_tracker_item_bridge']
   const issue={number:1058,state:'open',title:'CLAIM: #853 OrderList bridge',body:claimBody({version,objects,owner:'codex-issue-853-orderlist',branch:'codex/issue-853-orderlist',worktree:'C:\\repos\\shared-db-worktrees\\issue-853-orderlist',expiresAt:new Date('2026-08-14T19:00:00Z')})}
   io.refs.set(`refs/db-claims/${version}`,'permanent')
-  const workIssue={number:853,state:'open',body:scope('ready','structural','shared-db-orchestrator',900,objects)}
+  const workIssue={number:853,state:'open',body:scope('ready','structural','claim-first',900,objects)}
   io.openClaims=()=>[structuredClone(issue)];io.getIssue=(number)=>Number(number)===853?structuredClone(workIssue):Number(number)===1058?structuredClone(issue):null;io.updateIssue=(_n,fields)=>{Object.assign(issue,fields);return structuredClone(issue)}
   io.getPr=()=>({state:'open',head:{sha:head,ref:'codex/issue-853-orderlist'}})
   io.getPrFiles=()=>[{status:'added',filename:`supabase/migrations/${version}_orderlist.sql`}]
@@ -5194,7 +5253,7 @@ test('#853-shaped expired claim renewal preserves every byte except expires_at',
 test('expired claim renewal retains an unrelated historical lock without declaring it as a current write',()=>{
   const io=renewalIo(),current='table app."RolePermissions"',historical='table app.rolepermissions'
   io.issue.body=claimBody({version:io.version,objects:[current,historical],owner:renewalOptions.owner,branch:renewalOptions.branch,worktree:renewalOptions.worktree,expiresAt:new Date('2026-08-14T19:00:00Z')})
-  io.workIssue.body=scope('ready','structural','shared-db-orchestrator',900,[current])
+  io.workIssue.body=scope('ready','structural','claim-first',900,[current])
   io.prSources=()=>[{label:'PR #1060 "RolePermissions"',objects:[current],versions:[io.version]}]
   const before=io.issue.body
   assert.equal(renewExpiredClaim(renewalOptions,NOW,io).idempotent,false)
@@ -5207,7 +5266,7 @@ test('historical superset renewal still rejects collisions and uncovered current
   const setup=()=>{
     const io=renewalIo()
     io.issue.body=claimBody({version:io.version,objects:[current,historical],owner:renewalOptions.owner,branch:renewalOptions.branch,worktree:renewalOptions.worktree,expiresAt:new Date('2026-08-14T19:00:00Z')})
-    io.workIssue.body=scope('ready','structural','shared-db-orchestrator',900,[current])
+    io.workIssue.body=scope('ready','structural','claim-first',900,[current])
     io.prSources=()=>[{label:'PR #1060 "RolePermissions"',objects:[current],versions:[io.version]}]
     return io
   }
@@ -5216,7 +5275,7 @@ test('historical superset renewal still rejects collisions and uncovered current
   assert.throws(()=>renewExpiredClaim(renewalOptions,NOW,io),/object collision with claim #77: table app\.rolepermissions/)
   io=setup();io.prSources=()=>[{label:'PR #1060',objects:[current],versions:[io.version]},{label:'PR #999',objects:[historical],versions:['20260816070000']}]
   assert.throws(()=>renewExpiredClaim(renewalOptions,NOW,io),/object collision with PR #999: table app\.rolepermissions/)
-  io=setup();io.workIssue.body=scope('ready','structural','shared-db-orchestrator',900,['table app.unclaimed'])
+  io=setup();io.workIssue.body=scope('ready','structural','claim-first',900,['table app.unclaimed'])
   assert.throws(()=>renewExpiredClaim(renewalOptions,NOW,io),/issue objects do not exactly match/)
   io=setup();io.prSources=()=>[{label:'PR #1060',objects:[current,'table app.unclaimed'],versions:[io.version]}]
   assert.throws(()=>renewExpiredClaim(renewalOptions,NOW,io),/claim does not cover parsed pull request objects/)
@@ -5225,7 +5284,7 @@ test('historical superset renewal still rejects collisions and uncovered current
 test('renewal keeps quoted PostgreSQL table identity distinct from unquoted lowercase identity',()=>{
   const io=renewalIo(),quoted='table app."RolePermissions"',lowercase='table app.rolepermissions'
   io.issue.body=claimBody({version:io.version,objects:[lowercase],owner:renewalOptions.owner,branch:renewalOptions.branch,worktree:renewalOptions.worktree,expiresAt:new Date('2026-08-14T19:00:00Z')})
-  io.workIssue.body=scope('ready','structural','shared-db-orchestrator',900,[quoted])
+  io.workIssue.body=scope('ready','structural','claim-first',900,[quoted])
   io.prSources=()=>[{label:'PR #1060 "RolePermissions"',objects:[quoted],versions:[io.version]}]
   assert.throws(()=>renewExpiredClaim(renewalOptions,NOW,io),/issue objects do not exactly match/)
   assert.deepEqual(parseAuthorLease(io.issue.body,NOW).objects,[lowercase])
@@ -5253,7 +5312,7 @@ test('claim renewal rejects uncovered PR objects, concurrent mutation, and activ
 test('claim renewal accepts parser-empty sequence PR only through exact issue scope',()=>{
   const io=renewalIo();io.prSources=()=>[{label:'PR #1060',objects:[],versions:[io.version]}]
   assert.equal(renewExpiredClaim(renewalOptions,NOW,io).idempotent,false)
-  const bad=renewalIo();bad.prSources=()=>[{label:'PR #1060',objects:[],versions:[bad.version]}];bad.workIssue.body=scope('ready','structural','shared-db-orchestrator',900,['sequence dflow.wrong_seq'])
+  const bad=renewalIo();bad.prSources=()=>[{label:'PR #1060',objects:[],versions:[bad.version]}];bad.workIssue.body=scope('ready','structural','claim-first',900,['sequence dflow.wrong_seq'])
   assert.throws(()=>renewExpiredClaim(renewalOptions,NOW,bad),/issue objects do not exactly match/)
 })
 
@@ -5281,7 +5340,7 @@ test('blank curated renewal scope refuses a claim title shared by multiple work 
 })
 
 test('claim renewal rejects missing, closed, blocked, or wrong-route issue binding',()=>{
-  for(const mutate of [io=>io.workIssue.state='closed',io=>io.workIssue.body=scope('blocked','structural','shared-db-orchestrator',900,io.objects),io=>io.workIssue.body=scope('ready','repo-maintenance','repo-maintenance',900)]){
+  for(const mutate of [io=>io.workIssue.state='closed',io=>io.workIssue.body=scope('blocked','structural','claim-first',900,io.objects),io=>io.workIssue.body=scope('ready','repo-maintenance','repo-maintenance',900)]){
     const io=renewalIo();mutate(io);assert.throws(()=>renewExpiredClaim(renewalOptions,NOW,io),/open ready structural or curated Master Data/)
   }
   assert.throws(()=>renewExpiredClaim({...renewalOptions,issue:999},NOW,renewalIo()),/not identified by the claim title/)
@@ -5294,7 +5353,7 @@ test('claim renewal binds the requested issue number to the claim title',()=>{
 
 test('claim renewal refuses an issue scope mutation immediately before write',()=>{
   const io=renewalIo(),baseGet=io.getIssue;let reads=0
-  io.getIssue=(number)=>{const value=baseGet(number);if(Number(number)===853&&++reads===2)value.body=scope('blocked','structural','shared-db-orchestrator',900,io.objects);return value}
+  io.getIssue=(number)=>{const value=baseGet(number);if(Number(number)===853&&++reads===2)value.body=scope('blocked','structural','claim-first',900,io.objects);return value}
   assert.throws(()=>renewExpiredClaim(renewalOptions,NOW,io),/issue changed concurrently/)
   assert.match(io.issue.body,/expires_at: 2026-08-14T19:00:00.000Z/)
 })
@@ -5338,7 +5397,7 @@ test('claim renewal enforces a bounded lease and real CLI wiring',()=>{
 function expiredPrRecoveryIo({issueNumber,claimNumber,prNumber,version,owner,branch,worktree,title,tables,children},overrides={}){
   const io=memoryIo(),head='a'.repeat(40)
   const claim={number:claimNumber,state:'open',title,body:claimBody({version,objects:tables,owner,branch,worktree,expiresAt:new Date('2026-08-14T19:00:00Z')})}
-  const workIssue={number:issueNumber,state:'open',body:scope('ready','structural','shared-db-orchestrator',2,tables)}
+  const workIssue={number:issueNumber,state:'open',body:scope('ready','structural','claim-first',2,tables)}
   io.refs.set(`refs/db-claims/${version}`,'permanent')
   io.openClaims=()=>[structuredClone(claim)]
   io.getIssue=(number)=>Number(number)===issueNumber?structuredClone(workIssue):Number(number)===claimNumber?structuredClone(claim):null
@@ -5383,14 +5442,14 @@ test('expired PR recovery fails closed on collision, stale identity, active leas
 test('expired PR recovery refuses every authority, scope, parser, reservation, and version mismatch before writing',()=>{
   for(const change of [{owner:'wrong'},{branch:'wrong'},{worktree:'wrong'}]){const io=expiredPrRecoveryIo(recovery2177);assert.throws(()=>recoverExpiredClaimFromPr({...recoveryOptions(recovery2177),...change},NOW,io),/owner, branch, or worktree/);assert.equal(io.updateCalls,0)}
   let io=expiredPrRecoveryIo(recovery2177);io.refs.delete(`refs/db-claims/${recovery2177.version}`);assert.throws(()=>recoverExpiredClaimFromPr(recoveryOptions(recovery2177),NOW,io),/reservation/);assert.equal(io.updateCalls,0)
-  io=expiredPrRecoveryIo(recovery2177);io.workIssue.body=scope('blocked','structural','shared-db-orchestrator',2,recovery2177.tables);assert.throws(()=>recoverExpiredClaimFromPr(recoveryOptions(recovery2177),NOW,io),/open ready structural/);assert.equal(io.updateCalls,0)
+  io=expiredPrRecoveryIo(recovery2177);io.workIssue.body=scope('blocked','structural','claim-first',2,recovery2177.tables);assert.throws(()=>recoverExpiredClaimFromPr(recoveryOptions(recovery2177),NOW,io),/open ready structural/);assert.equal(io.updateCalls,0)
   io=expiredPrRecoveryIo(recovery2177);io.prSources=()=>[];assert.throws(()=>recoverExpiredClaimFromPr(recoveryOptions(recovery2177),NOW,io),/parser source/);assert.equal(io.updateCalls,0)
   io=expiredPrRecoveryIo(recovery2177);io.getPrFiles=()=>[{filename:`supabase/migrations/${recovery2177.version}_a.sql`},{filename:'supabase/migrations/20260904001148_b.sql'}];assert.throws(()=>recoverExpiredClaimFromPr(recoveryOptions(recovery2177),NOW,io),/migration version/);assert.equal(io.updateCalls,0)
 })
 
 test('expired PR recovery refuses concurrent identity changes and never rolls back after mutex ownership loss',()=>{
   let io=expiredPrRecoveryIo(recovery2177),baseGet=io.getIssue,workReads=0
-  io.getIssue=(number)=>{const value=baseGet(number);if(Number(number)===2177&&++workReads===2)value.body=scope('blocked','structural','shared-db-orchestrator',2,recovery2177.tables);return value}
+  io.getIssue=(number)=>{const value=baseGet(number);if(Number(number)===2177&&++workReads===2)value.body=scope('blocked','structural','claim-first',2,recovery2177.tables);return value}
   assert.throws(()=>recoverExpiredClaimFromPr(recoveryOptions(recovery2177),NOW,io),/issue changed concurrently/);assert.equal(io.updateCalls,0)
   io=expiredPrRecoveryIo(recovery2177);const before=io.claim.body,baseUpdate=io.updateIssue
   io.updateIssue=(number,fields)=>{const result=baseUpdate(number,fields);io.refs.set(MUTEX_REF,'successor');return result}
@@ -5892,7 +5951,7 @@ test('missing or empty read/write sets are treated as empty rather than throwing
 
 // --- READ/WRITE SCOPE PARSING ----------------------------------------------
 
-const scopeWith = (body) => ['```db-work-scope', 'status: ready', 'work_type: structural', 'route: shared-db-orchestrator', 'service_class: standard-application', 'change_type: migration', 'application_return_to: u2giants/example-app', 'live_assertion: authenticated create-and-read succeeds', 'generated_types: not-applicable', 'priority: 5', 'depends_on:', body, '```'].join('\n')
+const scopeWith = (body) => ['```db-work-scope', 'status: ready', 'work_type: structural', 'route: claim-first', 'service_class: standard-application', 'change_type: migration', 'application_return_to: u2giants/example-app', 'live_assertion: authenticated create-and-read succeeds', 'generated_types: not-applicable', 'priority: 5', 'depends_on:', body, '```'].join('\n')
 const repoScopeWith = (body) => ['```db-work-scope', 'status: ready', 'work_type: repo-maintenance', 'route: repo-maintenance', 'priority: 5', 'depends_on:', body, '```'].join('\n')
 
 test('a scope may declare writes and reads separately', () => {
@@ -5993,7 +6052,7 @@ test('the queue lets two readers of one table run in parallel but serialises a w
 
 // --- DEPENDENCY PROOF IN THE QUEUE (Step 3, issue #1366) --------------------
 
-const depScope = (deps) => ['```db-work-scope', 'status: ready', 'work_type: structural', 'route: shared-db-orchestrator', 'service_class: standard-application', 'change_type: migration', 'application_return_to: u2giants/example-app', 'live_assertion: authenticated create-and-read succeeds', 'generated_types: not-applicable', 'priority: 5', 'depends_on: ' + deps, 'writes:', '  - table core.a', '```'].join('\n')
+const depScope = (deps) => ['```db-work-scope', 'status: ready', 'work_type: structural', 'route: claim-first', 'service_class: standard-application', 'change_type: migration', 'application_return_to: u2giants/example-app', 'live_assertion: authenticated create-and-read succeeds', 'generated_types: not-applicable', 'priority: 5', 'depends_on: ' + deps, 'writes:', '  - table core.a', '```'].join('\n')
 const completionComment = (record) => ({ body: '```db-work-completion\n' + JSON.stringify(record) + '\n```',author_association:OPERATOR_ASSOCIATION,author:'u2giants' })
 const mergedRecord = (issue) => ({ schema_version: 1, work_issue: issue, outcome: 'merged', pr: 1, merge_sha: 'abc1234', migration_versions: [] })
 
@@ -7125,7 +7184,7 @@ function mergedRehearsalIo({version='20260828232207',migration=`supabase/migrati
     getPrFiles:()=>[{filename:migration,status:'added'}],
     getFileAt:(file)=>{if(!(file in files))throw new LaneError(`missing ${file}`);return files[file]},
     treeFiles:()=>[migration],
-    getIssue:()=>({body:['```db-work-scope','status: ready','work_type: structural','route: shared-db-orchestrator','priority: 1','writes:',...writes.map((value)=>`  - ${value}`),'```'].join(String.fromCharCode(10))}),
+    getIssue:()=>({body:['```db-work-scope','status: ready','work_type: structural','route: claim-first','priority: 1','writes:',...writes.map((value)=>`  - ${value}`),'```'].join(String.fromCharCode(10))}),
     previewGateProof:()=>({full_ci_success:true,review_approved:true,dependency_closure_complete:true}),
     mainSha:()=>mainSha,
     previewLedger:()=>({versions:[]}),
@@ -7487,7 +7546,7 @@ function historicalTerminalIo(overrides={}){
     logs:[`preview\tProve historical preview recovery source\t2026-09-08T09:38:33Z ORIGINAL_RUN_MAP: ${manifest.historical_preview_original_run_map}`,`preview\tProve historical preview recovery source\t2026-09-08T09:38:33Z SOURCE_PR: ${manifest.historical_preview_source_pr}`,`preview\tProve historical preview recovery source\t2026-09-08T09:38:33Z MAIN_SHA: ${manifest.commit_sha}`,`preview\tAssert the target project ref is PREVIEW\t2026-09-08T09:38:30Z PREVIEW_ALLOWLIST: ${manifest.preview_allowlist}`,'preview\tReport the preview ledger delta\t2026-09-08T09:38:53Z - rows before: 626','preview\tReport the preview ledger delta\t2026-09-08T09:38:53Z - rows after:  626','preview\tReport the preview ledger delta\t2026-09-08T09:38:53Z - added: (none)','preview\tReport the preview ledger delta\t2026-09-08T09:38:53Z - removed: (none)'].join('\n'),
   }
   const flow={resolveMarker:()=>({live:true,task:'route',calling_task:'route'}),readRef:(ref)=>refs.get(ref)??null,createRef:(ref,digest,value)=>{if(refs.has(ref))return false;refs.set(ref,{digest,record:value});return true}}
-  return {record,runId,artifactId,artifactDigest,refs,evidence,io:{orchestratorFlowAdapter:()=>flow,previewApplyRun:()=>evidence},...overrides}
+  return {record,runId,artifactId,artifactDigest,refs,evidence,io:{flowAdapter:()=>flow,previewApplyRun:()=>evidence},...overrides}
 }
 
 function historicalTerminalArgs(fixture){return ['--terminalize-historical-preview-ready',fixture.record.ready_id,'--issue','2509','--run-id',fixture.runId,'--artifact-id',fixture.artifactId,'--artifact-digest',fixture.artifactDigest,'--manifest-digest',fixture.record.manifest_digest]}
@@ -7726,7 +7785,7 @@ test('two merged pull requests on one claim branch are still refused as ambiguou
 // independent verification passes missed it because neither drove the manifest into
 // the next stage. This test does, and it is the one that would have caught it.
 test('the merged-rehearsal candidate is accepted by the reconciler it is handed to',async()=>{
-  const {readyRecord}=await import('./orchestrator-flow/reconcile.mjs')
+  const {readyRecord}=await import('./db-flow/reconcile.mjs')
   const {io,mainSha}=mergedRehearsalIo()
   const record=readyRecord(deriveLivePreviewCandidate(1769,io))
   assert.equal(record.route,'merged_rehearsal')
@@ -7735,7 +7794,7 @@ test('the merged-rehearsal candidate is accepted by the reconciler it is handed 
 })
 
 test('the reconciler refuses a merged rehearsal that names a live author claim',async()=>{
-  const {readyRecord,ReconcileError}=await import('./orchestrator-flow/reconcile.mjs')
+  const {readyRecord,ReconcileError}=await import('./db-flow/reconcile.mjs')
   const {io}=mergedRehearsalIo()
   const candidate=deriveLivePreviewCandidate(1769,io)
   assert.throws(()=>readyRecord({...candidate,manifest:{...candidate.manifest,claim_pr:'1809'}}),(error)=>error instanceof ReconcileError&&/must not name a live author claim/.test(error.message))
@@ -9313,7 +9372,7 @@ test('#2460 expired recovery works for a claim legitimately expanded beyond its 
   assert.equal(io.updateCalls,1)
   // #2898: an uncovered issue-scope object is now added by the same governed step (collision-checked).
   const missing=expiredPrRecoveryIo(f)
-  missing.workIssue.body=scope('ready','structural','shared-db-orchestrator',2,[...f.tables,'table coldlion.never_claimed'])
+  missing.workIssue.body=scope('ready','structural','claim-first',2,[...f.tables,'table coldlion.never_claimed'])
   assert.ok(recoverExpiredClaimFromPr(recoveryOptions(f),NOW,missing).added.includes('table coldlion.never_claimed'))
   assert.equal(missing.updateCalls,1)
 })
@@ -9322,15 +9381,15 @@ test('#2898 a held table claim covers a column scope write, and recovery expands
   assert.equal(claimCoversObject(['table s.t'],'column s.t.c'),true)
   assert.equal(claimCoversObject(['table s.t'],'column s.other.c'),false)
   assert.equal(claimCoversObject(['column s.t.c'],'table s.t'),false,'a column never covers its table')
-  const issue=(objects)=>({state:'open',number:1,body:scope('ready','structural','shared-db-orchestrator',2,objects)})
+  const issue=(objects)=>({state:'open',number:1,body:scope('ready','structural','claim-first',2,objects)})
   assert.doesNotThrow(()=>renewalIssueScope(issue(['table s.t','column s.t.c']),{objects:['table s.t']},[1],{allowClaimSuperset:true}))
   assert.throws(()=>renewalIssueScope(issue(['table s.u']),{objects:['table s.t']},[1],{allowClaimSuperset:true}),/do not exactly match/)
   const f=recovery2177,ok=expiredPrRecoveryIo(f)
-  ok.workIssue.body=scope('ready','structural','shared-db-orchestrator',2,[...f.tables,'column coldlion.customer.talent_likeness'])
+  ok.workIssue.body=scope('ready','structural','claim-first',2,[...f.tables,'column coldlion.customer.talent_likeness'])
   assert.equal(recoverExpiredClaimFromPr(recoveryOptions(f),NOW,ok).added.includes('column coldlion.customer.talent_likeness'),false,'covered by the held table, so nothing to add');assert.equal(ok.updateCalls,1)
   // An issue-scope addition that collides with another live claim is refused and nothing is written.
   const io=expiredPrRecoveryIo(f),baseClaims=io.openClaims
-  io.workIssue.body=scope('ready','structural','shared-db-orchestrator',2,[...f.tables,'table coldlion.contested'])
+  io.workIssue.body=scope('ready','structural','claim-first',2,[...f.tables,'table coldlion.contested'])
   io.openClaims=()=>[...baseClaims(),{number:9999,title:'CLAIM: #9998 other',body:claimBody({version:'20260904009999',objects:['table coldlion.contested'],owner:'other',branch:'other/b',worktree:'C:\\x',expiresAt:new Date(NOW.valueOf()+3600000)})}]
   assert.throws(()=>recoverExpiredClaimFromPr(recoveryOptions(f),NOW,io),/contested|collid|claim/i)
   assert.equal(io.updateCalls,0)
@@ -9416,7 +9475,7 @@ test('#2311 a closed work issue with an open PR says so, and does not blame the 
   assert.throws(()=>{try{assignNextReviewer(mergedRequest,io)}catch(caught){error=caught;throw caught}},/changed after mutex acquisition/)
   assert.match(error.message,/work issue #1769 is closed while PR #1809 is still open/)
   assert.match(error.message,/Reopen issue #1769, or merge the pull request first/)
-  assert.match(error.message,/orchestrator marker rather than the work issue/)
+  assert.match(error.message,/claim-first session identity rather than the work issue/)
   assert.doesNotMatch(error.message,/head is now/,'the head did not move, so the refusal must not say it did')
 })
 
@@ -9442,7 +9501,7 @@ test('#2311 a verdict refused on the active lease names the assignment the lease
   assert.throws(()=>{try{recordReviewVerdict(VERDICT_OPTS,io)}catch(caught){error=caught;throw caught}},/exact active lease/)
   assert.match(error.message,/active lease \(refs\/db-review-active\/muse-spark-1\.2-contributor\) holds the assignment for issue #2320, PR #2415/)
   assert.match(error.message,/this verdict is for issue #2355, PR #2415/)
-  assert.match(error.message,/an orchestrator marker is not the work issue/)
+  assert.match(error.message,/a claim-first session identity is not the work issue/)
 })
 
 test('#2311 a reviewer with no active lease at all is told that, not told it holds a different one',()=>{
@@ -10033,7 +10092,7 @@ test('an over-long lease snapshot is a determinate refusal, not transient unread
 // work issue already `dispatched` and refused "cannot advance outcome from dispatched to
 // dispatched", leaving a fresh claim protected for recovery. Dispatch is already satisfied.
 test('re-claim of an already dispatched work issue treats dispatch as satisfied',async()=>{
-  const {outcomeEvent}=await import('./orchestrator-flow/outcome-lifecycle.mjs')
+  const {outcomeEvent}=await import('./db-flow/outcome-lifecycle.mjs')
   const {formatEventComment}=await import('./db-coordination-events.mjs')
   const {io}=admittedReviewIo(),posted=[]
   const history=['entered','classified','dispatched'].map((state,index)=>({author_association:OPERATOR_ASSOCIATION,author:'u2giants',body:formatEventComment(outcomeEvent({issue:41,state,actor:'test',timestamp:new Date(Date.UTC(2026,8,11,0,index)).toISOString(),evidenceUrls:state==='dispatched'?['https://github.com/u2giants/shared-db/issues/2929']:[]}))}))
@@ -10267,9 +10326,9 @@ test('--abandonment-audit reports a refusal as unverifiable (3), not as an expir
   const errors=[],originalError=console.error
   console.error=(line)=>errors.push(String(line))
   try{
-    const noAdapter={...githubIo,flowSnapshot:()=>({issues:[]}),orchestratorFlowAdapter:null}
+    const noAdapter={...githubIo,flowSnapshot:()=>({issues:[]}),flowAdapter:null}
     assert.equal(main(['--abandonment-audit'],new Date('2026-09-16T00:00:00Z'),noAdapter),3,'a missing runtime adapter means the instrument could not read')
-    const unreadable={...githubIo,orchestratorFlowAdapter:()=>({}),flowSnapshot:()=>{throw new LaneError('claim title must identify exactly one work issue for capacity transition events')}}
+    const unreadable={...githubIo,flowAdapter:()=>({}),flowSnapshot:()=>{throw new LaneError('claim title must identify exactly one work issue for capacity transition events')}}
     assert.equal(main(['--abandonment-audit'],new Date('2026-09-16T00:00:00Z'),unreadable),3,'an unreadable snapshot means the instrument could not read')
     assert.equal(main([],new Date('2026-09-16T00:00:00Z'),githubIo),2,'every other refusal keeps the generic exit code')
   }finally{console.error=originalError}
@@ -10289,7 +10348,7 @@ test('issue 3027 an urgent item waiting on capacity names the exact claims and o
 
 test('issue 3027 a claim hold is accepted only when the claim and held work share a conflicting object', () => {
   const io=memoryIo()
-  const scopeBody=['```db-work-scope','status: ready','work_type: structural','route: shared-db-orchestrator','service_class: standard-application','change_type: migration','application_return_to: u2giants/example-app','live_assertion: authenticated create-and-read succeeds','generated_types: not-applicable','outcome_stage: entered','priority: 5','depends_on:','writes:','  - table core.mine','  - table core.shared','```'].join('\n')
+  const scopeBody=['```db-work-scope','status: ready','work_type: structural','route: claim-first','service_class: standard-application','change_type: migration','application_return_to: u2giants/example-app','live_assertion: authenticated create-and-read succeeds','generated_types: not-applicable','outcome_stage: entered','priority: 5','depends_on:','writes:','  - table core.mine','  - table core.shared','```'].join('\n')
   io.getIssue=(n)=>Number(n)===50?{number:50,state:'open',body:scopeBody}:{number:Number(n),state:'open',body:''}
   io.openClaims=()=>[{number:60,body:body(['table core.shared','table core.theirs'],'1','2099-01-01T00:00:00Z')}]
   assert.deepEqual(namedHold(50,'claim:#60',io),{kind:'claim',holder:'claim #60',objects:['table core.shared']})
@@ -10299,7 +10358,7 @@ test('issue 3027 a claim hold is accepted only when the claim and held work shar
 
 test('the no-progress alarm fallback label is a coordination label the queue audit excludes', async () => {
   const { COORDINATION_LABELS } = await import('./manage-migration-author-lanes.mjs')
-  const { FALLBACK_LABEL } = await import('./orchestrator-flow/no-progress-alarm.mjs')
+  const { FALLBACK_LABEL } = await import('./db-flow/no-progress-alarm.mjs')
   assert.ok(COORDINATION_LABELS.has(FALLBACK_LABEL))
 })
 
@@ -10787,7 +10846,7 @@ test('issue 2678: a doctor that names no check quotes the wrapper instead of bla
 // own title, nothing warned at claim time, and the claim had already spent a
 // permanent migration version before a later command refused it.
 test('#2448 a second issue reference in a claim title is refused at --claim time, before any version is spent',async()=>{
-  const {outcomeEvent}=await import('./orchestrator-flow/outcome-lifecycle.mjs')
+  const {outcomeEvent}=await import('./db-flow/outcome-lifecycle.mjs')
   const {formatEventComment}=await import('./db-coordination-events.mjs')
   const {io}=admittedReviewIo()
   // A COMPLETE fixture on purpose: without the guard this claim would otherwise
@@ -10818,10 +10877,10 @@ test('#2448 a second issue reference in a claim title is refused at --claim time
 // #3125. `--claim --objects` refused a valid claim whose writes were listed in a
 // different order from the admitted issue's (already sorted) writes.
 async function twoWriteAdmittedIo(){
-  const {outcomeEvent}=await import('./orchestrator-flow/outcome-lifecycle.mjs')
+  const {outcomeEvent}=await import('./db-flow/outcome-lifecycle.mjs')
   const {formatEventComment}=await import('./db-coordination-events.mjs')
   const {io}=admittedReviewIo()
-  const body=['```db-work-scope','status: ready','work_type: structural','route: shared-db-orchestrator','service_class: standard-application','change_type: migration','application_return_to: u2giants/example-app','live_assertion: authenticated create-and-read succeeds','generated_types: not-applicable','outcome_stage: entered','priority: 5','depends_on:','writes:','  - table core.zeta','  - table core.alpha','```'].join('\n')
+  const body=['```db-work-scope','status: ready','work_type: structural','route: claim-first','service_class: standard-application','change_type: migration','application_return_to: u2giants/example-app','live_assertion: authenticated create-and-read succeeds','generated_types: not-applicable','outcome_stage: entered','priority: 5','depends_on:','writes:','  - table core.zeta','  - table core.alpha','```'].join('\n')
   io.getIssue=()=>({number:41,state:'open',title:'ordered writes',body,createdAt:'2026-09-11T00:00:00Z'})
   io.getPrFiles=()=>[{filename:'supabase/migrations/20260911120000_example.sql',status:'added',content:'create table core.zeta(id bigint);create table core.alpha(id bigint);'}]
   io.getFileAt=()=> 'create table core.zeta(id bigint);create table core.alpha(id bigint);'
@@ -11429,7 +11488,7 @@ test('#2787: queue audit lists open issues once and prints the identical queue',
   const claim=claimBody({version:'20260924010101',objects:['table crm.x'],owner:'agent/a',branch:'a/branch',worktree:'C:/repos/a',expiresAt:new Date('2026-09-25T00:00:00Z')})
   const rows=[
     {number:1,title:'CLAIM: #2 crm.x',body:claim,created_at:'2026-09-20T00:00:00Z',labels:[{name:'db-claim'}],html_url:'u1'},
-    {number:2,title:'add crm.x',body:scope('status: ready\nwork_type: structural\nroute: shared-db-orchestrator\npriority: 10\nwrites:\n  - table crm.x'),created_at:'2026-09-20T00:00:00Z',labels:[{name:'db-work'}]},
+    {number:2,title:'add crm.x',body:scope('status: ready\nwork_type: structural\nroute: claim-first\npriority: 10\nwrites:\n  - table crm.x'),created_at:'2026-09-20T00:00:00Z',labels:[{name:'db-work'}]},
     {number:3,title:'docs thing',body:scope('status: ready\nwork_type: documentation\nroute: repo-maintenance\npriority: 40'),created_at:'2026-09-21T00:00:00Z',labels:[{name:'db-work'}]},
     {number:4,title:'unlabelled',body:'no scope',created_at:'2026-09-22T00:00:00Z',labels:[]},
     {number:5,title:'a pull request',body:'',created_at:'2026-09-22T00:00:00Z',labels:[],pull_request:{url:'x'}},
@@ -11466,8 +11525,8 @@ test('#2787: pull request files are read at most once per audit run',()=>{
 test('#2787: queue audit reads a shared merged pull request once and removes both authored issues',()=>{
   const now=new Date('2026-09-24T12:00:00Z')
   const rows=[
-    {number:2,title:'add crm.x',body:scope('ready','structural','shared-db-orchestrator',10,['table crm.x']),created_at:'2026-09-20T00:00:00Z',labels:[{name:'db-work'}]},
-    {number:3,title:'add crm.y',body:scope('ready','structural','shared-db-orchestrator',10,['table crm.y']),created_at:'2026-09-21T00:00:00Z',labels:[{name:'db-work'}]},
+    {number:2,title:'add crm.x',body:scope('ready','structural','claim-first',10,['table crm.x']),created_at:'2026-09-20T00:00:00Z',labels:[{name:'db-work'}]},
+    {number:3,title:'add crm.y',body:scope('ready','structural','claim-first',10,['table crm.y']),created_at:'2026-09-21T00:00:00Z',labels:[{name:'db-work'}]},
   ]
   const versions={2:'20260924010102',3:'20260924010103'}
   const run=(authored)=>{
@@ -11811,7 +11870,7 @@ test('#2998 CLI: a fully valid handoff clears every readiness check and reaches 
 // #3874: the orchestrator role is retired. Reviewer independence follows the
 // authoring session's declared engine, and `claim-first` is a structural route.
 import { authorEngineFromEnv as __authorEngineFromEnv, knownAuthorEngines as __knownAuthorEngines, CLAIM_FIRST_ROUTES as __CLAIM_FIRST_ROUTES, ROUTES_BY_WORK_TYPE as __ROUTES_BY_WORK_TYPE, QUEUE_ROUTES as __QUEUE_ROUTES } from './manage-migration-author-lanes.mjs'
-import { STRUCTURAL_ROUTES as __STRUCTURAL_ROUTES } from './orchestrator-flow/admission.mjs'
+import { STRUCTURAL_ROUTES as __STRUCTURAL_ROUTES } from './db-flow/admission.mjs'
 test('#3874 author engine is mandatory and fails closed', () => {
   assert.throws(() => __authorEngineFromEnv(undefined), /SHARED_DB_AUTHOR_ENGINE is not set/)
   assert.throws(() => __authorEngineFromEnv('   '), /SHARED_DB_AUTHOR_ENGINE is not set/)
@@ -11832,9 +11891,9 @@ test('#3874 the real GitHub io reads SHARED_DB_AUTHOR_ENGINE and refuses when it
   const saved = process.env.SHARED_DB_AUTHOR_ENGINE
   try {
     delete process.env.SHARED_DB_AUTHOR_ENGINE
-    assert.throws(() => githubIo.resolveOrchestratorEngine(), /SHARED_DB_AUTHOR_ENGINE is not set/)
+    assert.throws(() => githubIo.resolveReviewEngine(), /SHARED_DB_AUTHOR_ENGINE is not set/)
     process.env.SHARED_DB_AUTHOR_ENGINE = 'codex'
-    assert.equal(githubIo.resolveOrchestratorEngine(), 'codex')
+    assert.equal(githubIo.resolveReviewEngine(), 'codex')
   } finally {
     if (saved === undefined) delete process.env.SHARED_DB_AUTHOR_ENGINE; else process.env.SHARED_DB_AUTHOR_ENGINE = saved
   }
@@ -12834,4 +12893,28 @@ test('#4297 losing v2 verdict cannot publish after disposition consumed the leas
  io.atomicReviewRefs=changes=>{attempts++;io.refs.delete(io.leaseRef);atomic(changes)}
  assert.throws(()=>recordReviewVerdict(VERDICT_OPTS,io),error=>Boolean(error.verdictArtifactCreated?.confirmed===false))
  assert.equal(attempts,1);assert.equal([...io.refs.keys()].some(r=>r.startsWith('refs/db-review-verdicts/')),false)
+})
+
+test('#4365: the park note signs a Claude owner in signature form; --park alone is refused',()=>{
+  const id='250902fb-e85f-45d3-a62c-9c18cb217d1e'
+  const note=parkComment({claim:7,pr:9,lease:{branch:'b',version:'1',objects:[],owner:`claude-chat-${id}@hetz`}})
+  assert.match(note,new RegExp(`^Posted by Claude chat ${id} on hetz \\(owner of claim #7\\)`,'m'))
+  assert.match(parkComment({claim:7,pr:9,lease:{branch:'b',version:'1',objects:[],owner:'agent-7'}}),/^Posted by agent-7 \(owner/m)
+  const refused=refusalText(['--park'],memoryIo())
+  assert.equal(refused.code,2);assert.match(refused.text,/--park only applies to --release-claim/)
+})
+
+test('#4348 reviewer-budget PR file inventory follows pages and fails closed past the cap',async()=>{
+  const {ghPaginated,withReviewRequestBudget}=await import('./manage-migration-author-lanes.mjs')
+  const row=(i)=>({filename:`docs/f${i}.md`,status:'modified'})
+  const pages={1:Array.from({length:100},(_,i)=>row(i)),2:Array.from({length:12},(_,i)=>row(100+i))}
+  const seen=[]
+  const readJson=([,url])=>{seen.push(url);return pages[Number(/page=(\d+)$/.exec(url)[1])]??[]}
+  const rows=withReviewRequestBudget(()=>ghPaginated('repos/x/y/pulls/7/files?per_page=100',{readJson}),50,'test-op')
+  assert.equal(rows.length,112)
+  assert.deepEqual(seen,['repos/x/y/pulls/7/files?per_page=100&page=1','repos/x/y/pulls/7/files?per_page=100&page=2'])
+  const full=()=>Array.from({length:100},(_,i)=>row(i))
+  assert.throws(()=>withReviewRequestBudget(()=>ghPaginated('repos/x/y/pulls/7/files?per_page=100',{readJson:full}),50,'test-op'),/10-page file-inventory cap/)
+  assert.throws(()=>withReviewRequestBudget(()=>ghPaginated('repos/x/y/pulls/7/files?per_page=100',{readJson:()=>null}),50,'test-op'),/incomplete or malformed/)
+  assert.throws(()=>withReviewRequestBudget(()=>ghPaginated('repos/x/y/issues/7/labels?per_page=100',{readJson:full}),50,'test-op'),/reached 100 rows/)
 })

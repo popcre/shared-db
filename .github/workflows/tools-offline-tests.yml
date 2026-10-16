@@ -37,7 +37,7 @@ on:
     branches: [main]
   workflow_dispatch:
     # Replacement lane for a run no runner picked up (#2729). Leave empty for the default lane.
-    # Options must equal scripts/orchestrator-flow/runner-lanes.json (enforced by its tests).
+    # Options must equal scripts/db-flow/runner-lanes.json (enforced by its tests).
     inputs:
       lane:
         description: Free standard GitHub-hosted runner lane for a replacement run

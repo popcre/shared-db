@@ -13,6 +13,11 @@ declare
   v_stage2 integer;
   v_new integer;
   v integer;
+  base_prod integer;
+  base_lic integer;
+  base_sampling integer;
+  base_design integer;
+  base_shipping integer;
 begin
   -- Seed.
   if (select count(*) from plm.stage_list) <> 5
@@ -26,8 +31,8 @@ begin
      or (select count(*) from plm.stage where counts_toward_total) <> 10 then
     raise exception 'stage catalog seed counts are wrong';
   end if;
-  if exists (select 1 from plm.stage_list where version <> 1) then
-    raise exception 'seeded lists must start at version 1';
+  if exists (select 1 from plm.stage_list where version < 1) then
+    raise exception 'catalog versions must remain positive';
   end if;
   if (select maintainers from plm.stage_list where key = 'sampling') <> '{36,41}'::integer[] then
     raise exception 'sampling maintainers must be Yuchen (36) and Ilona (41)';
@@ -78,6 +83,14 @@ begin
     raise exception 'the five version triggers must call plm.stage_catalog_bump_version';
   end if;
 
+  -- Later migrations legitimately edit the seed. Verify exact trigger deltas
+  -- from the post-migration baseline, never reset optimistic-concurrency versions.
+  select version into base_prod from plm.stage_list where key='production';
+  select version into base_lic from plm.stage_list where key='licensing';
+  select version into base_sampling from plm.stage_list where key='sampling';
+  select version into base_design from plm.stage_list where key='design';
+  select version into base_shipping from plm.stage_list where key='shipping';
+
   -- Every trigger path bumps the owning list exactly once.
   select id into v_list from plm.stage_list where key = 'production';
   select id into v_lic from plm.stage_list where key = 'licensing';
@@ -94,7 +107,7 @@ begin
     values (v_stage, v_stage2, 'hard');                                               -- dependency insert
   delete from plm.stage_dependency where stage_id = v_stage;                          -- dependency delete
   delete from plm.stage where id = v_new;                                             -- stage delete
-  if (select version from plm.stage_list where id = v_list) <> 8 then
+  if (select version from plm.stage_list where id = v_list) <> base_prod + 7 then
     raise exception 'production list must be at version 8 after seven changes, found %',
       (select version from plm.stage_list where id = v_list);
   end if;
@@ -103,11 +116,13 @@ begin
   delete from plm.licensor_stage_option where licensor_name = 'Peanuts';                     -- 2 rows
   insert into plm.licensor_stage_option (licensor_name, stage_id)
     select 'contract-test', id from plm.stage where list_id = v_lic and applies_to = 'licensor_specific'; -- 2 rows
-  if (select version from plm.stage_list where id = v_lic) <> 7 then
+  if (select version from plm.stage_list where id = v_lic) <> base_lic + 6 then
     raise exception 'licensing list must be at version 7 after six option row changes, found %',
       (select version from plm.stage_list where id = v_lic);
   end if;
-  if exists (select 1 from plm.stage_list where key in ('design','sampling','shipping') and version <> 1) then
+  if (select version from plm.stage_list where key='design') <> base_design
+     or (select version from plm.stage_list where key='sampling') <> base_sampling
+     or (select version from plm.stage_list where key='shipping') <> base_shipping then
     raise exception 'unrelated lists must not be bumped';
   end if;
 
@@ -115,25 +130,25 @@ begin
   select id into v_new from plm.stage where list_id = (select id from plm.stage_list where key = 'sampling') and position = 2;
   insert into plm.stage_dependency (stage_id, depends_on_stage_id, kind)
     values (v_stage, v_new, 'soft');                                                  -- production depends on sampling
-  if (select version from plm.stage_list where key = 'sampling') <> 2
-     or (select version from plm.stage_list where id = v_list) <> 9 then
+  if (select version from plm.stage_list where key = 'sampling') <> base_sampling + 1
+     or (select version from plm.stage_list where id = v_list) <> base_prod + 8 then
     raise exception 'a cross-list dependency insert must bump both lists once';
   end if;
   update plm.stage_dependency set allowed_early_days = 2 where stage_id = v_stage and depends_on_stage_id = v_new; -- dependency update
-  if (select version from plm.stage_list where key = 'sampling') <> 3
-     or (select version from plm.stage_list where id = v_list) <> 10 then
+  if (select version from plm.stage_list where key = 'sampling') <> base_sampling + 2
+     or (select version from plm.stage_list where id = v_list) <> base_prod + 9 then
     raise exception 'a cross-list dependency update must bump both lists once';
   end if;
   update plm.stage_duration set duration = duration + 1
    where id = (select min(d.id) from plm.stage_duration d join plm.stage s on s.id = d.stage_id
                where s.list_id = (select id from plm.stage_list where key = 'design'));    -- duration update
-  if (select version from plm.stage_list where key = 'design') <> 2 then
+  if (select version from plm.stage_list where key = 'design') <> base_design + 1 then
     raise exception 'a duration update must bump its list once';
   end if;
   update plm.stage set list_id = (select id from plm.stage_list where key = 'shipping'), position = 50
    where id = v_stage2;                                                               -- stage moves lists
-  if (select version from plm.stage_list where key = 'shipping') <> 2
-     or (select version from plm.stage_list where id = v_list) <> 11 then
+  if (select version from plm.stage_list where key = 'shipping') <> base_shipping + 1
+     or (select version from plm.stage_list where id = v_list) <> base_prod + 10 then
     raise exception 'moving a stage between lists must bump both lists once';
   end if;
   delete from plm.stage_list where key = 'shipping';                                  -- list delete cascades

@@ -9,6 +9,7 @@ create table plm.prod_stage_option (
   updated_by integer null,
   updated_at timestamptz not null default now()
 );
+comment on column plm.prod_stage_option.updated_by is 'dflow.users.id of the internal editor, set by tracking API.';
 alter table plm.prod_stage_option enable row level security;
 revoke all on plm.prod_stage_option from anon, authenticated;
 grant select, insert, update, delete on plm.prod_stage_option to service_role;
@@ -21,7 +22,15 @@ update plm.stage s set tracker_position=v.position
 from (values ('tech_pack_done',1),('sample_start_date',2),('photos_done',3),('pps_done',4),
  ('buyer_approval_date',5),('material_done',6),('mass_prod_start_date',7),('assembly_start_date',8),
  ('actual_prod_complete',9),('packing_start_date',10),('qc_inspection_date',11),('actual_etd',12)) v(signal,position)
-where s.done_signal=v.signal;
+where s.done_signal=v.signal and s.shown_on_tracker;
 -- Bind actual licensing events for readers after maintainers rename a stage.
-update plm.stage s set done_signal=case s.position when 3 then 'concept_submitted' when 4 then 'concept_resubmitted' end
-from plm.stage_list l where s.list_id=l.id and l.key='licensing' and s.position in (3,4) and s.done_signal is null;
+update plm.stage s set done_signal=case s.name when 'Submission' then 'concept_submitted' when 'Re-Submission (1 Time)' then 'concept_resubmitted' end
+from plm.stage_list l where s.list_id=l.id and l.key='licensing' and s.name in ('Submission','Re-Submission (1 Time)') and s.done_signal is null;
+
+do $$
+begin
+ if (select count(*) from plm.stage where tracker_position is not null) <> 12
+    or (select count(*) from plm.stage where done_signal in ('concept_submitted','concept_resubmitted')) <> 2 then
+   raise exception 'stage catalog seed diverged; stop instead of guessing event bindings';
+ end if;
+end $$;

@@ -17,7 +17,7 @@ Albert explicitly instructed implementation of the fresh eight-issue continuatio
 
 [popcre/shared-db](https://github.com/popcre/shared-db) governs the shared Supabase structure used by Poppim, PopDAM, CRM and DesignFlow. Source captures and licensed rows belong in the approved private [licensor-source-data repository](https://github.com/u2giants/licensor-source-data). Public source, private source data, source approval, installed database behavior and actual business acceptance are different evidence domains.
 
-Read current [AGENTS](https://github.com/popcre/shared-db/blob/main/AGENTS.md), its current-workflow/claim/merge routers, the full [predecessor handoff (retired 2026-10-15; recover from git history at pre-#4323 main)](https://github.com/popcre/shared-db/commits/main/HANDOFF.d/2026-10-13T1649Z-edge-dev3-codex-eight-issues-preview-recovery.md) and this addendum. The predecessor retains its detailed six-kind plan, 127 typed FK paths, 261 original claim proposals and 29 future scenarios. Its section6.D is defective: it repeats FK rows instead of the ten non-FK handlers. The corrected ten paths and Licensor guard omission are recorded below. Do not delete the predecessor: unique full design/history remains there.
+Read current [AGENTS](https://github.com/popcre/shared-db/blob/main/AGENTS.md), its current-workflow/claim/merge routers, the full [predecessor handoff (retired 2026-10-15; recover from git history at pre-#4323 main)](https://github.com/popcre/shared-db/commits/main/HANDOFF.d/2026-10-13T1649Z-edge-dev3-codex-eight-issues-preview-recovery.md) and this addendum. The predecessor file was retired on 2026-10-15 (PR #4323); recover it from git history if needed. The predecessor retains its detailed six-kind plan, 127 typed FK paths, 261 original claim proposals and 29 future scenarios. Its section6.D is defective: it repeats FK rows instead of the ten non-FK handlers. The corrected ten paths and Licensor guard omission are recorded below. Do not delete the predecessor: unique full design/history remains there.
 
 ## 2. What was authorized and performed
 
@@ -231,5 +231,4 @@ Housekeeping actualreport-only:14live/25mergedcandidate/50unknownworktrees;8live
 Continuation prompt: “Resume the eight-issue licensing work from this handoff. Use your actual session identity to accept root's verified4152readyreceipt, requalify exact frozen4206/eeda andmerged4276registry, then performguarded4206merge,trueproducerprovenance/exactmainrisk/historicalno-writerebind/automaticpromotion/live2336proof before2358source and29cases/consumerdelivery. Preserveallotherexistingcards,pausedwork,originalpaid/sourcecustodyandversion/objectprotection; donotaskAlbertfortechnicalsteps.”
 
 Posted by Codex chat01a13649-4c56-73d1-a886-9ab5e032769d on edge-dev3.
-
 

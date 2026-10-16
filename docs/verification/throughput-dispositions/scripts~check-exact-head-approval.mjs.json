@@ -15,13 +15,6 @@
       "line_sha256": "fb2a8eb4b8e76020f368bb491c9688e2039fdc2d0455b37a573016bef29780f0",
       "disposition": "excluded",
       "reason": "New call site from owner no-reviewer rule (2026-10-16); excluded pending re-review. Owner policy: skip merge-gate assignment when no reviewers are working."
-    },
-    {
-      "site": "scripts/check-exact-head-approval.mjs:80",
-      "semantic_key": "scripts/check-exact-head-approval.mjs:fb2a8eb4b8e76020f368bb491c9688e2039fdc2d0455b37a573016bef29780f0:context-fe624d7c69b1d2af828d6f8d147bd2f8ca881d9e27749ef94fb9333173b02147",
-      "line_sha256": "fb2a8eb4b8e76020f368bb491c9688e2039fdc2d0455b37a573016bef29780f0",
-      "disposition": "excluded",
-      "reason": "Comment explaining fail-closed owner no-reviewer policy loading; the word missing describes an absent policy file, not a database object."
     }
   ]
 }

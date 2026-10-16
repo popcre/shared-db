@@ -79,9 +79,10 @@ Parameters, from the live spec (`/EhpApi/v2/api-docs`, API v1.5.1) and confirmed
 2026-08-14. Useful for spot-checking one order without scanning a window.)
 
 > ### ⚠️ Hard 7-day window cap (since 2026-08-17) — lifted for `/orderHistory` on 2026-10-16 (a 2019-01-01..2099-12-31 window was accepted); still assumed for `/prodHistory` (unprobed)
-> `fromDate` and `toDate` **must be within 7 days, inclusive**, on **both** endpoints. This is
-> ColdLion's own limit, set deliberately at our request so a bulk pull cannot overload them.
-> A wider window is refused outright — no partial data, no truncation.
+> Until 2026-10-16, `fromDate` and `toDate` **had to be within 7 days, inclusive**, on **both**
+> endpoints (ColdLion's own limit, set at our request so a bulk pull cannot overload them; a wider
+> window was refused outright). Since 2026-10-16 `/orderHistory` accepts wide windows; treat
+> `/prodHistory` as still capped until probed.
 >
 > Verified: `2026-01-01..2026-01-07` → **HTTP 200**. `2026-01-01..2026-01-08` → **refused**.
 > A full month → **refused**. A single day (`from == to`) → **HTTP 200**, so equal dates are fine.

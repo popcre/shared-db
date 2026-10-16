@@ -35,7 +35,7 @@ import { COMPANY_CODE } from "./lib/scopes.mjs";
 import { proveTarget, queryRows, runSql } from "./lib/db.mjs";
 import { stageIntakeWindow } from "./lib/order-intake-run.mjs";
 import { buildDecodeSql } from "./lib/order-intake-decode.mjs";
-import { buildIntakeObjectAssertionSql } from "./lib/order-intake-stage.mjs";
+import { buildHeaderTrackReadinessSql, buildIntakeObjectAssertionSql } from "./lib/order-intake-stage.mjs";
 import {
   trailingWindows,
   forwardWindows,
@@ -115,6 +115,12 @@ export function foldWindowResult(summary, result) {
 export function missingObjectsFromRows(rows) {
   const [row] = Array.isArray(rows) ? rows : [];
   return row?.[0] ?? "";
+}
+
+/** The readiness query's single boolean cell. */
+export function headerTracksAdmitted(rows) {
+  const [row] = Array.isArray(rows) ? rows : [];
+  return row?.[0] === "t";
 }
 
 async function main() {
@@ -213,7 +219,12 @@ async function main() {
   }
   // Header tracks: every order CREATED or MODIFIED in the lookback with a start date in
   // 2019-01-01..2099-12-31 (ColdLion /orderHistory header filters, 2026-10-16).
-  for (const track of HEADER_TRACKS) {
+  // Skipped, loudly, only while the database's track domain predates them.
+  const headerTracksReady = options.dryRun || headerTracksAdmitted(queryRows(buildHeaderTrackReadinessSql(), {}));
+  if (!headerTracksReady) {
+    console.log("::warning::header tracks skipped: coldlion.intake_window_state track domain does not admit 'created'/'modified' yet (migration 20261016214635 not applied to this database)");
+  }
+  for (const track of headerTracksReady ? HEADER_TRACKS : []) {
     if (limitReached) break;
     await scan(headerTrackWindow(asOf, track), track);
     if (limitReachedNow()) limitReached = true;

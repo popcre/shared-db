@@ -15,6 +15,10 @@ import {
   FORWARD_HARD_CAP_MONTHS,
 } from "./coldlion-landing/lib/order-intake-windows.mjs";
 import { windowContaining } from "./coldlion-landing/lib/grid.mjs";
+import { headerTrackWindow as headerWindowUnderTest } from "./coldlion-landing/lib/order-intake-windows.mjs";
+import { buildPageUrl as buildUrlUnderTest, requestParams as requestParamsUnderTest, headerFilterEntries as filterEntriesUnderTest } from "./coldlion-landing/lib/http.mjs";
+import { buildIntakeStageSql as stageSqlUnderTest, buildIntakeFailureSql as failureSqlUnderTest, buildHeaderTrackReadinessSql } from "./coldlion-landing/lib/order-intake-stage.mjs";
+import { headerTracksAdmitted } from "./coldlion-landing/order-intake.mjs";
 
 function collectForward(asOfIso) {
   return [...forwardWindows(asOfIso)];
@@ -138,10 +142,6 @@ test("the stop rule never fires mid-month when windows within one month stage ro
   assert.equal(closesStagedMonth(octB, nov) && forwardStopReached(counters), false);
 });
 
-import { headerTrackWindow as headerWindowUnderTest } from "./coldlion-landing/lib/order-intake-windows.mjs";
-import { buildPageUrl as buildUrlUnderTest, requestParams as requestParamsUnderTest, headerFilterEntries as filterEntriesUnderTest } from "./coldlion-landing/lib/http.mjs";
-import { buildIntakeStageSql as stageSqlUnderTest, buildIntakeFailureSql as failureSqlUnderTest } from "./coldlion-landing/lib/order-intake-stage.mjs";
-
 function daysBetween(a, b) {
   return (Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000;
 }
@@ -218,4 +218,14 @@ test("only the four vendor header filters may be sent", () => {
   assert.throws(() => requestParamsUnderTest(scope, bad, 0), /unsupported/);
   assert.throws(() => filterEntriesUnderTest({ filters: { page: "9" } }), /unsupported/);
   assert.deepEqual(filterEntriesUnderTest({ from: "2026-10-01", to: "2026-10-07" }), []);
+});
+
+test("header tracks run only when the track domain admits them", () => {
+  const sql = buildHeaderTrackReadinessSql();
+  assert.match(sql, /conname = 'coldlion_intake_window_state_track_domain'/);
+  assert.match(sql, /'%''created''%'/);
+  assert.match(sql, /'%''modified''%'/);
+  assert.equal(headerTracksAdmitted([["t"]]), true);
+  assert.equal(headerTracksAdmitted([["f"]]), false);
+  assert.equal(headerTracksAdmitted([]), false);
 });

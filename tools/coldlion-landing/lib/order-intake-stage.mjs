@@ -454,6 +454,25 @@ export const INTAKE_REQUIRED_CONSTRAINTS = Object.freeze([
   },
 ]);
 
+/**
+ * Read-only: does coldlion.intake_window_state's track domain admit the header
+ * tracks yet (migration 20261016214635, issue #4405)? Returns one row, "t" or "f".
+ * The code can merge before that migration reaches a database; until it does the
+ * header tracks are skipped with a warning instead of aborting the whole poll on a
+ * check violation the failure recorder would hit too.
+ */
+export function buildHeaderTrackReadinessSql() {
+  return (
+    "select coalesce(bool_or(pg_catalog.pg_get_constraintdef(c.oid) like '%''created''%'" + NL +
+    "                    and pg_catalog.pg_get_constraintdef(c.oid) like '%''modified''%'), false)" + NL +
+    "  from pg_catalog.pg_constraint c" + NL +
+    "  join pg_catalog.pg_class r on r.oid = c.conrelid" + NL +
+    "  join pg_catalog.pg_namespace n on n.oid = r.relnamespace" + NL +
+    " where n.nspname = 'coldlion' and r.relname = 'intake_window_state'" + NL +
+    "   and c.conname = 'coldlion_intake_window_state_track_domain';"
+  );
+}
+
 export function buildIntakeObjectAssertionSql() {
   const tableRows = INTAKE_REQUIRED_TABLES.map((name) => {
     const parts = name.split(".");

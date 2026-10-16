@@ -20,7 +20,7 @@ None pending from this session. The owner decided: Prod PO Date is the fourth fa
 - **PR #4349 (state handoff) and the correction PRs #4340, #4342, #4347 are MERGED.**
 - **PR #4346 is still OPEN** (owner-label fix; head `392eb6da`; branch `claude/accept-claude-chat-owner-label`). Its stepfun approval was never recorded. It predates main, so it needs a rebase and a fresh review. https://github.com/popcre/shared-db/pull/4346
 - **Issues #4343 (for #4344) and #4345 (for #4346)** are open. #4343 can probably close now that #4344 is merged; confirm first.
-- **The database work has been taken over by a Codex session** (chat `01a1402d-8c8d-79f3-945e-2713340e13d6` on edge-dev3). It moved the window work to PR #4360 (head `9c088585`), claim #4359 and migration `20261015201243`. Its status on #4336 is blocked by a review-budget provenance refusal. Its own continuation prompt is in its comment on #4336: https://github.com/popcre/shared-db/issues/4336#issuecomment-6200330529 is ours; theirs is the latest comment on the issue. Its handoff is PR #4369: https://github.com/popcre/shared-db/pull/4369 . **Do not start a second database claim for this work while #4359 is open.**
+   Its continuation prompt is in its latest comment on #4336 (the comment beginning "Blocked delivery / preserved recovery record"). Its handoff is PR #4369: https://github.com/popcre/shared-db/pull/4369 . **Do not start a second database claim for this work while #4359 is open.**
 
 ## 2. The app side (u2giants/popdam3)
 

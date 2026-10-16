@@ -1657,6 +1657,64 @@ class BehavioralSidecarTests(unittest.TestCase):
         self.assertIn("routine:api.db_data_admin_licensor_property_tree(text,boolean,text,integer)", objects)
         self.assertIn("routine:plm.apply_licensing_support_operation(uuid,text,jsonb)", objects)
 
+    def test_licensing_forward_body_hash_is_bound_to_the_matching_ledger_state(self):
+        expression = CATALOG_CONTRACTS["licensing_support_forward_v2"]
+        version = "20261016003614"
+        old_body = "3097938f8dad64d35f35931967ef3b67"
+        new_body = "a5354f0ae3337cf3636473be4711351a"
+        old_branch = (
+            f"not exists(select 1 from supabase_migrations.schema_migrations where version='{version}')"
+            f"\n      and exists(select 1 from pg_proc p where p.oid=to_regprocedure("
+            "'plm.licensing_consolidation_plan_immutable()') and md5(p.prosrc)='"
+            + old_body + "')"
+        )
+        new_branch = (
+            f"exists(select 1 from supabase_migrations.schema_migrations where version='{version}')"
+            f"\n      and exists(select 1 from pg_proc p where p.oid=to_regprocedure("
+            "'plm.licensing_consolidation_plan_immutable()') and md5(p.prosrc)='"
+            + new_body + "')"
+        )
+        self.assertIn(old_branch, expression)
+        self.assertIn(new_branch, expression)
+        # The catalog contract retains its independent role/owner/volatility
+        # metadata checks; the conditional applies only to the trigger body.
+        self.assertIn("p.provolatile::text=r.volatility", expression)
+        self.assertIn("p.prosecdef=r.definer", expression)
+        self.assertIn("has_function_privilege('service_role'", expression)
+
+        def accepted(ledger_present, body_md5):
+            return (not ledger_present and body_md5 == old_body) or (
+                ledger_present and body_md5 == new_body
+            )
+
+        self.assertTrue(accepted(False, old_body))
+        self.assertTrue(accepted(True, new_body))
+        self.assertFalse(accepted(False, new_body))
+        self.assertFalse(accepted(True, old_body))
+        self.assertFalse(accepted(True, "0" * 32))
+
+    def test_licensing_forward_sidecar_and_live_proof_require_exact_new_pins(self):
+        import hashlib
+
+        version = "20261016003614"
+        migration = REPO / "supabase/migrations" / f"{version}_licensing_recovery_timestamp.sql"
+        expected_sha = hashlib.sha256(migration.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+        checks = load_behavior_sidecars(REPO, {version: migration}, [version])
+        self.assertEqual(len(checks), 1)
+        self.assertEqual(checks[0]["contract"], "licensing_support_forward_v2")
+        self.assertEqual(checks[0]["migration_sha256"], expected_sha)
+
+        sidecar = json.loads((REPO / "scripts/production-verification-sidecars" / f"{version}.json").read_text())
+        self.assertEqual(sidecar["migration_sha256"], expected_sha)
+        registry = json.loads((REPO / "config/production-verification-sidecar-registry.json").read_text())
+        self.assertEqual([row for row in registry["sidecars"] if row["version"] == version],
+                         [{"version": version, "issue": 2336}])
+
+        live = (REPO / ".github/live-proofs/2336.sql").read_text()
+        self.assertIn(f"where version='{version}'", live)
+        self.assertIn("md5(prosrc)='a5354f0ae3337cf3636473be4711351a'", live)
+        self.assertIn("('plm.licensing_consolidation_plan_immutable()','3097938f8dad64d35f35931967ef3b67')", live)
+
     def test_catalog_contract_is_named_hash_bound_and_select_only(self):
         def change(sidecar):
             sidecar["checks"] = [{

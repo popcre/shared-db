@@ -37,7 +37,7 @@ below carry everything a new implementing session needs.
 | P1 reviewer waiting already pre-lock | Treat approval evidence re-verification as live checks; no invented reviewer wait stage. | step4 / actual step inventory |
 | P2 freeze timing | Freeze checked on acquisition; production interlock preserves critical protection. | step6 / baseline |
 | P3 duplicate module | No `release-independence.mjs`; reuse strict freshness module per #4039. | step6 |
-| P4 release time source | Use actual Actions step/acquire/release timing, not an assumed durable ref-delete timestamp. | step1 |
+| P4 release time source | Use actual Actions step/acquire/release timing, not an assumed durable ref-delete timestamp. | §3 |
 | P5 tool version | Record the installed psql version in preparation as tool identity; no unexpected install under hold. | step4 |
 
 ## Debate positions sent for follow-up
@@ -59,8 +59,33 @@ provider-token root cause. One ordinary exact-head, approved requeue is the
 bounded operational repair; permanent identity changes need their own reviewed
 configuration inputs, not a guessed new credential.
 
-Follow-up debate outcome is not yet recorded. The next entry must report Muse's
-actual response, disagreement/concession and exact revised source identity; no
-approval is implied by this draft ledger.
+## Round 2 — completed October 16, 2026, 10:59 AM EDT
+
+Muse reviewed source `73e5f7949c4c3d675974a59a8789b5393e420a3b` in the SAME
+persistent conversation. Native completion verified session identity and response.
+Its actual assessment: all six original blockers architecturally resolved; every
+prior disposition accepted, with M7/P1 partial because stale sentences remained.
+It agreed with early-freeze-only admission, conservative absent-preimage handling,
+receipt evidence without new approval authority, and the research-gated recovery
+split. It did not claim that an opaque CLI can qualify fencing; NO-GO remains a
+real possible outcome. Its bounded new punch list is addressed below.
+
+| Round-2 finding | Root disposition and correction |
+|---|---|
+| N1 exact-key activation reader | Accepted. Compatible reader code first, old running versions drained, then optional default-false config field. Exact legacy-or-extended schemas only; all existing checks preserved. §8.1F/step6/tests. |
+| N2 acquisition freshness semantics | Accepted. Explicit exact-match→strict-tail relaxation ONLY during recognized activated early freeze; all workflow production gates aligned in that case. Outside it preserve existing acquisition and caller modes. Preview recovery intentionally excluded. step6/tests. |
+| N3 dependency inversion | Accepted. Step8a after2 and before4–5; step3 independently after1. PhaseB and individual dependencies now explicit. |
+| N4 pre-prepared crash prover | Accepted conservative correction. Qualified backend-idle observation via8c/8b GO, otherwise retain lease with a named blocker. Terminal run or absent intent alone never clears it. §8.1B/tests. |
+| N5 proof-kind ambiguity | Accepted. Success command-exit/post-state attestation distinct from recovery backend-termination observation; neither substitutes for the other. §8.1A/tests. |
+| N6 drift watcher mechanics | Accepted. Existing no-DB controller observes exact dispatched attempt within bounded budget, validates strict trusted refusal artifact/marker, uses one chain-bound redispatch. New run collects baseline. Nonterminal waits owned; manual path reuses native helper. §8.1D/tests. |
+| N7 repair host/once-only mechanics | Accepted. Calling bounded waiter or separate unprotected observation job; native normal dequeue plus exact-head normal enqueue; one create-only repair claim under coordination mutex, ambiguous results reconcile without a second repair. §8.1E. |
+| N8 stale superseded sentences | Accepted. Corrected Git evidence transport, existing freshness test suite, already-outside approval waits, qualified-fence wording and early-freeze exception. |
+| N9 slow reads under mutex | Accepted. 30-second total/two-attempt bounded fresh reads; immutable prefetch outside, timeout refuses and retains stage lease. step8c/tests. |
+| N10 deletion invariant | Accepted. Audit namespace excluded from all janitors until separately reviewed retention; explicit deletion-selector regression. §8.1A/tests. |
+| N11 ledger pointers | Accepted. P4 points to§3; P1/M7 now corrected across the full plan. |
+
+No unresolved business choice. The next same-session turn must verify these actual
+corrections and any remaining contradictions before publication. Research GO and
+all ten runtime implementation outcomes remain unproved and open.
 
 Posted by Codex chat 01a144d8-b318-7ed0-af97-e852be49d231 on hetz

@@ -38,10 +38,10 @@ phase boundaries, current source evidence, delivery requirements and self-audit.
 
 ## 3. Current state
 
-This session produced only the plan, this new handoff and declarative discovery
-links. Publication branch: [codex/shared-release-holds-plan](https://github.com/popcre/shared-db/tree/codex/shared-release-holds-plan).
-At handoff drafting, these documentation changes are local; the publishing session
-must verify push and normal merge before reporting publication complete. No code
+Original planning publication merged through [PR4393](https://github.com/popcre/shared-db/pull/4393)
+as `6669538515a8a5813887e9fa98eb422682f9ca4b`. This revision changes the plan,
+this same owned handoff and the linked debate ledger only. Revision publication
+is not yet verified; re-check GitHub before reporting it complete. No code
 has changed, no release behavior is activated, no migration/deploy has occurred.
 The plan's implementation STATUS remains all open after publication.
 
@@ -112,9 +112,9 @@ gives access boundaries; §10 gives exact local regressions.
 
 ## 9. Risks, questions and final audit
 
-No outstanding business question. Engineering unknowns: minimal durable receipt
-storage, exact writer-connection fencing semantics and complete dependency closure.
-Plan steps 1–2 set the criteria. If trustworthy fencing cannot be demonstrated,
+No outstanding business question. Receipt transport, cleanup, admission and
+closure architecture are now chosen in the revised plan. Actual writer-connection
+fencing remains experimentally unproved; step8b defines its GO/NO-GO criteria. If trustworthy fencing cannot be demonstrated,
 keep safe recovery blocked; do not silently substitute auto-expiry.
 
 Audit answers:
@@ -132,7 +132,7 @@ Posted by Codex chat 01a144d8-b318-7ed0-af97-e852be49d231 on hetz
 
 ## Design revision after substantive Muse critique — October 16, 2026 EDT
 
-The original plan publication merged as66695385. Muse subsequently found six
+The original plan publication merged as `66695385`. Muse subsequently found six
 implementation-design blockers; safe publication was not feasibility approval.
 The owner requested corrections and another Muse debate. Revised plan §8.1
 chooses receipt/quarantine/cleanup, drift, event-liveness and rollout contracts;
@@ -140,7 +140,12 @@ step6 adopts #4039 without permitting merges under a production lease; step8
 splits buildable safety fixes from an explicitly gated fencing experiment.
 [Debate ledger](../docs/investigations/shared-release-holds-design-debate.md)
 contains all finding dispositions, substantive disagreements and follow-up outcome.
-No runtime feature is implemented. Next gate: continue the existing named Muse
-conversation and record its actual verdict before publishing this revision.
+Muse round2 completed at10:59 AM EDT over source `73e5f794`: all six original
+blockers resolved, with a bounded new punch list. The plan and ledger now address
+N1–N11, including reader-before-config rollout, freeze-conditional freshness,
+8a dependency order, distinct termination evidence, bounded drift/event repair
+and conservative crash cleanup. No runtime feature is implemented. Next gate:
+same-session verification of these corrections, then exact-head publication review
+and normal PR merge; all implementation/live acceptance remains open on #3779.
 
 Posted by Codex chat 01a144d8-b318-7ed0-af97-e852be49d231 on hetz

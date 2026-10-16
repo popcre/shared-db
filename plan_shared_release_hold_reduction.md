@@ -180,7 +180,9 @@ group remains.
 indirect dependencies, generated inputs, policy and queued candidates can change.
 - Restore revoked statuses to success: rejected; only the protected admission path
 can grant fresh authority. Reuse the existing pending restoration protocol.
-- Build a second lock service, scheduler or retry loop: rejected; reuse native
+The #4039-shaped exception freshly admits strict inert prose during the early
+qualification freeze only; all merges still block during the production lease.
+- Build a second lock service, scheduler or unbounded retry loop: rejected; reuse native
 lease, queue and recovery machinery. Do not reset reviewer budgets or delete refs.
 
 These are design rejections, not claims that experimental fixes were deployed.
@@ -232,7 +234,12 @@ manifest digest BEFORE launching it. All compliant writers must obey that orderi
 
 The terminal receipt binds the prepared/write-intent ref SHAs, the exact same
 identity, command exit/result, complete post-ledger inventory/digest, catalog
-verification outcome/digest, writer termination proof and mandatory check results.
+verification outcome/digest, path-specific writer completion evidence and mandatory check results.
+On ordinary success this means launched-command exit plus bound post-state
+verification, not independent backend-death observation. Recovery instead requires
+8c-qualified backend termination evidence. A success receipt cannot substitute for
+that observation in takeover, and a backend-idle observation alone cannot prove
+a successful apply. Schemas distinguish these two evidence kinds explicitly.
 Only `verified` is releasable after a write; negative/unknown results are diagnostic,
 not successful terminal authority. Consumers verify actual trusted producer run,
 workflow code identity, source/target and generation, immutable binding, current
@@ -244,7 +251,9 @@ not manufacture verification or erase trusted completed-step evidence.
 Create-only publication must read back the exact commit+canonical digest. Never
 hand-create evidence as an operator shortcut. Git refs retain evidence until an
 explicit separately reviewed retention policy exists; verbose Actions artifacts
-retain their current policy. Freeze TTL never expires operation evidence. Normal
+retain their current policy. Freeze TTL never expires operation evidence. Existing and future janitors must
+exclude `refs/db-release-evidence/*` from deletion, pruning and lease cleanup; add
+a deletion-selector guard test before introducing the namespace. Normal
 retry repeats the same exact payload/ref; changed payload refuses and investigates.
 Receipt I/O retries are capped at three attempts/90 seconds total; exhausted or
 unreadable readback retains protection and records the exact unresolved state.
@@ -270,7 +279,10 @@ mutex-safe release or one qualified generation takeover; never delete refs manua
 or replay an applied migration. Native grace alone is not writer termination.
 
 Crash before prepared receipt: no compliant writer has permission to launch;
-prove trusted code/run/attempt ordering and no writer/child before safe release.
+prove trusted code/run/attempt ordering AND backend-idle through the 8c-qualified
+collector chain before safe recovery release. That collector depends on 8b GO;
+without qualified observation retain the lease with the named visibility blocker.
+Terminal job status or absence of a write-intent alone never proves no writer.
 Crash after prepared/write-intent but before terminal: re-derive the full result
 from prepared baseline, immutable source/allowlist and fresh ledger/catalog and
 termination observations; a missing verbose artifact is not an automatic refusal.
@@ -305,14 +317,33 @@ no new background scheduler or false "operation failed" claim.
 **D. Bounded checkout drift policy is refuse-and-redispatch, not rebuild-under-hold.**
 Any prepared/live ledger mismatch refuses before apply and releases only if the
 cleanup table proves no writer started. The owning automatic-promotion controller
-may prepare and redispatch once using a newly collected baseline, with the same
-existing admission/risk/target checks. A second drift stops automatic retries,
+may redispatch once with the same approved source/allowlist inputs and existing
+admission/risk/target checks. The NEW run collects its fresh live baseline; the
+controller holds no database credential and never collects it itself. A second drift stops automatic retries,
 records the causal competing run/source and owner on the same issue, and requires
 bounded serialized requalification through the normal workflow. It does not create
 a reservation while waiting, repeat a paid review automatically or loop forever.
 Reusable tool installations and immutable selected content may be cached; live
 ledger, target, approvals/revocation and required checks are always refreshed.
 No SQL is rebuilt or retried under the hold merely to avoid a refusal.
+
+Extend the existing `automatic-production-promotion` controller, currently
+fire-and-forget, with a bounded dispatched-run observer (ten minutes within its
+15-minute job budget, outside all database/protected-merge concurrency). Persist
+its exact dispatch run ID/attempt. Before refusing for ledger drift, the child
+emits `preapply_refusal=ledger_drift` and a strict, public-safe
+`release-preapply-refusal.json` diagnostic artifact binding source, target,
+allowlist, run/attempt and `write_started=false`; missing/tampered evidence means
+unknown, not retry. The observer authenticates the unique artifact/digest and
+trusted producing step, terminal conclusion and no-write cleanup evidence, then
+uses the existing dispatch helper once with a bound `drift_retry=1` chain marker.
+R2 cannot dispatch R3; concurrent observers share the native create-only attempt
+record. A nonterminal run at the observer deadline is recorded on the same issue
+with its exact owner/run; no cancellation, lock or speculative redispatch. The
+calling coordinator resumes observation through the existing bounded waiter.
+For the manual `dispatch-production-apply.mjs` path, that coordinator re-invokes
+the same helper once after the same qualified drift refusal; the script does not
+invent a database-bearing watcher. Other refusals never trigger this retry.
 
 **E. Admission liveness is an explicit outcome, not an assumed side effect.**
 After guarded queue admission releases its short merge protection, use the existing
@@ -330,7 +361,24 @@ normal dequeue/requeue of THIS approved PR via the already-authorized authentica
 CLI/app identity, after rechecking head, current compatible main, durable approval,
 required statuses, route/collisions/freeze and policy. No administrator merge,
 status fabrication, workflow/check disablement or foreign queue removal. Verify
-actual new-group jobs start. If re-admission needs fresh guarded authority, run
+actual new-group jobs start. The existing calling coordinator runs `ai-pr-wait`
+for observation; automatic callers use a separate trailing observation job with
+no protected-job concurrency and no database credential. Never leave the guarded
+job occupying its scheduling slot for this wait, including before step3 lands.
+
+For repair, re-prove the exact PR/source and original admission-run chain under
+the existing coordination mutex (not a shared release lease). Create and read
+back one immutable `queue-repair` claim under that admission's merge-operation
+evidence prefix before acting; extend §8.1A's strict suffix allowlist for it.
+It binds PR/head/original admission/group and the repairing identity. All observers
+share that key; an existing claim allows read-only outcome reconciliation, never
+a second dequeue after an ambiguous attempt. Release the coordination mutex
+before waiting on checks. Invoke GitHub's normal `dequeuePullRequest(input:{id})`
+with the freshly read PR node ID; re-read head and all qualification inputs, then
+use `gh pr merge --merge --match-head-commit <approved-head> --auto <PR>` through
+the existing authorized identity/guarded route. Changed head or unclear dequeue
+result parks the attempt for reconciliation; never remove a foreign PR or repeat
+repair blindly. Record actual new-group/job identity in the same repair evidence. If re-admission needs fresh guarded authority, run
 that workflow first; old status never substitutes for changed-head qualification.
 If the configured dispatch identity cannot start downstream checks, keep the PR
 parked and record the exact platform/identity blocker; no new credential or role
@@ -343,9 +391,11 @@ and peers, and source7139d6e7 merged as66695385. This is an observed signature,
 not proof of a permanent root cause. Add deterministic suppressed-event, stale-group,
 duplicate-repair and concurrent-head-change tests before admission refactoring.
 
-**F. Rollout/rollback order is fixed.** First land backward-compatible schemas,
-mutex-safe cleanup and acquisition identity outputs; then upgrade every writer
-and reader/assertion; then qualify the fencing experiment and strict-tail shadow
+**F. Rollout/rollback order is fixed.** First land backward-compatible reader/parser
+code and mutex-safe cleanup/acquisition identity outputs, with no new config field
+or receipt producer yet. In particular upgrade the exact-key activation reader
+before changing its record. Then land the compatible schemas/optional config field
+(default false), and upgrade every writer/receipt producer and assertion; then qualify the fencing experiment and strict-tail shadow
 mode; activate only reviewed, compatible routes with no old active writers and
 all prior queue groups drained or revalidated. Use existing configuration and
 trusted-main parsing, not a new switching service. Staged readers never imply
@@ -369,9 +419,10 @@ against a new unrecognized receipt. Preserve all failed/ambiguous evidence.
 AGENTS, the current workflow router and this STATUS. On #3779 record explicit
 acceptance for this bounded outcome; check #3781/#3397/#3919 and active PRs for
 shared-file owners. Coordinate edits rather than rewriting another branch. Use
-`runner-lanes.mjs` and `throughput-report.mjs` to distinguish queued, preparing,
-locked, applying, verifying, reporting and recovered states. Extend the existing
-report with run/attempt, stage kind, owner, generation, source/manifest digests and
+the existing `queue-hygiene-report.mjs` collector and Actions step/run evidence
+to distinguish queued, preparing, locked, applying, verifying, reporting and
+recovered states; `throughput-report.mjs` formats collected data only, while
+`runner-lanes.mjs` only routes runner labels. Extend the existing report with run/attempt, stage kind, owner, generation, source/manifest digests and
 acquire/release times; missing times are unknown, not zero. Save public-safe baseline
 under `docs/verification/shared-release-holds/`; raw logs remain private.
 **Gate:** complete timelines from available recent normal/failed runs reproduce
@@ -386,14 +437,19 @@ Preparation binds repo, PR, exact head/base, policy/tool/sidecar digests, ordere
 migration allowlist and contents, target identity, producer run/attempt, review
 inputs and expected ledger. It grants no write authority. The terminal receipt
 binds lease owner/generation, actual target, before/after ledgers, applied contents,
-verification result and remote-writer termination. Strict schemas reject unknown
-fields/versions. Write a minimal durable receipt through the established trusted
-artifact/evidence path and read it back before releasing; do not invent an unsigned
+verification result and the path-specific completion/termination evidence in §8.1A. Strict schemas reject unknown
+fields/versions. Write the minimal durable receipt through §8.1A's chosen immutable coordination
+Git transport and read it back before releasing; do not invent an unsigned
 local JSON as authority. Dry-run paths must not create refs or receipts.
 **Gate:** named adversarial tests below pass; tampered or cross-run evidence refuses.
 Dependency: step 1. Cut point: baseline/contracts review; re-read phases B–D.
 
-### Phase B — shorten occupancy (steps 3–5)
+### Phase B — shorten occupancy (steps 3–5, with 8a prerequisite)
+
+Execute independently specified step8a after step2 and BEFORE steps4–5. Its
+backward-compatible release/identity work does not depend on step6, 8b or 8c.
+Step3 remains independently buildable after step1. Numbering groups the recovery
+family, not a requirement to postpone its foundational safety work until phaseC.
 
 **3. Split merge preparation from the protected merge job.** In
 `.github/workflows/guarded-migration-merge.yml`, remove global scheduling from the
@@ -424,8 +480,9 @@ in preparation; approval/environment waiting is already outside the job-level ho
 so do not claim a new reviewer-wait optimization.
 **Gate:** `tool_setup_precedes_stage_acquisition`,
 `ledger_drift_after_preparation_refuses` and target/approval-race tests pass;
-actual run shows no install/download/reviewer wait while held.
-Dependency: step 2; steps 3–4 can be developed independently only if owners and
+actual run shows tool setup/download before acquisition; existing approval and
+environment waits remain outside the hold, without claiming newly removed review work.
+Dependency: steps 2 and 8a; steps 3–4 can be developed independently only if owners and
 files do not collide, with one serialized integrator for shared manager changes.
 
 **5. Implement §8.1 B–C cleanup and early release.** Reorder
@@ -444,7 +501,7 @@ an open evidence-upload obligation on #3779 if the large report is missing.
 `cancellation_at_every_boundary_preserves_single_owner`, and
 `restore_only_this_runs_revocations_to_pending` pass. Demonstrate idempotent
 cleanup and clear distinction between operation success and reporting failure.
-Dependencies: steps 2 and 4. Cut point: review and accept short-hold behavior
+Dependencies: steps 2, 4 and 8a. Cut point: review and accept short-hold behavior
 before introducing narrower admission or recovery.
 
 ### Phase C — narrow scope and recover safely (steps 6–8)
@@ -483,9 +540,20 @@ repository-maintenance authorization; actual queue-group validation and final
 `production-apply-review-evidence.yml`; `production_apply_review_evidence.py`;
 `production-catalog-verification-recovery.yml`; producer/risk checks; train
 candidate authorization, dispatch and partial recovery. Each consumes the same
-strict predicate and fixed source S, ordered migration versions V, producer/policy
-identity and candidate attempt; main T may advance only through the verified
-strict prose delta. Never substitute T for approved S.
+strict predicate WHEN the recognized, activated early qualification freeze exists,
+with fixed source S, ordered migration versions V, producer/policy identity and
+candidate attempt; main T may advance only through the verified strict prose
+delta. Never substitute T for approved S. Explicitly change production acquisition
+from exact `metadata.headSha === mainSha` to this strict-tail proof ONLY in that
+qualified early-freeze case, with final recheck under the mutex. Outside it retain
+the current acquisition exact-match rule and each caller's existing freshness
+semantics. Name the workflow consumers explicitly: all production
+`check-main-tip-freshness.mjs --production` gates in
+`shared-supabase-migrations.yml` select the same strict mode during that freeze;
+otherwise preserve their current production-inert mode. No-freeze flows must not
+newly refuse previously tolerated workflow inputs. Preview-recovery acquisition
+is intentionally outside this exception and retains its existing exact target/
+source rules; preview-rehearsal is covered as #4039 specifies.
 
 Preserve #4039's two-sided train/candidate exclusion under the existing mutex,
 complete generation/history proof on both REST and Git readers, single-member
@@ -493,8 +561,15 @@ queue constraint, run/attempt-bound freeze identity, pending-only restoration,
 and fresh final group/head/generation rechecks. Legacy/unknown freeze records
 retain global blocking. The activation configuration is the existing
 `config/production-risk-policy-activation.json`, extended with a strict-schema,
-default-false `strict_promotion_prose_tail` field; readers that lack the field
-remain legacy. Roll out readers first, shadow comparison without admission,
+default-false `strict_promotion_prose_tail` field. FIRST land compatible reader
+code: `production_business_risk_gate.py::load_activation` currently validates an
+exact key set, so accept exactly the original valid schema OR that schema plus
+one boolean field; preserve all existing hash/identity/active checks and reject
+all other extra fields. Missing field means false/legacy. Inventory and upgrade
+all readers, retain unchanged config bytes until old running workflow versions
+have drained, THEN add the field as false. Test old-record/new-reader acceptance,
+new-record/new-reader acceptance, old-reader/new-record refusal and unknown-field
+refusal. Shadow comparison without admission follows compatible deployment,
 then activate only from the reviewed merged workflow version after lane/queue
 reconciliation. An unknown schema or mixed writer version refuses activation.
 No new authority namespace or scheduler is introduced for narrowing.
@@ -522,7 +597,7 @@ follow step 2 independently of step 6, with no manager edit collision.
 
 **8. Execute three separate recovery deliverables, not an assumed fence.**
 
-**8a — buildable ownership safety first.** Route every `--release-*` CLI branch
+**8a — buildable ownership safety first (after step2, before steps4–5).** Route every `--release-*` CLI branch
 through the existing `releaseExclusive` function under the existing coordination
 mutex; remove the earlier direct `releaseOwnedRef` CLI fast path. All writers
 which replace or delete these lease refs must use that same mutex. Preserve the
@@ -591,7 +666,12 @@ exact target/run/attempt/generation and current revocation state.
 Before replacement, re-read the lease, latest original and later runs/attempts,
 writer-termination and reconciliation evidence under the mutex; the original
 current `recoverExclusive` reads run status outside the mutex, so this must be
-fixed as part of 8c. Preserve grace as extra protection, never as termination proof.
+fixed as part of 8c. Bound the under-mutex read/revalidation section to 30 seconds
+and two attempts per API read within that total, using native request deadlines;
+no sleep, artifact download, SQL, report upload or long polling under the mutex.
+Prefetch immutable evidence outside it and validate its exact identity plus fresh
+run/backend/lease observations inside. Timeout/incomplete reads refuse takeover,
+release only the coordination mutex and retain the stage lease. Preserve grace as extra protection, never as termination proof.
 Create one new generation with readback, with no applied migration replay. Before
 any new write, the qualified runtime fence and current generation must both hold.
 Old holders cannot assert, renew, release or write in the successor generation.
@@ -640,7 +720,7 @@ no bypass, no original capability lost. Update STATUS and #3779; do not close
 
 Add named tests below to the closest existing suite. Proposed focused suites are
 `scripts/lib/release-hold-evidence.test.mjs`,
-`scripts/lib/release-independence.test.mjs` and
+`scripts/check-main-tip-freshness.test.mjs` (extend its strict-mode cases) and
 `scripts/release-hold-workflow-order.test.mjs`; create only the ones not already
 owned by an equivalent helper. No network or real database credentials in unit tests.
 
@@ -682,6 +762,13 @@ owned by an equivalent helper. No network or real database credentials in unit t
 | Queue event | Admission succeeds, exact group has no started checks | `admission_without_group_jobs_alerts_and_requeues_once` |
 | Queue repair | Head changes or another owner already repaired | `queue_repair_revalidates_head_and_never_double_requeues` |
 | Ledger drift | Two consecutive stale preparations | `second_ledger_drift_stops_automatic_redispatch` |
+| Evidence deletion | Janitor selector includes audit namespace | `release_evidence_namespace_is_never_pruned` |
+| Activation reader | New optional field reaches old exact-key reader | `activation_reader_precedes_config_extension` |
+| Receipt proof kind | Success command exit reused as backend termination | `success_receipt_does_not_authorize_backend_takeover` |
+| Pre-receipt crash | Terminal job but no qualified backend observation | `absent_prepared_receipt_retains_lease_without_backend_proof` |
+| Recovery reads | Under-mutex API exceeds budget | `recovery_read_deadline_retains_stage_lease` |
+| Drift observer | Missing marker, duplicate observer or third dispatch | `drift_redispatch_requires_bound_refusal_and_one_attempt` |
+| Freshness modes | No-freeze caller or preview recovery accidentally changes | `strict_tail_is_freeze_conditional_and_preserves_legacy_modes` |
 | Rollout | Old writer active / old consumer sees new schema | `mixed_version_writer_blocks_activation_and_rollback` |
 | Preview lease | Rehearsal and recovery try same shared target | `preview_modes_keep_one_shared_writer` |
 | Existing ownership | Malformed/legacy lease or foreign claim | `foreign_or_unreadable_ownership_is_not_released` |
@@ -757,7 +844,7 @@ write authority for a later session.
 
 | Required outcome | Acceptance, not just preparation |
 |---|---|
-| Acquire later | Actual merge/production/preview timelines show downloads/install/review waits occur before acquisition; live-state checks still run under protection. |
+| Acquire later | Actual merge/production/preview timelines show tool setup/download before acquisition and preserve approval/environment waits already outside it; live-state checks still run under protection. |
 | Release sooner | Verified terminal receipt precedes release; failed verbose upload does not retain a hold or mark evidence complete; required DB verification never runs after unsafe release. |
 | Narrow scope | Strict inert prose progresses during qualified EARLY freeze; all merges still refuse during production-held critical work. #4039 benefit/binding gates and complete callers pass. Unknown, evidence/test/instruction/SQL movement still blocks. |
 | Recover safely | Controlled recovery proves old writer termination and generation fencing, including revived runner/live SQL negatives; ambiguous apply remains quarantined. |
@@ -768,7 +855,7 @@ write authority for a later session.
 checks prevent that. Early release can lose recoverability; minimal durable terminal
 receipt and quarantine protect it. Scope reduction can miss indirect dependencies;
 unknown always serializes. Recovery can create two writers; writer termination and
-same-connection fencing are mandatory. Revert the scoped implementation through a
+experimentally qualified runtime fencing are mandatory; do not assume opaque CLI same-connection support. Revert the scoped implementation through a
 reviewed PR to the prior conservative admission/order, preserve immutable evidence
 and leases, and reconcile in-flight work before switching. Never roll back by
 force-pushing, deleting claims, cancelling an unverified foreign writer or running

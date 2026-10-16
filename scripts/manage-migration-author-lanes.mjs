@@ -2561,7 +2561,7 @@ export function prepareAuthorHandoff(options,now=new Date(),io=githubIo){
   try{
     const proof=prove(),hash=sha256(proof.claim.body),ref=AUTHOR_HANDOFF_READY_REF_PREFIX+request.claim+'-'+proof.lease.version+'-'+hash.slice(0,24)
     const existing=io.readRef(ref)?readAuthorReady(ref,io):null
-    const record={schema_version:1,kind:'owner-handoff-ready',human_identity_authenticated:false,execution_stopped:true,claim:request.claim,issue:request.issue,pr:request.pr,head_sha:request.headSha,owner:request.owner,branch:request.branch,worktree:request.worktree,version:proof.lease.version,reservation_sha:proof.reservation,body_sha256:hash,expires_at:proof.lease.expiresAt.toISOString(),author_session:proof.authority.task,created_at:existing?.record.created_at??now.toISOString()}
+    const record={schema_version:1,kind:'owner-handoff-ready',human_identity_authenticated:false,execution_stopped:true,claim:request.claim,issue:request.issue,pr:request.pr,head_sha:request.headSha,owner:proof.lease.owner,branch:request.branch,worktree:request.worktree,version:proof.lease.version,reservation_sha:proof.reservation,body_sha256:hash,expires_at:proof.lease.expiresAt.toISOString(),author_session:proof.authority.task,created_at:existing?.record.created_at??now.toISOString()}
     if(existing&&JSON.stringify(existing.record)!==JSON.stringify(record))throw new LaneError('existing ready receipt differs from exact stopped source')
     requireOwnedRef(MUTEX_REF,lock,io)
     const receiptSha=existing?.sha??io.makeOwnerCommit(AUTHOR_READY_MESSAGE+JSON.stringify(record))

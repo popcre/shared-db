@@ -699,6 +699,10 @@ test('stop-author accepts the other Claude owner spelling for the same exact ses
   assert.throws(()=>prepareAuthorHandoff({...stop,owner:`Claude chat ${CLAUDE_ID} on edge-dev3`},NOW,io),/different owner|custody differs/)
   const result=prepareAuthorHandoff({...stop,owner:`Claude chat ${CLAUDE_ID} on hetz`},NOW,io)
   assert.ok(io.readRef(result.handoffReadyRef));assert.equal(parseAuthorLease(io.getIssue(3378).body,NOW).capacityActive,false)
+  // the receipt names the on-record owner, so voluntary handoff can consume it
+  io.orchestratorFlowAdapter=()=>({resolveMarker:()=>({live:true,task:'new-author',calling_task:'new-author'})})
+  const accepted=handoffClaimAuthor({...request,oldOwner:recorded,authorizationChatId:'new-author',handoffReadyRef:result.handoffReadyRef},NOW,io)
+  assert.equal(accepted.owner,'new-author')
 })
 test('check-in accepts the other Claude owner spelling for the same exact session',()=>{
   const {io,request}=voluntaryFixture(),recorded=`claude-chat-${CLAUDE_ID}@hetz`

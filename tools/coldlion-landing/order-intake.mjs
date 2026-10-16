@@ -211,8 +211,8 @@ async function main() {
       }
     }
   }
-  // Header tracks: every order CREATED or MODIFIED in the lookback, whatever its start
-  // date (ColdLion /orderHistory header filters, 2026-10-16).
+  // Header tracks: every order CREATED or MODIFIED in the lookback with a start date in
+  // 2019-01-01..2099-12-31 (ColdLion /orderHistory header filters, 2026-10-16).
   for (const track of HEADER_TRACKS) {
     if (limitReached) break;
     await scan(headerTrackWindow(asOf, track), track);

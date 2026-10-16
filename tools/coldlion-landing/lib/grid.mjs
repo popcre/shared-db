@@ -1,7 +1,7 @@
 // The fixed seven-day window grid, anchored at 2019-01-01.
 //
 // This is not a scheduling preference. ColdLion refused any fromDate/toDate span wider
-// than seven days INCLUSIVE until 2026-10-16 (the cap is gone since; the order-intake
+// than seven days INCLUSIVE until 2026-10-16 (the cap is gone for /orderHistory since; /prodHistory is unprobed; the order-intake
 // header tracks rely on that, see order-intake-windows.mjs), and both coldlion.window_ledger and
 // coldlion.history_page_ledger carry a CHECK that (window_from - 2019-01-01) % 7 = 0.
 // A window computed off any other anchor is refused by the database, not silently

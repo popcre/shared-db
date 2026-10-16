@@ -115,13 +115,17 @@ export function recordStagedWindow(stagedByMonth, window, stagedRows) {
 // The filters key on the sales order HEADER, so one call finds every order entered or
 // changed recently whatever its ERP start date: new orders beyond the forward cap, and
 // edits to orders older than the trailing weeks, which the start-date tracks miss.
-// fromDate/toDate stay required by the vendor, so the start window is held wide.
+// fromDate/toDate stay required by the vendor, so the start window is held wide:
+// 2019-01-01..2099-12-31 (live-probed 2026-10-16: HTTP 200, same rows as a toDate at
+// the forward cap). It deliberately does NOT stop at the 18-month forward cap, so a
+// new order starting beyond the cap is caught here.
 // These tracks ADD to trailing + forward; detection is still salesOrderNo novelty.
 // ---------------------------------------------------------------------------------
 
 export const HEADER_TRACKS = Object.freeze(["created", "modified"]);
 export const HEADER_LOOKBACK_DAYS = 5;
 export const HEADER_START_WINDOW_FROM = "2019-01-01";
+export const HEADER_START_WINDOW_TO = "2099-12-31";
 
 function addDays(isoValue, days) {
   const value = parseIsoDate(isoValue, "date");
@@ -148,7 +152,7 @@ export function headerTrackWindow(asOfIso, track, { lookbackDays = HEADER_LOOKBA
     from,
     to,
     requestFrom: HEADER_START_WINDOW_FROM,
-    requestTo: forwardCapDate(asOfIso),
+    requestTo: HEADER_START_WINDOW_TO,
     filters: { [`${track}From`]: from, [`${track}To`]: to },
   };
 }

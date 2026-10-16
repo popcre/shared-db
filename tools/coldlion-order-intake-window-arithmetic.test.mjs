@@ -139,7 +139,7 @@ test("the stop rule never fires mid-month when windows within one month stage ro
 });
 
 import { headerTrackWindow as headerWindowUnderTest } from "./coldlion-landing/lib/order-intake-windows.mjs";
-import { buildPageUrl as buildUrlUnderTest, requestParams as requestParamsUnderTest } from "./coldlion-landing/lib/http.mjs";
+import { buildPageUrl as buildUrlUnderTest, requestParams as requestParamsUnderTest, headerFilterEntries as filterEntriesUnderTest } from "./coldlion-landing/lib/http.mjs";
 import { buildIntakeStageSql as stageSqlUnderTest, buildIntakeFailureSql as failureSqlUnderTest } from "./coldlion-landing/lib/order-intake-stage.mjs";
 
 function daysBetween(a, b) {
@@ -152,7 +152,7 @@ test("header tracks record the header range and send a wide start window", () =>
     from: "2026-10-11",
     to: "2026-10-17",
     requestFrom: "2019-01-01",
-    requestTo: "2028-04-01",
+    requestTo: "2099-12-31",
     filters: { createdFrom: "2026-10-11", createdTo: "2026-10-17" },
   });
   const modified = headerWindowUnderTest("2026-10-16", "modified");
@@ -161,7 +161,7 @@ test("header tracks record the header range and send a wide start window", () =>
   assert.throws(() => headerWindowUnderTest("2026-10-16", "created", { lookbackDays: 6 }), /0\.\.5 days/);
   const url = buildUrlUnderTest({ endpoint: "/orderHistory", stage: null }, modified, 0);
   assert.equal(url.searchParams.get("fromDate"), "2019-01-01");
-  assert.equal(url.searchParams.get("toDate"), "2028-04-01");
+  assert.equal(url.searchParams.get("toDate"), "2099-12-31");
   assert.equal(url.searchParams.get("modifiedFrom"), "2026-10-11");
   assert.equal(url.searchParams.get("modifiedTo"), "2026-10-17");
   const params = requestParamsUnderTest({ endpoint: "/orderHistory", stage: null }, modified, 0);
@@ -209,4 +209,13 @@ test("header-track bookkeeping rows fit the sync_run and intake_window_state 7-d
     assert.match(sql, /"fromDate":"2019-01-01"/);
     assert.match(sql, /"createdFrom":"2026-10-11"/);
   }
+});
+
+test("only the four vendor header filters may be sent", () => {
+  const scope = { endpoint: "/orderHistory", stage: null };
+  const bad = { from: "2026-10-11", to: "2026-10-17", filters: { fromDate: "2000-01-01" } };
+  assert.throws(() => buildUrlUnderTest(scope, bad, 0), /unsupported \/orderHistory filter fromDate/);
+  assert.throws(() => requestParamsUnderTest(scope, bad, 0), /unsupported/);
+  assert.throws(() => filterEntriesUnderTest({ filters: { page: "9" } }), /unsupported/);
+  assert.deepEqual(filterEntriesUnderTest({ from: "2026-10-01", to: "2026-10-07" }), []);
 });

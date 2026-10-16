@@ -34,6 +34,17 @@ export function delay(ms) {
   return ms > 0 ? new Promise((done) => setTimeout(done, ms)) : Promise.resolve();
 }
 
+const HEADER_FILTER_KEYS = new Set(["createdFrom", "createdTo", "modifiedFrom", "modifiedTo"]);
+
+/** A window's vendor header filters; any other key is refused, never sent. */
+export function headerFilterEntries(window) {
+  const entries = Object.entries(window.filters ?? {});
+  for (const [key] of entries) {
+    if (!HEADER_FILTER_KEYS.has(key)) throw new Error(`unsupported /orderHistory filter ${key}`);
+  }
+  return entries;
+}
+
 export function buildPageUrl(scope, window, page, { companyCode = COMPANY_CODE, size = PAGE_SIZE } = {}) {
   const url = new URL(`${COLDLION_BASE_URL}${scope.endpoint}`);
   url.searchParams.set("companyCode", companyCode);
@@ -45,7 +56,7 @@ export function buildPageUrl(scope, window, page, { companyCode = COMPANY_CODE, 
   // /orderHistory header filters (ColdLion, 2026-10-16): createdFrom/createdTo and
   // modifiedFrom/modifiedTo narrow by the sales order HEADER's timestamps, ANDed with
   // the start-date window, which stays required.
-  for (const [key, value] of Object.entries(window.filters ?? {})) url.searchParams.set(key, value);
+  for (const [key, value] of headerFilterEntries(window)) url.searchParams.set(key, value);
   url.searchParams.set("page", String(page));
   url.searchParams.set("size", String(size));
   return url;
@@ -61,7 +72,7 @@ export function requestParams(scope, window, page, { companyCode = COMPANY_CODE,
     size,
   };
   if (scope.stage) params.stageCode = scope.stage;
-  Object.assign(params, window.filters ?? {});
+  for (const [key, value] of headerFilterEntries(window)) params[key] = value;
   return params;
 }
 

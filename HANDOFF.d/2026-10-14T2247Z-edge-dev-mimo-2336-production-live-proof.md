@@ -51,7 +51,7 @@ Unblock PR #4206 (work #2336, claim #4152). Slot 1 was Muse-only (owner quote). 
 
 **Production:** version `20261013130102` appears in the production migration record capture with an **empty applied-version column** (ledger reservation / incomplete apply), NOT proven applied. Live proof probe (https://github.com/popcre/shared-db/blob/main/.github/live-proofs/2336.sql) returns not-passed on production. Run 38640478314 (`Shared DB Live Proof`) failed: probe did not return one row `passed=true`.
 
-**Live proof:** not done. Probe requires `plm.plan_licensing_consolidation`, `plm.apply_licensing_consolidation` (security definer, `search_path=pg_catalog`), `plm.licensing_consolidation_plan_immutable`, table `plm.licensing_consolidation_plan` with RLS + trigger.
+**Live proof:** not done. Probe requires exact signatures for `plm.plan_licensing_consolidation(text,uuid,text)`, `plm.apply_licensing_consolidation(uuid,text)`, `plm.plan_licensing_consolidation_rollback(uuid,text)` (security definer, `search_path=pg_catalog`), `plm.licensing_consolidation_plan_immutable()`, and table `plm.licensing_consolidation_plan` with RLS + trigger.
 
 **Claim #4152 / work #2336:** claim was relinquished on hetz (`blocked_on artifact:aa9c8a3d...`). Ready receipt `refs/db-author-handoff-ready/4152-20261013130102-de692d40fb08f2c559c55870` (and earlier `...-fe4585c5c786fca07843889b`). Hetz worktree `/worksp/.worktrees/shared-db-2336-successor` (Claude session). Local worktree `C:/repos/shared-db/.ai/worktrees/4152-successor` exists on branch `codex/2336-complete-support` / `mimo/4152-successor`.
 
@@ -88,7 +88,7 @@ Unblock PR #4206 (work #2336, claim #4152). Slot 1 was Muse-only (owner quote). 
 ## 6. Exact next steps
 
 1. **Ask the owner the §0 list in one message** (especially restoring `enforce_admins`).
-2. **Find the original preview apply run for `20261013130102`** (~2026-10-13). Search `gh run list --workflow shared-supabase-migrations.yml` further back, or `refs/` preview evidence, or issue #2336/#4152 comments for a run URL. You'll know it worked when you have a numeric run ID that applied `20261013130102` to preview (`mvpkijzfmfcxhnzqogzs`).
+2. **Find the original preview apply run for `20261013130102`** (~2026-10-13). Search `gh run list --workflow shared-supabase-migrations.yml` further back, or `refs/` preview evidence, or issue #2336/#4152 comments for a run URL. You'll know it worked when you have a numeric run ID that applied `20261013130102` to preview (read `PREVIEW_PROJECT_REF`; do not record the literal).
 3. **Historical preview rebind** (evidence only; never re-apply an applied version):
    ```
    gh workflow run shared-supabase-migrations.yml --repo popcre/shared-db \
@@ -134,7 +134,7 @@ Unblock PR #4206 (work #2336, claim #4152). Slot 1 was Muse-only (owner quote). 
 - Worktrees: `C:/repos/shared-db` (canonical, reading only), `C:/repos/shared-db/.ai/worktrees/allowlist-widen-slot2` (tooling, merged), `C:/repos/shared-db/.ai/worktrees/4152-successor`.
 - Hetz: `/worksp/.worktrees/shared-db-2336-successor` (other machine — do not assume local).
 - CLI: `node scripts/manage-migration-author-lanes.mjs`, `scripts/check-exact-head-approval.mjs`, `scripts/run-governed-review.mjs`, `gh workflow run shared-supabase-migrations.yml`, `gh workflow run shared-db-live-proof.yml`.
-- Secrets vault: `vibe_coding` (1Password). Supabase production project ref `qsllyeztdwjgirsysgai`; preview `mvpkijzfmfcxhnzqogzs`.
+- Secrets vault: `vibe_coding` (1Password). Supabase production project ref `qsllyeztdwjgirsysgai`; preview (read `PREVIEW_PROJECT_REF`; do not record the literal).
 
 ## 9. Open questions and risks
 
@@ -167,3 +167,6 @@ Unblock PR #4206 (work #2336, claim #4152). Slot 1 was Muse-only (owner quote). 
 **Next-session starting prompt (give this to the new session):**
 
 > Read `HANDOFF.d/2026-10-14T2247Z-edge-dev-mimo-2336-production-live-proof.md` in popcre/shared-db (https://github.com/popcre/shared-db/tree/main/HANDOFF.d). Continue issue #2336 / claim #4152: PRs #4294 and #4206 are already merged. Your job is production apply of migration `20261013130102` (find the Oct 13 preview run, historical preview rebind, production apply), then live proof (`gh workflow run shared-db-live-proof.yml -f work_issue=2336`), then restore branch `enforce_admins` unless I say otherwise. Put the §0 business list to me in one message first. Do not re-draw reviewers for tree-identical heads; do not re-apply an applied version. Worktree-only; no admin bypass on unrelated PRs.
+
+
+

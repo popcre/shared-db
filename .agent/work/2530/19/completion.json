@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "work_issue": 2530,
+  "outcome": "ready-for-merge",
+  "pr": 4390,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/2530/19",
+  "contract_sha256": "e1002d6319188f194bd5259d871fc1eed01b58e944cd6f8a9efcc0cd146abfff",
+  "head_sha": "c52438d2b19fc1d538313ce48ebd0bfb507ebc61",
+  "base_sha": "946ab7ae662c7b146dd4e2fc356d9a14360c63d3",
+  "files_changed": [
+    "plan_shared_db_popcre_transfer_merge_queue.md"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Whitespace check passed; source patch changes only the plan status and bounded queue-event observation."
+    }
+  ],
+  "assumptions_resolved": [
+    "Fresh canonical GitHub verifies PR4364 source8cc78f9449d231141ac17a6488f89c5078ca6bf7 merged at exact synthetic3fcb3c65e7f85147edd10bd457d8c1179bbf6390; all59 checks successful or skipped, eight merge_group workflows successful, and consumer sync38826844675 successful.",
+    "Live ruleset25146118 verified. Historical25099164 activation remains explicitly historical. Step10, Step11 and forensic3536 remain open; no frozen3998/4170 file, source, reviewer receipt or spent authority is changed.",
+    "Generation19 published create-only at refs/db-contracts/2530/19 commit2a16215e5eff7639304fa1d7afce336cd5abc6cb. This independently routed maintenance correction does not adopt an earlier source or claim.",
+    "PR4330 original synthetic72b3101560b2db8b238337ace8c2879129b2288b had no checks; ordinary unchanged-head re-enqueue produced778dc192f4a0ede1889c6a595b08b47425657cd1 and real workflows. That source later merged as778dc192; this correction does not claim all enqueue credentials are accepted."
+  ],
+  "stop_conditions_hit": []
+}

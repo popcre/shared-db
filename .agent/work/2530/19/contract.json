@@ -1,0 +1,48 @@
+{
+  "schema_version": 2,
+  "work_issue": 2530,
+  "generation": 19,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Reconcile only verified Step 9 queue-canary and current activation facts, with the observed PR4330 queue-event limitation, while Step10 and frozen forensic work remain open.",
+  "base_sha": "946ab7ae662c7b146dd4e2fc356d9a14360c63d3",
+  "dispatcher": "Codex chat 01a14221-9c2c-7dd3-9047-dfaced175779 on edge-dev3",
+  "worker": "Luna 6 High bounded evidence and plan preparation; actual Codex coordinator verifies and delivers",
+  "branch": "codex/2530-current-plan-01a14221",
+  "worktree": "/home/ahazan/.codex/worktrees/2530-current-plan-01a14221/shared-db",
+  "allowed_paths": [
+    ".agent/work/2530/19/completion.json",
+    ".agent/work/2530/19/contract.json",
+    "plan_shared_db_popcre_transfer_merge_queue.md"
+  ],
+  "file_writes": [
+    ".agent/work/2530/19/completion.json",
+    ".agent/work/2530/19/contract.json",
+    "plan_shared_db_popcre_transfer_merge_queue.md"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not change queue settings, workflow code, credentials, database objects, claims or production.",
+    "Preserve frozen PR3998/4170 source, original reviewer metadata UNKNOWN and all spent authority. No retrospective verdict or paid retry.",
+    "Do not mark Step10 or the whole issue complete; do not adopt another session claim or source."
+  ],
+  "required_checks": [
+    "git diff --check"
+  ],
+  "assumptions": [
+    "Fresh GitHub confirms PR4364 MERGED at 3fcb3c65e7f85147edd10bd457d8c1179bbf6390, all59 check runs successful or skipped, and post-merge consumer sync38826844675 successful.",
+    "Live ruleset25146118 is current;25099164 remains explicitly historical.",
+    "Own source implementation c52438d2b19fc1d538313ce48ebd0bfb507ebc61 changes only the plan. The task is routed independently as maintenance and consumes no inherited authority from frozen earlier source.",
+    "The PR4330 observation is bounded: original github-actions queue head had zero checks, ordinary unchanged-head re-enqueue started merge-group workflows; full delivery remains separately verified."
+  ],
+  "stop_conditions": [
+    "Stop if any evidence is unreadable or conflicts with fresh canonical GitHub.",
+    "Stop if any change reaches frozen source, settings, claims, workflow code or database structure."
+  ],
+  "evidence_parent": {
+    "work_issue": 2530,
+    "generation": 18,
+    "contract_sha256": "d3657d50c1fad59b694edb72a8d98538268b1c25c02de26b2086b314f9b25dc6"
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "work_issue": 4297,
+  "outcome": "ready-for-merge",
+  "pr": 4370,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4297/28",
+  "contract_sha256": "c832f98a960dd0ce9f1950eb50fa97f7d557864d534baa704219d1a171a4baa6",
+  "head_sha": "752686a58d97947aba2eeb3ec76d980d8f1dd658",
+  "base_sha": "154361984687def51366c2c539d7467b1ad64098",
+  "files_changed": [
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node scripts/agent-work-contract.mjs --validate-contract --contract-file .agent/work/4297/28/contract.json",
+      "exit_code": 0,
+      "evidence": "Prospective contract valid and unchanged."
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/reviewer-wire-budget.test.mjs",
+      "exit_code": 0,
+      "evidence": "913 passed,0 failed."
+    },
+    {
+      "command": "python3 -m unittest scripts.test_production_business_risk_gate",
+      "exit_code": 0,
+      "evidence": "224 passed,0 failed."
+    },
+    {
+      "command": "node --test scripts/lib/lanes/review-circuit-breaker.test.mjs scripts/run-governed-review.test.mjs scripts/check-exact-head-approval.test.mjs",
+      "exit_code": 0,
+      "evidence": "409 passed,1 known skipped,0 failed."
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "16 passed,0 failed."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "Native truth inventory353 callsites98sources digest7d5729fa5373."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors."
+    }
+  ],
+  "assumptions_resolved": [
+    "Exact117-comment read is synthetic regression proof; native assignment on original2336 remains pending until this source merges.",
+    "No reviewer draw/budget/ref or public source history is fabricated; pager runs only in admission-gate context, ordinary reviewer100-row refusal remains.",
+    "Overlapping source PRs4357,4362,4330 temporarily drafted for serialized review and preserved; root owns restoration."
+  ],
+  "stop_conditions_hit": []
+}

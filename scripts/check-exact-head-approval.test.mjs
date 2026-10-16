@@ -1266,13 +1266,14 @@ test('owner no-reviewer policy: active policy approves with no assignment and re
 })
 
 test('owner no-reviewer policy: a durable refusal at the head still blocks', () => {
-  const input = {
-    pr: 2102, headSha: NEW, assignments: [], 
-    verdicts: [{ pr: 2102, head_sha: NEW, verdict: 'REVISE', ref: 'refs/db-review-verdicts/x', reviewer: 'glm-5.3', validated: true }],
-    ownerNoReviewerPolicy: { active: true, reason: 'owner ruling 2026-10-16: skip merge-gate assignment' },
-  }
-  // requireDurableVerdictInput / artifact validation may refuse first; either way it must not approve.
-  assert.throws(() => evaluateRaw(input), ApprovalCheckError)
+  const input = gatherApprovalInput({ PR_NUMBER: String(DOC_PR) }, documentsOnlyGithub({
+    files: [{ filename: 'docs/notes.md' }], recorded: { reviewer: 'grok-4.6', verdict: 'REVISE' },
+  }))
+  input.ownerNoReviewerPolicy = { active: true, reason: 'owner ruling 2026-10-16: skip merge-gate assignment' }
+  assert.equal(isValidatedVerdictArtifact(input.verdicts[0]), true)
+  assert.throws(() => evaluateRaw(input), (error) => error instanceof ApprovalCheckError
+    && /carries a durable reviewer refusal/.test(error.message)
+    && !/without artifact validation/.test(error.message))
 })
 
 test('owner no-reviewer policy file is schema-1 active and cites owner-rulings ยง6.28', () => {
@@ -1284,9 +1285,17 @@ test('owner no-reviewer policy file is schema-1 active and cites owner-rulings ย
   assert.match(String(policy.authority), /owner-rulings\.md/)
 })
 
-test('owner no-reviewer loader: malformed or wrong-scope policy fails closed', async () => {
+test('owner no-reviewer loader: live file is active and scoped to this repository', async () => {
   const { readOwnerNoReviewerPolicy } = await import('./check-exact-head-approval.mjs')
   const live = readOwnerNoReviewerPolicy()
   assert.equal(live.active, true)
-  assert.equal(live.reason.includes('owner ruling'), true)
+  assert.match(live.reason, /owner ruling/)
+})
+
+test('owner no-reviewer loader: a caller-supplied inactive policy does not exempt', () => {
+  const input = {
+    pr: 2102, headSha: NEW, assignments: [], verdicts: [],
+    ownerNoReviewerPolicy: { active: false, reason: 'wrong scope or malformed' },
+  }
+  assert.throws(() => evaluateRaw(input), /no reviewer was ever assigned head/)
 })

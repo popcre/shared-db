@@ -4199,7 +4199,16 @@ test('reviewer routing fetches prior paths for mixed rename and deletion invento
   assert.throws(()=>completeReviewerOperationRouteSnapshot(data,()=>[{...rest[0],filename:'docs/other.json'},rest[1]]),/inventories disagree/)
   assert.throws(()=>completeReviewerOperationRouteSnapshot(data,()=>[{filename:'docs/new.json',status:'renamed'},rest[1]]),/prior filename is unreadable/)
   const truncated=structuredClone(data);truncated.data.repository.pullRequest.files.pageInfo.hasNextPage=true
-  assert.throws(()=>completeReviewerOperationRouteSnapshot(truncated,()=>rest),/incomplete or paginated/)
+  // #4348: a pull request over one GraphQL file page routes from the complete REST inventory.
+  const paged=completeReviewerOperationRouteSnapshot(truncated,()=>rest)
+  assert.deepEqual(paged.files,rest)
+  assert.equal(derivePrOperationRoute(7,{}, {headSha:'a'.repeat(40),issue:41,snapshot:paged}).route,'repo-maintenance')
+  assert.equal(derivePrOperationRoute(7,{}, {headSha:'a'.repeat(40),issue:41,snapshot:completeReviewerOperationRouteSnapshot(truncated,()=>[...rest,{filename:'supabase/migrations/20990101000000_x.sql',status:'added'}])}).route,'structural')
+  assert.throws(()=>completeReviewerOperationRouteSnapshot(truncated),/incomplete or paginated/)
+  assert.throws(()=>completeReviewerOperationRouteSnapshot(truncated,()=>[]),/incomplete or paginated/)
+  assert.throws(()=>completeReviewerOperationRouteSnapshot(truncated,()=>[{filename:'docs/new.json',status:'renamed'}]),/prior filename is unreadable/)
+  const unlinked=structuredClone(truncated);unlinked.data.repository.pullRequest.closingIssuesReferences.pageInfo.hasNextPage=true
+  assert.throws(()=>completeReviewerOperationRouteSnapshot(unlinked,()=>rest),/incomplete or paginated/)
   assert.throws(()=>completeReviewerOperationRouteSnapshot(data,()=>{throw new LaneError('REST inventory reached 100 rows')}),/reached 100 rows/)
   const noRename=structuredClone(data);noRename.data.repository.pullRequest.files.nodes=[{path:'docs/gone.json',changeType:'DELETED'}]
   completeReviewerOperationRouteSnapshot(noRename,()=>{throw new Error('must not read REST without a rename')})

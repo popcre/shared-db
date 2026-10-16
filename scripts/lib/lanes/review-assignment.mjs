@@ -273,6 +273,7 @@ export function completeReviewerOperationRouteSnapshot(data,readRestFiles){
     if(typeof readRestFiles!=='function')throw new LaneError('reviewer operation routing snapshot is incomplete or paginated')
     const restFiles=readRestFiles()
     if(!Array.isArray(restFiles)||!restFiles.length)throw new LaneError('reviewer operation routing snapshot is incomplete or paginated')
+    if(restFiles.some((file)=>file?.status==='renamed'&&typeof file.previous_filename!=='string'))throw new LaneError('reviewer operation routing snapshot is incomplete: a renamed file prior filename is unreadable')
     const linked=row.closingIssuesReferences
     if(!Array.isArray(linked?.nodes)||linked.pageInfo?.hasNextPage!==false)throw new LaneError('reviewer operation routing snapshot is incomplete or paginated')
     return {

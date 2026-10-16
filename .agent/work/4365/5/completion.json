@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "work_issue": 4365,
+  "outcome": "ready-for-merge",
+  "reason": "Required source checks are complete. Independent current-head review, PR CI and guarded merge are separate pending gates.",
+  "pr": 4357,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4365/5",
+  "contract_sha256": "c6ef27b815f7cb17ee94fffca616b2b07d4e2354bdfbbab7c0d9697c918a78f8",
+  "head_sha": "87c76a015e1f72a42798005c3ccaa82216860e6e",
+  "base_sha": "e241459ab805a1219b76534d425741e1f87fa44c",
+  "files_changed": [
+    "docs/agents/section-4-anti-collision-rules.md",
+    "scripts/claim-author-transfer.test.mjs",
+    "scripts/lib/session-authority.mjs",
+    "scripts/lib/session-authority.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/queue-hygiene-report.mjs",
+    "scripts/queue-hygiene-report.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs scripts/lib/session-authority.test.mjs scripts/queue-hygiene-report.test.mjs scripts/claim-author-transfer.test.mjs",
+      "exit_code": 0,
+      "evidence": "{\"passed\": 995, \"failed\": 0} at 87c76a01"
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=353 sources=98 at 87c76a01"
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation 5 fixes the governed DeepSeek REJECT B1 (seq 6599, head 62602c7e) plus L1 and L3, with end-to-end stop-author and check-in tests; generation-3 evidence pair retired in the implementation commit; history remains a first-parent descendant of the earlier drawn head 64415919."
+  ],
+  "stop_conditions_hit": []
+}

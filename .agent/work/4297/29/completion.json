@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "work_issue": 4297,
+  "outcome": "ready-for-merge",
+  "pr": 4372,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4297/29",
+  "contract_sha256": "64ee7e231d1e907c33575cd47b3f2b19ab5fff459e9481b16707ca67640726c3",
+  "base_sha": "154361984687def51366c2c539d7467b1ad64098",
+  "head_sha": "c824e9e05295e6f95e9925e2353a42f6241b194f",
+  "files_changed": [
+    "docs/agents/review-recovery-policy.md",
+    "scripts/lib/lanes/review-circuit-breaker.mjs",
+    "scripts/lib/lanes/review-circuit-breaker.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/lib/lanes/review-circuit-breaker.test.mjs",
+      "exit_code": 0,
+      "evidence": "190 circuit-breaker cases passed, zero failed/skipped; the final additional historical-mixed-source accounting assertion also passed in its one targeted case."
+    },
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "Manager regression suite exited 0."
+    },
+    {
+      "command": "node --test scripts/run-governed-review.test.mjs",
+      "exit_code": 0,
+      "evidence": "Governed-runner regression suite exited 0."
+    },
+    {
+      "command": "node --test scripts/check-exact-head-approval.test.mjs scripts/lib/pr-content-equivalence.test.mjs",
+      "exit_code": 0,
+      "evidence": "Exact-head approval and content-equivalence regression suites exited 0."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Whitespace check exited 0."
+    }
+  ],
+  "assumptions_resolved": [
+    "Exactly one neutralized mixed upstream merge can be proved only through a complete clean canonical-source checkpoint.",
+    "The mixed merge and its restoration are never authored witnesses; old starts/negative verdicts and unchanged-content limits remain intact.",
+    "All four distinct paid heads of the preserved OrderList history were rehearsed in a disposable clone with actual source checks and prospective fixture-only terminal metadata; no remote fixture ref or history was changed.",
+    "No database, migration, shared target or production operation is part of this repair."
+  ],
+  "stop_conditions_hit": [],
+  "pending_acceptance": [
+    "Assigned independent exact-head lifecycle review and required CI",
+    "Normal guarded source merge",
+    "Actual current-source native admission of the recovered original OrderList PR, with real published successor evidence"
+  ]
+}

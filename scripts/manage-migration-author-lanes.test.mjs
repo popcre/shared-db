@@ -772,6 +772,72 @@ function wiredAdmittedReviewIo(options){
   return {...fixture,io,labels}
 }
 
+function paginatedAdmissionReviewIo({commentCount=117,pageBehavior=null}={}){
+  const fixture=admittedReviewIo(),comments=Array.from({length:commentCount},(_,index)=>({
+    id:100000+index,body:`historical note ${index}`,author_association:'MEMBER',user:{login:'historical-user'},created_at:new Date(Date.UTC(2026,0,1,0,index)).toISOString(),updated_at:new Date(Date.UTC(2026,0,1,0,index)).toISOString(),
+  })),requests=[]
+  fixture.io.commentIssue=(issue,body)=>comments.push({id:100000+comments.length,body,author_association:OPERATOR_ASSOCIATION,user:{login:'u2giants'},created_at:new Date(Date.UTC(2026,9,15,0,comments.length)).toISOString(),updated_at:new Date(Date.UTC(2026,9,15,0,comments.length)).toISOString()})
+  fixture.io.issueComments=(issue)=>githubIo.issueComments(issue,{readJson(args){
+    const endpoint=args.at(-1),match=/[?&]page=(\d+)$/.exec(String(endpoint))
+    assert.ok(match,`admission comment read must name an explicit page: ${endpoint}`)
+    const pageNumber=Number(match[1]),defaultRows=comments.slice((pageNumber-1)*100,pageNumber*100)
+    const output=runGitHubCommand(args,{executor:(_bin,cmdArgs)=>{
+      requests.push(String(cmdArgs.at(-1)))
+      if(pageBehavior){
+        const result=pageBehavior({pageNumber,comments,defaultRows})
+        if(result?.throw){const error=new Error(result.throw);error.stderr=result.throw;throw error}
+        return JSON.stringify(result===undefined?defaultRows:result)
+      }
+      return JSON.stringify(defaultRows)
+    },reportStderr:()=>{}})
+    return JSON.parse(output)
+  }})
+  return {...fixture,comments,requests}
+}
+
+test('#4297 reviewer admission reads a complete 100+17 issue-comment history before assigning',()=>{
+  const {io,headSha,comments,requests,mutexCreates}=paginatedAdmissionReviewIo()
+  const result=assignNextReviewer({issue:41,pr:7,headSha,admissionOptions:{admitIssue:41,pr:7}},io)
+  assert.ok(result.reviewer)
+  assert.equal(mutexCreates(),1)
+  assert.equal(io.refs.has(MUTEX_REF),false)
+  assert.deepEqual(requests.slice(0,2).map((url)=>new URL(`https://github.com/${url}`).searchParams.get('page')),['1','2'])
+  assert.ok(requests.length>=6,'initial admission plus two outcome readbacks must paginate through the issue history')
+  assert.equal(comments.length,119,'admission must append only its two ordinary outcome events')
+  assert.equal(REVIEW_OPERATION_REQUEST_LIMIT,25)
+  assert.equal(REVIEW_MUTEX_SECTION_RESERVE,15)
+})
+
+test('#4297 admission accepts the bounded 499-comment history when page five proves completion',()=>{
+  const {io,headSha,comments,requests}=paginatedAdmissionReviewIo({commentCount:497})
+  assert.ok(assignNextReviewer({issue:41,pr:7,headSha,admissionOptions:{admitIssue:41,pr:7}},io).reviewer)
+  assert.equal(comments.length,499,'the two ordinary admission events keep the final history within the cap')
+  assert.equal(requests.length%5,0,'each complete read must stop after page five returns 99 rows')
+  for(let offset=0;offset<requests.length;offset+=5)assert.deepEqual(requests.slice(offset,offset+5).map((url)=>new URL(`https://github.com/${url}`).searchParams.get('page')),['1','2','3','4','5'])
+})
+
+for(const [name,commentCount,pageBehavior,expected] of [
+  ['malformed later page',117,({pageNumber,defaultRows})=>pageNumber===2?{not:'an array'}:defaultRows,/page 2 .*incomplete or malformed/],
+  ['repeated page',117,({pageNumber,comments,defaultRows})=>pageNumber===2?comments.slice(0,100):defaultRows,/repeats an earlier page/],
+  ['duplicate comment id',117,({pageNumber,comments,defaultRows})=>pageNumber===2?[{...defaultRows[0],id:comments[0].id},...defaultRows.slice(1)]:defaultRows,/duplicate comment id/],
+  ['later-page transport failure',117,({pageNumber,defaultRows})=>pageNumber===2?{throw:'HTTP 503'}:defaultRows,/GitHub command failed/],
+  ['full fifth page',500,null,/5-page limit without a short final page/],
+])test(`#4297 admission refuses ${name} before creating a reviewer assignment`,()=>{
+  const {io,headSha,requests,mutexCreates}=paginatedAdmissionReviewIo({commentCount,pageBehavior}),before=[...io.refs.entries()]
+  assert.throws(()=>assignNextReviewer({issue:41,pr:7,headSha,admissionOptions:{admitIssue:41,pr:7}},io),expected)
+  assert.equal(mutexCreates(),1)
+  assert.equal(io.refs.has(MUTEX_REF),false,'the held reviewer mutex must be released after the refusal')
+  assert.deepEqual([...io.refs.entries()],before,'no assignment, cursor, or lease ref may be created on incomplete history')
+  if(name==='later-page transport failure')assert.equal(requests.filter((url)=>url.endsWith('page=2')).length,1,'the mutex-held request must not retry a failed page')
+  if(name==='full fifth page')assert.equal(requests.length,5,'the cap must refuse without issuing a sixth request')
+})
+
+test('#4297 ordinary reviewer operations retain the one-page possible-pagination refusal',()=>{
+  const endpoints=[]
+  assert.throws(()=>withReviewRequestBudget(()=>githubIo.issueComments(41,{readJson(args){endpoints.push(args.at(-1));return Array.from({length:100},(_,index)=>({id:200000+index,body:'comment'}))}})),/reached 100 rows; reviewer operation refuses possible pagination/)
+  assert.deepEqual(endpoints,['repos/popcre/shared-db/issues/41/comments?per_page=100'])
+})
+
 test('#2802 the structural-admission gate is not charged to the reviewer request budget',()=>{
   const {io,headSha,labels,mutexCreates}=wiredAdmittedReviewIo()
   const result=assignNextReviewer({issue:41,pr:7,headSha,admissionOptions:{admitIssue:41,pr:7}},io)

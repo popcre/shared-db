@@ -3,7 +3,7 @@
 # WHY THIS WORKFLOW EXISTS
 # ------------------------
 # A governed reviewer that is drawn but never starts holds its review slot until the
-# ordinary two-hour silence path notices. scripts/orchestrator-flow/reviewer-start-watch.mjs
+# ordinary two-hour silence path notices. scripts/db-flow/reviewer-start-watch.mjs
 # finds such a lease once it is past the 10-minute start SLO with no start marker of its
 # own, returns the slot through the governed unstarted silence path and draws the next
 # eligible provider. Until this workflow it only ran when a person typed it, so the SLO
@@ -114,7 +114,7 @@ jobs:
           node-version: 22
 
       - name: Prove the watcher's decisions before trusting them
-        run: node --test scripts/orchestrator-flow/reviewer-start-watch.test.mjs scripts/orchestrator-flow/start-reroute.test.mjs
+        run: node --test scripts/db-flow/reviewer-start-watch.test.mjs scripts/db-flow/start-reroute.test.mjs
 
       - name: Reroute reviewers that never started
         id: watch
@@ -139,7 +139,7 @@ jobs:
           failed=0
           while :; do
             CODE=0
-            node scripts/orchestrator-flow/reviewer-start-watch.mjs "${args[@]}" > /tmp/pass.json || CODE=$?
+            node scripts/db-flow/reviewer-start-watch.mjs "${args[@]}" > /tmp/pass.json || CODE=$?
             acted=$(node -e 'const j=require("/tmp/pass.json");console.log(j.leases.filter((l)=>!/^(wait|skip|keep-active)/.test(String(l.action))).length)' 2>/dev/null || echo unreadable)
             echo "pass $(date -u +%FT%TZ) exit=${CODE} acted=${acted}"
             if [ "$CODE" -ne 0 ] || [ "$acted" != "0" ]; then

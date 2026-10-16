@@ -301,7 +301,7 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
   }
   // Budget-only reconstruction of the one independently additive test import.
   const canonicalImportUnion = (a,b,base,stages) => {
-    const file='scripts/orchestrator-flow/admission-outcome.test.mjs'
+    const file='scripts/db-flow/admission-outcome.test.mjs'
     const rows=[base,a,b].map(commit=>entry(commit,file))
     if(rows.some(row=>row.mode!=='100644'||/^(?:<{7}|\|{7}|={7}|>{7})/m.test(row.text)||row.text.includes('\0')) || stages.some((line,i)=>line!==`100644 ${rows[i].blob} ${i+1}\t${file}`))throw new LaneError('review budget import stage or regular bytes refused')
     const protectedSides=[a,b].map(commit=>ancestor(commit,protectedMain))
@@ -362,15 +362,25 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
     if(!sha.test(base))throw new LaneError('review budget merge base unreadable')
     const changed=[...new Set([a,b].flatMap(tip=>raw(['diff','--name-only','-z',base,tip]).split('\0').filter(Boolean)))]
     if(changed.length>=1000)throw new LaneError('review budget merge path bound refused')
+    let protectedRename=false
     for(const tip of [base,a,b,null]) {
       const attributes=changed.length?raw(['check-attr',...(tip?[`--source=${tip}`]:[]),'-z','merge','filter','working-tree-encoding','--',...changed]).split('\0'):[]
       for(let i=2;i<attributes.length;i+=3)if(attributes[i]!=='unspecified')throw new LaneError('review budget custom merge/filter/encoding attributes refused')
-      if(tip && raw(['diff','--name-status','-M',base,tip]).split('\n').some(line=>/^R[0-9]+\t/.test(line)))throw new LaneError('review budget renamed merge source refused')
+      if(tip && raw(['diff','--name-status','-M',base,tip]).split('\n').some(line=>/^R[0-9]+\t/.test(line))){
+        // #4397: a rename already on reviewed protected main is accepted only when
+        // git resolves the replay cleanly. A pull-request-side rename always refuses,
+        // and so does any conflicted replay with a rename on either side.
+        if(tip===base || !ancestor(tip,protectedMain))throw new LaneError('review budget renamed merge source refused')
+        protectedRename=true
+      }
     }
     let result
     try { result=run(['merge-tree','--write-tree',a,b]) }
     catch(error) {
       if(error?.status!==1 || typeof error.stdout!=='string')throw error
+      // #4397 generation 2: a conflicted replay across a protected-main rename is the
+      // moved-main merge gap, bridged only conservatively (it can spend, never grant).
+      if(protectedRename)throw new LaneError('review budget protected rename merge gap')
       const lines=error.stdout.split('\n'),resultTree=lines[0]
       let stages=lines.slice(1).filter(line=>/^[0-9]{6} /.test(line))
       const metadataOverrides=new Map()
@@ -401,7 +411,7 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
       if(!sha.test(resultTree) || stages.length!==3)throw new LaneError('review budget conflict is outside the one canonical test append')
       if(stages.every((line,i)=>new RegExp(`^(100644|100755) [0-9a-f]{40} ${i+1}\\tscripts/manage-migration-author-lanes\\.test\\.mjs$`).test(line)))return withMetadata(canonicalAppend(a,b,base))
       if(stages.every((line,i)=>new RegExp(`^100644 [0-9a-f]{40} ${i+1}\\tscripts/production_business_risk_gate\\.py$`).test(line)))return withMetadata(canonicalPinOverlap(a,b,base))
-      if(stages.every((line,i)=>new RegExp(`^100644 [0-9a-f]{40} ${i+1}\\tscripts/orchestrator-flow/admission-outcome\\.test\\.mjs$`).test(line)))return withMetadata(canonicalImportUnion(a,b,base,stages))
+      if(stages.every((line,i)=>new RegExp(`^100644 [0-9a-f]{40} ${i+1}\\tscripts/db-flow/admission-outcome\\.test\\.mjs$`).test(line)))return withMetadata(canonicalImportUnion(a,b,base,stages))
       if(stages.every((line,i)=>new RegExp(`^100644 [0-9a-f]{40} ${i+1}\\tconfig/production-verification-sidecar-registry\\.json$`).test(line)))return withMetadata(canonicalRegistryUnion(a,b,base,stages))
       throw new LaneError('review budget conflict is outside the one canonical test append')
     }
@@ -484,7 +494,7 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
         }
       } else throw new LaneError('review budget ambiguous merge provenance refused')
     }
-    const witnessExcludes=[...(canonicalAppends.length?[':(top,literal,exclude)scripts/manage-migration-author-lanes.test.mjs']:[]),...(canonicalPinOverlaps.length?[':(top,literal,exclude)scripts/production_business_risk_gate.py']:[]),...(canonicalImportUnions.length?[':(top,literal,exclude)scripts/orchestrator-flow/admission-outcome.test.mjs']:[]),...(canonicalRegistryUnions.length?[':(top,literal,exclude)config/production-verification-sidecar-registry.json']:[])]
+    const witnessExcludes=[...(canonicalAppends.length?[':(top,literal,exclude)scripts/manage-migration-author-lanes.test.mjs']:[]),...(canonicalPinOverlaps.length?[':(top,literal,exclude)scripts/production_business_risk_gate.py']:[]),...(canonicalImportUnions.length?[':(top,literal,exclude)scripts/db-flow/admission-outcome.test.mjs']:[]),...(canonicalRegistryUnions.length?[':(top,literal,exclude)config/production-verification-sidecar-registry.json']:[])]
     const netPaths=run(['diff','--name-only',tree(expected),after,'--',...paths,...witnessExcludes]).split('\n').filter(Boolean)
     if(netPaths.some(file=>file.startsWith('.agent/')))throw new LaneError('review budget unverified evidence cannot witness authored repair')
     const managerFile='scripts/manage-migration-author-lanes.mjs'
@@ -570,7 +580,7 @@ export function assertPaidReviewCapacity(request, io) {
   // Only the moved-main MERGE gap may be bridged: re-merging an older head against the
   // current main conflicts outside the canonical append forms. Every other provenance
   // refusal (evidence lineage, blob integrity, foreign pairs, ...) keeps refusing.
-  const provenanceGap=(error)=>/^review budget Git provenance refused: review budget (conflict is outside the one canonical test append|canonical append requires exactly one conflict|append marker ambiguity|append must be one EOF conflict|append cannot modify old lines or omit a parent)$/.test(String(error?.message??''))
+  const provenanceGap=(error)=>/^review budget Git provenance refused: review budget (protected rename merge gap|conflict is outside the one canonical test append|canonical append requires exactly one conflict|append marker ambiguity|append must be one EOF conflict|append cannot modify old lines or omit a parent)$/.test(String(error?.message??''))
   // Composition table: unchanged after unchanged is unchanged; a substantive step on
   // either side with an unchanged step on the other is substantive. Two substantive
   // steps prove nothing (the second may revert the first), so that chain is skipped.
@@ -621,11 +631,16 @@ export function assertPaidReviewCapacity(request, io) {
     if(unprovedHeads.has(start.headSha))conservativeHeads.add(start.headSha)
     count++
   }
-  if(count>=2) throw new LaneError(`review circuit breaker: two paid attempts already started for unchanged reviewed content in slot ${request.slot}; third draw refused pending substantive repair or supported cause-bound reinstatement proof`)
-  const result={paidAttempts:count,remaining:2-count,...(reinstated?{reinstated}:{}),...(conservativeHeads.size?{conservativeHeads:[...conservativeHeads].sort()}: {})}
+  // Owner 2026-10-16 (#4399): spend on the same content is uncapped. Unlimited
+  // concurrent reviewer slots landed in #3130; this third-draw refusal was a leftover
+  // spend brake that reported the pool exhausted. Keep counting paidAttempts for
+  // diagnostics only; never refuse a draw on a numeric start ceiling.
+  const result={paidAttempts:count,remaining:null,uncapped:true,...(reinstated?{reinstated}:{}),...(conservativeHeads.size?{conservativeHeads:[...conservativeHeads].sort()}: {})}
   if(failuresByReviewer.size){
     result.failedReviewers=[...failuresByReviewer.keys()].sort()
-    result.exhaustedReviewers=[...failuresByReviewer].filter(([,failures])=>failures>=REVIEWER_FAILURE_CEILING).map(([reviewer])=>reviewer).sort()
+    // Owner 2026-10-16 (#4399): no per-reviewer failure ceiling. Failures stay visible
+    // in failedReviewers for diagnostics; they never remove a name from the draw.
+    result.exhaustedReviewers=[]
   }
   return result
 }

@@ -177,7 +177,7 @@ jobs:
           TRAIN_ALLOWLIST: ${{ inputs.target == 'production' && inputs.production_allowlist || inputs.preview_allowlist }}
         run: node scripts/manage-migration-author-lanes.mjs --verify-train-dispatch "$TRAIN_REF" --target "$TRAIN_TARGET" --commit-sha "$TRAIN_COMMIT" --allowlist "$TRAIN_ALLOWLIST"
       - name: Test the migration-train manifest and manager commands
-        run: node --test scripts/orchestrator-flow/migration-train.test.mjs
+        run: node --test scripts/db-flow/migration-train.test.mjs
       - name: Run SQL checks
         run: bash scripts/check-sql.sh
       - name: Validate hash-bound production verification sidecars
@@ -1683,7 +1683,7 @@ jobs:
           REQUESTED_SHA: ${{ inputs.commit_sha }}
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
         run: |
-          node scripts/orchestrator-flow/read-verified-train-record.mjs --ref "$TRAIN_REF" \
+          node scripts/db-flow/read-verified-train-record.mjs --ref "$TRAIN_REF" \
             --target production --commit-sha "$REQUESTED_SHA" --allowlist "$PRODUCTION_ALLOWLIST" \
             --output "$RUNNER_TEMP/migration-train-record.json"
       - name: Derive business risk from governed artifacts
@@ -1894,7 +1894,7 @@ jobs:
           REQUESTED_SHA: ${{ inputs.commit_sha }}
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
         run: |
-          node scripts/orchestrator-flow/read-verified-train-record.mjs --ref "$TRAIN_REF" \
+          node scripts/db-flow/read-verified-train-record.mjs --ref "$TRAIN_REF" \
             --target production --commit-sha "$REQUESTED_SHA" --allowlist "$PRODUCTION_ALLOWLIST" \
             --output "$RUNNER_TEMP/migration-train-record.json"
       - name: Re-derive business risk after the approval wait

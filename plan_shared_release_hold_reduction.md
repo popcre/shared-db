@@ -114,7 +114,7 @@ has been implemented, activated or deployed by this plan.
 |---|---|
 | `.github/workflows/guarded-migration-merge.yml:25` | One workflow-wide `shared-db-guarded-merge` scheduling group; quota preparation already occurs outside the explicit lock around lines 168–193. Do not rebuild that completed separation. |
 | Same workflow, `merge_lock`, `guarded_merge` and final release | Rechecks exact head, required checks, collisions, approval and freeze under lock; revokes failed authority before releasing. Queue admission is not proof of an actual merge. |
-| `.github/workflows/shared-supabase-migrations.yml:133` | Separate preview/production scheduling groups already exist. Preserve this completed improvement. |
+| `.github/workflows/shared-supabase-migrations.yml:124–136` | Separate preview/production scheduling groups already exist. Preserve this completed improvement. |
 | Same workflow `production-apply`, lines 1801–2169 | Production hold covers setup, repeat qualification, apply, verification and upload. Immediate target for ordering improvements. |
 | Same workflow lines 2175–2245 | Freeze release and restoration clear only this run's revocations to pending, never success. Preserve exact owner/run matching. |
 | `scripts/lib/lanes/queue-routing.mjs:15` | Preview/recovery/rehearsal share one preview ref; merge and production have separate refs. Preview does not universally exclude production/merge. Do not claim there is one global database lock. |
@@ -301,6 +301,9 @@ production closure and every downstream consumer demonstrably tolerate it.
 Update acquisition's current-main rule, production freshness/risk/evidence
 consumers and freeze revocation/queue admission together: no caller may retain a
 contradictory global-main assertion or allow a stale queued candidate through.
+Reuse the existing documentation classifiers in `scripts/lib/documents-only-change.mjs`
+and `check-documents-only-pull-request.mjs`; preserve `check-documents-ci-route.test.mjs`.
+Do not invent a second definition of inert documentation.
 Use a versioned route that defaults to old serialization; activate only after
 exact-head reviewer approval and negative live/fixture proof. No broad file-prefix
 allowlist. Preserve the production writer lock and owner-required pause for
@@ -352,7 +355,9 @@ must be rechecked against the final fencing contract.
 
 **9. Integrate operating instructions and measurement.** Update existing
 `docs/agents/section-4-anti-collision-rules.md`, `docs/agents/merge-protocol.md`,
-`docs/production-promotion-procedure.md`, current workflow/router and this STATUS.
+`docs/production-promotion-procedure.md`, `docs/deployment.md`, current workflow/router and this STATUS.
+Keep the [topic entry point](docs/shared-release-holds.md) current; when retiring the
+plan, redirect its topic/router links to the accepted operating instructions.
 Extend `throughput-report.mjs` to show scheduling wait, preparation, exclusive held
 time, apply, verification and reporting separately, with sample size and unknowns.
 Document each stage's owner, acquisition/release boundary, safe recovery and
@@ -420,6 +425,8 @@ Required regression commands (from repository root; verify filenames on fresh ma
 node --test scripts/lib/exclusive-lease.test.mjs scripts/manage-migration-author-lanes.test.mjs
 node --test scripts/orchestrator-flow/runner-lanes.test.mjs scripts/orchestrator-flow/throughput-report.test.mjs
 node --test scripts/check-main-tip-freshness.test.mjs scripts/dispatch-production-apply.test.mjs scripts/check-current-workflow-policy.test.mjs
+node --test scripts/check-merge-queue-workflows.test.mjs scripts/check-guarded-merge-sync-dispatch.test.mjs scripts/check-dispatch-collision.test.mjs scripts/mutex-release-on-refusal.test.mjs scripts/merged-review-lease-liveness.test.mjs
+node --test scripts/check-workflow-preview-mode-guard.test.mjs scripts/check-workflow-preview-ref.test.mjs scripts/target-queue-identity.test.mjs scripts/check-documents-ci-route.test.mjs
 node --test scripts/documents-only-merge-authorization.test.mjs scripts/check-documents-only-merge-authorization.test.mjs scripts/check-migration-pr-lease.test.mjs
 python3 -m unittest discover -s scripts -p 'test_production_business_risk_gate*.py'
 python3 -m unittest discover -s scripts -p 'test_production_apply_review_evidence.py'

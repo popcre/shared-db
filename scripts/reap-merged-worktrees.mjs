@@ -292,7 +292,7 @@ export function main({
     );
   } catch (err) {
     markersReadable = false;
-    error(`::warning::could not read claim-first session identitys: ${err.message}`);
+    error(`::warning::could not read claim-first session identities: ${err.message}`);
   }
   let claims = [];
   let claimsReadable = true;

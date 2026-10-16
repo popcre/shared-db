@@ -27,6 +27,8 @@ import { currentRepository } from '../lib/repository-identity.mjs'
 import { ZERO_CLOSURE_WINDOW_MINUTES, defaultIo, gatherLiveInput, gh, runSnapshotCycle, stalledOutcomes, stalledRequests } from '../flow-snapshot.mjs'
 
 export const FALLBACK_TITLE = 'No-progress alarm (no claim-first session identity)'
+// The title before #4348. An issue still open under it is the same fallback, so it is matched, never forked.
+export const LEGACY_FALLBACK_TITLE = 'Orchestrator no-progress alarm (no orchestrator marker)'
 // A coordination label, so the queue audit does not report the fallback issue as unlabelled work.
 export const FALLBACK_LABEL = 'orchestrator-alarm'
 
@@ -69,7 +71,7 @@ export function renderAlarm({ output, key, now, stagedLabel = null }) {
     lines.push(`- #${row.work_issue} has been \`${row.state}\` for ${row.minutes_since_transition} minutes (since ${row.last_transition_at}). Blocker: ${blocker}. Unblock: ${action}.`)
   }
   if (output.zero_closures_4h) lines.push('- Nothing reached live_verified in the last 4 hours while outcomes are active.')
-  if (!output.snapshot) lines.push('', 'No claim-first session identity resolved, so no sealed snapshot is attached. Open a claim-first session to own these to own these outcomes.')
+  if (!output.snapshot) lines.push('', 'No claim-first session identity resolved, so no sealed snapshot is attached. Open a claim-first session to own these outcomes.')
   else lines.push('', `Resume from this snapshot: \`node scripts/db-flow/no-progress-alarm.mjs --resume --issue <this issue>\``, '', '```' + SNAPSHOT_LANG, JSON.stringify(output.snapshot), '```')
   return lines.join('\n')
 }
@@ -109,7 +111,7 @@ export function runAlarm({ repo, now, postIssue = null, stagedLabel = null, dryR
 /** The one stable fallback issue: the oldest open trusted issue with FALLBACK_TITLE and FALLBACK_LABEL, created only when none exists. */
 export function findOrCreateFallback(openIssues, create) {
   const labelled = (issue) => (issue.labels ?? []).some((label) => (label?.name ?? label) === FALLBACK_LABEL)
-  const found = openIssues.filter((issue) => !issue.pull_request && issue.title === FALLBACK_TITLE && labelled(issue) && trustedComment(issue)).sort((x, y) => x.number - y.number)[0]
+  const found = openIssues.filter((issue) => !issue.pull_request && (issue.title === FALLBACK_TITLE || issue.title === LEGACY_FALLBACK_TITLE) && labelled(issue) && trustedComment(issue)).sort((x, y) => x.number - y.number)[0]
   if (found) return found.number
   const created = create()
   if (!Number.isInteger(created?.number)) throw new Error('fallback alarm issue could not be created')

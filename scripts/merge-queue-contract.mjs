@@ -64,7 +64,7 @@ export const QUEUE_RULE = Object.freeze({
 // 2026-10-14, app_id 15368 = GitHub Actions). The merge-queue ruleset must
 // carry these as required_status_checks so the queue knows which checks to
 // wait for; a ruleset that omits them is not the approved shape (#2530).
-// Retired mirror contexts (claim-first session identity guard, Agent work contract)
+// Retired mirror contexts (Orchestrator marker guard, Agent work contract)
 // are deliberately absent.
 export const REQUIRED_STATUS_CHECK_CONTEXTS = Object.freeze([
   'Cancelled work guard',

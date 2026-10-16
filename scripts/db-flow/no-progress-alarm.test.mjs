@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { FALLBACK_LABEL, FALLBACK_TITLE, alarmKey, findOrCreateFallback, latestSnapshotFromComments, main, postedKeys, runAlarm, runResume } from './no-progress-alarm.mjs'
+import { FALLBACK_LABEL, FALLBACK_TITLE, LEGACY_FALLBACK_TITLE, alarmKey, findOrCreateFallback, latestSnapshotFromComments, main, postedKeys, runAlarm, runResume } from './no-progress-alarm.mjs'
 import { gatherLiveInput } from '../flow-snapshot.mjs'
 
 const T0 = '2026-09-16T08:00:00.000Z'
@@ -132,6 +132,9 @@ test('the fallback issue is reused, created only when missing, and a failed crea
   const existing = [{ number: 9, title: FALLBACK_TITLE, author_association: 'OWNER', labels }, { number: 7, title: FALLBACK_TITLE, ...bot }, { number: 3, title: FALLBACK_TITLE, author_association: 'NONE', user: { login: 'x' }, labels }, { number: 2, title: FALLBACK_TITLE, author_association: 'OWNER' }]
   assert.equal(findOrCreateFallback(existing, () => assert.fail('must not create')), 7)
   assert.equal(findOrCreateFallback([], () => ({ number: 50 })), 50)
+  // #4348: a fallback still open under the pre-rename title is reused, not forked.
+  assert.equal(findOrCreateFallback([{ number: 4, title: LEGACY_FALLBACK_TITLE, ...bot }], () => assert.fail('must not fork the legacy fallback')), 4)
+  assert.equal(findOrCreateFallback([{ number: 4, title: 'Some other title', ...bot }], () => ({ number: 51 })), 51)
   assert.throws(() => findOrCreateFallback([], () => ({})), /could not be created/)
   const cannotPost = { ...io({ ...input(), marker: null }), fallbackIssue: () => { throw new Error('gh api POST failed') } }
   const errors = []

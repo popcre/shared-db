@@ -9,7 +9,7 @@
 # job `name:` as its check-run context, so every required context emitted
 # here ("Agent work contract", "Cancelled work guard", "Domain ownership",
 # "Handoff contract", "Intake pointer guard", "Destructive SQL outside
-# migrations", "Cross-PR object collision", "claim-first session identity guard",
+# migrations", "Cross-PR object collision", "Orchestrator marker guard",
 # "Queue-sensitive checks (aggregate)") is byte-identical to before. Jobs are
 # moved in directly, never called through `workflow_call`, because a reusable
 # workflow call prefixes the context ("caller / callee") and would break every
@@ -751,7 +751,7 @@ jobs:
           GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
         run: node scripts/check-pr-object-collisions.mjs
 
-  # The claim-first session identity guard was retired with the coordinator role (#3874).
+  # The Orchestrator marker guard was retired with the coordinator role (#3874).
   # ---- moved from .github/workflows/queue-sensitive-aggregate.yml (#3746) ----
   # Stable aggregate context for queue-sensitive required checks (issue #2729, ai-devops#401 Step 7).
   #

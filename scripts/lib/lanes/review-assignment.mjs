@@ -323,7 +323,7 @@ export const MERGE_ANCESTRY_MEMO=new WeakMap()
 export function reviewEligibilityCause(request,issue,pr){
   const parts=[]
   const issueState=String(issue?.state??'unreadable'),prState=String(pr?.state??'unreadable')
-  if(issueState!=='open'&&prState==='open')parts.push(`work issue #${request.issue} is ${issueState} while PR #${request.pr} is still open -- a reviewer needs an open work issue, or a pull request already merged into main. Reopen issue #${request.issue}, or merge the pull request first. If #${request.issue} is an claim-first session identity rather than the work issue, re-run with the work issue number`)
+  if(issueState!=='open'&&prState==='open')parts.push(`work issue #${request.issue} is ${issueState} while PR #${request.pr} is still open -- a reviewer needs an open work issue, or a pull request already merged into main. Reopen issue #${request.issue}, or merge the pull request first. If #${request.issue} is a claim-first session identity rather than the work issue, re-run with the work issue number`)
   else if(issueState!=='open')parts.push(`work issue #${request.issue} is ${issueState} and PR #${request.pr} (${prState}) is not proven merged into main`)
   const head=String(pr?.head?.sha??'')
   if(!head)parts.push(`PR #${request.pr} head could not be read`)
@@ -341,7 +341,7 @@ export function reviewActiveLeaseCause(reviewer,activeSha,expected,io,activeRef=
     const cursor=parseReviewCursor(io.getCommit(activeSha))
     held=`the assignment for issue #${cursor.issue}, PR #${cursor.pr}, head ${cursor.headSha}`
   }catch{/* an unreadable lease commit still names the SHA above */}
-  return ` -- reviewer ${reviewer}'s active lease${activeRef?` (${activeRef})`:''} holds ${held}, but this verdict is for issue #${expected.issue}, PR #${expected.pr}, head ${expected.headSha}. Where the issue numbers differ you passed the wrong one: an claim-first session identity is not the work issue. Re-run against the issue the reviewer was actually assigned`
+  return ` -- reviewer ${reviewer}'s active lease${activeRef?` (${activeRef})`:''} holds ${held}, but this verdict is for issue #${expected.issue}, PR #${expected.pr}, head ${expected.headSha}. Where the issue numbers differ you passed the wrong one: a claim-first session identity is not the work issue. Re-run against the issue the reviewer was actually assigned`
 }
 
 export function reviewerQueueRef(request){return `${REVIEW_QUEUE_REF_PREFIX}/${request.issue}-${request.pr}-${request.slot}`}

@@ -9489,7 +9489,7 @@ test('#2311 a verdict refused on the active lease names the assignment the lease
   assert.throws(()=>{try{recordReviewVerdict(VERDICT_OPTS,io)}catch(caught){error=caught;throw caught}},/exact active lease/)
   assert.match(error.message,/active lease \(refs\/db-review-active\/muse-spark-1\.2-contributor\) holds the assignment for issue #2320, PR #2415/)
   assert.match(error.message,/this verdict is for issue #2355, PR #2415/)
-  assert.match(error.message,/an claim-first session identity is not the work issue/)
+  assert.match(error.message,/a claim-first session identity is not the work issue/)
 })
 
 test('#2311 a reviewer with no active lease at all is told that, not told it holds a different one',()=>{

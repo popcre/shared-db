@@ -3,18 +3,12 @@
   "source": "scripts/check-exact-head-approval.mjs",
   "sites": [
     {
-      "site": "scripts/check-exact-head-approval.mjs:303",
+      "site": "scripts/check-exact-head-approval.mjs:271",
       "semantic_key": "scripts/check-exact-head-approval.mjs:728dc02f2ab46339c02e1bc72233f817b356731bf5416cca44f8169830b01c9f:context-d3c293f1554b341d0cd47af42183e5082a21dad3093700b78ec67ab17e23be3d",
       "line_sha256": "728dc02f2ab46339c02e1bc72233f817b356731bf5416cca44f8169830b01c9f",
       "disposition": "excluded",
-      "reason": "Undrawn required review slots are an approval-policy refusal, not a measured missing throughput object; exclude this diagnostic from the throughput count."
-    },
-    {
-      "site": "scripts/check-exact-head-approval.mjs:80",
-      "semantic_key": "scripts/check-exact-head-approval.mjs:fb2a8eb4b8e76020f368bb491c9688e2039fdc2d0455b37a573016bef29780f0:context-fe624d7c69b1d2af828d6f8d147bd2f8ca881d9e27749ef94fb9333173b02147",
-      "line_sha256": "fb2a8eb4b8e76020f368bb491c9688e2039fdc2d0455b37a573016bef29780f0",
-      "disposition": "excluded",
-      "reason": "New call site from owner no-reviewer rule (2026-10-16); excluded pending re-review. Owner policy: skip merge-gate assignment when no reviewers are working."
+      "reason": "Undrawn required review slots are an approval-policy refusal, not a measured missing throughput object; exclude this diagnostic from the throughput count.",
+      "legacy_semantic_key": "scripts/check-exact-head-approval.mjs:728dc02f2ab46339c02e1bc72233f817b356731bf5416cca44f8169830b01c9f:1"
     }
   ]
 }

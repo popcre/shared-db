@@ -82,6 +82,31 @@ export { reviewerExecutionPreflight, failedReviewerReleaseCommand }
 import { ADMISSION_LEGACY_CUTOVER, admitIssue, parseMergedPrIssueBinding, verifyMergedPrIssueBinding, withMergedPrIssueBinding, reviewTargetIsRecordable, derivePrOperationRoute, assertUnambiguousClaimTitle, requireAdmissionArguments } from './lib/lanes/admission.mjs'
 export { ADMISSION_LEGACY_CUTOVER, admitIssue, parseMergedPrIssueBinding, verifyMergedPrIssueBinding, withMergedPrIssueBinding, reviewTargetIsRecordable, derivePrOperationRoute, assertUnambiguousClaimTitle }
 import { workIssuesFromRows, openIssueNumbersFromRows, memoizePrFiles, closedClaimAuthoredOnMain, RELINQUISH_ONLY_LEASE_FIELDS, wrongOwnerMessage, renewalIssueScope, claimCoversObject, addedMigrationVersions, parseVersionPrMap, assertMergeCommitInMainHistory, completeWork, SPLIT_REMAINDER, workstreamKey, migrationVersions, replaceLeaseLocation, replaceClaimObjects, replaceLeaseExpiry, replaceCapacityState, relinquishOnlyFieldsIn, stripRelinquishOnlyFields, claimTitleIssues, claimWorkIssue, validateCapacityBlocker, requireDereferenceableRecoveryArtifact, requestedWorktreeState, observedWorktreeState, resolveRelinquishmentWorktreeState, publishCapacityEvents, laneCommand, appendClaimObjects, replaceScopeStatus, validateImmutableArtifactReference } from './lib/lanes/claim-maintenance.mjs'
+// Claude Code owner labels exist in two spellings for the same exact session:
+// `claude-chat-<uuid>@<machine>` (the claim path) and `Claude chat <uuid> on <machine>`
+// (the GitHub signature form). Both name one UUID and one machine; nothing else
+// is treated as equal, so an alias, a different UUID or machine never matches.
+const CLAUDE_OWNER_FORMS=[/^claude-chat-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})@([A-Za-z0-9][A-Za-z0-9._-]{0,119})$/,/^Claude chat ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}) on ([A-Za-z0-9][A-Za-z0-9._-]{0,119})$/]
+function claudeOwnerKey(label){for(const re of CLAUDE_OWNER_FORMS){const m=re.exec(String(label??''));if(m)return `${m[1]}@${m[2]}`}return null}
+export function parkComment({claim,lease,pr}){
+  return [
+    `Parked: claim #${claim} was released with \`--release-claim --park\`. This pull request is closed, not deleted; branch \`${lease.branch}\` is kept.`,
+    '',
+    'To resume:',
+    `1. Reopen pull request #${pr}.`,
+    `2. Re-claim the same objects (${(lease.objects??[]).join(', ')||'see the released claim'}) with a new claim.`,
+    `3. Migration version ${lease.version} stays permanently reserved and is never reused; pick a new version and rename the migration.`,
+    '',
+    `Posted by ${lease.owner} (owner of claim #${claim}) via manage-migration-author-lanes --park`,
+  ].join('\n')
+}
+export function sameOwnerLabel(onRecord,supplied){
+  const a=String(onRecord??''),b=String(supplied??'')
+  if(!a||!b)return false
+  if(a===b)return true
+  const ka=claudeOwnerKey(a),kb=claudeOwnerKey(b)
+  return ka!==null&&ka===kb
+}
 export { workIssuesFromRows, openIssueNumbersFromRows, memoizePrFiles, closedClaimAuthoredOnMain, RELINQUISH_ONLY_LEASE_FIELDS, wrongOwnerMessage, renewalIssueScope, claimCoversObject, addedMigrationVersions, parseVersionPrMap, assertMergeCommitInMainHistory, completeWork }
 import { readExclusiveLease, assertExclusive } from './lib/lanes/exclusive-locks.mjs'
 export { readExclusiveLease, assertExclusive }
@@ -1083,6 +1108,8 @@ export const githubIo = {
   },
   closeIssue(number) { gh(['issue','close',String(number),'--repo',REPO]) },
   closeClaim(number, reason) { gh(['issue', 'close', String(number), '--repo', REPO, '--comment', requireClaimCloseReason(reason)]) },
+  // Close only. The branch is never deleted, so a parked pull request stays reopenable.
+  closePull(number, comment) { gh(['pr', 'close', String(number), '--repo', REPO, '--comment', String(comment)]) },
   reversionFiles(worktree,oldVersion) {
     let referenced=[];const riskGatePath=['scripts','production_business_risk_gate.py'].join('/')
     try{referenced=execFileSync('git',['-C',worktree,'grep','-l',oldVersion,'--','supabase/migrations','supabase/tests',riskGatePath,'config/production-verification-sidecar-registry.json','docs'],{encoding:'utf8'}).trim().split(/\r?\n/).filter(Boolean)}
@@ -2511,7 +2538,7 @@ export function prepareAuthorHandoff(options,now=new Date(),io=githubIo){
     const authority=io.orchestratorFlowAdapter().resolveMarker()
     if(!authority?.live||authority.calling_task!==authority.task||!resolveSessionAuthority({env:{SHARED_DB_SESSION_ID:authority.task},claimOwner:request.owner}).live)throw new LaneError('stop-author must execute in the actual owner session')
     const claim=io.getIssue(request.claim),lease=parseAuthorLease(claim?.body??'',now)
-    if(claim?.state!=='open'||workstreamKey(claim.title)!==`#${request.issue}`||lease.legacy||lease.owner!==request.owner||lease.branch!==request.branch||lease.worktree!==request.worktree||lease.relinquishmentMetadataLegacy)throw new LaneError('stop-author claim identity or custody differs')
+    if(claim?.state!=='open'||workstreamKey(claim.title)!==`#${request.issue}`||lease.legacy||!sameOwnerLabel(lease.owner,request.owner)||lease.branch!==request.branch||lease.worktree!==request.worktree||lease.relinquishmentMetadataLegacy)throw new LaneError('stop-author claim identity or custody differs')
     assertClaimNotRetired(lease.version,'handed off',io)
     renewalIssueScope(io.getIssue(request.issue),lease,[request.issue],{allowClaimSuperset:true})
     if(observedWorktreeState(request.worktree,io)!=='clean'||!io.localClean(request.worktree)||io.localHead(request.worktree)!==request.headSha||io.localBranch(request.worktree)!==request.branch)throw new LaneError('stop-author requires preserved clean exact source custody')
@@ -4032,7 +4059,7 @@ function requireCheckinOwner(options,io){
   const marker=io.orchestratorFlowAdapter().resolveMarker()
   if(!marker?.live||marker.calling_task!==marker.task||!resolveSessionAuthority({env:{SHARED_DB_SESSION_ID:marker.task},claimOwner:options.owner}).live)throw new LaneError('author check-in must execute in the actual current owner session')
   const row=io.getIssue(Number(options.claim)),lease=parseAuthorLease(row?.body??'',options.checkinNow)
-  if(row?.state!=='open'||lease.owner!==options.owner||lease.capacityState!=='active'||!lease.capacityActive)throw new LaneError('author check-in refuses stopped, expired, foreign or legacy execution')
+  if(row?.state!=='open'||!sameOwnerLabel(lease.owner,options.owner)||lease.capacityState!=='active'||!lease.capacityActive)throw new LaneError('author check-in refuses stopped, expired, foreign or legacy execution')
   if(lease.branch!==options.branch||lease.worktree!==options.worktree||io.localHead(options.worktree)!==options.headSha||io.localBranch(options.worktree)!==options.branch)throw new LaneError('author check-in source custody differs')
   return {row,lease,marker}
 }
@@ -4874,6 +4901,7 @@ function parseArgs(argv) {
     else if (a === '--owner-decision' || a === '--review-approval') throw new LaneError(`${a} is retired (#3675, owner ruling 2026-09-28: never ask a human to approve). A dirty or remote retirement takes --preservation artifact:<rescue commit or patch object>, and the allocator-assigned AI reviewer's durable exact-head APPROVE for --pr/--head-sha is read automatically`)
     else if (a === '--release-duplicate-claim') out.releaseDuplicateClaim = next(i), i++
     else if (a === '--confirm-finished') out.confirmFinished = true
+    else if (a === '--park') out.park = true
     else if (a === '--recover-author-mutex') out.recoverMutex = true
     else if (a === '--recover-same-owner-split') out.recoverSplit = true
     else if (a === '--expand-active-claim-from-pr') out.expandClaim = true
@@ -5331,8 +5359,21 @@ export function main(argv, now = new Date(), io = githubIo) {
         const fresh=io.openClaims(), claim=fresh.find((x)=>String(x.number)===String(o.releaseClaim))
         if(!claim)throw new LaneError(`claim #${o.releaseClaim} is not open`)
         const lease=parseAuthorLease(claim.body,now)
-        if(lease.owner!==o.owner)throw new LaneError(wrongOwnerMessage({claim:o.releaseClaim,onRecord:lease.owner,supplied:o.owner,command:laneCommand(['--release-claim',String(o.releaseClaim),'--owner',JSON.stringify(String(lease.owner??'')),'--confirm-finished'])}))
-        if((io.openPulls?.() ?? io.prSources()).some((pr)=>(pr.head?.ref ?? pr.branch)===lease.branch))throw new LaneError(`claim branch ${lease.branch} still has an open pull request`)
+        if(!sameOwnerLabel(lease.owner,o.owner))throw new LaneError(wrongOwnerMessage({claim:o.releaseClaim,onRecord:lease.owner,supplied:o.owner,command:laneCommand(['--release-claim',String(o.releaseClaim),'--owner',JSON.stringify(String(lease.owner??'')),'--confirm-finished'])}))
+        const branchPulls=(io.openPulls?.() ?? io.prSources()).filter((pr)=>(pr.head?.ref ?? pr.branch)===lease.branch)
+        // --park: a stuck session frees its claim without losing work. The open
+        // pull request is CLOSED (never deleted, branch kept) with a resume note,
+        // then the ordinary release runs. Owner, mutex and claim checks above are
+        // unchanged; park never combines with terminal retirement.
+        if(branchPulls.length&&!o.park)throw new LaneError(`claim branch ${lease.branch} still has an open pull request; add --park to close it (reopenable, branch kept) and release`)
+        if(o.park&&o.retire)throw new LaneError('--park cannot be combined with --retire')
+        if(o.park&&branchPulls.length){
+          if(typeof io.closePull!=='function')throw new LaneError('--park requires a pull-request close capability')
+          for(const pr of branchPulls){
+            requireOwnedRef(MUTEX_REF,ownerSha,io)
+            io.closePull(Number(pr.number),parkComment({claim:Number(claim.number),lease,pr:Number(pr.number)}))
+          }
+        }
         // #2301 Step 3 -- TERMINAL RETIREMENT.
         //
         // ORDERING IS THE WHOLE GUARANTEE: the tombstone is created BEFORE the

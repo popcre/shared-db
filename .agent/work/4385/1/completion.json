@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "work_issue": 4385,
+  "outcome": "ready-for-merge",
+  "pr": 4387,
+  "head_sha": "60e99c62672b1ea69ea4c123262f0f8ca73985a6",
+  "base_sha": "e241459ab805a1219b76534d425741e1f87fa44c",
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4385/1",
+  "contract_sha256": "4053d3db32c69696cbd5fdeefccb4857172a07b2daaf7f6fd7997338be27e8ba",
+  "files_changed": [
+    "config/preview-ledger-orphan-reconciliations.json",
+    "scripts/test_preview_ledger_orphan_reconcile.py",
+    "scripts/test_preview_ledger_orphan_reconcile_postgres.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "/tmp/codex-stage-api/4385-static.log SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855; no whitespace errors"
+    },
+    {
+      "command": "python3 scripts/test_preview_ledger_orphan_reconcile.py",
+      "exit_code": 0,
+      "evidence": "/tmp/codex-stage-api/4385-unit.log SHA256 f4c02ff5b062d18d577f2838fc0e1a5be515daa80f8014e306390d6ff7d80753; 40 tests PASS including complete governance positive/refusal matrix"
+    },
+    {
+      "command": "PREVIEW_LEDGER_RECONCILE_POSTGRES_TEST=1 python3 scripts/test_preview_ledger_orphan_reconcile_postgres.py",
+      "exit_code": 0,
+      "evidence": "/tmp/codex-stage-api/4385-postgres.log SHA256 c5ca15f2dd91b594889ecc0677853cf275201216f5a3b3ef83a8240d62572b1f; 6 actual PostgreSQL17 tests PASS, ZERO skipped, real native check/apply/replay refusal; preserved history/other row; owned network-none fixture removed"
+    }
+  ],
+  "assumptions_resolved": [
+    "Native published prework4385/1 predates all implementation; original authority is not backdated.",
+    "SuccessorPR4386 read back OPEN/DRAFT exact63d421685469f136f38f12a8419e1cb898fc07b1 before implementation; case binds native fresh source head at action time, not invented config field.",
+    "Every pre-existing manifest byte preserved; exactly one configured native case added, validators/workflow unchanged.",
+    "Original producer154361984687def51366c2c539d7467b1ad64098 differs from appliedsource56f09184269abde4a7a8c85a2b1e617e249260b7. Tests prove substitution refusals.",
+    "Actual PostgreSQL17 image pinned postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24; driver hash retained 0025727f4481c3ed96e014267c8764f4afe239db1cbe5bb6bfb0e5f40973632d  /tmp/codex-stage-api/4385-postgres-driver.py. Private psql transport executes only inside owned network-none container; no live credentials.",
+    "Native premerge implementation evidence only. Final exact-head Muse review, CI, root merge and separately authorized actual preview workflow action remain OPEN. No live/project/production writes or future gate success claimed."
+  ],
+  "stop_conditions_hit": []
+}

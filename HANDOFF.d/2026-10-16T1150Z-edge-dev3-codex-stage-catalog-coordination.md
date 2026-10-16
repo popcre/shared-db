@@ -1,8 +1,10 @@
 ---
-issue: 4373
+issue: 4379
 status: BLOCKED
-owner: 01a14247-5120-71f0-a78d-b9d477b46304
+owner: b6410b17-053b-4ff2-adc8-f25b053cb611
 ---
+
+> Re-anchored October 16, 2026, about 5:30 PM EDT, by Claude chat b6410b17-053b-4ff2-adc8-f25b053cb611 on edge-dev3: #4373 closes with PR #4386 (claim #4402, version 20261016210024); remaining obligations continue under #4379 and designflow-tracking#124. Original text below is unchanged.
 
 # DesignFlow editable stage catalog — primary coordinated recovery handoff
 

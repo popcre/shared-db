@@ -6,10 +6,9 @@
 create table plm.prod_stage_option (
   prod_order_header_id integer primary key,
   needs_linesheet boolean not null default false,
-  updated_by integer null,
+  updated_by integer null, -- dflow.users.id of the internal editor; tracking API sets it.
   updated_at timestamptz not null default now()
 );
-comment on column plm.prod_stage_option.updated_by is 'dflow.users.id of the internal editor, set by tracking API.';
 alter table plm.prod_stage_option enable row level security;
 revoke all on plm.prod_stage_option from anon, authenticated;
 grant select, insert, update, delete on plm.prod_stage_option to service_role;

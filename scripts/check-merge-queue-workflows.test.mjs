@@ -96,7 +96,7 @@ const KNOWN_LIVE_ADDITIONS = []
 // Contexts still present in the dated mirror but no longer live-required and no
 // longer emitted: the claim-first session identity guard was retired with the role (#3874);
 // live branch protection already omitted it (made advisory 2026-09-28).
-const RETIRED_MIRROR_CONTEXTS = new Set(['claim-first session identity guard', 'Agent work contract'])
+const RETIRED_MIRROR_CONTEXTS = new Set(['claim-first session identity guard', 'Agent work contract', 'Orchestrator marker guard'])
 
 // context -> emitter. kind 'check-run': the workflow job named `job` reports
 // the context on whatever commit it runs on, so merge_group coverage means the

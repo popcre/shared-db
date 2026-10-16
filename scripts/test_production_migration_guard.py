@@ -4357,7 +4357,7 @@ class AbandonmentDocumentationAgreementTests(unittest.TestCase):
             encoding="utf-8"
         )
         cls.reconcile = (
-            REPO / "scripts" / "orchestrator-flow" / "reconcile.mjs"
+            REPO / "scripts" / "db-flow" / "reconcile.mjs"
         ).read_text(encoding="utf-8")
         # SCOPE THE SEARCH, OR THE TEST IS A LOTTERY. AGENTS.md is ~1750 lines and
         # section 4 is ~1100; the bare words "clean", "dirty", "remote", "3" and

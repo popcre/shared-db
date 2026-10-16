@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "work_issue": 4297,
+  "outcome": "ready-for-merge",
+  "pr": 4388,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4297/41",
+  "contract_sha256": "cf8d4e5cc3a6881b1de660ec9cabc12306ab05c3d64c735e640b62a0b12cfb20",
+  "base_sha": "55d1afb1556c6fb75060ab0ddc16b0a995609893",
+  "head_sha": "01eb50eeffb851b00f39b286d383f3b4b0e97327",
+  "files_changed": [
+    "HANDOFF.d/2026-10-16T0541Z-edge-dev3-codex-completed-review-disposition.md",
+    "config/orchestrator-global-invalidators-v1.json",
+    "docs/agents/review-recovery-policy.md",
+    "docs/verification/throughput-dispositions/scripts~lib~lanes~review-completed-unrecordable.mjs.json",
+    "plan_completed_unrecordable_replacement_4346.md",
+    "plan_completed_unrecordable_review_4297.md",
+    "scripts/lib/lanes/review-assignment.mjs",
+    "scripts/lib/lanes/review-circuit-breaker.test.mjs",
+    "scripts/lib/lanes/review-completed-unrecordable.mjs",
+    "scripts/lib/lanes/review-completed-unrecordable.test.mjs",
+    "scripts/lib/lanes/review-records.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs",
+    "scripts/run-governed-review.mjs",
+    "scripts/run-governed-review.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/lib/lanes/review-completed-unrecordable.test.mjs",
+      "exit_code": 0,
+      "evidence": "112 pass at 01eb50ee"
+    },
+    {
+      "command": "node --test scripts/run-governed-review.test.mjs scripts/lib/lanes/review-circuit-breaker.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "1244 pass at 01eb50ee"
+    },
+    {
+      "command": "node --test scripts/db-flow/evidence-bundle.test.mjs scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "22 pass at 01eb50ee"
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK call_sites=362 at 01eb50ee"
+    },
+    {
+      "command": "git diff --check origin/main...HEAD",
+      "exit_code": 0,
+      "evidence": "clean at 01eb50ee"
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation 41 integrates current main after owner-directed takeover; source unchanged beyond the merge."
+  ],
+  "stop_conditions_hit": []
+}

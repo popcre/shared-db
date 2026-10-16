@@ -37,8 +37,10 @@ export function delay(ms) {
 export function buildPageUrl(scope, window, page, { companyCode = COMPANY_CODE, size = PAGE_SIZE } = {}) {
   const url = new URL(`${COLDLION_BASE_URL}${scope.endpoint}`);
   url.searchParams.set("companyCode", companyCode);
-  url.searchParams.set("fromDate", window.from);
-  url.searchParams.set("toDate", window.to);
+  // A header-track window records its header range as from/to and sends the
+  // vendor-required start-date window as requestFrom/requestTo.
+  url.searchParams.set("fromDate", window.requestFrom ?? window.from);
+  url.searchParams.set("toDate", window.requestTo ?? window.to);
   if (scope.stage) url.searchParams.set("stageCode", scope.stage);
   // /orderHistory header filters (ColdLion, 2026-10-16): createdFrom/createdTo and
   // modifiedFrom/modifiedTo narrow by the sales order HEADER's timestamps, ANDed with
@@ -53,8 +55,8 @@ export function buildPageUrl(scope, window, page, { companyCode = COMPANY_CODE, 
 export function requestParams(scope, window, page, { companyCode = COMPANY_CODE, size = PAGE_SIZE } = {}) {
   const params = {
     companyCode,
-    fromDate: window.from,
-    toDate: window.to,
+    fromDate: window.requestFrom ?? window.from,
+    toDate: window.requestTo ?? window.to,
     page,
     size,
   };

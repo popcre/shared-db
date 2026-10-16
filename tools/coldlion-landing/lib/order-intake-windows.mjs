@@ -120,7 +120,7 @@ export function recordStagedWindow(stagedByMonth, window, stagedRows) {
 // ---------------------------------------------------------------------------------
 
 export const HEADER_TRACKS = Object.freeze(["created", "modified"]);
-export const HEADER_LOOKBACK_DAYS = 7;
+export const HEADER_LOOKBACK_DAYS = 5;
 export const HEADER_START_WINDOW_FROM = "2019-01-01";
 
 function addDays(isoValue, days) {
@@ -130,17 +130,25 @@ function addDays(isoValue, days) {
 }
 
 /**
- * The window for one header track: the wide start-date window plus the header filter
- * covering the last HEADER_LOOKBACK_DAYS through tomorrow (so an inclusive or exclusive
- * vendor upper bound both include today). The lookback re-covers missed hourly runs.
+ * The window for one header track. `from`/`to` are the HEADER filter range (the last
+ * HEADER_LOOKBACK_DAYS through tomorrow, so an inclusive or exclusive vendor upper bound
+ * both include today); they are what sync_run and intake_window_state record, and they
+ * stay inside those tables' 7-day span checks (to - from = lookback + 1 <= 6). The
+ * vendor-required start-date window is sent separately as requestFrom/requestTo and held
+ * wide. The lookback re-covers missed hourly runs.
  */
 export function headerTrackWindow(asOfIso, track, { lookbackDays = HEADER_LOOKBACK_DAYS } = {}) {
   if (!HEADER_TRACKS.includes(track)) throw new Error(`unknown header track ${track}`);
+  if (!Number.isInteger(lookbackDays) || lookbackDays < 0 || lookbackDays > 5) {
+    throw new Error("header lookback must be 0..5 days so the recorded window fits the 7-day span checks");
+  }
   const from = addDays(asOfIso, -lookbackDays);
   const to = addDays(asOfIso, 1);
   return {
-    from: HEADER_START_WINDOW_FROM,
-    to: forwardCapDate(asOfIso),
+    from,
+    to,
+    requestFrom: HEADER_START_WINDOW_FROM,
+    requestTo: forwardCapDate(asOfIso),
     filters: { [`${track}From`]: from, [`${track}To`]: to },
   };
 }

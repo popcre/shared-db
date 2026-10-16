@@ -139,20 +139,74 @@ test("the stop rule never fires mid-month when windows within one month stage ro
 });
 
 import { headerTrackWindow as headerWindowUnderTest } from "./coldlion-landing/lib/order-intake-windows.mjs";
-import { buildPageUrl as buildUrlUnderTest } from "./coldlion-landing/lib/http.mjs";
+import { buildPageUrl as buildUrlUnderTest, requestParams as requestParamsUnderTest } from "./coldlion-landing/lib/http.mjs";
+import { buildIntakeStageSql as stageSqlUnderTest, buildIntakeFailureSql as failureSqlUnderTest } from "./coldlion-landing/lib/order-intake-stage.mjs";
 
-test("header tracks hold a wide start window and filter the last week through tomorrow", () => {
+function daysBetween(a, b) {
+  return (Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000;
+}
+
+test("header tracks record the header range and send a wide start window", () => {
   const created = headerWindowUnderTest("2026-10-16", "created");
   assert.deepEqual(created, {
-    from: "2019-01-01",
-    to: "2028-04-01",
-    filters: { createdFrom: "2026-10-09", createdTo: "2026-10-17" },
+    from: "2026-10-11",
+    to: "2026-10-17",
+    requestFrom: "2019-01-01",
+    requestTo: "2028-04-01",
+    filters: { createdFrom: "2026-10-11", createdTo: "2026-10-17" },
   });
   const modified = headerWindowUnderTest("2026-10-16", "modified");
-  assert.deepEqual(modified.filters, { modifiedFrom: "2026-10-09", modifiedTo: "2026-10-17" });
+  assert.deepEqual(modified.filters, { modifiedFrom: "2026-10-11", modifiedTo: "2026-10-17" });
   assert.throws(() => headerWindowUnderTest("2026-10-16", "forward"), /unknown header track/);
+  assert.throws(() => headerWindowUnderTest("2026-10-16", "created", { lookbackDays: 6 }), /0\.\.5 days/);
   const url = buildUrlUnderTest({ endpoint: "/orderHistory", stage: null }, modified, 0);
   assert.equal(url.searchParams.get("fromDate"), "2019-01-01");
-  assert.equal(url.searchParams.get("modifiedFrom"), "2026-10-09");
+  assert.equal(url.searchParams.get("toDate"), "2028-04-01");
+  assert.equal(url.searchParams.get("modifiedFrom"), "2026-10-11");
   assert.equal(url.searchParams.get("modifiedTo"), "2026-10-17");
+  const params = requestParamsUnderTest({ endpoint: "/orderHistory", stage: null }, modified, 0);
+  assert.equal(params.fromDate, "2019-01-01");
+  assert.equal(params.modifiedFrom, "2026-10-11");
+});
+
+test("header-track bookkeeping rows fit the sync_run and intake_window_state 7-day span checks", () => {
+  for (const asOf of ["2026-10-16", "2026-12-31", "2027-02-28", "2028-02-29"]) {
+    for (const track of ["created", "modified"]) {
+      const window = headerWindowUnderTest(asOf, track);
+      // Both tables: check ((to - from) <= 6).
+      assert.ok(daysBetween(window.from, window.to) <= 6, `${asOf} ${track}`);
+      assert.ok(daysBetween(window.from, window.to) >= 0);
+    }
+  }
+  const window = headerWindowUnderTest("2026-10-16", "created");
+  const stage = stageSqlUnderTest({
+    runId: "00000000-0000-0000-0000-0000000000aa",
+    window,
+    track: "created",
+    projected: { lines: [], components: [], excludedEp001: 0 },
+    companyCode: "POP",
+    pageSize: 200,
+    completion: { rows: 0, pages: 1, httpStatus: 200, bodyStatus: 200 },
+    startedAt: "2026-10-16T12:00:00.000Z",
+    finishedAt: "2026-10-16T12:00:01.000Z",
+    durationMs: 1000,
+    notes: "",
+    dryRun: false,
+  });
+  const failure = failureSqlUnderTest({
+    runId: "00000000-0000-0000-0000-0000000000ab",
+    window,
+    track: "created",
+    companyCode: "POP",
+    error: new Error("boom"),
+    startedAt: "2026-10-16T12:00:00.000Z",
+  });
+  for (const sql of [stage, failure]) {
+    // The recorded window columns carry the header range, never the wide start window.
+    assert.match(sql, /date '2026-10-11', date '2026-10-17'/);
+    assert.doesNotMatch(sql, /date '2019-01-01'/);
+    // request_params still records what was sent.
+    assert.match(sql, /"fromDate":"2019-01-01"/);
+    assert.match(sql, /"createdFrom":"2026-10-11"/);
+  }
 });

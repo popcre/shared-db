@@ -242,7 +242,7 @@ insert into coldlion.sync_run
    rows_fetched, notes)
 values
   (${sqlUuid(runId)}, '/orderHistory', ${sqlText(companyCode)},
-   ${sqlJson({ companyCode, track, fromDate: window.from, toDate: window.to, ...(window.filters ?? {}), size: pageSize, pages: completion.pages })},
+   ${sqlJson({ companyCode, track, fromDate: window.requestFrom ?? window.from, toDate: window.requestTo ?? window.to, ...(window.filters ?? {}), size: pageSize, pages: completion.pages })},
    date ${sqlText(window.from)}, date ${sqlText(window.to)},
    'succeeded', ${sqlText(REQUESTED_BY)}, ${sqlTimestamp(startedAt)}, ${sqlTimestamp(finishedAt)},
    ${sqlNumber(durationMs)}, ${sqlNumber(completion.httpStatus)}, ${sqlNumber(completion.bodyStatus)},
@@ -383,7 +383,7 @@ insert into coldlion.sync_run
    status, requested_by, started_at, finished_at, http_status, body_status, error_message)
 values
   (${sqlUuid(runId)}, '/orderHistory', ${sqlText(companyCode)},
-   ${sqlJson({ companyCode, requestedBy: REQUESTED_BY, fromDate: window.from, toDate: window.to, ...(window.filters ?? {}) })},
+   ${sqlJson({ companyCode, requestedBy: REQUESTED_BY, fromDate: window.requestFrom ?? window.from, toDate: window.requestTo ?? window.to, ...(window.filters ?? {}) })},
    date ${sqlText(window.from)}, date ${sqlText(window.to)},
    'failed', ${sqlText(REQUESTED_BY)}, ${sqlTimestamp(startedAt)}, now(),
    ${sqlNumber(error?.httpStatus ?? null)}, ${sqlNumber(error?.bodyStatus ?? null)}, ${sqlText(message)})

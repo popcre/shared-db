@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "source": "scripts/lib/lanes/review-completed-unrecordable.mjs",
+  "sites": [
+    {
+      "source": "scripts/lib/lanes/review-completed-unrecordable.mjs",
+      "site": "scripts/lib/lanes/review-completed-unrecordable.mjs:79",
+      "semantic_key": "scripts/lib/lanes/review-completed-unrecordable.mjs:04703fcf39090cfe7fac52612cdaf87473207cff4d1c3f8f3433ce5e72c547ef:context-172e8958ade2aa514dd6b627460106e45d7a1ee44bdaeabe16d39705bc48929d",
+      "legacy_semantic_key": "scripts/lib/lanes/review-completed-unrecordable.mjs:04703fcf39090cfe7fac52612cdaf87473207cff4d1c3f8f3433ce5e72c547ef:1",
+      "line_sha256": "04703fcf39090cfe7fac52612cdaf87473207cff4d1c3f8f3433ce5e72c547ef",
+      "disposition": "excluded",
+      "reason": "Protected local evidence read refuses unavailable or unsafe evidence; this is a custody guard, not a database-throughput or object-absence assertion."
+    },
+    {
+      "source": "scripts/lib/lanes/review-completed-unrecordable.mjs",
+      "site": "scripts/lib/lanes/review-completed-unrecordable.mjs:181",
+      "semantic_key": "scripts/lib/lanes/review-completed-unrecordable.mjs:4b154c3d43e10360a91b93d4bd5df5e3c3984389196768a01cd3873c82d09c09:context-9d52b24062676f78b2d08be2565472abc29b8996945fba9598b163af23ec2156",
+      "legacy_semantic_key": "scripts/lib/lanes/review-completed-unrecordable.mjs:4b154c3d43e10360a91b93d4bd5df5e3c3984389196768a01cd3873c82d09c09:1",
+      "line_sha256": "4b154c3d43e10360a91b93d4bd5df5e3c3984389196768a01cd3873c82d09c09",
+      "disposition": "excluded",
+      "reason": "Non-authorizing record kind identifies the completed review receipt failure; all decision and paid-attempt fields remain preserved, with no throughput assertion."
+    },
+    {
+      "source": "scripts/lib/lanes/review-completed-unrecordable.mjs",
+      "site": "scripts/lib/lanes/review-completed-unrecordable.mjs:116",
+      "semantic_key": "scripts/lib/lanes/review-completed-unrecordable.mjs:6f9da61533d22fe521118f133a698a44dcaa4202f9e55f736819d9261522ea84:context-22e771ec4543133f3c0a2b11c087fdf8b55ea44b0512ad03260edeba056de054",
+      "legacy_semantic_key": "scripts/lib/lanes/review-completed-unrecordable.mjs:6f9da61533d22fe521118f133a698a44dcaa4202f9e55f736819d9261522ea84:1",
+      "line_sha256": "6f9da61533d22fe521118f133a698a44dcaa4202f9e55f736819d9261522ea84",
+      "disposition": "excluded",
+      "reason": "Refuses disposition when complete native terminal-state inventory contains a conflicting result; this describes review state, not missing database objects."
+    },
+    {
+      "source": "scripts/lib/lanes/review-completed-unrecordable.mjs",
+      "site": "scripts/lib/lanes/review-completed-unrecordable.mjs:134",
+      "semantic_key": "scripts/lib/lanes/review-completed-unrecordable.mjs:a90c99b9d458b00827a47f4c516438e9005c30c46f5ea59e573b75dd0f2a496e:context-35623ac544a3629d36215c37353ade5697fb710b1f113b6004dee20d62ac5a73",
+      "legacy_semantic_key": "scripts/lib/lanes/review-completed-unrecordable.mjs:a90c99b9d458b00827a47f4c516438e9005c30c46f5ea59e573b75dd0f2a496e:1",
+      "line_sha256": "a90c99b9d458b00827a47f4c516438e9005c30c46f5ea59e573b75dd0f2a496e",
+      "disposition": "excluded",
+      "reason": "Requires an immutable original assignment commit before recovery qualification; this guard never reports database throughput or object absence."
+    },
+    {
+      "source": "scripts/lib/lanes/review-completed-unrecordable.mjs",
+      "site": "scripts/lib/lanes/review-completed-unrecordable.mjs:43",
+      "semantic_key": "scripts/lib/lanes/review-completed-unrecordable.mjs:bfadd39702ff7da7c2219ef3647fcdd09cfb7cfbf3c9c27004cda47a0c9f2e6f:context-24950d4e1bd65427225089bfb858726e4463cbad4f6501f483c94d062531bc95",
+      "legacy_semantic_key": "scripts/lib/lanes/review-completed-unrecordable.mjs:bfadd39702ff7da7c2219ef3647fcdd09cfb7cfbf3c9c27004cda47a0c9f2e6f:1",
+      "line_sha256": "bfadd39702ff7da7c2219ef3647fcdd09cfb7cfbf3c9c27004cda47a0c9f2e6f",
+      "disposition": "excluded",
+      "reason": "Validates the non-authorizing spent-decision schema and receipt-failure kind; it does not assert database object absence or throughput."
+    },
+    {
+      "source": "scripts/lib/lanes/review-completed-unrecordable.mjs",
+      "site": "scripts/lib/lanes/review-completed-unrecordable.mjs:121",
+      "semantic_key": "scripts/lib/lanes/review-completed-unrecordable.mjs:cb6c77fb8c6d821cbb6b09b8079ae223839db6f283678c3e8198edccbc6cf3ab:context-ab889d2ffa41cd262a4361b7fccfa32de4f9f6beb3b2a5d326e3d2a148e1f83f",
+      "legacy_semantic_key": "scripts/lib/lanes/review-completed-unrecordable.mjs:cb6c77fb8c6d821cbb6b09b8079ae223839db6f283678c3e8198edccbc6cf3ab:1",
+      "line_sha256": "cb6c77fb8c6d821cbb6b09b8079ae223839db6f283678c3e8198edccbc6cf3ab",
+      "disposition": "excluded",
+      "reason": "Requires the original immutable contract reference before recovery qualification; this describes governed review custody, not database object absence."
+    },
+    {
+      "source": "scripts/lib/lanes/review-completed-unrecordable.mjs",
+      "site": "scripts/lib/lanes/review-completed-unrecordable.mjs:138",
+      "semantic_key": "scripts/lib/lanes/review-completed-unrecordable.mjs:ed9a4a234d273bc50ec395619e5ade13cad45f9afc2ba5ae4e9b3a425cd2d643:context-9bd1f9ada71be1fd381c7ad297327f3b782e41e2828c7f3a750dcbdd2e50b4f8",
+      "legacy_semantic_key": "scripts/lib/lanes/review-completed-unrecordable.mjs:ed9a4a234d273bc50ec395619e5ade13cad45f9afc2ba5ae4e9b3a425cd2d643:1",
+      "line_sha256": "ed9a4a234d273bc50ec395619e5ade13cad45f9afc2ba5ae4e9b3a425cd2d643",
+      "disposition": "excluded",
+      "reason": "Requires an immutable original paid-start marker before recovery qualification; this is paid-accounting evidence rather than a throughput claim."
+    },
+    {
+      "source": "scripts/lib/lanes/review-completed-unrecordable.mjs",
+      "site": "scripts/lib/lanes/review-completed-unrecordable.mjs:131",
+      "semantic_key": "scripts/lib/lanes/review-completed-unrecordable.mjs:f2ddadd55fa256ee1c19ef9b9278e722be8796ffc8ec2736aba788410f8f3190:context-b23f3edafdb8f2d47caf4011df8a68e2e8af9612709fa4f5d577c8724d2ca03b",
+      "legacy_semantic_key": "scripts/lib/lanes/review-completed-unrecordable.mjs:f2ddadd55fa256ee1c19ef9b9278e722be8796ffc8ec2736aba788410f8f3190:1",
+      "line_sha256": "f2ddadd55fa256ee1c19ef9b9278e722be8796ffc8ec2736aba788410f8f3190",
+      "disposition": "excluded",
+      "reason": "Requires every immutable predecessor contract while checking original source lineage; the refusal concerns review evidence, not database object absence."
+    }
+  ]
+}

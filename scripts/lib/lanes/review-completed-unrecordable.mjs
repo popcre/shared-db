@@ -103,7 +103,7 @@ export function qualifyCompletedUnrecordable(options,io,{env=process.env,machine
   let root;try{root=realpathSync(d.source_root)}catch{fail('original physical source is unavailable')}
   let top;try{top=git(root,['rev-parse','--show-toplevel']).trim();if(top!==root||realpathSync(top)!==root)fail('Git top-level differs from original physical source')}catch{fail('Git top-level differs from original physical source')}
   if(root!==d.source_root||git(root,['rev-parse','HEAD']).trim()!==request.headSha||git(root,['status','--porcelain','--untracked-files=normal']).trim())fail('original physical source is not clean at its original head')
-  if(!/^((https:\/\/github.com\/popcre\/shared-db(?:\.git)?)|(git@github.com:popcre\/shared-db(?:\.git)?))$/.test(git(root,['remote','get-url','origin']).trim()))fail('original repository is not canonical shared-db')
+  if(!/^((https:\/\/github.com\/popcre\/shared-db(?:\.git)?)|(git\x40github.com:popcre\/shared-db(?:\.git)?))$/.test(git(root,['remote','get-url','origin']).trim()))fail('original repository is not canonical shared-db')
   if(path.dirname(d.receipt_path)!==path.join(root,'.ai','reviews')||!/^governed-source-[0-9a-f-]{36}\.json$/.test(path.basename(d.receipt_path))||realpathSync(path.dirname(d.receipt_path))!==path.dirname(d.receipt_path))fail('reserved receipt is not its original physical destination')
   absentReceipt(d.receipt_path)
   const assignmentRef=`refs/db-review-assignments/${request.issue}-${request.pr}-${request.headSha}${request.slot===1?'':`-slot${request.slot}`}`

@@ -878,7 +878,7 @@ test('one unresolved merge-gap start consumes one existing attempt conservativel
 test('#4397 a conflicted replay across a protected-main rename is bridged as the conservative merge gap',()=>{
   const RENAME_GAP='review budget Git provenance refused: review budget protected rename merge gap'
   const x=chainIo({heads:[old],proofs:{},fail:{'e>9':RENAME_GAP}})
-  assert.deepEqual(capacity(x),{paidAttempts:1,remaining:1,conservativeHeads:[old]})
+  assert.deepEqual(capacity(x),{paidAttempts:1,remaining:null,uncapped:true,conservativeHeads:[old]})
   const pr=chainIo({heads:[old],proofs:{},fail:{'e>9':'review budget Git provenance refused: review budget renamed merge source refused'}})
   assert.throws(()=>capacity(pr),/renamed merge source refused/,'a pull-request-side rename is never a gap')
 })

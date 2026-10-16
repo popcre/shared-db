@@ -1,0 +1,50 @@
+{
+  "schema_version": 2,
+  "generation": 1,
+  "evidence_parent": null,
+  "work_issue": 4345,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Retain PR4346, integrate its existing exact-session Claude owner-label repair with current main, re-prove tests, obtain governed independent approval and merge through the queue.",
+  "base_sha": "154361984687def51366c2c539d7467b1ad64098",
+  "dispatcher": "Codex chat 01a1425d-a395-77f2-812e-bbb8ff1facdc on hetz",
+  "worker": "Codex chat 01a1425d-a395-77f2-812e-bbb8ff1facdc on hetz",
+  "branch": "claude/accept-claude-chat-owner-label",
+  "worktree": "/worksp/.worktrees/shared-db-closeout-417-4346",
+  "allowed_paths": [
+    "scripts/lib/session-authority.mjs",
+    "scripts/lib/session-authority.test.mjs",
+    ".agent/work/4345/1/contract.json",
+    ".agent/work/4345/1/completion.json"
+  ],
+  "file_writes": [
+    "scripts/lib/session-authority.mjs",
+    "scripts/lib/session-authority.test.mjs",
+    ".agent/work/4345/1/contract.json",
+    ".agent/work/4345/1/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "Do not write to any database, claim or migration.",
+    "Do not force-push or rewrite historical implementation or review records.",
+    "Do not change PR4357 or another session worktree or handoff.",
+    "Do not change owner-label semantics beyond the existing exact-session repair."
+  ],
+  "required_checks": [
+    "node --test scripts/lib/session-authority.test.mjs",
+    "node --test scripts/manage-migration-author-lanes.test.mjs",
+    "git diff --check origin/main...HEAD"
+  ],
+  "assumptions": [
+    "Albert explicitly answered \"keep both\" in this chat, retaining PopDAM PR417 and shared-db PR4346.",
+    "The implementation was drafted before this contract was published at existing head 392eb6da35655450d99bbc4aa00da232bbfb8c49; this contract prospectively scopes integration and verification, not its original authorship.",
+    "PR4357 includes this change but remains separately owned; this PR can land first without editing its source.",
+    "No old local-only reviewer finding is treated as a durable approval."
+  ],
+  "stop_conditions": [
+    "Stop on conflicts outside the two allowed source files or inherited upstream evidence.",
+    "Stop on failed required checks, unsupported evidence or reviewer refusal.",
+    "Stop if any database write or history rewrite is required."
+  ]
+}

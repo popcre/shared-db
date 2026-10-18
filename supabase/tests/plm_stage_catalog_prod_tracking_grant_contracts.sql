@@ -1,52 +1,66 @@
 -- Contract tests for 20261018191107_plm_stage_catalog_prod_tracking_grant.sql
--- (issue #4464, claim #4467). Run by .github/workflows/database-contract-tests.yml
--- inside begin; ... rollback; as the migration owner. No fixture rows are kept.
+-- (issue #4464, claim #4467). Self-contained begin/rollback: nothing persists even
+-- when run directly; CI additionally wraps it (.github/workflows/database-contract-tests.yml).
 --
--- A. Catalogue: exact privilege matrix, no CREATE on plm, no new anon/authenticated
---    privilege, RLS still enabled, each policy targets only the tracking grant role.
--- B. Behaviour (only when the session already holds the role): as designflow_prod_tracking_grants, the seeded catalog is visible,
---    an editor write succeeds and bumps the list version, and progress writes are
---    refused at the privilege level.
+-- A. Catalogue: the exact ACL of designflow_prod_tracking_grants on the seven catalog
+--    tables read from aclexplode (no hand-enumerated privilege list, so MAINTAIN and any
+--    future bit are covered), USAGE without CREATE on plm, EXECUTE on the version trigger,
+--    no client-role ACL entry, RLS on, seven policies scoped only to that role with
+--    predicate true and read-only policies on the two progress tables.
+-- B. Behaviour (only when the session may SET ROLE to it; otherwise a WARNING says it was
+--    not exercised): the seeded catalog is visible; INSERT into every identity-keyed editor
+--    table works without any sequence grant; an editor UPDATE bumps the list version; and
+--    INSERT into prod_stage_progress and prod_stage_option is refused by the missing table
+--    privilege (message checked, so an RLS refusal cannot satisfy it).
+
+begin;
 
 do $a$
 declare v_bad text; v_n int;
+  v_role oid := (select oid from pg_roles where rolname = 'designflow_prod_tracking_grants');
 begin
-  select string_agg(t || ':' || p, ', ') into v_bad
-  from unnest(array['stage_list','stage','stage_duration','stage_dependency','licensor_stage_option','prod_stage_progress','prod_stage_option']) t
-  cross join unnest(array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE']) p
-  where has_table_privilege('designflow_prod_tracking_grants', 'plm.' || t, p)
-        is distinct from (p = 'SELECT' or (p <> 'TRUNCATE' and t not in ('prod_stage_progress','prod_stage_option')));
-  if v_bad is not null then raise exception 'A1 privilege matrix differs: %', v_bad; end if;
-  if not has_schema_privilege('designflow_prod_tracking_grants', 'plm', 'USAGE') then raise exception 'A2 no USAGE'; end if;
-  if has_schema_privilege('designflow_prod_tracking_grants', 'plm', 'CREATE') then raise exception 'A3 CREATE granted'; end if;
-  select count(*) into v_n from unnest(array['anon','authenticated']) r
-    cross join unnest(array['stage_list','stage','stage_duration','stage_dependency','licensor_stage_option','prod_stage_progress','prod_stage_option']) t
-    cross join unnest(array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) p
-    where has_table_privilege(r, 'plm.' || t, p);
-  if v_n <> 0 then raise exception 'A4 client roles can read the catalog (%)', v_n; end if;
+  with acl as (
+    select c.relname, a.privilege_type
+    from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    cross join lateral aclexplode(c.relacl) a
+    where n.nspname = 'plm' and a.grantee = v_role
+      and c.relname in ('stage_list','stage','stage_duration','stage_dependency','licensor_stage_option','prod_stage_progress','prod_stage_option')
+  ), want as (
+    select t, p from unnest(array['stage_list','stage','stage_duration','stage_dependency','licensor_stage_option']) t
+      cross join unnest(array['SELECT','INSERT','UPDATE','DELETE']) p
+    union all select t, 'SELECT' from unnest(array['prod_stage_progress','prod_stage_option']) t
+  )
+  select string_agg(coalesce(acl.relname, want.t) || ':' || coalesce(acl.privilege_type, want.p), ', ') into v_bad
+  from acl full join want on want.t = acl.relname and want.p = acl.privilege_type
+  where acl.relname is null or want.t is null;
+  if v_bad is not null then raise exception 'A1 ACL differs from the published matrix: %', v_bad; end if;
+  if not has_schema_privilege(v_role, 'plm', 'USAGE') then raise exception 'A2 no USAGE'; end if;
+  if has_schema_privilege(v_role, 'plm', 'CREATE') then raise exception 'A3 CREATE granted'; end if;
+  if not has_function_privilege(v_role, 'plm.stage_catalog_bump_version()', 'EXECUTE') then
+    raise exception 'A4 EXECUTE on plm.stage_catalog_bump_version() missing';
+  end if;
+  select count(*) into v_n
+  from pg_class c join pg_namespace n on n.oid = c.relnamespace
+  cross join lateral aclexplode(c.relacl) a
+  where n.nspname = 'plm'
+    and c.relname in ('stage_list','stage','stage_duration','stage_dependency','licensor_stage_option','prod_stage_progress','prod_stage_option')
+    and a.grantee in (0, (select oid from pg_roles where rolname = 'anon'), (select oid from pg_roles where rolname = 'authenticated'));
+  if v_n <> 0 then raise exception 'A5 PUBLIC/anon/authenticated hold % ACL entries on the catalog', v_n; end if;
   select count(*) into v_n from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'plm' and c.relname in ('stage_list','stage','stage_duration','stage_dependency','licensor_stage_option','prod_stage_progress','prod_stage_option') and c.relrowsecurity;
-  if v_n <> 7 then raise exception 'A5 RLS disabled on % tables', 7 - v_n; end if;
+  if v_n <> 7 then raise exception 'A6 RLS disabled on % tables', 7 - v_n; end if;
   select count(*) into v_n from pg_policies
-    where schemaname = 'plm' and policyname like '%dflow_prod_tracking%' and roles = array['designflow_prod_tracking_grants']::name[];
-  if v_n <> 7 then raise exception 'A6 expected 7 role-scoped policies, found %', v_n; end if;
-  select count(*) into v_n from pg_policies
-    where schemaname = 'plm' and policyname like '%dflow_prod_tracking_read' and cmd <> 'SELECT';
-  if v_n <> 0 then raise exception 'A7 read policies allow writes'; end if;
-  select count(*) into v_n from pg_policies
-    where schemaname = 'plm' and policyname like '%dflow_prod_tracking%'
-      and (qual is distinct from 'true' or (cmd = 'ALL' and with_check is distinct from 'true') or permissive <> 'PERMISSIVE');
-  if v_n <> 0 then raise exception 'A8 policy predicates differ from true'; end if;
+    where schemaname = 'plm' and policyname like '%dflow_prod_tracking%' and roles = array['designflow_prod_tracking_grants']::name[]
+      and qual = 'true' and permissive = 'PERMISSIVE'
+      and ((cmd = 'ALL' and with_check = 'true' and policyname not like '%_read')
+        or (cmd = 'SELECT' and policyname like '%_read' and tablename in ('prod_stage_progress','prod_stage_option')));
+  if v_n <> 7 then raise exception 'A7 expected 7 exact role-scoped policies, found %', v_n; end if;
 end
 $a$;
 
--- Behaviour runs only where the test session already holds the grant role. A test must
--- not grant itself role membership: on the CI stack that GRANT terminated the server.
 do $b$
-declare v_lists int; v_stages int; v_before int; v_after int; v_id int; v_denied boolean := false;
+declare v_lists int; v_stages int; v_before int; v_after int; v_id int; v_list int; v_new_stage int; v_msg text;
 begin
-  -- PostgreSQL 16+ separates membership from SET; only a session allowed to SET the
-  -- role can exercise it. Anything else is reported, never silently passed as proof.
   begin
     set local role designflow_prod_tracking_grants;
   exception when insufficient_privilege then
@@ -60,15 +74,31 @@ begin
   perform count(*) from plm.licensor_stage_option;
   perform count(*) from plm.prod_stage_progress;
   perform count(*) from plm.prod_stage_option;
-  select s.id, l.version into v_id, v_before from plm.stage s join plm.stage_list l on l.id = s.list_id order by s.id limit 1;
+  -- Identity-keyed inserts: no sequence grant exists, so these prove none is needed.
+  insert into plm.stage_list (key, name, position, duration_unit)
+    values ('zz4464', 'ZZ 4464', 999, 'days') returning id into v_list;
+  insert into plm.stage (list_id, name, pending_label, position) values (v_list, 'ZZ 4464 stage', 'ZZ 4464', 1) returning id into v_new_stage;
+  insert into plm.stage_duration (stage_id, scope_kind, scope_value, duration) values (v_new_stage, 'product_type', 'ZZ 4464', 1);
+  select s.id, l.version into v_id, v_before from plm.stage s join plm.stage_list l on l.id = s.list_id where s.list_id <> v_list order by s.id limit 1;
   update plm.stage set updated_by = updated_by where id = v_id;
   select l.version into v_after from plm.stage s join plm.stage_list l on l.id = s.list_id where s.id = v_id;
   if v_after <> v_before + 1 then raise exception 'B2 editor write did not bump version (% -> %)', v_before, v_after; end if;
   begin
     insert into plm.prod_stage_option (prod_order_header_id, needs_linesheet) values (-4464, true);
-  exception when insufficient_privilege then v_denied := true;
+    raise exception 'B3 prod_stage_option write was not refused';
+  exception when insufficient_privilege then
+    get stacked diagnostics v_msg = message_text;
+    if v_msg not like 'permission denied for table prod_stage_option%' then raise exception 'B3 refused for the wrong reason: %', v_msg; end if;
   end;
-  if not v_denied then raise exception 'B3 prod_stage_option write was not refused'; end if;
+  begin
+    insert into plm.prod_stage_progress (prod_order_header_id, stage_id) values (-4464, v_id);
+    raise exception 'B4 prod_stage_progress write was not refused';
+  exception when insufficient_privilege then
+    get stacked diagnostics v_msg = message_text;
+    if v_msg not like 'permission denied for table prod_stage_progress%' then raise exception 'B4 refused for the wrong reason: %', v_msg; end if;
+  end;
   reset role;
 end
 $b$;
+
+rollback;

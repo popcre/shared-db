@@ -38,5 +38,7 @@
       "exit_code": 0,
       "evidence": "22 passed; request ceilings unchanged."
     }
-  ]
+  ],
+  "assumptions_resolved": [],
+  "stop_conditions_hit": []
 }

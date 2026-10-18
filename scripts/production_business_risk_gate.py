@@ -81,6 +81,25 @@ GOVERNED_ORIGINAL_RECONCILIATION = {
     "preview_artifact_digest": "sha256:2a466d1a0163a276a937e28f9af5eff710096e62ec9e7ddf7dda38fac41ef49a",
     "project_ref": "mvpkijzfmfcxhnzqogzs",
 }
+# #4373 / #4385 generation 5: the same statement-identical governed rename, for
+# 20261016210024 (orphan 20261016012631 applied by run 38839047707 from closed
+# PR #4377, renamed by reconciliation run 38972234570). Every value is pinned and
+# re-proved exactly as for #1722; nothing here widens the path to other runs.
+GOVERNED_ORIGINAL_RECONCILIATION_4373 = {
+    "version": "20261016210024", "original_version": "20261016012631",
+    "issue": 4373, "claim": 4402, "source_pr": 4386,
+    "run_id": 38972234570, "run_head": "d097a45ec2726a293760d066bd3a39e76414c6a2",
+    "artifact_id": 12077741454,
+    "artifact_digest": "sha256:c7c99b8a08aa3fe167f48824a6165fcc45eaff1d5ce5e1440bc61f0622d12ac0",
+    "preview_run_id": 38839047707, "preview_run_head": "154361984687def51366c2c539d7467b1ad64098",
+    # The run was dispatched at preview_run_head but checked out and applied the
+    # closed-PR commit below, which names its immutable artifact (#4385 gen 6).
+    "preview_applied_commit": "56f09184269abde4a7a8c85a2b1e617e249260b7",
+    "preview_artifact_id": 12020143683,
+    "preview_artifact_digest": "sha256:d7123954f3fb949b63eb5e78055d98a9277986af43d472747d09177c15be33b4",
+    "project_ref": "mvpkijzfmfcxhnzqogzs",
+}
+GOVERNED_ORIGINAL_RECONCILIATIONS = (GOVERNED_ORIGINAL_RECONCILIATION, GOVERNED_ORIGINAL_RECONCILIATION_4373)
 
 PREVIEW_FAILURE_JOB_CONCLUSIONS = {
     "SQL migration guards": "success",
@@ -1491,9 +1510,13 @@ def prove_governed_original_reconciliation(
     *, version: str, source_pr: int, run_id: int, run: dict[str, Any],
     repo_root: Path, main_sha: str, api: Callable[[str], Any], downloader: Callable[[int, Path], None],
 ) -> bool:
-    """Accept only the exact #1722 statement-identical governed ledger rename."""
-    case = GOVERNED_ORIGINAL_RECONCILIATION
-    if (version, source_pr, run_id) != (case["version"], case["source_pr"], case["run_id"]):
+    """Accept only an exact pinned statement-identical governed ledger rename (#1722, #4373)."""
+    case = next(
+        (c for c in GOVERNED_ORIGINAL_RECONCILIATIONS
+         if (version, source_pr, run_id) == (c["version"], c["source_pr"], c["run_id"])),
+        None,
+    )
+    if case is None:
         return False
     expected_run = {"status": "completed", "conclusion": "success", "event": "workflow_dispatch", "path": ".github/workflows/preview-ledger-orphan-reconciliation.yml", "head_sha": case["run_head"], "run_attempt": 1}
     if any(run.get(key) != value for key, value in expected_run.items()):
@@ -1534,7 +1557,7 @@ def prove_governed_original_reconciliation(
     if not isinstance(source_artifacts, list) or len(source_artifacts) != 1:
         raise RiskGateError("governed reconciliation source preview artifact is ambiguous")
     source_artifact = source_artifacts[0]
-    if (source_artifact.get("id") != case["preview_artifact_id"] or source_artifact.get("digest") != case["preview_artifact_digest"] or source_artifact.get("expired") is not False or source_artifact.get("name") != f"preview-migration-apply-{case['preview_run_head']}" or source_artifact.get("workflow_run", {}).get("id") != case["preview_run_id"] or source_artifact.get("workflow_run", {}).get("head_sha") != case["preview_run_head"]):
+    if (source_artifact.get("id") != case["preview_artifact_id"] or source_artifact.get("digest") != case["preview_artifact_digest"] or source_artifact.get("expired") is not False or source_artifact.get("name") != f"preview-migration-apply-{case.get('preview_applied_commit', case['preview_run_head'])}" or source_artifact.get("workflow_run", {}).get("id") != case["preview_run_id"] or source_artifact.get("workflow_run", {}).get("head_sha") != case["preview_run_head"]):
         raise RiskGateError("governed reconciliation source preview artifact identity changed")
     return True
 
@@ -2945,7 +2968,7 @@ def decide_business_risk(
 
 
 # ---------------------------------------------------------------------------
-# PRODUCTION WITHOUT A SHARED-PREVIEW APPLY (orchestrator marker #2758).
+# PRODUCTION WITHOUT A SHARED-PREVIEW APPLY (claim-first session #2758).
 #
 # OWNER REQUEST: a merged migration may go to production without a preview
 # rehearsal when the exact merged SQL already passed the ephemeral database CI

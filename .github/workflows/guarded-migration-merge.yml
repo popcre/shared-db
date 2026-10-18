@@ -1,14 +1,14 @@
 name: Guarded Merge
 
 # WHO MAY DISPATCH THIS WORKFLOW (issue #3199 §8, locked 2026-09-17): ANY
-# write-authenticated session — orchestrator, repo-maintenance, or an
+# write-authenticated session — claim-first, repo-maintenance, or an
 # application session that has taken the self-service additive lane — for a
 # pull request that already carries its exact-head approval and green required
 # checks. The workflow, not the caller's identity, is the gate: it re-proves
 # required checks, exact-head approval, lease and admission itself, under its
 # own lock. This comment grants nobody anything new; it writes down a capability
 # the plain workflow_dispatch trigger already had, so approved pull requests
-# stop aging while the orchestrator is busy.
+# stop aging while a claim-first session is busy.
 
 on:
   workflow_dispatch:

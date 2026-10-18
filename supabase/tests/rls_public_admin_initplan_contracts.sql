@@ -538,3 +538,200 @@ end $catalog$;
 -- Sanitized results contain only counts, synthetic labels, boolean controls and SQLSTATE.
 select phase,context,probe,result from rls4427_results order by phase,context,probe;
 rollback;
+
+
+-- #4427 representative actual-policy benchmark; execution evidence must be inspected.
+-- ONLY a new isolated local disposable database, or separately leased/admitted preview.
+-- PRODUCTION IS FORBIDDEN. Never use write EXPLAIN ANALYZE against production.
+-- Root must review/source-seal this code and independently qualify the actual target.
+-- Run psql -qAt -v ON_ERROR_STOP=1 --no-psqlrc -f <file> > <private-raw-evidence.json>.
+-- This covers admin_config INSERT/UPDATE/DELETE performance only, not all46 policies.
+-- One warmup per variant, then10 alternating paired samples per size/command.
+-- Every DML EXPLAIN executes as authenticated nonowner/nonbypass and is rolled back.
+-- All public role/fixture/policy changes are additionally contained by outer ROLLBACK.
+begin;
+set local statement_timeout='30s';
+set local lock_timeout='3s';
+set local work_mem='16MB';
+set local plan_cache_mode='force_custom_plan';
+
+create temp table rls4427_perf_candidates on commit drop as
+select p.oid,p.polname,p.polrelid,p.polcmd,p.polpermissive,p.polroles,
+ pg_get_expr(p.polqual,p.polrelid) as qual_text,
+ pg_get_expr(p.polwithcheck,p.polrelid) as check_text
+from pg_policy p where p.polrelid='public.admin_config'::regclass;
+create temp view rls4427_perf_current_contract as
+select jsonb_build_object('acl',c.relacl::text,'owner',c.relowner,
+ 'rls',c.relrowsecurity,'force_rls',c.relforcerowsecurity,
+ 'cols',(select jsonb_agg(jsonb_build_array(a.attnum,a.attacl::text) order by a.attnum)
+ from pg_attribute a where a.attrelid=c.oid and a.attnum>0 and not a.attisdropped),
+ 'helper',(select jsonb_agg(jsonb_build_array(p.oid,p.proacl::text,p.proowner,p.provolatile,
+ p.prosecdef,p.proconfig,pg_get_functiondef(p.oid)) order by p.oid)
+ from pg_proc p where p.oid in('public.has_role(uuid,public.app_role)'::regprocedure,'auth.uid()'::regprocedure))) as snapshot
+from pg_class c where c.oid='public.admin_config'::regclass;
+create temp table rls4427_perf_contract on commit drop as select * from rls4427_perf_current_contract;
+
+do $guard$
+begin
+ -- These exact invented CI users came through normal invitations/auth provisioning.
+ if not exists(select 1 from auth.users where id='00000000-7541-4000-8000-000000000001'::uuid
+ and email='zz-fixture-user-1@fixture.invalid') then
+ raise exception '4427 benchmark requires CI bootstrap fixture; shared production is excluded'; end if;
+ if (select relowner from pg_class where oid='public.admin_config'::regclass)
+ in('authenticated'::regrole,'anon'::regrole) then raise exception '4427 benchmark role owns relation'; end if;
+ if exists(select 1 from pg_trigger where tgrelid='public.admin_config'::regclass and not tgisinternal)
+ or exists(select 1 from pg_rewrite where ev_class='public.admin_config'::regclass)
+ or exists(select 1 from pg_constraint where conrelid='public.admin_config'::regclass and contype<>'p') then
+ raise exception '4427 fixture effect closure changed: inspect new triggers/rules/constraints before execution'; end if;
+ if exists(select 1 from pg_attribute a left join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum
+ where a.attrelid='public.admin_config'::regclass and a.attnum>0 and not a.attisdropped
+ and (a.attgenerated<>'' or a.attidentity<>'' or
+ (d.oid is not null and (a.attname<>'updated_at' or pg_get_expr(d.adbin,d.adrelid)<>'now()')))) then
+ raise exception '4427 fixture default/generation closure changed'; end if;
+ if (select count(*) from rls4427_perf_candidates where polname in
+ ('Admin read all admin_config','Admin write admin_config','Admin update admin_config','Admin delete admin_config'))<>4
+ or exists(select 1 from rls4427_perf_candidates where polname in
+ ('Admin read all admin_config','Admin write admin_config','Admin update admin_config','Admin delete admin_config')
+ and ((qual_text is not null and position('SELECT' in upper(qual_text))=0)
+ or(check_text is not null and position('SELECT' in upper(check_text))=0))) then
+ raise exception '4427 four expected optimized policies missing'; end if;
+ if exists(select 1 from public.admin_config where key like 'zz_rls4427_secret_perf_%') then
+ raise exception '4427 synthetic benchmark namespace already occupied'; end if;
+end $guard$;
+
+insert into public.user_roles(user_id,role)
+select '00000000-7541-4000-8000-000000000001'::uuid,'admin'::public.app_role
+where not exists(select 1 from public.user_roles where
+ user_id='00000000-7541-4000-8000-000000000001'::uuid and role='admin');
+
+-- No per-table triggers/rules/nonprimary constraints or non-now() defaults.
+-- Each key is invented; updated_by NULL avoids any identity reference.
+insert into public.admin_config(key,value,updated_by)
+select 'zz_rls4427_secret_perf_'||n::text||'_'||lpad(i::text,5,'0'),
+ jsonb_build_object('synthetic',true,'original',true),null
+from unnest(array[1,100,10000]) n cross join lateral generate_series(1,n) i;
+
+create function pg_temp.rls4427_measure(statement_text text) returns jsonb
+language plpgsql security invoker as $measure$
+declare v_plan jsonb;
+begin
+ begin
+  execute 'EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) '||statement_text into v_plan;
+  raise exception using errcode='Z4427',message='rollback synthetic timing sample';
+ exception when sqlstate 'Z4427' then null;
+ end;
+ return v_plan;
+end $measure$;
+grant execute on function pg_temp.rls4427_measure(text) to authenticated;
+
+create temp table rls4427_performance(
+ cardinality integer,command text,sample integer,warmup boolean,variant text,
+ returned_rows integer,execution_ms numeric,planning_ms numeric,raw_plan jsonb,
+ primary key(cardinality,command,sample,variant)
+) on commit drop;
+
+do $measurements$
+declare v_n integer; v_command text; v_sample integer; v_variant text; v_order text[];
+ v_policy record; v_clause text; v_sql text; v_plan jsonb; v_rows integer;
+ v_subject text:='00000000-7541-4000-8000-000000000001';
+begin
+ foreach v_n in array array[1,100,10000] loop
+  foreach v_command in array array['UPDATE','INSERT','DELETE'] loop
+   for v_sample in 0..10 loop
+    -- Reverse pair order every repetition to avoid favoring the second cache state.
+    v_order:=case when v_sample%2=0 then array['original','candidate'] else array['candidate','original'] end;
+    foreach v_variant in array v_order loop
+     for v_policy in select * from rls4427_perf_candidates where polname in
+      ('Admin read all admin_config','Admin write admin_config','Admin update admin_config','Admin delete admin_config') loop
+      v_clause:='';
+      if v_policy.qual_text is not null then
+       v_clause:=v_clause||' USING ('||case when v_variant='original'
+        then 'public.has_role(auth.uid(), ''admin''::public.app_role)' else v_policy.qual_text end||')';
+      end if;
+      if v_policy.check_text is not null then
+       v_clause:=v_clause||' WITH CHECK ('||case when v_variant='original'
+        then 'public.has_role(auth.uid(), ''admin''::public.app_role)' else v_policy.check_text end||')';
+      end if;
+      execute format('ALTER POLICY %I ON public.admin_config%s',v_policy.polname,v_clause);
+     end loop;
+     if v_command='UPDATE' then
+      v_sql:=format('UPDATE public.admin_config SET value=''{"synthetic":true,"changed":true}''::jsonb
+       WHERE key ~ %L RETURNING key','^zz_rls4427_secret_perf_'||v_n::text||'_[0-9]{5}$');
+     elsif v_command='DELETE' then
+      v_sql:=format('DELETE FROM public.admin_config WHERE key ~ %L RETURNING key',
+       '^zz_rls4427_secret_perf_'||v_n::text||'_[0-9]{5}$');
+     else
+      v_sql:=format('INSERT INTO public.admin_config(key,value,updated_by)
+       SELECT %L||lpad(i::text,5,''0''),''{"synthetic":true,"inserted":true}''::jsonb,NULL
+       FROM generate_series(1,%s) i RETURNING key','zz_rls4427_secret_perf_insert_'||v_n::text||'_',v_n);
+     end if;
+     perform set_config('request.jwt.claim.sub','',true);
+     perform set_config('request.jwt.claim','',true);
+     perform set_config('request.jwt.claims',jsonb_build_object('role','authenticated','sub',v_subject)::text,true);
+     execute 'set local role authenticated';
+     if current_user<>'authenticated' or exists(select 1 from pg_roles where rolname=current_user and(rolsuper or rolbypassrls))
+      then raise exception '4427 benchmark bypassed role enforcement'; end if;
+     if not public.has_role(auth.uid(),'admin'::public.app_role) then raise exception '4427 positive admin control missing'; end if;
+     v_plan:=pg_temp.rls4427_measure(v_sql);
+     execute 'reset role';
+     v_rows:=(v_plan#>>'{0,Plan,Actual Rows}')::integer;
+     if v_rows is distinct from v_n then raise exception '4427 benchmark actual row count %, expected %',v_rows,v_n; end if;
+     if (v_plan#>>'{0,Execution Time}') is null then raise exception '4427 benchmark execution timing absent'; end if;
+     insert into rls4427_performance values(v_n,v_command,v_sample,v_sample=0,v_variant,v_rows,
+      (v_plan#>>'{0,Execution Time}')::numeric,(v_plan#>>'{0,Planning Time}')::numeric,v_plan);
+     -- Each sample must leave all source rows and no synthetic INSERT row behind.
+     if (select count(*) from public.admin_config where key ~ ('^zz_rls4427_secret_perf_'||v_n::text||'_[0-9]{5}$'))<>v_n
+      or exists(select 1 from public.admin_config where key like 'zz_rls4427_secret_perf_insert_%')
+      or exists(select 1 from public.admin_config where key ~ ('^zz_rls4427_secret_perf_'||v_n::text||'_[0-9]{5}$')
+       and value is distinct from '{"synthetic":true,"original":true}'::jsonb) then
+      raise exception '4427 timing sample failed full fixture rollback';
+     end if;
+    end loop;
+   end loop;
+  end loop;
+ end loop;
+ -- Restore exact candidate expressions regardless of alternating final order.
+ for v_policy in select * from rls4427_perf_candidates where polname in
+ ('Admin read all admin_config','Admin write admin_config','Admin update admin_config','Admin delete admin_config') loop
+  v_clause:='';
+  if v_policy.qual_text is not null then v_clause:=v_clause||' USING ('||v_policy.qual_text||')'; end if;
+  if v_policy.check_text is not null then v_clause:=v_clause||' WITH CHECK ('||v_policy.check_text||')'; end if;
+  execute format('ALTER POLICY %I ON public.admin_config%s',v_policy.polname,v_clause);
+ end loop;
+ if (select snapshot from rls4427_perf_current_contract) is distinct from
+ (select snapshot from rls4427_perf_contract) then raise exception '4427 benchmark altered ACL/helper/RLS/owner metadata'; end if;
+ if(select count(*) from rls4427_performance)<>198 then raise exception '4427 benchmark sample matrix incomplete'; end if;
+ if exists(select 1 from rls4427_perf_candidates b full join
+ (select p.oid,p.polname,p.polrelid,p.polcmd,p.polpermissive,p.polroles,
+ pg_get_expr(p.polqual,p.polrelid) qual_text,pg_get_expr(p.polwithcheck,p.polrelid) check_text
+ from pg_policy p where p.polrelid='public.admin_config'::regclass)a using(oid)
+ where (b.polname,b.polrelid,b.polcmd,b.polpermissive,b.polroles,b.qual_text,b.check_text)
+ is distinct from(a.polname,a.polrelid,a.polcmd,a.polpermissive,a.polroles,a.qual_text,a.check_text))then
+ raise exception '4427 performance probe changed policy union metadata'; end if;
+end $measurements$;
+
+-- This raw JSON is the evidence: retain all warmups, all plans and buffer counts.
+-- >=10 percent median regression is explicit and requires investigation, never hidden.
+with aggregates as(
+ select cardinality,command,variant,count(*) samples,
+ percentile_cont(0.5) within group(order by execution_ms) median_ms,
+ percentile_cont(0.95) within group(order by execution_ms) p95_ms
+ from rls4427_performance where not warmup group by cardinality,command,variant
+),summary as(
+ select b.cardinality,b.command,b.samples original_samples,a.samples candidate_samples,
+ b.median_ms original_median_ms,a.median_ms candidate_median_ms,
+ b.p95_ms original_p95_ms,a.p95_ms candidate_p95_ms,
+ case when b.median_ms>0 then (a.median_ms/b.median_ms-1)*100 end median_change_percent,
+ a.median_ms>=b.median_ms*1.10 requires_regression_investigation
+ from aggregates b join aggregates a using(cardinality,command)
+ where b.variant='original' and a.variant='candidate'
+)
+select jsonb_build_object('issue',4427,'runtime_scope','admin_config INSERT UPDATE DELETE only',
+ 'environment','LOCAL or separately admitted leased PREVIEW; never PRODUCTION',
+ 'fixture','invented key namespace; normal CI auth fixture; no trigger disables',
+ 'claim_context','authenticated public admin; nonowner/nonbypass; isolated transaction',
+ 'samples_per_variant',10,'warmups_per_variant',1,
+ 'summary',(select jsonb_agg(to_jsonb(s) order by cardinality,command)from summary s),
+ 'any_regression_requires_investigation',(select bool_or(requires_regression_investigation)from summary),
+ 'samples',(select jsonb_agg(to_jsonb(p) order by cardinality,command,sample,variant)from rls4427_performance p));
+rollback;

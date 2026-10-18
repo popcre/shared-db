@@ -21,3 +21,7 @@ Fixture effects are ordinary disposable local row data, not new structural claim
 ## Still required
 
 Actual SQL execution and baseline-error classification; remaining mixed/null/batch/reassignment adversarial tests;1/100/10000-row repeated real plans/measurements; preview parity/consumer/cleanup proof; assigned exact-head review and required CI; guarded merge and qualified production promotion; fresh targeted advisor/catalog/ledger/actual-role plans; approved live consumer reads/writes. Missing safe live writes remain UNKNOWN on4427 and block4428. No other repair closes from this draft.
+
+## Representative workload measurements — execution pending
+
+The second rollback transaction qualifies administrator configuration INSERT/UPDATE/DELETE at1/100/10000rows, with one warmup and ten measured alternating/reversed original/candidate pairs per workload. It retains198 raw JSON plans with buffers, actual rowcounts, planning/execution times, median/p95 and explicit >=10percent regression flags. The actual authenticated role has neither ownership nor RLS bypass. Each sample must restore identical source rows, values and absence of inserted rows. Source guards reject new triggers, rules, non-primary constraints or non-now defaults. This measures four administrator configuration policies, not all46policies or end-user/UI latency. A green measurement harness alone does not resolve a regression flag.

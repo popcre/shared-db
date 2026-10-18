@@ -1,6 +1,6 @@
 begin;
--- Synthetic-only fixture. The future timestamp makes this fixture the latest complete NBCU capture
--- for this transaction; rollback below removes every row and authorization assumption.
+-- Synthetic-only fixture. Capture starts just before load completion so the
+-- inverse's first-seen cutoff remains valid against the current transaction time.
 do $fixture$
 declare
   c uuid := '25980000-0000-0000-0000-000000000001';
@@ -24,7 +24,7 @@ begin
   source_captured_at,load_completed_at,status,expected_counts,observed_counts,raw_summary,created_by
  ) values (
   c,'synthetic-2598-candidate-evidence','fixture',repeat('a',40),repeat('b',64),
-  'https://fixture.invalid','9999-12-30 12:00:00+00','9999-12-30 12:01:00+00','complete',
+  'https://fixture.invalid',clock_timestamp()-interval '1 second',clock_timestamp(),'complete',
   counts,counts||jsonb_build_object('asset_metadata_values',1,'asset_scopes',1),
   jsonb_build_object('synthetic_fixture',true),'synthetic-contract-test'
  );

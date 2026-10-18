@@ -47,8 +47,11 @@ begin
        where (select relrowsecurity from pg_class where oid = t.name::regclass)) <> 6 then
     raise exception 'all six stage catalog tables must have RLS enabled';
   end if;
-  if exists (select 1 from pg_policy where polrelid = any (select t::regclass from unnest(v_tables) t)) then
-    raise exception 'stage catalog tables must have no RLS policy';
+  -- #4464: the only permitted policies are scoped solely to the DesignFlow production
+  -- tracking grant role; no policy may reach public, anon or authenticated.
+  if exists (select 1 from pg_policy where polrelid = any (select t::regclass from unnest(v_tables) t)
+             and polroles is distinct from array[(select oid from pg_roles where rolname = 'designflow_prod_tracking_grants')]) then
+    raise exception 'stage catalog tables must have no RLS policy except the production tracking grant role policy';
   end if;
   if exists (select 1 from pg_roles r cross join unnest(v_tables) t(name)
              cross join unnest(array['select','insert','update','delete']) p(priv)

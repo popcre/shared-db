@@ -35,6 +35,8 @@ begin
 end
 $a$;
 
+-- Membership exists only inside this rolled-back transaction.
+grant designflow_prod_tracking_grants to current_user;
 set local role designflow_prod_tracking_grants;
 do $b$
 declare v_lists int; v_stages int; v_before int; v_after int; v_id int; v_denied boolean := false;

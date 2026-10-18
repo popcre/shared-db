@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "work_issue": 4464,
+  "outcome": "ready-for-merge",
+  "pr": 4468,
+  "head_sha": "3afa91e3dca47ca1a03cf2bb07038908c171b5b5",
+  "base_sha": "d8c6008d3f3687987d3cf8e0d757e999983a6d4e",
+  "migration_versions": ["20261018191107"],
+  "contract_ref": "refs/db-contracts/4464/5",
+  "contract_sha256": "826efd44e0b9ce1f85d408056f3dbbb0a2f4cbf8e594623d31c6491151176ddc",
+  "files_changed": ["supabase/migrations/20261018191107_plm_stage_catalog_prod_tracking_grant.sql","supabase/tests/plm_stage_catalog_contracts.sql","supabase/tests/plm_stage_catalog_prod_tracking_grant_contracts.sql"],
+  "db_reads": [],
+  "db_writes": ["role designflow_prod_tracking_grants","schema plm","table plm.stage_list","table plm.stage","table plm.stage_duration","table plm.stage_dependency","table plm.licensor_stage_option","table plm.prod_stage_progress","table plm.prod_stage_option","table dflow_prod.AuditLog","function plm.stage_catalog_bump_version","policy stage_list_dflow_prod_tracking on plm.stage_list","policy stage_dflow_prod_tracking on plm.stage","policy stage_duration_dflow_prod_tracking on plm.stage_duration","policy stage_dependency_dflow_prod_tracking on plm.stage_dependency","policy licensor_stage_option_dflow_prod_tracking on plm.licensor_stage_option","policy prod_stage_progress_dflow_prod_tracking on plm.prod_stage_progress","policy prod_stage_option_dflow_prod_tracking on plm.prod_stage_option"],
+  "checks": [
+    {"command": "git diff --check", "exit_code": 0, "evidence": "no whitespace errors on the implementation commit"}
+  ],
+  "assumptions_resolved": [
+    "Local postgres:17 rehearsal (stub roles anon/authenticated/service_role, designflow_prod_tracking_grants inherited by designflow_prod_tracking_runtime, stub dflow_prod.AuditLog): 20261015193344, 20261016210024, this migration, then both catalog contract tests exit 0 as superuser and as a non-superuser member; an injected DELETE on prod_stage_option is caught by A1.",
+    "No role membership is changed; the effective login path is the #2873 membership asserted by test A8.",
+    "Allocator review, CI, preview, live proof and production promotion remain separate open gates."
+  ],
+  "stop_conditions_hit": []
+}

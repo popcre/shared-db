@@ -4,8 +4,6 @@ begin;
 -- function and every trigger path, and the constraints. Rolled back.
 do $$
 declare
-  v_tables text[] := array['plm.stage_list','plm.stage','plm.stage_duration',
-    'plm.stage_dependency','plm.licensor_stage_option','plm.prod_stage_progress'];
   -- #4464: access assertions also cover plm.prod_stage_option (20261016210024).
   v_access text[] := array['plm.stage_list','plm.stage','plm.stage_duration',
     'plm.stage_dependency','plm.licensor_stage_option','plm.prod_stage_progress','plm.prod_stage_option'];

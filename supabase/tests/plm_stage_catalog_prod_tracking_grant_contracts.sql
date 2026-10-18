@@ -8,8 +8,8 @@
 --    no client-role ACL entry, RLS on, seven policies scoped only to that role with
 --    predicate true and read-only policies on the two progress tables.
 -- B. Behaviour (only when the session may SET ROLE to it; otherwise a WARNING says it was
---    not exercised): the seeded catalog is visible; INSERT into every identity-keyed editor
---    table works without any sequence grant; an editor UPDATE bumps the list version; and
+--    not exercised): the seeded catalog is visible; INSERT into all five editor tables works
+--    (identity-keyed ones without any sequence grant); an editor UPDATE bumps the list version; and
 --    INSERT into prod_stage_progress and prod_stage_option is refused by the missing table
 --    privilege (message checked, so an RLS refusal cannot satisfy it).
 
@@ -55,6 +55,11 @@ begin
       and ((cmd = 'ALL' and with_check = 'true' and policyname not like '%_read')
         or (cmd = 'SELECT' and policyname like '%_read' and tablename in ('prod_stage_progress','prod_stage_option')));
   if v_n <> 7 then raise exception 'A7 expected 7 exact role-scoped policies, found %', v_n; end if;
+  if not exists (select 1 from pg_auth_members m
+                 where m.roleid = v_role and m.member = 'designflow_prod_backend_runtime'::regrole
+                   and m.inherit_option and not m.set_option and not m.admin_option) then
+    raise exception 'A8 production login is not an INHERIT-only member of the tracking grant role';
+  end if;
 end
 $a$;
 
@@ -79,6 +84,9 @@ begin
     values ('zz4464', 'ZZ 4464', 999, 'days') returning id into v_list;
   insert into plm.stage (list_id, name, pending_label, position) values (v_list, 'ZZ 4464 stage', 'ZZ 4464', 1) returning id into v_new_stage;
   insert into plm.stage_duration (stage_id, scope_kind, scope_value, duration) values (v_new_stage, 'product_type', 'ZZ 4464', 1);
+  insert into plm.stage_dependency (stage_id, depends_on_stage_id, kind, allowed_early_days)
+    select v_new_stage, min(id), 'soft', 0 from plm.stage where list_id <> v_list;
+  insert into plm.licensor_stage_option (stage_id, licensor_name, enabled) values (v_new_stage, 'ZZ 4464', false);
   select s.id, l.version into v_id, v_before from plm.stage s join plm.stage_list l on l.id = s.list_id where s.list_id <> v_list order by s.id limit 1;
   update plm.stage set updated_by = updated_by where id = v_id;
   select l.version into v_after from plm.stage s join plm.stage_list l on l.id = s.list_id where s.id = v_id;

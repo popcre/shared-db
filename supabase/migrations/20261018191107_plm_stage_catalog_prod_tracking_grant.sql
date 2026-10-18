@@ -6,10 +6,10 @@
 -- popcre-tracking-prod's DB_USER secret is designflow_prod_backend_runtime. In this
 -- repository (20261008014009:244) that LOGIN role holds only designflow_prod_backend_grants,
 -- but the live production catalogue, read 2026-10-18 3:30 PM EDT as that role
--- (pg_auth_members, BEGIN READ ONLY), shows INHERIT TRUE / SET FALSE membership,
--- grantor postgres, in all four designflow_prod_<service>_grants roles, including
--- designflow_prod_tracking_grants. This file does not change membership; it relies on
--- that live state and puts privileges on the tracking grant role, never on a LOGIN role.
+-- (pg_auth_members, BEGIN READ ONLY), already shows INHERIT TRUE / SET FALSE / ADMIN FALSE
+-- membership, grantor postgres, in designflow_prod_tracking_grants. This file records that
+-- membership idempotently (a no-op in production) so a database built from this repository
+-- matches production, and puts privileges on the tracking grant role, never on a LOGIN role.
 -- Today that role has no USAGE on plm, so the catalog
 -- (20261015193344, 20261016210024) is unreadable in production.
 --
@@ -29,7 +29,8 @@
 --     trigger those writes fire (same precedent as service_role in 20261015193344).
 --   * RLS stays enabled. The role is NOBYPASSRLS, so each table gets one policy
 --     scoped TO designflow_prod_tracking_grants only (row authority is the tracking
---     API's maintainer check, as for service_role). anon and authenticated are untouched.
+--     API's maintainer check, as for service_role). no privilege is granted to anon or authenticated (authenticated keeps its
+--     pre-existing USAGE on plm from 20260720120000).
 -- No application rows change. No other plm table is granted. USAGE on plm also lets
 -- this role reach plm functions already EXECUTE-able by PUBLIC (two callable SECURITY
 -- DEFINER functions, already reachable by anon and authenticated live); that pre-existing
@@ -41,11 +42,16 @@ do $pre$
 begin
   if not exists (select 1 from pg_roles where rolname = 'designflow_prod_tracking_grants' and not rolcanlogin and not rolbypassrls)
   then raise exception '#4464: designflow_prod_tracking_grants missing or not a NOLOGIN NOBYPASSRLS role'; end if;
+  if not exists (select 1 from pg_roles where rolname = 'designflow_prod_backend_runtime' and rolcanlogin and not rolsuper and not rolbypassrls)
+  then raise exception '#4464: designflow_prod_backend_runtime missing or not a plain LOGIN role'; end if;
   if (select count(*) from pg_tables where schemaname = 'plm' and tablename in
       ('stage_list','stage','stage_duration','stage_dependency','licensor_stage_option','prod_stage_progress','prod_stage_option')) <> 7
   then raise exception '#4464: stage catalog tables are missing'; end if;
 end
 $pre$;
+
+grant designflow_prod_tracking_grants to designflow_prod_backend_runtime
+  with inherit true, set false, admin false;
 
 grant usage on schema plm to designflow_prod_tracking_grants;
 
@@ -85,5 +91,9 @@ begin
   if v_bad is not null then raise exception '#4464: privilege matrix differs: %', v_bad; end if;
   if has_schema_privilege('designflow_prod_tracking_grants', 'plm', 'CREATE')
   then raise exception '#4464: CREATE on plm must not be granted'; end if;
+  if not exists (select 1 from pg_auth_members m
+                 where m.roleid = 'designflow_prod_tracking_grants'::regrole and m.member = 'designflow_prod_backend_runtime'::regrole
+                   and m.inherit_option and not m.set_option and not m.admin_option)
+  then raise exception '#4464: production login is not an INHERIT-only member of designflow_prod_tracking_grants'; end if;
 end
 $post$;

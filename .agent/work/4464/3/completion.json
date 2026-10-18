@@ -3,7 +3,7 @@
   "work_issue": 4464,
   "outcome": "ready-for-merge",
   "pr": 4468,
-  "head_sha": "f1c5ccaf43c0cd5b4ee272a761ee663dde9c4aba",
+  "head_sha": "0e3cfb465f602150054f151c3fd9ee13560d3f2f",
   "base_sha": "7da9a3ff6dee9a366e05f33471ed1c61aaea7af4",
   "migration_versions": [
     "20261018191107"
@@ -45,8 +45,8 @@
     }
   ],
   "assumptions_resolved": [
-    "Privileges on designflow_prod_tracking_grants only; runtime inherits.",
-    "Local postgres:16 rehearsal: two catalog migrations, this migration, then both catalog contract tests exited 0.",
+    "Privileges on designflow_prod_tracking_grants only; production login membership in that role is live state (pg_auth_members read 2026-10-18), recorded in the migration header.",
+    "Local postgres:16 rehearsal: catalog migrations, this migration, both catalog contract tests exit 0; section B also exit 0 as a non-superuser member (identity inserts need no sequence grant).",
     "Allocator review, CI, preview, live proof and production promotion remain separate open gates."
   ],
   "stop_conditions_hit": []

@@ -261,3 +261,31 @@ blocking_claims=[], blocking_stages=[]. No subsequent ownership operation occurr
 This proves no retained database custody, not completed repairs.
 
 Posted by Codex chat 01a14fa2-bd3e-7d62-ba77-7bdfd7976f0e on edge-dev3
+
+
+## Verified publication completion
+
+#4425 is resolved and closed. PR #4433 merged exact head
+dc3ea974242aa3a23147d517c864ddf06e069be4 at
+https://github.com/popcre/shared-db/commit/1b90384cf8f9b405a3b6d545502d65bc1c78379f ,
+verified from the live PR after guarded run 39142597277 returned SUCCESS. All five
+original candidate files were compared against merged source and are byte-identical.
+The original PR #4423 was closed as superseded after a signed provenance comment;
+its candidate branch/history are retained. The publication blocker is not still
+open merely because older snapshots in these handoffs say BLOCKED.
+
+#4426 is completed/closed at PR #4434 merge 255c29c859773a10b7bf9188d63c3fad73de22db.
+No structural step is marked done: Steps 1–2 in the original plan also require
+implementing-child contracts/custody/preview fixtures, which remain unstarted.
+The remaining immediate gate is the authentic claim #4158 collision on the full
+#4427 family; no dependent family is ready under the verified issue dependencies.
+No claim was inherited, taken, expired away or released by this successor.
+
+This follow-up contains only the full-family collision expansion and this
+successor handoff supplement. It carries no database mutation or new work issue.
+The parent final comment records the exact follow-up PR/merge result so a
+successor need not infer it from an earlier source snapshot. The stopped owner’s
+locks, foreign worktrees and original handoff are retained; original #4421 repair
+obligations are still open and fully carried.
+
+Posted by Codex chat 01a14fa2-bd3e-7d62-ba77-7bdfd7976f0e on edge-dev3

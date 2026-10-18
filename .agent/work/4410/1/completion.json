@@ -10,6 +10,8 @@
   "head_sha": "31697f4612ed231ed56d1b9fb7ebae4383792466",
   "base_sha": "b31e17c02194c6006a1bd256d6154a324a5114d7",
   "files_changed": [
+    ".agent/work/4410/1/completion.json",
+    ".agent/work/4410/1/contract.json",
     "docs/verification/throughput-dispositions/scripts~lib~review-packet.mjs.json",
     "scripts/lib/review-packet.mjs",
     "scripts/lib/review-packet.test.mjs",

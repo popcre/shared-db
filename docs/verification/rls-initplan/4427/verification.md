@@ -12,7 +12,7 @@ Initial draft CI39150223507 failed: the post-change guard had unparenthesized CA
 
 ## Current command contract — execution pending
 
-The local-only SQL suite uses the existing invitation-first synthetic CI seed, with all auth provisioning triggers intact. It compares1896 original/candidate results and exact SQLSTATEs over administrator/member/missing/malformed/anonymous/repeated-administrator contexts. Separate prepared policy and helper queries test request reuse. Each DML probe rolls back independently, and the whole suite rolls back.
+The local-only SQL suite uses the existing invitation-first synthetic CI seed, with all auth provisioning triggers intact. It compares1932 original/candidate results and exact SQLSTATEs over administrator/member/missing/malformed/anonymous/repeated-administrator contexts. Own/foreign profile updates and ordinary non-secret configuration reads explicitly preserve the overlapping policy union. Separate prepared policy and helper queries test request reuse. Each DML probe rolls back independently, and the whole suite rolls back.
 
 Assets INSERT/UPDATE, administrator configuration INSERT/UPDATE/DELETE, and profile visibility/ownership union retain explicit positive/negative controls. An additional108 command probes cover the other36tables, with strict positive administrator controls on35 and negative writes for SELECT-only legacy identity. Unexpected baseline errors fail qualification; equality of failures alone is not accepted as proof of working writes. All39tables have bounded read probes and all72policies retain metadata/union checks.
 

@@ -141,7 +141,7 @@ select a.id,a.email from auth.users a where a.id in
   '00000000-7541-4000-8000-000000000002'::uuid)
 and not exists(select 1 from public.profiles p where p.user_id=a.id);
 
-insert into public.admin_config(key,value) values('zz_rls4427_secret_probe','{"synthetic":true}'::jsonb);
+insert into public.admin_config(key,value) values('zz_rls4427_secret_probe','{"synthetic":true}'::jsonb),('zz_rls4427_public_probe','{"synthetic":true}'::jsonb);
 insert into public.assets(id,filename,relative_path,file_type,quick_hash,modified_at,style_group_id,thumbnail_error)
 values('44270000-0000-4000-8000-000000000001','zz-rls4427-probe.ai',
  'zz-fixture-rls4427/zz-rls4427-probe.ai','ai','zz-rls4427-synthetic-probe',now(),null,null);
@@ -245,6 +245,11 @@ insert into rls4427_cases values
  where key='zz_rls4427_secret_probe' returning key)
  select jsonb_build_object('count',count(*)) from changed$q$),
 ('helper_result',$q$select jsonb_build_object('is_admin',public.has_role(auth.uid(),'admin'::public.app_role))$q$);
+
+insert into rls4427_cases values
+('profile_own_update',$q$with changed as (update public.profiles set email='zz-rls4427-own@fixture.invalid' where user_id=auth.uid() returning user_id) select jsonb_build_object('count',count(*)) from changed$q$),
+('profile_foreign_update',$q$with changed as (update public.profiles set email='zz-rls4427-foreign@fixture.invalid' where user_id=case when auth.uid()='00000000-7541-4000-8000-000000000001'::uuid then '00000000-7541-4000-8000-000000000002'::uuid else '00000000-7541-4000-8000-000000000001'::uuid end returning user_id) select jsonb_build_object('count',count(*)) from changed$q$),
+('config_public_union_read',$q$select jsonb_build_object('count',count(*)) from public.admin_config where key='zz_rls4427_public_probe'$q$);
 
 -- Bounded reads across the whole table set are useful equality/error probes, but
 -- empty tables and other permissive policies can mask admin predicate execution.
@@ -487,6 +492,9 @@ end if;
  and result#>'{result,labels}' is distinct from '["admin_fixture","member_fixture"]'::jsonb) then
   raise exception '4427 positive administrator profile union control failed';
  end if;
+ if exists(select 1 from rls4427_results where context in('admin','admin_again','member') and probe in('profile_own_update','profile_foreign_update','config_public_union_read') and (result->>'sqlstate'<>'00000' or result#>>'{result,count}' is distinct from case when probe='profile_foreign_update' then '0' else '1' end)) then
+  raise exception '4427 own-profile UPDATE, forbidden foreign UPDATE or public config read union changed';
+ end if;
  if exists(select 1 from rls4427_results where context='malformed_subject' and probe='helper_result'
  and result->>'sqlstate'<>'22P02') then raise exception '4427 malformed UUID error control failed'; end if;
  if exists(select 1 from rls4427_results where context='member' and probe='profile_ownership_union'
@@ -524,7 +532,7 @@ begin
   from pg_type t where t.oid='public.app_role'::regtype)) into v_now;
  select snapshot into v_before from rls4427_catalog_before;
  if v_now is distinct from v_before then raise exception '4427 helper/ACL/owner/RLS/type metadata changed'; end if;
- raise notice '4427 command fixtures passed:1896 before/after outcomes; 39 tables/72 policy identities. This is local proof, not preview, performance or live acceptance.';
+ raise notice '4427 command fixtures passed:1932 before/after outcomes; 39 tables/72 policy identities. This is local proof, not preview, performance or live acceptance.';
 end $catalog$;
 
 -- Sanitized results contain only counts, synthetic labels, boolean controls and SQLSTATE.

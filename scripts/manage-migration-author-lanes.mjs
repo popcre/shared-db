@@ -211,6 +211,8 @@ export function withReviewRequestBudget(fn,limit=REVIEW_OPERATION_REQUEST_LIMIT,
   finally{
     try{reviewPhaseTrace?.flush?.()}catch{/* lost telemetry is not a mutation failure */}
     reviewPhaseTrace=null
+    reviewPhaseSourceTuple=null
+    reviewPhaseInvocation=null
     reviewWireBudget=null;reviewCommitBase=null;freshDurableVerdictRefs=null;observedReviewQuota={};primedReviewStates=new Map()
   }
 }
@@ -1807,8 +1809,10 @@ function finalizeReviewMutex(ownerSha,io){
       return true
     }
     const released=releaseOwnedRef(MUTEX_REF,ownerSha,io)
-    notePhaseRelease('proved_released')
-    endPhase('release',{result:'proved_released'})
+    // releaseOwnedRef returns false when the ref is already absent — still a
+    // proved release of OUR mutex, but never claim more than the result shows.
+    notePhaseRelease(released===false?'successor_seen':'proved_released')
+    endPhase('release',{result:released===false?'already_absent':'proved_released'})
     return released
   }catch(error){
     // #4255 / issue #3791 for the reviewer path: the atomic/API release failed.
@@ -2237,11 +2241,17 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
   // shared mutex. A prepare failure is deferred: retry/idempotent returns never
   // need capacity, so they must not fail when start provenance is unreadable.
   // A fresh draw surfaces the failure (or falls back to an in-lock classify).
+  // The mutex-section reserve is reduced by this prepare spend: classification
+  // is no longer inside the owned section, so reserving the full historical 15
+  // over-gates a draw that already paid for that work outside the lock.
   let preparedCapacity=null,preparedCapacityError=null
+  const budgetBeforeCapacity=reviewWireBudget?.count??0
   try{preparedCapacity=assertPaidReviewCapacity(request,io)}
   catch(error){preparedCapacityError=error}
+  const capacitySpend=Math.max(0,(reviewWireBudget?.count??0)-budgetBeforeCapacity)
+  const mutexSectionReserve=Math.max(4,REVIEW_MUTEX_SECTION_RESERVE-capacitySpend)
   const ownerSha=io.makeOwnerCommit(`db-coordination reviewer-assignment-lock issue=${request.issue} pr=${request.pr} head=${request.headSha}${request.slot!==1?` slot=${request.slot}`:''}`)
-  requireReviewWireCapacity(REVIEW_MUTEX_SECTION_RESERVE)
+  requireReviewWireCapacity(mutexSectionReserve)
   endPhase('prepare')
   notePhase('acquisition_wait')
   acquireReviewMutex(ownerSha,io)
@@ -2491,6 +2501,10 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
         if(refs.get(MUTEX_REF)!==ownerSha||refs.get(leaseRef)!==leaseSha||refs.get(REVIEW_CURSOR_REF)!==assignmentSha||refs.get(assignmentRef)!==assignmentSha)throw new LaneError('atomic review assignment readback mismatch')
         return completedResult={sequence,reviewer:reviewer.name,wrapper:reviewer.wrapper,...request,...reviewBudgetDiagnostics(capacity)}
       }
+      // Non-atomic fallback: same phase boundary as the CAS path so commit/readback
+      // time is never mischarged to fresh_validation (#4414 step 2).
+      endPhase('fresh_validation')
+      notePhase('ref_commit_readback')
       requireOwnedRef(MUTEX_REF,ownerSha,io)
       assertDistinct(reviewer.name)
       if(selectedStale){

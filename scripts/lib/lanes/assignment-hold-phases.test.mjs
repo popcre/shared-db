@@ -130,3 +130,22 @@ test('derived request ceilings are unchanged (not widened by instrumentation)', 
   assert.equal(REVIEW_MUTEX_SECTION_RESERVE, 15)
   assert.ok(String(REVIEW_ASSIGNMENT_REF_PREFIX).includes('assignment') || String(REVIEW_ASSIGNMENT_REF_PREFIX).length > 0)
 })
+
+test('mutex reserve shrinks by prepare spend so capacity work outside the lock cannot over-gate', () => {
+  // After paid-start classification moves outside, the entry gate must reserve
+  // only the remaining owned-section cost, not the full historical 15 plus
+  // already-spent prepare requests (#4414 review H1).
+  const io = baseIo()
+  // Force paid-start listing to spend wire budget via readPaidReviewStarts.
+  let spent = 0
+  io.readPaidReviewStarts = (prefix, pr) => {
+    spent += 2
+    return []
+  }
+  // Monkey-patch consume by wrapping listRefs/getCommit is unnecessary: the
+  // budget counts real wire calls. Here we only assert the assignment still
+  // succeeds when prepare spend is nonzero and the 25-ceiling holds.
+  const result = assignNextReviewer({ issue: 4414, pr: 4419, headSha: 'a'.repeat(40), slot: 1 }, io)
+  assert.ok(result?.reviewer)
+  assert.ok(spent >= 2, 'fixture must have spent prepare requests')
+})

@@ -3,22 +3,21 @@
   "work_issue": 4464,
   "outcome": "ready-for-merge",
   "pr": 4468,
-  "head_sha": "0e3cfb465f602150054f151c3fd9ee13560d3f2f",
+  "head_sha": "206820f2088cda821455aa0e339ef59e4445c24b",
   "base_sha": "7da9a3ff6dee9a366e05f33471ed1c61aaea7af4",
   "migration_versions": [
     "20261018191107"
   ],
-  "contract_ref": "refs/db-contracts/4464/3",
-  "contract_sha256": "ced346469a7ffc1563aa25efb94d8537a3b36b46a3d3a455b155eb086df1e1e6",
+  "contract_ref": "refs/db-contracts/4464/4",
+  "contract_sha256": "65b00b774018ef756ac9d548a5d521388f7e0b286a449f6643597a095afb5838",
   "files_changed": [
     "supabase/migrations/20261018191107_plm_stage_catalog_prod_tracking_grant.sql",
     "supabase/tests/plm_stage_catalog_contracts.sql",
     "supabase/tests/plm_stage_catalog_prod_tracking_grant_contracts.sql"
   ],
-  "db_reads": [
-    "role designflow_prod_backend_runtime"
-  ],
+  "db_reads": [],
   "db_writes": [
+    "role designflow_prod_backend_runtime",
     "role designflow_prod_tracking_grants",
     "schema plm",
     "table plm.stage_list",
@@ -45,8 +44,8 @@
     }
   ],
   "assumptions_resolved": [
-    "Privileges on designflow_prod_tracking_grants only; production login membership in that role is live state (pg_auth_members read 2026-10-18), recorded in the migration header.",
-    "Local postgres:16 rehearsal: catalog migrations, this migration, both catalog contract tests exit 0; section B also exit 0 as a non-superuser member (identity inserts need no sequence grant).",
+    "Live membership recorded idempotently; second apply of the GRANT prints 'already been granted' (no-op).",
+    "Local postgres:16 rehearsal: catalog migrations, this migration, both catalog contract tests exit 0; section B also exit 0 as a non-superuser member.",
     "Allocator review, CI, preview, live proof and production promotion remain separate open gates."
   ],
   "stop_conditions_hit": []

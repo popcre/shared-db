@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
-  "generation": 3,
+  "generation": 4,
   "evidence_parent": {
     "work_issue": 4464,
-    "generation": 2,
-    "contract_sha256": "b136c9c5b9de3e3709bcc8737946b366bf98d46de01bdc20467bf6c9c323bf19"
+    "generation": 3,
+    "contract_sha256": "ced346469a7ffc1563aa25efb94d8537a3b36b46a3d3a455b155eb086df1e1e6"
   },
   "work_issue": 4464,
   "work_type": "structural",
@@ -19,20 +19,19 @@
     "supabase/migrations/20261018191107_plm_stage_catalog_prod_tracking_grant.sql",
     "supabase/tests/plm_stage_catalog_prod_tracking_grant_contracts.sql",
     "supabase/tests/plm_stage_catalog_contracts.sql",
-    ".agent/work/4464/3/contract.json",
-    ".agent/work/4464/3/completion.json"
+    ".agent/work/4464/4/contract.json",
+    ".agent/work/4464/4/completion.json"
   ],
   "file_writes": [
     "supabase/migrations/20261018191107_plm_stage_catalog_prod_tracking_grant.sql",
     "supabase/tests/plm_stage_catalog_prod_tracking_grant_contracts.sql",
     "supabase/tests/plm_stage_catalog_contracts.sql",
-    ".agent/work/4464/3/contract.json",
-    ".agent/work/4464/3/completion.json"
+    ".agent/work/4464/4/contract.json",
+    ".agent/work/4464/4/completion.json"
   ],
-  "db_reads": [
-    "role designflow_prod_backend_runtime"
-  ],
+  "db_reads": [],
   "db_writes": [
+    "role designflow_prod_backend_runtime",
     "role designflow_prod_tracking_grants",
     "schema plm",
     "table plm.stage_list",
@@ -63,7 +62,7 @@
     "popcre-tracking-prod connects as designflow_prod_backend_runtime, a member (INHERIT) of designflow_prod_tracking_grants; privileges go on the grant role per 20261008014009.",
     "Writes limited to the tables models/stage-catalog.model.js writes; prod_stage_progress and prod_stage_option stay read-only for this role.",
     "Generation 1 named released claim #4466/version 20261018190913, whose owner label did not match the claim-first session pattern; it was released unused and this generation replaces it.",
-    "Generation 3: CI showed the existing plm_stage_catalog_contracts.sql asserts no RLS policy at all; it is narrowed to refuse any policy not scoped solely to designflow_prod_tracking_grants. The new test grants itself membership inside its rolled-back transaction before SET ROLE."
+    "Generation 4: the migration records, idempotently, the live membership it depends on (designflow_prod_backend_runtime INHERIT TRUE, SET FALSE, ADMIN FALSE in designflow_prod_tracking_grants; already present in production, read 2026-10-18), so a database built from this repository matches production. The contract test never grants itself membership; section B runs only when the session may SET ROLE and otherwise emits a WARNING."
   ],
   "stop_conditions": [
     "Any claim, version, collision or gate refusal.",

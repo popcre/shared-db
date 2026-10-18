@@ -1,16 +1,17 @@
 // Narrow, registered stopped-merged custody succession for issue #3618.
 // This lane deliberately does not broaden any ordinary recovery path.
 import { isDeepStrictEqual } from 'node:util'
-import { readFileSync, lstatSync } from 'node:fs'
+import { readFileSync, lstatSync, realpathSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { LaneError, parseAuthorLease, validateClaimObjects, assertLaneAvailable } from './claims.mjs'
 import { MUTEX_REF, REPO } from './constants.mjs'
-import { EXCLUSIVE_REFS } from './queue-routing.mjs'
+import { EXCLUSIVE_REFS, parseQueueScope } from './queue-routing.mjs'
 import { normalizeWorktreePath } from './claim-versions.mjs'
 import { workstreamKey, migrationVersions, renewalIssueScope, assertMergeCommitInMainHistory, replaceLeaseLocation, replaceLeaseExpiry, replaceCapacityState } from './claim-maintenance.mjs'
 import { assertClaimNotRetired, assertRetirementIdentityAvailable } from './retirement.mjs'
 import { acquireMutex, requireOwnedRef, releaseMutexOnExit, readRefAfterWrite } from './holds-and-refs.mjs'
+import { GIT_COMMAND_TIMEOUT_MS } from './github-wire.mjs'
 import { normalizeObject } from '../../check-dispatch-collision.mjs'
 import { canonicalJson, sha256 } from '../../db-flow/evidence-bundle.mjs'
 import { githubIo, assertDurableReviewApproval, resetRetirementSnapshot } from '../../manage-migration-author-lanes.mjs'
@@ -42,10 +43,11 @@ function parseFence(body, name) {
 }
 function requireAuditFence(issue, manifest) {
   if (issue?.state !== 'open') refuse('custody audit issue is not open')
-  const scope = parseFence(issue.body, 'db-work-scope')
-  if (scope.get('status') !== 'ready' || scope.get('work_type') !== 'repo-maintenance' || scope.get('route') !== 'repo-maintenance' || (scope.get('writes') ?? '').trim()) refuse('custody audit issue is not ready repository-maintenance scope')
+  const scope = parseQueueScope(issue.body)
+  if (!scope || scope.status !== 'ready' || scope.workType !== 'repo-maintenance' || scope.route !== 'repo-maintenance' || scope.writes.length || scope.reads.length) refuse('custody audit issue is not ready repository-maintenance scope')
   const audit = parseFence(issue.body, 'stopped-merged-custody-audit')
   const expected = { claim: String(REGISTERED.claim), source_pr: String(REGISTERED.pr), source_head_sha: REGISTERED.headSha, original_owner: REGISTERED.oldOwner, manifest_sha256: digestObject(manifest) }
+  if(audit.size!==Object.keys(expected).length)refuse('custody audit has unrecognized fields')
   for (const [key, value] of Object.entries(expected)) if (audit.get(key) !== value) refuse(`custody audit fence ${key} differs from manifest`)
 }
 function proveCapabilityHead(context, io, mainSha) {
@@ -115,8 +117,8 @@ function bundleProof(bundle, io, manifest) {
     return true
   }
   try {
-    execFileSync('git', ['bundle','verify',bundle], { stdio: 'ignore' })
-    const heads = execFileSync('git', ['bundle','list-heads',bundle], { encoding:'utf8' }).trim().split(/\r?\n/)
+    execFileSync('git', ['bundle','verify',bundle], { stdio: 'ignore', timeout:GIT_COMMAND_TIMEOUT_MS, killSignal:'SIGKILL' })
+    const heads = execFileSync('git', ['bundle','list-heads',bundle], { encoding:'utf8', timeout:GIT_COMMAND_TIMEOUT_MS, killSignal:'SIGKILL' }).trim().split(/\r?\n/)
     return heads.some(line => line === `${REGISTERED.headSha} HEAD` || line === `${REGISTERED.headSha} refs/heads/codex/issues-2478-2421-2420`)
   } catch { return false }
 }
@@ -129,10 +131,30 @@ function worktreeProof(path, io, expectedSha, branch, expectedDigest) {
 function worktreeRepository(path, io) {
   if (typeof io.worktreeRepository === 'function') return io.worktreeRepository(path)
   try {
-    const remote = execFileSync('git', ['-C', path, 'config', '--get', 'remote.origin.url'], { encoding: 'utf8' }).trim()
+    const remote = execFileSync('git', ['-C', path, 'config', '--get', 'remote.origin.url'], { encoding: 'utf8', timeout:GIT_COMMAND_TIMEOUT_MS, killSignal:'SIGKILL' }).trim()
     const match = /(?:github\.com[/:])([^/]+\/[^/]+?)(?:\.git)?$/.exec(remote)
     return match?.[1] ?? null
   } catch { return null }
+}
+
+function physicalCheckoutIdentity(location,io) {
+  let identity
+  try {
+    if (typeof io.physicalCheckoutIdentity === 'function') identity=io.physicalCheckoutIdentity(location)
+    else {
+      const requested=realpathSync(location)
+      const top=realpathSync(execFileSync('git',['-C',requested,'rev-parse','--show-toplevel'],{encoding:'utf8',timeout:GIT_COMMAND_TIMEOUT_MS,killSignal:'SIGKILL'}).trim())
+      const gitDir=realpathSync(execFileSync('git',['-C',requested,'rev-parse','--absolute-git-dir'],{encoding:'utf8',timeout:GIT_COMMAND_TIMEOUT_MS,killSignal:'SIGKILL'}).trim())
+      if (!lstatSync(top).isDirectory() || !lstatSync(gitDir).isDirectory()) refuse('physical checkout is not a directory')
+      identity={requested,top,gitDir}
+    }
+  } catch { refuse('physical checkout identity is unavailable') }
+  if (!identity || !['requested','top','gitDir'].every(key=>typeof identity[key]==='string' && identity[key].startsWith('/')) || identity.requested!==identity.top) refuse('physical checkout does not own requested path')
+  return identity
+}
+function proveDistinctPhysicalCustody(request,io) {
+  const old=physicalCheckoutIdentity(request.worktree,io),next=physicalCheckoutIdentity(request.targetWorktree,io)
+  if (old.top===next.top || old.gitDir===next.gitDir) refuse('original and successor physical custody aliases')
 }
 
 export function proveStoppedMergedAdoption(request, now, io, manifest, observation, prior = null, context = {}) {
@@ -153,7 +175,7 @@ export function proveStoppedMergedAdoption(request, now, io, manifest, observati
   validateObservation(observation, now, manifest)
   const pr = io.getPr(request.pr); if (!(pr?.merged === true || pr?.merged_at || String(pr?.state).toLowerCase() === 'merged') || pr?.head?.sha !== REGISTERED.headSha || pr?.head?.ref !== request.branch || pr?.merge_commit_sha !== REGISTERED.mergeSha) refuse('exact merged source PR changed')
   const mainSha = io.mainSha?.(); if (!SHA.test(mainSha ?? '')) refuse('exact current main required'); assertMergeCommitInMainHistory(REGISTERED.mergeSha, mainSha, io)
-  if (prior) { if (prior.record.source_merge_sha !== REGISTERED.mergeSha || prior.record.main_sha !== mainSha) refuse('immutable source merge or main changed') }
+  if (prior) { if (prior.record.source_merge_sha !== REGISTERED.mergeSha) refuse('immutable source merge changed'); assertMergeCommitInMainHistory(prior.record.main_sha,mainSha,io) }
   const versions = migrationVersions(io.getPrFiles(request.pr)); if (versions.length !== 1 || versions[0] !== REGISTERED.version) refuse('source migration does not match permanent version')
   const objects = io.prStructuralObjects?.(request.pr, REGISTERED.headSha); if (!Array.isArray(objects) || !objects.length) refuse('canonical merged-source object parser is empty')
   const held = new Set(lease.objects.map(normalizeObject)); if (validateClaimObjects(objects).some((object) => !held.has(object))) refuse('source writes outside original claim')
@@ -167,13 +189,34 @@ export function proveStoppedMergedAdoption(request, now, io, manifest, observati
   const readyRefs = io.listRefs(readyPrefix); if (!Array.isArray(readyRefs)) refuse('ready author consent listing is unreadable')
   if (readyRefs.some((row) => String(row.ref ?? '').startsWith(`${readyPrefix}${request.claim}-`))) refuse('ready author consent appeared; use cooperative route')
   if (!worktreeProof(request.worktree, io, REGISTERED.headSha, request.branch, manifest.original_worktree_sha256) || !worktreeProof(request.targetWorktree, io, REGISTERED.headSha, request.branch, manifest.successor_worktree_sha256)) refuse('original and successor worktrees are not clean exact custody')
+  proveDistinctPhysicalCustody(request,io)
   if (!bundleProof(context.preservationBundle, io, manifest)) refuse('preservation bundle is missing, unsafe or does not verify')
   if (worktreeRepository(request.worktree, io) !== REGISTERED.repository || worktreeRepository(request.targetWorktree, io) !== REGISTERED.repository || normalizeWorktreePath(request.worktree) === normalizeWorktreePath(request.targetWorktree)) refuse('working copies do not prove distinct canonical custody')
   if (typeof io.getFileAt === 'function' && io.getFileAt(MANIFEST_PATH, context.reviewHeadSha) !== context.manifestBytes) refuse('manifest bytes at reviewed head differ')
   return { claim, lease, adopted, mainSha, reservationSha }
 }
 
+function immutableEvidenceIo(source) {
+  const cached=Object.create(source),commits=new Map(),files=new Map()
+  cached.getCommit=sha=>{if(!SHA.test(sha??''))return source.getCommit(sha);if(!commits.has(sha))commits.set(sha,source.getCommit(sha));return commits.get(sha)}
+  cached.getFileAt=(path,ref)=>{if(!SHA.test(ref??''))return source.getFileAt(path,ref);const key=ref+'\0'+path;if(!files.has(key))files.set(key,source.getFileAt(path,ref));return files.get(key)}
+  return cached
+}
+function recordAttempt(request,observation,context,record,adoptionRef,adoptionSha,mainSha,mutex,io) {
+  const ref=`refs/db-stopped-merged-claim-attempts/${request.claim}-${digestObject(request).slice(0,24)}-${digestObject(observation).slice(0,24)}`
+  const attempt={schema_version:1,kind:'stopped-merged-adoption-attempt',human_identity_authenticated:false,claim:request.claim,request_sha256:digestObject(request),adoption_ref:adoptionRef,adoption_sha:adoptionSha,observation,current_main_sha:mainSha,review_issue:3618,review_pr:context.reviewPr,review_head_sha:context.reviewHeadSha,grant_created_at:record.created_at,grant_expires_at:new Date(Date.parse(record.created_at)+request.leaseHours*3600000).toISOString()}
+  const message='db-coordination stopped-merged-adoption-attempt '+JSON.stringify(attempt)
+  requireOwnedRef(MUTEX_REF,mutex,io)
+  let sha=io.readRef(ref)
+  if(sha){if(io.getCommit(sha)?.message!==message)refuse('immutable attempt differs; refresh stopped observation')}
+  else{sha=io.makeOwnerCommit(message);if(!io.createRef(ref,sha))refuse('immutable attempt creation failed')}
+  if(readRefAfterWrite(ref,sha,io)!==sha||io.getCommit(sha)?.message!==message)refuse('immutable attempt readback failed')
+  requireOwnedRef(MUTEX_REF,mutex,io)
+  return {attemptRef:ref,attemptSha:sha}
+}
 export function transferStoppedMergedClaimAuthor(options, now = new Date(), io = githubIo) {
+  const realIo=io===githubIo
+  if(realIo)io=immutableEvidenceIo(io)
   const request = validateStoppedMergedAdoptionRequest(options.request ?? Object.fromEntries(REQUEST_KEYS.map((key) => [key, options[key]]))); if (!(now instanceof Date) || !Number.isFinite(now.valueOf())) refuse('valid operation clock required')
   const context = options.request ? options : {}
   if (context.manifestFile && context.manifestFile !== MANIFEST_PATH) refuse('manifest path override is not allowed for the registered descriptor')
@@ -183,7 +226,7 @@ export function transferStoppedMergedClaimAuthor(options, now = new Date(), io =
   if (context.reviewIssue !== 3618 || !positive(context.reviewPr) || !SHA.test(context.reviewHeadSha) || context.reviewPr === REGISTERED.pr) refuse('new capability review pin is required')
   context.manifestBytes ??= (() => { try { return readFileSync(context.manifestFile ?? MANIFEST_PATH, 'utf8') } catch { refuse('supplied manifest file is unreadable') } })()
   if (JSON.parse(context.manifestBytes) && digestObject(manifest) !== digestObject(JSON.parse(context.manifestBytes))) refuse('supplied manifest bytes do not parse to supplied manifest')
-  const clock = () => { const date = typeof io.now === 'function' ? new Date(io.now()) : new Date(now.valueOf() + (Date.now() - startedAt)); if (!Number.isFinite(date.valueOf())) refuse('invalid fresh operation clock'); return date }
+  const clock = () => { const date = typeof io.now === 'function' ? new Date(io.now()) : (realIo ? new Date() : new Date(now.valueOf() + (Date.now() - startedAt))); if (!Number.isFinite(date.valueOf())) refuse('invalid fresh operation clock'); return date }
   const startedAt = Date.now()
   const capabilityProof = () => {
     const freshNow = clock()
@@ -197,40 +240,35 @@ export function transferStoppedMergedClaimAuthor(options, now = new Date(), io =
   const ref = `${STOPPED_ADOPTION_REF_PREFIX}${request.claim}-${sha256(canonicalJson(request)).slice(0,24)}`
   // Full proof before acquiring a mutation-capable lock, repeated underneath it.
   proveStoppedMergedAdoption(request, capabilityProof(), io, manifest, observation, readReceipt(ref,request,io), context)
-  const mutex = io.makeOwnerCommit(`db-coordination stopped-merged-adoption-mutex claim=${request.claim}`); acquireMutex(mutex, io)
+  const mutex = io.makeOwnerCommit(`db-coordination claim-author-transfer-mutex claim=${request.claim} operation=stopped-merged-adoption`); acquireMutex(mutex, io)
   let before = null, after = null, changed = false, receiptSha = null, result = null, failure = null
   try {
-    const currentMain = io.mainSha?.(); if (!SHA.test(currentMain ?? '')) refuse('exact current main required')
-    if (context.observationFile) {
-      const lockedObservation = readJsonFile(context.observationFile); validateObservation(lockedObservation, now, manifest)
-      if (!isDeepStrictEqual(lockedObservation, observation)) refuse('operator observation changed before locked proof')
-    }
-    assertDurableReviewApproval(context.reviewIssue, context.reviewPr, context.reviewHeadSha, io, { includeArchived: true })
-    proveCapabilityHead(context, io, currentMain)
-    const prior = readReceipt(ref, request, io)
-    const liveNow = capabilityProof()
-    if (prior && (Date.parse(prior.record.created_at) > liveNow.valueOf() || Date.parse(prior.record.created_at) + request.leaseHours*3600000 <= liveNow.valueOf() || prior.record.original_body_sha256 !== manifest.original_claim_body_sha256 || prior.record.reservation_sha !== manifest.reservation_sha || prior.record.source_merge_sha !== REGISTERED.mergeSha || prior.record.manifest_sha256 !== digestObject(manifest) || prior.record.observation_sha256 !== digestObject(observation))) refuse('immutable receipt expired or evidence changed')
-    const proof = proveStoppedMergedAdoption(request, liveNow, io, manifest, observation, prior, context)
-    if (proof.adopted) {
-      if (!prior || Date.parse(prior.record.created_at) + request.leaseHours * 3600000 <= now.valueOf()) refuse('immutable adopted receipt grant has expired; refusing silent re-grant')
-      result = { claim: request.claim, version: REGISTERED.version, owner: request.newOwner, worktree: request.targetWorktree, ref, sha: prior.sha, idempotent: true }; return result
-    }
-    before = proof.claim.body; const createdAt = prior?.record.created_at ?? liveNow.toISOString(); after = adoptionBody(before, request, new Date(Date.parse(createdAt) + request.leaseHours * 3600000))
-    const record = { schema_version: 1, kind: 'stopped-merged-operator-adoption', human_identity_authenticated: false, request, manifest_sha256: digestObject(manifest), observation_sha256: digestObject(observation), version: REGISTERED.version, source_merge_sha: REGISTERED.mergeSha, main_sha: proof.mainSha, reservation_sha: proof.reservationSha, original_body_sha256: sha256(before), adopted_body_sha256: sha256(after), original_body: before, adopted_body: after, created_at: createdAt }
-    if (prior && !isDeepStrictEqual(record, prior.record)) refuse('immutable receipt differs from current proof')
-    receiptSha = prior?.sha; if (!receiptSha) { receiptSha = io.makeOwnerCommit(RECEIPT_PREFIX + JSON.stringify(record)); if (!io.createRef(ref, receiptSha)) refuse('immutable receipt creation failed'); if (readRefAfterWrite(ref, receiptSha, io) !== receiptSha) refuse('immutable receipt readback failed') }
-    const readBack = readReceipt(ref,request,io)
-    if (!readBack || readBack.sha !== receiptSha || !isDeepStrictEqual(readBack.record,record)) refuse('immutable receipt content readback differs')
-    requireOwnedRef(MUTEX_REF, mutex, io); const fresh = proveStoppedMergedAdoption(request, capabilityProof(), io, manifest, observation, { sha: receiptSha, record }, context); if (fresh.adopted || fresh.claim.body !== before || fresh.mainSha !== proof.mainSha) refuse('claim or main moved before mutation')
-    if (Date.parse(createdAt) + request.leaseHours*3600000 <= clock().valueOf()) refuse('receipt grant expired before mutation')
-    validateObservation(observation,clock(),manifest)
+    const prior=readReceipt(ref,request,io),liveNow=capabilityProof()
+    if(prior&&(Date.parse(prior.record.created_at)>liveNow.valueOf()||Date.parse(prior.record.created_at)+request.leaseHours*3600000<=liveNow.valueOf()||prior.record.original_body_sha256!==manifest.original_claim_body_sha256||prior.record.reservation_sha!==manifest.reservation_sha||prior.record.source_merge_sha!==REGISTERED.mergeSha||prior.record.manifest_sha256!==digestObject(manifest)))refuse('immutable receipt expired or evidence changed')
+    const proof=proveStoppedMergedAdoption(request,liveNow,io,manifest,observation,prior,context)
+    const createdAt=prior?.record.created_at??liveNow.toISOString()
+    before=prior?.record.original_body??proof.claim.body
+    after=adoptionBody(before,request,new Date(Date.parse(createdAt)+request.leaseHours*3600000))
+    const record={schema_version:1,kind:'stopped-merged-operator-adoption',human_identity_authenticated:false,request,manifest_sha256:digestObject(manifest),observation_sha256:prior?.record.observation_sha256??digestObject(observation),version:REGISTERED.version,source_merge_sha:REGISTERED.mergeSha,main_sha:prior?.record.main_sha??proof.mainSha,reservation_sha:proof.reservationSha,original_body_sha256:sha256(before),adopted_body_sha256:sha256(after),original_body:before,adopted_body:after,created_at:createdAt}
+    if(prior&&!isDeepStrictEqual(record,prior.record))refuse('immutable receipt differs from current proof')
+    receiptSha=prior?.sha
+    if(!receiptSha){receiptSha=io.makeOwnerCommit(RECEIPT_PREFIX+JSON.stringify(record));if(!io.createRef(ref,receiptSha))refuse('immutable receipt creation failed');if(readRefAfterWrite(ref,receiptSha,io)!==receiptSha)refuse('immutable receipt readback failed')}
+    const readBack=readReceipt(ref,request,io)
+    if(!readBack||readBack.sha!==receiptSha||!isDeepStrictEqual(readBack.record,record))refuse('immutable receipt content readback differs')
+    const attempt=recordAttempt(request,observation,context,record,ref,receiptSha,proof.mainSha,mutex,io)
+    const fresh=proveStoppedMergedAdoption(request,capabilityProof(),io,manifest,observation,{sha:receiptSha,record},context)
+    if(fresh.adopted!==proof.adopted||fresh.claim.body!==proof.claim.body||fresh.mainSha!==proof.mainSha)refuse('claim or main moved before mutation')
+    if(Date.parse(createdAt)+request.leaseHours*3600000<=clock().valueOf())refuse('receipt grant expired before mutation')
+    validateObservation(observation,clock(),manifest);requireOwnedRef(MUTEX_REF,mutex,io)
+    if(proof.adopted){result={claim:request.claim,version:REGISTERED.version,owner:request.newOwner,worktree:request.targetWorktree,ref,sha:receiptSha,...attempt,idempotent:true};return result}
+    changed=true;io.updateIssue(request.claim,{body:after})
+    if(io.getIssue(request.claim)?.body!==after)refuse('claim readback failed')
+    if(io.readRef(`refs/db-claims/${REGISTERED.version}`)!==proof.reservationSha||!io.getCommit(proof.reservationSha))refuse('permanent reservation changed after adoption')
     requireOwnedRef(MUTEX_REF,mutex,io)
-    changed = true; io.updateIssue(request.claim, { body: after }); if (io.getIssue(request.claim)?.body !== after) refuse('claim readback failed')
-    if (io.readRef(`refs/db-claims/${REGISTERED.version}`) !== proof.reservationSha || !io.getCommit(proof.reservationSha)) refuse('permanent reservation changed after adoption'); requireOwnedRef(MUTEX_REF, mutex, io)
-    const finalProof = proveStoppedMergedAdoption(request,capabilityProof(),io,manifest,observation,{sha:receiptSha,record},context)
-    if (!finalProof.adopted || finalProof.claim.body !== after) refuse('final adopted custody differs')
+    const finalProof=proveStoppedMergedAdoption(request,capabilityProof(),io,manifest,observation,{sha:receiptSha,record},context)
+    if(!finalProof.adopted||finalProof.claim.body!==after||finalProof.mainSha!==proof.mainSha)refuse('final adopted custody or main differs')
     requireOwnedRef(MUTEX_REF,mutex,io)
-    result = { claim: request.claim, version: REGISTERED.version, owner: request.newOwner, worktree: request.targetWorktree, ref, sha: receiptSha, idempotent: false }; return result
+    result={claim:request.claim,version:REGISTERED.version,owner:request.newOwner,worktree:request.targetWorktree,ref,sha:receiptSha,...attempt,idempotent:false};return result
   } catch (error) {
     let owned = false, observed = 'unreadable'
     try { observed = sha256(io.getIssue(request.claim)?.body ?? '') } catch {}

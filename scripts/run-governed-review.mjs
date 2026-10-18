@@ -10,7 +10,7 @@ import { lineOpensWithVerdictWord, isVerdictFor } from './lib/review-verdict.mjs
 // Issue #2342: one shared transport owns the never-replay-a-write policy.
 import { runGitHubCommand, spawnGitHub } from './lib/github-transport.mjs'
 // Issue #2729 Step 7: one lifecycle source of truth decides retry versus reroute.
-import { reviewerStartDecision, NON_VERDICT_TERMINAL_REASONS } from './orchestrator-flow/start-reroute.mjs'
+import { reviewerStartDecision, NON_VERDICT_TERMINAL_REASONS } from './db-flow/start-reroute.mjs'
 // Issue #2492: size the reviewer's turn budget to the migration it must read.
 import { withTurnBudget, changedMigrationLines, turnBudgetDiagnostic } from './lib/reviewer-turn-budget.mjs'
 import { REVIEW_CALLER_VARIABLES, reviewCallerEnvironment } from './lib/reviewer-caller-env.mjs'
@@ -18,7 +18,7 @@ import { loadReviewBrief, storeReviewBrief } from './lib/review-packet.mjs'
 import { GOVERNED_VERDICT_WRAPPERS, VERDICT_CONTRACT_FLAG_WRAPPERS, forbiddenGovernedSubcommand, wrapperBaseName } from './lib/reviewer-capabilities.mjs'
 import { REINSTATABLE_FAILURE_CODES } from './lib/lanes/review-circuit-breaker.mjs'
 
-export const GOVERNED_REVIEW_OPTIONS=Object.freeze(['--issue','--pr','--head-sha','--reviewer','--wrapper','--worktree','--review-slot','--replacement-sequence','--assignment-id','--skip-doctor','--tests'])
+export const GOVERNED_REVIEW_OPTIONS=Object.freeze(['--issue','--pr','--head-sha','--reviewer','--wrapper','--worktree','--review-slot','--replacement-sequence','--assignment-id','--skip-doctor','--tests','--production-risk-main','--production-risk-classes','--production-risk-allowlist'])
 export function parseArgs(argv){
   const split=argv.indexOf('--'),own=split<0?argv:argv.slice(0,split),wrapperArgs=split<0?[]:argv.slice(split+1),out={wrapperArgs,slot:1}
   for(let i=0;i<own.length;i+=2){const raw=own[i];if(typeof raw==='string'&&raw.startsWith('--')){const name=raw.slice(2).replace(/-([a-z])/g,(_,c)=>c.toUpperCase()),canonicalFlag=`--${name.replace(/[A-Z]/g,(c)=>`-${c.toLowerCase()}`)}`;if(!GOVERNED_REVIEW_OPTIONS.includes(canonicalFlag))throw new Error(`unknown governed review argument ${raw}${name==='slot'?' (use --review-slot)':''}; supported: ${GOVERNED_REVIEW_OPTIONS.join(', ')}`)}else throw new Error('governed review arguments must be --name value pairs followed by -- and wrapper arguments')
@@ -635,7 +635,10 @@ export function runGovernedReview(options,deps={spawn:spawnSync,preflight:review
   const resolveSource=deps.sourceResolver??resolveReviewSource
   const sourceIdentity=resolveSource(options)
   const poolProvider=deps.lifecyclePool===false?null:lifecyclePoolProvider(options)
-  const brief=poolProvider?{wrapperArgs:[],env:{}}:(deps.briefPreparer??prepareCompleteReviewBrief)(options,sourceIdentity)
+  // Issue #4410: a pool reviewer gets the same complete brief (issue, PR and the
+  // production-risk-assessment request) through ai-review's AI_REVIEW_BRIEF_FILE;
+  // without it no drawable reviewer could ever emit the §6.23 block.
+  const brief=poolProvider?(deps.poolBriefPreparer??prepareLifecyclePoolBrief)(options,sourceIdentity):(deps.briefPreparer??prepareCompleteReviewBrief)(options,sourceIdentity)
   const contractArgs=poolProvider?[]:wrapperSourceContractArgs(options.wrapper,wrapperVerdictContractArgs(options.wrapper,brief.wrapperArgs,options.headSha),sourceIdentity)
   // ISSUE #2492 — SIZE THE TURN BUDGET BEFORE THE REVIEWER IS LAUNCHED.
   // A large migration exhausts the wrapper's 20-turn default and ends with no
@@ -1081,6 +1084,10 @@ Your final line must be exactly one of: VERDICT: APPROVE ${head} | VERDICT: REVI
   // still carry the contract.
   if(!carried&&wrapperBaseName(wrapper)!==CODEX_WRAPPER)throw new Error('the outbound reviewer prompt carries no terminal VERDICT instruction, because the wrapper arguments contain neither --prompt nor --prompt-file. No reviewer was started and no reviewer capacity was spent. A reviewer sent a prompt without the terminal "VERDICT: <DECISION> <head>" line can approve the work and still leave nothing recordable. Pass the brief with --prompt or --prompt-file so the runner can bind it to the live head.')
   return list
+}
+export function prepareLifecyclePoolBrief(options,source,{github=readGitHub,store=storeReviewBrief}={}){
+  const text=loadReviewBrief(options,source,{github})
+  return {wrapperArgs:[],env:{AI_REVIEW_BRIEF_FILE:store(`${text}\n${PROBE_REVIEW_CHECKLIST}`)}}
 }
 export function prepareCompleteReviewBrief(options,source,{github=readGitHub,files,store=storeReviewBrief}={}){
   const text=loadReviewBrief(options,source,{github})

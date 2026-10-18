@@ -1,14 +1,14 @@
 name: Guarded Merge
 
 # WHO MAY DISPATCH THIS WORKFLOW (issue #3199 §8, locked 2026-09-17): ANY
-# write-authenticated session — orchestrator, repo-maintenance, or an
+# write-authenticated session — claim-first, repo-maintenance, or an
 # application session that has taken the self-service additive lane — for a
 # pull request that already carries its exact-head approval and green required
 # checks. The workflow, not the caller's identity, is the gate: it re-proves
 # required checks, exact-head approval, lease and admission itself, under its
 # own lock. This comment grants nobody anything new; it writes down a capability
 # the plain workflow_dispatch trigger already had, so approved pull requests
-# stop aging while the orchestrator is busy.
+# stop aging while a claim-first session is busy.
 
 on:
   workflow_dispatch:
@@ -316,11 +316,9 @@ jobs:
           #              adds the PR to the queue (or arms auto-merge, as the CLI
           #              documents). The administrator bypass flag is never used.
           #   inactive — the pre-queue direct merge, unchanged.
-          #   unknown  — the read failed (this token has no administration scope,
-          #              so rulesets may be unreadable). Attempt the direct merge;
-          #              only a refusal that NAMES the merge queue switches the
-          #              attempt to queue admission, once. Any other refusal
-          #              behaves exactly as before.
+          #   unknown  — the read failed or the active ruleset drifted. Refuse
+          #              before any merge attempt; neither direct merging nor
+          #              queue admission is safe to infer.
           # Only3998 retains the original14 proof after reviewed12 policy retirement.
           # Each mutation gets fresh proof, including propagation retries/fallback.
           prove_retained_all14() {
@@ -341,6 +339,10 @@ jobs:
           }
           queue_mode="$(node "$GITHUB_WORKSPACE/trusted-policy/scripts/merge-queue-contract.mjs" --queue-mode)" || queue_mode="unknown"
           echo "merge queue mode: $queue_mode"
+          if [ "$queue_mode" != 'active' ] && [ "$queue_mode" != 'inactive' ]; then
+            echo "::error::merge queue mode is unknown; refusing before any merge attempt"
+            exit 1
+          fi
           if [ "$queue_mode" = 'active' ]; then
             prove_retained_all14
             gh pr merge "${{ inputs.pull_request }}" --repo "$GITHUB_REPOSITORY" --merge --match-head-commit "${{ inputs.head_sha }}"

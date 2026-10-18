@@ -8,7 +8,7 @@
 // Why this file exists (#1816): the guarded-migration-merge workflow proved head
 // identity, base currency, object collisions and the author lease, but never once
 // asked whether the bytes being merged had been approved. The exact-head rule was
-// enforced by convention in the orchestrator's instructions and by the PREVIEW
+// enforced by convention in claim-first instructions and by the PREVIEW
 // gate -- which, under merge-first (AGENTS.md section 4 rule 2), only runs AFTER
 // the merge. So the sequence
 //
@@ -45,7 +45,7 @@
 // forgery, but that still does not bind the assigned provider to the commenter. The word
 // "independent" here describes the assignment PROCESS -- the rotation in
 // `manage-migration-author-lanes.mjs`, which picks the reviewer and refuses the
-// live orchestrator's own engine -- and is not a property this file verifies.
+// live session engine -- and is not a property this file verifies.
 // One deliberate limit remains: fenced or indented code containing a verdict line
 // counts.
 //
@@ -76,6 +76,25 @@ import { MERGE_SELF_CONTEXT } from './lib/merge-self-context.mjs'
 
 export class ApprovalCheckError extends Error {}
 const COMPOSED_CARRY = Symbol('composed approval carry')
+
+/** Owner no-reviewer policy (Albert, 2026-10-15). Missing or malformed file
+ *  means NO exemption — fail closed to the reviewer requirement. */
+export function readOwnerNoReviewerPolicy() {
+  try {
+    const raw = readFileSync(new URL('../config/owner-no-reviewer-policy.json', import.meta.url), 'utf8')
+    const policy = JSON.parse(raw)
+    if (policy?.schema_version !== 1 || policy?.active !== true || typeof policy?.quote !== 'string' || policy.quote.length < 10) {
+      return { active: false, reason: 'owner no-reviewer policy file is present but not an active schema-1 record' }
+    }
+    // Scope is binding (docs/owner-rulings.md §6.28): popcre/shared-db only.
+    if (policy.scope !== REPO) {
+      return { active: false, reason: 'owner no-reviewer policy file scope does not match this repository' }
+    }
+    return { active: true, reason: `owner ruling ${policy.decided_at}: ${policy.quote}` }
+  } catch {
+    return { active: false, reason: 'owner no-reviewer policy file is absent or unreadable' }
+  }
+}
 
 // A decision is "tied" to a head when GitHub records it against that commit or the
 // author wrote the SHA into the body. Same rule the preview gate uses, so the two
@@ -217,6 +236,23 @@ export function evaluateExactHeadApproval(input) {
     const refused = recorded.filter((row) => reviewerReadsRepository(row.reviewer) && row.verdict !== 'APPROVE')
     if (refused.length) throw new ApprovalCheckError(`head ${headSha} carries a durable reviewer refusal; a documents-only pull request is exempt from DRAWING a reviewer, never from answering one that already reviewed these bytes`)
     return { approved: true, head_sha: headSha, pr: Number(pr), documents_only: true, reason: documents.reason, assignments: 0, approvals: 0 }
+  }
+
+  // OWNER RULING (Albert Hazan, 2026-10-16, verbatim: "the new rules say this
+  // repo does not get reveiwers anymore"). Shared-db no longer draws or requires
+  // an external reviewer APPROVE. The exemption is from the reviewer POOL only:
+  // every other required check, the guarded merge lane, and the merge lock still
+  // bind. A durable refusal already recorded at this head still blocks. The
+  // policy is a committed file so the decision is auditable and cannot be
+  // toggled by a pull-request author or an environment variable. Library callers
+  // must pass `ownerNoReviewerPolicy` explicitly; the CLI loads the file.
+  const ownerNoReviewer = input.ownerNoReviewerPolicy ?? { active: false, reason: 'owner no-reviewer policy was not supplied by the caller' }
+  if (ownerNoReviewer.active) {
+    const recordedOwner = (verdicts ?? []).filter((row) => Number(row.pr) === Number(pr) && String(row.head_sha).toLowerCase() === String(headSha).toLowerCase())
+    if (recordedOwner.some((row) => !isValidatedVerdictArtifact(row))) throw new ApprovalCheckError('durable verdict input crossed the approval boundary without artifact validation')
+    const refusedOwner = recordedOwner.filter((row) => reviewerReadsRepository(row.reviewer) && row.verdict !== 'APPROVE')
+    if (refusedOwner.length) throw new ApprovalCheckError(`head ${headSha} carries a durable reviewer refusal; the owner no-reviewer rule exempts DRAWING a reviewer, never answering one that already reviewed these bytes`)
+    return { approved: true, head_sha: headSha, pr: Number(pr), owner_no_reviewer: true, reason: ownerNoReviewer.reason, assignments: 0, approvals: 0 }
   }
 
   const atThisHead = assignments.filter((row) => String(row.headSha ?? '').toLowerCase() === String(headSha).toLowerCase())
@@ -577,10 +613,12 @@ export function gatherApprovalInput(env = process.env, deps = { json, pages }) {
   // carry their previous name too, so a migration renamed to a `.md` is still a
   // migration change. Unreadable input yields a list the classifier refuses.
   const changedFiles = changedPathsFromPullRequestFiles(readPages(`repos/${REPO}/pulls/${pr}/files?per_page=100`))
+  // Owner no-reviewer policy is opt-in at the call site (CLI main loads it).
+  // Tests and library callers keep the reviewer requirement unless they pass it.
   return { pr, headSha, evidence, assignments, returns, verdicts, changedFiles, priorHeads, mergeAudit: null, mergedAtHead }
 }
 
-// A MERGE FROM MAIN DOES NOT VOID AN APPROVAL (orchestrator marker #2758, 2026-09-11).
+// A MERGE FROM MAIN DOES NOT VOID AN APPROVAL (claim-first session identity #2758, 2026-09-11).
 //
 // Every merge to main forced every other open pull request to merge main, and the
 // new head voided its APPROVE, so each needed a fresh draw and review after every
@@ -713,7 +751,7 @@ export function resolveApprovalMainRef(env = process.env, pr, readJson = json, r
 export function main(env = process.env, deps = {}) {
   try {
     const { gather = gatherApprovalInput, evaluate = evaluateApprovalWithRefresh } = deps ?? {}
-    const input = gather(env)
+    const input = { ...gather(env), ownerNoReviewerPolicy: readOwnerNoReviewerPolicy() }
     if (input.mergeAudit) {
       console.log(`Merged pull request approval audit verified: PR #${input.pr} head ${input.headSha} carried successful guarded-merge authorization status ${input.mergeAudit.statusId} at ${input.mergeAudit.authorizedAt}, before merge ${input.mergeAudit.mergedAt} (merge commit ${input.mergeAudit.mergeCommitSha}). Later reviewer activity and later gate-rule changes do not rewrite that merge-time decision.`)
       return 0
@@ -722,6 +760,7 @@ export function main(env = process.env, deps = {}) {
     const mainRef = resolveApprovalMainRef(env, input.pr)
     const result = evaluate(input, { contentPreservingRefresh: (approvedHead, head) => isContentPreservingRefresh({ approvedHead, head, mainRef }) })
     if (result.carried_from) console.log(`Exact-head approval carried forward: PR #${result.pr} head ${result.head_sha} has the same pull request diff as approved head ${result.carried_from}, so its evidence-only or merge-from-main refresh needs no new review; approved implementation digest ${result.implementation_digest} (${result.approvals} approval(s), ${result.assignments} pinned assignment(s)).`)
+    else if (result.owner_no_reviewer) console.log(`Owner no-reviewer rule (Albert, 2026-10-15): PR #${result.pr} head ${result.head_sha} draws no external reviewer (${result.reason}). Every other check and the guarded merge lane still apply.`)
     else if (result.documents_only) console.log(`Documents-only pull request: PR #${result.pr} head ${result.head_sha} draws no database reviewer (${result.reason}). Every other check and the guarded merge lane still apply (#2102).`)
     else console.log(`Exact-head approval verified: PR #${result.pr} head ${result.head_sha} (${result.approvals} approval(s), ${result.assignments} pinned assignment(s), required slot(s) ${result.required_slots}).`)
     return 0

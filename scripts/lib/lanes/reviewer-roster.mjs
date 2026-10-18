@@ -492,7 +492,7 @@ export function inheritReturnedReviewerAllowlist(requested,request,io){
 // stays eligible (issue #2127 decision (a)).
 //
 // `undefined` and `''` remain unreadable and still refuse. That distinction is
-// load-bearing: every call site reaches this through `io.resolveOrchestratorEngine?.()`,
+// load-bearing: every call site reaches this through `io.resolveReviewEngine?.()`,
 // which yields `undefined` when the io object has no resolver at all, and that
 // must never be mistaken for "no orchestrator is running".
 //
@@ -501,7 +501,7 @@ export function inheritReturnedReviewerAllowlist(requested,request,io){
 // GLM must never review GLM code, so a `zcode` orchestrator must exclude the
 // `glm` rows even though no row carries the string 'zcode'. This map is the
 // reviewer-draw's own vocabulary: it MUST cover every engine
-// `lib/orchestrator-routing.mjs` lets a marker declare, which the lane test
+// `lib/engine-routing.mjs` lets a marker declare, which the lane test
 // suite asserts key-for-key. It lives HERE, beside the rows it filters, rather
 // than as an import from the routing module, so editing the routing contract
 // does not enter this manager's import closure and become a global evidence
@@ -525,7 +525,7 @@ export function authorEngineFromEnv(value,known=knownAuthorEngines()){
 export function reviewersForOrchestrator(engine, reviewers=ACTIVE_REVIEWERS){
   if(engine===null)return reviewers.filter(()=>true)
   const normalized=String(engine??'').trim().toLowerCase()
-  if(!normalized)throw new LaneError('live orchestrator engine is unreadable; reviewer assignment refused')
+  if(!normalized)throw new LaneError('author engine is unreadable; reviewer assignment refused')
   const excluded=String(ENGINE_REVIEWER_EXCLUSION[normalized]??normalized).trim().toLowerCase()
   return reviewers.filter((row)=>String(row.orchestratorEngine??'').toLowerCase()!==excluded)
 }
@@ -570,8 +570,8 @@ export function reconcilePreflightRows(output,reviewers,{complete=true}={}){
 }
 
 export function allocatableReviewers(io){
-  const independent=reviewersForOrchestrator(io.resolveOrchestratorEngine?.())
-  if(!independent.length)throw new LaneError('no reviewer is independent from the live orchestrator engine')
+  const independent=reviewersForOrchestrator(io.resolveReviewEngine?.())
+  if(!independent.length)throw new LaneError('no reviewer is independent from the author engine')
   if(typeof io.reviewerUsability!=='function')throw new LaneError('reviewer allocation cannot read the reconciled ai-review-preflight state; no sequence or lease was consumed')
   const usability=io.reviewerUsability(independent)
   if(!(usability instanceof Map))throw new LaneError('reviewer allocation received malformed reconciled ai-review-preflight state; no sequence or lease was consumed')
@@ -591,6 +591,6 @@ export function allocatableReviewers(io){
   }
 }
 
-// The orchestrator marker resolver (issue #2127) was retired with the role
+// The claim-first session identity resolver (issue #2127) was retired with the role
 // (issue #3874); session authority lives in lib/session-authority.mjs.
 export function readSessionIdOrUnknown(){const id=readSessionId();return typeof id==='string'?id:'unknown-session'}

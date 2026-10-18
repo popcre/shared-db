@@ -1,3 +1,4 @@
+-- derived-from: 20261013130102
 -- Preserve native NBCU co-tag observations without treating Cartesian tag pairs as direct support.
 -- Derived source_term provenance is metadata only; capture rows and canonical source terms remain unchanged.
 -- This live proof validates only the installed guard contract, not capture authority or business acceptance.

@@ -10,7 +10,7 @@ Fresh production read-only catalog:46target policies,39tables,72overlapping poli
 
 Initial draft CI39150223507 failed: the post-change guard had unparenthesized CASE expressions in a PL/pgSQL IF. A separate pglast8.7 parser reproduced the syntax error; parentheses fix parsing while retaining both comparisons. The migration did not pass atomic replay, and the runtime contract correctly failed its candidate requirement. No quarantine or safeguard was relaxed.
 
-## Current command contract — expanded execution pending
+## Current command contract — isolated execution passed
 
 The local-only SQL suite uses the existing invitation-first synthetic CI seed, with all auth provisioning triggers intact. It compares2124 original/candidate results and exact SQLSTATEs over administrator/member/missing/malformed/anonymous/repeated-administrator contexts. Own/foreign profile updates and ordinary non-secret configuration reads explicitly preserve the overlapping policy union. Separate prepared policy and helper queries test request reuse. Each DML probe rolls back independently, and the whole suite rolls back.
 
@@ -20,9 +20,9 @@ Fixture effects are ordinary disposable local row data, not new structural claim
 
 ## Still required
 
-Fresh execution of the expanded mixed/NULL/empty/batch matrix and actual prepared-policy revoke/regrant controls; preview parity/consumer/cleanup proof; assigned exact-head review and required CI; guarded merge and qualified production promotion; fresh targeted advisor/catalog/ledger/actual-role plans; approved live consumer reads/writes. Missing safe live writes remain UNKNOWN on4427 and block4428. No other repair closes from this draft.
+Assigned exact-head review and final source CI; preview parity/consumer/cleanup proof; assigned exact-head review and required CI; guarded merge and qualified production promotion; fresh targeted advisor/catalog/ledger/actual-role plans; approved live consumer reads/writes. Missing safe live writes remain UNKNOWN on4427 and block4428. No other repair closes from this draft.
 
-## Representative workload measurements — execution pending
+## Representative workload measurements — isolated execution passed
 
 The second rollback transaction qualifies administrator configuration INSERT/UPDATE/DELETE at1/100/10000rows, with one warmup and ten measured alternating/reversed original/candidate pairs per workload. It retains198 raw JSON plans with buffers, actual rowcounts, planning/execution times, median/p95 and explicit >=10percent regression flags. The actual authenticated role has neither ownership nor RLS bypass. Each sample must restore identical source rows, values and absence of inserted rows. Source guards reject new triggers, rules, non-primary constraints or non-now defaults. This measures four administrator configuration policies, not all46policies or end-user/UI latency. A green measurement harness alone does not resolve a regression flag.
 
@@ -42,6 +42,10 @@ Generation4 prospectively narrows actual DDL to81canonical keys and33read depend
 
 CI [39152564172](https://github.com/popcre/shared-db/actions/runs/39152564172) passed at d771ef8cb6eb19fe24d6feccc588d858180593ca:1932 exact before/after outcomes, strict operational positive controls, two archive42501 denials, full metadata/union checks and198 raw administrator-configuration performance plans. Each candidate INSERT/DELETE plan has2 InitPlans; UPDATE has4; all264 actual InitPlan nodes executed exactly once, none more than once. Eight of nine measured median cases improved. The single-row INSERT median0.113ms→0.1195ms was5.75percent slower, below the10percent threshold. These are synthetic isolated results for four admin_config policies, not all44 policy workload measurements or production latency.
 
-The expanded source adds16 mixed/empty/NULL probes (192 additional context outcomes,2124 total), including visible/hidden assets, combined owner profiles, secret/public configuration, multi-row writes and invalid batches. Actual prepared policy reads must change1→0→1 across role grant/revoke/regrant in both original and candidate phases. Invalid member batches may fail only42501 or23502 and must match the exact baseline; arbitrary errors cannot pass. Every probe remains subtransaction-rolled-back, and fixture rows/side effects are outer-transaction-rolled-back. Expanded runtime execution is not yet proved.
+The expanded source adds16 mixed/empty/NULL probes (192 additional context outcomes,2124 total), including visible/hidden assets, combined owner profiles, secret/public configuration, multi-row writes and invalid batches. Actual prepared policy reads must change1→0→1 across role grant/revoke/regrant in both original and candidate phases. Invalid member batches may fail only42501 or23502 and must match the exact baseline; arbitrary errors cannot pass. Every probe remains subtransaction-rolled-back, and fixture rows/side effects are outer-transaction-rolled-back. Expanded runtime execution passed in CI39154055887 at2fbc889e50ccc59090742531e049a1c3232b1778. All2124 results and exact SQLSTATEs match, all positive/negative controls and role revoke/regrant assertions passed.
 
 Generation5 prospectively adds durable sanitized synthetic CI raw evidence and current plan progress. Previous generations remain immutable. No shared-preview/production writes or live repair closure are authorized by these source results.
+
+The expanded CI run retained198 raw JSON plans:264 candidate InitPlan nodes, all Actual Loops1. No measurement exceeded the10percent median threshold. One-row INSERT0.088ms→0.0945ms (+7.39percent; candidate p950.1633ms);10000-row INSERT83.313ms→24.071ms, UPDATE182.9865ms→58.4255ms and DELETE93.749ms→31.498ms. Full median/p95/absolute samples and sanitized access results are durably retained in source-runtime-evidence.json.gz, with digests/source hashes and readable summary in source-runtime-summary.json. The evidence names its actual tested source; later documentation/evidence-only changes do not pretend a new database execution occurred. Final complete PR CI remains required.
+
+The branch incorporates current protected main7ec7639f4 before review, including the unrelated reviewed NBCU delivery. No other session’s files or source were edited. Source SQL hashes still match the retained isolated run exactly. Shared preview, production, targeted advisor/live plans and approved real consumer operations remain OPEN.

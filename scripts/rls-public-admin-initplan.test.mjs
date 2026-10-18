@@ -1,5 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
+import { gunzipSync } from 'node:zlib'
 import { readFileSync } from 'node:fs'
 import { inspectPrStructuralChange, structuralWritesMatch } from './db-flow/admission.mjs'
 import { validateClaimObjects } from './lib/lanes/claims.mjs'
@@ -47,4 +49,36 @@ test('drift checks cover complete original predicates and preserve metadata and 
   assert.match(sql, /regexp_replace\(actual\.qual/)
   assert.match(sql, /regexp_replace\(actual\.with_check/)
   assert.doesNotMatch(sql, /\b(?:CREATE|DROP|GRANT|REVOKE|TRUNCATE|INSERT|UPDATE|DELETE)\s+(?:TABLE|FUNCTION|ROLE|POLICY|INTO|FROM)\b/i)
+})
+
+// Retained evidence must remain tied to the exact executable SQL, not a stale green run.
+test('retained isolated runtime evidence matches current SQL and complete measured results', () => {
+  const base = new URL('../docs/verification/rls-initplan/4427/', import.meta.url)
+  const summary = JSON.parse(readFileSync(new URL('source-runtime-summary.json', base)))
+  const packed = readFileSync(new URL('source-runtime-evidence.json.gz', base))
+  const raw = gunzipSync(packed)
+  const hash = value => createHash('sha256').update(value).digest('hex')
+  assert.equal(hash(packed), summary.compressed_sha256)
+  assert.equal(hash(raw), summary.uncompressed_sha256)
+  const evidence = JSON.parse(raw)
+  assert.equal(evidence.ci_run_id, 39154055887)
+  assert.equal(evidence.tested_head, '2fbc889e50ccc59090742531e049a1c3232b1778')
+  for (const [file, digest] of Object.entries(evidence.source_sha256)) {
+    assert.equal(hash(readFileSync(new URL('../' + file, import.meta.url))), digest, file)
+  }
+  assert.equal(evidence.access.length, 2124)
+  const outcomes = new Map(evidence.access.map(row => [row.phase + ':' + row.context + ':' + row.probe, row.result]))
+  assert.equal(outcomes.size, 2124)
+  for (const row of evidence.access.filter(row => row.phase === 'original')) {
+    assert.deepEqual(outcomes.get('candidate:' + row.context + ':' + row.probe), row.result)
+  }
+  assert.equal(evidence.performance.samples.length, 198)
+  assert.equal(evidence.performance.summary.length, 9)
+  assert.equal(evidence.performance.any_regression_requires_investigation, false)
+  for (const measured of evidence.performance.summary) assert.equal(measured.requires_regression_investigation, false)
+  for (const [name, stats] of Object.entries(summary.initplan_execution_counts)) {
+    assert.equal(stats.samples, 33)
+    assert.equal(stats.loops_above_1, 0)
+    if (name.startsWith('candidate ')) assert.equal(stats.initplans, stats.loops_equal_1)
+  }
 })

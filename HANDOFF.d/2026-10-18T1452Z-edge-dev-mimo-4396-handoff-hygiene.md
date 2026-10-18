@@ -72,6 +72,10 @@ Evidence-pair shape on #4396 (must be preserved):
 
 ## 6. Exact next steps
 
+**PROMOTION MERGE FREEZE (checked 2026-10-18T14:55Z):** merges are paused until **2026-10-18T17:51:09.878Z**. Holder: `Claude subagent of chat b6410b17-053b-4ff2-adc8-f25b053cb611 on edge-dev3` for PR #4386 (issue #4373). This blocked docs-only authorization on PR #4424 (`REFUSED: merges are paused for a production run`). Do not retry merge before the freeze expires or that holder releases it.
+
+0. After the freeze: merge docs-only PR **#4424** (this handoff) first — `gh pr merge 4424 --repo popcre/shared-db --auto --merge`.
+
 1. Recover the draw lock if held: `gh workflow run recover-author-mutex.yml --repo popcre/shared-db -f expected_sha=<current sha> -f "confirmation=RECOVER <sha>"`.
 2. If the budget fails, merge `origin/main` into `mimo/4241-handoff-hygiene`, rebind `.agent/work/4395/` to the new merge-base (new generation, publish `refs/db-contracts/4395/<n>`), keep implementation = handoff-only net diff, tail = the two pair files.
 3. Draw: `SHARED_DB_AUTHOR_ENGINE=mimo GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=echo node scripts/manage-migration-author-lanes.mjs --assign-reviewer --issue 4395 --pr 4396 --head-sha <live head>` (run from `D:/repos/shared-db-worktrees/4241-hygiene`).
@@ -103,3 +107,4 @@ Evidence-pair shape on #4396 (must be preserved):
 - Who restores `enforce_admins` on `main`, and when? (Albert.)
 - Reviewer-draw reliability on this Windows host is poor (mutex races, 5-minute retry sleeps, lifecycle-pool report binding). A Linux/edge-dev3 successor may find the draw much easier.
 - #4241's tracker body cites the 14 retire-candidates, so `report-stale-handoffs` will keep them in the "do not retire" bucket until that body is rewritten and the deletions land together.
+

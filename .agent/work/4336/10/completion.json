@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "work_issue": 4336,
+  "outcome": "ready-for-merge",
+  "pr": 4360,
+  "migration_versions": [
+    "20261018192732"
+  ],
+  "contract_ref": "refs/db-contracts/4336/10",
+  "contract_sha256": "2976ed7eb8729e1f19b65091ccd70bc55d4d88bec3357091e69cfbe49dfad6dc",
+  "head_sha": "88ec667cc65aa1e02483cae1824241b6cdcc2737",
+  "base_sha": "d8c6008d3f3687987d3cf8e0d757e999983a6d4e",
+  "files_changed": [
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production-verification-sidecars/20261018192732.json",
+    "scripts/test_order_list_find_position.py",
+    "supabase/migrations/20261018192732_orderlist_so_date_sort.sql",
+    "supabase/tests/dam_order_list_sales_order_date_sort.sql",
+    "scripts/lib/session-authority.mjs",
+    "scripts/lib/session-authority.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs"
+  ],
+  "db_reads": [
+    "table coldlion.order_history_line",
+    "table plm.production_order_line",
+    "table plm.production_order_line_source_ref",
+    "view api.dam_order_list"
+  ],
+  "db_writes": [
+    "view api.dam_order_list",
+    "function dam.orderlist_sales_order_received_date",
+    "function public.find_dam_order_list_row"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL checks passed on this implementation head; Guard B against origin/main newest 20261018164004."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "Sidecar registry OK; migration 20261018192732 marker 337 covered."
+    },
+    {
+      "command": "node --test scripts/lib/session-authority.test.mjs",
+      "exit_code": 0,
+      "evidence": "12 session-authority tests passed including MiMo chat owner-label binding."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors on the implementation head."
+    }
+  ],
+  "assumptions_resolved": [
+    "Successor claim #4471 reserved version 20261018192732; preserved f52ccad SQL body is byte-identical after the header claim/version line. Superseded 20261015201243 is not shipped and stays permanently reserved.",
+    "SO Date remains the exact-primary ColdLion /orderHistory.createdTime rule in America/New_York; missing or conflicting stamps stay blank and last.",
+    "MiMo chat owner labels are recognized by claim-first session authority so check-in and lease binding work for this author.",
+    "This conventional pre-merge source record is not live completion. Independent exact-head review and preview acceptance remain pending."
+  ],
+  "stop_conditions_hit": []
+}

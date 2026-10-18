@@ -217,9 +217,38 @@ Keep provider reports under private native review state; do not publish raw logs
 Housekeeping was report-only. It found merged-worktree/branch and handoff
 successor-review candidates; none was deleted. One launcher-form run reported
 GitHub UNKNOWN despite direct gh reads working, so it cannot prove mergedness.
-A canonical native-entrypoint recheck is recorded on the closeout issue with its
-actual outcome. Never substitute raw gh to bypass the tool's ai-gh admission path,
-interpret UNKNOWN as safe deletion, or treat file count as a problem.
+Canonical native-entrypoint recheck succeeded with GitHub available, preserving
+its normal ai-gh admission path. Report-only candidates:11 merged worktrees,
+22 merged branches,17 handoff successor reviews;37 worktrees and104 branches
+remain UNKNOWN, not safe-to-delete. Zero unowned odd refs. Nothing was changed.
+The launcher-form UNKNOWN is not evidence credentials were absent; the canonical
+entrypoint retained the supported transport and produced the actual inventory.
+Never substitute raw gh to bypass admission, interpret UNKNOWN as safe deletion,
+or treat file count as a problem. No unrelated candidate was acted upon.
+
+Handoff successor-review candidates (closed linked issue is a review trigger,
+NOT completion proof; preserve the owner/custody audit before any retirement):
+
+| Candidate (main GitHub link) | Recorded owner |
+|---|---|
+| [2026-09-04T2053Z-edge-dev-codex-priority-12-orchestrator.md](https://github.com/popcre/shared-db/blob/main/HANDOFF.d/2026-09-04T2053Z-edge-dev-codex-priority-12-orchestrator.md) | codex/2323-priority-12-handoff |
+| [2026-09-15T0014Z-EDGE-DEV-claude-orchestrator-2893-closeout.md](https://github.com/popcre/shared-db/blob/main/HANDOFF.d/2026-09-15T0014Z-EDGE-DEV-claude-orchestrator-2893-closeout.md) | marker-2893 |
+| [2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md](https://github.com/popcre/shared-db/blob/main/HANDOFF.d/2026-09-16T1200Z-edge-dev-claude-product-type-reader-plan.md) | claude/product-description-extraction-118fbe |
+| [2026-09-20T1507Z-916-codex-workflow-refactor.md](https://github.com/popcre/shared-db/blob/main/HANDOFF.d/2026-09-20T1507Z-916-codex-workflow-refactor.md) | codex/orchestrator-workflow-refactor-plan |
+| [2026-09-20T1730Z-916-codex-workflow-refactor-publication.md](https://github.com/popcre/shared-db/blob/main/HANDOFF.d/2026-09-20T1730Z-916-codex-workflow-refactor-publication.md) | codex/workflow-refactor-wrapup |
+| [2026-09-22T2033Z-916-codex-workflow-refactor-closeout.md](https://github.com/popcre/shared-db/blob/main/HANDOFF.d/2026-09-22T2033Z-916-codex-workflow-refactor-closeout.md) | codex/01a0c04c-509a-7721-a6f1-4fc61f39a07e |
+| [2026-09-23T1810Z-edge-dev-codex-product-type-reader-phase-a-recovery.md](https://github.com/popcre/shared-db/blob/main/HANDOFF.d/2026-09-23T1810Z-edge-dev-codex-product-type-reader-phase-a-recovery.md) | codex/product-reader-01a0bc30 |
+| [2026-09-25T0217Z-claude-workflow-refactor-closeout.md](https://github.com/popcre/shared-db/blob/main/HANDOFF.d/2026-09-25T0217Z-claude-workflow-refactor-closeout.md) | claude/mimo-workflow-refactor-20260923 |
+| [2026-09-25T1226Z-edge-dev-mimo-orch-successor-3496.md](https://github.com/popcre/shared-db/blob/main/HANDOFF.d/2026-09-25T1226Z-edge-dev-mimo-orch-successor-3496.md) | mimo/edge-dev-shared-db.orch-3496 |
+| [2026-09-25T1537Z-edge-dev-claude-product-type-reader-blind-check-rework.md](https://github.com/popcre/shared-db/blob/main/HANDOFF.d/2026-09-25T1537Z-edge-dev-claude-product-type-reader-blind-check-rework.md) | claude chat 8200fc94-7b9f-4bf4-a88d-14aace57a23c on edge-dev |
+| [2026-09-25T1750Z-edge-dev-mimo-orch-3535-fresh-session.md](https://github.com/popcre/shared-db/blob/main/HANDOFF.d/2026-09-25T1750Z-edge-dev-mimo-orch-3535-fresh-session.md) | mimo/edge-dev-shared-db.orch-3535 |
+| [2026-09-25T2305Z-edge-dev-mimo-orch-3552-wrapup.md](https://github.com/popcre/shared-db/blob/main/HANDOFF.d/2026-09-25T2305Z-edge-dev-mimo-orch-3552-wrapup.md) | mimo/edge-dev-shared-db.orch-3535-successor |
+| [2026-09-28T1121Z-edge-dev3-codex-nonorchestrator-wrapup.md](https://github.com/popcre/shared-db/blob/main/HANDOFF.d/2026-09-28T1121Z-edge-dev3-codex-nonorchestrator-wrapup.md) | codex/01a0e56c-5bf2-72f2-8bef-e3b0f9017725 |
+| [2026-10-08T1741Z-edge-dev-mimo-coldlion-3853-d1-live-proof.md](https://github.com/popcre/shared-db/blob/main/HANDOFF.d/2026-10-08T1741Z-edge-dev-mimo-coldlion-3853-d1-live-proof.md) | mimo/coldlion-intake-successor (this session; Albert holds the workstream card |
+| [2026-10-08T1741Z-edge-dev-mimo-coldlion-intake-d-schedule-live-proof.md](https://github.com/popcre/shared-db/blob/main/HANDOFF.d/2026-10-08T1741Z-edge-dev-mimo-coldlion-intake-d-schedule-live-proof.md) | mimo/coldlion-intake-successor (this session; Albert holds the workstream card |
+| [2026-10-13T1804Z-edge-dev3-codex-eight-issues-owner-transfer.md](https://github.com/popcre/shared-db/blob/main/HANDOFF.d/2026-10-13T1804Z-edge-dev3-codex-eight-issues-owner-transfer.md) | codex/01a13649-4c56-73d1-a886-9ab5e032769d |
+| [2026-10-14T2247Z-edge-dev-mimo-2336-production-live-proof.md](https://github.com/popcre/shared-db/blob/main/HANDOFF.d/2026-10-14T2247Z-edge-dev-mimo-2336-production-live-proof.md) | mimo/edge-dev-2336-licensing-merge-production |
+
 
 ## 9. Self-audit and portable continuation prompt
 

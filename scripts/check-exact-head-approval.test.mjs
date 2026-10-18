@@ -1265,14 +1265,21 @@ test('owner no-reviewer policy: active policy approves with no assignment and re
   assert.equal(result.assignments, 0)
 })
 
-test('owner no-reviewer policy: a durable refusal at the head still blocks', () => {
-  const input = gatherApprovalInput({ PR_NUMBER: String(DOC_PR) }, documentsOnlyGithub({
+test('owner no-reviewer policy: a durable refusal at the head still blocks (non-documents fixture)', () => {
+  // Non-documents path: omit changedFiles so the owner-policy branch at
+  // check-exact-head-approval.mjs is the one under test, not documents-only.
+  const base = gatherApprovalInput({ PR_NUMBER: String(DOC_PR) }, documentsOnlyGithub({
     files: [{ filename: 'docs/notes.md' }], recorded: { reviewer: 'grok-4.6', verdict: 'REVISE' },
   }))
-  input.ownerNoReviewerPolicy = { active: true, reason: 'owner ruling 2026-10-16: skip merge-gate assignment' }
-  assert.equal(isValidatedVerdictArtifact(input.verdicts[0]), true)
+  assert.equal(isValidatedVerdictArtifact(base.verdicts[0]), true)
+  const input = {
+    pr: base.pr, headSha: base.headSha, assignments: [], verdicts: base.verdicts,
+    changedFiles: ['supabase/migrations/20261016120000_not_real.sql'],
+    ownerNoReviewerPolicy: { active: true, reason: 'owner ruling 2026-10-16: skip merge-gate assignment' },
+  }
   assert.throws(() => evaluateRaw(input), (error) => error instanceof ApprovalCheckError
     && /carries a durable reviewer refusal/.test(error.message)
+    && /owner no-reviewer|exempt from DRAWING/.test(error.message)
     && !/without artifact validation/.test(error.message))
 })
 

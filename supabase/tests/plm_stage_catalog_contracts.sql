@@ -43,7 +43,8 @@ begin
     raise exception 'sampling maintainers must be Yuchen (36) and Ilona (41)';
   end if;
 
-  -- Access: RLS on, no browser policy or privilege on any of the seven tables.
+  -- Access: RLS on, and no browser (anon/authenticated/public) policy or privilege on
+  -- any of the seven tables.
   if (select count(*) from unnest(v_access) t(name)
        where (select relrowsecurity from pg_class where oid = t.name::regclass)) <> 7 then
     raise exception 'all seven stage catalog tables must have RLS enabled';

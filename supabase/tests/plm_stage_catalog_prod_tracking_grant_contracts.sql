@@ -4,15 +4,16 @@
 --
 -- A. Catalogue: the exact ACL of designflow_prod_tracking_grants on the seven catalog
 --    tables read from aclexplode (no hand-enumerated privilege list, so MAINTAIN and any
---    future bit are covered), INSERT on dflow_prod."AuditLog", USAGE without CREATE on
---    plm, EXECUTE on the version trigger, no client-role ACL entry, RLS on, seven
+--    future bit are covered), exactly INSERT on dflow_prod."AuditLog", USAGE without CREATE
+--    on plm, no direct EXECUTE grant on the version trigger, no client-role ACL entry, RLS on, seven
 --    policies scoped only to that role, and the #2873 login path: the tracking LOGIN role
 --    designflow_prod_tracking_runtime inherits the grant role and this change added no
---    other member.
+--    other member; the backend, item-master and data-sync runtimes still cannot reach plm
+--    (#2873 boundary, narrowed for tracking only).
 -- B. Behaviour (only when the session may SET ROLE to it; otherwise a WARNING says it was
 --    not exercised): the seeded catalog is visible; INSERT into all five editor tables
 --    works (identity-keyed ones without any sequence grant); an editor UPDATE bumps the
---    list version; the tracker upserts on prod_stage_progress and prod_stage_option work,
+--    list version (the trigger fires without any EXECUTE grant); the tracker upserts on prod_stage_progress and prod_stage_option work,
 --    including SELECT ... FOR UPDATE; an AuditLog row inserts; DELETE on the two progress
 --    tables is refused by the missing table privilege (message checked).
 
@@ -39,11 +40,15 @@ begin
   from acl full join want on want.t = acl.relname and want.p = acl.privilege_type
   where acl.relname is null or want.t is null;
   if v_bad is not null then raise exception 'A1 ACL differs from the published matrix: %', v_bad; end if;
-  if not has_table_privilege(v_role, 'dflow_prod."AuditLog"', 'INSERT') then raise exception 'A2 no INSERT on dflow_prod.AuditLog'; end if;
+  select string_agg(a.privilege_type, ',' order by a.privilege_type) into v_bad
+  from pg_class c cross join lateral aclexplode(c.relacl) a
+  where c.oid = 'dflow_prod."AuditLog"'::regclass and a.grantee = v_role;
+  if v_bad is distinct from 'INSERT' then raise exception 'A2 dflow_prod.AuditLog ACL for tracking must be exactly INSERT, found %', v_bad; end if;
   if not has_schema_privilege(v_role, 'plm', 'USAGE') then raise exception 'A3 no USAGE'; end if;
   if has_schema_privilege(v_role, 'plm', 'CREATE') then raise exception 'A3 CREATE granted'; end if;
-  if not has_function_privilege(v_role, 'plm.stage_catalog_bump_version()', 'EXECUTE') then
-    raise exception 'A4 EXECUTE on plm.stage_catalog_bump_version() missing';
+  if exists (select 1 from pg_proc p cross join lateral aclexplode(p.proacl) a
+             where p.oid = 'plm.stage_catalog_bump_version()'::regprocedure and a.grantee = v_role) then
+    raise exception 'A4 unexpected direct grant on plm.stage_catalog_bump_version()';
   end if;
   select count(*) into v_n
   from pg_class c join pg_namespace n on n.oid = c.relnamespace
@@ -64,6 +69,11 @@ begin
   if not exists (select 1 from pg_auth_members m
                  where m.roleid = v_role and m.member = 'designflow_prod_tracking_runtime'::regrole and m.inherit_option) then
     raise exception 'A8 designflow_prod_tracking_runtime does not inherit designflow_prod_tracking_grants';
+  end if;
+  if exists (select 1 from unnest(array['backend','item_master','data_sync']) s
+             where to_regrole('designflow_prod_'||s||'_runtime') is not null
+               and has_schema_privilege('designflow_prod_'||s||'_runtime', 'plm', 'USAGE,CREATE')) then
+    raise exception 'A9 a non-tracking designflow_prod runtime reaches plm';
   end if;
 end
 $a$;

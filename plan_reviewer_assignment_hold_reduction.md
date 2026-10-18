@@ -177,7 +177,7 @@ has yet established how long successful current transactions hold the mutex.
 
 ## 8. Dated design decisions
 
-Locked **October18, 2026 EDT**:
+Locked **October 18, 2026 EDT**:
 - Keep the existing mutex and record schemas. Keep unlimited same-provider
   independent reviews and every exact-head/independence/negative-verdict gate.
 - Use a prepare→fresh-validate→record/readback→release→run/report boundary. No
@@ -211,7 +211,12 @@ Accept #4414's outcome and check open PRs/owners for #4297/#3617/#3779. In the
 lane manager resolve every `acquireReviewMutex`/`finalizeReviewMutex` call and
 shared record writer; include `scripts/lib/lanes/{review-assignment,review-replacement,
 review-leases,review-approval,holds-and-refs,github-wire}.mjs`,
-`reviewer-start-watch.mjs`, `run-governed-review.mjs` and workflow callers.
+`scripts/db-flow/reviewer-start-watch.mjs`, `scripts/run-governed-review.mjs` and
+workflow callers. Include the non-reviewer shared-mutex writers
+`scripts/rebind-expired-claim-blocker.mjs`,
+`scripts/manage-preview-maintenance-lock.mjs`, and
+`scripts/lib/lanes/expired-merged-claim-adoption.mjs`; these are inventory/causal
+comparison targets, not permission to refactor those owners' code.
 Create `docs/verification/reviewer-assignment-holds.md`: baseline commit,
 operation, call site, phase, request/Git-child count, existing time bounds,
 resource held and evidence gaps. Read available normal Actions logs and exact
@@ -229,13 +234,23 @@ in `manage-migration-author-lanes.mjs`, `github-transport.mjs` and
 Record monotonic elapsed values for prepare, acquisition wait, fresh validation,
 ref commit/readback, release and post-release execution. Wall time in public
 reports uses EDT/EST. Trace schema: version, operation, source/tuple IDs,
-invocation correlation, phase/duration, request class/count, result kind and
+invocation correlation, phase/duration, request class/count, result kind,
+observed foreign mutex owner SHA/ref, and owner operation/run/attempt when provable
+from already-read trusted metadata, plus
 release state (`not_acquired`, `proved_released`, `unknown`, `successor_seen`).
-No authenticated arguments, tokens, raw child output, issue bodies or customer rows.
-Send diagnostics to stderr or the existing private operation log; preserve stdout
-JSON/exit contracts. Inject clock/executor for tests. Lost telemetry never invents
+Use the existing lock-read/refusal result for foreign ownership; no extra remote
+read solely for telemetry. Unknown owner kind/run is explicitly unknown. Correlate
+owner changes to step1 cross-domain traces; reviewer-only elapsed time cannot prove
+who caused another session's wait. No authenticated arguments, tokens, raw child
+output, issue bodies or customer rows.
+Buffer the fixed-schema phase records in bounded memory during ownership; do not
+write to stderr, files, pipes or an external collector from inside the critical
+section. Flush to stderr or the existing private operation log only after release
+or its final recovery-required decision, with bounded output and backpressure
+handling. Preserve stdout JSON/exit contracts. Inject clock/executor for tests. Lost telemetry never invents
 release or retries a mutation. Derive reviewed phase budgets as §8 specifies.
-**Gate:** `phase_trace_has_no_extra_github_reads`, `trace_preserves_stdout_contract`,
+**Gate:** `phase_trace_has_no_extra_github_reads`, `trace_output_never_blocks_owned_section`,
+`trace_preserves_stdout_contract`,
 `unknown_release_is_not_zero_duration`, and existing wire ceilings pass.
 Dependency:1. Cut point: commit the baseline/trace contract; re-read phasesB–C.
 
@@ -348,6 +363,8 @@ real ref-transaction tests with mocks that merely mirror the implementation.
 | Cleanup error | Draw succeeded but release proof fails | `completed_assignment_survives_cleanup_failure` |
 | API budget | Admission context plus review requests exhaust reserve | `all_contexts_accounted_and_cleanup_reserve_preserved` |
 | Trace | Missing timestamp, backwards wall time, hostile child output | `unknown_release_is_not_zero_duration`; `trace_is_monotonic_and_secret_safe` |
+| Cross-domain wait | Unrelated mutex owner or owner changes between reads | `wait_trace_preserves_observed_owner_and_unknown_attribution` |
+| Trace backpressure | stderr pipe blocks while owned | `trace_output_never_blocks_owned_section` |
 | Trace I/O | Output failure while real assignment completed | `trace_failure_does_not_repeat_or_hide_completed_assignment` |
 | Legacy callers | Old SHA/ref/output contracts | `legacy_review_callers_remain_compatible` |
 | Regression | Instrumentation sends extra remote reads | `phase_trace_has_no_extra_github_reads`; `trace_preserves_stdout_contract` |
@@ -403,7 +420,7 @@ into the public plan. Reviewer failure is reported honestly, not treated as appr
 
 ## 13. Definition of done, risks and open questions
 
-Planning delivery: all13 sections and self-audit pass, own handoff/topic/router
+Planning delivery: all 13 sections and self-audit pass, own handoff/topic/router
 links exist, independent reviewer examines DESIGN feasibility/failure paths (not
 only safe publication), findings are resolved or explicitly gated, and owned prose
 is committed/pushed/normally merged with a GitHub link and review outcome on #4414.
@@ -462,3 +479,19 @@ registered bidirectional handoff and topic/router discovery links.
 The audit establishes completeness of the plan, not experimental/runtime success.
 Independent review and exact publication evidence are recorded on #4414; no approval
 is claimed until a genuine completed report exists for its actual reviewed source.
+
+### Independent plan review — October 18, 2026, 9:39 AM EDT
+
+GLM-5.3 completed a native plan review of source
+`12dcc287c865cdbff005f83e8447a5740e45d525`: **APPROVE**, no medium/high findings.
+It checked baseline citations, cross-domain mutex writers, transaction/cleanup
+semantics, test paths and the adversarial matrix. Four low findings are addressed:
+explicit start-watch path; cross-domain writer inventory and observed foreign-owner
+trace fields; active-plan discovery pointer; spacing/portable continuation links.
+Root audit also requires buffered, post-release trace output to avoid backpressure
+inside ownership, and a literal-only router link that carries no policy instruction.
+
+The private native report remains under `.ai/reviews/`; publication evidence on
+[#4414](https://github.com/popcre/shared-db/issues/4414) binds its actual source
+and later final-check/merge. The approval above is not claimed for a later changed
+head. All seven runtime rows stay open; actual latency is still unmeasured.

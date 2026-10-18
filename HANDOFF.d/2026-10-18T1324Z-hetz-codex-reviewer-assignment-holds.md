@@ -34,7 +34,9 @@ Read its STATUS first and start step1; all seven implementation rows remain open
 
 Baseline [main b31e17c0](https://github.com/popcre/shared-db/commit/b31e17c02194c6006a1bd256d6154a324a5114d7).
 The plan, this handoff and literal discovery links are newly prepared prose.
-At drafting, push/PR/merge and independent review are unverified; consult
+GLM completed a substantive native plan review on October 18, 2026, 9:39 AM EDT:
+APPROVE at source `12dcc287`, with four low findings now corrected. Final-check
+and push/PR/merge are not yet verified; consult
 [owning issue #4414](https://github.com/popcre/shared-db/issues/4414) for actual
 publication/review receipts. No runtime source, schema, ref format or credential
 was changed; no shared release stage or structural object claim was acquired.
@@ -55,13 +57,13 @@ permits unlimited review concurrency. The shared author-acquisition mutex is use
 for short reviewer bookkeeping; actual provider execution follows assignment.
 Current transport already has finite child timeouts and one attempt while locked;
 aggregate critical-section time and today's delay attribution remain unmeasured.
-The plan's§5 carries pinned source locations;§6 explains separate admission cost,
+The plan's §5 carries pinned source locations; §6 explains separate admission cost,
 mutable-state revalidation, atomic record binding and cleanup ambiguity.
 
 ## 6. Exact next steps
 
-For the publishing session: run the requested substantive independent review,
-resolve real findings, commit/push/PR/normal merge, and record exact report/source/
+For the publishing session: obtain exact-head final-check after the accepted
+low findings and root audit corrections, commit/push/PR/normal merge, and record exact report/source/
 merge evidence on #4414. Never infer acceptance from a stale or partial response.
 For an authorized implementing session: plan step1 inventories all callers and
 related owners; step2 derives timing/budgets; steps3–5 implement/test safe boundaries;
@@ -78,7 +80,7 @@ handoffs. Stage only owned prose. Root HANDOFF remains its static pointer.
 
 Git/gh and Node/task tooling verified for planning on hetz. No database secret,
 browser login or production SSH is needed. Native review tools supply their own
-protected provider access. [Plan§12](https://github.com/popcre/shared-db/blob/codex/reviewer-assignment-hold-plan/plan_reviewer_assignment_hold_reduction.md#12-access-and-environment)
+protected provider access. [Plan §12](https://github.com/popcre/shared-db/blob/codex/reviewer-assignment-hold-plan/plan_reviewer_assignment_hold_reduction.md#12-access-and-environment)
 sets revalidation requirements. Private raw reports remain outside public commits.
 
 ## 9. Risks, owner sweep and audit
@@ -90,8 +92,13 @@ is preserved while slow avoidable work moves outside.
 
 Audit: newcomer continuation is supported by§§1–3/6 and the complete linked plan;
 all current context/dead ends are in§§4–5/9; execution/gates/access/risks are in
-§§6–9 and plan§§8–13. A line-by-line owner-question sweep found no business choice:
+§§6–9 and plan §§8–13. A line-by-line owner-question sweep found no business choice:
 all technical evidence/approval requirements have named native gates, and§0 says
 None. Publication completion is distinct from still-open runtime implementation.
 
 Posted by Codex chat 01a144d8-b318-7ed0-af97-e852be49d231 on hetz
+
+Publication branch links above are intended pre-merge locations. After merge use
+[main plan](https://github.com/popcre/shared-db/blob/main/plan_reviewer_assignment_hold_reduction.md)
+and the actual merge/source links recorded on #4414; do not infer a branch still
+exists. All implementation/live-proof acceptance remains on the same issue.

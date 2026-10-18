@@ -10,7 +10,7 @@ import { probeShapeProblem } from './check-live-proof-probe.mjs'
 const migration = 'supabase/migrations/20261018172640_public_admin_rls_initplans.sql'
 const sql = readFileSync(new URL('../' + migration, import.meta.url), 'utf8')
 const manifest = JSON.parse(readFileSync(new URL('../docs/verification/rls-initplan/4427/manifest.json', import.meta.url)))
-const contract = JSON.parse(readFileSync(new URL('../.agent/work/4427/7/contract.json', import.meta.url)))
+const contract = JSON.parse(readFileSync(new URL('../.agent/work/4427/8/contract.json', import.meta.url)))
 const quote = value => '"' + value.replaceAll('"', '""') + '"'
 
 test('the canonical DDL inspector recognizes exactly the admitted policy and table writes', () => {
@@ -116,7 +116,7 @@ test('required offline CI executes the admin qualification suite on engineering 
   const workflow = readFileSync(new URL('../.github/workflows/tools-offline-tests.yml', import.meta.url), 'utf8')
   const step = workflow.split('      - name: ').find(value => value.startsWith('Verify RLS admin source and retained runtime evidence (#4427)\n'))
   assert.ok(step, 'missing required offline CI step')
-  assert.match(step, /if: steps\.route\.outputs\.pure_prose != 'true'/)
+  assert.match(step, /^        if: steps\.route\.outputs\.pure_prose != 'true'$/m)
   assert.match(step, /set -euo pipefail\n          node --test scripts\/rls-public-admin-initplan\.test\.mjs\n/)
   assert.doesNotMatch(step, /continue-on-error|\|\| true/)
 })

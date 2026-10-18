@@ -5317,7 +5317,7 @@ export function main(argv, now = new Date(), io = githubIo) {
           return `  #${item.issue} ${item.exit.toUpperCase()} — work_type ${item.workType}, route ${item.route}${owner}${address}`
         }
         if (actionable.length) {
-          console.error('NOT ORCHESTRATOR WORK: these open issues fail the shape test (AGENTS.md 0.0-C). Reject or fork each one; never work it here.')
+          console.error('OUTSIDE STRUCTURAL WORK: these open issues fail the shape test (AGENTS.md 0.0-C). Reject or fork each one; never work it here.')
           for (const item of actionable) console.error(describe(item))
         }
         if (outside.length) {
@@ -5325,7 +5325,7 @@ export function main(argv, now = new Date(), io = githubIo) {
           // structure and schema only. These rows are listed so an audit can see
           // them and so nothing accumulates unseen - NOT so the orchestrator can
           // pick them up. There is no orchestrator action for any of them.
-          console.error('OUTSIDE ORCHESTRATOR — OWNED BY REPO SESSION: listed for audit visibility only (owner ruling 2026-08-21, issue #1366). The orchestrator does structure/schema only. Do NOT work these and do NOT dispatch them; a separately started session owns them.')
+          console.error('OWNED BY REPO SESSION: listed for audit visibility only (owner ruling 2026-08-21, issue #1366). The structural lane covers structure/schema only. Do NOT work these and do NOT dispatch them; a separately started session owns them.')
           for (const item of outside) console.error(describe(item))
         }
         const unaddressed = result.notOrchestratorWork.filter((item)=>item.needsReturnAddress)
@@ -5336,7 +5336,7 @@ export function main(argv, now = new Date(), io = githubIo) {
       // SEE it and so nobody re-adds these issues to the refill list, the same
       // visibility discipline as the OUTSIDE ORCHESTRATOR block above.
       if (result.selfServiceLane?.length) {
-        console.error('SELF-SERVICE ADDITIVE LANE: structural work admitted without orchestrator triage (issue #3199). The orchestrator never dispatches, refills or reviews these rows; each author claims the lane, draws reviewers and dispatches the guarded merge through the same guarded machinery.')
+        console.error('SELF-SERVICE ADDITIVE LANE: structural work admitted claim-first (issue #3199); each author claims the lane, draws reviewers and dispatches the guarded merge through the same guarded machinery.')
         for (const item of result.selfServiceLane) console.error(`  #${item.issue} ${item.route} — ${item.title}`)
       }
       // A CYCLE CAN NEVER START. Reported separately from "blocked", because a

@@ -414,7 +414,7 @@ test('every non-structural work type has a named exit and never accept',()=>{
     assert.notEqual(exit,'accept',`${workType} must never be accepted by the orchestrator`)
     assert.equal(queueExit(workType),exit)
   }
-  assert.throws(()=>queueExit('invented-work-type'),/no orchestrator exit is defined/)
+  assert.throws(()=>queueExit('invented-work-type'),/no structural-lane exit is defined/)
 })
 
 // OWNER RULING 2026-08-21 (issue #1366). Repository maintenance, documentation and

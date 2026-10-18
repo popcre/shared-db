@@ -1,7 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import {
   assignNextReviewer,
+  mutexSectionReserveAfterPrepare,
   MUTEX_REF,
   REVIEW_OPERATION_REQUEST_LIMIT,
   REVIEW_MUTEX_SECTION_RESERVE,
@@ -154,16 +156,14 @@ test('phase trace is emitted to stderr after a successful assignment', () => {
 })
 
 test('mutex reserve shrinks by prepare spend so capacity work outside the lock cannot over-gate', () => {
-  // After paid-start classification moves outside, the entry gate must reserve
-  // only the remaining owned-section cost, not the full historical 15 plus
-  // already-spent prepare requests (#4414 review H1).
-  const io = baseIo()
-  let spent = 0
-  io.readPaidReviewStarts = (prefix, pr) => {
-    spent += 2
-    return []
-  }
-  const result = assignNextReviewer({ issue: 4414, pr: 4419, headSha: 'a'.repeat(40), slot: 1 }, io)
-  assert.ok(result?.reviewer, 'assignment must succeed when prepare spend is nonzero')
-  assert.ok(spent >= 2, 'fixture must have spent prepare requests')
+  // Formula is exported so mutation of the call site is caught by source match,
+  // and the algebra itself is pinned here.
+  assert.equal(mutexSectionReserveAfterPrepare(0), 15)
+  assert.equal(mutexSectionReserveAfterPrepare(2), 13)
+  assert.equal(mutexSectionReserveAfterPrepare(11), 4)
+  assert.equal(mutexSectionReserveAfterPrepare(99), 4, 'floor of 4')
+  const source = readFileSync(new URL('../../manage-migration-author-lanes.mjs', import.meta.url), 'utf8')
+  assert.match(source, /mutexSectionReserveAfterPrepare\(capacitySpend\)/, 'assignment must gate with the shrunken reserve')
+  assert.ok(!/requireReviewWireCapacity\(REVIEW_MUTEX_SECTION_RESERVE\)\s*\n\s*endPhase\('prepare'\)/.test(source),
+    'assignment must not still gate with the full historical reserve after prepare')
 })

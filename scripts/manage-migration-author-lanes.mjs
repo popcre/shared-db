@@ -1852,6 +1852,12 @@ function finalizeReviewMutex(ownerSha,io){
   }
 }
 function requireReviewWireCapacity(required,when='refused before mutex acquisition'){const limit=reviewWireBudget?.limit??REVIEW_OPERATION_REQUEST_LIMIT;if(reviewWireBudget&&reviewWireBudget.count+required>limit)throw new LaneError(`reviewer operation cannot fit ${required} remaining requests inside the ${limit}-request budget; ${when}`)}
+// Issue #4414: after paid-start classification moves outside the lock, the
+// mutex-section reserve must shrink by that prepare spend or the entry gate
+// over-refuses. Exported for tests that pin the formula.
+export function mutexSectionReserveAfterPrepare(capacitySpend,base=REVIEW_MUTEX_SECTION_RESERVE){
+  return Math.max(4,base-Number(capacitySpend||0))
+}
 function acquireReviewMutex(ownerSha,io){
   if(reviewWireBudget){reviewWireBudget.cleanupReserve=io.atomicReviewMutexRelease?2:8;reviewWireBudget.locked=true}
   io.__requireReviewQuota?.()
@@ -1872,9 +1878,10 @@ function acquireReviewMutex(ownerSha,io){
     throw error
   }
   if(!acquired){
-    // Ordinary contention: createRefWithReadback returns false without throwing.
-    // One lock-read here is the existing refusal result (plan §9 step 2), not a
-    // telemetry-only fetch — it names the foreign owner that blocked us.
+    // Ordinary contention: createRefWithReadback returns false without throwing
+    // and discards the observed owner SHA. One lock-read here names the foreign
+    // owner for cross-domain attribution; it is bounded and only on the rare
+    // contended path.
     try{
       const actual=io.readRef(MUTEX_REF)
       if(actual&&actual!==ownerSha)notePhaseForeignOwner({sha:actual,ref:MUTEX_REF})
@@ -2258,7 +2265,7 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
   try{preparedCapacity=assertPaidReviewCapacity(request,io)}
   catch(error){preparedCapacityError=error}
   const capacitySpend=Math.max(0,(reviewWireBudget?.count??0)-budgetBeforeCapacity)
-  const mutexSectionReserve=Math.max(4,REVIEW_MUTEX_SECTION_RESERVE-capacitySpend)
+  const mutexSectionReserve=mutexSectionReserveAfterPrepare(capacitySpend)
   const ownerSha=io.makeOwnerCommit(`db-coordination reviewer-assignment-lock issue=${request.issue} pr=${request.pr} head=${request.headSha}${request.slot!==1?` slot=${request.slot}`:''}`)
   requireReviewWireCapacity(mutexSectionReserve)
   endPhase('prepare')
@@ -2543,8 +2550,8 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
 
 export function assignNextReviewer(request,io=githubIo){
   const normalized={...request,issue:Number(request.issue),pr:Number(request.pr),slot:Number(request.slot??1),headSha:String(request.headSha??'')}
-  if(!io.enableReviewerQueue)return withReviewRequestBudget(()=>assignNextReviewerOperation(normalized,reviewOperationIo(io)))
-  return withReviewRequestBudget(()=>{const operationIo=reviewOperationIo(io),ticket=ensureReviewerQueueTurn(normalized,operationIo);try{return assignNextReviewerOperation(normalized,operationIo)}finally{finishReviewerQueueTurn(ticket,operationIo)}},REVIEW_QUEUE_ASSIGNMENT_REQUEST_LIMIT)
+  if(!io.enableReviewerQueue)return withReviewRequestBudget(()=>assignNextReviewerOperation(normalized,reviewOperationIo(io)),REVIEW_OPERATION_REQUEST_LIMIT,'assign-next-reviewer')
+  return withReviewRequestBudget(()=>{const operationIo=reviewOperationIo(io),ticket=ensureReviewerQueueTurn(normalized,operationIo);try{return assignNextReviewerOperation(normalized,operationIo)}finally{finishReviewerQueueTurn(ticket,operationIo)}},REVIEW_QUEUE_ASSIGNMENT_REQUEST_LIMIT,'assign-next-reviewer-queue')
 }
 
 export function supersedeActiveClaimVersion(options,now=new Date(),io=githubIo){

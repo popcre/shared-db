@@ -109,3 +109,13 @@ test('claude-chat owner label is accepted only for the exact session UUID', () =
   assert.equal(resolveSessionAuthority({ env, claimOwner: `claude-chat-00000000-e85f-45d3-a62c-9c18cb217d1e@hetz` }).live, false);
   assert.equal(resolveSessionAuthority({ env, claimOwner: `claude-chat-${id}-extra@hetz` }).live, false);
 });
+
+test('MiMo chat owner label binds the exact ses_ session id', () => {
+  const id = 'ses_ffe5eaf8f125dffeE9Y9GlP9JY';
+  const owner = `MiMo chat ${id} on edge-dev`;
+  assert.equal(resolveSessionAuthority({ env: env(id), claimOwner: owner }).live, true);
+  assert.equal(resolveSessionAuthority({ env: env(id), claimOwner: owner }).task, id);
+  assert.equal(resolveSessionAuthority({ env: env('ses_other'), claimOwner: owner }).live, false);
+  assert.equal(resolveSessionAuthority({ env: env(id), claimOwner: `MiMo chat ${id}-extra on edge-dev` }).live, false);
+  assert.equal(resolveSessionAuthority({ env: env(id), claimOwner: `mimo chat ${id} on edge-dev` }).live, false);
+});

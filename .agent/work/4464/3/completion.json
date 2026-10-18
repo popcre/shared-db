@@ -3,7 +3,7 @@
   "work_issue": 4464,
   "outcome": "ready-for-merge",
   "pr": 4468,
-  "head_sha": "8b48e77aa0ef823c5813ea6b4ec7bccd6ed8fc86",
+  "head_sha": "f1c5ccaf43c0cd5b4ee272a761ee663dde9c4aba",
   "base_sha": "7da9a3ff6dee9a366e05f33471ed1c61aaea7af4",
   "migration_versions": [
     "20261018191107"

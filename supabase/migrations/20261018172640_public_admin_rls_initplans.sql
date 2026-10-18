@@ -194,8 +194,8 @@ BEGIN
  END IF;
  FOR expected IN SELECT * FROM jsonb_array_elements(targets) LOOP
   SELECT p.qual,p.with_check INTO STRICT actual FROM pg_policies p WHERE p.schemaname=expected->>'schemaname' AND p.tablename=expected->>'tablename' AND p.policyname=expected->>'policyname';
-  IF regexp_replace(actual.qual,'[[:space:]]+',' ','g') IS DISTINCT FROM CASE WHEN expected->>'qual' IS NULL THEN NULL ELSE wrapped END
-   OR regexp_replace(actual.with_check,'[[:space:]]+',' ','g') IS DISTINCT FROM CASE WHEN expected->>'with_check' IS NULL THEN NULL ELSE wrapped END THEN
+  IF regexp_replace(actual.qual,'[[:space:]]+',' ','g') IS DISTINCT FROM (CASE WHEN expected->>'qual' IS NULL THEN NULL ELSE wrapped END)
+   OR regexp_replace(actual.with_check,'[[:space:]]+',' ','g') IS DISTINCT FROM (CASE WHEN expected->>'with_check' IS NULL THEN NULL ELSE wrapped END) THEN
    RAISE EXCEPTION '4427 resulting expression or implicit check differs: %.% / %',expected->>'schemaname',expected->>'tablename',expected->>'policyname';
   END IF;
  END LOOP;

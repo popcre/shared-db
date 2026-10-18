@@ -399,7 +399,7 @@ export function verifyNonclosingMaintenanceBinding({pr,headSha,files,issue=null,
     !/^[0-9a-f]{40}$/.test(main??'')||!/^[0-9a-f]{40}$/.test(live.base?.sha??'')||!live.head?.ref)refuse('exact live PR, head, repository or protected main changed')
   const identity=JSON.stringify({number:live.number,state:live.state,head:live.head.sha,branch:live.head.ref,headRepo:live.head.repo.full_name,base:live.base.sha,baseRef:live.base.ref,baseRepo:live.base.repo.full_name,user:live.user?.login,association:live.author_association,body:live.body})
   if(!isTrustedOperatorComment({author:live.user?.login,author_association:live.author_association},REPO)||
-    !/^Posted by [A-Za-z][A-Za-z0-9 -]* chat [A-Za-z0-9-]+ on [A-Za-z0-9_.-]+\s*$/m.test(live.body??''))refuse('trusted signed attribution missing')
+    !/^Posted by [A-Za-z][A-Za-z0-9 -]* chat [A-Za-z0-9._:@-]+ on [A-Za-z0-9_.-]+\s*$/m.test(live.body??''))refuse('trusted signed attribution missing')
   const refs=[...String(live.body??'').matchAll(/\bRefs\s+#([1-9]\d*)\b/gi)].map(m=>Number(m[1]))
   if(refs.length!==1||issue!==null&&Number(issue)!==refs[0])refuse('exactly one consistent Refs work issue is required')
   if(/\b(?:closes?|fix(?:es)?|resolves?)\s+#([1-9]\d*)\b/i.test(live.body??''))refuse('nonclosing binding cannot declare a closing issue')

@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "work_issue": 4464,
+  "outcome": "ready-for-merge",
+  "pr": 4468,
+  "head_sha": "b4d5ee3b35cab5edb2e33c157ab838b38f11754c",
+  "base_sha": "7da9a3ff6dee9a366e05f33471ed1c61aaea7af4",
+  "migration_versions": [
+    "20261018191107"
+  ],
+  "contract_ref": "refs/db-contracts/4464/2",
+  "contract_sha256": "b136c9c5b9de3e3709bcc8737946b366bf98d46de01bdc20467bf6c9c323bf19",
+  "files_changed": [
+    "supabase/migrations/20261018191107_plm_stage_catalog_prod_tracking_grant.sql",
+    "supabase/tests/plm_stage_catalog_prod_tracking_grant_contracts.sql"
+  ],
+  "db_reads": [
+    "role designflow_prod_backend_runtime"
+  ],
+  "db_writes": [
+    "role designflow_prod_tracking_grants",
+    "schema plm",
+    "table plm.stage_list",
+    "table plm.stage",
+    "table plm.stage_duration",
+    "table plm.stage_dependency",
+    "table plm.licensor_stage_option",
+    "table plm.prod_stage_progress",
+    "table plm.prod_stage_option",
+    "function plm.stage_catalog_bump_version",
+    "policy stage_list_dflow_prod_tracking on plm.stage_list",
+    "policy stage_dflow_prod_tracking on plm.stage",
+    "policy stage_duration_dflow_prod_tracking on plm.stage_duration",
+    "policy stage_dependency_dflow_prod_tracking on plm.stage_dependency",
+    "policy licensor_stage_option_dflow_prod_tracking on plm.licensor_stage_option",
+    "policy prod_stage_progress_dflow_prod_tracking_read on plm.prod_stage_progress",
+    "policy prod_stage_option_dflow_prod_tracking_read on plm.prod_stage_option"
+  ],
+  "checks": [
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "no whitespace errors on the implementation commit"
+    }
+  ],
+  "assumptions_resolved": [
+    "Privileges on designflow_prod_tracking_grants only; runtime inherits.",
+    "Local postgres:16 rehearsal of the two catalog migrations, this migration and the contract test exited 0.",
+    "Allocator review, CI, preview, live proof and production promotion remain separate open gates."
+  ],
+  "stop_conditions_hit": []
+}

@@ -216,3 +216,48 @@ by Albert. Final publication/closeout receipts belong on existing parent #4421;
 never invent a new proof ticket.
 
 Posted by Codex chat 01a14fa2-bd3e-7d62-ba77-7bdfd7976f0e on edge-dev3
+
+
+## Successor verification supplement
+
+#4426 preparation landed through PR #4434 at immutable merge commit
+https://github.com/popcre/shared-db/commit/255c29c859773a10b7bf9188d63c3fad73de22db .
+The native preparation issue closed with that verified merge. The later full-family
+collision expansion was committed after the automatic merge had already captured
+its earlier head; this follow-up publishes that exact owned evidence, not a second
+repair or proof ticket. All 46 policy identities were extracted and the only
+protected overlaps are public.assets, public.style_groups and public.style_group_tags
+under claim #4158.
+
+The test-bearing GLM review completed APPROVE, run
+20261018T154458-1115203-12230, source digest
+feeea728d67df29c2bffa2daff8e05975049e27368e17941db3b03fd220acb5d, report SHA-256
+be23ab5ee25727262d44025802d38ccde6ba40d95625a6789c8aa8e2aade64a5.
+Installed ai-task-gates accepted ship at exact head
+dc3ea974242aa3a23147d517c864ddf06e069be4 with implementer=codex and provider=glm.
+Its review-session caller label was zcode by the pool default, while the verified
+implementing engine remained codex; those are different fields. Future explicit
+pool invocation should also pass --caller codex for session isolation.
+The genuine governed allocation/verdict 6713 remains the independent repository
+approval; no assignment, verdict or lifecycle was forged or altered.
+
+The foreign production run succeeded and its promotion freeze was legitimately
+released; a fresh API read returned 404 for the freeze ref. Guarded publication
+run 39142597277 then correctly refused when protected main moved as PR #4434
+landed: `Protected-main checkout is stale under the merge lock`. No publication
+merge occurred in that failed attempt. The same supported guarded workflow was
+re-run only after the local ship gate passed again. The parent final comment
+records its terminal merge/result.
+
+The claim-owning chat 01a12d90-cce8-7131-b1eb-eff6becc806e was freshly inspected
+through the app: notLoaded, latest turn completed, last message explicitly says
+“This session remains stopped.” That message concerns a different licensing
+handoff-ready receipt and is not authority to adopt or release #4158.
+No other chat was messaged.
+
+Installed closeout receipt for actual successor session UUID
+01a14fa2-bd3e-7d62-ba77-7bdfd7976f0e returned ok=true,
+blocking_claims=[], blocking_stages=[]. No subsequent ownership operation occurred.
+This proves no retained database custody, not completed repairs.
+
+Posted by Codex chat 01a14fa2-bd3e-7d62-ba77-7bdfd7976f0e on edge-dev3

@@ -7,7 +7,7 @@ import { validateClaimObjects } from './lib/lanes/claims.mjs'
 const migration = 'supabase/migrations/20261018172640_public_admin_rls_initplans.sql'
 const sql = readFileSync(new URL('../' + migration, import.meta.url), 'utf8')
 const manifest = JSON.parse(readFileSync(new URL('../docs/verification/rls-initplan/4427/manifest.json', import.meta.url)))
-const contract = JSON.parse(readFileSync(new URL('../.agent/work/4427/3/contract.json', import.meta.url)))
+const contract = JSON.parse(readFileSync(new URL('../.agent/work/4427/4/contract.json', import.meta.url)))
 const quote = value => '"' + value.replaceAll('"', '""') + '"'
 
 test('the canonical DDL inspector recognizes exactly the admitted policy and table writes', () => {
@@ -15,13 +15,16 @@ test('the canonical DDL inspector recognizes exactly the admitted policy and tab
   assert.equal(structuralWritesMatch(inspected, validateClaimObjects(contract.db_writes)), true)
 })
 
-test('each of 46 exact policies wraps the entire helper and retains absent clauses', () => {
+test('each of 44 qualified policies wraps the entire helper and retains absent clauses', () => {
   assert.equal(manifest.target_policies.length, 46)
   assert.equal(new Set(manifest.tables).size, 39)
   assert.equal(manifest.all_overlapping_policies.length, 72)
+  assert.equal(manifest.rewrite_tables.length, 37)
+  assert.equal(manifest.false_positives.length, 2)
+  assert.doesNotMatch(sql, /^ALTER POLICY .* ON "archive"\./m)
   const alters = [...sql.matchAll(/^ALTER POLICY ([\s\S]*?);$/gm)].map(match => match[0])
-  assert.equal(alters.length, 46)
-  for (const policy of manifest.target_policies) {
+  assert.equal(alters.length, 44)
+  for (const policy of manifest.rewritten_policies) {
     const prefix = `ALTER POLICY ${quote(policy.policyname)} ON ${quote(policy.schemaname)}.${quote(policy.tablename)}\n  `
     const clauses = []
     for (const [field, keyword] of [['qual', 'USING'], ['with_check', 'WITH CHECK']]) {
@@ -37,7 +40,7 @@ test('each of 46 exact policies wraps the entire helper and retains absent claus
 test('drift checks cover complete original predicates and preserve metadata and policy unions', () => {
   const targetLiterals = [...sql.matchAll(/\$targets\$([\s\S]*?)\$targets\$::jsonb/g)]
   assert.equal(targetLiterals.length, 2)
-  for (const match of targetLiterals) assert.deepEqual(JSON.parse(match[1]), manifest.target_policies)
+  for (const match of targetLiterals) assert.deepEqual(JSON.parse(match[1]), manifest.rewritten_policies)
   assert.match(sql, /actual IS DISTINCT FROM expected/)
   assert.match(sql, /snapshot IS DISTINCT FROM current_setting\('shared_db\.rls4427_before'\)::jsonb/)
   for (const field of ['relowner', 'relacl', 'relrowsecurity', 'relforcerowsecurity', 'attacl', 'pg_get_functiondef', 'proowner', 'proacl', 'proconfig', 'provolatile', 'prosecdef', 'p.roles', 'p.cmd', 'p.permissive', 'p.qual', 'p.with_check']) assert.ok(sql.includes(field), field)

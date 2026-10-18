@@ -109,9 +109,16 @@ begin
  where p.polcmd::text<>m.command or
  ((p.polqual is null)<>(m.original_using is null)) or
  ((p.polwithcheck is null)<>(m.original_check is null)) or
- (m.original_using is not null and position('SELECT' in upper(pg_get_expr(p.polqual,p.polrelid)))=0) or
- (m.original_check is not null and position('SELECT' in upper(pg_get_expr(p.polwithcheck,p.polrelid)))=0)) then
+ (m.schema_name<>'archive' and m.original_using is not null and position('SELECT' in upper(pg_get_expr(p.polqual,p.polrelid)))=0) or
+ (m.schema_name<>'archive' and m.original_check is not null and position('SELECT' in upper(pg_get_expr(p.polwithcheck,p.polrelid)))=0)) then
   raise exception '4427 candidate command/null-check/scalar-select contract violated';
+ end if;
+ -- Retired archival policies are inactive for current authenticated/anon callers.
+ if has_table_privilege('authenticated','archive.erp_items_current','SELECT,INSERT,UPDATE,DELETE')
+ or has_table_privilege('authenticated','archive.erp_items_raw','SELECT,INSERT,UPDATE,DELETE')
+ or has_table_privilege('anon','archive.erp_items_current','SELECT,INSERT,UPDATE,DELETE')
+ or has_table_privilege('anon','archive.erp_items_raw','SELECT,INSERT,UPDATE,DELETE') then
+  raise exception '4427 retired archival privilege premise changed; requalify rather than grant around it';
  end if;
  -- Genuine existing synthetic seed, not a forged auth metadata provider or disabled trigger.
  if (select count(*) from auth.users where id in
@@ -389,6 +396,7 @@ begin
   for v_policy in select m.*, c.polrelid,c.polname,c.qual_text,c.check_text
     from rls4427_manifest m join rls4427_candidate_policies c
     on c.polname=m.policy_name and c.polrelid=to_regclass(format('%I.%I',m.schema_name,m.table_name))
+    where m.schema_name<>'archive'
   loop
    v_clause:='';
    if v_policy.original_using is not null then
@@ -462,15 +470,20 @@ begin
 -- STRICT positive control: every operational admin DML must affect1 row.
 -- plm legacy identity has onlySELECT policy and is intentionally negative DML.
 if exists(select 1 from rls4427_results where context in('admin','admin_again')
- and probe like 'dml36:%' and probe not like 'dml36:plm.legacy_erp_item_identity:%'
+ and probe like 'dml36:%' and probe not like 'dml36:plm.legacy_erp_item_identity:%' and probe not like 'dml36:archive.%'
  and (result->>'sqlstate'<>'00000' or result#>>'{result,count}' is distinct from '1')) then
  select jsonb_agg(to_jsonb(failure)) into v_result from (
   select distinct probe,result from rls4427_results where phase='original' and context='admin'
-   and probe like 'dml36:%' and probe not like 'dml36:plm.legacy_erp_item_identity:%'
+   and probe like 'dml36:%' and probe not like 'dml36:plm.legacy_erp_item_identity:%' and probe not like 'dml36:archive.%'
    and (result->>'sqlstate'<>'00000' or result#>>'{result,count}' is distinct from '1')
   order by probe
  ) failure;
  raise exception '4427 extended positive admin fixture failed: %',v_result;
+end if;
+-- Exact archive denials preserve the deliberately retired read/write surface.
+if exists(select 1 from rls4427_results where probe like 'dml36:archive.%'
+ and result->>'sqlstate' is distinct from '42501') then
+ raise exception '4427 retired archive DML no longer has its exact permission-denied result';
 end if;
 -- For legacy, no positive write acceptance is claimed. Preserve actual original
 -- exactSQLSTATE/count in result export; successful>0 admin writes violate policy expectation.

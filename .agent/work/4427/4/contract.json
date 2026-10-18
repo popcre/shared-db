@@ -1,16 +1,16 @@
 {
   "schema_version": 2,
-  "generation": 3,
+  "generation": 4,
   "evidence_parent": {
     "work_issue": 4427,
-    "generation": 2,
-    "contract_sha256": "583d6a12de036d133479610f60ed3aedc92ecb9094d67841321791d6f9c536f6"
+    "generation": 3,
+    "contract_sha256": "a76eef78e2f064d7b93360ccb08f1f8132a406cc55205e1b4d332d25e846df22"
   },
   "work_issue": 4427,
   "work_type": "structural",
   "route": "claim-first",
-  "goal": "Complete pre-merge source qualification of exact46 public-admin RLS expression checks; retain separate CI/review/preview/promotion/live-outcome gates.",
-  "base_sha": "b94f3984d218c7a63c1bbe4fbdc060dd2629e47b",
+  "goal": "Qualify44 request-constant admin policy rewrites and document2 currently unreachable archival advisor entries; preserve all46 baseline dispositions and existing permissions.",
+  "base_sha": "a24b6776880164823536344f441dcba497a1e309",
   "dispatcher": "codex/01a14fa2-bd3e-7d62-ba77-7bdfd7976f0e",
   "worker": "codex/01a14fa2-bd3e-7d62-ba77-7bdfd7976f0e-4427",
   "branch": "codex/rls-admin-01a14fa2",
@@ -58,7 +58,11 @@
     "policy \"anon can read SCAN_REQUEST for Realtime watcher\" on public.admin_config",
     "policy \"authenticated read style_guide_crawl_runs\" on public.style_guide_crawl_runs",
     "policy \"authenticated read style_guide_files\" on public.style_guide_files",
-    "policy \"authenticated users can read agent_registrations\" on public.agent_registrations"
+    "policy \"authenticated users can read agent_registrations\" on public.agent_registrations",
+    "policy \"Admin manage erp_items_current\" on archive.erp_items_current",
+    "policy \"Admin manage erp_items_raw\" on archive.erp_items_raw",
+    "table archive.erp_items_current",
+    "table archive.erp_items_raw"
   ],
   "db_writes": [
     "policy \"Admin delete admin_config\" on public.admin_config",
@@ -69,8 +73,6 @@
     "policy \"Admin manage ai tag bakeoff runs\" on public.ai_tag_bakeoff_runs",
     "policy \"Admin manage asset_tags\" on public.asset_tags",
     "policy \"Admin manage erp_enrichment_log\" on public.erp_enrichment_log",
-    "policy \"Admin manage erp_items_current\" on archive.erp_items_current",
-    "policy \"Admin manage erp_items_raw\" on archive.erp_items_raw",
     "policy \"Admin manage erp_sync_runs\" on public.erp_sync_runs",
     "policy \"Admin manage hygiene_findings\" on public.hygiene_findings",
     "policy \"Admin manage invitations\" on public.invitations",
@@ -107,8 +109,6 @@
     "policy \"admin full access style_guide_crawl_runs\" on public.style_guide_crawl_runs",
     "policy \"admin full access style_guide_files\" on public.style_guide_files",
     "policy legacy_erp_item_identity_admin_read on plm.legacy_erp_item_identity",
-    "table archive.erp_items_current",
-    "table archive.erp_items_raw",
     "table plm.legacy_erp_item_identity",
     "table public.admin_config",
     "table public.agent_pairings",
@@ -160,13 +160,12 @@
     "/home/ahazan/.codex/tmp/rls-resume-01a14fa2/sql-parser-uv/bin/python /home/ahazan/.codex/tmp/rls-resume-01a14fa2/4427-parse-sql.py"
   ],
   "assumptions": [
-    "4425 and4426 immutable merged completion records verified",
-    "85 exact write keys and29 read keys derive from refreshed46 policy/39 table/72 union catalog",
-    "4158 supported ownership recovered and ordinary source claim released;2421 remainsOPEN",
-    "No generated type shape changes",
-    "Generation1 authorized all checkpointed source; its immutable ref/history remain preserved. Generation2 prospectively corrects evidence-phase ordering, not database authority.",
-    "Source completion does not attest CI, independent review, preview, production or application success. Existing required checks, protected-class seals, guarded merge, qualified promotion and live-outcome lifecycle remain mandatory outside this pre-merge source report.",
-    "Generation3 canonicalizes object spellings using the existing validator; normalized writes/reads are identical to admitted scope and previous grants. Original generations remain immutable."
+    "4425/4426 canonical merged prerequisite records remain verified.",
+    "46 baseline identities span39tables/72overlapping policies;44 qualified writes span37tables/81keys. Two retired archive policies have zero effective nonbypass policy callers and remain unmodified.",
+    "Claim4443 retains all original85 write locks and29 read locks; the additional4 archive read identities are covered by its stronger existing exclusive locks. Permanent version20261018172640 is unchanged.",
+    "Generations1\u20133 remain immutable and preserve the authorized source checkpoints. Generation4 is prospective before reducing actual DDL.",
+    "Source completion does not attest CI/review/preview/promotion/live success. Existing required CI, protected seals, assigned exact-head review, guarded merge, qualified promotion and live outcome lifecycle remain mandatory.",
+    "No generated type shape changes. Re-prove archival role/privilege/caller conditions before final false-positive acceptance; future grants/memberships/policy changes reopen qualification."
   ],
   "stop_conditions": [
     "Any target expression/helper/ACL/union drift or collision",

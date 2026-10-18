@@ -1,0 +1,34 @@
+{
+  "schema_version": 2,
+  "work_issue": 4395,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Retire finished owner-transfer handoff after issue #2336 completed",
+  "base_sha": "4993fb2bbd34294a3dd14e949371f0201ad8ffc1",
+  "dispatcher": "MiMo handoff-hygiene session",
+  "worker": "mimo",
+  "branch": "mimo/4241-handoff-hygiene",
+  "worktree": "D:/repos/shared-db-worktrees/4241-hygiene",
+  "allowed_paths": [
+    "HANDOFF.d/2026-10-13T1804Z-edge-dev3-codex-eight-issues-owner-transfer.md",
+    ".agent/work/4395/6/contract.json",
+    ".agent/work/4395/6/completion.json"
+  ],
+  "file_writes": [
+    "HANDOFF.d/2026-10-13T1804Z-edge-dev3-codex-eight-issues-owner-transfer.md",
+    ".agent/work/4395/6/contract.json",
+    ".agent/work/4395/6/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": ["do not touch database", "do not rewrite HANDOFF.md"],
+  "required_checks": ["node --test scripts/check-handoff-contract.test.mjs"],
+  "assumptions": ["#2336 is completed and the handoff must be retired"],
+  "stop_conditions": ["stop if a citation would strand live work"],
+  "generation": 6,
+  "evidence_parent": {
+    "work_issue": 4395,
+    "generation": 5,
+    "contract_sha256": "ca74e4f7cbaf99bc40581f97b71d655e8202c8545db4154047d9fe6e187c3f7d"
+  }
+}

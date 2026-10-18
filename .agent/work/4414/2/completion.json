@@ -9,8 +9,6 @@
   "head_sha": "c5c0af7f4bf02c081c1de601e1500f9916ea65af",
   "base_sha": "fe3931607f952029ce6174073f7320d580a188b7",
   "files_changed": [
-    ".agent/work/4414/2/completion.json",
-    ".agent/work/4414/2/contract.json",
     ".github/workflows/migration-author-lease.yml",
     ".github/workflows/pr-guards.yml",
     "config/orchestrator-global-invalidators-v1.json",

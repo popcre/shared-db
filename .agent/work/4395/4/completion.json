@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "work_issue": 4395,
+  "outcome": "ready-for-merge",
+  "pr": 4396,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4395/4",
+  "contract_sha256": "34ada4011b6c42394d8f3a59a31377f700e074c0d9505b1982ac745f9b17d79e",
+  "head_sha": "a6b2e9af4075836cce5d07fb052b4d99321369d4",
+  "base_sha": "4993fb2bbd34294a3dd14e949371f0201ad8ffc1",
+  "files_changed": [
+    "HANDOFF.d/2026-10-13T1804Z-edge-dev3-codex-eight-issues-owner-transfer.md"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/check-handoff-contract.test.mjs",
+      "exit_code": 0,
+      "evidence": "16 pass at a6b2e9af4075836cce5d07fb052b4d99321369d4 after refreshing onto origin/main."
+    }
+  ],
+  "assumptions_resolved": [
+    "F1 links repaired",
+    "F2 enforce_admins=false",
+    "F3 report published"
+  ],
+  "stop_conditions_hit": []
+}

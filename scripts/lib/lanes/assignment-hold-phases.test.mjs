@@ -119,7 +119,9 @@ test('idempotent retry does not require paid-start provenance when a durable ass
     error = caught
   }
   if (error) {
-    assert.ok(!/start listing unavailable/.test(String(error.message)), `retry must not depend on paid-start provenance: ${error.message}`)
+    // Only a non-capacity refusal is acceptable on a durable-assignment retry.
+    assert.ok(!/start listing unavailable|paid-start|readPaidReviewStarts|circuit breaker/i.test(String(error.message)),
+      `retry must not depend on paid-start provenance: ${error.message}`)
   } else {
     assert.equal(result?.reviewer, first.reviewer, 'retry re-serves the durable assignment')
   }
@@ -131,21 +133,37 @@ test('derived request ceilings are unchanged (not widened by instrumentation)', 
   assert.ok(String(REVIEW_ASSIGNMENT_REF_PREFIX).includes('assignment') || String(REVIEW_ASSIGNMENT_REF_PREFIX).length > 0)
 })
 
+test('phase trace is emitted to stderr after a successful assignment', () => {
+  const io = baseIo()
+  const lines = []
+  const originalWrite = process.stderr.write
+  process.stderr.write = (chunk, ...rest) => {
+    lines.push(String(chunk))
+    return true
+  }
+  try {
+    const result = assignNextReviewer({ issue: 4414, pr: 4419, headSha: 'a'.repeat(40), slot: 1 }, io)
+    assert.ok(result?.reviewer)
+  } finally {
+    process.stderr.write = originalWrite
+  }
+  const traces = lines.filter((line) => line.includes('review-phase-trace '))
+  assert.equal(traces.length, 1, `expected exactly one review-phase-trace line, got ${traces.length}: ${JSON.stringify(lines)}`)
+  assert.match(traces[0], /release=proved_released|release=successor_seen/)
+  assert.match(traces[0], /held_ms=\d+/)
+})
+
 test('mutex reserve shrinks by prepare spend so capacity work outside the lock cannot over-gate', () => {
   // After paid-start classification moves outside, the entry gate must reserve
   // only the remaining owned-section cost, not the full historical 15 plus
   // already-spent prepare requests (#4414 review H1).
   const io = baseIo()
-  // Force paid-start listing to spend wire budget via readPaidReviewStarts.
   let spent = 0
   io.readPaidReviewStarts = (prefix, pr) => {
     spent += 2
     return []
   }
-  // Monkey-patch consume by wrapping listRefs/getCommit is unnecessary: the
-  // budget counts real wire calls. Here we only assert the assignment still
-  // succeeds when prepare spend is nonzero and the 25-ceiling holds.
   const result = assignNextReviewer({ issue: 4414, pr: 4419, headSha: 'a'.repeat(40), slot: 1 }, io)
-  assert.ok(result?.reviewer)
+  assert.ok(result?.reviewer, 'assignment must succeed when prepare spend is nonzero')
   assert.ok(spent >= 2, 'fixture must have spent prepare requests')
 })

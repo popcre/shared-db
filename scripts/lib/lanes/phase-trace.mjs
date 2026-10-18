@@ -87,7 +87,7 @@ export function createPhaseTrace({
       totalHeldMs: phases
         // Owned hold time starts after acquisition succeeds. `acquisition_wait`
         // is queue/wait-to-acquire and is deliberately NOT hold time (issue #4414).
-        .filter((row) => row.phase === 'owned_section' || row.phase === 'fresh_validation' || row.phase === 'ref_commit_readback' || row.phase === 'release')
+        .filter((row) => row.phase === 'fresh_validation' || row.phase === 'ref_commit_readback' || row.phase === 'release')
         .reduce((sum, row) => sum + row.durationMs, 0),
       totalWaitMs: phases
         .filter((row) => row.phase === 'acquisition_wait')

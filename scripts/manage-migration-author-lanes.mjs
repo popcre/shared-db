@@ -1773,6 +1773,10 @@ function finalizeReviewMutexPreservingResult(ownerSha,io,completed){
   }
 }
 function finalizeReviewMutex(ownerSha,io){
+  // Close any still-open owned phase cleanly before release so traces can
+  // distinguish completed commit/readback from an abandoned section.
+  endPhase('ref_commit_readback')
+  endPhase('fresh_validation')
   notePhase('release')
   const previous=reviewWireBudget?.cleanup
   if(reviewWireBudget)reviewWireBudget.cleanup=true
@@ -1868,8 +1872,13 @@ function acquireReviewMutex(ownerSha,io){
     throw error
   }
   if(!acquired){
-    // Occupancy refusal without a readable owner: no extra remote read for telemetry
-    // (plan §9 step 2). Foreign owner stays unknown unless the throw path already read it.
+    // Ordinary contention: createRefWithReadback returns false without throwing.
+    // One lock-read here is the existing refusal result (plan §9 step 2), not a
+    // telemetry-only fetch — it names the foreign owner that blocked us.
+    try{
+      const actual=io.readRef(MUTEX_REF)
+      if(actual&&actual!==ownerSha)notePhaseForeignOwner({sha:actual,ref:MUTEX_REF})
+    }catch{/* unreadable owner stays unknown */}
     notePhaseRelease('not_acquired')
     throw new LaneError(`${MUTEX_REF} is occupied`)
   }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildProductionRiskRequest, buildReviewBrief, loadReviewBrief, REVIEW_ASSESSMENTS, storeReviewBrief } from './review-packet.mjs'
-import { ASSESSMENT_SCHEMA } from '../prove-production-risk-acceptance.mjs'
+import { ASSESSMENT_SCHEMA, parseRiskAssessment } from '../prove-production-risk-acceptance.mjs'
 import { prepareCompleteReviewBrief, runGovernedReview } from '../run-governed-review.mjs'
 
 const source = { repository: 'popcre/shared-db', pr: 34, mergeBase: 'b'.repeat(40), headSha: 'a'.repeat(40), sourceDigest: 'c'.repeat(64), files: [{ filename: 'supabase/migrations/20260920000000_test.sql', status: 'added' }] }
@@ -111,6 +111,7 @@ test('production-risk request refuses unverifiable or widened bindings', () => {
     [{ comparison: { ...aheadComparison, files: [{ filename: source.files[0].filename, status: 'modified' }] } }, /differs between the reviewed head and main/],
     [{ source: { ...source, files: [{ filename: 'scripts/x.mjs', status: 'modified' }] } }, /added or modified migrations/],
     [{ source: { ...source, files: [{ filename: source.files[0].filename, status: 'removed' }] } }, /added or modified migrations/],
+    [{ source: { ...source, files: [...source.files, { filename: 'docs/x.sql', status: 'renamed', previous_filename: 'supabase/migrations/20260920000001_moved.sql' }] } }, /renames or moves/],
   ]
   for (const [patch, pattern] of cases) assert.throws(() => buildProductionRiskRequest({ ...base, ...patch }), pattern)
 })
@@ -129,4 +130,18 @@ test('loadReviewBrief adds the request only when asked, reading the head-to-main
   assert.ok(paths.includes(`repos/popcre/shared-db/compare/${source.headSha}...${riskMain}`))
   assert.ok(asked.indexOf('Production-risk assessment request') < asked.indexOf('## Evidence supplied by the author'))
   assert.throws(() => loadReviewBrief({ ...options, productionRiskClasses: riskClasses }, source, { github: gh }), /exact 40-hex main/)
+})
+
+test('a verbatim copy of the request skeleton is never an accepted assessment (StepFun H1)', () => {
+  const section = buildProductionRiskRequest({ source, pullRequest: mergedPr, mainSha: riskMain, risks: riskClasses, comparison: aheadComparison })
+  const skeleton = /```text\n(.*)\n```/.exec(section)[1]
+  const forged = '```production-risk-assessment\n' + skeleton + '\n```'
+  assert.throws(() => parseRiskAssessment(forged, { mainSha: riskMain, allowlist: ['20260920000000'], sourcePr: 34, risks: riskClasses.split(',') }), /not substantive/)
+})
+test('the section names operator-supplied classes and other main commits honestly (StepFun M1, M2)', () => {
+  const section = buildProductionRiskRequest({ source, pullRequest: mergedPr, mainSha: riskMain, risks: riskClasses, comparison: aheadComparison })
+  assert.match(section, /the runner did not derive them/)
+  assert.match(section, /Main may carry other commits/)
+  assert.ok(!/exactly the bytes/.test(section))
+  assert.throws(() => buildReviewBrief({ ...fixture, riskRequest: null }), /not text/)
 })

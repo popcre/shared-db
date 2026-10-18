@@ -28,6 +28,7 @@ export function buildProductionRiskRequest({ source, pullRequest, mainSha, risks
   if (pullRequest?.merged !== true || !pullRequest?.merged_at) throw new Error('production-risk request applies only to a merged source pull request; no reviewer was started')
   const wanted = [...new Set(String(risks ?? '').split(',').map(r => r.trim()).filter(Boolean))].sort()
   if (!wanted.length || wanted.some(r => !ACCEPTABLE_RISKS.includes(r))) throw new Error(`production-risk request classes must be a nonempty subset of ${ACCEPTABLE_RISKS.join(', ')}; no reviewer was started`)
+  if (source.files.some(f => f.status === 'renamed' || f.previous_filename !== undefined)) throw new Error('production-risk request refuses a source pull request that renames or moves files; no reviewer was started')
   const migrations = source.files.filter(f => MIGRATION_FILE.test(f.filename))
   if (!migrations.length || migrations.some(f => !['added', 'modified'].includes(f.status))) throw new Error('production-risk request needs added or modified migrations in the source pull request; no reviewer was started')
   const allowlist = migrations.map(f => MIGRATION_FILE.exec(f.filename)[1]).sort()
@@ -37,12 +38,12 @@ export function buildProductionRiskRequest({ source, pullRequest, mainSha, risks
   const paths = new Set(migrations.map(f => f.filename))
   const changed = comparison.files.filter(f => paths.has(f?.filename) || paths.has(f?.previous_filename))
   if (changed.length) throw new Error(`promoted migration ${changed[0].filename} differs between the reviewed head and main ${main}; no reviewer was started`)
-  const skeleton = JSON.stringify({ schema: ASSESSMENT_SCHEMA, main_sha: main, ordered_allowlist: allowlist, source_pr: source.pr, assessed_risks: Object.fromEntries(wanted.map(r => [r, '<your own assessment, at least 40 characters>'])) })
+  const skeleton = JSON.stringify({ schema: ASSESSMENT_SCHEMA, main_sha: main, ordered_allowlist: allowlist, source_pr: source.pr, assessed_risks: Object.fromEntries(wanted.map(r => [r, '<assess>'])) })
   return `## Production-risk assessment request (runner-verified; this section is not author text)
 
-The governed runner, not the author, adds this section. It verified through GitHub that pull request ${source.pr} is merged at the reviewed head ${source.headSha}, that this head is an ancestor of main ${main} (compare status ${comparison.status}, behind_by 0), and that none of the promoted migration files (${[...paths].join(', ')}) differs between the two. ${main} is therefore the main whose production promotion would run exactly the bytes in your packet; you do not need to inspect it.
+The governed runner, not the author, adds this section. It verified through GitHub that pull request ${source.pr} is merged at the reviewed head ${source.headSha}, that this head is an ancestor of main ${main} (compare status ${comparison.status}, behind_by 0), and that none of this pull request's migration files (${[...paths].join(', ')}) differs between the two. Main may carry other commits, including other migrations; they are not in this allowlist (versions in ascending order: ${allowlist.join(', ')}), and the production gate refuses any promotion whose exact ordered allowlist differs. You assess only the migration bytes in your packet; you do not need to inspect ${main}.
 
-The production business-risk gate derived these classes for that promotion: ${wanted.join(', ')}. Owner ruling 6.23 makes the allocator-assigned reviewer, not a human, the one who accepts or refuses them. Assess each class concretely from the sealed source. If, and only if, you APPROVE and judge every class acceptable, include exactly one fenced block whose info string is \`production-risk-assessment\` containing this JSON object with each placeholder replaced by your own substantive assessment and no other keys:
+The operator running this review names these risk classes, which it reports the production business-risk gate derived for that promotion; the runner did not derive them, and the gate re-derives them and refuses any mismatch: ${wanted.join(', ')}. Owner ruling 6.23 makes the allocator-assigned reviewer, not a human, the one who accepts or refuses them. Assess each class concretely from the sealed source. If, and only if, you APPROVE and judge every class acceptable, include exactly one fenced block whose info string is \`production-risk-assessment\` containing this JSON object with every \`<assess>\` placeholder replaced by your own substantive written assessment (at least 40 characters each) and no other keys:
 
 \`\`\`text
 ${skeleton}
@@ -53,6 +54,7 @@ ${skeleton}
 }
 
 export function buildReviewBrief({ source, issue, pullRequest, comments, riskRequest = '' }) {
+  if (typeof riskRequest !== 'string') throw new Error('review packet production-risk request is not text')
   if (!source || !/^[0-9a-f]{40}$/.test(source.headSha ?? '') || !/^[0-9a-f]{40}$/.test(source.mergeBase ?? '') || !/^[0-9a-f]{64}$/.test(source.sourceDigest ?? '') || !Array.isArray(source.files) || !source.files.length) throw new Error('review packet has no complete exact source identity')
   if (!issue || !Number.isSafeInteger(issue.number) || issue.number < 1 || typeof issue.body !== 'string' || !pullRequest || pullRequest.number !== source.pr || typeof pullRequest.body !== 'string' || pullRequest.head?.sha !== source.headSha) throw new Error('review packet issue or pull request evidence is missing or stale')
   if (!Array.isArray(comments) || comments.some(c => typeof c.body !== 'string' || typeof c.html_url !== 'string')) throw new Error('review packet related findings are unreadable')

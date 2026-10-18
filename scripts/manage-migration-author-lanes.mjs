@@ -153,15 +153,8 @@ let reviewWireBudget=null,reviewCommitBase=null,freshDurableVerdictRefs=null
 let reviewPhaseTrace=null,reviewPhaseSourceTuple=null,reviewPhaseInvocation=null
 function notePhase(name,meta=null){reviewPhaseTrace?.startPhase?.(name,meta)}
 function endPhase(name,extra=null){return reviewPhaseTrace?.endPhase?.(name,extra)??null}
-function notePhaseMeta(meta){reviewPhaseTrace?.mark?.(meta)}
 function notePhaseRelease(state){reviewPhaseTrace?.setReleaseState?.(state)}
 function notePhaseForeignOwner(observed){reviewPhaseTrace?.noteForeignMutexOwner?.(observed)}
-function withPhaseTrace(name,fn,meta=null){
-  if(!reviewPhaseTrace)return fn()
-  reviewPhaseTrace.startPhase(name,meta)
-  try{const result=fn();reviewPhaseTrace.endPhase(name);return result}
-  catch(error){reviewPhaseTrace.endPhase(name,{result:'error'});throw error}
-}
 function setPhaseContext(sourceTuple,invocation=null){
   reviewPhaseSourceTuple=sourceTuple&&typeof sourceTuple==='object'?{...sourceTuple}:null
   reviewPhaseInvocation=invocation==null?null:String(invocation)
@@ -203,10 +196,16 @@ export function withReviewRequestBudget(fn,limit=REVIEW_OPERATION_REQUEST_LIMIT,
   reviewWireBudget={count:0,limit,operation}
   // Issue #4414: phase timing is local public-safe metadata. It never performs a
   // remote read, never writes during ownership, and never invents a release.
+  // After release (or a recovery-required decision) the summary is written to
+  // stderr so acquisition→release data actually exists for step-7 measurement.
   reviewPhaseTrace=createPhaseTrace({
     operation,
     sourceTuple: reviewPhaseSourceTuple,
     invocation: reviewPhaseInvocation,
+    sink: (payload)=>{
+      try{process.stderr.write(`review-phase-trace ${formatPhaseTraceSummary(payload)}\n`)}
+      catch{/* lost telemetry is not a mutation failure */}
+    },
   })
   try{return fn(reviewWireBudget)}
   finally{
@@ -2235,11 +2234,12 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
   // Issue #4414 step 3: paid-start classification lists immutable start refs and
   // runs Git content provenance. After owner #4399 it never refuses a draw
   // (uncapped spend). Run it OUTSIDE ownership so history I/O cannot hold the
-  // shared mutex. Total request count for a fresh draw is unchanged (work moves
-  // earlier); retry paths that never needed capacity now share this prepare cost
-  // and still fit the derived 25-request ceiling. Mutable boundary checks stay
-  // under the lock.
-  const preparedCapacity=assertPaidReviewCapacity(request,io)
+  // shared mutex. A prepare failure is deferred: retry/idempotent returns never
+  // need capacity, so they must not fail when start provenance is unreadable.
+  // A fresh draw surfaces the failure (or falls back to an in-lock classify).
+  let preparedCapacity=null,preparedCapacityError=null
+  try{preparedCapacity=assertPaidReviewCapacity(request,io)}
+  catch(error){preparedCapacityError=error}
   const ownerSha=io.makeOwnerCommit(`db-coordination reviewer-assignment-lock issue=${request.issue} pr=${request.pr} head=${request.headSha}${request.slot!==1?` slot=${request.slot}`:''}`)
   requireReviewWireCapacity(REVIEW_MUTEX_SECTION_RESERVE)
   endPhase('prepare')
@@ -2407,7 +2407,10 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
       if(!reviewerEmitsGovernedVerdict(current.reviewer))throw new LaneError(`reviewer ${current.reviewer} is assigned to this head but its wrapper cannot emit the governed VERDICT line. Draw another reviewer with the exact command: ${nonVerdictReviewerReplacementCommand({issue:current.issue,pr:current.pr,headSha:current.headSha,slot:request.slot},current.sequence)}`)
       return {...current,slot:request.slot,wrapper:REVIEWERS.find((r)=>r.name===current.reviewer)?.wrapper}
     }
-    const capacity=preparedCapacity
+    // Fresh draw only. Prefer the outside prepare; if it failed, re-raise that
+    // error (or classify under the lock when nothing was recorded).
+    if(preparedCapacityError&&!preparedCapacity)throw preparedCapacityError
+    const capacity=preparedCapacity??assertPaidReviewCapacity(request,io)
     const exhaustedReviewers=new Set(capacity.exhaustedReviewers??[])
     if(effectiveAllowlist)request.reviewerAllowlist=effectiveAllowlist
     else delete request.reviewerAllowlist

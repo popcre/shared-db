@@ -31,7 +31,9 @@ Mutex wait, owned duration, review-lease age, provider time, and stage-lease tim
 | `post_release_execution` | Provider preflight/invocation, reporting | No |
 | `cleanup` | Residual release/recovery after a primary result | Yes (only if still owned) |
 
-Trace fields (schema version 1): `schema`, `operation`, `sourceTuple`, `invocation`, `phase`/`durationMs` rows, `releaseState` (`not_acquired` \| `proved_released` \| `unknown` \| `successor_seen`), `foreignMutexOwner` (observed SHA/ref only), `startedAt`/`endedAt` wall times (public reports use EDT/EST).
+Trace fields (schema version 1): `schema`, `operation`, `sourceTuple`, `invocation`, `phase`/`durationMs` rows, `releaseState` (`not_acquired` \| `proved_released` \| `unknown` \| `successor_seen`), `foreignMutexOwner` (observed SHA/ref only), `startedAt`/`endedAt` wall times (public reports use EDT/EST), `totalHeldMs` (owned phases only — **not** `acquisition_wait`), `totalWaitMs` (queue to acquire).
+
+After release or a recovery-required decision, `withReviewRequestBudget` writes one stderr line `review-phase-trace …` via `formatPhaseTraceSummary`. Sink failures are swallowed; lost telemetry never invents release.
 
 ## Shared mutator inventory
 

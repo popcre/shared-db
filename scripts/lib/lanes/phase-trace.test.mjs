@@ -40,8 +40,9 @@ test('phase trace records monotonic durations and release state', () => {
   assert.equal(payload.phases.length, 5)
   assert.equal(payload.phases[0].durationMs, 12)
   assert.equal(payload.phases[1].durationMs, 3)
-  // held = acquisition_wait + fresh_validation + ref_commit_readback + release
-  assert.equal(payload.totalHeldMs, 3 + 40 + 25 + 8)
+  // held = fresh_validation + ref_commit_readback + release (NOT acquisition_wait)
+  assert.equal(payload.totalHeldMs, 40 + 25 + 8)
+  assert.equal(payload.totalWaitMs, 3)
   assert.equal(payload.sourceTuple.issue, 4414)
 })
 

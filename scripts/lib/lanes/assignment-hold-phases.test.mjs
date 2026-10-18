@@ -5,12 +5,34 @@ import {
   MUTEX_REF,
   REVIEW_OPERATION_REQUEST_LIMIT,
   REVIEW_MUTEX_SECTION_RESERVE,
+  REVIEW_STARTED_REF_PREFIX,
+  REVIEW_ACTIVE_CUTOVER_REF,
+  REVIEW_ASSIGNMENT_REF_PREFIX,
 } from '../../manage-migration-author-lanes.mjs'
+
+function usableAdmission(row) {
+  return {
+    provider: row.provider,
+    status: 'ready',
+    usable: true,
+    admission: {
+      schema_version: 1,
+      provider: row.provider,
+      state: 'unknown',
+      reason: 'unscopable',
+      quota_state: 'unknown',
+      reset_at: null,
+      credential_profile_scope: null,
+      model_scope: null,
+    },
+  }
+}
 
 function baseIo() {
   const refs = new Map()
   const commits = new Map()
   let next = 1
+  refs.set(REVIEW_ACTIVE_CUTOVER_REF, 'cutover-complete')
   return {
     refs,
     commits,
@@ -21,11 +43,17 @@ function baseIo() {
     },
     requiresExactReviewHeadSha: true,
     enableReviewerQueue: false,
+    resolveReviewEngine: () => 'claude',
+    reviewerUsability: (reviewers) => new Map(reviewers.map((row) => [row.provider, usableAdmission(row)])),
+    pauseReviewerFailure: () => {},
+    readPaidReviewStarts: (prefix) => [...refs.entries()].filter(([ref]) => ref.startsWith(prefix)).map(([ref, sha]) => ({ ref, sha, commit: commits.get(sha) })),
     readRef: (ref) => refs.get(ref) ?? null,
     listRefs: (prefix) => [...refs.entries()].filter(([ref]) => ref.startsWith(prefix)).map(([ref, sha]) => ({ ref, sha, commit: commits.get(sha) })),
     getCommit: (sha) => commits.get(sha),
-    getPr: (pr) => ({ state: 'open', number: pr, head: { sha: 'a'.repeat(40) } }),
-    getIssue: (issue) => ({ state: 'open', number: issue }),
+    getPr: (pr) => ({ state: 'open', number: Number(pr), head: { sha: 'a'.repeat(40) } }),
+    getIssue: () => ({ state: 'open' }),
+    getIssueComments: () => [],
+    getPrReviews: () => [],
     createRef(ref, sha) {
       if (refs.has(ref)) return false
       refs.set(ref, sha)
@@ -39,18 +67,16 @@ function baseIo() {
 
 test('slow_preparation_does_not_hold_author_mutex — paid-start classification finishes before acquire', () => {
   const io = baseIo()
-  const STARTS = 'refs/db-review-started/'
   let capacityListFinished = false
   let mutexAcquireSawFinishedCapacity = false
   let capacitySawHeldMutex = false
 
-  const rawListRefs = io.listRefs.bind(io)
-  io.listRefs = (prefix) => {
-    const rows = rawListRefs(prefix)
-    if (String(prefix).startsWith(STARTS)) {
-      if (io.refs.has(MUTEX_REF)) capacitySawHeldMutex = true
-      capacityListFinished = true
-    }
+  // assertPaidReviewCapacity prefers readPaidReviewStarts when present.
+  const rawStarts = io.readPaidReviewStarts.bind(io)
+  io.readPaidReviewStarts = (prefix, pr) => {
+    if (io.refs.has(MUTEX_REF)) capacitySawHeldMutex = true
+    const rows = rawStarts(prefix, pr)
+    capacityListFinished = true
     return rows
   }
 
@@ -60,38 +86,47 @@ test('slow_preparation_does_not_hold_author_mutex — paid-start classification 
     return rawCreateRef(ref, sha)
   }
 
+  let outcome = 'unknown'
   try {
-    assignNextReviewer({ issue: 4414, pr: 4419, headSha: 'a'.repeat(40), slot: 1 }, io)
-  } catch {
-    // Roster/admission refusals still prove ordering when acquire was attempted.
+    const result = assignNextReviewer({ issue: 4414, pr: 4419, headSha: 'a'.repeat(40), slot: 1 }, io)
+    outcome = `assigned:${result?.reviewer ?? '?'}`
+  } catch (error) {
+    outcome = String(error?.message ?? error)
   }
 
-  assert.equal(capacitySawHeldMutex, false, 'paid-start classification must not run while the author mutex is held')
-  if (capacityListFinished) {
-    assert.equal(mutexAcquireSawFinishedCapacity, true, 'paid-start classification must finish before mutex acquisition')
-  }
+  assert.equal(capacitySawHeldMutex, false, `paid-start classification must not run while the author mutex is held (outcome=${outcome})`)
+  assert.equal(capacityListFinished, true, `fixture never listed paid starts; outcome=${outcome}`)
+  assert.equal(mutexAcquireSawFinishedCapacity, true, `paid-start classification must finish before mutex acquisition; outcome=${outcome}`)
 })
 
-test('same_provider_parallel_reviews_allowed — two tuples can be assigned without exclusive provider reservation', () => {
-  // Structural: the production path does not treat a busy provider as a draw
-  // capacity gate (concurrent leases). Two distinct tuples may name the same
-  // provider in fixtures that use short heads only under serial rules; with
-  // exact 40-char heads the serial busy set is not consulted.
+test('idempotent retry does not require paid-start provenance when a durable assignment exists', () => {
   const io = baseIo()
-  const first = { issue: 1, pr: 10, headSha: 'b'.repeat(40), slot: 1 }
-  const second = { issue: 2, pr: 20, headSha: 'c'.repeat(40), slot: 1 }
-  let a = null
-  let b = null
-  try { a = assignNextReviewer(first, io) } catch { /* roster may be empty in this fixture */ }
-  try { b = assignNextReviewer(second, io) } catch { /* same */ }
-  if (a && b) {
-    // Distinct tuples must each get a coherent assignment record, not one shared lock reservation.
-    assert.ok(a.reviewer)
-    assert.ok(b.reviewer)
+  const head = 'a'.repeat(40)
+  // First draw establishes a durable assignment.
+  const first = assignNextReviewer({ issue: 4414, pr: 4419, headSha: head, slot: 1 }, io)
+  assert.ok(first?.reviewer)
+  // Unreadable starts must not fail a retry that only re-serves the assignment.
+  io.listRefs = (prefix) => {
+    if (String(prefix).includes('started')) throw new Error('start listing unavailable on retry')
+    return [...io.refs.entries()].filter(([ref]) => ref.startsWith(prefix)).map(([ref, sha]) => ({ ref, sha, commit: io.commits.get(sha) }))
+  }
+  io.readPaidReviewStarts = () => { throw new Error('start listing unavailable on retry') }
+  let result = null
+  let error = null
+  try {
+    result = assignNextReviewer({ issue: 4414, pr: 4419, headSha: head, slot: 1 }, io)
+  } catch (caught) {
+    error = caught
+  }
+  if (error) {
+    assert.ok(!/start listing unavailable/.test(String(error.message)), `retry must not depend on paid-start provenance: ${error.message}`)
+  } else {
+    assert.equal(result?.reviewer, first.reviewer, 'retry re-serves the durable assignment')
   }
 })
 
 test('derived request ceilings are unchanged (not widened by instrumentation)', () => {
   assert.equal(REVIEW_OPERATION_REQUEST_LIMIT, 25)
   assert.equal(REVIEW_MUTEX_SECTION_RESERVE, 15)
+  assert.ok(String(REVIEW_ASSIGNMENT_REF_PREFIX).includes('assignment') || String(REVIEW_ASSIGNMENT_REF_PREFIX).length > 0)
 })

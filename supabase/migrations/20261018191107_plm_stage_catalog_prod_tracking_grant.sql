@@ -3,10 +3,14 @@
 -- Stage Catalog production access for DesignFlow tracking
 -- (popcre/designflow-tracking#124, plan comment 6253504575).
 --
--- popcre-tracking-prod connects as designflow_prod_backend_runtime, which holds only
--- INHERIT membership in the four designflow_prod_<service>_grants roles
--- (20261008014009). Privileges sit on designflow_prod_tracking_grants, never on the
--- LOGIN role. Today that role has no USAGE on plm, so the catalog
+-- popcre-tracking-prod's DB_USER secret is designflow_prod_backend_runtime. In this
+-- repository (20261008014009:244) that LOGIN role holds only designflow_prod_backend_grants,
+-- but the live production catalogue, read 2026-10-18 3:30 PM EDT as that role
+-- (pg_auth_members, BEGIN READ ONLY), shows INHERIT TRUE / SET FALSE membership,
+-- grantor postgres, in all four designflow_prod_<service>_grants roles, including
+-- designflow_prod_tracking_grants. This file does not change membership; it relies on
+-- that live state and puts privileges on the tracking grant role, never on a LOGIN role.
+-- Today that role has no USAGE on plm, so the catalog
 -- (20261015193344, 20261016210024) is unreadable in production.
 --
 -- Grant matrix (exactly what designflow-tracking's catalog code does):
@@ -17,13 +21,19 @@
 --   * INSERT, UPDATE, DELETE only on the five tables the maintainer editor writes
 --     (models/stage-catalog.model.js): stage_list, stage, stage_duration,
 --     stage_dependency, licensor_stage_option. Identity columns need no sequence grant.
---     prod_stage_progress and prod_stage_option stay read-only for this role.
+--     prod_stage_progress and prod_stage_option stay read-only for this role: the
+--     dispatched scope (designflow-tracking#124 plan) is the maintainer editor only.
+--     The tracker tick/Linesheet writes (routes/stage-progress.router.js) need a
+--     separate reviewed grant before STAGE_CATALOG_ENABLED is turned on in production.
 --   * EXECUTE on plm.stage_catalog_bump_version(), the SECURITY INVOKER version
 --     trigger those writes fire (same precedent as service_role in 20261015193344).
 --   * RLS stays enabled. The role is NOBYPASSRLS, so each table gets one policy
 --     scoped TO designflow_prod_tracking_grants only (row authority is the tracking
 --     API's maintainer check, as for service_role). anon and authenticated are untouched.
--- No application rows change. No other plm table is granted.
+-- No application rows change. No other plm table is granted. USAGE on plm also lets
+-- this role reach plm functions already EXECUTE-able by PUBLIC (two callable SECURITY
+-- DEFINER functions, already reachable by anon and authenticated live); that pre-existing
+-- exposure is tracked in #4474 and is not widened to any client role here.
 -- Rollback: drop the seven policies below; revoke the table, function and schema
 -- privileges from designflow_prod_tracking_grants.
 

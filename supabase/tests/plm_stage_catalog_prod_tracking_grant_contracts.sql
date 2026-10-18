@@ -21,7 +21,8 @@ begin
   if has_schema_privilege('designflow_prod_tracking_grants', 'plm', 'CREATE') then raise exception 'A3 CREATE granted'; end if;
   select count(*) into v_n from unnest(array['anon','authenticated']) r
     cross join unnest(array['stage_list','stage','stage_duration','stage_dependency','licensor_stage_option','prod_stage_progress','prod_stage_option']) t
-    where has_table_privilege(r, 'plm.' || t, 'SELECT');
+    cross join unnest(array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) p
+    where has_table_privilege(r, 'plm.' || t, p);
   if v_n <> 0 then raise exception 'A4 client roles can read the catalog (%)', v_n; end if;
   select count(*) into v_n from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'plm' and c.relname in ('stage_list','stage','stage_duration','stage_dependency','licensor_stage_option','prod_stage_progress','prod_stage_option') and c.relrowsecurity;
@@ -44,11 +45,14 @@ $a$;
 do $b$
 declare v_lists int; v_stages int; v_before int; v_after int; v_id int; v_denied boolean := false;
 begin
-  if not pg_has_role(current_user, 'designflow_prod_tracking_grants', 'MEMBER') then
-    raise notice 'B skipped: % is not a member of designflow_prod_tracking_grants', current_user;
+  -- PostgreSQL 16+ separates membership from SET; only a session allowed to SET the
+  -- role can exercise it. Anything else is reported, never silently passed as proof.
+  begin
+    set local role designflow_prod_tracking_grants;
+  exception when insufficient_privilege then
+    raise warning 'B NOT EXERCISED: % cannot SET ROLE designflow_prod_tracking_grants; A-section catalogue assertions only', current_user;
     return;
-  end if;
-  set local role designflow_prod_tracking_grants;
+  end;
   select count(*) into v_lists from plm.stage_list;
   select count(*) into v_stages from plm.stage;
   if v_lists = 0 or v_stages = 0 then raise exception 'B1 catalog invisible to tracking role (lists %, stages %)', v_lists, v_stages; end if;

@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "issue": 4427,
+  "repository": "popcre/shared-db",
+  "ci_run_id": 39154055887,
+  "tested_head": "2fbc889e50ccc59090742531e049a1c3232b1778",
+  "source_sha256": {
+    "supabase/migrations/20261018230020_public_admin_rls_initplans.sql": "4359116d9b580f8f80d9e04a66554cb8496d0e7f586e2e6de8e4db82c7e3bdd6",
+    "supabase/tests/rls_public_admin_initplan_contracts.sql": "cd050bcb22c264ea9c0b69a15b4dfbf898c3327dbb63c6d58ef6e3826b0a6778"
+  },
+  "scope": "isolated synthetic CI only; not preview/production/live acceptance",
+  "uncompressed_sha256": "b5bb873d78fda73944046a838b153e4c5d38a7271102809775f16aea07928fdc",
+  "compressed_sha256": "b1618aa84b5adae754b85629b1d5a2be782c017be6b18379a6be556ad7ba5976",
+  "access_outcomes": 2124,
+  "raw_plan_samples": 198,
+  "measurements": [
+    {
+      "command": "DELETE",
+      "cardinality": 1,
+      "original_p95_ms": 81.68655,
+      "candidate_p95_ms": 15.09915,
+      "original_samples": 10,
+      "candidate_samples": 10,
+      "original_median_ms": 76.615,
+      "candidate_median_ms": 14.8005,
+      "median_change_percent": -80.6819813352477,
+      "requires_regression_investigation": false
+    },
+    {
+      "command": "INSERT",
+      "cardinality": 1,
+      "original_p95_ms": 0.0952,
+      "candidate_p95_ms": 0.1633,
+      "original_samples": 10,
+      "candidate_samples": 10,
+      "original_median_ms": 0.088,
+      "candidate_median_ms": 0.0945,
+      "median_change_percent": 7.38636363636365,
+      "requires_regression_investigation": false
+    },
+    {
+      "command": "UPDATE",
+      "cardinality": 1,
+      "original_p95_ms": 78.99775,
+      "candidate_p95_ms": 15.43195,
+      "original_samples": 10,
+      "candidate_samples": 10,
+      "original_median_ms": 74.83,
+      "candidate_median_ms": 14.5485,
+      "median_change_percent": -80.5579313109715,
+      "requires_regression_investigation": false
+    },
+    {
+      "command": "DELETE",
+      "cardinality": 100,
+      "original_p95_ms": 77.7,
+      "candidate_p95_ms": 16.009,
+      "original_samples": 10,
+      "candidate_samples": 10,
+      "original_median_ms": 77.2575,
+      "candidate_median_ms": 15.9185,
+      "median_change_percent": -79.395527942271,
+      "requires_regression_investigation": false
+    },
+    {
+      "command": "INSERT",
+      "cardinality": 100,
+      "original_p95_ms": 0.9757,
+      "candidate_p95_ms": 0.42875,
+      "original_samples": 10,
+      "candidate_samples": 10,
+      "original_median_ms": 0.9375,
+      "candidate_median_ms": 0.355,
+      "median_change_percent": -62.1333333333333,
+      "requires_regression_investigation": false
+    },
+    {
+      "command": "UPDATE",
+      "cardinality": 100,
+      "original_p95_ms": 79.88305,
+      "candidate_p95_ms": 16.46455,
+      "original_samples": 10,
+      "candidate_samples": 10,
+      "original_median_ms": 78.0495,
+      "candidate_median_ms": 16.1175,
+      "median_change_percent": -79.349643495474,
+      "requires_regression_investigation": false
+    },
+    {
+      "command": "DELETE",
+      "cardinality": 10000,
+      "original_p95_ms": 103.44435,
+      "candidate_p95_ms": 34.48225,
+      "original_samples": 10,
+      "candidate_samples": 10,
+      "original_median_ms": 93.749,
+      "candidate_median_ms": 31.498,
+      "median_change_percent": -66.4017749522662,
+      "requires_regression_investigation": false
+    },
+    {
+      "command": "INSERT",
+      "cardinality": 10000,
+      "original_p95_ms": 84.9917,
+      "candidate_p95_ms": 25.4967,
+      "original_samples": 10,
+      "candidate_samples": 10,
+      "original_median_ms": 83.313,
+      "candidate_median_ms": 24.071,
+      "median_change_percent": -71.107750291071,
+      "requires_regression_investigation": false
+    },
+    {
+      "command": "UPDATE",
+      "cardinality": 10000,
+      "original_p95_ms": 189.0116,
+      "candidate_p95_ms": 67.246,
+      "original_samples": 10,
+      "candidate_samples": 10,
+      "original_median_ms": 182.9865,
+      "candidate_median_ms": 58.4255,
+      "median_change_percent": -68.0711418601919,
+      "requires_regression_investigation": false
+    }
+  ],
+  "initplan_execution_counts": {
+    "candidate DELETE": {
+      "samples": 33,
+      "initplans": 66,
+      "loops_equal_1": 66,
+      "loops_above_1": 0
+    },
+    "original DELETE": {
+      "samples": 33,
+      "initplans": 0,
+      "loops_equal_1": 0,
+      "loops_above_1": 0
+    },
+    "candidate INSERT": {
+      "samples": 33,
+      "initplans": 66,
+      "loops_equal_1": 66,
+      "loops_above_1": 0
+    },
+    "original INSERT": {
+      "samples": 33,
+      "initplans": 0,
+      "loops_equal_1": 0,
+      "loops_above_1": 0
+    },
+    "candidate UPDATE": {
+      "samples": 33,
+      "initplans": 132,
+      "loops_equal_1": 132,
+      "loops_above_1": 0
+    },
+    "original UPDATE": {
+      "samples": 33,
+      "initplans": 0,
+      "loops_equal_1": 0,
+      "loops_above_1": 0
+    }
+  },
+  "rebind": {
+    "note": "Path/hash rebind of the same isolated runtime execution after successor reversion; not a new run.",
+    "predecessor_migration": "supabase/migrations/20261018172640_public_admin_rls_initplans.sql",
+    "successor_migration": "supabase/migrations/20261018230020_public_admin_rls_initplans.sql",
+    "predecessor_migration_sha256": "52cad2388cd6b3ccbbe3c2a07cdd60aaf06b9a1b3ab191d03e0b6452a01d216a",
+    "successor_migration_sha256": "4359116d9b580f8f80d9e04a66554cb8496d0e7f586e2e6de8e4db82c7e3bdd6",
+    "executable_sql_changed": false,
+    "claim": 4478,
+    "version": "20261018230020"
+  }
+}

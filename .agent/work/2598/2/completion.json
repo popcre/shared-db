@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "work_issue": 2598,
+  "outcome": "ready-for-merge",
+  "pr": 4440,
+  "migration_versions": [
+    "20261018164004"
+  ],
+  "contract_ref": "refs/db-contracts/2598/2",
+  "contract_sha256": "7e69eafec44a1a1addbf93d7c91afbcc02cf03fc7722da7bf211b469b8ca3248",
+  "head_sha": "b7f38bb0820b6ea9c7260cdea4ad35f88578fddb",
+  "base_sha": "e5e6245e7cf7708ef47fe613f372c2f50e821309",
+  "files_changed": [
+    ".github/live-proofs/2598.sql",
+    "supabase/migrations/20261018164004_nbcu_candidate_evidence.sql",
+    "supabase/tests/nbcu_candidate_evidence_contracts.sql"
+  ],
+  "db_reads": [
+    "function plm.licensing_consolidation_capture_snapshot"
+  ],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/check-live-proof-probe.test.mjs scripts/check-sql.test.mjs",
+      "exit_code": 0,
+      "evidence": "87 focused native static/unit tests passed after current-main refresh; no hosted SQL execution."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL checks passed after current-main refresh; no live migration ledger configured and no database execution."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Literal git diff --check and supplemental origin/main...HEAD whitespace checks passed."
+    }
+  ],
+  "assumptions_resolved": [
+    "Fresh claim4439/version20261018164004 and actual root identity; original applied/frozen source unchanged.",
+    "Production read-only function body matched expected3c60cbc197bc3919056e765d3e9dbc12. No database write or real source consolidation occurred.",
+    "This conventional premerge source record is not live/application completion. Independent exact-source review and hosted native SQL proof remain pending; no merge/promotion until their gates pass.",
+    "Formal contract publication followed disclosed draft implementation preparation; no prospective-start attestation is claimed.",
+    "Successor generation2 explicitly binds immutable generation1; current upstream contains only unrelated handoff and timeline documentation changes."
+  ],
+  "stop_conditions_hit": []
+}

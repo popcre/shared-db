@@ -1,6 +1,6 @@
 ---
 issue: 4421
-status: OPEN
+status: BLOCKED
 owner: codex/rls-performance-plan
 ---
 
@@ -28,11 +28,13 @@ October 18, 2026 EDT: planning/evidence only. No implementation started, no poli
 
 Production read-only inspection and Supabase advisor both found 69 policies / 49 tables: 46 public-admin, 17 owner-uid, four app-access, two packaging/JWT. The plan STATUS intentionally leaves all implementation steps open. Supabase MCP reads and gh worked; preview/write access not demonstrated. No background worker is executing this plan.
 
+Publication blocker verified October 18, 2026, 10:35 AM EDT: [PR #4423](https://github.com/popcre/shared-db/pull/4423) contains the committed/pushed plan. Repository classification says “all 5 changed file(s) are lightweight prose documents”, but installed task gate escalates the plan/router paths to reviewer-safety and refuses ship without an assigned independent exact-head report. Canonical allocator refused “nonclosing maintenance binding refused: one current keyed canonical evidence pair is required”. No reviewer was assigned and no review ran. The repository documentation route did not require such a pair; publishing one retrospectively would contradict the pre-work guarantee. Do not fabricate it. This session owns resolving supported publication; a successor must re-read the current gates or take a genuinely fresh prospectively contracted publication route without claiming this prior plan was written under that contract.
+
 ## 4. Failed or rejected approaches
 
 UID-only wrapping improved assets expression median by only 7.3%; complete request-constant permission wrapping improved 97.2%. These are controlled expression measurements, not end-to-end RLS or app speed. Elevated tests do not prove client access. Never use broad regex rewriting, wrap row-dependent ownership predicates wholesale, consolidate policies, change grants/helper bodies, disable RLS, or run write benchmarks on production.
 
-Task class “read-only” was rejected as unknown; investigation used shared-db and plan publication uses prose. All durable evidence is in the tracked baseline, not a temporary report. See plan §7 for the complete rejected list and reasons.
+Task class “read-only” was rejected as unknown; investigation used shared-db. Plan publication initially declared prose, then redeclared reviewer-safety when the installed gate required it. The Claude helper invocation was refused before contact because registry state is absent. An initial allocator attempt also refused ambiguous Refs issue binding; PR body now has exactly Refs #4421, with parent #2326 as a URL. The next allocator attempt refused the missing prospective keyed evidence pair, as recorded in §3. No bypass or fabricated evidence was used. All durable evidence is in the tracked baseline, not a temporary report. See plan §7 for the complete rejected list and reasons.
 
 ## 5. Root causes and key findings
 

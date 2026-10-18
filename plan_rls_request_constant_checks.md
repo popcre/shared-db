@@ -55,7 +55,7 @@ New matching policies discovered at execution must be recorded and individually 
 
 ## 5. Current state and code evidence
 
-No remediation SQL, migration reservation, structural claim, preview apply or production apply exists from this session. Only live read-only inspection and expression benchmarks were performed. This document and the baseline are planning artifacts; publication/merge is verified separately in the planning PR and issue. Never infer deployment from a plan commit.
+No remediation SQL, migration reservation, structural claim, preview apply or production apply exists from this session. Only live read-only inspection and expression benchmarks were performed. This document and the baseline are planning artifacts; publication/merge is verified separately in the planning PR and issue. Never infer deployment from a plan commit. Publication candidate is committed/pushed in [PR #4423](https://github.com/popcre/shared-db/pull/4423), but merge is blocked by conflicting documentation and installed reviewer-safety admission. The linked handoff §3 and issue #4421 preserve exact refusals; no independent review was assigned or run. Do not fabricate a retroactive pre-work contract.
 
 Repository anchors at the planning base:
 - supabase/ci-bootstrap/010_pre_adoption_baseline.sql:5170–5180 defines the adopted public.has_role helper. Line 6635 contains the legacy assets insert policy; nearby policies establish legacy context. This file supports clean CI setup; it is NOT a migration to edit or run against production.

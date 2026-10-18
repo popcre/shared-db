@@ -168,7 +168,7 @@ export function requiresReturnAddress(workType) {
 export function queueExit(workType) {
   if (workType === 'structural') return 'accept'
   const exit = NON_STRUCTURAL_EXITS[workType]
-  if (!exit) throw new LaneError(`no structural-lane exit is defined for work_type ${workType}`)
+  if (!exit) throw new LaneError(`no orchestrator exit is defined for work_type ${workType}`)
   return exit
 }
 

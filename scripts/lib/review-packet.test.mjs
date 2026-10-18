@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildReviewBrief, loadReviewBrief, REVIEW_ASSESSMENTS, storeReviewBrief } from './review-packet.mjs'
+import { buildProductionRiskRequest, buildReviewBrief, loadReviewBrief, REVIEW_ASSESSMENTS, storeReviewBrief } from './review-packet.mjs'
+import { ASSESSMENT_SCHEMA } from '../prove-production-risk-acceptance.mjs'
 import { prepareCompleteReviewBrief, runGovernedReview } from '../run-governed-review.mjs'
 
 const source = { repository: 'popcre/shared-db', pr: 34, mergeBase: 'b'.repeat(40), headSha: 'a'.repeat(40), sourceDigest: 'c'.repeat(64), files: [{ filename: 'supabase/migrations/20260920000000_test.sql', status: 'added' }] }
@@ -75,4 +76,57 @@ test('prompt-file and equals forms preserve author evidence and receive all asse
     for (const [title] of REVIEW_ASSESSMENTS) assert.ok(stored.includes(title))
     assert.match(stored, /author evidence/)
   }
+})
+
+// Issue #4410: runner-verified production-risk request section.
+const riskMain = 'e'.repeat(40)
+const mergedPr = { ...pullRequest, merged: true, merged_at: '2026-10-18T00:00:00Z' }
+const aheadComparison = { status: 'ahead', behind_by: 0, files: [{ filename: 'supabase/migrations/20261001000000_other.sql', status: 'added' }] }
+const riskClasses = 'permanent_data_rewrite_or_loss,expected_downtime,material_access_change'
+test('production-risk request states verified binding and the exact acceptance skeleton', () => {
+  const section = buildProductionRiskRequest({ source, pullRequest: mergedPr, mainSha: riskMain, risks: riskClasses, comparison: aheadComparison })
+  assert.match(section, /runner-verified; this section is not author text/)
+  assert.ok(section.includes(`ancestor of main ${riskMain}`))
+  const json = JSON.parse(/```text\n(.*)\n```/.exec(section)[1])
+  assert.deepEqual(Object.keys(json).sort(), ['assessed_risks', 'main_sha', 'ordered_allowlist', 'schema', 'source_pr'])
+  assert.equal(json.schema, ASSESSMENT_SCHEMA)
+  assert.equal(json.main_sha, riskMain)
+  assert.deepEqual(json.ordered_allowlist, ['20260920000000'])
+  assert.equal(json.source_pr, 34)
+  assert.deepEqual(Object.keys(json.assessed_risks), ['expected_downtime', 'material_access_change', 'permanent_data_rewrite_or_loss'])
+  assert.ok(!section.includes('```production-risk-assessment'), 'the request must never itself parse as an assessment')
+  assert.match(section, /REVISE or REJECT/)
+})
+test('production-risk request refuses unverifiable or widened bindings', () => {
+  const base = { source, pullRequest: mergedPr, mainSha: riskMain, risks: riskClasses, comparison: aheadComparison }
+  const cases = [
+    [{ mainSha: 'abc' }, /exact 40-hex main/],
+    [{ pullRequest: pullRequest }, /merged source pull request/],
+    [{ risks: '' }, /nonempty subset/],
+    [{ risks: 'recovery_unproven' }, /nonempty subset/],
+    [{ comparison: { ...aheadComparison, status: 'behind', behind_by: 1 } }, /not an ancestor/],
+    [{ comparison: { ...aheadComparison, status: 'diverged', behind_by: 0 } }, /not an ancestor/],
+    [{ comparison: { ...aheadComparison, files: undefined } }, /may be truncated/],
+    [{ comparison: { ...aheadComparison, files: Array.from({ length: 300 }, (_, i) => ({ filename: `f${i}` })) } }, /may be truncated/],
+    [{ comparison: { ...aheadComparison, files: [{ filename: source.files[0].filename, status: 'modified' }] } }, /differs between the reviewed head and main/],
+    [{ source: { ...source, files: [{ filename: 'scripts/x.mjs', status: 'modified' }] } }, /added or modified migrations/],
+    [{ source: { ...source, files: [{ filename: source.files[0].filename, status: 'removed' }] } }, /added or modified migrations/],
+  ]
+  for (const [patch, pattern] of cases) assert.throws(() => buildProductionRiskRequest({ ...base, ...patch }), pattern)
+})
+test('loadReviewBrief adds the request only when asked, reading the head-to-main comparison', () => {
+  const paths = []
+  const gh = args => {
+    paths.push(args[1])
+    if (args[1].endsWith('/pulls/34')) return { status: 0, stdout: JSON.stringify(mergedPr) }
+    if (args[1].includes('/compare/')) return { status: 0, stdout: JSON.stringify(aheadComparison) }
+    return github(args)
+  }
+  const plain = loadReviewBrief(options, source, { github: gh })
+  assert.ok(!plain.includes('Production-risk assessment request'))
+  assert.ok(!paths.some(p => p.includes('/compare/')))
+  const asked = loadReviewBrief({ ...options, productionRiskMain: riskMain, productionRiskClasses: riskClasses }, source, { github: gh })
+  assert.ok(paths.includes(`repos/popcre/shared-db/compare/${source.headSha}...${riskMain}`))
+  assert.ok(asked.indexOf('Production-risk assessment request') < asked.indexOf('## Evidence supplied by the author'))
+  assert.throws(() => loadReviewBrief({ ...options, productionRiskClasses: riskClasses }, source, { github: gh }), /exact 40-hex main/)
 })

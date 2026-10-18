@@ -11,14 +11,16 @@
   "head_sha": "61a34671906eeec71346d25ae138d14a60bd38a4",
   "base_sha": "d8c6008d3f3687987d3cf8e0d757e999983a6d4e",
   "files_changed": [
+    ".agent/work/4336/10/completion.json",
+    ".agent/work/4336/10/contract.json",
     "config/production-verification-sidecar-registry.json",
+    "scripts/lib/session-authority.mjs",
+    "scripts/lib/session-authority.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
     "scripts/production-verification-sidecars/20261018192732.json",
     "scripts/test_order_list_find_position.py",
     "supabase/migrations/20261018192732_orderlist_so_date_sort.sql",
-    "supabase/tests/dam_order_list_sales_order_date_sort.sql",
-    "scripts/lib/session-authority.mjs",
-    "scripts/lib/session-authority.test.mjs",
-    "scripts/manage-migration-author-lanes.mjs"
+    "supabase/tests/dam_order_list_sales_order_date_sort.sql"
   ],
   "db_reads": [
     "table coldlion.order_history_line",

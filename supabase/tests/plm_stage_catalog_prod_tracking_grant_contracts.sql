@@ -4,7 +4,7 @@
 --
 -- A. Catalogue: exact privilege matrix, no CREATE on plm, no new anon/authenticated
 --    privilege, RLS still enabled, each policy targets only the tracking grant role.
--- B. Behaviour: as designflow_prod_tracking_grants, the seeded catalog is visible,
+-- B. Behaviour (only when the session already holds the role): as designflow_prod_tracking_grants, the seeded catalog is visible,
 --    an editor write succeeds and bumps the list version, and progress writes are
 --    refused at the privilege level.
 
@@ -32,15 +32,23 @@ begin
   select count(*) into v_n from pg_policies
     where schemaname = 'plm' and policyname like '%dflow_prod_tracking_read' and cmd <> 'SELECT';
   if v_n <> 0 then raise exception 'A7 read policies allow writes'; end if;
+  select count(*) into v_n from pg_policies
+    where schemaname = 'plm' and policyname like '%dflow_prod_tracking%'
+      and (qual is distinct from 'true' or (cmd = 'ALL' and with_check is distinct from 'true') or permissive <> 'PERMISSIVE');
+  if v_n <> 0 then raise exception 'A8 policy predicates differ from true'; end if;
 end
 $a$;
 
--- Membership exists only inside this rolled-back transaction.
-grant designflow_prod_tracking_grants to current_user;
-set local role designflow_prod_tracking_grants;
+-- Behaviour runs only where the test session already holds the grant role. A test must
+-- not grant itself role membership: on the CI stack that GRANT terminated the server.
 do $b$
 declare v_lists int; v_stages int; v_before int; v_after int; v_id int; v_denied boolean := false;
 begin
+  if not pg_has_role(current_user, 'designflow_prod_tracking_grants', 'MEMBER') then
+    raise notice 'B skipped: % is not a member of designflow_prod_tracking_grants', current_user;
+    return;
+  end if;
+  set local role designflow_prod_tracking_grants;
   select count(*) into v_lists from plm.stage_list;
   select count(*) into v_stages from plm.stage;
   if v_lists = 0 or v_stages = 0 then raise exception 'B1 catalog invisible to tracking role (lists %, stages %)', v_lists, v_stages; end if;
@@ -57,6 +65,6 @@ begin
   exception when insufficient_privilege then v_denied := true;
   end;
   if not v_denied then raise exception 'B3 prod_stage_option write was not refused'; end if;
+  reset role;
 end
 $b$;
-reset role;

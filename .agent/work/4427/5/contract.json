@@ -1,16 +1,16 @@
 {
   "schema_version": 2,
-  "generation": 4,
+  "generation": 5,
   "evidence_parent": {
     "work_issue": 4427,
-    "generation": 3,
-    "contract_sha256": "a76eef78e2f064d7b93360ccb08f1f8132a406cc55205e1b4d332d25e846df22"
+    "generation": 4,
+    "contract_sha256": "bb3391f663499f736eae9e61c9f73d083b9a3072f819f20ea1a14771ddcb5d49"
   },
   "work_issue": 4427,
   "work_type": "structural",
   "route": "claim-first",
   "goal": "Qualify44 request-constant admin policy rewrites and document2 currently unreachable archival advisor entries; preserve all46 baseline dispositions and existing permissions.",
-  "base_sha": "a24b6776880164823536344f441dcba497a1e309",
+  "base_sha": "d771ef8cb6eb19fe24d6feccc588d858180593ca",
   "dispatcher": "codex/01a14fa2-bd3e-7d62-ba77-7bdfd7976f0e",
   "worker": "codex/01a14fa2-bd3e-7d62-ba77-7bdfd7976f0e-4427",
   "branch": "codex/rls-admin-01a14fa2",
@@ -20,14 +20,20 @@
     "supabase/tests/rls_public_admin_initplan_contracts.sql",
     "scripts/rls-public-admin-initplan.test.mjs",
     "docs/verification/rls-initplan/4427/manifest.json",
-    "docs/verification/rls-initplan/4427/verification.md"
+    "docs/verification/rls-initplan/4427/verification.md",
+    "plan_rls_request_constant_checks.md",
+    "docs/verification/rls-initplan/4427/source-runtime-evidence.json.gz",
+    "docs/verification/rls-initplan/4427/source-runtime-summary.json"
   ],
   "file_writes": [
     "supabase/migrations/20261018172640_public_admin_rls_initplans.sql",
     "supabase/tests/rls_public_admin_initplan_contracts.sql",
     "scripts/rls-public-admin-initplan.test.mjs",
     "docs/verification/rls-initplan/4427/manifest.json",
-    "docs/verification/rls-initplan/4427/verification.md"
+    "docs/verification/rls-initplan/4427/verification.md",
+    "plan_rls_request_constant_checks.md",
+    "docs/verification/rls-initplan/4427/source-runtime-evidence.json.gz",
+    "docs/verification/rls-initplan/4427/source-runtime-summary.json"
   ],
   "db_reads": [
     "function public.has_role",
@@ -165,7 +171,8 @@
     "Claim4443 retains all original85 write locks and29 read locks; the additional4 archive read identities are covered by its stronger existing exclusive locks. Permanent version20261018172640 is unchanged.",
     "Generations1\u20133 remain immutable and preserve the authorized source checkpoints. Generation4 is prospective before reducing actual DDL.",
     "Source completion does not attest CI/review/preview/promotion/live success. Existing required CI, protected seals, assigned exact-head review, guarded merge, qualified promotion and live outcome lifecycle remain mandatory.",
-    "No generated type shape changes. Re-prove archival role/privilege/caller conditions before final false-positive acceptance; future grants/memberships/policy changes reopen qualification."
+    "No generated type shape changes. Re-prove archival role/privilege/caller conditions before final false-positive acceptance; future grants/memberships/policy changes reopen qualification.",
+    "Generation5 prospectively adds durable sanitized synthetic CI raw-plan/access evidence and current plan progress; no extra database objects or live authority. Previous generations and exact source checkpoints remain preserved."
   ],
   "stop_conditions": [
     "Any target expression/helper/ACL/union drift or collision",

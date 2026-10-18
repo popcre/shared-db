@@ -153,6 +153,11 @@ insert into public.assets(id,filename,relative_path,file_type,quick_hash,modifie
 values('44270000-0000-4000-8000-000000000001','zz-rls4427-probe.ai',
  'zz-fixture-rls4427/zz-rls4427-probe.ai','ai','zz-rls4427-synthetic-probe',now(),null,null);
 
+-- Mixed visibility fixture is hidden by the existing visible-assets SELECT policy.
+insert into public.assets(id,filename,relative_path,file_type,quick_hash,modified_at,is_deleted,style_group_id,thumbnail_error)
+values('4427ad00-0000-4000-8000-000000000001','zz-rls4427-hidden.ai',
+ 'zz-fixture-rls4427/zz-hidden.ai','ai','zz-rls4427-adversarial-hidden',now(),true,null,null);
+
 do $extra_seed_guard$
 begin
  if (select count(*) from auth.users where
@@ -257,6 +262,75 @@ insert into rls4427_cases values
 ('profile_own_update',$q$with changed as (update public.profiles set email='zz-rls4427-own@fixture.invalid' where user_id=auth.uid() returning user_id) select jsonb_build_object('count',count(*)) from changed$q$),
 ('profile_foreign_update',$q$with changed as (update public.profiles set email='zz-rls4427-foreign@fixture.invalid' where user_id=case when auth.uid()='00000000-7541-4000-8000-000000000001'::uuid then '00000000-7541-4000-8000-000000000002'::uuid else '00000000-7541-4000-8000-000000000001'::uuid end returning user_id) select jsonb_build_object('count',count(*)) from changed$q$),
 ('config_public_union_read',$q$select jsonb_build_object('count',count(*)) from public.admin_config where key='zz_rls4427_public_probe'$q$);
+
+-- Empty, NULL and mixed inputs retain exact original SQLSTATE and row visibility.
+-- The IDs and keys below are invented rollback-only fixtures; no owner column is invented.
+insert into rls4427_cases(name,statement_text) values
+('adversarial:asset_mixed_visible_hidden_null_read',$edge$
+ select jsonb_build_object('count',count(*)) from public.assets where id=any(array[
+ '44270000-0000-4000-8000-000000000001'::uuid,
+ '4427ad00-0000-4000-8000-000000000001'::uuid,null::uuid])$edge$),
+('adversarial:asset_empty_array_read',$edge$
+ select jsonb_build_object('count',count(*)) from public.assets where id=any('{}'::uuid[])$edge$),
+('adversarial:asset_null_read',$edge$
+ select jsonb_build_object('count',count(*)) from public.assets where id=null::uuid$edge$),
+('adversarial:profile_mixed_owners_null_read',$edge$
+ select jsonb_build_object('count',count(*)) from public.profiles where user_id=any(array[
+ '00000000-7541-4000-8000-000000000001'::uuid,
+ '00000000-7541-4000-8000-000000000002'::uuid,null::uuid])$edge$),
+('adversarial:config_mixed_public_secret_null_read',$edge$
+ select jsonb_build_object('count',count(*)) from public.admin_config where key=any(array[
+ 'zz_rls4427_secret_probe','zz_rls4427_public_probe',null::text])$edge$),
+('adversarial:config_empty_array_read',$edge$
+ select jsonb_build_object('count',count(*)) from public.admin_config where key=any('{}'::text[])$edge$),
+('adversarial:config_null_read',$edge$
+ select jsonb_build_object('count',count(*)) from public.admin_config where key=null::text$edge$),
+('adversarial:asset_two_row_insert',$edge$
+ with changed as(insert into public.assets(id,filename,relative_path,file_type,quick_hash,modified_at)
+ values('4427ad01-0000-4000-8000-000000000001','zz-rls4427-mixed-a.ai',
+ 'zz-fixture-rls4427/zz-mixed-a.ai','ai','zz-rls4427-adversarial-mixed-a',now()),
+ ('4427ad01-0000-4000-8000-000000000002','zz-rls4427-mixed-b.pdf',
+ 'zz-fixture-rls4427/zz-mixed-b.pdf','pdf','zz-rls4427-adversarial-mixed-b',now()) returning id)
+ select jsonb_build_object('count',count(*)) from changed$edge$),
+('adversarial:asset_mixed_existing_absent_null_update',$edge$
+ with changed as(update public.assets set workflow_status='other' where id=any(array[
+ '44270000-0000-4000-8000-000000000001'::uuid,
+ '4427adff-0000-4000-8000-000000000001'::uuid,null::uuid]) returning id)
+ select jsonb_build_object('count',count(*)) from changed$edge$),
+('adversarial:asset_empty_insert',$edge$
+ with changed as(insert into public.assets(id,filename,relative_path,file_type,quick_hash,modified_at)
+ select gen_random_uuid(),'zz-rls4427-empty.ai','zz-fixture-rls4427/empty.ai','ai'::public.file_type,
+ 'zz-rls4427-empty',now() where false returning id)
+ select jsonb_build_object('count',count(*)) from changed$edge$),
+('adversarial:asset_mixed_valid_null_filename_insert',$edge$
+ with changed as(insert into public.assets(id,filename,relative_path,file_type,quick_hash,modified_at)
+ values('4427ad02-0000-4000-8000-000000000001','zz-rls4427-valid.ai',
+ 'zz-fixture-rls4427/zz-valid.ai','ai','zz-rls4427-adversarial-valid',now()),
+ ('4427ad02-0000-4000-8000-000000000002',null,
+ 'zz-fixture-rls4427/zz-null-filename.ai','ai','zz-rls4427-adversarial-null',now()) returning id)
+ select jsonb_build_object('count',count(*)) from changed$edge$),
+('adversarial:config_two_row_insert',$edge$
+ with changed as(insert into public.admin_config(key,value)
+ values('zz_rls4427_secret_mixed_insert','{"synthetic":true}'::jsonb),
+ ('zz_rls4427_public_mixed_insert','{"synthetic":true}'::jsonb) returning key)
+ select jsonb_build_object('count',count(*)) from changed$edge$),
+('adversarial:config_mixed_public_secret_null_update',$edge$
+ with changed as(update public.admin_config set value='{"synthetic":true,"mixed":true}'::jsonb
+ where key=any(array['zz_rls4427_secret_probe','zz_rls4427_public_probe',null::text]) returning key)
+ select jsonb_build_object('count',count(*)) from changed$edge$),
+('adversarial:config_mixed_public_secret_null_delete',$edge$
+ with changed as(delete from public.admin_config where key=any(array[
+ 'zz_rls4427_secret_probe','zz_rls4427_public_probe',null::text]) returning key)
+ select jsonb_build_object('count',count(*)) from changed$edge$),
+('adversarial:config_empty_insert',$edge$
+ with changed as(insert into public.admin_config(key,value)
+ select 'zz_rls4427_secret_empty_insert','{}'::jsonb where false returning key)
+ select jsonb_build_object('count',count(*)) from changed$edge$),
+('adversarial:config_mixed_valid_null_value_insert',$edge$
+ with changed as(insert into public.admin_config(key,value)
+ values('zz_rls4427_secret_valid_mixed','{}'::jsonb),
+ ('zz_rls4427_secret_null_mixed',null::jsonb) returning key)
+ select jsonb_build_object('count',count(*)) from changed$edge$);
 
 -- Bounded reads across the whole table set are useful equality/error probes, but
 -- empty tables and other permissive policies can mask admin predicate execution.
@@ -453,12 +527,26 @@ begin
   execute 'execute rls4427_prepared' into v_admin;
   execute 'reset role';
   if v_admin is distinct from true then raise exception '4427 assigned admin not effective'; end if;
+  execute 'set local role authenticated';
+  execute 'execute rls4427_prepared_policy' into v_count;
+  execute 'reset role';
+  if v_count is distinct from 1::bigint then raise exception '4427 prepared policy lost assigned admin'; end if;
   delete from public.user_roles where user_id='00000000-7541-4000-8000-000000000001'::uuid and role='admin';
   execute 'set local role authenticated';
   execute 'execute rls4427_prepared' into v_admin;
   execute 'reset role';
   if v_admin is distinct from false then raise exception '4427 role revocation invisible next statement'; end if;
+  execute 'set local role authenticated';
+  execute 'execute rls4427_prepared_policy' into v_count;
+  execute 'reset role';
+  if v_count is distinct from 0::bigint then raise exception '4427 prepared policy retained revoked admin permission'; end if;
   insert into public.user_roles(user_id,role) values('00000000-7541-4000-8000-000000000001','admin');
+  execute 'set local role authenticated';
+  execute 'execute rls4427_prepared' into v_admin;
+  execute 'execute rls4427_prepared_policy' into v_count;
+  execute 'reset role';
+  if v_admin is distinct from true or v_count is distinct from 1::bigint then
+   raise exception '4427 prepared actual policy did not observe role regrant'; end if;
  end loop;
  -- Compare exact results and exact SQLSTATE, including malformed subject behavior.
  if (select count(*) from rls4427_results)<>12*((select count(*) from rls4427_cases)+2) then raise exception '4427 probe coverage incomplete'; end if;
@@ -520,6 +608,48 @@ end if;
  and result#>'{result,labels}' is distinct from '["member_fixture"]'::jsonb) then
   raise exception '4427 overlapping own-profile policy was lost';
  end if;
+ -- Positive and negative controls prevent empty/error-only equality from passing.
+ if exists(select 1 from rls4427_results where context in('admin','admin_again','member')
+ and probe in('adversarial:asset_mixed_visible_hidden_null_read',
+ 'adversarial:asset_empty_array_read','adversarial:asset_null_read',
+ 'adversarial:profile_mixed_owners_null_read','adversarial:config_mixed_public_secret_null_read',
+ 'adversarial:config_empty_array_read','adversarial:config_null_read',
+ 'adversarial:asset_two_row_insert','adversarial:asset_mixed_existing_absent_null_update',
+ 'adversarial:asset_empty_insert','adversarial:asset_mixed_valid_null_filename_insert',
+ 'adversarial:config_two_row_insert','adversarial:config_mixed_public_secret_null_update',
+ 'adversarial:config_mixed_public_secret_null_delete','adversarial:config_empty_insert',
+ 'adversarial:config_mixed_valid_null_value_insert')
+ and (result->>'sqlstate' is distinct from case
+ when context='member' and probe in('adversarial:asset_two_row_insert','adversarial:config_two_row_insert') then '42501'
+ when context<>'member' and probe in('adversarial:asset_mixed_valid_null_filename_insert',
+ 'adversarial:config_mixed_valid_null_value_insert') then '23502'
+ -- Member constraint-error ordering is compared exactly before/after rather than invented.
+ when context='member' and probe in('adversarial:asset_mixed_valid_null_filename_insert',
+ 'adversarial:config_mixed_valid_null_value_insert') then result->>'sqlstate'
+ else '00000' end
+ or (result->>'sqlstate'='00000' and result#>>'{result,count}' is distinct from case
+ when probe='adversarial:asset_mixed_visible_hidden_null_read' then '1'
+ when probe in('adversarial:profile_mixed_owners_null_read','adversarial:config_mixed_public_secret_null_read')
+ then case when context='member' then '1' else '2' end
+ when probe in('adversarial:asset_two_row_insert','adversarial:config_two_row_insert',
+ 'adversarial:config_mixed_public_secret_null_update','adversarial:config_mixed_public_secret_null_delete')
+ then case when context='member' then '0' else '2' end
+ when probe='adversarial:asset_mixed_existing_absent_null_update'
+ then case when context='member' then '0' else '1' end
+ else '0' end))) then
+ raise exception '4427 mixed/empty/NULL operation control failed';
+ end if;
+ if exists(select 1 from rls4427_results where context='member'
+ and probe in('adversarial:asset_mixed_valid_null_filename_insert',
+ 'adversarial:config_mixed_valid_null_value_insert') and (result->>'sqlstate' is null or result->>'sqlstate' not in('42501','23502'))) then
+ raise exception '4427 mixed invalid batch succeeded instead of preserving failure'; end if;
+ if exists(select 1 from public.assets where id in(
+ '4427ad01-0000-4000-8000-000000000001','4427ad01-0000-4000-8000-000000000002',
+ '4427ad02-0000-4000-8000-000000000001','4427ad02-0000-4000-8000-000000000002'))
+ or exists(select 1 from public.admin_config where key in(
+ 'zz_rls4427_secret_mixed_insert','zz_rls4427_public_mixed_insert',
+ 'zz_rls4427_secret_valid_mixed','zz_rls4427_secret_null_mixed','zz_rls4427_secret_empty_insert')) then
+ raise exception '4427 adversarial batch leaked rows outside its probe subtransaction'; end if;
 end $equivalence$;
 
 deallocate rls4427_prepared;
@@ -551,7 +681,7 @@ begin
   from pg_type t where t.oid='public.app_role'::regtype)) into v_now;
  select snapshot into v_before from rls4427_catalog_before;
  if v_now is distinct from v_before then raise exception '4427 helper/ACL/owner/RLS/type metadata changed'; end if;
- raise notice '4427 command fixtures passed:1932 before/after outcomes; 39 tables/72 policy identities. This is local proof, not preview, performance or live acceptance.';
+ raise notice '4427 command fixtures passed:2124 before/after outcomes; 39 tables/72 policy identities. This is local proof, not preview, performance or live acceptance.';
 end $catalog$;
 
 -- Sanitized results contain only counts, synthetic labels, boolean controls and SQLSTATE.

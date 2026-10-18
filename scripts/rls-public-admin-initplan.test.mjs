@@ -7,7 +7,7 @@ import { validateClaimObjects } from './lib/lanes/claims.mjs'
 const migration = 'supabase/migrations/20261018172640_public_admin_rls_initplans.sql'
 const sql = readFileSync(new URL('../' + migration, import.meta.url), 'utf8')
 const manifest = JSON.parse(readFileSync(new URL('../docs/verification/rls-initplan/4427/manifest.json', import.meta.url)))
-const contract = JSON.parse(readFileSync(new URL('../.agent/work/4427/1/contract.json', import.meta.url)))
+const contract = JSON.parse(readFileSync(new URL('../.agent/work/4427/3/contract.json', import.meta.url)))
 const quote = value => '"' + value.replaceAll('"', '""') + '"'
 
 test('the canonical DDL inspector recognizes exactly the admitted policy and table writes', () => {

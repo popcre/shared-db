@@ -1,12 +1,16 @@
 {
   "schema_version": 2,
-  "generation": 1,
-  "evidence_parent": null,
+  "generation": 3,
+  "evidence_parent": {
+    "work_issue": 4427,
+    "generation": 2,
+    "contract_sha256": "583d6a12de036d133479610f60ed3aedc92ecb9094d67841321791d6f9c536f6"
+  },
   "work_issue": 4427,
   "work_type": "structural",
   "route": "claim-first",
-  "goal": "Optimize exactly46 admin request-constant policy checks; preserve all existing permissions and require complete live acceptance.",
-  "base_sha": "2af76a71d3cd1d5847f4bc6b7579712fd6cc3dae",
+  "goal": "Complete pre-merge source qualification of exact46 public-admin RLS expression checks; retain separate CI/review/preview/promotion/live-outcome gates.",
+  "base_sha": "b94f3984d218c7a63c1bbe4fbdc060dd2629e47b",
   "dispatcher": "codex/01a14fa2-bd3e-7d62-ba77-7bdfd7976f0e",
   "worker": "codex/01a14fa2-bd3e-7d62-ba77-7bdfd7976f0e-4427",
   "branch": "codex/rls-admin-01a14fa2",
@@ -102,7 +106,7 @@
     "policy \"admin full access pdf_text_samples\" on public.pdf_text_samples",
     "policy \"admin full access style_guide_crawl_runs\" on public.style_guide_crawl_runs",
     "policy \"admin full access style_guide_files\" on public.style_guide_files",
-    "policy \"legacy_erp_item_identity_admin_read\" on plm.legacy_erp_item_identity",
+    "policy legacy_erp_item_identity_admin_read on plm.legacy_erp_item_identity",
     "table archive.erp_items_current",
     "table archive.erp_items_raw",
     "table plm.legacy_erp_item_identity",
@@ -153,22 +157,23 @@
   "required_checks": [
     "node --test scripts/rls-public-admin-initplan.test.mjs",
     "bash scripts/check-sql.sh",
-    "Fresh exact catalog/ACL/helper/complete-policy union snapshots and before/after role/error tests",
-    "Disposable LOCAL contract tests and leased preview tests with full cleanup",
-    "One assigned exact-head APPROVE and required CI/guarded merge",
-    "Existing qualified merged-main preview/automatic production promotion only",
-    "Production ledger/catalog/advisor/actual-role read plans and owning-app approved disposable-write live acceptance"
+    "/home/ahazan/.codex/tmp/rls-resume-01a14fa2/sql-parser-uv/bin/python /home/ahazan/.codex/tmp/rls-resume-01a14fa2/4427-parse-sql.py"
   ],
   "assumptions": [
     "4425 and4426 immutable merged completion records verified",
     "85 exact write keys and29 read keys derive from refreshed46 policy/39 table/72 union catalog",
     "4158 supported ownership recovered and ordinary source claim released;2421 remainsOPEN",
-    "No generated type shape changes"
+    "No generated type shape changes",
+    "Generation1 authorized all checkpointed source; its immutable ref/history remain preserved. Generation2 prospectively corrects evidence-phase ordering, not database authority.",
+    "Source completion does not attest CI, independent review, preview, production or application success. Existing required checks, protected-class seals, guarded merge, qualified promotion and live-outcome lifecycle remain mandatory outside this pre-merge source report.",
+    "Generation3 canonicalizes object spellings using the existing validator; normalized writes/reads are identical to admitted scope and previous grants. Original generations remain immutable."
   ],
   "stop_conditions": [
     "Any target expression/helper/ACL/union drift or collision",
     "Any gate refusal or target identity uncertainty",
     "Any unexpected permission/error result or repeatable median regression above10percent",
-    "Missing safe live write path leaves acceptanceUNKNOWN on4427 and blocks4428"
+    "Missing safe live write path leaves acceptanceUNKNOWN on4427 and blocks4428",
+    "Do not merge until all required CI, access/error matrix and measured regression qualification pass and exact-head independent review approves.",
+    "Do not close4427 or release4428 until preview/production/catalog/advisor/real-role plans and approved live consumer read/write acceptance pass; UNKNOWN stays open on4427."
   ]
 }

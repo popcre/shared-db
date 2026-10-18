@@ -21,6 +21,22 @@ Handoff: [HANDOFF.d/2026-10-18T1421Z-edge-dev3-codex-rls-performance-plan.md](HA
 Evidence: [baseline inventory and measured timings](docs/verification/rls-initplan/2026-10-18-baseline.md).
 This is a planning deliverable. It does not begin implementation, claim objects, reserve versions, or authorize a production write.
 
+### Execution issue map — updated October 18, 2026 EDT
+
+Parent #4421 now has six verified native sub-issues and native blocked-by links. All implementation STATUS rows remain open; issue organization is completed preparation, not repair.
+
+| Child | Responsibility | Prerequisites |
+|---|---|---|
+| [#4425](https://github.com/popcre/shared-db/issues/4425) | Resolve publication gate conflict and land existing plan | None |
+| [#4426](https://github.com/popcre/shared-db/issues/4426) | Fresh read-only inventory, actual query baselines and test specification | None; may proceed independently of publication |
+| [#4427](https://github.com/popcre/shared-db/issues/4427) | All 46 public-admin policies end-to-end | #4425, #4426 |
+| [#4428](https://github.com/popcre/shared-db/issues/4428) | All 17 owner-uid policies end-to-end | #4425, #4426, #4427 |
+| [#4429](https://github.com/popcre/shared-db/issues/4429) | All four app-access policies end-to-end | #4425, #4426, #4428 |
+| [#4430](https://github.com/popcre/shared-db/issues/4430) | Both packaging/JWT policies end-to-end | #4425, #4426, #4429 |
+
+This refines §8's formerly open batching choice: use family deliveries in that order, each carrying its own live-proof checklist through completion; do not create separate proof tickets. Preparation does not claim objects or write fixtures. Each structural child redoes fresh Step 1 custody and executes Steps 2–7 for its family, including preview fixtures, review, merge, production and live acceptance. Parent #4421 remains tracking-only; the admitted repair child is its source PR's single structural issue. Update this plan and each relevant child as results land. No worker is running; the closing session retains recorded coordination ownership until a real successor takes up the existing card.
+
+
 ## 1. Ultimate goal
 
 Make asset and related application operations use less database work while leaving every person's access exactly as it is today. Cover every currently flagged policy, not just assets. Completion means the actual policies work efficiently in production, legitimate actions still work, and forbidden actions remain forbidden.

@@ -68,3 +68,38 @@ Verified planning access: Supabase production read-only MCP and authenticated gh
 Technical open items (implementer-owned, October 18, 2026 EDT): fresh collisions, transitive helper stability, preview parity, consumer mapping, real role fixture coverage, actual workload improvement and safe live application write proof. No business choice is pending. Plan §13 gives criteria and recovery through a new forward migration. No implementation item is complete. Retire this file only when #4421's outcome is fully proven and its obligations are carried or finished; leave the root HANDOFF.md untouched.
 
 Handoff audit: all sections 0–9 present, goal/dead ends/evidence/custody/next gates/access/uncertainty retained, no hidden owner question, portable links included, plan backlink present.
+
+
+## Wrap-up supplement — October 18, 2026 EDT
+
+### Completed issue organization and execution map
+
+Parent [#4421](https://github.com/popcre/shared-db/issues/4421) was updated as the overall tracker. Six native sub-issues and all eleven native dependency links were freshly verified:
+- [#4425](https://github.com/popcre/shared-db/issues/4425): publication safety conflict, owned by this closing Codex coordinator, idle/blocked.
+- [#4426](https://github.com/popcre/shared-db/issues/4426): read-only inventory/baseline refresh, idle; independent of publication.
+- [#4427](https://github.com/popcre/shared-db/issues/4427): 46 admin policies; blocked by #4425/#4426.
+- [#4428](https://github.com/popcre/shared-db/issues/4428): 17 ownership policies; blocked by #4425/#4426/#4427.
+- [#4429](https://github.com/popcre/shared-db/issues/4429): four app-access policies; blocked by #4425/#4426/#4428.
+- [#4430](https://github.com/popcre/shared-db/issues/4430): two packaging policies; blocked by #4425/#4426/#4429.
+
+Each repair child owns its complete claim-to-live-proof lifecycle. No leftover-proof child exists. Table families overlap, so claims and rollouts remain serialized. Update the implementation plan's issue map as work advances; parent is not structural admission. This organization was explicitly requested by Albert and does not itself start database work. Do not close #2326 or any repair outcome on planning publication.
+
+### Closeout custody and safety
+
+No subagents, claims, version reservations or preview/merge/production stage leases were acquired in this session. No migration or application row was written to preview or production. Production timing used read-only transactions with session-local request context and rollback. That is not DDL/DML or actual role-enforced write proof. Preview state and other sessions' reservations were not audited for cleanliness; do not call the shared preview clean.
+
+PR #4423 was freshly verified OPEN and unmerged before closeout; its existing publication blocker remains. Preserve the codex/rls-performance-plan branch and its attached worktree as intentionally resumable. Do not delete or force-reset them. Only this session's plan and handoff were updated for closing; no source/tool/config/database changes were started. Root HANDOFF.md and other sessions' handoffs remain untouched. No additional scope-freeze bug/fix was taken on.
+
+Secrets sweep: inspected the session and owned documentation changes; no credential values, tokens or connection strings appeared. Nothing new needed storing in 1Password. Documentation pass: the issue decomposition was the only new durable fact requiring a plan/handoff update; no external operating rule or evidence was invalidated. Housekeeping is report-only; retain its summary with the final parent closeout note and do not act on unrelated candidates.
+
+Installed ai-shared-db-closeout-check must pass for the actual UUID 01a14f60-0374-7c70-929a-7d8df999d0bc after any ownership operation. The final parent closeout note records the receipt outcome; if it fails or is unreadable, closeout remains blocked. Receipt stays in protected session evidence, not public source.
+
+### Exact next-session prompt
+
+Resume popcre/shared-db from the plan and handoff on codex/rls-performance-plan, carried by unmerged PR https://github.com/popcre/shared-db/pull/4423 . Goal: remove repeated permission work from all 69 baseline policies without changing access. Read https://github.com/popcre/shared-db/blob/codex/rls-performance-plan/HANDOFF.d/2026-10-18T1421Z-edge-dev3-codex-rls-performance-plan.md and https://github.com/popcre/shared-db/blob/codex/rls-performance-plan/plan_rls_request_constant_checks.md first. Refresh parent https://github.com/popcre/shared-db/issues/4421 and all six children. First resolve #4425's supported documentation/review publication path without fabricating prospective evidence or bypassing safeguards; #4426 may proceed read-only independently. Then execute #4427, #4428, #4429, #4430 in order using your own current-upstream worktrees, actual session identity, fresh structural admission/claims and reserved versions. No database repair has started and no predecessor claim exists to inherit. Each repair child remains open until preview, independent review, guarded merge, governed production apply and live equivalent-access/performance/consumer proof pass. Do not touch unrelated work or close parent #2326. Verify the final closeout receipt in the existing parent comment before taking custody.
+
+### Final handoff completeness audit
+
+1. Can a fresh developer continue without project or chat knowledge? Yes: §§1–3 and this execution map identify the system, immutable plan/evidence, untouched implementation, exact current cards and publication blocker; §6 and the prompt specify the first supported action and verification gates.
+2. Can they continue with the same background and nuance? Yes: §§4–5 and plan §§6–8 retain weaker UID-only results, controlled-expression limitations, distinct role systems, failed reviewer/admission attempts and forbidden shortcuts; this supplement records the later child decomposition and ownership status.
+3. Does it include every execution-relevant detail? Yes: §§0,6–9 plus plan §§9–13 cover settled business intent, dependencies, custody, access/target limits, exact test and rollout gates, recovery, publication conflict, live acceptance and current uncertainty. The parent closeout note carries the final receipt/housekeeping/commit result so no unverified future success is asserted in this file.

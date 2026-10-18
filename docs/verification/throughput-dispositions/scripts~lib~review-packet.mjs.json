@@ -3,7 +3,7 @@
   "source": "scripts/lib/review-packet.mjs",
   "sites": [
     {
-      "site": "scripts/lib/review-packet.mjs:59",
+      "site": "scripts/lib/review-packet.mjs:75",
       "semantic_key": "scripts/lib/review-packet.mjs:64272558998265078540b4196523bbacfeb39e704cf235a2e27ce0719fdc26a8:context-ccda68a79f514f266d98f33b0da7b8280e3577e707d7f212b1e95011b0607ef6",
       "line_sha256": "64272558998265078540b4196523bbacfeb39e704cf235a2e27ce0719fdc26a8",
       "disposition": "excluded",
@@ -11,20 +11,12 @@
       "legacy_semantic_key": "scripts/lib/review-packet.mjs:64272558998265078540b4196523bbacfeb39e704cf235a2e27ce0719fdc26a8:1"
     },
     {
-      "site": "scripts/lib/review-packet.mjs:76",
+      "site": "scripts/lib/review-packet.mjs:92",
       "semantic_key": "scripts/lib/review-packet.mjs:6831c4089b937ed43fdd2b681f60ac67f54cd9730b5d3ac142e6ddfb38bc3a67:context-faa78acfa89d517dc84fbddd35a210d72e86e2bc4506bda5e0eef6065189384f",
       "line_sha256": "6831c4089b937ed43fdd2b681f60ac67f54cd9730b5d3ac142e6ddfb38bc3a67",
       "disposition": "excluded",
       "reason": "Reviewer instruction explicitly treats absent tests and rollback or dependency facts as unverified. It does not infer database absence from incomplete evidence.",
       "legacy_semantic_key": "scripts/lib/review-packet.mjs:6831c4089b937ed43fdd2b681f60ac67f54cd9730b5d3ac142e6ddfb38bc3a67:1"
-    },
-    {
-      "site": "scripts/lib/review-packet.mjs:37",
-      "semantic_key": "scripts/lib/review-packet.mjs:e775d3c692d05f19827e94d6a244bb75787ffe52eb74b119f6c87f3aa835e9d7:context-cc14c0cf752004ac7e2c89df2f8e8c204a71cc4b1f533af8e966fe1d32314086",
-      "line_sha256": "e775d3c692d05f19827e94d6a244bb75787ffe52eb74b119f6c87f3aa835e9d7",
-      "disposition": "excluded",
-      "reason": "Refuses a head-to-main comparison whose file list is absent or possibly truncated before a production-risk request is written; it is review-brief evidence, not an assertion that a database object or migration is absent.",
-      "legacy_semantic_key": "scripts/lib/review-packet.mjs:e775d3c692d05f19827e94d6a244bb75787ffe52eb74b119f6c87f3aa835e9d7:1"
     }
   ]
 }

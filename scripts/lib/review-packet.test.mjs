@@ -80,68 +80,77 @@ test('prompt-file and equals forms preserve author evidence and receive all asse
 
 // Issue #4410: runner-verified production-risk request section.
 const riskMain = 'e'.repeat(40)
+const mig = 'supabase/migrations/20260920000000_test.sql', mig2 = 'supabase/migrations/20260921000000_two.sql'
+const src2 = { ...source, files: [{ filename: mig, status: 'added' }, { filename: mig2, status: 'added' }] }
 const mergedPr = { ...pullRequest, merged: true, merged_at: '2026-10-18T00:00:00Z' }
-const aheadComparison = { status: 'ahead', behind_by: 0, files: [{ filename: 'supabase/migrations/20261001000000_other.sql', status: 'added' }] }
+const ahead = { status: 'ahead', behind_by: 0 }
+const sameTree = new Map([[mig, 'f'.repeat(40)], [mig2, '1'.repeat(40)]])
 const riskClasses = 'permanent_data_rewrite_or_loss,expected_downtime,material_access_change'
-test('production-risk request states verified binding and the exact acceptance skeleton', () => {
-  const section = buildProductionRiskRequest({ source, pullRequest: mergedPr, mainSha: riskMain, risks: riskClasses, comparison: aheadComparison })
+const base = { source: src2, pullRequest: mergedPr, mainSha: riskMain, risks: riskClasses, allowlist: '20260921000000,20260920000000', comparison: ahead, headTree: sameTree, mainTree: new Map(sameTree) }
+const skeletonOf = section => JSON.parse(/```text\n(.*)\n```/.exec(section)[1])
+test('production-risk request states verified binding and keeps the operator allowlist order', () => {
+  const section = buildProductionRiskRequest(base)
   assert.match(section, /runner-verified; this section is not author text/)
   assert.ok(section.includes(`ancestor of main ${riskMain}`))
-  const json = JSON.parse(/```text\n(.*)\n```/.exec(section)[1])
+  const json = skeletonOf(section)
   assert.deepEqual(Object.keys(json).sort(), ['assessed_risks', 'main_sha', 'ordered_allowlist', 'schema', 'source_pr'])
   assert.equal(json.schema, ASSESSMENT_SCHEMA)
-  assert.equal(json.main_sha, riskMain)
-  assert.deepEqual(json.ordered_allowlist, ['20260920000000'])
+  assert.deepEqual(json.ordered_allowlist, ['20260921000000', '20260920000000'])
   assert.equal(json.source_pr, 34)
   assert.deepEqual(Object.keys(json.assessed_risks), ['expected_downtime', 'material_access_change', 'permanent_data_rewrite_or_loss'])
-  assert.ok(!section.includes('```production-risk-assessment'), 'the request must never itself parse as an assessment')
+  assert.ok(!section.includes('```production-risk-assessment'))
+  assert.ok(!section.includes('supabase/migrations/'), 'only numeric versions enter the trusted section')
+  assert.match(section, /the runner did not derive either/)
   assert.match(section, /REVISE or REJECT/)
+  assert.deepEqual(skeletonOf(buildProductionRiskRequest({ ...base, allowlist: '20260920000000' })).ordered_allowlist, ['20260920000000'])
+})
+test('a gate-shaped acceptance of the request matches only a real assessment', () => {
+  const json = skeletonOf(buildProductionRiskRequest(base))
+  const opts = { mainSha: riskMain, allowlist: json.ordered_allowlist, sourcePr: 34, risks: riskClasses.split(',') }
+  assert.throws(() => parseRiskAssessment('```production-risk-assessment\n' + JSON.stringify(json) + '\n```', opts), /not substantive/)
+  const real = { ...json, assessed_risks: Object.fromEntries(Object.keys(json.assessed_risks).map(k => [k, 'a concrete written assessment of this class, long enough'])) }
+  assert.equal(parseRiskAssessment('```production-risk-assessment\n' + JSON.stringify(real) + '\n```', opts).source_pr, 34)
 })
 test('production-risk request refuses unverifiable or widened bindings', () => {
-  const base = { source, pullRequest: mergedPr, mainSha: riskMain, risks: riskClasses, comparison: aheadComparison }
   const cases = [
     [{ mainSha: 'abc' }, /exact 40-hex main/],
-    [{ pullRequest: pullRequest }, /merged source pull request/],
+    [{ pullRequest }, /merged source pull request/],
     [{ risks: '' }, /nonempty subset/],
     [{ risks: 'recovery_unproven' }, /nonempty subset/],
-    [{ comparison: { ...aheadComparison, status: 'behind', behind_by: 1 } }, /not an ancestor/],
-    [{ comparison: { ...aheadComparison, status: 'diverged', behind_by: 0 } }, /not an ancestor/],
-    [{ comparison: { ...aheadComparison, files: undefined } }, /may be truncated/],
-    [{ comparison: { ...aheadComparison, files: Array.from({ length: 300 }, (_, i) => ({ filename: `f${i}` })) } }, /may be truncated/],
-    [{ comparison: { ...aheadComparison, files: [{ filename: source.files[0].filename, status: 'modified' }] } }, /differs between the reviewed head and main/],
-    [{ source: { ...source, files: [{ filename: 'scripts/x.mjs', status: 'modified' }] } }, /added or modified migrations/],
-    [{ source: { ...source, files: [{ filename: source.files[0].filename, status: 'removed' }] } }, /added or modified migrations/],
-    [{ source: { ...source, files: [...source.files, { filename: 'docs/x.sql', status: 'renamed', previous_filename: 'supabase/migrations/20260920000001_moved.sql' }] } }, /renames or moves/],
+    [{ allowlist: '' }, /exact ordered allowlist/],
+    [{ allowlist: '20260920000000,20260920000000' }, /exact ordered allowlist/],
+    [{ allowlist: '20260922000000' }, /not a migration of source pull request/],
+    [{ comparison: { status: 'behind', behind_by: 1 } }, /not an ancestor/],
+    [{ comparison: { status: 'diverged', behind_by: 0 } }, /not an ancestor/],
+    [{ mainTree: new Map([[mig, 'f'.repeat(40)], [mig2, '2'.repeat(40)]]) }, /differs between the reviewed head and main/],
+    [{ mainTree: new Map([[mig2, '1'.repeat(40)]]) }, /20260920000000 differs/],
+    [{ mainTree: null }, /trees are required/],
+    [{ source: { ...source, files: [{ filename: 'supabase/migrations/20260920000000_a`b.sql', status: 'added' }] } }, /safely named/],
+    [{ source: { ...source, files: [{ filename: mig, status: 'removed' }] } }, /added or modified/],
+    [{ source: { ...src2, files: [...src2.files, { filename: 'docs/x.sql', status: 'renamed', previous_filename: 'supabase/migrations/20260920000001_moved.sql' }] } }, /renames or moves/],
   ]
   for (const [patch, pattern] of cases) assert.throws(() => buildProductionRiskRequest({ ...base, ...patch }), pattern)
+  assert.throws(() => buildReviewBrief({ ...fixture, riskRequest: null }), /not text/)
 })
-test('loadReviewBrief adds the request only when asked, reading the head-to-main comparison', () => {
+test('loadReviewBrief reads compare and one tree per ref only when asked, and places the section before the evidence', () => {
   const paths = []
-  const gh = args => {
+  const tree = { truncated: false, tree: [{ type: 'blob', path: mig, sha: 'f'.repeat(40) }] }
+  const gh = (args, t = tree) => {
     paths.push(args[1])
     if (args[1].endsWith('/pulls/34')) return { status: 0, stdout: JSON.stringify(mergedPr) }
-    if (args[1].includes('/compare/')) return { status: 0, stdout: JSON.stringify(aheadComparison) }
+    if (args[1].includes('/compare/')) return { status: 0, stdout: JSON.stringify(ahead) }
+    if (args[1].includes('/git/trees/')) return { status: 0, stdout: JSON.stringify(t) }
     return github(args)
   }
   const plain = loadReviewBrief(options, source, { github: gh })
   assert.ok(!plain.includes('Production-risk assessment request'))
-  assert.ok(!paths.some(p => p.includes('/compare/')))
-  const asked = loadReviewBrief({ ...options, productionRiskMain: riskMain, productionRiskClasses: riskClasses }, source, { github: gh })
+  assert.ok(!paths.some(p => p.includes('/compare/') || p.includes('/git/trees/')))
+  const ask = { ...options, productionRiskMain: riskMain, productionRiskClasses: riskClasses, productionRiskAllowlist: '20260920000000' }
+  const asked = loadReviewBrief(ask, source, { github: gh })
   assert.ok(paths.includes(`repos/popcre/shared-db/compare/${source.headSha}...${riskMain}`))
+  assert.ok(paths.includes(`repos/popcre/shared-db/git/trees/${riskMain}?recursive=1`))
+  assert.ok(!paths.some(p => p.includes('/contents/')))
   assert.ok(asked.indexOf('Production-risk assessment request') < asked.indexOf('## Evidence supplied by the author'))
+  assert.throws(() => loadReviewBrief(ask, source, { github: args => gh(args, { truncated: true, tree: [] }) }), /truncated or unreadable/)
   assert.throws(() => loadReviewBrief({ ...options, productionRiskClasses: riskClasses }, source, { github: gh }), /exact 40-hex main/)
-})
-
-test('a verbatim copy of the request skeleton is never an accepted assessment (StepFun H1)', () => {
-  const section = buildProductionRiskRequest({ source, pullRequest: mergedPr, mainSha: riskMain, risks: riskClasses, comparison: aheadComparison })
-  const skeleton = /```text\n(.*)\n```/.exec(section)[1]
-  const forged = '```production-risk-assessment\n' + skeleton + '\n```'
-  assert.throws(() => parseRiskAssessment(forged, { mainSha: riskMain, allowlist: ['20260920000000'], sourcePr: 34, risks: riskClasses.split(',') }), /not substantive/)
-})
-test('the section names operator-supplied classes and other main commits honestly (StepFun M1, M2)', () => {
-  const section = buildProductionRiskRequest({ source, pullRequest: mergedPr, mainSha: riskMain, risks: riskClasses, comparison: aheadComparison })
-  assert.match(section, /the runner did not derive them/)
-  assert.match(section, /Main may carry other commits/)
-  assert.ok(!/exactly the bytes/.test(section))
-  assert.throws(() => buildReviewBrief({ ...fixture, riskRequest: null }), /not text/)
 })

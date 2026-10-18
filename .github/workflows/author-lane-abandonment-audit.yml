@@ -102,7 +102,7 @@ jobs:
       # unreadability are different exit codes, and that an unreadable queue
       # depth reports UNKNOWN rather than zero.
       - name: Prove the audit is read-only and fails closed
-        run: node --test scripts/orchestrator-flow/reconcile.test.mjs
+        run: node --test scripts/db-flow/reconcile.test.mjs
 
       - name: Report expired author lanes
         id: audit

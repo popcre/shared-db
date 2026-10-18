@@ -143,6 +143,7 @@ declare
  inverse plm.licensing_consolidation_plan;
  reverted plm.licensing_consolidation_plan;
  expected_filter text;
+ expected_native_id text;
  expected_franchise uuid;
  expected_property uuid;
  direct_count integer;
@@ -175,7 +176,8 @@ begin
   (l,'nbcu','relationship_evidence','relationship','property_character',clock_timestamp(),'synthetic-test','Synthetic direct native pair fixture');
 
  for x in select * from (values (p1,p1id,null::uuid),(p2,p2id,f1id),(f1,p2id,f1id)) q(source_id,property_id,franchise_id) loop
-  expected_filter:=x.source_id;
+  expected_native_id:=x.source_id;
+  expected_filter:=jsonb_build_array('nbcu',case when expected_native_id=f1 then 'plm.nbcu_ip_family' else 'plm.nbcu_property' end,case when expected_native_id=f1 then 'franchise' else 'property' end,expected_native_id)::text;
   expected_property:=x.property_id;
   expected_franchise:=x.franchise_id;
   p:=plm.plan_licensing_consolidation('nbcu',c,expected_filter);
@@ -187,7 +189,7 @@ begin
   end if;
   select count(*) into direct_count from jsonb_array_elements(p.operations) op
    where op->>'kind'='relationship_source' and op->>'entity_kind'='property_franchise';
-  if expected_filter=p1 then
+  if expected_native_id=p1 then
    if direct_count is distinct from 0 then raise exception 'property-1 filter planned a franchise pair from its candidate-only co-tag';end if;
   else
    if direct_count is distinct from 1 or not exists(
@@ -203,12 +205,12 @@ begin
 
   applied:=plm.apply_licensing_consolidation(p.id,p.plan_hash);
   if applied.plan_status is distinct from 'applied' or applied.applied_state is null or coalesce(applied.entity_operation_count,0)<1 then raise exception 'filtered native NBCU plan did not apply a real entity change with recorded state';end if;
-  if expected_filter=f1 then
+  if expected_native_id=f1 then
    if not exists(select 1 from core.taxonomy_source_ref r where r.entity_id=f1id and r.source_system='nbcu' and r.source_table='plm.nbcu_ip_family' and r.missing_since is null and r.raw->'native_provenance' @> '[{"source_term":"IP Family"}]'::jsonb) then
     raise exception 'IP Family source term did not reach canonical taxonomy source provenance after apply';
    end if;
   end if;
-  if expected_filter=p2 or expected_filter=f1 then
+  if expected_native_id=p2 or expected_native_id=f1 then
    if not exists(select 1 from core.property_franchise_source_edge e where e.property_id=p2id and e.franchise_id=f1id and e.source_system='nbcu' and e.evidence_kind='direct_source_assertion' and e.is_current)
     or not exists(select 1 from core.property_franchise e where e.property_id=p2id and e.franchise_id=f1id and e.is_current) then
     raise exception 'native direct property-2/family-1 support and canonical pair were not applied';

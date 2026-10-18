@@ -269,24 +269,6 @@ Read-only baseline evidence for #4426. October 18, 2026 EDT. No repair or live a
         "line": 99,
         "repository": "popdam3",
         "source": "//   20260405000000). However INSERT INTO asset_tags / asset_characters still"
-      },
-      {
-        "file": "apps/worker/src/handlers/ai-tagging-scope.test.ts",
-        "line": 170,
-        "repository": "popdam3",
-        "source": "/delete from public\\.asset_tags where asset_id = p_asset_id and source = v_source and status in \\('active', 'candidate'\\) and created_by is null/,"
-      },
-      {
-        "file": "apps/worker/src/handlers/ai-tagging-scope.test.ts",
-        "line": 190,
-        "repository": "popdam3",
-        "source": "assert.match(body, /delete from public\\.asset_tags where asset_id = p_asset_id and source = v_source/);"
-      },
-      {
-        "file": "apps/worker/src/handlers/ai-tagging-scope.test.ts",
-        "line": 191,
-        "repository": "popdam3",
-        "source": "assert.ok(!/delete from public\\.asset_tags[^;]*model = v_model/.test(body),"
       }
     ],
     "assets": [
@@ -487,12 +469,6 @@ Read-only baseline evidence for #4426. October 18, 2026 EDT. No repair or live a
         "line": 61,
         "repository": "popdam3",
         "source": "if (table === \"licensors\") return db.schema(\"core\").from(\"licensor\");"
-      },
-      {
-        "file": "src/test/core-licensor-property-contract.test.ts",
-        "line": 13,
-        "repository": "popdam3",
-        "source": "expect(handler).not.toContain('.from(\"licensors\")');"
       },
       {
         "file": "supabase/functions/export-table/index.ts",
@@ -726,12 +702,6 @@ Read-only baseline evidence for #4426. October 18, 2026 EDT. No repair or live a
         "line": 62,
         "repository": "popdam3",
         "source": "if (table === \"properties\") return db.schema(\"core\").from(\"property\");"
-      },
-      {
-        "file": "src/test/core-licensor-property-contract.test.ts",
-        "line": 14,
-        "repository": "popdam3",
-        "source": "expect(handler).not.toContain('.from(\"properties\")');"
       },
       {
         "file": "supabase/functions/export-table/index.ts",
@@ -1036,5 +1006,4 @@ Read-only baseline evidence for #4426. October 18, 2026 EDT. No repair or live a
     ]
   }
 }
-
 ```

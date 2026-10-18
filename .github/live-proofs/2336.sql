@@ -93,6 +93,8 @@ and not has_table_privilege('anon','plm.licensing_consolidation_plan','SELECT,IN
 and has_table_privilege('authenticated','plm.licensing_consolidation_plan','SELECT') and has_table_privilege('service_role','plm.licensing_consolidation_plan','SELECT')
 and not has_table_privilege('authenticated','plm.licensing_consolidation_plan','INSERT,UPDATE,DELETE') and not has_table_privilege('service_role','plm.licensing_consolidation_plan','INSERT,UPDATE,DELETE')
 and exists(select 1 from pg_trigger t where t.tgrelid=to_regclass('plm.licensing_consolidation_plan') and t.tgname='licensing_consolidation_plan_immutable_trg' and t.tgtype=27 and t.tgnargs=0 and not t.tgisinternal and t.tgfoid=to_regprocedure('plm.licensing_consolidation_plan_immutable()') and t.tgenabled='O')
+and exists(select 1 from supabase_migrations.schema_migrations where version='20261018134615')
+and (select md5(prosrc)='a5354f0ae3337cf3636473be4711351a' from pg_proc where oid=to_regprocedure('plm.licensing_consolidation_plan_immutable()'))
 and (select prosrc like '%immutable consolidation%' or prosrc like '%consolidation immutable content changed%' from pg_proc where oid=to_regprocedure('plm.licensing_consolidation_plan_immutable()'))
 and (select prosrc like '%plan_schema_version%' and prosrc like '%capture_snapshot%' from pg_proc where oid=to_regprocedure('plm.apply_licensing_consolidation(uuid,text)'))
 and (select (length(prosrc)-length(replace(prosrc,'from core.property_character_associations a where a.is_current group by a.property_id','')))/length('from core.property_character_associations a where a.is_current group by a.property_id')=2 and position('from core.property_character_associations a group by a.property_id' in prosrc)=0 from pg_proc where oid=to_regprocedure('api.db_data_admin_licensor_property_tree(text,boolean,text,integer)'))
@@ -105,7 +107,7 @@ and not exists(select 1 from (values
 ('plm.apply_licensing_support_operation(uuid,text,jsonb)','b46df036d388f8145826aba74dc0c830'),
 ('plm.licensing_consolidation_capture_snapshot(text,uuid)','3c60cbc197bc3919056e765d3e9dbc12'),
 ('plm.licensing_consolidation_operation_state(jsonb)','9436d56877f281b437345ae2967fe073'),
-('plm.licensing_consolidation_plan_immutable()','3097938f8dad64d35f35931967ef3b67'),
+('plm.licensing_consolidation_plan_immutable()','a5354f0ae3337cf3636473be4711351a'),
 ('plm.licensing_operation_identity_predicate(jsonb)','ea67528b1eb6b0b34b608e6c406c2baf'),
 ('plm.plan_licensing_consolidation(text,uuid,text)','210117bd0c0e30a2ae41abc89893b640'),
 ('plm.plan_licensing_consolidation_rollback(uuid,text)','0c92970d93133067f2c45552ba756b28')

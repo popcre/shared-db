@@ -32,7 +32,7 @@ reads:
 
 <!-- writes: and reads: are empty on purpose. An abandonment audit claims no
 database object; claiming one would collide with the very claim it is
-investigating. It is repo-maintenance work, not orchestrator structural work:
+investigating. It is repo-maintenance work, not claim-first structural work:
 it changes no database structure. -->
 
 ```abandonment-audit
@@ -92,7 +92,7 @@ was observed. "ambiguous" is not a state: re-observe or stop. -->
 
 <!-- Quarantine (recoverable) or terminal retirement.
 
-The orchestrator may retire work on its own evidence where the worktree is
+A claim-first session may retire work on its own evidence where the worktree is
 clean, or absent with its absence proven and its durable branch and pull-request
 evidence complete.
 

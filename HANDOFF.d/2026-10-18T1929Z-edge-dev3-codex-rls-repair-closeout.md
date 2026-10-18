@@ -95,6 +95,8 @@ Essential private archive entries: root real-JWT read-plan driver and before-v3 
 10. New genuine-JWT baseline driver safely stopped twice: transaction pooler discarded startup read-only option; fixed by FIRST SQL `BEGIN READ ONLY`, then local default/read-only proofs inside that transaction. A stats count overwrote the samples array; renamed to sample_count. Third run passed44plans, actual identity, read-only proof and local logout. No data mutation on failed runs.
 11. Current Muse wrapper terminal failure is LOCAL capability-reader/source-reconciliation failure, not a model code verdict. Native terminal release recorded it. No global-tool repair was started after wrap-up.
 12. Built-in docker database belongs to another session and was not borrowed. Private pglast8.7 environment avoided broken system Python3.14 ensurepip; no OS binary replacement. No production EXPLAIN ANALYZE writes or CI bootstrap against shared databases.
+13. During prose-only handoff publication, root supplied an incorrect full head reference to guarded workflow39159273899. Root cancelled that exact run before publication continued, retained the cancellation receipt, and corrected the dispatch to the actual `git rev-parse HEAD` value. No implementation/database action was authorized by that failed request. Derive every exact head mechanically; never reconstruct a full hash from a short prefix.
+
 
 ## 5. Findings that must survive
 

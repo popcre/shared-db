@@ -43,6 +43,7 @@ import { OUTCOME_STATES, OutcomeError, advanceOutcome, completeOutcome, verifyOu
 import { assertPaidReviewCapacity, pauseActualReviewFailure, derivePaidContentProof, RETRYABLE_RELEASED_FAILURE_CODES, paidStart } from './lib/lanes/review-circuit-breaker.mjs'
 export { RETRYABLE_RELEASED_FAILURE_CODES }
 const paidBudgetContractCaches=new WeakMap()
+import { createPhaseTrace, formatPhaseTraceSummary } from './lib/lanes/phase-trace.mjs'
 import { isContentPreservingRefresh, prContentDigest, verifiedEvidencePaths } from './lib/pr-content-equivalence.mjs'
 import { wrapperEmitsGovernedVerdict } from './lib/reviewer-capabilities.mjs'
 import { classifyBranchFreshness } from './check-main-tip-freshness.mjs'
@@ -148,6 +149,25 @@ export { conflicts }
 
 export { isTransientGitHubTransport }
 let reviewWireBudget=null,reviewCommitBase=null,freshDurableVerdictRefs=null
+// Issue #4414 phase timing (local only; see scripts/lib/lanes/phase-trace.mjs).
+let reviewPhaseTrace=null,reviewPhaseSourceTuple=null,reviewPhaseInvocation=null
+function notePhase(name,meta=null){reviewPhaseTrace?.startPhase?.(name,meta)}
+function endPhase(name,extra=null){return reviewPhaseTrace?.endPhase?.(name,extra)??null}
+function notePhaseMeta(meta){reviewPhaseTrace?.mark?.(meta)}
+function notePhaseRelease(state){reviewPhaseTrace?.setReleaseState?.(state)}
+function notePhaseForeignOwner(observed){reviewPhaseTrace?.noteForeignMutexOwner?.(observed)}
+function withPhaseTrace(name,fn,meta=null){
+  if(!reviewPhaseTrace)return fn()
+  reviewPhaseTrace.startPhase(name,meta)
+  try{const result=fn();reviewPhaseTrace.endPhase(name);return result}
+  catch(error){reviewPhaseTrace.endPhase(name,{result:'error'});throw error}
+}
+function setPhaseContext(sourceTuple,invocation=null){
+  reviewPhaseSourceTuple=sourceTuple&&typeof sourceTuple==='object'?{...sourceTuple}:null
+  reviewPhaseInvocation=invocation==null?null:String(invocation)
+  reviewPhaseTrace?.setSourceTuple?.(reviewPhaseSourceTuple)
+  reviewPhaseTrace?.setInvocation?.(reviewPhaseInvocation)
+}
 // Issue #3187 (Refs #2773): quota facts observed on responses this reviewer operation
 // already makes -- x-ratelimit-* headers on the owner-commit POST (REST core) and the
 // rateLimit field folded into the active-lease GraphQL snapshot (GraphQL) -- so the
@@ -181,7 +201,19 @@ function consumeReviewWireRequest(){
 export function withReviewRequestBudget(fn,limit=REVIEW_OPERATION_REQUEST_LIMIT,operation='reviewer-operation'){
   if(reviewWireBudget)return fn(reviewWireBudget)
   reviewWireBudget={count:0,limit,operation}
-  try{return fn(reviewWireBudget)}finally{reviewWireBudget=null;reviewCommitBase=null;freshDurableVerdictRefs=null;observedReviewQuota={};primedReviewStates=new Map()}
+  // Issue #4414: phase timing is local public-safe metadata. It never performs a
+  // remote read, never writes during ownership, and never invents a release.
+  reviewPhaseTrace=createPhaseTrace({
+    operation,
+    sourceTuple: reviewPhaseSourceTuple,
+    invocation: reviewPhaseInvocation,
+  })
+  try{return fn(reviewWireBudget)}
+  finally{
+    try{reviewPhaseTrace?.flush?.()}catch{/* lost telemetry is not a mutation failure */}
+    reviewPhaseTrace=null
+    reviewWireBudget=null;reviewCommitBase=null;freshDurableVerdictRefs=null;observedReviewQuota={};primedReviewStates=new Map()
+  }
 }
 // Issue #2802: the structural-admission gate (scripts/db-flow/admission.mjs,
 // landed in e7bec2fe on 2026-09-11) is NOT reviewer work, but its GitHub reads -- the
@@ -1740,6 +1772,7 @@ function finalizeReviewMutexPreservingResult(ownerSha,io,completed){
   }
 }
 function finalizeReviewMutex(ownerSha,io){
+  notePhase('release')
   const previous=reviewWireBudget?.cleanup
   if(reviewWireBudget)reviewWireBudget.cleanup=true
   try{
@@ -1764,10 +1797,20 @@ function finalizeReviewMutex(ownerSha,io){
         if(released)break
       }
       if(!released&&typeof io.readRefOverApi==='function')released=io.readRefOverApi(MUTEX_REF)!==ownerSha
-      if(!released)throw new LaneError(`release of ${MUTEX_REF} could not be proved after atomic deletion`)
+      if(!released){
+        notePhaseRelease('unknown')
+        endPhase('release',{result:'recovery_required'})
+        throw new LaneError(`release of ${MUTEX_REF} could not be proved after atomic deletion`)
+      }
+      // A successor owner inside the window still means our mutex was released.
+      notePhaseRelease('proved_released')
+      endPhase('release',{result:'proved_released'})
       return true
     }
-    return releaseOwnedRef(MUTEX_REF,ownerSha,io)
+    const released=releaseOwnedRef(MUTEX_REF,ownerSha,io)
+    notePhaseRelease('proved_released')
+    endPhase('release',{result:'proved_released'})
+    return released
   }catch(error){
     // #4255 / issue #3791 for the reviewer path: the atomic/API release failed.
     // Fall back to the owner-verified git-protocol delete (no API quota) before
@@ -1776,12 +1819,23 @@ function finalizeReviewMutex(ownerSha,io){
     // one we no longer own is not ours to recover.
     let gitError=null
     try{
-      if(typeof io.releaseRefOverGit==='function'&&io.releaseRefOverGit(MUTEX_REF,ownerSha))return true
+      if(typeof io.releaseRefOverGit==='function'&&io.releaseRefOverGit(MUTEX_REF,ownerSha)){
+        notePhaseRelease('proved_released')
+        endPhase('release',{result:'proved_released_git_fallback'})
+        return true
+      }
     }catch(fallback){gitError=fallback}
     try{
       const still=typeof io.readRef==='function'?io.readRef(MUTEX_REF):ownerSha
-      if(still!==ownerSha)return true
+      if(still!==ownerSha){
+        // Absent or successor-owned is a proved release of OUR mutex.
+        notePhaseRelease(still==null?'proved_released':'successor_seen')
+        endPhase('release',{result:still==null?'proved_released':'successor_seen'})
+        return true
+      }
     }catch{/* unreadable ownership keeps the original refusal */}
+    notePhaseRelease('unknown')
+    endPhase('release',{result:'recovery_required'})
     if(gitError)throw new LaneError(`${error.message}; git release fallback failed (${String(gitError?.message??gitError).split('\n')[0]}); RECOVERY REQUIRED: ${MUTEX_REF} expected SHA ${ownerSha}. Use the guarded recover-author-mutex.yml procedure and do not retry blindly`)
     throw new LaneError(`${error.message}; RECOVERY REQUIRED: ${MUTEX_REF} expected SHA ${ownerSha}. Use the guarded recover-author-mutex.yml procedure and do not retry blindly`)
   }
@@ -1802,12 +1856,20 @@ function acquireReviewMutex(ownerSha,io){
     if(reviewWireBudget)reviewWireBudget.cleanup=true
     try{
       const actual=io.readRef(MUTEX_REF)
+      // Observed foreign owner (if any) for cross-domain wait attribution.
+      if(actual&&actual!==ownerSha)notePhaseForeignOwner({sha:actual,ref:MUTEX_REF})
       if(actual===ownerSha)finalizeReviewMutex(ownerSha,io)
     }catch(cleanup){throw new LaneError(`${error.message}; ${cleanup.message}; RECOVERY REQUIRED: ${MUTEX_REF} expected SHA ${ownerSha}. Use the guarded recover-author-mutex.yml procedure`)}
     finally{if(reviewWireBudget)reviewWireBudget.cleanup=previous}
+    if(reviewPhaseTrace&&reviewPhaseTrace.releaseState==='not_acquired')notePhaseRelease('not_acquired')
     throw error
   }
-  if(!acquired)throw new LaneError(`${MUTEX_REF} is occupied`)
+  if(!acquired){
+    // Occupancy refusal without a readable owner: no extra remote read for telemetry
+    // (plan §9 step 2). Foreign owner stays unknown unless the throw path already read it.
+    notePhaseRelease('not_acquired')
+    throw new LaneError(`${MUTEX_REF} is occupied`)
+  }
   noteHeldMutex(ownerSha,io)
   try{
     const proof=io.readReviewRefs?.([MUTEX_RECOVERY_ACTIVE_REF,MUTEX_REF])
@@ -2142,6 +2204,8 @@ function reviewBudgetDiagnostics(capacity){
 }
 
 function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=null,ownerQuote='',admissionOptions=null},io){
+  setPhaseContext({issue:Number(issue),pr:Number(pr),headSha:String(headSha).toLowerCase(),slot:Number(slot??1)},`assign-${Number(slot??1)}`)
+  notePhase('prepare',{operation:'assignNextReviewer'})
   const headPattern=io?.requiresExactReviewHeadSha?/^[0-9a-f]{40}$/i:/^[0-9a-f]{7,40}$/i
   if(!Number.isInteger(Number(issue))||!Number.isInteger(Number(pr))||!headPattern.test(String(headSha??'')))throw new LaneError('review assignment requires issue, PR, and exact 40-character head SHA')
   if(!Number.isInteger(Number(slot))||Number(slot)<1)throw new LaneError('review assignment slot must be a positive integer (1 = first reviewer, 2 = second independent reviewer)')
@@ -2168,9 +2232,21 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
   if(policyAnchor)requestedAllowlist=inheritReviewerAllowlist(requestedAllowlist,policyAnchor.reviewerAllowlist,{ownerQuote:!ownPolicy&&request.slot>=2?ownerQuote:''})
   const preflightBusy=findBusyReviewers(io)
   if(!preflightBusy)throw new LaneError('active reviewer leases are unreadable; reviewer assignment refused before mutex acquisition')
+  // Issue #4414 step 3: paid-start classification lists immutable start refs and
+  // runs Git content provenance. After owner #4399 it never refuses a draw
+  // (uncapped spend). Run it OUTSIDE ownership so history I/O cannot hold the
+  // shared mutex. Total request count for a fresh draw is unchanged (work moves
+  // earlier); retry paths that never needed capacity now share this prepare cost
+  // and still fit the derived 25-request ceiling. Mutable boundary checks stay
+  // under the lock.
+  const preparedCapacity=assertPaidReviewCapacity(request,io)
   const ownerSha=io.makeOwnerCommit(`db-coordination reviewer-assignment-lock issue=${request.issue} pr=${request.pr} head=${request.headSha}${request.slot!==1?` slot=${request.slot}`:''}`)
   requireReviewWireCapacity(REVIEW_MUTEX_SECTION_RESERVE)
+  endPhase('prepare')
+  notePhase('acquisition_wait')
   acquireReviewMutex(ownerSha,io)
+  endPhase('acquisition_wait')
+  notePhase('fresh_validation')
   let completedResult=null
   try{
     // Owner ruling 2026-10-02 (docs/owner-rulings.md, "One reviewer may be used
@@ -2331,7 +2407,7 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
       if(!reviewerEmitsGovernedVerdict(current.reviewer))throw new LaneError(`reviewer ${current.reviewer} is assigned to this head but its wrapper cannot emit the governed VERDICT line. Draw another reviewer with the exact command: ${nonVerdictReviewerReplacementCommand({issue:current.issue,pr:current.pr,headSha:current.headSha,slot:request.slot},current.sequence)}`)
       return {...current,slot:request.slot,wrapper:REVIEWERS.find((r)=>r.name===current.reviewer)?.wrapper}
     }
-    const capacity=assertPaidReviewCapacity(request,io)
+    const capacity=preparedCapacity
     const exhaustedReviewers=new Set(capacity.exhaustedReviewers??[])
     if(effectiveAllowlist)request.reviewerAllowlist=effectiveAllowlist
     else delete request.reviewerAllowlist
@@ -2389,6 +2465,8 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
     let staleReleased=false,leaseCreated=false,cursorChanged=false,assignmentCreated=false
     try{
       if(io.atomicReviewRefs){
+        endPhase('fresh_validation')
+        notePhase('ref_commit_readback')
         requireOwnedRef(MUTEX_REF,ownerSha,io)
         const freshStates=io.readReviewStates([{issue:request.issue,pr:request.pr,headSha:request.headSha},...(selectedStale?[selectedStale.assignment]:[])])
         const fresh=freshStates?.get(`${request.issue}:${request.pr}`)

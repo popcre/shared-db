@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "work_issue": 2336,
+  "outcome": "ready-for-merge",
+  "pr": 4418,
+  "migration_versions": [
+    "20261018134615"
+  ],
+  "contract_ref": "refs/db-contracts/2336/32",
+  "contract_sha256": "8326cc9f005ae7cef30e6ac1b6573072092112009dea28a493cf0fcecb90993e",
+  "head_sha": "51c742a3af8ffe8206e5297bbf50a6838edbea99",
+  "base_sha": "b31e17c02194c6006a1bd256d6154a324a5114d7",
+  "files_changed": [
+    ".github/live-proofs/2336.sql",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20261018134615.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "supabase/migrations/20261018134615_licensing_recovery_timestamp.sql",
+    "supabase/tests/licensing_consolidation_contracts.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python3 -m unittest scripts.test_production_catalog_verification scripts.test_shared_db_live_proof scripts.test_migration_derivation",
+      "exit_code": 0,
+      "evidence": "337 focused tests passed on recovered source."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs",
+      "exit_code": 0,
+      "evidence": "82 sidecars validated; recomputed detector digest retained historical inventory."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "353 call sites and98 sources passed."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL checks passed; no database execution."
+    }
+  ],
+  "assumptions_resolved": [
+    "Fresh claim4417 and version20261018134615; preserved recovery SQL SHA25614bbbec4565275a7ee5ba11e1ef3f3df59e8ee184fac9ed90786e67b1190f73b and frozen original source.",
+    "No live preview/production proof claimed; independent review, hosted execution, functional acceptance and generated types remain required."
+  ],
+  "stop_conditions_hit": []
+}

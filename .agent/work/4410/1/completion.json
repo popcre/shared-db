@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "work_issue": 4410,
+  "outcome": "ready-for-merge",
+  "reason": "Required source checks are complete. Independent current-head review, PR CI and guarded merge are separate pending gates.",
+  "pr": 4413,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4410/1",
+  "contract_sha256": "774b4ee625ecac52e8d78506c3243684356d56f5fe34208abd5a08e5bacbdd0d",
+  "head_sha": "f6b1a3f8d83cd42d75c16362abd6d179cc6f597a",
+  "base_sha": "b31e17c02194c6006a1bd256d6154a324a5114d7",
+  "files_changed": [
+    "docs/verification/throughput-dispositions/scripts~lib~review-packet.mjs.json",
+    "scripts/lib/review-packet.mjs",
+    "scripts/lib/review-packet.test.mjs",
+    "scripts/run-governed-review.mjs",
+    "scripts/run-governed-review.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {"command": "node --test scripts/lib/review-packet.test.mjs scripts/run-governed-review.test.mjs", "exit_code": 0, "evidence": "pass 134, fail 0 at f6b1a3f8"},
+    {"command": "node scripts/check-throughput-truth-audit.mjs", "exit_code": 0, "evidence": "truth audit OK call_sites=354 at f6b1a3f8"},
+    {"command": "node scripts/check-github-transport-conformance.mjs", "exit_code": 0, "evidence": "414 files scanned, conformant at f6b1a3f8"}
+  ],
+  "assumptions_resolved": [
+    "New review-packet tests fail without the source change and pass with it.",
+    "The section is opt-in; briefs without the options are unchanged apart from one blank line."
+  ],
+  "stop_conditions_hit": []
+}

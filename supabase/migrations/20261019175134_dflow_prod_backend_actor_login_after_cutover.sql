@@ -1,4 +1,5 @@
 -- #4493: restore the production backend login in the DesignFlow actor check.
+-- derived-from: none
 --
 -- The 2026-10-17 Cloud SQL -> Supabase host cutover (#770) renamed the Cloud SQL
 -- dump schema into dflow_prod. That replaced the repository-managed

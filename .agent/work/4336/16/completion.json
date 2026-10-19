@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "work_issue": 4336,
+  "outcome": "ready-for-merge",
+  "pr": 4489,
+  "migration_versions": [
+    "20261019140024"
+  ],
+  "contract_ref": "refs/db-contracts/4336/16",
+  "contract_sha256": "4ac733246293d812dd9174565ea9508c27a1b1474bf19283ed6b12856fb7af93",
+  "head_sha": "0572714e9faba5c0d1cf50c938bfbbcbef98d6ee",
+  "base_sha": "a7b32d7e8a4113f66c3d450f60fec1a1c2bf0ad2",
+  "files_changed": [
+    ".agent/work/4336/14/completion.json",
+    ".agent/work/4336/14/contract.json",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/lib/session-authority.mjs",
+    "scripts/lib/session-authority.test.mjs",
+    "scripts/production-verification-sidecars/20261019140024.json",
+    "scripts/test_order_list_find_position.py",
+    "supabase/migrations/20261019140024_orderlist_so_date_sort.sql",
+    "supabase/tests/dam_order_list_sales_order_date_sort.sql"
+  ],
+  "db_reads": [
+    "table coldlion.order_history_line",
+    "table plm.production_order_line",
+    "table plm.production_order_line_source_ref",
+    "view api.dam_order_list"
+  ],
+  "db_writes": [
+    "view api.dam_order_list",
+    "function dam.orderlist_sales_order_received_date",
+    "function public.find_dam_order_list_row"
+  ],
+  "checks": [
+    {
+      "command": "python scripts/test_order_list_find_position.py",
+      "exit_code": 0,
+      "evidence": "18 positions, 4 ranking cases, helper checks passed"
+    }
+  ],
+  "assumptions_resolved": [
+    "Sort/Find source on claim 4488 version 20261019140024."
+  ],
+  "stop_conditions_hit": []
+}

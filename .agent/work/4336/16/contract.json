@@ -1,23 +1,18 @@
 {
   "allowed_paths": [
+    ".agent/work/4336/14/completion.json",
+    ".agent/work/4336/14/contract.json",
     "config/production-verification-sidecar-registry.json",
+    "scripts/lib/session-authority.mjs",
+    "scripts/lib/session-authority.test.mjs",
     "scripts/production-verification-sidecars/20261019140024.json",
     "scripts/test_order_list_find_position.py",
     "supabase/migrations/20261019140024_orderlist_so_date_sort.sql",
     "supabase/tests/dam_order_list_sales_order_date_sort.sql",
-    "scripts/lib/session-authority.mjs",
-    "scripts/lib/session-authority.test.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    ".agent/work/4336/9/contract.json",
-    ".agent/work/4336/9/completion.json",
-    ".agent/work/4336/10/contract.json",
-    ".agent/work/4336/10/completion.json",
-    ".agent/work/4336/11/contract.json",
-    ".agent/work/4336/11/completion.json",
-    ".agent/work/4336/14/contract.json",
-    ".agent/work/4336/14/completion.json",
-    ".agent/work/4336/13/contract.json",
-    ".agent/work/4336/13/completion.json"
+    ".agent/work/4336/16/contract.json",
+    ".agent/work/4336/16/completion.json",
+    ".agent/work/4336/12/contract.json",
+    ".agent/work/4336/12/completion.json"
   ],
   "assumptions": [
     "SO Date means the existing exact-primary ColdLion /orderHistory.createdTime rule, displayed in America/New_York.",
@@ -42,31 +37,26 @@
     "function dam.orderlist_sales_order_received_date",
     "function public.find_dam_order_list_row"
   ],
-  "dispatcher": "MiMo chat ses_ffe5eaf8f125dffeE9Y9GlP9JY on edge-dev",
+  "dispatcher": "MiMo chat ses-ffe5eaf8f125dffeE9Y9GlP9JY on edge-dev",
   "evidence_parent": {
     "work_issue": 4336,
-    "generation": 13,
-    "contract_sha256": "bdea4238ed5f8543cde52f6818755760f10bc14e82967c03f733f50a898975e1"
+    "generation": 12,
+    "contract_sha256": "e236ef154340ed61cf2505e64bdb4de1218dfa52dab09bdb6bd99014673d81fc"
   },
   "file_writes": [
+    ".agent/work/4336/14/completion.json",
+    ".agent/work/4336/14/contract.json",
     "config/production-verification-sidecar-registry.json",
+    "scripts/lib/session-authority.mjs",
+    "scripts/lib/session-authority.test.mjs",
     "scripts/production-verification-sidecars/20261019140024.json",
     "scripts/test_order_list_find_position.py",
     "supabase/migrations/20261019140024_orderlist_so_date_sort.sql",
     "supabase/tests/dam_order_list_sales_order_date_sort.sql",
-    "scripts/lib/session-authority.mjs",
-    "scripts/lib/session-authority.test.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    ".agent/work/4336/9/contract.json",
-    ".agent/work/4336/9/completion.json",
-    ".agent/work/4336/10/contract.json",
-    ".agent/work/4336/10/completion.json",
-    ".agent/work/4336/11/contract.json",
-    ".agent/work/4336/11/completion.json",
-    ".agent/work/4336/14/contract.json",
-    ".agent/work/4336/14/completion.json"
+    ".agent/work/4336/16/contract.json",
+    ".agent/work/4336/16/completion.json"
   ],
-  "generation": 14,
+  "generation": 16,
   "goal": "Enable full-result OrderList sorting by SO Date, preserve the existing date rule and null-last stable ordering, and make Find positions use that same ordering. The 12-month window is out of scope.",
   "prohibited_actions": [
     "Do not change the 12-month OrderList window or its fallback date.",
@@ -88,6 +78,6 @@
   ],
   "work_issue": 4336,
   "work_type": "structural",
-  "worker": "MiMo chat ses_ffe5eaf8f125dffeE9Y9GlP9JY on edge-dev",
+  "worker": "MiMo chat ses-ffe5eaf8f125dffeE9Y9GlP9JY on edge-dev",
   "worktree": "D:/repos/shared-db-worktrees/4336-so-date-sort"
 }

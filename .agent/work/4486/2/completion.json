@@ -26,8 +26,8 @@
     },
     {
       "command": "python3 -m pytest -q scripts/test_requalified_preview_runs.py scripts/test_verify_preview_apply_artifact.py scripts/test_production_business_risk_gate.py",
-      "exit_code": 1,
-      "evidence": "231 passed; 6 failed, identical 6 environment failures on unchanged main"
+      "exit_code": 0,
+      "evidence": "237 passed, 385 subtests passed"
     },
     {
       "command": "node --test scripts/db-flow/requalified-preview-runs.test.mjs",

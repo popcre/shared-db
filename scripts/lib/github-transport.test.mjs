@@ -416,3 +416,36 @@ test('a timed-out read is never retried even when its stderr looks transient (re
   assert.throws(() => runGitHubCommand(['api', 'repos/o/r'], { executor, wait: () => {}, reportStderr: () => {}, timeoutMs: 1000 }), /was killed/)
   assert.equal(calls, 1)
 })
+
+// Issue #4414 step 4: remaining-deadline cap on gh children.
+test('deadlineAtMs clamps the child timeout and refuses before launch when exhausted', () => {
+  const seen = []
+  const executor = (_b, _a, o) => { seen.push(o); return '{}' }
+  const now = () => 1_000
+  runGitHubCommand(['api', 'repos/o/r'], {
+    executor, wait: () => {}, reportStderr: () => {}, timeoutMs: 60_000,
+    deadlineAtMs: 4_000, now,
+  })
+  assert.equal(seen[0].timeout, 3_000, 'child timeout is clamped to remaining deadline')
+
+  assert.throws(
+    () => runGitHubCommand(['api', 'repos/o/r'], {
+      executor, wait: () => {}, reportStderr: () => {}, timeoutMs: 60_000,
+      deadlineAtMs: 500, now,
+    }),
+    /refusing before launching the call/,
+  )
+  assert.equal(seen.length, 1, 'exhausted deadline refuses before any launch')
+})
+
+test('deadlineAtMs does not change the one-attempt mutation rule', () => {
+  let calls = 0
+  const executor = () => { calls += 1; const e = new Error('transient'); e.stderr = 'connection reset'; throw e }
+  assert.throws(
+    () => runGitHubCommand(['api', '-X', 'POST', 'repos/o/r/git/refs'], {
+      executor, wait: () => {}, reportStderr: () => {},
+      timeoutMs: 5_000, deadlineAtMs: 10_000, now: () => 0,
+    }),
+  )
+  assert.equal(calls, 1, 'a mutation under deadline is still one attempt')
+})

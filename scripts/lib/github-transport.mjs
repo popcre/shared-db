@@ -63,6 +63,7 @@
 // other 403 fails closed exactly as before. The wait never changes what a gate
 // reads or how it judges it.
 
+import { clampTimeoutToDeadline, assertDeadlineBudget } from './lanes/bounded-deadline.mjs'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
@@ -350,9 +351,18 @@ export function runGitHubCommand(args, {
   // Only the real binary probes the real bucket by default; tests inject it.
   repository = executor === execFileSync ? (process.env.GITHUB_REPOSITORY || null) : null,
   timeoutMs = ghCommandTimeoutMs(),
+  // Step 4 (#4414): remaining-deadline cap. Absolute ms on the same clock as
+  // `now`. When set, exhausted remaining time refuses BEFORE launch and the
+  // child timeout is clamped to what remains. Mutations stay one attempt; the
+  // deadline never widens request ceilings and never adds a mutex.
+  deadlineAtMs = null,
 } = {}) {
   const mutating = isMutatingCall(args) || input !== undefined
   const allowed = mutating && !idempotentWrite ? 1 : Math.max(1, attempts)
+  const effectiveTimeoutMs = clampTimeoutToDeadline(timeoutMs, deadlineAtMs, now())
+  if (deadlineAtMs != null) {
+    assertDeadlineBudget(deadlineAtMs, 1, now(), wrapError)
+  }
   // A request BODY only reaches the child through a piped stdin. An earlier
   // hand-rolled wrapper set stdio:['ignore',...] alongside `input`, so gh sent
   // an EMPTY body and GitHub answered `422 ... nil is not an object` — while
@@ -360,8 +370,8 @@ export function runGitHubCommand(args, {
   // directly and never exercised the real stdin path. Naming 'ignore' here
   // would silently discard the body, so it is omitted when input is present.
   const spawnOptions = input === undefined
-    ? { encoding, maxBuffer, stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs, killSignal: 'SIGKILL' }
-    : { encoding, maxBuffer, input, timeout: timeoutMs, killSignal: 'SIGKILL' }
+    ? { encoding, maxBuffer, stdio: ['ignore', 'pipe', 'pipe'], timeout: effectiveTimeoutMs, killSignal: 'SIGKILL' }
+    : { encoding, maxBuffer, input, timeout: effectiveTimeoutMs, killSignal: 'SIGKILL' }
   let attempt = 0
   let rateLimitWaited = false
   for (;;) {
@@ -426,7 +436,7 @@ GitHub API rate limit exhausted (host-wide latch); waiting ${Math.ceil(delay / 1
         const captured = String(error?.stderr ?? '').trim()
         const timedOut = isCommandTimeout(error)
         const detail = timedOut
-          ? `gh did not answer within ${Math.round(timeoutMs / 1000)}s and was killed; the call is failed, not retried${captured ? `\n${captured}` : ''}`
+          ? `gh did not answer within ${Math.round(effectiveTimeoutMs / 1000)}s and was killed; the call is failed, not retried${captured ? `\n${captured}` : ''}`
           : (captured || String(error?.message ?? '').trim())
         const wrapped = wrapError
           ? wrapError(detail, error)

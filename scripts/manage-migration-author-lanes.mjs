@@ -54,7 +54,7 @@ import { EXCLUSIVE_REFS, REVIEW_TARGET_SUPERSEDED, SLOT_INDEPENDENCE_CONFLICT, T
 export { EXCLUSIVE_REFS, REVIEW_TARGET_SUPERSEDED, SLOT_INDEPENDENCE_CONFLICT, TERMINAL_FAILURE_CODES, QUEUE_STATUSES, QUEUE_WORK_TYPES, QUEUE_ROUTES, ROUTES_BY_WORK_TYPE, NON_STRUCTURAL_EXITS, OUTSIDE_ORCHESTRATOR_EXITS, RETURN_ADDRESS_PATTERN, RETURNED_MARKER, RETURNED_COPY_MARKER, LEGACY_RETURNED_COPY_PATTERN, RETURNED_COPY_HEADER_LINES, returnedCopyProvenance, requiresReturnAddress, queueExit, parseQueueScope, COORDINATION_LABELS, WORK_LABEL, buildDynamicQueues, returnIssueToOwner, CLAIM_FIRST_ROUTES, readDependencyStates }
 import { LaneError, validateClaimObjects, parseAuthorLease, assertLaneAvailable, claimBody, laneTreeReader } from './lib/lanes/claims.mjs'
 export { LaneError, validateClaimObjects, parseAuthorLease, assertLaneAvailable, claimBody }
-import { EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, createRefWithReadback, deleteRefWithReadback, parseGitRemoteRefs, parseGitCommitBatch, readGitCommits, parseGhIncludeResponse, parseLinkHeader, hasNextPageLink, isConfirmedRefAbsence, currentMainMaxVersion, reviewRecordRefs, assertReviewerDrawIsWarranted, assertReviewerDrawReadiness, gh, hasLabel, ghJson, ghRefListing, reviewStateEntry, gitRemoteRefRows, GIT_COMMAND_TIMEOUT_MS, authorityGhJson } from './lib/lanes/github-wire.mjs'
+import { EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, createRefWithReadback, deleteRefWithReadback, parseGitRemoteRefs, parseGitCommitBatch, readGitCommits, parseGhIncludeResponse, parseLinkHeader, hasNextPageLink, isConfirmedRefAbsence, currentMainMaxVersion, reviewRecordRefs, assertReviewerDrawIsWarranted, assertReviewerDrawReadiness, gh, hasLabel, ghJson, ghRefListing, reviewStateEntry, completeReviewStateEvidence, gitRemoteRefRows, GIT_COMMAND_TIMEOUT_MS, authorityGhJson } from './lib/lanes/github-wire.mjs'
 export { EXPECTED_REF_ABSENCE, EXPECTED_REF_PRESENCE, createRefWithReadback, deleteRefWithReadback, parseGitRemoteRefs, parseGitCommitBatch, readGitCommits, parseGhIncludeResponse, parseLinkHeader, hasNextPageLink, isConfirmedRefAbsence, currentMainMaxVersion, reviewRecordRefs, assertReviewerDrawIsWarranted, assertReviewerDrawReadiness, GIT_COMMAND_TIMEOUT_MS }
 import { LEGACY_GUARDED_CLEANUP_CLOSE_REASON, CLAIM_CLOSE_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, RETIREMENT_CLOSE_REASON, retiredClaimRef, normalizeRetirementIdentity, validateRetirementRecord, formatRetirementRecord, parseRetirementRecord, isVersionRetired, readRetirementRecord, assertClaimNotRetired, assertRetirementIdentityAvailable, createRetirementTombstone, retiredReopenedClaims, matchesLiveProof, matchesGeneratedTypesProof, requireClaimCloseReason, assertReviewerDrawHandoff } from './lib/lanes/retirement.mjs'
 export { LEGACY_GUARDED_CLEANUP_CLOSE_REASON, CLAIM_CLOSE_REASONS, RECOVERABLE_CLAIM_CLOSE_REASONS, RETIREMENT_CLOSE_REASON, retiredClaimRef, normalizeRetirementIdentity, validateRetirementRecord, formatRetirementRecord, parseRetirementRecord, isVersionRetired, readRetirementRecord, assertClaimNotRetired, assertRetirementIdentityAvailable, createRetirementTombstone, retiredReopenedClaims, matchesLiveProof, matchesGeneratedTypesProof, assertReviewerDrawHandoff }
@@ -320,6 +320,26 @@ export function verifyNonclosingMaintenanceBinding({pr,headSha,files,issue=null}
   return {issue:refs[0],work,headSha,contractRef:report.contract_ref,contractHash:contractHash(contract)}
 }
 
+// Page-fetch reader for review-state connections that exceeded the GraphQL
+// first:100 window (a busy work issue such as #2336). kind selects which
+// connection to extend; cursor is the prior endCursor.
+function makeReviewStatePageFetcher(){
+  return (kind,lease,cursor)=>{
+    const after=cursor?`, after:${JSON.stringify(cursor)}`:''
+    let field
+    if(kind==='prComments')field=`pullRequest(number:${Number(lease.pr)}){comments(first:100${after}){pageInfo{hasNextPage endCursor} nodes{body authorAssociation}}}`
+    else if(kind==='prReviews')field=`pullRequest(number:${Number(lease.pr)}){reviews(first:100${after}){pageInfo{hasNextPage endCursor} nodes{body state authorAssociation commit{oid}}}}`
+    else if(kind==='issueComments')field=`issue(number:${Number(lease.issue)}){comments(first:100${after}){pageInfo{hasNextPage endCursor} nodes{body authorAssociation}}}`
+    else throw new LaneError('batched reviewer PR/verdict evidence is incomplete or paginated')
+    const data=ghJson(['api','graphql','-f',`query=query{repository(owner:${JSON.stringify(REPO_OWNER)},name:${JSON.stringify(REPO_NAME)}){${field}}}`])
+    if(data?.errors?.length||!data?.data?.repository)throw new LaneError('batched reviewer PR/verdict evidence returned GraphQL errors')
+    const node=data.data.repository.pullRequest??data.data.repository.issue
+    const connection=node?.comments??node?.reviews
+    if(!connection||!Array.isArray(connection.nodes)||!connection.pageInfo)throw new LaneError('batched reviewer PR/verdict evidence is incomplete or paginated')
+    return connection
+  }
+}
+
 export const githubIo = {
   releaseRefOverGit(ref, ownerSha) { return releaseRefOverGit(ref, ownerSha) },
   enforceAdmission:true,
@@ -356,8 +376,8 @@ export const githubIo = {
     // Issue #3187: inside a reviewer operation the same snapshot also reads the PR's and
     // its single linked issue's review evidence, primed for the fresh state read that
     // follows under the same held mutex, so that read costs no second request.
-    const evidence=reviewWireBudget?' comments(first:100){pageInfo{hasNextPage} nodes{body authorAssociation}} reviews(first:100){pageInfo{hasNextPage} nodes{body state authorAssociation commit{oid}}} mergeCommit{oid}':''
-    const issueEvidence=reviewWireBudget?' comments(first:100){pageInfo{hasNextPage} nodes{body authorAssociation}}':''
+    const evidence=reviewWireBudget?' comments(first:100){pageInfo{hasNextPage endCursor} nodes{body authorAssociation}} reviews(first:100){pageInfo{hasNextPage endCursor} nodes{body state authorAssociation commit{oid}}} mergeCommit{oid}':''
+    const issueEvidence=reviewWireBudget?' comments(first:100){pageInfo{hasNextPage endCursor} nodes{body authorAssociation}}':''
     const query=`query($owner:String!,$name:String!,$pr:Int!){repository(owner:$owner,name:$name){pullRequest(number:$pr){state merged mergedAt headRefOid${evidence} files(first:100){pageInfo{hasNextPage} nodes{path changeType}} closingIssuesReferences(first:2){pageInfo{hasNextPage} nodes{... on Issue{number state body createdAt${issueEvidence}}}}}}}`
     const data=ghJson(['api','graphql','-f',`query=${query}`,'-F',`owner=${REPO_OWNER}`,'-F',`name=${REPO_NAME}`,'-F',`pr=${Number(pr)}`])
     // The caller's admission gate uses its own request counter, while the
@@ -365,7 +385,12 @@ export const githubIo = {
     const snapshot=completeReviewerOperationRouteSnapshot(data,()=>githubIo.getPrFiles(Number(pr)))
     const row=data.data.repository.pullRequest,linked=row.closingIssuesReferences.nodes
     if(reviewWireBudget&&linked.length===1&&Number.isInteger(linked[0]?.number)){
-      try{primeReviewStates([[`${linked[0].number}:${Number(pr)}`,reviewStateEntry(row,linked[0])]])}catch{}
+      try{
+        const fetchPage=makeReviewStatePageFetcher()
+        const lease={pr:Number(pr),issue:Number(linked[0].number)}
+        const completed=completeReviewStateEvidence(row,linked[0],(kind,cursor)=>fetchPage(kind,lease,cursor))
+        primeReviewStates([[`${linked[0].number}:${Number(pr)}`,reviewStateEntry(completed.pr,completed.issue)]])
+      }catch{}
     }
     return snapshot
   },
@@ -438,7 +463,11 @@ export const githubIo = {
     if(!base?.oid||!base?.tree?.oid)throw new LaneError('review commit base is unreadable')
     reviewCommitBase={head:base.oid,tree:base.tree.oid}
     const states=[]
-    unique.forEach((lease,index)=>{try{states.push([`${lease.issue}:${lease.pr}`,reviewStateEntry(repo[`p${index}`],repo[`i${index}`])])}catch{}})
+    const fetchPage=makeReviewStatePageFetcher()
+    unique.forEach((lease,index)=>{try{
+      const completed=completeReviewStateEvidence(repo[`p${index}`],repo[`i${index}`],(kind,cursor)=>fetchPage(kind,lease,cursor))
+      states.push([`${lease.issue}:${lease.pr}`,reviewStateEntry(completed.pr,completed.issue)])
+    }catch{}})
     if(states.length===unique.length)primeReviewStates(states)
     return new Map(entries)
   },
@@ -495,9 +524,11 @@ export const githubIo = {
     const fields=unique.map(reviewStateGraphqlFields).join(' ')
     const data=ghJson(['api','graphql','-f',`query=query{repository(owner:${JSON.stringify(REPO_OWNER)},name:${JSON.stringify(REPO_NAME)}){${fields}}}`])
     if(data?.errors?.length||!data?.data?.repository)throw new LaneError('batched reviewer PR/verdict evidence returned GraphQL errors')
+    const fetchPage=makeReviewStatePageFetcher()
     const result=new Map()
     unique.forEach((lease,index)=>{
-      result.set(`${lease.issue}:${lease.pr}`,reviewStateEntry(data.data.repository[`p${index}`],data.data.repository[`i${index}`]))
+      const completed=completeReviewStateEvidence(data.data.repository[`p${index}`],data.data.repository[`i${index}`],(kind,cursor)=>fetchPage(kind,lease,cursor))
+      result.set(`${lease.issue}:${lease.pr}`,reviewStateEntry(completed.pr,completed.issue))
     })
     return result
   },

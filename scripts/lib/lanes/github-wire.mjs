@@ -146,6 +146,31 @@ export function reviewStateEntry(pr,issue){
   if(!pr||!issue||!Array.isArray(pr.comments?.nodes)||!Array.isArray(pr.reviews?.nodes)||!Array.isArray(issue.comments?.nodes)||pr.comments?.pageInfo?.hasNextPage!==false||pr.reviews?.pageInfo?.hasNextPage!==false||issue.comments?.pageInfo?.hasNextPage!==false)throw new LaneError('batched reviewer PR/verdict evidence is incomplete or paginated')
   return {issue:{state:String(issue.state).toLowerCase()},pr:projectReviewPr(pr),evidence:[...issue.comments.nodes,...pr.comments.nodes,...pr.reviews.nodes.map((row)=>({...row,commit_id:row.commit?.oid}))]}
 }
+// Complete any review-state connection whose first page reports hasNextPage.
+// GitHub caps connections at 100 nodes; a busy work issue (e.g. #2336) exceeds
+// that and used to poison the whole batched reviewer read. Fetch remaining
+// pages with the injected reader and merge nodes in order before reviewStateEntry.
+export function completeReviewStateEvidence(pr,issue,fetchPage){
+  const drain=(connection,query)=>{
+    if(!connection||connection.pageInfo?.hasNextPage!==true)return connection
+    if(typeof fetchPage!=='function')throw new LaneError('batched reviewer PR/verdict evidence is incomplete or paginated')
+    const nodes=[...connection.nodes]
+    let cursor=connection.pageInfo?.endCursor??null,guard=0
+    while(true){
+      const page=fetchPage(query,cursor)
+      if(!page||!Array.isArray(page.nodes)||page.pageInfo?.hasNextPage===undefined)throw new LaneError('batched reviewer PR/verdict evidence is incomplete or paginated')
+      nodes.push(...page.nodes)
+      if(page.pageInfo.hasNextPage!==true)return {pageInfo:{hasNextPage:false},nodes}
+      cursor=page.pageInfo.endCursor
+      if(!cursor||++guard>50)throw new LaneError('batched reviewer PR/verdict evidence is incomplete or paginated')
+    }
+  }
+  if(!pr||!issue)return {pr,issue}
+  return {
+    pr:{...pr,comments:drain(pr.comments,'prComments'),reviews:drain(pr.reviews,'prReviews')},
+    issue:{...issue,comments:drain(issue.comments,'issueComments')},
+  }
+}
 export function gitRemoteRefRows(prefix){
   return [...gitRemoteRefs([`${prefix}*`])].filter(([ref])=>ref.startsWith(prefix)).sort(([a],[b])=>a<b?-1:a>b?1:0).map(([ref,sha])=>({ref,sha}))
 }

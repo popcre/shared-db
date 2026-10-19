@@ -6,9 +6,9 @@
   "migration_versions": [
     "20261019140024"
   ],
-  "contract_ref": "refs/db-contracts/4336/13",
-  "contract_sha256": "bdea4238ed5f8543cde52f6818755760f10bc14e82967c03f733f50a898975e1",
-  "head_sha": "f8e5141bd8495b49d8f5c41aa82f0e096557af68",
+  "contract_ref": "refs/db-contracts/4336/14",
+  "contract_sha256": "26cd1618acfc319fbbc645764660b052c8bfa19b05f26be0303445a71f111b6c",
+  "head_sha": "908826f294ea8c0d9041bf34152bd1024cbb7061",
   "base_sha": "a7b32d7e8a4113f66c3d450f60fec1a1c2bf0ad2",
   "files_changed": [
     ".agent/work/4336/12/completion.json",
@@ -57,5 +57,6 @@
   "assumptions_resolved": [
     "Gen 13 retargets paths to version 20261019140024 and PR 4489."
   ],
-  "stop_conditions_hit": []
+  "stop_conditions_hit": [],
+  "generation": 14
 }

@@ -2,13 +2,13 @@
   "schema_version": 1,
   "work_issue": 4336,
   "outcome": "ready-for-merge",
-  "pr": 4360,
+  "pr": 4489,
   "migration_versions": [
-    "20261018192732"
+    "20261019140024"
   ],
   "contract_ref": "refs/db-contracts/4336/12",
   "contract_sha256": "e236ef154340ed61cf2505e64bdb4de1218dfa52dab09bdb6bd99014673d81fc",
-  "head_sha": "f496b95b4374dcf28d870cfd853cbe25ea596ef4",
+  "head_sha": "62dd33b5adbcd7071520a8498bd08390ef30002a",
   "base_sha": "a7b32d7e8a4113f66c3d450f60fec1a1c2bf0ad2",
   "files_changed": [
     ".agent/work/4336/12/completion.json",

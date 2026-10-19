@@ -6,9 +6,9 @@
   "migration_versions": [
     "20261018192732"
   ],
-  "contract_ref": "refs/db-contracts/4336/11",
-  "contract_sha256": "e6a12762e020ef9ea181f0abfc68cdf415a0379c0bf457a944c86c345445f89e",
-  "head_sha": "02a64c6bab182378ebd43c5ae10c9a36d93d1c5d",
+  "contract_ref": "refs/db-contracts/4336/12",
+  "contract_sha256": "e236ef154340ed61cf2505e64bdb4de1218dfa52dab09bdb6bd99014673d81fc",
+  "head_sha": "e8e067bb80b2ffed8ee78aad95181bf6729c9043",
   "base_sha": "a7b32d7e8a4113f66c3d450f60fec1a1c2bf0ad2",
   "files_changed": [
     ".agent/work/4336/10/completion.json",
@@ -22,7 +22,9 @@
     "supabase/migrations/20261018192732_orderlist_so_date_sort.sql",
     "supabase/tests/dam_order_list_sales_order_date_sort.sql",
     ".agent/work/4336/11/contract.json",
-    ".agent/work/4336/11/completion.json"
+    ".agent/work/4336/11/completion.json",
+    ".agent/work/4336/12/contract.json",
+    ".agent/work/4336/12/completion.json"
   ],
   "db_reads": [
     "table coldlion.order_history_line",
@@ -58,7 +60,7 @@
     }
   ],
   "assumptions_resolved": [
-    "Evidence regenerated at current merge base after refreshing with main; SQL body unchanged."
+    "Gen 12 evidence pair includes its own paths after gen 11 omitted them."
   ],
   "stop_conditions_hit": []
 }

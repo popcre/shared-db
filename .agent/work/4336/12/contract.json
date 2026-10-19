@@ -11,7 +11,11 @@
     ".agent/work/4336/9/contract.json",
     ".agent/work/4336/9/completion.json",
     ".agent/work/4336/10/contract.json",
-    ".agent/work/4336/10/completion.json"
+    ".agent/work/4336/10/completion.json",
+    ".agent/work/4336/11/contract.json",
+    ".agent/work/4336/11/completion.json",
+    ".agent/work/4336/12/contract.json",
+    ".agent/work/4336/12/completion.json"
   ],
   "assumptions": [
     "SO Date means the existing exact-primary ColdLion /orderHistory.createdTime rule, displayed in America/New_York.",
@@ -39,8 +43,8 @@
   "dispatcher": "MiMo chat ses_ffe5eaf8f125dffeE9Y9GlP9JY on edge-dev",
   "evidence_parent": {
     "work_issue": 4336,
-    "generation": 10,
-    "contract_sha256": "2976ed7eb8729e1f19b65091ccd70bc55d4d88bec3357091e69cfbe49dfad6dc"
+    "generation": 11,
+    "contract_sha256": "e6a12762e020ef9ea181f0abfc68cdf415a0379c0bf457a944c86c345445f89e"
   },
   "file_writes": [
     "config/production-verification-sidecar-registry.json",
@@ -52,9 +56,13 @@
     "scripts/lib/session-authority.test.mjs",
     "scripts/manage-migration-author-lanes.mjs",
     ".agent/work/4336/10/contract.json",
-    ".agent/work/4336/10/completion.json"
+    ".agent/work/4336/10/completion.json",
+    ".agent/work/4336/11/contract.json",
+    ".agent/work/4336/11/completion.json",
+    ".agent/work/4336/12/contract.json",
+    ".agent/work/4336/12/completion.json"
   ],
-  "generation": 11,
+  "generation": 12,
   "goal": "Enable full-result OrderList sorting by SO Date, preserve the existing date rule and null-last stable ordering, and make Find positions use that same ordering. The 12-month window is out of scope.",
   "prohibited_actions": [
     "Do not change the 12-month OrderList window or its fallback date.",

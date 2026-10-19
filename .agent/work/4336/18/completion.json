@@ -25,14 +25,12 @@
       "exit_code": 0
     }
   ],
-  "contract_ref": "refs/db-contracts/4336/17",
-  "contract_sha256": "25b7d9ea8b5cab65dbff66036d89d1e72011cb81a1fe3f7fdb865681648067d9",
+  "contract_ref": "refs/db-contracts/4336/18",
+  "contract_sha256": "e15ad1c5af1658a9b30c5ec23e88feb3492aa568a174f745c3ee5984db7ac1fe",
   "db_reads": [
     "view api.dam_order_list"
   ],
   "db_writes": [
-    "view api.dam_order_list",
-    "function dam.orderlist_sales_order_received_date",
     "function public.find_dam_order_list_row"
   ],
   "files_changed": [

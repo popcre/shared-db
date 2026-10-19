@@ -1,7 +1,7 @@
 {
     "allowed_paths": [
-        ".agent/work/4336/17/completion.json",
-        ".agent/work/4336/17/contract.json",
+        ".agent/work/4336/18/completion.json",
+        ".agent/work/4336/18/contract.json",
         "config/production-verification-sidecar-registry.json",
         "scripts/production-verification-sidecars/20261019183716.json",
         "scripts/test_order_list_find_position.py",
@@ -21,26 +21,24 @@
         "view api.dam_order_list"
     ],
     "db_writes": [
-        "view api.dam_order_list",
-        "function dam.orderlist_sales_order_received_date",
         "function public.find_dam_order_list_row"
     ],
     "dispatcher": "Claude chat dbaec1bc-9a4c-4e8d-a36c-872f84426654 on edge-dev3",
     "evidence_parent": {
-        "contract_sha256": "4ac733246293d812dd9174565ea9508c27a1b1474bf19283ed6b12856fb7af93",
-        "generation": 16,
+        "contract_sha256": "25b7d9ea8b5cab65dbff66036d89d1e72011cb81a1fe3f7fdb865681648067d9",
+        "generation": 17,
         "work_issue": 4336
     },
     "file_writes": [
-        ".agent/work/4336/17/completion.json",
-        ".agent/work/4336/17/contract.json",
+        ".agent/work/4336/18/completion.json",
+        ".agent/work/4336/18/contract.json",
         "config/production-verification-sidecar-registry.json",
         "scripts/production-verification-sidecars/20261019183716.json",
         "scripts/test_order_list_find_position.py",
         "supabase/migrations/20261019183716_orderlist_so_date_sort_find.sql",
         "supabase/tests/dam_order_list_sales_order_date_sort.sql"
     ],
-    "generation": 17,
+    "generation": 18,
     "goal": "Enable full-result OrderList sorting by SO Date with blanks last and a stable tie-break, and make Find positions use the same ordering. Only public.find_dam_order_list_row changes. The 12-month window is out of scope.",
     "prohibited_actions": [
         "Do not change the 12-month OrderList window or its fallback date.",

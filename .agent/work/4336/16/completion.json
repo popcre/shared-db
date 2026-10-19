@@ -49,7 +49,7 @@
     "supabase/migrations/20261019140024_orderlist_so_date_sort.sql",
     "supabase/tests/dam_order_list_sales_order_date_sort.sql"
   ],
-  "head_sha": "c404434f22b9d40d4408cf0fae12a9bb51641f22",
+  "head_sha": "3dc962a05263a46fee96c8db03a0f29765e53927",
   "migration_versions": [
     "20261019140024"
   ],

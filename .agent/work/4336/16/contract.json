@@ -39,9 +39,9 @@
   ],
   "dispatcher": "MiMo chat ses-ffe5eaf8f125dffeE9Y9GlP9JY on edge-dev",
   "evidence_parent": {
-    "work_issue": 4336,
+    "contract_sha256": "e236ef154340ed61cf2505e64bdb4de1218dfa52dab09bdb6bd99014673d81fc",
     "generation": 12,
-    "contract_sha256": "e236ef154340ed61cf2505e64bdb4de1218dfa52dab09bdb6bd99014673d81fc"
+    "work_issue": 4336
   },
   "file_writes": [
     ".agent/work/4336/14/completion.json",

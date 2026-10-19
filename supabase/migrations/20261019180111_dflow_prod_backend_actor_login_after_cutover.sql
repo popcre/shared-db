@@ -13,6 +13,20 @@
 -- allows designflow_prod_backend_runtime and keeps the Supabase-JWT route the
 -- dflow_prod workflow parity contracts require. Client access stays closed.
 
+-- Precondition: the columns the restored body reads exist in live dflow_prod.users.
+do $pre$
+begin
+  if (select count(*) from information_schema.columns
+       where table_schema = 'dflow_prod' and table_name = 'users'
+         and column_name in ('id', 'email', 'status')) <> 3 then
+    raise exception '#4493 precondition failed: dflow_prod.users lacks id, email or status';
+  end if;
+  if to_regrole('designflow_prod_backend_runtime') is null then
+    raise exception '#4493 precondition failed: designflow_prod_backend_runtime role is missing';
+  end if;
+end
+$pre$;
+
 create or replace function dflow_prod.current_designflow_user_id()
 returns integer
 language plpgsql
@@ -80,3 +94,31 @@ $function$;
 revoke all on function dflow_prod.current_designflow_user_id() from public, anon, authenticated, service_role;
 comment on function dflow_prod.current_designflow_user_id() is
   'Resolves a Supabase JWT actor, or a transaction-local DesignFlow JWT actor supplied only by direct backend roles postgres/designflow/designflow_prod_backend_runtime, against dflow_prod.users.';
+
+-- Postcondition: exact shape, security and allowlist of the restored function.
+do $post$
+declare
+  v_oid oid := to_regprocedure('dflow_prod.current_designflow_user_id()');
+  v_def text;
+begin
+  if v_oid is null then
+    raise exception '#4493 postcondition failed: function is missing';
+  end if;
+  v_def := pg_get_functiondef(v_oid);
+  if not (select p.prosecdef and p.provolatile = 's'
+                 and p.prorettype = 'integer'::regtype
+                 and p.proconfig = array['search_path=pg_catalog, dflow_prod, auth']
+                 and pg_get_userbyid(p.proowner) = 'postgres'
+            from pg_proc p where p.oid = v_oid) then
+    raise exception '#4493 postcondition failed: definer, volatility, return type, search_path or owner differs';
+  end if;
+  if position($q$'postgres', 'designflow', 'designflow_prod_backend_runtime'$q$ in v_def) = 0 then
+    raise exception '#4493 postcondition failed: backend login allowlist missing';
+  end if;
+  if has_function_privilege('anon', v_oid, 'execute')
+     or has_function_privilege('authenticated', v_oid, 'execute')
+     or has_function_privilege('service_role', v_oid, 'execute') then
+    raise exception '#4493 postcondition failed: client roles can execute the actor function';
+  end if;
+end
+$post$;

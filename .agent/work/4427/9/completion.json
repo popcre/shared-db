@@ -11,8 +11,6 @@
   "head_sha": "88d6d25c4c9f6ee3c8012f7ddfaba91d5fbed316",
   "base_sha": "fe3931607f952029ce6174073f7320d580a188b7",
   "files_changed": [
-    ".agent/work/4427/9/completion.json",
-    ".agent/work/4427/9/contract.json",
     ".github/live-proofs/4427.sql",
     ".github/workflows/tools-offline-tests.yml",
     "docs/verification/rls-initplan/4427/manifest.json",

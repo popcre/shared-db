@@ -9,7 +9,7 @@ import { contractHash, validateContract, validateCompletionReport, validatePullR
 import { verifyGitEvidence, gitIo, readPublishedContractFromGit } from './agent-work-contract-git-evidence.mjs'
 
 import { execFileSync } from 'node:child_process'
-import { runGitHubCommand as sharedRunGitHubCommand, isTransientGitHubTransport, hostQuotaLatch } from './lib/github-transport.mjs'
+import { runGitHubCommand as sharedRunGitHubCommand, isTransientGitHubTransport, hostQuotaLatch, ghCommandTimeoutMs } from './lib/github-transport.mjs'
 import { createTreeReader } from './lib/github-tree.mjs'
 import { reviewCallerEnvironment } from './lib/reviewer-caller-env.mjs'
 import { createHash, randomUUID } from 'node:crypto'
@@ -179,6 +179,32 @@ function recordReviewGraphQuota(rateLimit){
   const remaining=Number(rateLimit.remaining),reset=Math.floor(new Date(rateLimit.resetAt).getTime()/1000)
   if(rateLimit.remaining!==undefined&&rateLimit.remaining!==null&&Number.isFinite(remaining)&&Number.isFinite(reset))observedReviewQuota.graphql={remaining,reset}
 }
+// Issue #4414 step 4: the owned mutex section has one operation deadline on a
+// MONOTONIC clock. Every gh/git child launched while the mutex is held gets
+// min(its own per-call bound, the time left), and a child whose remaining time
+// is zero or unreadable is refused BEFORE it launches. Release/cleanup gets its
+// own reserved allowance, started when cleanup begins, so an exhausted section
+// can still attempt its release. This is an operation budget, never a lease TTL:
+// no timer deletes a ref or cancels anyone else's writer. The values are a
+// provisional bound (step 7 measures real holds); they widen no request ceiling.
+export const REVIEW_MUTEX_SECTION_DEADLINE_MS=5*60*1000, REVIEW_MUTEX_CLEANUP_ALLOWANCE_MS=2*60*1000
+let reviewMonotonicNow=()=>performance.now()
+export function setReviewMonotonicClock(clock){const previous=reviewMonotonicNow;reviewMonotonicNow=typeof clock==='function'?clock:()=>performance.now();return previous}
+function startReviewSectionDeadline(){if(reviewWireBudget){reviewWireBudget.sectionDeadlineAt=reviewMonotonicNow()+REVIEW_MUTEX_SECTION_DEADLINE_MS;reviewWireBudget.cleanupDeadlineAt=null}}
+function clearReviewSectionDeadline(){if(reviewWireBudget){reviewWireBudget.sectionDeadlineAt=null;reviewWireBudget.cleanupDeadlineAt=null}}
+export function reviewChildTimeoutMs(defaultMs){
+  const budget=reviewWireBudget
+  if(budget?.sectionDeadlineAt==null)return defaultMs
+  const now=reviewMonotonicNow()
+  let deadline=budget.sectionDeadlineAt,what='mutex-held section'
+  if(budget.cleanup){
+    if(budget.cleanupDeadlineAt==null)budget.cleanupDeadlineAt=now+REVIEW_MUTEX_CLEANUP_ALLOWANCE_MS
+    deadline=budget.cleanupDeadlineAt;what='mutex release/cleanup allowance'
+  }
+  const remaining=Math.floor(deadline-now)
+  if(!Number.isFinite(remaining)||remaining<=0)throw new LaneError(`reviewer operation '${budget.operation??'reviewer-operation'}' exhausted its ${what} deadline; refused before launching another GitHub/git child (issue #4414). Nothing further was written by this call`)
+  return Math.min(defaultMs,remaining)
+}
 function consumeReviewWireRequest(){
   if(!reviewWireBudget)return
   // Issue #2844: proving the mutex release is not a derived-budget consumer. It runs
@@ -251,7 +277,7 @@ export function withReviewRequestBudget(fn,limit=REVIEW_OPERATION_REQUEST_LIMIT,
 function withoutReviewRequestBudget(fn){
   if(!reviewWireBudget)return fn()
   const suspended=reviewWireBudget
-  reviewWireBudget={count:0,limit:Number.MAX_SAFE_INTEGER,operation:`${suspended.operation??'reviewer-operation'}-admission-gate`,locked:suspended.locked,cleanup:suspended.cleanup}
+  reviewWireBudget={count:0,limit:Number.MAX_SAFE_INTEGER,operation:`${suspended.operation??'reviewer-operation'}-admission-gate`,locked:suspended.locked,cleanup:suspended.cleanup,sectionDeadlineAt:suspended.sectionDeadlineAt,cleanupDeadlineAt:suspended.cleanupDeadlineAt}
   try{return fn()}finally{reviewWireBudget=suspended}
 }
 // Issue #2342: the retry loop, the classifier and the stderr policy now live in
@@ -272,6 +298,8 @@ export function runGitHubCommand(args,{executor=execFileSync,wait=(ms)=>Atomics.
     maxBuffer,
     encoding,
     input,
+    // Issue #4414 step 4: bounded by the owned-section deadline while the mutex is held.
+    timeoutMs:reviewChildTimeoutMs(ghCommandTimeoutMs()),
     // Issue #2773: the real binary shares the host-wide exhaustion latch; a fixture executor never does. A latched refusal sends no request, so it is deliberately not charged to the wire budget above.
     quotaLatch:executor===execFileSync?hostQuotaLatch():null,
     wrapError:(detail)=>new LaneError(`GitHub command failed: ${detail}`),
@@ -349,9 +377,11 @@ export function gitRemoteRefs(patterns,{run=execFileSync,attempts=3,wait=(ms)=>A
     gitRemoteRepositoryProved=true
   }
   let lastError
+  // Issue #4414 step 4: under ownership a ref read is ONE attempt bounded by the section deadline.
+  if(reviewWireBudget?.sectionDeadlineAt!=null)attempts=1
   for(let attempt=1;attempt<=attempts;attempt++){
     let text
-    try{text=run('git',['ls-remote','origin',...patterns],{encoding:'utf8',maxBuffer:256*1024*1024,stdio:['ignore','pipe','pipe'],timeout:GIT_COMMAND_TIMEOUT_MS,killSignal:'SIGKILL'})}
+    try{text=run('git',['ls-remote','origin',...patterns],{encoding:'utf8',maxBuffer:256*1024*1024,stdio:['ignore','pipe','pipe'],timeout:reviewChildTimeoutMs(GIT_COMMAND_TIMEOUT_MS),killSignal:'SIGKILL'})}
     catch(error){lastError=error;if(attempt<attempts)wait(500*attempt);continue}
     return parseGitRemoteRefs(text)
   }
@@ -740,13 +770,16 @@ export const githubIo = {
   },
   atomicReviewRefs(changes){
     for(const sha of [...new Set(changes.map((change)=>change.sha).filter(Boolean))]){
-      try{execFileSync('git',['cat-file','-e',`${sha}^{commit}`],{stdio:'ignore'})}
-      catch{try{execFileSync('git',['fetch','--no-tags','origin',sha],{encoding:'utf8',stdio:['ignore','pipe','pipe']})}catch(error){throw new LaneError(`atomic reviewer ref transition could not hydrate commit ${sha}: ${String(error.stderr??error.message??error).trim()}`)}}
+      try{execFileSync('git',['cat-file','-e',`${sha}^{commit}`],{stdio:'ignore',timeout:reviewChildTimeoutMs(GIT_COMMAND_TIMEOUT_MS),killSignal:'SIGKILL'})}
+      catch(error){if(error instanceof LaneError)throw error;try{execFileSync('git',['fetch','--no-tags','origin',sha],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:reviewChildTimeoutMs(GIT_COMMAND_TIMEOUT_MS),killSignal:'SIGKILL'})}catch(error){throw new LaneError(`atomic reviewer ref transition could not hydrate commit ${sha}: ${String(error.stderr??error.message??error).trim()}`)}}
     }
     const args=['push','--atomic','origin']
     for(const change of changes)args.push(`--force-with-lease=${change.ref}:${change.expected??''}`)
     for(const change of changes)args.push(change.sha?`${change.sha}:${change.ref}`:`:${change.ref}`)
-    try{execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe']})}catch(error){throw new LaneError(`atomic reviewer ref transition failed: ${String(error.stderr??error.message??error).trim()}`)}
+    // Issue #4414 step 4: the deadline is checked before launch, never mid-batch.
+    // A killed push may still have landed; callers reconcile by exact readback.
+    const timeout=reviewChildTimeoutMs(GIT_COMMAND_TIMEOUT_MS)
+    try{execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout,killSignal:'SIGKILL'})}catch(error){const failure=new LaneError(`atomic reviewer ref transition failed${error?.code==='ETIMEDOUT'?' (timed out; result unknown until readback)':''}: ${String(error.stderr??error.message??error).trim()}`);failure.atomicOutcomeUnknown=true;throw failure}
   },
   atomicReviewMutexRelease(ownerSha){
     return this.atomicReviewRefs([{ref:MUTEX_REF,expected:ownerSha,sha:null}])
@@ -1850,7 +1883,22 @@ function finalizeReviewMutex(ownerSha,io){
   finally{
     clearHeldMutex(ownerSha)
     if(reviewWireBudget){reviewWireBudget.cleanup=previous;reviewWireBudget.releaseProofAllowance=0}
+    clearReviewSectionDeadline()
   }
+}
+// Issue #4414 step 4: classify a failed atomic multi-ref batch by reading back
+// EVERY intended ref (never only the cursor). 'committed' => all refs at desired;
+// 'uncommitted' => all refs still at expected, a retryable no-write refusal;
+// anything else (partial or unreadable) is RECOVERY REQUIRED. Never redraws.
+export function reconcileAtomicReviewBatch(changes,io,cause){
+  const detail=String(cause?.message??cause).split('\n')[0]
+  let refs
+  try{refs=io.readReviewRefs(changes.map((change)=>change.ref))}
+  catch(readError){throw new LaneError(`${detail}; the atomic batch outcome is UNKNOWN (readback failed: ${String(readError?.message??readError).split('\n')[0]}); RECOVERY REQUIRED for refs ${changes.map((change)=>change.ref).join(', ')}: do not retry blindly`)}
+  const at=(change,key)=>(refs.get(change.ref)??null)===(change[key]??null)
+  if(changes.every((change)=>at(change,'sha')))return 'committed'
+  if(changes.every((change)=>at(change,'expected'))){const refusal=new LaneError(`${detail}; readback proved the atomic batch did NOT commit -- no write happened, the same request may be retried`);refusal.retryableNoWrite=true;throw refusal}
+  throw new LaneError(`${detail}; readback shows a PARTIAL or foreign state for the atomic batch (${changes.map((change)=>`${change.ref}=${refs.get(change.ref)??'absent'} expected ${change.expected??'absent'} desired ${change.sha??'absent'}`).join('; ')}); RECOVERY REQUIRED: do not retry blindly`)
 }
 function requireReviewWireCapacity(required,when='refused before mutex acquisition'){const limit=reviewWireBudget?.limit??REVIEW_OPERATION_REQUEST_LIMIT;if(reviewWireBudget&&reviewWireBudget.count+required>limit)throw new LaneError(`reviewer operation cannot fit ${required} remaining requests inside the ${limit}-request budget; ${when}`)}
 // Issue #4414: after paid-start classification moves outside the lock, the
@@ -1861,6 +1909,7 @@ export function mutexSectionReserveAfterPrepare(capacitySpend,base=REVIEW_MUTEX_
 }
 function acquireReviewMutex(ownerSha,io){
   if(reviewWireBudget){reviewWireBudget.cleanupReserve=io.atomicReviewMutexRelease?2:8;reviewWireBudget.locked=true}
+  startReviewSectionDeadline()
   io.__requireReviewQuota?.()
   primedReviewStates=new Map()
   let acquired
@@ -1876,6 +1925,7 @@ function acquireReviewMutex(ownerSha,io){
     }catch(cleanup){throw new LaneError(`${error.message}; ${cleanup.message}; RECOVERY REQUIRED: ${MUTEX_REF} expected SHA ${ownerSha}. Use the guarded recover-author-mutex.yml procedure`)}
     finally{if(reviewWireBudget)reviewWireBudget.cleanup=previous}
     if(reviewPhaseTrace&&reviewPhaseTrace.releaseState==='not_acquired')notePhaseRelease('not_acquired')
+    clearReviewSectionDeadline()
     throw error
   }
   if(!acquired){
@@ -1888,6 +1938,7 @@ function acquireReviewMutex(ownerSha,io){
       if(actual&&actual!==ownerSha)notePhaseForeignOwner({sha:actual,ref:MUTEX_REF})
     }catch{/* unreadable owner stays unknown */}
     notePhaseRelease('not_acquired')
+    clearReviewSectionDeadline()
     throw new LaneError(`${MUTEX_REF} is occupied`)
   }
   noteHeldMutex(ownerSha,io)
@@ -2508,12 +2559,19 @@ function assignNextReviewerOperation({issue,pr,headSha,slot=1,reviewerAllowlist=
           const verdict=hasVerdictForHead(selectedStale.assignment.issue,selectedStale.assignment.pr,selectedStale.assignment.headSha,io,leaseVerdictOptions(selectedStale.assignment,{fresh:true}))
           if(revived?.pr?.state==='open'&&revived?.pr?.head?.sha===selectedStale.assignment.headSha&&!verdict)throw new LaneError('selected reviewer lease became live after mutex acquisition')
         }
-        io.atomicReviewRefs([
+        const assignmentBatch=[
           {ref:MUTEX_REF,expected:ownerSha,sha:ownerSha},
           {ref:leaseRef,expected:selectedStale?.sha??null,sha:leaseSha},
           {ref:REVIEW_CURSOR_REF,expected:cursorSha,sha:assignmentSha},
           {ref:assignmentRef,expected:null,sha:assignmentSha},
-        ])
+        ]
+        try{io.atomicReviewRefs(assignmentBatch)}
+        catch(error){
+          // Issue #4414 step 4: a failed/timed-out atomic batch may still have landed.
+          // Reconcile the EXACT transaction by one bounded readback of every intended ref.
+          if(reconcileAtomicReviewBatch(assignmentBatch,io,error)==='committed')return completedResult={sequence,reviewer:reviewer.name,wrapper:reviewer.wrapper,...request,...reviewBudgetDiagnostics(capacity),reconciledAfter:String(error?.message??error).split('\n')[0]}
+          throw error
+        }
         const refs=io.readReviewRefs([MUTEX_REF,leaseRef,REVIEW_CURSOR_REF,assignmentRef])
         if(refs.get(MUTEX_REF)!==ownerSha||refs.get(leaseRef)!==leaseSha||refs.get(REVIEW_CURSOR_REF)!==assignmentSha||refs.get(assignmentRef)!==assignmentSha)throw new LaneError('atomic review assignment readback mismatch')
         return completedResult={sequence,reviewer:reviewer.name,wrapper:reviewer.wrapper,...request,...reviewBudgetDiagnostics(capacity)}

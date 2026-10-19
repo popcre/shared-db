@@ -16,10 +16,9 @@
     "config/production-verification-sidecar-registry.json",
     "scripts/lib/session-authority.mjs",
     "scripts/lib/session-authority.test.mjs",
-    "scripts/manage-migration-author-lanes.mjs",
-    "scripts/production-verification-sidecars/20261018192732.json",
+    "scripts/production-verification-sidecars/20261019140024.json",
     "scripts/test_order_list_find_position.py",
-    "supabase/migrations/20261018192732_orderlist_so_date_sort.sql",
+    "supabase/migrations/20261019140024_orderlist_so_date_sort.sql",
     "supabase/tests/dam_order_list_sales_order_date_sort.sql"
   ],
   "db_reads": [

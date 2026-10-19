@@ -1,26 +1,32 @@
 {
-  "schema_version": 1,
-  "work_issue": 4336,
-  "outcome": "ready-for-merge",
-  "pr": 4489,
-  "migration_versions": [
-    "20261019140024"
+  "assumptions_resolved": [
+    "Sort/Find source on claim 4488 version 20261019140024."
+  ],
+  "base_sha": "a7b32d7e8a4113f66c3d450f60fec1a1c2bf0ad2",
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "evidence": "Static SQL checks passed.",
+      "exit_code": 0
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "evidence": "Sidecar hash bound to 20261019140024.",
+      "exit_code": 0
+    },
+    {
+      "command": "node --test scripts/lib/session-authority.test.mjs",
+      "evidence": "12 tests passed including MiMo owner-label binding.",
+      "exit_code": 0
+    },
+    {
+      "command": "git diff --check",
+      "evidence": "No whitespace errors.",
+      "exit_code": 0
+    }
   ],
   "contract_ref": "refs/db-contracts/4336/16",
   "contract_sha256": "4ac733246293d812dd9174565ea9508c27a1b1474bf19283ed6b12856fb7af93",
-  "head_sha": "0754c42dbbc2f73c28dc871051c6eaac09535077",
-  "base_sha": "a7b32d7e8a4113f66c3d450f60fec1a1c2bf0ad2",
-  "files_changed": [
-    ".agent/work/4336/16/completion.json",
-    ".agent/work/4336/16/contract.json",
-    "config/production-verification-sidecar-registry.json",
-    "scripts/lib/session-authority.mjs",
-    "scripts/lib/session-authority.test.mjs",
-    "scripts/production-verification-sidecars/20261019140024.json",
-    "scripts/test_order_list_find_position.py",
-    "supabase/migrations/20261019140024_orderlist_so_date_sort.sql",
-    "supabase/tests/dam_order_list_sales_order_date_sort.sql"
-  ],
   "db_reads": [
     "table coldlion.order_history_line",
     "table plm.production_order_line",
@@ -32,30 +38,24 @@
     "function dam.orderlist_sales_order_received_date",
     "function public.find_dam_order_list_row"
   ],
-  "checks": [
-    {
-      "command": "bash scripts/check-sql.sh",
-      "exit_code": 0,
-      "evidence": "Static SQL checks passed."
-    },
-    {
-      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
-      "exit_code": 0,
-      "evidence": "Sidecar hash bound to 20261019140024."
-    },
-    {
-      "command": "node --test scripts/lib/session-authority.test.mjs",
-      "exit_code": 0,
-      "evidence": "12 tests passed including MiMo owner-label binding."
-    },
-    {
-      "command": "git diff --check",
-      "exit_code": 0,
-      "evidence": "No whitespace errors."
-    }
+  "files_changed": [
+    ".agent/work/4336/16/completion.json",
+    ".agent/work/4336/16/contract.json",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/lib/session-authority.mjs",
+    "scripts/lib/session-authority.test.mjs",
+    "scripts/production-verification-sidecars/20261019140024.json",
+    "scripts/test_order_list_find_position.py",
+    "supabase/migrations/20261019140024_orderlist_so_date_sort.sql",
+    "supabase/tests/dam_order_list_sales_order_date_sort.sql"
   ],
-  "assumptions_resolved": [
-    "Sort/Find source on claim 4488 version 20261019140024."
+  "head_sha": "c404434f22b9d40d4408cf0fae12a9bb51641f22",
+  "migration_versions": [
+    "20261019140024"
   ],
-  "stop_conditions_hit": []
+  "outcome": "ready-for-merge",
+  "pr": 4489,
+  "schema_version": 1,
+  "stop_conditions_hit": [],
+  "work_issue": 4336
 }

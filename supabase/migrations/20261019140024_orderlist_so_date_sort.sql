@@ -1,4 +1,4 @@
--- Work issue #4336; exact object claim #4471 (version 20261018192732).
+-- Work issue #4336; exact object claim #4488 (version 20261019140024).
 -- derived-from: 20261009073649
 -- Full-result OrderList SO received date for sorting only; Find uses the same sort key.
 -- The date rule is unchanged from public.get_dam_order_sales_order_dates: exact primary

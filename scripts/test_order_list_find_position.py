@@ -11,7 +11,7 @@ from urllib.parse import urlsplit, urlunsplit
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
-MIGRATION = ROOT / 'supabase/migrations/20261018192732_orderlist_so_date_sort.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261019140024_orderlist_so_date_sort.sql'
 
 
 def main():

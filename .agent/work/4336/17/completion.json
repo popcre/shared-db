@@ -36,8 +36,6 @@
     "function public.find_dam_order_list_row"
   ],
   "files_changed": [
-    ".agent/work/4336/17/completion.json",
-    ".agent/work/4336/17/contract.json",
     "config/production-verification-sidecar-registry.json",
     "scripts/production-verification-sidecars/20261019183716.json",
     "scripts/test_order_list_find_position.py",

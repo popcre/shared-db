@@ -190,21 +190,35 @@ function recordReviewGraphQuota(rateLimit){
 export const REVIEW_MUTEX_SECTION_DEADLINE_MS=5*60*1000, REVIEW_MUTEX_CLEANUP_ALLOWANCE_MS=2*60*1000
 let reviewMonotonicNow=()=>performance.now()
 export function setReviewMonotonicClock(clock){const previous=reviewMonotonicNow;reviewMonotonicNow=typeof clock==='function'?clock:()=>performance.now();return previous}
-function startReviewSectionDeadline(){if(reviewWireBudget){reviewWireBudget.sectionDeadlineAt=reviewMonotonicNow()+REVIEW_MUTEX_SECTION_DEADLINE_MS;reviewWireBudget.cleanupDeadlineAt=null}}
-function clearReviewSectionDeadline(){if(reviewWireBudget){reviewWireBudget.sectionDeadlineAt=null;reviewWireBudget.cleanupDeadlineAt=null}}
-export function reviewChildTimeoutMs(defaultMs){
-  const budget=reviewWireBudget
-  if(budget?.sectionDeadlineAt==null)return defaultMs
-  const now=reviewMonotonicNow()
-  let deadline=budget.sectionDeadlineAt,what='mutex-held section'
-  if(budget.cleanup){
-    if(budget.cleanupDeadlineAt==null)budget.cleanupDeadlineAt=now+REVIEW_MUTEX_CLEANUP_ALLOWANCE_MS
-    deadline=budget.cleanupDeadlineAt;what='mutex release/cleanup allowance'
-  }
-  const remaining=Math.floor(deadline-now)
-  if(!Number.isFinite(remaining)||remaining<=0)throw new LaneError(`reviewer operation '${budget.operation??'reviewer-operation'}' exhausted its ${what} deadline; refused before launching another GitHub/git child (issue #4414). Nothing further was written by this call`)
-  return Math.min(defaultMs,remaining)
+// The deadline lives beside, not inside, the request budget: every reviewer-mutex
+// holder gets it, including archiveOldReviewVerdicts, which runs without a budget.
+let reviewSectionDeadline=null
+function startReviewSectionDeadline(){reviewSectionDeadline={sectionAt:reviewMonotonicNow()+REVIEW_MUTEX_SECTION_DEADLINE_MS,cleanupAt:null,cleanup:0}}
+function clearReviewSectionDeadline(){reviewSectionDeadline=null}
+// Release, failed-acquire cleanup and ambiguous-batch reconciliation run on the
+// reserved allowance, never on what is left of the (possibly exhausted) section.
+function withReviewCleanupAllowance(fn){
+  const deadline=reviewSectionDeadline
+  if(!deadline)return fn()
+  deadline.cleanup+=1
+  try{return fn()}finally{deadline.cleanup-=1}
 }
+// defaultMs undefined means "unbounded outside ownership": the call keeps its old
+// behaviour there and is bounded only while the mutex is held.
+export function reviewChildTimeoutMs(defaultMs){
+  const deadline=reviewSectionDeadline
+  if(!deadline)return defaultMs
+  const now=reviewMonotonicNow()
+  let at=deadline.sectionAt,what='mutex-held section'
+  if(deadline.cleanup>0){
+    if(deadline.cleanupAt==null)deadline.cleanupAt=now+REVIEW_MUTEX_CLEANUP_ALLOWANCE_MS
+    at=deadline.cleanupAt;what='mutex release/cleanup allowance'
+  }
+  const remaining=Math.floor(at-now)
+  if(!Number.isFinite(remaining)||remaining<=0)throw new LaneError(`reviewer operation '${reviewWireBudget?.operation??'reviewer-operation'}' exhausted its ${what} deadline; refused before launching another GitHub/git child (issue #4414). Nothing further was written by this call`)
+  return defaultMs==null?remaining:Math.min(defaultMs,remaining)
+}
+const boundedGit=(options={})=>{const timeout=reviewChildTimeoutMs(options?.timeout);return timeout==null?options:{...options,timeout,killSignal:'SIGKILL'}}
 function consumeReviewWireRequest(){
   if(!reviewWireBudget)return
   // Issue #2844: proving the mutex release is not a derived-budget consumer. It runs
@@ -277,7 +291,7 @@ export function withReviewRequestBudget(fn,limit=REVIEW_OPERATION_REQUEST_LIMIT,
 function withoutReviewRequestBudget(fn){
   if(!reviewWireBudget)return fn()
   const suspended=reviewWireBudget
-  reviewWireBudget={count:0,limit:Number.MAX_SAFE_INTEGER,operation:`${suspended.operation??'reviewer-operation'}-admission-gate`,locked:suspended.locked,cleanup:suspended.cleanup,sectionDeadlineAt:suspended.sectionDeadlineAt,cleanupDeadlineAt:suspended.cleanupDeadlineAt}
+  reviewWireBudget={count:0,limit:Number.MAX_SAFE_INTEGER,operation:`${suspended.operation??'reviewer-operation'}-admission-gate`,locked:suspended.locked,cleanup:suspended.cleanup}
   try{return fn()}finally{reviewWireBudget=suspended}
 }
 // Issue #2342: the retry loop, the classifier and the stderr policy now live in
@@ -370,19 +384,19 @@ let gitRemoteRepositoryProved=false
 export function gitRemoteRefs(patterns,{run=execFileSync,attempts=3,wait=(ms)=>Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms)}={}){
   if(!gitRemoteRepositoryProved){
     let url
-    try{url=String(run('git',['remote','get-url','origin'],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:GIT_COMMAND_TIMEOUT_MS,killSignal:'SIGKILL'})).trim()}
-    catch(error){throw new LaneError(`git origin remote is unreadable; refusing git ref reads (${String(error?.message??error).split('\n')[0]})`)}
+    try{url=String(run('git',['remote','get-url','origin'],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:reviewChildTimeoutMs(GIT_COMMAND_TIMEOUT_MS),killSignal:'SIGKILL'})).trim()}
+    catch(error){if(error instanceof LaneError)throw error;throw new LaneError(`git origin remote is unreadable; refusing git ref reads (${String(error?.message??error).split('\n')[0]})`)}
     const slug=url.replace(/\.git$/i,'').replace(/\/+$/,'').replace(/^.*github\.com[:/]/i,'')
     if(!/github\.com[:/]/i.test(url)||slug.toLowerCase()!==String(REPO).toLowerCase())throw new LaneError(`git origin remote does not point at ${REPO}; refusing git ref reads`)
     gitRemoteRepositoryProved=true
   }
   let lastError
   // Issue #4414 step 4: under ownership a ref read is ONE attempt bounded by the section deadline.
-  if(reviewWireBudget?.sectionDeadlineAt!=null)attempts=1
+  if(reviewSectionDeadline)attempts=1
   for(let attempt=1;attempt<=attempts;attempt++){
     let text
     try{text=run('git',['ls-remote','origin',...patterns],{encoding:'utf8',maxBuffer:256*1024*1024,stdio:['ignore','pipe','pipe'],timeout:reviewChildTimeoutMs(GIT_COMMAND_TIMEOUT_MS),killSignal:'SIGKILL'})}
-    catch(error){lastError=error;if(attempt<attempts)wait(500*attempt);continue}
+    catch(error){if(error instanceof LaneError)throw error;lastError=error;if(attempt<attempts)wait(500*attempt);continue}
     return parseGitRemoteRefs(text)
   }
   throw new LaneError(`git ref listing failed: ${String(lastError?.stderr??lastError?.message??lastError).trim().split('\n')[0]}`)
@@ -449,13 +463,13 @@ export function buildDatabasePreviewFileSnapshot(files,base,head,readContent){
 // Node default1MiB. This process bound does not change semantic evidence limits.
 export const PAID_REVIEW_GIT_MAX_BYTES = 4 * 1024 * 1024
 export function paidReviewGitReader(args) {
-  return execFileSync('git', args, {encoding:'utf8', stdio:['ignore','pipe','pipe'], maxBuffer:PAID_REVIEW_GIT_MAX_BYTES})
+  return execFileSync('git', args, boundedGit({encoding:'utf8', stdio:['ignore','pipe','pipe'], maxBuffer:PAID_REVIEW_GIT_MAX_BYTES}))
 }
 
 // #4048: a partial maintenance PR must retain its authentic work issue without
 // pretending to close that unfinished parent. Refs only selects the proof;
 // immutable canonical evidence and normal Git validation supply authority.
-export function verifyNonclosingMaintenanceBinding({pr,headSha,files,issue=null,structural=false},io,git=gitIo,{gitRunner=(args,options)=>execFileSync('git',args,{...options,encoding:'utf8',stdio:['ignore','pipe','pipe']})}={}){
+export function verifyNonclosingMaintenanceBinding({pr,headSha,files,issue=null,structural=false},io,git=gitIo,{gitRunner=(args,options)=>execFileSync('git',args,boundedGit({...options,encoding:'utf8',stdio:['ignore','pipe','pipe']}))}={}){
   const refuse=(reason)=>{throw new LaneError(`nonclosing maintenance binding refused: ${reason}`)}
   const live=io.getPr(pr),main=io.mainSha?.()
   if(!live||Number(live.number)!==pr||live.state!=='open'||live.head?.sha!==headSha||
@@ -836,8 +850,8 @@ export const githubIo = {
   // commit is absent or unreadable here.
   mergeTouchesMigrations(sha) {
     if(!/^[0-9a-f]{40}$/i.test(String(sha)))return null
-    try{return execFileSync('git',['diff','--name-only',`${sha}^1`,sha],{encoding:'utf8',stdio:['ignore','pipe','ignore'],maxBuffer:32*1024*1024}).split(/\r?\n/).some((line)=>line.startsWith('supabase/migrations/'))}
-    catch{return null}
+    try{return execFileSync('git',['diff','--name-only',`${sha}^1`,sha],boundedGit({encoding:'utf8',stdio:['ignore','pipe','ignore'],maxBuffer:32*1024*1024})).split(/\r?\n/).some((line)=>line.startsWith('supabase/migrations/'))}
+    catch(error){if(error instanceof LaneError)throw error;return null}
   },
   // AGENTS.md section 4 rule 2 is merge-first: the rehearsal happens AFTER the PR
   // merges, so the lane must still be able to find that PR once it is closed.
@@ -845,7 +859,7 @@ export const githubIo = {
   branchPulls(branch) { return ghPaginated(`repos/${REPO}/pulls?state=all&head=${REPO.split('/')[0]}:${encodeURIComponent(branch)}&per_page=100`) },
   verifyNonclosingMaintenanceBinding(request){return verifyNonclosingMaintenanceBinding(request,this)},
   verifyNonclosingStructuralBinding(request){return verifyNonclosingMaintenanceBinding({...request,structural:true},this)},
-  prepareNonclosingEvidenceGit(head,base){execFileSync('git',['fetch','--no-tags','--quiet','origin',head,base],{stdio:['ignore','pipe','pipe']})},
+  prepareNonclosingEvidenceGit(head,base){execFileSync('git',['fetch','--no-tags','--quiet','origin',head,base],boundedGit({stdio:['ignore','pipe','pipe']}))},
   getPr(number) { return ghJson(['api', `repos/${REPO}/pulls/${number}`]) },
   getPrFiles(number) { return ghPaginated(`repos/${REPO}/pulls/${number}/files?per_page=100`) },
   databasePreviewFileSnapshot(pr,baseSha,headSha){
@@ -966,13 +980,13 @@ export const githubIo = {
     const base=context.base??this.getPr(pr)?.base?.sha
     context.base=base
     if(!/^[0-9a-f]{40}$/.test(base??''))throw new LaneError('review circuit breaker: exact protected comparison base unreadable')
-    execFileSync('git',['fetch','--no-tags','-q','origin',before,after,base],{stdio:['ignore','pipe','pipe']})
+    execFileSync('git',['fetch','--no-tags','-q','origin',before,after,base],boundedGit({stdio:['ignore','pipe','pipe']}))
     const excludePaths=verifiedEvidencePaths(before,after)
     let contracts=paidBudgetContractCaches.get(context);if(!contracts){contracts=new Map();paidBudgetContractCaches.set(context,contracts)}
     const readContract=ref=>{
       if(!contracts.has(ref))contracts.set(ref,readPublishedContractFromGit(ref,(command,args,options)=>{
         if(command==='git' && ['ls-remote','fetch'].includes(args[0]))consumeReviewWireRequest()
-        return execFileSync(command,args,options)
+        return execFileSync(command,args,boundedGit(options))
       }))
       return contracts.get(ref)
     }
@@ -1814,6 +1828,7 @@ function finalizeReviewMutex(ownerSha,io){
   notePhase('release')
   const previous=reviewWireBudget?.cleanup
   if(reviewWireBudget)reviewWireBudget.cleanup=true
+  if(reviewSectionDeadline)reviewSectionDeadline.cleanup+=1
   try{
     if(io.atomicReviewMutexRelease){
       if(reviewWireBudget)reviewWireBudget.releaseProofAllowance=MUTEX_RELEASE_READBACK_DELAYS_MS.length+2
@@ -1893,7 +1908,7 @@ function finalizeReviewMutex(ownerSha,io){
 export function reconcileAtomicReviewBatch(changes,io,cause){
   const detail=String(cause?.message??cause).split('\n')[0]
   let refs
-  try{refs=io.readReviewRefs(changes.map((change)=>change.ref))}
+  try{refs=withReviewCleanupAllowance(()=>io.readReviewRefs(changes.map((change)=>change.ref)))}
   catch(readError){throw new LaneError(`${detail}; the atomic batch outcome is UNKNOWN (readback failed: ${String(readError?.message??readError).split('\n')[0]}); RECOVERY REQUIRED for refs ${changes.map((change)=>change.ref).join(', ')}: do not retry blindly`)}
   const at=(change,key)=>(refs.get(change.ref)??null)===(change[key]??null)
   if(changes.every((change)=>at(change,'sha')))return 'committed'
@@ -1917,6 +1932,7 @@ function acquireReviewMutex(ownerSha,io){
   catch(error){
     const previous=reviewWireBudget?.cleanup
     if(reviewWireBudget)reviewWireBudget.cleanup=true
+    if(reviewSectionDeadline)reviewSectionDeadline.cleanup+=1
     try{
       const actual=io.readRef(MUTEX_REF)
       // Observed foreign owner (if any) for cross-domain wait attribution.

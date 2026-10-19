@@ -137,7 +137,7 @@ export function readGitCommits(shas,{run=execFileSync}={}){
   let result=batch()
   if(result.unfetched.length){
     try{run('git',['fetch','--no-tags','-q','origin',...result.unfetched],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:reviewChildTimeoutMs(GIT_COMMAND_TIMEOUT_MS),killSignal:'SIGKILL'})}
-    catch(error){throw new LaneError(`git could not hydrate commits ${result.unfetched.join(', ')}: ${String(error?.stderr??error?.message??error).trim().split('\n')[0]}`)}
+    catch(error){if(error instanceof LaneError)throw error;throw new LaneError(`git could not hydrate commits ${result.unfetched.join(', ')}: ${String(error?.stderr??error?.message??error).trim().split('\n')[0]}`)}
     result=batch()
     if(result.unfetched.length)throw new LaneError(`git commits ${result.unfetched.join(', ')} are unreadable after fetch`)
   }

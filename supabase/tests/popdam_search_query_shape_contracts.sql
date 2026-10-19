@@ -2,7 +2,15 @@
 -- Covers: no-match empty, summary on out-of-range page, model predicate,
 -- keyword branch bounds, substring guard.
 
-set local role service_role;
+-- Prefer the superuser/session path so require_dam_access is satisfied in CI
+-- without a JWT. service_role is granted execute for production callers.
+reset role;
+do $$
+begin
+  if not (select public.require_dam_access()) then
+    raise exception 'test cannot obtain DAM access';
+  end if;
+end $$;
 
 -- 1. No-match precision: nonsense token must return zero rows (and summary still present).
 do $$

@@ -155,7 +155,8 @@ as $$
     select r.* from ranked_documents r order by r.rank desc,r.document_type,r.entity_id
     offset (select page_offset from params) limit (select page_limit from params)
   )
-  -- summary survives an empty/out-of-range page (fix 3)
+  -- summary survives an empty/out-of-range page (fix 3).
+  -- One row per page hit; if the slice is empty, a single summary-only row.
   select p.document_type,p.entity_id,p.asset_id,p.style_group_id,p.keyword_rank,p.semantic_rank,p.rank,
     s.total_count,
     s.total_count > (select page_offset+page_limit from params),

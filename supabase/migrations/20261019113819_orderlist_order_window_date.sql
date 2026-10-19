@@ -7,6 +7,36 @@
 -- order_window_date falls back to Sent PO, then Start Ship, then Prod PO Date, when the SO date is blank. Null only when all four are blank.
 begin;
 
+-- Drift guard: replace only the exact view this file was derived from (20261009073649).
+do $dependencies$
+begin
+  if not exists (
+    select 1 from pg_catalog.pg_class c
+    where c.oid = to_regclass('api.dam_order_list') and c.relkind = 'v'
+      and c.reloptions @> array['security_invoker=true']
+  ) then
+    raise exception '#4336 requires the security-invoker OrderList view';
+  end if;
+  if (select count(*) from pg_catalog.pg_attribute a
+      where a.attrelid = 'api.dam_order_list'::regclass and a.attnum > 0 and not a.attisdropped) <> 90
+     or (select a.attname from pg_catalog.pg_attribute a
+         where a.attrelid = 'api.dam_order_list'::regclass and a.attnum = 90) <> 'snapshot_contractual_sample_reorder'
+     or (select a.attname from pg_catalog.pg_attribute a
+         where a.attrelid = 'api.dam_order_list'::regclass and a.attnum = 76) <> 'coldlion_source_id' then
+    raise exception '#4336 OrderList view drifted from 20261009073649 (expected 90 columns)';
+  end if;
+  if position('coldlion_ref.is_primary' in lower(pg_get_viewdef('api.dam_order_list'::regclass))) = 0 then
+    raise exception '#4336 requires primary-only ColdLion references in OrderList';
+  end if;
+  if to_regtype('timestamp with time zone') is distinct from (select a.atttypid::regtype from pg_catalog.pg_attribute a
+      where a.attrelid = 'coldlion.order_history_line'::regclass and a.attname = 'created_time' and not a.attisdropped)
+     or to_regtype('bigint') is distinct from (select a.atttypid::regtype from pg_catalog.pg_attribute a
+      where a.attrelid = 'coldlion.order_history_line'::regclass and a.attname = 'sales_order_no' and not a.attisdropped) then
+    raise exception '#4336 coldlion.order_history_line columns changed';
+  end if;
+end;
+$dependencies$;
+
 create or replace function dam.orderlist_sales_order_received_date(p_coldlion_source_id text)
 returns date
 language sql stable strict security definer
@@ -24,7 +54,7 @@ as $$
 $$;
 
 revoke all on function dam.orderlist_sales_order_received_date(text) from public, anon;
-grant execute on function dam.orderlist_sales_order_received_date(text) to authenticated;
+grant execute on function dam.orderlist_sales_order_received_date(text) to authenticated, service_role;
 comment on function dam.orderlist_sales_order_received_date(text) is
   'OrderList SO received date for one primary ColdLion source reference. Same rule as get_dam_order_sales_order_dates. #4336.';
 

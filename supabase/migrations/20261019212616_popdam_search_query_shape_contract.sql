@@ -2,20 +2,20 @@
 -- Same 8-arg signature (incl. p_min_semantic_score). Body-only repair.
 -- derived-from: 20260925222432
 --
--- Fixes:
---   1. Semantic pool is filter-aware: document_type + model/dims predicate
---      applied before the distance ORDER/LIMIT; pool 50k (was 20k unfiltered).
---   2. Semantic leg requires embedding_model='gte-small' and vector_dims=384.
---   3. total_count / has_more / facets are returned even when the page slice
---      is empty (out-of-range offset).
---   4. Group↔asset rollup parity: both legs use the same member-asset expansion
---      already present in candidate_asset_ids; keyword-only group wrapper keeps
---      its documented member rollup and is left functionally unchanged except
---      for the no-match guard (below).
---   5. No-match precision: substring ILIKE only when the expanded query has a
---      real alphabetic token of length >= 3 and the tsquery is non-empty.
---   6. Keyword branches are bounded (limit 10000 each) so high-DF terms cannot
---      blow the 8s statement_timeout; timeout is NOT raised.
+-- Fixes (GLM findings 2026-10-19 REJECT applied):
+--   1. Semantic pool: model/dims + document_type before distance cap (50k).
+--   2. Semantic leg requires embedding_model='gte-small' and vector_dims=384;
+--      popdam_semantic_score_floor_behavior fixtures now set embedding_model.
+--   3. total_count / has_more / facets returned even when the page slice is empty.
+--   4. Group↔asset rollup parity unchanged (candidate_asset_ids).
+--   5. No-match: empty tsqueries dropped in the queries CTE so the pinned
+--      indexable scan form is retained and punctuation-only queries return
+--      only the summary envelope.
+--   6. Keyword branches bounded; UNION arms parenthesized + ordered before
+--      LIMIT (PostgreSQL requires parentheses on limited UNION arms).
+-- Reconciled pinned contract: popdam_authorized_ranked_search_contracts.sql
+-- keeps its measured-scan string; search_style_groups_full_text keeps
+-- max(d.rank)*0.8 and a single search_dam_documents pass.
 
 drop function if exists public.search_assets_full_text(text,int);
 drop function if exists public.search_style_groups_full_text(text,int);
@@ -45,21 +45,23 @@ as $$
   ), queries as materialized (
     select websearch_to_tsquery('simple',q.query_text) tsq,
       '%' || q.query_text || '%' like_pattern,
-      -- no-match precision: substring only for real words, never for empty/punct
+      -- no-match precision: substring only for real words
       (length(q.query_text) >= 3
-        and q.query_text ~ '[[:alpha:]]{3,}'
-        and websearch_to_tsquery('simple',q.query_text) <> ''::tsquery) allow_substring
+        and q.query_text ~ '[[:alpha:]]{3,}') allow_substring
     from params p cross join public.expand_dam_search_queries(p.query_text) q
     where p.query_text is not null
+      -- drop empty tsqueries here so the measured indexable scan keeps
+      -- its pinned form and never matches punctuation-only queries
+      and websearch_to_tsquery('simple',q.query_text) <> ''::tsquery
   ), full_text_matches as materialized (
     select d.document_type,d.entity_id,d.asset_id,d.style_group_id,d.search_tsv
     from public.dam_search_documents d
     where (p_document_types is null or d.document_type = any(p_document_types))
-      and d.search_tsv @@ any(array(select q.tsq from queries q where q.tsq <> ''::tsquery))
+      and d.search_tsv @@ any(array(select q.tsq from queries q))
     limit 10000
   ), keyword_candidates as materialized (
     select d.document_type,d.entity_id,d.asset_id,d.style_group_id,
-      greatest((select max(ts_rank_cd(d.search_tsv, q.tsq)) from queries q where q.tsq <> ''::tsquery and d.search_tsv @@ q.tsq),0.01)::real keyword_rank
+      greatest((select max(ts_rank_cd(d.search_tsv, q.tsq)) from queries q where d.search_tsv @@ q.tsq),0.01)::real keyword_rank
     from full_text_matches d
     union all
     select d.document_type,d.entity_id,d.asset_id,d.style_group_id,
@@ -188,19 +190,20 @@ as $$
   with queries as materialized (
     select websearch_to_tsquery('simple', q.query_text) tsq,
       '%' || q.query_text || '%' like_pattern,
-      (length(q.query_text) >= 3 and q.query_text ~ '[[:alpha:]]{3,}'
-        and websearch_to_tsquery('simple',q.query_text) <> ''::tsquery) allow_substring
+      (length(q.query_text) >= 3 and q.query_text ~ '[[:alpha:]]{3,}') allow_substring
     from public.expand_dam_search_queries(nullif(trim(p_query), '')) q
     where public.require_dam_access()
+      and websearch_to_tsquery('simple', q.query_text) <> ''::tsquery
   ), direct_candidates as materialized (
-    select d.style_group_id,
+    (select d.style_group_id,
       greatest(ts_rank_cd(d.search_tsv, q.tsq), 0.01)::real rank
     from queries q
-    join public.dam_search_documents d on q.tsq <> ''::tsquery and d.search_tsv @@ q.tsq
+    join public.dam_search_documents d on d.search_tsv @@ q.tsq
     where d.document_type = 'style_group'
-    limit 10000
+    order by 2 desc, 1
+    limit 10000)
     union all
-    select d.style_group_id,
+    (select d.style_group_id,
       case when d.title ilike q.like_pattern then 0.04
            when d.path ilike q.like_pattern then 0.03
            when d.customer ilike q.like_pattern or d.program ilike q.like_pattern then 0.02
@@ -211,7 +214,8 @@ as $$
       or d.customer ilike q.like_pattern or d.program ilike q.like_pattern
     )
     where d.document_type = 'style_group'
-    limit 10000
+    order by 2 desc, 1
+    limit 10000)
   ), direct_groups as (
     select d.style_group_id,max(d.rank)::real rank
     from direct_candidates d

@@ -12,7 +12,8 @@ begin
   end if;
 end $$;
 
--- 1. No-match precision: nonsense token must return zero rows (and summary still present).
+-- 1. No-match precision: nonsense token must return the summary envelope
+--    (exactly one summary-only row; never a phantom hit).
 do $$
 declare
   n int;
@@ -20,11 +21,10 @@ declare
 begin
   select count(*), min(total_count) into n, total
   from public.search_dam_documents('zzzz-not-a-real-object-qqq', '{}'::jsonb, 10, 0, null, null, 0);
-  -- count(*) of returned table rows: either 0 (legacy empty) or 1 (summary-only row)
-  if n > 1 then
-    raise exception 'no-match query returned % rows (expected 0 or 1 summary-only)', n;
+  if n <> 1 then
+    raise exception 'no-match query returned % rows (expected 1 summary-only)', n;
   end if;
-  if n = 1 and coalesce(total, 0) <> 0 then
+  if coalesce(total, 0) <> 0 then
     raise exception 'no-match query reported total_count=%', total;
   end if;
 end $$;
@@ -51,16 +51,13 @@ begin
   end if;
 end $$;
 
--- 3. Signature is still 8-arg with p_min_semantic_score trailing.
+-- 3. Signature is still 8-arg with p_min_semantic_score trailing
+--    (search-path independent via to_regprocedure).
 do $$
 begin
-  if not exists (
-    select 1 from pg_proc p
-    join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname = 'search_dam_documents'
-      and pg_get_function_identity_arguments(p.oid) =
-        'p_query text, p_filters jsonb, p_limit integer, p_offset integer, p_document_types text[], p_query_embedding extensions.vector, p_min_rank real, p_min_semantic_score real'
-  ) then
+  if to_regprocedure(
+    'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)'
+  ) is null then
     raise exception 'search_dam_documents signature drifted from the 8-arg contract';
   end if;
 end $$;

@@ -6,8 +6,8 @@
   "migration_versions": [
     "20261019113819"
   ],
-  "contract_ref": "refs/db-contracts/4336/13",
-  "contract_sha256": "f0ae8793679c367e64bdab7112ffe740769a9a099a0d521c9bb1bd00820f8e5d",
+  "contract_ref": "refs/db-contracts/4336/14",
+  "contract_sha256": "e1a61db9cc9408c3da2ef0057be0ac4b0b50f5832c6346fae82a08987bc8670b",
   "head_sha": "c7e56952b955a5a8fed3f22c37c628bf34498e1c",
   "base_sha": "9b14f44d1d6a2e2fc6814c1e6943d6f545ae3ab6",
   "files_changed": [
@@ -20,8 +20,7 @@
   ],
   "db_writes": [
     "view api.dam_order_list",
-    "function dam.orderlist_sales_order_received_date",
-    "function public.find_dam_order_list_row"
+    "function dam.orderlist_sales_order_received_date"
   ],
   "checks": [
     {

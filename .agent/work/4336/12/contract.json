@@ -42,9 +42,9 @@
   ],
   "dispatcher": "MiMo chat ses_ffe5eaf8f125dffeE9Y9GlP9JY on edge-dev",
   "evidence_parent": {
-    "work_issue": 4336,
+    "contract_sha256": "e6a12762e020ef9ea181f0abfc68cdf415a0379c0bf457a944c86c345445f89e",
     "generation": 11,
-    "contract_sha256": "e6a12762e020ef9ea181f0abfc68cdf415a0379c0bf457a944c86c345445f89e"
+    "work_issue": 4336
   },
   "file_writes": [
     "config/production-verification-sidecar-registry.json",

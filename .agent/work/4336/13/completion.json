@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "work_issue": 4336,
+  "outcome": "ready-for-merge",
+  "pr": 4489,
+  "migration_versions": [
+    "20261019140024"
+  ],
+  "contract_ref": "refs/db-contracts/4336/13",
+  "contract_sha256": "bdea4238ed5f8543cde52f6818755760f10bc14e82967c03f733f50a898975e1",
+  "head_sha": "f8e5141bd8495b49d8f5c41aa82f0e096557af68",
+  "base_sha": "a7b32d7e8a4113f66c3d450f60fec1a1c2bf0ad2",
+  "files_changed": [
+    ".agent/work/4336/12/completion.json",
+    ".agent/work/4336/12/contract.json",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/lib/session-authority.mjs",
+    "scripts/lib/session-authority.test.mjs",
+    "scripts/production-verification-sidecars/20261019140024.json",
+    "scripts/test_order_list_find_position.py",
+    "supabase/migrations/20261019140024_orderlist_so_date_sort.sql",
+    "supabase/tests/dam_order_list_sales_order_date_sort.sql"
+  ],
+  "db_reads": [
+    "table coldlion.order_history_line",
+    "table plm.production_order_line",
+    "table plm.production_order_line_source_ref",
+    "view api.dam_order_list"
+  ],
+  "db_writes": [
+    "view api.dam_order_list",
+    "function dam.orderlist_sales_order_received_date",
+    "function public.find_dam_order_list_row"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL checks passed on this implementation head; Guard B against origin/main newest 20261018164004."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "Sidecar registry OK; migration 20261018192732 marker 337 covered."
+    },
+    {
+      "command": "node --test scripts/lib/session-authority.test.mjs",
+      "exit_code": 0,
+      "evidence": "12 session-authority tests passed including MiMo chat owner-label binding."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors on the implementation head."
+    }
+  ],
+  "assumptions_resolved": [
+    "Gen 13 retargets paths to version 20261019140024 and PR 4489."
+  ],
+  "stop_conditions_hit": []
+}

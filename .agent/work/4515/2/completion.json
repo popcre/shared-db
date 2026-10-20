@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "work_issue": 4515,
+  "outcome": "ready-for-merge",
+  "pr": 4517,
+  "migration_versions": [
+    "20261020145248"
+  ],
+  "contract_ref": "refs/db-contracts/4515/2",
+  "contract_sha256": "185100becbbf363193595fe6c663b93a88bb24672c90d948e0f65bbb83f45e24",
+  "head_sha": "1378986f9e30ef6669c00640ee2e437d23d01874",
+  "base_sha": "24c9c1bc147ee7e39ffbbdc6534bbaaf34737b10",
+  "files_changed": [
+    "scripts/proofs/2873-catalog.sql",
+    "scripts/proofs/2873-contract.json",
+    "scripts/proofs/2873-role-contract.sql",
+    "scripts/proofs/shared-db-2873-observation.test.mjs",
+    "supabase/migrations/20261020145248_dflow_prod_user_notification_tracking_runtime_grant.sql",
+    "supabase/tests/dflow_prod_user_notification_tracking_runtime_grant_contracts.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "table dflow_prod.user_notification",
+    "view dflow_prod.user_notification"
+  ],
+  "assumptions_resolved": [],
+  "stop_conditions_hit": [],
+  "checks": [
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "clean"
+    },
+    {
+      "command": "node --test scripts/proofs/shared-db-2873-observation.test.mjs",
+      "exit_code": 0,
+      "evidence": "8 pass"
+    },
+    {
+      "command": "python3 -m pytest -q scripts/test_production_migration_guard.py scripts/test_post_batch_app_verification.py",
+      "exit_code": 0,
+      "evidence": "453 passed, 408 subtests passed"
+    }
+  ]
+}

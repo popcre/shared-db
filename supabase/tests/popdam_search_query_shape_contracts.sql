@@ -1,10 +1,10 @@
 -- #4508: DAM search query-shape contract tests (synthetic, disposable transaction).
 -- Covers: no-match summary envelope, out-of-range summary, signature identity,
--- substring guard on expand_dam_search_queries, grants.
--- Model-predicate and >10k caps are not exercised here (no embedding fixture).
+-- substring guard, grants (anon denied, authenticated + service_role allowed),
+-- empty-page null-entity shape, foreign-model semantic exclusion.
+-- All fixture writes are wrapped so the file is safe standalone; the CI harness
+-- also wraps the file in begin/rollback.
 
--- Prefer the superuser/session path so require_dam_access is satisfied in CI
--- without a JWT. service_role is granted execute for production callers.
 reset role;
 do $$
 begin
@@ -52,8 +52,7 @@ begin
   end if;
 end $$;
 
--- 3. Signature is still 8-arg with p_min_semantic_score trailing
---    (search-path independent via to_regprocedure).
+-- 3. Signature is still 8-arg with p_min_semantic_score trailing.
 do $$
 begin
   if to_regprocedure(
@@ -63,8 +62,7 @@ begin
   end if;
 end $$;
 
--- 4. Substring guard: punctuation-only expands enable no substring matching;
---    alphanumeric codes (3FZ) do.
+-- 4. Substring guard: punctuation-only disables substring; 3FZ enables it.
 do $$
 declare
   allow_punct boolean;
@@ -84,7 +82,7 @@ begin
   end if;
 end $$;
 
--- 5. Grants: authenticated/service_role only.
+-- 5. Grants: anon denied; authenticated and service_role allowed.
 do $$
 begin
   if has_function_privilege('anon', 'public.search_dam_documents(text,jsonb,int,int,text[],extensions.vector,real,real)', 'EXECUTE') then
@@ -92,6 +90,9 @@ begin
   end if;
   if not has_function_privilege('authenticated', 'public.search_dam_documents(text,jsonb,int,int,text[],extensions.vector,real,real)', 'EXECUTE') then
     raise exception 'authenticated cannot execute search_dam_documents';
+  end if;
+  if not has_function_privilege('service_role', 'public.search_dam_documents(text,jsonb,int,int,text[],extensions.vector,real,real)', 'EXECUTE') then
+    raise exception 'service_role cannot execute search_dam_documents';
   end if;
 end $$;
 
@@ -113,31 +114,42 @@ begin
   end if;
 end $$;
 
--- 7. Foreign-model / wrong-dims embeddings are excluded from the semantic leg.
+-- 7. Foreign-model embeddings are excluded from the semantic leg.
+--    Fixture is self-contained and rolled back.
+begin;
 do $$
 declare
-  hit int;
+  v_id uuid := '34570000-0000-4000-8000-000000000099';
 begin
-  delete from public.dam_search_documents where entity_id = '34570000-0000-4000-8000-000000000099';
+  delete from public.dam_search_documents where entity_id = v_id;
+  delete from public.assets where id = v_id;
+  insert into public.assets (id, filename, relative_path, file_type, quick_hash, modified_at, thumbnail_url, is_deleted)
+  values (v_id, 'zz4508-foreign.ai', 'zz4508-foreign.ai', 'ai', 'zz4508hash', now(), 'https://example.invalid/t.png', false);
   insert into public.dam_search_documents
     (document_type, entity_id, asset_id, title, path, embedding, embedding_model)
   values
-    ('asset','34570000-0000-4000-8000-000000000099','34570000-0000-4000-8000-000000000099',
-     'zz4508 foreign model canvas','zz4508-foreign.ai',
+    ('asset', v_id, v_id,
+     'zz4508 foreign model canvas', 'zz4508-foreign.ai',
      (select array_fill(0.0::real, array[384])::extensions.vector), 'other-model');
-  select count(*) into hit
-  from public.search_dam_documents(
-    'zz4508 foreign model canvas', '{}'::jsonb, 10, 0, array['asset']::text[],
-    (select array_fill(0.0::real, array[384])::extensions.vector), 0, 0.0);
-  -- keyword may still hit the title; semantic leg must not treat it as a vector hit
-  -- so semantic_rank must be null on that row
+
+  -- keyword can hit the title, but semantic_rank must stay null (foreign model)
+  if not exists (
+    select 1 from public.search_dam_documents(
+      'zz4508 foreign model canvas', '{}'::jsonb, 10, 0, array['asset']::text[],
+      (select array_fill(0.0::real, array[384])::extensions.vector), 0, null)
+    where entity_id = v_id
+  ) then
+    raise exception 'fixture asset was not visible to keyword search (test would be vacuous)';
+  end if;
   if exists (
     select 1 from public.search_dam_documents(
       'zz4508 foreign model canvas', '{}'::jsonb, 10, 0, array['asset']::text[],
-      (select array_fill(0.0::real, array[384])::extensions.vector), 0, 0.0)
-    where entity_id = '34570000-0000-4000-8000-000000000099' and semantic_rank is not null
+      (select array_fill(0.0::real, array[384])::extensions.vector), 0, null)
+    where entity_id = v_id and semantic_rank is not null
   ) then
     raise exception 'foreign embedding_model was admitted to the semantic leg';
   end if;
-  delete from public.dam_search_documents where entity_id = '34570000-0000-4000-8000-000000000099';
+  delete from public.dam_search_documents where entity_id = v_id;
+  delete from public.assets where id = v_id;
 end $$;
+rollback;

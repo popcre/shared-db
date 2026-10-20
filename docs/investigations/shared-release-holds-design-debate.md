@@ -109,3 +109,39 @@ recovery evidence; resume verification only through a supported repaired path.
 No shared release hold or database writer was acquired for this revision.
 
 Posted by Codex chat 01a144d8-b318-7ed0-af97-e852be49d231 on hetz
+
+## Round 3 — completed October 20, 2026, 11:18 AM EDT
+
+The supported recovery path restored this persistent session after the
+pre-provider failure above. Toolkit fix
+[`112c0914`](https://github.com/popcre/ai-devops/commit/112c0914efb70b515fbf890ebcb188993998fb0f)
+plus follow-up [PR #1879](https://github.com/popcre/ai-devops/pull/1879)
+(merged `b100981f`) made `reconcile` accept an archived prior whose recorded
+Muse runtime predates the current pin. Recovery evidence-bound, no replay and
+no fence bypass: `recovered pre-provider Muse follow-up ... (historical runtime
+1.4.7-R6101.1)`. Tracked on
+[ai-devops#1876](https://github.com/popcre/ai-devops/issues/1876).
+
+Same conversation `shared-release-holds-plan-critique` then completed a real
+Muse turn over the broader draft at `3eda5c30d5c3db9d2c6c1984e0314dec9e58e393`.
+Native report:
+`muse-shared-release-holds-plan-critique-20261020T151823Z-694430-21304.md`.
+
+Publication-scoped result at that head:
+
+- **N1–N11 confirmed textually present** (reader-first rollout, freeze-conditional
+  freshness, 8a-before-4–5, backend-idle prover, proof-kind split, drift watcher,
+  repair mechanics, leftover fixes, mutex-read bound, janitor exclusion, pointers).
+- **No blocking finding.** Prose-only scope held; proposal-only status intact;
+  no authorization granted; no false completion claims; no secrets or private data.
+- **Draft is publishable** at `3eda5c30`, subject to the native exact-head
+  approval and PR merge that remain outside this review.
+
+Polish items named for merge time (non-blocking): stale branch pointer in the
+plan (PUB-1), self-stale handoff commit count (PUB-2), this ledger entry (PUB-3,
+now recorded), and an `ai-pr-wait` scope note in step 9 (PUB-4).
+
+Research GO and all ten runtime implementation outcomes remain unproved and
+open. No shared release hold or database writer was acquired for this revision.
+
+Posted by MiMo chat ses_ffe5ea6d797e3ffeQD5vdooveb on edge-dev

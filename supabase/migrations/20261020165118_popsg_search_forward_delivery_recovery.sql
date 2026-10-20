@@ -1,11 +1,13 @@
--- Issue #4210; exact-object claim #4212. Truthful forward delivery recovery.
+-- Issue #4210; exact-object claim #4212. PopSG broad Guides search repair.
 -- derived-from: 20260917024050
--- Definition source: PR #4213 / c208d24c8592ba51a310bf6e10fb014c64498ba0.
--- Production has this exact reviewed function body, but the original version
--- 20261012005136 is absent from its ledger and historical apply provenance is
--- unknown. Preserve that immutable file and do not mark its version applied.
--- Reassert only this exact existing contract under a fresh governed version.
--- No corpus row, ranking, signature, privilege or timeout change is intended.
+-- Design: docs/verification/popsg-guides-repair-design.md
+-- Replaces the parse-once Guides body (prosrc md5 9d5dd045810fa3fce5cc3d508e1210ff)
+-- with execution-shape repairs A-E: materialized live_files, page_thumb URL fetch,
+-- single-pass guide_facets, five-column entity grouping, boolean matched-set flags.
+-- Signature, SECURITY DEFINER, proconfig, grants, parse-once EXECUTE binder
+-- ($1-$15), default snapshot branch, authorization, output JSON contract, exact
+-- totals/facets, and the 8s authenticated ceiling are unchanged. Files path
+-- receives only the live_files materialization.
 do $recovery_contract$
 begin
   if not (exists (select 1 from pg_proc where oid = to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)')
@@ -283,7 +285,7 @@ with params as not materialized (
       bool_or(q.status = 'failed' and q.attempts >= 3) as has_terminal_error
     from public.style_guide_render_queue q
     group by q.style_guide_file_id
-  ), live_files as not materialized (
+  ), live_files as materialized (
     select id,true as has_preview,false as has_error from public.style_guide_files
       where is_active and thumbnail_url is not null
     union all
@@ -438,7 +440,7 @@ with params as not materialized (
       bool_or(q.status = 'failed' and q.attempts >= 3) as has_terminal_error
     from public.style_guide_render_queue q
     group by q.style_guide_file_id
-  ), live_files as not materialized (
+  ), live_files as materialized (
     select id,true as has_preview,false as has_error from public.style_guide_files
       where is_active and thumbnail_url is not null
     union all
@@ -449,30 +451,13 @@ with params as not materialized (
       where is_active and thumbnail_url is null and thumbnail_error is not null
   ), active_children as materialized (
     select
-      -- Exact guide identity as one hashable text value: every part is
-      -- length-prefixed and SQL NULL is '-', so NULL and '' folders stay
-      -- different identities, exactly like the previous array-equality join.
-      concat_ws(chr(31),
-        coalesce(length(d.root_label)||':'||d.root_label, '-'),
-        coalesce(length(d.licensor_name)||':'||d.licensor_name, '-'),
-        coalesce(length(d.property_folder)||':'||d.property_folder, '-'),
-        coalesce(length(d.style_guide_folder)||':'||d.style_guide_folder, '-'),
-        coalesce(length(d.style_guide_name)||':'||d.style_guide_name, '-')) as group_id,
       d.style_guide_file_id, d.root_label, d.licensor_name, d.property_folder, d.style_guide_folder, d.style_guide_name,
       lower(d.file_extension) as extension, d.tag_names, d.modified_at,
-      case when f.has_preview then 'available' else 'missing' end as preview_state,
-      case
-        when f.has_preview then 'none'
-        when coalesce(r.has_open_work, false) then 'waiting'
-        when coalesce(r.has_recoverable_error, false) then 'recoverable_error'
-        when f.has_error or coalesce(r.has_terminal_error, false) then 'terminal_exception'
-        else 'unclassified'
-      end as render_exception_state,
-      case
-        when lower(coalesce(d.file_extension, '')) <> 'pdf' then 'not_applicable'
-        when d.pdf_text_status = 'extracted' and d.pdf_text_length > 0 then 'available'
-        else 'unavailable'
-      end as pdf_content_state,
+      f.has_preview, f.has_error,
+      coalesce(r.has_open_work, false) as has_open_work,
+      coalesce(r.has_recoverable_error, false) as has_recoverable_error,
+      coalesce(r.has_terminal_error, false) as has_terminal_error,
+      ((d.pdf_text_status = 'extracted' and d.pdf_text_length > 0) is true) as pdf_text_available,
       case when t.query is null then 0::real
            else ts_rank_cd(d.search_vector, t.query) end as rank
     from public.style_guide_search_documents d
@@ -506,14 +491,65 @@ with params as not materialized (
              when d.pdf_text_status = 'extracted' and d.pdf_text_length > 0 then 'available'
              else 'unavailable'
            end = any (p.pdf_states))
-  ), entities as materialized (select g.group_id,concat_ws(chr(31), g.root_label, coalesce(g.licensor_name,''), coalesce(g.property_folder,''), coalesce(g.style_guide_folder,''), g.style_guide_name) as entity_key,g.rank,g.modified_at,lower(g.style_guide_name) as sort_name,g.root_label,g.licensor_name,g.property_folder,g.style_guide_folder,g.style_guide_name from (select d.group_id,max(d.rank) as rank,max(d.modified_at) as modified_at,min(d.root_label) as root_label,min(d.licensor_name) as licensor_name,min(d.property_folder) as property_folder,min(d.style_guide_folder) as style_guide_folder,min(d.style_guide_name) as style_guide_name from active_children d group by d.group_id) g
-  ), guide_facets as materialized (select category,jsonb_agg(jsonb_build_object('value',value,'count',count) order by count desc,value) as facet_values from (
-      select 'extensions'::text as category,value,count(*) as count from (select distinct d.group_id,d.extension as value from active_children d where d.extension is not null) u group by value
-      union all select 'tags',value,count(*) from (select distinct d.group_id,t.value from active_children d cross join lateral unnest(d.tag_names) t(value) where t.value is not null) u group by value
-      union all select 'preview_states',value,count(*) from (select distinct d.group_id,d.preview_state as value from active_children d) u group by value
-      union all select 'render_exception_states',value,count(*) from (select distinct d.group_id,d.render_exception_state as value from active_children d) u group by value
-      union all select 'pdf_content_states',value,count(*) from (select distinct d.group_id,d.pdf_content_state as value from active_children d) u group by value
-    ) counts group by category
+  ), entities as materialized (
+    select
+      concat_ws(chr(31), g.root_label, coalesce(g.licensor_name,''), coalesce(g.property_folder,''), coalesce(g.style_guide_folder,''), g.style_guide_name) as entity_key,
+      concat_ws(chr(31),
+        coalesce(length(g.root_label)||':'||g.root_label, '-'),
+        coalesce(length(g.licensor_name)||':'||g.licensor_name, '-'),
+        coalesce(length(g.property_folder)||':'||g.property_folder, '-'),
+        coalesce(length(g.style_guide_folder)||':'||g.style_guide_folder, '-'),
+        coalesce(length(g.style_guide_name)||':'||g.style_guide_name, '-')) as group_id,
+      g.rank, g.modified_at, lower(g.style_guide_name) as sort_name,
+      g.root_label, g.licensor_name, g.property_folder, g.style_guide_folder, g.style_guide_name
+    from (
+      select
+        d.root_label, d.licensor_name, d.property_folder, d.style_guide_folder, d.style_guide_name,
+        max(d.rank) as rank, max(d.modified_at) as modified_at
+      from active_children d
+      group by d.root_label, d.licensor_name, d.property_folder, d.style_guide_folder, d.style_guide_name
+    ) g
+  ), guide_facets as materialized (
+    select category,
+           jsonb_agg(jsonb_build_object('value', value, 'count', count) order by count desc, value) as facet_values
+      from (
+        select category, value, count(*) as count
+          from (
+            select distinct
+              d.root_label, d.licensor_name, d.property_folder, d.style_guide_folder, d.style_guide_name,
+              f.category, f.value
+            from active_children d
+            cross join lateral (
+              select 'extensions'::text as category, d.extension as value
+               where d.extension is not null
+              union all
+              select 'tags', tag.value
+                from unnest(d.tag_names) tag(value)
+               where tag.value is not null
+              union all
+              select 'preview_states',
+                     case when d.has_preview then 'available' else 'missing' end
+              union all
+              select 'render_exception_states',
+                     case
+                       when d.has_preview then 'none'
+                       when d.has_open_work then 'waiting'
+                       when d.has_recoverable_error then 'recoverable_error'
+                       when d.has_error or d.has_terminal_error then 'terminal_exception'
+                       else 'unclassified'
+                     end
+              union all
+              select 'pdf_content_states',
+                     case
+                       when coalesce(d.extension, '') <> 'pdf' then 'not_applicable'
+                       when d.pdf_text_available then 'available'
+                       else 'unavailable'
+                     end
+            ) f(category, value)
+          ) pairs
+         group by category, value
+      ) counts
+     group by category
   ), page as materialized (select e.*,row_number() over(order by case when p.sort_key = 'relevance' then e.rank end desc nulls last,
              case when p.sort_key in ('relevance', 'modified_desc') then e.modified_at end desc nulls last,
              case when p.sort_key = 'modified_asc' then e.modified_at end asc nulls last,
@@ -524,21 +560,76 @@ with params as not materialized (
              case when p.sort_key = 'name_asc' then e.sort_name end asc nulls last,
              e.entity_key limit (select lim from params) offset (select off from params)) e cross join params p
   ), page_children as materialized (
- select d.*, live_payload.thumbnail_url from active_children d join page pg on pg.group_id=d.group_id
- join public.style_guide_files live_payload on live_payload.id=d.style_guide_file_id
-), page_metadata as materialized (
- select d.group_id, count(distinct d.style_guide_file_id) as matched_file_count,
- coalesce(array_agg(distinct d.extension) filter(where d.extension is not null),'{}'::text[]) as file_extensions,
- max(d.modified_at) as modified_at,
- (array_agg(d.thumbnail_url order by (d.thumbnail_url is null),d.modified_at desc nulls last,d.style_guide_file_id) filter(where d.thumbnail_url is not null))[1] as thumbnail_url,
- array_agg(distinct d.preview_state order by d.preview_state) as preview_states,
- array_agg(distinct d.render_exception_state order by d.render_exception_state) as render_exception_states,
- array_agg(distinct d.pdf_content_state order by d.pdf_content_state) as pdf_content_states,
- max(d.rank) as rank from page_children d group by d.group_id
-), page_tags as materialized (
- select d.group_id,coalesce(array_agg(distinct tag.value order by tag.value) filter(where tag.value is not null),'{}'::text[]) as tag_names
- from page_children d left join lateral unnest(d.tag_names) tag(value) on true group by d.group_id
-), page_results as (
+    select d.*, pg.group_id
+    from active_children d
+    join page pg
+      on pg.root_label is not distinct from d.root_label
+     and pg.licensor_name is not distinct from d.licensor_name
+     and pg.property_folder is not distinct from d.property_folder
+     and pg.style_guide_folder is not distinct from d.style_guide_folder
+     and pg.style_guide_name is not distinct from d.style_guide_name
+  ), page_thumb_ids as materialized (
+    select d.group_id,
+           (array_agg(d.style_guide_file_id
+              order by d.modified_at desc nulls last, d.style_guide_file_id)
+            filter (where d.has_preview))[1] as style_guide_file_id
+      from page_children d
+     group by d.group_id
+  ), page_thumb as materialized (
+    select t.group_id, f.thumbnail_url
+      from page_thumb_ids t
+      join public.style_guide_files f on f.id = t.style_guide_file_id
+  ), page_metadata as materialized (
+    select d.group_id,
+           count(distinct d.style_guide_file_id) as matched_file_count,
+           coalesce(array_agg(distinct d.extension) filter (where d.extension is not null), '{}'::text[]) as file_extensions,
+           max(d.modified_at) as modified_at,
+           max(t.thumbnail_url) as thumbnail_url,
+           array_agg(distinct
+                      case when d.has_preview then 'available' else 'missing' end
+                      order by case when d.has_preview then 'available' else 'missing' end
+                    ) as preview_states,
+           array_agg(distinct
+                      case
+                        when d.has_preview then 'none'
+                        when d.has_open_work then 'waiting'
+                        when d.has_recoverable_error then 'recoverable_error'
+                        when d.has_error or d.has_terminal_error then 'terminal_exception'
+                        else 'unclassified'
+                      end
+                      order by
+                      case
+                        when d.has_preview then 'none'
+                        when d.has_open_work then 'waiting'
+                        when d.has_recoverable_error then 'recoverable_error'
+                        when d.has_error or d.has_terminal_error then 'terminal_exception'
+                        else 'unclassified'
+                      end
+                    ) as render_exception_states,
+           array_agg(distinct
+                      case
+                        when coalesce(d.extension, '') <> 'pdf' then 'not_applicable'
+                        when d.pdf_text_available then 'available'
+                        else 'unavailable'
+                      end
+                      order by
+                      case
+                        when coalesce(d.extension, '') <> 'pdf' then 'not_applicable'
+                        when d.pdf_text_available then 'available'
+                        else 'unavailable'
+                      end
+                    ) as pdf_content_states,
+           max(d.rank) as rank
+      from page_children d
+      left join page_thumb t on t.group_id = d.group_id
+     group by d.group_id
+  ), page_tags as materialized (
+    select d.group_id,
+           coalesce(array_agg(distinct tag.value order by tag.value) filter (where tag.value is not null), '{}'::text[]) as tag_names
+      from page_children d
+      left join lateral unnest(d.tag_names) tag(value) on true
+     group by d.group_id
+  ), page_results as (
  select pg.rn,jsonb_build_object('result_mode','guides','guide_key',pg.entity_key,
  'root_label',pg.root_label,'licensor_name',pg.licensor_name,'property_folder',pg.property_folder,
  'style_guide_folder',pg.style_guide_folder,'style_guide_name',pg.style_guide_name,
@@ -581,7 +672,7 @@ $function$;
 do $recovery_contract$
 begin
   if not (exists (select 1 from pg_proc where oid = to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)')
-  and md5(prosrc) = '9d5dd045810fa3fce5cc3d508e1210ff' and proowner = 'postgres'::regrole and prosecdef and provolatile = 's'
+  and md5(prosrc) = '49f04db740a09cb7e3ede5788ab3fbcb' and proowner = 'postgres'::regrole and prosecdef and provolatile = 's'
   and (select array_agg(setting order by setting) from unnest(proconfig) setting) = array['search_path=pg_catalog, auth','work_mem=64MB'])
   and has_function_privilege('authenticated','public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)','execute')
   and not has_function_privilege('anon','public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)','execute')
@@ -617,7 +708,7 @@ begin
       and not a.attisdropped))
 
   and has_function_privilege('service_role','public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)','execute')) then
-    raise exception 'PopSG forward recovery requires the exact already-live reviewed contract';
+    raise exception 'PopSG guides search repair did not install the expected body';
   end if;
 end
 $recovery_contract$;

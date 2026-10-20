@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import socket
 import subprocess
 import tempfile
 import unittest
@@ -15,7 +16,7 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 OLD = ROOT / 'supabase/migrations/20261012005136_popsg_parse_search_query_once.sql'
-NEW = ROOT / 'supabase/migrations/20261018171808_popsg_search_forward_delivery_recovery.sql'
+NEW = ROOT / 'supabase/migrations/20261020165118_popsg_search_forward_delivery_recovery.sql'
 SIGNATURE = 'public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)'
 
 
@@ -25,13 +26,21 @@ class ForwardRecovery(unittest.TestCase):
         cls.temp = tempfile.TemporaryDirectory(prefix='popsg-forward-local-')
         cls.directory = Path(cls.temp.name)
         bins = sorted(Path('/usr/lib/postgresql').glob('*/bin/initdb'), reverse=True)
+        which_initdb = shutil.which('initdb')
         cls.container = None
-        if bins and shutil.which('psql'):
-            cls.bin = bins[0].parent
+        if (bins or which_initdb) and shutil.which('psql'):
+            cls.bin = bins[0].parent if bins else Path(which_initdb).parent
             cls.data = cls.directory / 'data'
             subprocess.run([str(cls.bin / 'initdb'), '-D', str(cls.data), '-U', 'postgres', '-A', 'trust'], check=True, capture_output=True)
-            subprocess.run([str(cls.bin / 'pg_ctl'), '-D', str(cls.data), '-l', str(cls.directory / 'server.log'), '-o', f"-k {cls.directory} -p 55439 -c listen_addresses=''", 'start', '-w'], check=True, capture_output=True)
-            cls.env = {**os.environ, 'PGHOST': str(cls.directory), 'PGPORT': '55439', 'PGUSER': 'postgres', 'PGDATABASE': 'postgres'}
+            # Pick a free localhost port: a fixed port collides with any other
+            # postgres on this machine and the fixture must never reuse one.
+            sock = socket.socket()
+            sock.bind(('127.0.0.1', 0))
+            cls.port = sock.getsockname()[1]
+            sock.close()
+            # 127.0.0.1 works on Windows and Linux; empty listen_addresses is not portable.
+            subprocess.run([str(cls.bin / 'pg_ctl'), '-D', str(cls.data), '-l', str(cls.directory / 'server.log'), '-o', f"-p {cls.port} -c listen_addresses=127.0.0.1", 'start', '-w'], check=True, capture_output=True)
+            cls.env = {**os.environ, 'PGHOST': '127.0.0.1', 'PGPORT': str(cls.port), 'PGUSER': 'postgres', 'PGDATABASE': 'postgres'}
             cls.psql = ['psql', '-X', '-qAt', '-v', 'ON_ERROR_STOP=1']
         elif shutil.which('docker'):
             # A private network-less disposable fixture, never an existing container.
@@ -85,18 +94,6 @@ insert into public.style_guide_render_queue select id,'pending',0 from public.st
             raise AssertionError('Drift was accepted')
         return run.stdout.strip(), run.stderr
 
-    def test_identical_definition_and_static_provenance(self):
-        text = NEW.read_text()
-        actual = text[text.index('create or replace function'):text.rindex('do $recovery_contract$')].strip()
-        self.assertEqual(actual, self.definition.strip())
-        self.assertIn('-- derived-from: 20260917024050\n', text)
-        body = actual.split('as $function$',1)[1].rsplit('$function$;',1)[0]
-        self.assertEqual(hashlib.md5(body.encode()).hexdigest(), '9d5dd045810fa3fce5cc3d508e1210ff')
-        sidecar = json.loads((ROOT / 'scripts/production-verification-sidecars/20261018171808.json').read_text())
-        self.assertEqual(sidecar['migration_sha256'], hashlib.sha256(NEW.read_bytes()).hexdigest())
-        for marker in sidecar['marker_reviews']:
-            self.assertIn('execute $guides_query$', text.splitlines()[marker['line_start']-1])
-
     def test_full_json_parity_counts_facets_pages_and_acl(self):
         calls=[]
         for mode in ('files','guides'):
@@ -142,6 +139,38 @@ insert into public.style_guide_render_queue select id,'pending',0 from public.st
                 _,error=self.sql('begin;'+change+NEW.read_text()+'rollback;',False)
                 self.assertIn('exact already-live reviewed contract',error)
         self.sql(self.guard)
+
+
+class RepairMarkers(unittest.TestCase):
+    """Static checks only — no PostgreSQL fixture required."""
+
+    def test_repaired_body_markers_and_static_provenance(self):
+        text = NEW.read_text()
+        self.assertIn('-- derived-from: 20260917024050\n', text)
+        self.assertIn("md5(prosrc) = '9d5dd045810fa3fce5cc3d508e1210ff'", text)
+        self.assertIn("md5(prosrc) = '49f04db740a09cb7e3ede5788ab3fbcb'", text)
+        body = text.split('as $function$',1)[1].rsplit('$function$;',1)[0]
+        self.assertEqual(hashlib.md5(body.encode()).hexdigest(), '49f04db740a09cb7e3ede5788ab3fbcb')
+        # A: live_files materialized once (no remaining not-materialized form).
+        self.assertIn('live_files as materialized (', body)
+        self.assertNotIn('live_files as not materialized (', body)
+        # B: page_children stops joining style_guide_files; thumbs come from page_thumb.
+        self.assertIn('page_thumb_ids as materialized (', body)
+        self.assertIn('page_thumb as materialized (', body)
+        self.assertIn('left join page_thumb t on t.group_id = d.group_id', body)
+        self.assertIn('join public.style_guide_files f on f.id = t.style_guide_file_id', body)
+        # Files path keeps its live style_guide_files join; Guides path must not.
+        guides_body = body.split('execute $guides_query$', 1)[1]
+        self.assertIn('live_payload.thumbnail_url', body)  # Files path still live-joins
+        self.assertNotIn('live_payload.thumbnail_url', guides_body)
+        # C/D/E landmarks.
+        self.assertIn('cross join lateral (', body)
+        self.assertIn('pdf_text_available', body)
+        self.assertIn('group by d.root_label, d.licensor_name, d.property_folder, d.style_guide_folder, d.style_guide_name', body)
+        sidecar = json.loads((ROOT / 'scripts/production-verification-sidecars/20261020165118.json').read_text())
+        self.assertEqual(sidecar['migration_sha256'], hashlib.sha256(NEW.read_bytes()).hexdigest())
+        for marker in sidecar['marker_reviews']:
+            self.assertIn('execute $guides_query$', text.splitlines()[marker['line_start']-1])
 
 
 if __name__ == '__main__':

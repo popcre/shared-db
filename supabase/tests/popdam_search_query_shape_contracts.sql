@@ -115,8 +115,7 @@ begin
 end $$;
 
 -- 7. Foreign-model embeddings are excluded from the semantic leg.
---    Fixture is self-contained and rolled back.
-begin;
+--    Fixture is cleaned up after; harness wraps the file in begin/rollback.
 do $$
 declare
   v_id uuid := '34570000-0000-4000-8000-000000000099';
@@ -130,7 +129,10 @@ begin
   values
     ('asset', v_id, v_id,
      'zz4508 foreign model canvas', 'zz4508-foreign.ai',
-     (select array_fill(0.0::real, array[384])::extensions.vector), 'other-model');
+     (select array_fill(0.0::real, array[384])::extensions.vector), 'other-model')
+  on conflict (document_type, entity_id) do update
+    set embedding = excluded.embedding, embedding_model = excluded.embedding_model,
+        title = excluded.title, path = excluded.path;
 
   -- keyword can hit the title, but semantic_rank must stay null (foreign model)
   if not exists (
@@ -152,4 +154,3 @@ begin
   delete from public.dam_search_documents where entity_id = v_id;
   delete from public.assets where id = v_id;
 end $$;
-rollback;

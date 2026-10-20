@@ -65,7 +65,7 @@ as $$
     where p.query_text is not null
       -- drop empty tsqueries here so the measured indexable scan keeps
       -- its pinned form and never matches punctuation-only queries
-      and websearch_to_tsquery('simple',q.query_text) <> ''::tsquery
+      and websearch_to_tsquery('simple',q.query_text)::text <> ''
   ), full_text_matches as materialized (
     select d.document_type,d.entity_id,d.asset_id,d.style_group_id,d.search_tsv
     from public.dam_search_documents d
@@ -205,7 +205,7 @@ as $$
       (length(q.query_text) >= 3 and q.query_text ~ '[[:alnum:]]{3,}') allow_substring
     from public.expand_dam_search_queries(nullif(trim(p_query), '')) q
     where public.require_dam_access()
-      and websearch_to_tsquery('simple', q.query_text) <> ''::tsquery
+      and websearch_to_tsquery('simple', q.query_text)::text <> ''
   ), direct_candidates as materialized (
     select d.style_group_id,
       greatest(ts_rank_cd(d.search_tsv, q.tsq), 0.01)::real rank

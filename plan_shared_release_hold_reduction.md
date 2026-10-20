@@ -132,7 +132,7 @@ has been implemented, activated or deployed by this plan.
 | `scripts/orchestrator-flow/runner-lanes.mjs`, `throughput-report.mjs` | Runner-label routing and pure report formatting respectively; neither collects lease activity. Use existing queue-hygiene collection/schedule for stall observations. |
 
 Pinned source: [main snapshot](https://github.com/popcre/shared-db/tree/778dc192f4a0ede1889c6a595b08b47425657cd1).
-Planning branch: `codex/shared-release-holds-plan`. Publication is verified by its
+Planning branch: `codex/shared-release-holds-design-revision`. Publication is verified by its
 GitHub PR/commit, not by this paragraph's prediction. Implementation starts from
 fresh upstream in a separate worktree; never use an older integration checkout.
 
@@ -362,8 +362,10 @@ CLI/app identity, after rechecking head, current compatible main, durable approv
 required statuses, route/collisions/freeze and policy. No administrator merge,
 status fabrication, workflow/check disablement or foreign queue removal. Verify
 actual new-group jobs start. The existing calling coordinator runs `ai-pr-wait`
-for observation; automatic callers use a separate trailing observation job with
-no protected-job concurrency and no database credential. Never leave the guarded
+for PR-check observation only; it does not observe merge-queue entry or
+merge-group status. Automatic callers use a separate trailing observation job
+with no protected-job concurrency and no database credential, and that job
+must cover merge-queue/merge-group state explicitly (step9). Never leave the guarded
 job occupying its scheduling slot for this wait, including before step3 lands.
 
 For repair, re-prove the exact PR/source and original admission-run chain under

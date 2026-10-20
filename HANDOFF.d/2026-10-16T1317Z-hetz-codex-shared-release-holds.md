@@ -148,28 +148,40 @@ and conservative crash cleanup. No runtime feature is implemented. Next gate:
 same-session verification of these corrections, then exact-head publication review
 and normal PR merge; all implementation/live acceptance remains open on #3779.
 
-### Current blocking state — October16, 2026, 11:03 AM EDT
+
+
+## Design revision after substantive Muse critique — October 16, 2026 EDT
+
+The original plan publication merged as `66695385`. Muse subsequently found six
+implementation-design blockers; safe publication was not feasibility approval.
+The owner requested corrections and another Muse debate. Revised plan §8.1
+chooses receipt/quarantine/cleanup, drift, event-liveness and rollout contracts;
+step6 adopts #4039 without permitting merges under a production lease; step8
+splits buildable safety fixes from an explicitly gated fencing experiment.
+[Debate ledger](../docs/investigations/shared-release-holds-design-debate.md)
+contains all finding dispositions, substantive disagreements and follow-up outcome.
+Muse round2 completed at10:59 AM EDT over source `73e5f794`: all six original
+blockers resolved, with a bounded new punch list. The plan and ledger now address
+N1–N11, including reader-before-config rollout, freeze-conditional freshness,
+8a dependency order, distinct termination evidence, bounded drift/event repair
+and conservative crash cleanup. No runtime feature is implemented. Next gate:
+same-session verification of these corrections, then exact-head publication review
+and normal PR merge; all implementation/live acceptance remains open on #3779.
+
+### Current state — refreshed October 20, 2026, 11:30 AM EDT
 
 Revision branch `codex/shared-release-holds-design-revision` contains local owned
-commits `73e5f794` and `d35663b7`; it is not pushed and has no PR. All three changed
-paths are prose: plan, this handoff, debate ledger. Existing main publication
-`66695385` remains authoritative until a normally approved revision lands.
+commits `73e5f794`, `d35663b7`, `3eda5c30` and `c6f5d8d0`. All three changed paths
+are prose: plan, this handoff, debate ledger. Existing main publication `66695385`
+remains authoritative until a normally approved revision lands.
 
-A further Muse `ask` failed BEFORE provider launch on an abbreviated asserted
-head. Correcting to full head cannot resume because the wrapper already set
-`preparation_failed` and cleared the current retained descriptor. Native transcript
-was inspected; supported reconcile refuses without a successful retained process.
-The incident is preserved on [existing #674](https://github.com/popcre/ai-devops/issues/674#issuecomment-6218354939).
-Do not restore archived metadata manually, substitute a provider/session, invent
-approval or retry around this fence. Both genuine earlier completed reports remain
-private and available for their exact source. The corrected round2 source has not
-received a completed follow-up verification.
-
-Shipment gate explicitly refuses absent assigned exact-head approval. Owner of
-this publication blocker is Codex chat `01a144d8-b318-7ed0-af97-e852be49d231`.
-Resume only after supported same-session pre-provider recovery exists, then finish
-the debate, exact-head final publication review, push/PR/normal merge and #3779
-publication evidence. Runtime implementation remains entirely open; this is not
-acceptance of any of the four optimizations. No stage lease is held.
+The October 16 pre-provider failure was recovered through the supported path
+(ai-devops [PR #1879](https://github.com/popcre/ai-devops/pull/1879), issue
+[#1876](https://github.com/popcre/ai-devops/issues/1876)). Same-session Muse round-3
+verification over `3eda5c30` completed and is recorded in the debate ledger:
+N1–N11 present, draft publishable. Native exact-head publication approval and
+normal PR merge remain the next gate. Runtime implementation remains entirely
+open; this is not acceptance of any of the four optimizations. No stage lease is
+held. Original blocker owner Codex chat `01a144d8-b318-7ed0-af97-e852be49d231`.
 
 Posted by Codex chat 01a144d8-b318-7ed0-af97-e852be49d231 on hetz

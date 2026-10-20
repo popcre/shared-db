@@ -17,9 +17,12 @@
 --   5. No-match: empty tsqueries dropped in the queries CTE so the pinned
 --      indexable scan form is retained and punctuation-only queries return
 --      only the summary envelope.
---   6. Keyword branches bounded and ORDERED before LIMIT (entity_id tiebreak)
---      so the capped subset is deterministic across calls. UNION arms that
---      carry LIMIT are parenthesized (PostgreSQL requirement).
+--   6. Keyword path is UNBOUNDED so total_count/has_more/facets stay exact
+--      after visibility filters (Muse H1 on 25be33d: caps before visibility
+--      undercount). Latency for high-DF terms is handled by the 8s
+--      statement_timeout and index work, not by truncating candidates.
+--      LIKE patterns escape \\ % and _ (M4). Semantic ORDER BY has an
+--      entity_id tiebreak (M2).
 -- Reconciled pinned contract: popdam_authorized_ranked_search_contracts.sql
 -- keeps its measured-scan string; search_style_groups_full_text keeps
 -- max(d.rank)*0.8 and a single search_dam_documents pass.
@@ -51,7 +54,7 @@ as $$
     where public.require_dam_access()
   ), queries as materialized (
     select websearch_to_tsquery('simple',q.query_text) tsq,
-      '%' || q.query_text || '%' like_pattern,
+      '%' || replace(replace(replace(q.query_text, '\', '\\'), '%', '\%'), '_', '\_') || '%' like_pattern,
       -- no-match precision: substring only for real word-like tokens
       -- ([[:alnum:]] so SKU/path codes such as 3FZ or 3DWC01JK still match)
       (length(q.query_text) >= 3
@@ -66,25 +69,18 @@ as $$
     from public.dam_search_documents d
     where (p_document_types is null or d.document_type = any(p_document_types))
       and d.search_tsv @@ any(array(select q.tsq from queries q))
-    -- keep top-ranked hits before the bounded keyword pool (not UUID order)
-    order by greatest((select max(ts_rank_cd(d.search_tsv, q.tsq)) from queries q where d.search_tsv @@ q.tsq),0.01) desc,
-             d.entity_id
-    limit 10000
+    -- no pre-visibility LIMIT: totals/facets must stay exact after filters
   ), keyword_candidates as materialized (
-    (select d.document_type,d.entity_id,d.asset_id,d.style_group_id,
+    select d.document_type,d.entity_id,d.asset_id,d.style_group_id,
       greatest((select max(ts_rank_cd(d.search_tsv, q.tsq)) from queries q where d.search_tsv @@ q.tsq),0.01)::real keyword_rank
     from full_text_matches d
-    order by 5 desc nulls last, 2
-    limit 10000)
     union all
-    (select d.document_type,d.entity_id,d.asset_id,d.style_group_id,
+    select d.document_type,d.entity_id,d.asset_id,d.style_group_id,
       case when d.title ilike q.like_pattern then 0.04 when d.path ilike q.like_pattern then 0.03
         when d.customer ilike q.like_pattern or d.program ilike q.like_pattern then 0.02 else 0.01 end::real
     from queries q join public.dam_search_documents d on q.allow_substring and
       (d.title ilike q.like_pattern or d.path ilike q.like_pattern or d.customer ilike q.like_pattern or d.program ilike q.like_pattern)
     where (p_document_types is null or d.document_type = any(p_document_types))
-    order by 5 desc nulls last, 2
-    limit 10000)
   ), semantic_candidates as materialized (
     -- filter-aware pool: model/dims + document_type before distance cap
     select d.document_type,d.entity_id,d.asset_id,d.style_group_id,
@@ -98,7 +94,7 @@ as $$
     where (p_document_types is null or d.document_type = any(p_document_types))
       and (p.min_semantic_score is null
         or greatest(0,1-(d.embedding <=> p_query_embedding)) >= p.min_semantic_score)
-    order by d.embedding <=> p_query_embedding
+    order by d.embedding <=> p_query_embedding, d.entity_id
     limit 50000
   ), candidate_ranks as materialized (
     select c.document_type,c.entity_id,c.asset_id,c.style_group_id,max(c.keyword_rank)::real keyword_rank,
@@ -203,21 +199,19 @@ language sql stable security definer set search_path=public set statement_timeou
 as $$
   with queries as materialized (
     select websearch_to_tsquery('simple', q.query_text) tsq,
-      '%' || q.query_text || '%' like_pattern,
+      '%' || replace(replace(replace(q.query_text, '\', '\\'), '%', '\%'), '_', '\_') || '%' like_pattern,
       (length(q.query_text) >= 3 and q.query_text ~ '[[:alnum:]]{3,}') allow_substring
     from public.expand_dam_search_queries(nullif(trim(p_query), '')) q
     where public.require_dam_access()
       and websearch_to_tsquery('simple', q.query_text) <> ''::tsquery
   ), direct_candidates as materialized (
-    (select d.style_group_id,
+    select d.style_group_id,
       greatest(ts_rank_cd(d.search_tsv, q.tsq), 0.01)::real rank
     from queries q
     join public.dam_search_documents d on d.search_tsv @@ q.tsq
     where d.document_type = 'style_group'
-    order by 2 desc, 1
-    limit 10000)
     union all
-    (select d.style_group_id,
+    select d.style_group_id,
       case when d.title ilike q.like_pattern then 0.04
            when d.path ilike q.like_pattern then 0.03
            when d.customer ilike q.like_pattern or d.program ilike q.like_pattern then 0.02
@@ -228,8 +222,6 @@ as $$
       or d.customer ilike q.like_pattern or d.program ilike q.like_pattern
     )
     where d.document_type = 'style_group'
-    order by 2 desc, 1
-    limit 10000)
   ), direct_groups as (
     select d.style_group_id,max(d.rank)::real rank
     from direct_candidates d

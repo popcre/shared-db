@@ -63,19 +63,24 @@ begin
   end if;
 end $$;
 
--- 4. Substring guard: expand_dam_search_queries output used for ILIKE must not
---    fire on pure punctuation / empty tsquery. Prove allow_substring logic via
---    a representative nonsense token producing no substring hits.
+-- 4. Substring guard: punctuation-only expands enable no substring matching;
+--    alphanumeric codes (3FZ) do.
 do $$
 declare
-  allow boolean;
+  allow_punct boolean;
+  allow_code boolean;
 begin
-  select bool_or(length(q.query_text) >= 3 and q.query_text ~ '[[:alpha:]]{3,}'
-    and websearch_to_tsquery('simple', q.query_text) <> ''::tsquery)
-  into allow
+  select bool_or(length(q.query_text) >= 3 and q.query_text ~ '[[:alnum:]]{3,}')
+  into allow_punct
   from public.expand_dam_search_queries('!!!') q;
-  if coalesce(allow, false) then
+  if coalesce(allow_punct, false) then
     raise exception 'punctuation-only query enabled substring matching';
+  end if;
+  select bool_or(length(q.query_text) >= 3 and q.query_text ~ '[[:alnum:]]{3,}')
+  into allow_code
+  from public.expand_dam_search_queries('3FZ') q;
+  if not coalesce(allow_code, false) then
+    raise exception 'alphanumeric code 3FZ failed the substring token guard';
   end if;
 end $$;
 

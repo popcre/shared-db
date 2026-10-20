@@ -9,8 +9,10 @@
 --      hash-current; zero foreign-model or null-model embedded rows. The
 --      predicate is therefore safe today and stays explicit for future models.
 --   3. total_count / has_more / facets returned even when the page slice is
---      empty (summary-only row). Consumer lockstep: popdam-web PR (u2giants/
---      popdam3#446) drops null-entity rows and keeps counts/facets.
+--      empty (summary-only row). CONTRACT CHANGE: empty searches now return
+--      one summary-only row (null entity_id) instead of zero rows. Consumer
+--      lockstep is popdam-web u2giants/popdam3 PR #446 (drops null-entity
+--      rows, keeps counts/facets). Do not promote without that consumer.
 --   4. Group↔asset rollup parity unchanged (candidate_asset_ids).
 --   5. No-match: empty tsqueries dropped in the queries CTE so the pinned
 --      indexable scan form is retained and punctuation-only queries return
@@ -50,9 +52,10 @@ as $$
   ), queries as materialized (
     select websearch_to_tsquery('simple',q.query_text) tsq,
       '%' || q.query_text || '%' like_pattern,
-      -- no-match precision: substring only for real words
+      -- no-match precision: substring only for real word-like tokens
+      -- ([[:alnum:]] so SKU/path codes such as 3FZ or 3DWC01JK still match)
       (length(q.query_text) >= 3
-        and q.query_text ~ '[[:alpha:]]{3,}') allow_substring
+        and q.query_text ~ '[[:alnum:]]{3,}') allow_substring
     from params p cross join public.expand_dam_search_queries(p.query_text) q
     where p.query_text is not null
       -- drop empty tsqueries here so the measured indexable scan keeps
@@ -63,7 +66,9 @@ as $$
     from public.dam_search_documents d
     where (p_document_types is null or d.document_type = any(p_document_types))
       and d.search_tsv @@ any(array(select q.tsq from queries q))
-    order by d.entity_id
+    -- keep top-ranked hits before the bounded keyword pool (not UUID order)
+    order by greatest((select max(ts_rank_cd(d.search_tsv, q.tsq)) from queries q where d.search_tsv @@ q.tsq),0.01) desc,
+             d.entity_id
     limit 10000
   ), keyword_candidates as materialized (
     (select d.document_type,d.entity_id,d.asset_id,d.style_group_id,
@@ -199,7 +204,7 @@ as $$
   with queries as materialized (
     select websearch_to_tsquery('simple', q.query_text) tsq,
       '%' || q.query_text || '%' like_pattern,
-      (length(q.query_text) >= 3 and q.query_text ~ '[[:alpha:]]{3,}') allow_substring
+      (length(q.query_text) >= 3 and q.query_text ~ '[[:alnum:]]{3,}') allow_substring
     from public.expand_dam_search_queries(nullif(trim(p_query), '')) q
     where public.require_dam_access()
       and websearch_to_tsquery('simple', q.query_text) <> ''::tsquery

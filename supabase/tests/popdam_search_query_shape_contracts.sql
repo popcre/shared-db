@@ -1,6 +1,7 @@
 -- #4508: DAM search query-shape contract tests (synthetic, disposable transaction).
--- Covers: no-match empty, summary on out-of-range page, model predicate,
--- keyword branch bounds, substring guard.
+-- Covers: no-match summary envelope, out-of-range summary, signature identity,
+-- substring guard on expand_dam_search_queries, grants.
+-- Model-predicate and >10k caps are not exercised here (no embedding fixture).
 
 -- Prefer the superuser/session path so require_dam_access is satisfied in CI
 -- without a JWT. service_role is granted execute for production callers.

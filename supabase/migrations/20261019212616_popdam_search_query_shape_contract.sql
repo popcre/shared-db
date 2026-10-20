@@ -2,17 +2,22 @@
 -- Same 8-arg signature (incl. p_min_semantic_score). Body-only repair.
 -- derived-from: 20260925222432
 --
--- Fixes (GLM findings 2026-10-19 REJECT applied):
+-- Fixes (GLM APPROVE 2026-10-19; Muse REJECT findings applied):
 --   1. Semantic pool: model/dims + document_type before distance cap (50k).
---   2. Semantic leg requires embedding_model='gte-small' and vector_dims=384;
---      popdam_semantic_score_floor_behavior fixtures now set embedding_model.
---   3. total_count / has_more / facets returned even when the page slice is empty.
+--   2. Semantic leg requires embedding_model='gte-small' and vector_dims=384.
+--      Census 2026-10-19: all 4,489 production vectors are gte-small/384
+--      hash-current; zero foreign-model or null-model embedded rows. The
+--      predicate is therefore safe today and stays explicit for future models.
+--   3. total_count / has_more / facets returned even when the page slice is
+--      empty (summary-only row). Consumer lockstep: popdam-web PR (u2giants/
+--      popdam3#446) drops null-entity rows and keeps counts/facets.
 --   4. Group↔asset rollup parity unchanged (candidate_asset_ids).
 --   5. No-match: empty tsqueries dropped in the queries CTE so the pinned
 --      indexable scan form is retained and punctuation-only queries return
 --      only the summary envelope.
---   6. Keyword branches bounded; UNION arms parenthesized + ordered before
---      LIMIT (PostgreSQL requires parentheses on limited UNION arms).
+--   6. Keyword branches bounded and ORDERED before LIMIT (entity_id tiebreak)
+--      so the capped subset is deterministic across calls. UNION arms that
+--      carry LIMIT are parenthesized (PostgreSQL requirement).
 -- Reconciled pinned contract: popdam_authorized_ranked_search_contracts.sql
 -- keeps its measured-scan string; search_style_groups_full_text keeps
 -- max(d.rank)*0.8 and a single search_dam_documents pass.
@@ -58,19 +63,23 @@ as $$
     from public.dam_search_documents d
     where (p_document_types is null or d.document_type = any(p_document_types))
       and d.search_tsv @@ any(array(select q.tsq from queries q))
+    order by d.entity_id
     limit 10000
   ), keyword_candidates as materialized (
-    select d.document_type,d.entity_id,d.asset_id,d.style_group_id,
+    (select d.document_type,d.entity_id,d.asset_id,d.style_group_id,
       greatest((select max(ts_rank_cd(d.search_tsv, q.tsq)) from queries q where d.search_tsv @@ q.tsq),0.01)::real keyword_rank
     from full_text_matches d
+    order by 5 desc nulls last, 2
+    limit 10000)
     union all
-    select d.document_type,d.entity_id,d.asset_id,d.style_group_id,
+    (select d.document_type,d.entity_id,d.asset_id,d.style_group_id,
       case when d.title ilike q.like_pattern then 0.04 when d.path ilike q.like_pattern then 0.03
         when d.customer ilike q.like_pattern or d.program ilike q.like_pattern then 0.02 else 0.01 end::real
     from queries q join public.dam_search_documents d on q.allow_substring and
       (d.title ilike q.like_pattern or d.path ilike q.like_pattern or d.customer ilike q.like_pattern or d.program ilike q.like_pattern)
     where (p_document_types is null or d.document_type = any(p_document_types))
-    limit 10000
+    order by 5 desc nulls last, 2
+    limit 10000)
   ), semantic_candidates as materialized (
     -- filter-aware pool: model/dims + document_type before distance cap
     select d.document_type,d.entity_id,d.asset_id,d.style_group_id,

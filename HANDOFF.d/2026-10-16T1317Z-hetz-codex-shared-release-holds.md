@@ -150,24 +150,6 @@ and normal PR merge; all implementation/live acceptance remains open on #3779.
 
 
 
-## Design revision after substantive Muse critique — October 16, 2026 EDT
-
-The original plan publication merged as `66695385`. Muse subsequently found six
-implementation-design blockers; safe publication was not feasibility approval.
-The owner requested corrections and another Muse debate. Revised plan §8.1
-chooses receipt/quarantine/cleanup, drift, event-liveness and rollout contracts;
-step6 adopts #4039 without permitting merges under a production lease; step8
-splits buildable safety fixes from an explicitly gated fencing experiment.
-[Debate ledger](../docs/investigations/shared-release-holds-design-debate.md)
-contains all finding dispositions, substantive disagreements and follow-up outcome.
-Muse round2 completed at10:59 AM EDT over source `73e5f794`: all six original
-blockers resolved, with a bounded new punch list. The plan and ledger now address
-N1–N11, including reader-before-config rollout, freeze-conditional freshness,
-8a dependency order, distinct termination evidence, bounded drift/event repair
-and conservative crash cleanup. No runtime feature is implemented. Next gate:
-same-session verification of these corrections, then exact-head publication review
-and normal PR merge; all implementation/live acceptance remains open on #3779.
-
 ### Current state — refreshed October 20, 2026, 11:30 AM EDT
 
 Revision branch `codex/shared-release-holds-design-revision` contains local owned

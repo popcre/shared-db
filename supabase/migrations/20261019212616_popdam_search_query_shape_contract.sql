@@ -9,10 +9,12 @@
 --      hash-current; zero foreign-model or null-model embedded rows. The
 --      predicate is therefore safe today and stays explicit for future models.
 --   3. total_count / has_more / facets returned even when the page slice is
---      empty (summary-only row). CONTRACT CHANGE: empty searches now return
---      one summary-only row (null entity_id) instead of zero rows. Consumer
---      lockstep is popdam-web u2giants/popdam3 PR #446 (drops null-entity
---      rows, keeps counts/facets). Do not promote without that consumer.
+--      empty (summary-only row). CONTRACT CHANGE: empty searches return one
+--      summary-only row (null entity_id) instead of zero rows. DEPLOY ORDER:
+--      popdam-web u2giants/popdam3 PR #446 is backward-compatible (drops
+--      null-entity rows) and must merge/deploy BEFORE this migration reaches
+--      production. Merge order is app-then-migration; the migration must not
+--      promote while an old consumer would map the null row as a hit.
 --   4. Group↔asset rollup parity unchanged (candidate_asset_ids).
 --   5. No-match: empty tsqueries dropped in the queries CTE so the pinned
 --      indexable scan form is retained and punctuation-only queries return
@@ -182,7 +184,7 @@ revoke all on function public.search_dam_documents(text,jsonb,int,int,text[],ext
 grant execute on function public.search_dam_documents(text,jsonb,int,int,text[],extensions.vector(384),real,real) to authenticated, service_role;
 
 comment on function public.search_dam_documents(text,jsonb,int,int,text[],extensions.vector(384),real,real) is
-  'DAM-entitled ranked search. Semantic pool is model/dims-checked and document_type-filtered before the 50k distance cap; keyword branches are bounded; summary always returned (null page rows on out-of-range). Optional semantic-only floor before blend.';
+  'DAM-entitled ranked search. Semantic pool is model/dims-checked and document_type-filtered before the 50k distance cap (entity_id tiebreak). Keyword path is UNBOUNDED so totals/facets stay exact after visibility. Summary always returned (one null-entity row on empty/out-of-range). Optional semantic-only floor before blend. Consumer lockstep: popdam3#446 drops null-entity rows.';
 
 create or replace function public.search_assets_full_text(p_query text, p_limit int default 10000)
 returns table(asset_id uuid, style_group_id uuid, rank real)

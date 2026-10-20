@@ -94,3 +94,50 @@ begin
     raise exception 'authenticated cannot execute search_dam_documents';
   end if;
 end $$;
+
+-- 6. Empty/out-of-range page returns exactly one summary row with null entity_id.
+do $$
+declare
+  n int;
+  saw_null_id boolean := false;
+begin
+  select count(*) into n
+  from public.search_dam_documents('zzzz-not-a-real-object-qqq', '{}'::jsonb, 10, 1000000, null, null, 0);
+  if n <> 1 then
+    raise exception 'out-of-range/no-match expected 1 summary row, got %', n;
+  end if;
+  select bool_or(entity_id is null) into saw_null_id
+  from public.search_dam_documents('zzzz-not-a-real-object-qqq', '{}'::jsonb, 10, 1000000, null, null, 0);
+  if not coalesce(saw_null_id, false) then
+    raise exception 'summary-only row must have null entity_id';
+  end if;
+end $$;
+
+-- 7. Foreign-model / wrong-dims embeddings are excluded from the semantic leg.
+do $$
+declare
+  hit int;
+begin
+  delete from public.dam_search_documents where entity_id = '34570000-0000-4000-8000-000000000099';
+  insert into public.dam_search_documents
+    (document_type, entity_id, asset_id, title, path, embedding, embedding_model)
+  values
+    ('asset','34570000-0000-4000-8000-000000000099','34570000-0000-4000-8000-000000000099',
+     'zz4508 foreign model canvas','zz4508-foreign.ai',
+     (select array_fill(0.0::real, array[384])::extensions.vector), 'other-model');
+  select count(*) into hit
+  from public.search_dam_documents(
+    'zz4508 foreign model canvas', '{}'::jsonb, 10, 0, array['asset']::text[],
+    (select array_fill(0.0::real, array[384])::extensions.vector), 0, 0.0);
+  -- keyword may still hit the title; semantic leg must not treat it as a vector hit
+  -- so semantic_rank must be null on that row
+  if exists (
+    select 1 from public.search_dam_documents(
+      'zz4508 foreign model canvas', '{}'::jsonb, 10, 0, array['asset']::text[],
+      (select array_fill(0.0::real, array[384])::extensions.vector), 0, 0.0)
+    where entity_id = '34570000-0000-4000-8000-000000000099' and semantic_rank is not null
+  ) then
+    raise exception 'foreign embedding_model was admitted to the semantic leg';
+  end if;
+  delete from public.dam_search_documents where entity_id = '34570000-0000-4000-8000-000000000099';
+end $$;

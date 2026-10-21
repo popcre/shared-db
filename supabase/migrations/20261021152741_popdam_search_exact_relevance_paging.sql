@@ -37,6 +37,18 @@
 --   rows of the ~2 GB assets heap (6.8-16s measured cold on production), so
 --   exact totals and an 8s page cannot both hold for these queries.
 --
+-- Measured on production (qsllyeztdwjgirsysgai, 2026-10-21, read-only,
+-- generic plan of this exact body via PREPARE + EXPLAIN ANALYZE, live load):
+--   spider-man       2.2s total; 24,022 candidates ranked; page_documents
+--                    Limit stopped at 21 rows in 0.6ms; visible_assets Limit
+--                    stopped at 1,001 rows (of ~42k candidate assets).
+--   stitch           1.8s total; 17,759 ranked; page Limit 21 rows in 0.4ms.
+--   wall-art-canvas  9.7-11.2s total (still over 8s): 49,816 ranked; 3.9s is
+--                    the pre-existing trigram substring leg over 4 synonym
+--                    patterns (0 rows), ~5s ranking 2 normalized queries.
+--   The probes are early-stopping by plan: Limit -> Nested Loop over the
+--   rank-sorted candidates, never a full visibility pass.
+--
 -- Unchanged: hyphen-normalized AND-only tsqueries and the pinned indexable
 -- scan, LIKE escaping and the alphanumeric substring guard, semantic leg
 -- (gte-small/384 predicate, floor before blend, 50k cap, * 0.35 blend),
@@ -104,22 +116,23 @@ as $$
       (d.title ilike q.like_pattern or d.path ilike q.like_pattern
        or d.customer ilike q.like_pattern or d.program ilike q.like_pattern)
     where (p_document_types is null or d.document_type = any(p_document_types))
+  ), substring_keys as materialized (
+    select distinct s.document_type, s.entity_id from substring_matches s
   ), keyword_matches as materialized (
     -- The COMPLETE keyword match set (FTS + substring), never truncated.
     -- in_substring marks rows whose title/path/customer/program contains a
     -- query; only those can earn a substring tier, so only they pay ILIKE.
-    select m.document_type,m.entity_id,m.asset_id,m.style_group_id,m.title,m.path,m.customer,m.program,
-      bool_or(m.in_substring) in_substring
-    from (
-      select f.document_type,f.entity_id,f.asset_id,f.style_group_id,f.title,f.path,f.customer,f.program,
-        false in_substring
-      from full_text_matches f
-      union all
-      select s.document_type,s.entity_id,s.asset_id,s.style_group_id,s.title,s.path,s.customer,s.program,
-        true
-      from substring_matches s
-    ) m
-    group by m.document_type,m.entity_id,m.asset_id,m.style_group_id,m.title,m.path,m.customer,m.program
+    select f.document_type,f.entity_id,f.asset_id,f.style_group_id,f.title,f.path,f.customer,f.program,
+      (f.document_type, f.entity_id) in (select x.document_type, x.entity_id from substring_keys x) in_substring
+    from full_text_matches f
+    union all
+    select distinct on (s.document_type, s.entity_id)
+      s.document_type,s.entity_id,s.asset_id,s.style_group_id,s.title,s.path,s.customer,s.program,
+      true
+    from substring_matches s
+    where not exists (
+      select 1 from full_text_matches f
+      where f.document_type = s.document_type and f.entity_id = s.entity_id)
   ), keyword_candidates as materialized (
     -- Relevance for EVERY keyword match, before any page slice or bound:
     --   1.00 title equals the query (exact identifier; case/separator-insensitive)
@@ -131,7 +144,7 @@ as $$
     -- plus up to 0.09 for title tightness (query length / title length).
     -- Computed from short display columns only (never search_tsv).
     select k.document_type,k.entity_id,k.asset_id,k.style_group_id,
-      (select max(
+      max(
         case
           when k.title_key = q.normalized_query then 1.0
           when k.in_substring and k.title ilike any(q.like_patterns) then 0.6
@@ -141,7 +154,7 @@ as $$
           else 0.1
         end
         + 0.09 * least(1.0, length(q.normalized_query)::numeric / greatest(length(k.title_key),1))
-      ) from rank_queries q)::real keyword_rank
+      )::real keyword_rank
     from (
       select m.document_type,m.entity_id,m.asset_id,m.style_group_id,m.title,m.path,m.customer,m.program,m.in_substring,
         -- title without a trailing file extension, case/separator-folded
@@ -149,6 +162,8 @@ as $$
         to_tsvector('simple', regexp_replace(coalesce(m.title,''), '[-_/]+', ' ', 'g')) title_tsv
       from keyword_matches m
     ) k
+    cross join rank_queries q
+    group by k.document_type,k.entity_id,k.asset_id,k.style_group_id
   ), semantic_candidates as materialized (
     select d.document_type,d.entity_id,d.asset_id,d.style_group_id,
       greatest(0,1-(d.embedding <=> p_query_embedding))::real semantic_rank

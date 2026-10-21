@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "work_issue": 4524,
+  "outcome": "ready-for-merge",
+  "pr": 4525,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4524/2",
+  "contract_sha256": "46f0f3ec585695bce5325a4df39e5ef8c03e8148b75027e4047764cdd2c81f7c",
+  "base_sha": "f6cb6cc77e2217dddf1cff1e134a7175beb2d648",
+  "head_sha": "f297d8ce0f0450da17fccb2403403f8f83e9e400",
+  "files_changed": [
+    "docs/verification/throughput-dispositions/scripts~check-skill-drift.mjs.json",
+    "scripts/check-skill-drift.mjs",
+    "scripts/check-skill-drift.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "git diff --check origin/main...HEAD",
+      "exit_code": 0,
+      "evidence": "No whitespace errors on the implementation head."
+    },
+    {
+      "command": "AI_DEVOPS_DIR=<current popcre/ai-devops skills> node --test scripts/check-skill-drift.test.mjs",
+      "exit_code": 0,
+      "evidence": "4 passed, 0 failed against popcre/ai-devops main skills read 2026-10-20."
+    },
+    {
+      "command": "AI_DEVOPS_DIR=<current popcre/ai-devops skills> node scripts/check-skill-drift.mjs --require-skills",
+      "exit_code": 0,
+      "evidence": "OK: checked 2 canonical skills against AGENTS.md; no contradictions."
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "16 passed, 0 failed with the re-reviewed catalogue."
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation 1 (head 64f447f6, pair at d353e925) is superseded; its pair is retired in the implementation head so exactly one pair is carried.",
+    "Implementation commits preceded the contract publication; this evidence pair is the only commit after them.",
+    "Main's Tools offline tests turning green after merge is the live proof and is recorded on #4524 before it closes."
+  ],
+  "stop_conditions_hit": []
+}

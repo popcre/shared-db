@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "work_issue": 3779,
+  "outcome": "ready-for-merge",
+  "pr": 4546,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3779/18",
+  "contract_sha256": "453544d5b04b95f5c610a308bcef0e1b2d9e9e026ff808dd4a81939c6f9f0d4c",
+  "base_sha": "92511afa79976af5bb3eb2099a5f3506e357f63a",
+  "head_sha": "c39e9f3650cf30a68eb91ac38869be1e868fe64d",
+  "files_changed": [
+    ".github/workflows/migration-author-lease.yml",
+    "docs/verification/shared-release-holds/2026-10-21-legacy-sha-release-call-site-audit.md",
+    "docs/verification/shared-release-holds/README.md",
+    "plan_shared_release_hold_reduction.md",
+    "scripts/guarded-merge-preparation-split.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/release-hold-ownership.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "git diff --check origin/main...HEAD",
+      "exit_code": 0,
+      "evidence": "No whitespace errors on c39e9f36 against 92511afa."
+    },
+    {
+      "command": "node --test scripts/release-hold-ownership.test.mjs scripts/lib/release-hold-evidence.test.mjs scripts/lib/exclusive-lease.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/manage-migration-author-lanes-surface.test.mjs scripts/guarded-merge-preparation-split.test.mjs scripts/lib/lanes/exclusive-policy.test.mjs scripts/mutex-release-on-refusal.test.mjs scripts/check-merge-queue-workflows.test.mjs scripts/coordination-scenarios.test.mjs scripts/queue-hygiene-report.test.mjs",
+      "exit_code": 0,
+      "evidence": "1107 passed, 0 failed on the refreshed tree (October 21, 2026, edge-dev)."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK."
+    },
+    {
+      "command": "node scripts/check-current-workflow-policy.mjs",
+      "exit_code": 0,
+      "evidence": "Current workflow policy matrix matches implementation and cited owner rulings."
+    }
+  ],
+  "assumptions_resolved": [
+    "Step 8a first landing only; open items recorded in STATUS row 8.",
+    "The refreshed head preceded the contract publication; this evidence pair is the only commit after it."
+  ],
+  "stop_conditions_hit": []
+}

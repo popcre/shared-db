@@ -25,14 +25,14 @@
   ],
   "checks": [
     {
-      "evidence": "Static SQL guards passed.",
+      "exit_code": 0,
       "command": "bash scripts/check-sql.sh",
-      "exit_code": 0
+      "evidence": "Static SQL guards passed."
     },
     {
-      "evidence": "Exit 0.",
+      "exit_code": 0,
       "command": "git diff --check",
-      "exit_code": 0
+      "evidence": "Exit 0."
     }
   ],
   "assumptions_resolved": [

@@ -13,7 +13,7 @@
 --
 -- Approach (C + A + page-side B):
 --   A. FTS tsqueries are hyphen-normalized and deduped; keyword match is a
---      per-tsquery join (GIN-served) instead of `@@ ANY(array(...))`.
+--      `@@ ANY(array(...))` over deduped AND-only tsqueries.
 --   B. Page ranking uses a deterministic bounded candidate pool AFTER the
 --      document-type prefilter and BEFORE full visibility (pool of the FTS
 --      scan + the complete substring/ILIKE set, which is where exact-ID
@@ -161,7 +161,7 @@ as $$
       case when p_min_semantic_score is null then null
         else greatest(0,least(1,p_min_semantic_score))::real end min_semantic_score,
       case when p_query_embedding is null then false else true end has_embedding,
-      -- page candidate pool: rank-ordered bound AFTER document_type prefilter
+      -- page candidate pool: deterministic bound AFTER document_type prefilter
       greatest(1000, least(8000, (greatest(coalesce(p_offset,0),0) + greatest(1,least(coalesce(p_limit,100),20000))) * 40)) pool_limit
     where public.require_dam_access()
   ), queries as materialized (
@@ -175,10 +175,10 @@ as $$
     select distinct q.tsq, q.allow_substring, q.like_pattern
     from queries q
   ), full_text_matches as materialized (
-    select distinct d.document_type,d.entity_id,d.asset_id,d.style_group_id,d.search_tsv
-    from distinct_queries q
-    join public.dam_search_documents d on d.search_tsv @@ q.tsq
+    select d.document_type,d.entity_id,d.asset_id,d.style_group_id,d.search_tsv
+    from public.dam_search_documents d
     where (p_document_types is null or d.document_type = any(p_document_types))
+      and d.search_tsv @@ any(array(select q.tsq from distinct_queries q))
   ), rank_pool as materialized (
     select d.document_type,d.entity_id,d.asset_id,d.style_group_id,d.search_tsv
     from full_text_matches d

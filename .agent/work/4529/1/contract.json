@@ -41,7 +41,8 @@
   "assumptions": [
     "Sole gen1 pair. db_writes match issue #4529 writes plus the new counts RPC.",
     "Hyphen-normalized AND-only tsqueries replace phrase ANY(array) pathology (12.2s to 86ms measured).",
-    "Exact uncapped totals live in search_dam_document_counts; page stays inside 8s."
+    "Exact uncapped totals live in search_dam_document_counts; page stays inside 8s.",
+    "Reviewer redraw head f15457013 binds exact-head reviews."
   ],
   "stop_conditions": [
     "Stop if claim #4530 does not cover the four function objects",

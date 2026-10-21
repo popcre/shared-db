@@ -87,12 +87,17 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      # The self-service boundary classifier reads the linked work issue; with the
+      # read-only app token absent it falls back to github.token, which needs this.
+      issues: read
       statuses: read
       checks: read
       actions: read
     outputs:
       trusted_sha: ${{ steps.trusted_preflight.outputs.sha }}
-      head_sha: ${{ inputs.head_sha }}
+      # The head this job actually checked out and bound, read from git, not the
+      # dispatch input echoed back.
+      head_sha: ${{ steps.executable_source.outputs.head }}
     env:
       NODE_OPTIONS: ''
       NODE_PATH: ''
@@ -146,6 +151,7 @@ jobs:
             --data-root "$GITHUB_WORKSPACE" --head-sha '${{ inputs.head_sha }}' \
             --source-root "$GITHUB_WORKSPACE/trusted-policy" --source-sha "$trusted_sha"
           echo "sha=$trusted_sha" >> "$GITHUB_OUTPUT"
+          echo "head=$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Pre-flight the required status checks before taking the merge lane
         id: trusted_preflight
         working-directory: trusted-policy
@@ -280,6 +286,7 @@ jobs:
             --data-root "$GITHUB_WORKSPACE" --head-sha '${{ inputs.head_sha }}' \
             --source-root "$GITHUB_WORKSPACE/trusted-policy" --source-sha "$trusted_sha"
           echo "sha=$trusted_sha" >> "$GITHUB_OUTPUT"
+          echo "head=$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Refuse to proceed on an unprepared request
         env:
           PREPARED_TRUSTED_SHA: ${{ needs.prepare.outputs.trusted_sha }}
@@ -291,7 +298,8 @@ jobs:
           # exact head; it grants nothing. Main may have moved since: the under-lock
           # preflight and freshness checks below decide compatibility freshly.
           [[ "$PREPARED_TRUSTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'preparation did not publish a trusted main SHA' >&2; exit 1; }
-          [[ "$PREPARED_HEAD_SHA" = "$REQUESTED_SHA" ]] || { echo 'preparation ran for a different head' >&2; exit 1; }
+          [[ "$PREPARED_HEAD_SHA" = "$REQUESTED_SHA" ]] || { echo "preparation checked out ${PREPARED_HEAD_SHA:-nothing}, not the requested head" >&2; exit 1; }
+          [[ "$(git rev-parse HEAD)" = "$REQUESTED_SHA" ]] || { echo 'this job did not check out the requested head' >&2; exit 1; }
           echo "prepared against protected main $PREPARED_TRUSTED_SHA for head $REQUESTED_SHA"
       - name: Mint read-only API token (pop-ai-watchers app)
         id: read_token

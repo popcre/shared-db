@@ -71,7 +71,19 @@ test('preparation_wait_does_not_block_independent_merge', () => {
   assert.ok(stepBlock(merge, 'Acquire the exclusive merge lane'), 'the lease is acquired in the protected job only')
   assert.equal(stepBlock(prepare, 'Acquire the exclusive merge lane'), null, 'preparation never touches the lease')
   assert.doesNotMatch(prepare, /--acquire-merge|--release-merge|-f state=/, 'preparation holds nothing and writes nothing')
-  assert.match(prepare, /^ {4}permissions:\n(?: {6}[a-z-]+: read\n)+/m, 'preparation is granted read permissions only')
+  assert.match(prepare, /^ {4}permissions:\n(?: {6}(?:#.*|[a-z-]+: read)\n)+/m, 'preparation is granted read permissions only')
+  assert.doesNotMatch(prepare, /^ {6}[a-z-]+: write$/m)
+  assert.match(prepare, /^ {6}issues: read$/m, 'the self-service classifier falls back to github.token and reads the linked issue')
+  // Both jobs check out protected main with full history: the lock's "main moved
+  // independently" re-check needs a merge base (#3669), and the prepare job's
+  // copy must not be the only one the guard certifies.
+  for (const [label, block] of [['prepare', prepare], ['merge', merge]]) {
+    const checkout = stepBlock(block, 'Check out protected main policy separately from the pull request')
+    assert.ok(checkout, `${label} checks out protected main separately`)
+    assert.match(checkout, /path: trusted-policy[\s\S]*fetch-depth: 0/, `${label}: a shallow trusted-policy checkout has no merge base`)
+    assert.doesNotMatch(checkout, /fetch-depth: 1/)
+  }
+  assert.match(prepare, /head_sha: \$\{\{ steps\.executable_source\.outputs\.head \}\}/, 'the prepared head is the one git checked out, not the input echoed back')
 
   // Scheduling proof on the REAL groups: request A is stuck in preparation (its
   // quota wait), request B is independent and ready. B's protected merge runs

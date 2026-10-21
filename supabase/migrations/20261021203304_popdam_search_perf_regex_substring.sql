@@ -1,5 +1,6 @@
 -- #4529 / PopDAM #97: corrective performance fix for search_dam_documents.
--- derived-from: 20261021190510 (live on production)
+-- derived-from: 20261021190510
+-- (20261021190510 is live on production.)
 -- SUPERSEDES (never promote these after this version): 20261021063716 and
 -- 20261021152741. Neither reached production; 20261021190510 replaced them.
 -- Same 8-arg signature, same results: on production (2026-10-21, read-only)

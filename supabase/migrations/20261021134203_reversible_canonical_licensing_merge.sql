@@ -154,12 +154,6 @@ comment on table plm.licensing_canonical_change_history is
   'rollback_applied rows record its execution. Append-only by privilege: no role may '
   'insert, update or delete directly -- only the SECURITY DEFINER plan/apply functions, '
   'which only insert. Rows self-verify by hash at apply time.';
-comment on column plm.licensing_canonical_change_history.body is
-  'merge_planned: the canonical plan body hashed into plan_hash. merge_applied: the '
-  'rollback plan hashed into rollback_hash. rollback_applied: a reference object.';
-comment on column plm.licensing_canonical_change_history.plan_hash is
-  'SHA-256 hex over body::text for merge_planned rows; the applied plan hash for '
-  'merge_applied; the executed rollback hash for rollback_applied.';
 
 alter table plm.licensing_canonical_change_history enable row level security;
 revoke all on table plm.licensing_canonical_change_history

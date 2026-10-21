@@ -29,12 +29,14 @@ begin
     (v_stitch, 'zz4531-stitch.psd', 'zz4531/stitch.psd', 'psd', 'zz4531stitch', now(), 'https://example.invalid/t.png', false),
     (v_wall,   'zz4531-wall-art-canvas.psd', 'zz4531/wall-art-canvas.psd', 'psd', 'zz4531wall', now(), 'https://example.invalid/w.png', false);
   insert into public.dam_search_documents
-    (document_type, entity_id, asset_id, title, path)
+    (document_type, entity_id, asset_id, title, path, search_text)
   values
-    ('asset', v_spider, v_spider, 'zz4531 Spider-Man Hero Canvas', 'zz4531/spider-man.psd'),
-    ('asset', v_spider2,v_spider2,'zz4531 Spider-Man Variant Art', 'zz4531/spider-man-alt.psd'),
-    ('asset', v_stitch, v_stitch, 'zz4531 Stitch Tropical', 'zz4531/stitch.psd'),
-    ('asset', v_wall,   v_wall,   'zz4531 Wall Art Canvas', 'zz4531/wall-art-canvas.psd');
+    ('asset', v_spider, v_spider, 'zz4531 Spider-Man Hero Canvas', 'zz4531/spider-man.psd', 'spider-man hero canvas marvel'),
+    ('asset', v_spider2,v_spider2,'zz4531 Spider-Man Variant Art', 'zz4531/spider-man-alt.psd', 'spider-man variant art'),
+    ('asset', v_stitch, v_stitch, 'zz4531 Stitch Tropical', 'zz4531/stitch.psd', 'stitch tropical disney'),
+    ('asset', v_wall,   v_wall,   'zz4531 Wall Art Canvas', 'zz4531/wall-art-canvas.psd', 'wall-art-canvas home decor')
+  on conflict (document_type, entity_id) do update
+    set title = excluded.title, path = excluded.path, search_text = excluded.search_text;
 end $$;
 
 -- 1. High-DF terms complete inside the 8s statement_timeout and return rows.

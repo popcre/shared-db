@@ -101,6 +101,7 @@ jobs:
           scripts/merge-queue-contract.test.mjs
           scripts/configure-merge-queue.test.mjs
           scripts/check-merge-queue-workflows.test.mjs
+          scripts/guarded-merge-preparation-split.test.mjs
 
       # Read-only token from the pop-ai-watchers GitHub App: its own API budget, separate
       # from the per-repository Actions installation limit. Writes keep github.token.

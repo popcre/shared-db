@@ -22,9 +22,18 @@ on:
         required: true
         type: string
 
-concurrency:
-  group: shared-db-guarded-merge
-  cancel-in-progress: false
+# SCHEDULING (issue #3779, Step 9 of #3306): there is NO workflow-wide
+# concurrency group any more. Preparation (checkout, tool setup, trusted-source
+# binding, required-check preflight with its bounded wait, the self-service
+# boundary classifier and the API-quota wait) runs in the `prepare` job under a
+# PER-REQUEST group, so one request waiting on quota or on a slow preflight never
+# occupies the protected merge queue of another, independent request. Only the
+# short `merge` job shares the `shared-db-guarded-merge` group. GitHub's group is
+# a courtesy ordering, never the mutation authority: a job that was pending in
+# the group and got replaced by a later dispatch simply never ran, holds nothing
+# and authorizes nothing; the native merge lease (`--acquire-merge`, owner-bound,
+# generation-fenced) is the only thing that admits a writer, and every fact the
+# `prepare` job observed is re-proven from protected main under that lease.
 
 permissions:
   contents: write
@@ -56,10 +65,34 @@ permissions:
   # `scripts/check-required-checks-preflight.mjs`.
 
 jobs:
-  merge:
+  # Stage 1 of 2: independent, unlocked preparation. Holds no lease and no shared
+  # queue. Its outputs are plain identities (the trusted main SHA it validated
+  # against, the requested head) and diagnostics; they are NOT transferable
+  # authority. The `merge` job re-proves every one of them under the lease.
+  prepare:
+    name: Prepare guarded merge
     runs-on: blacksmith-2vcpu-ubuntu-2404
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
+    # The 900-second quota/preflight waits live here, OUTSIDE the lease and OUTSIDE
+    # the protected group, so they are budgeted by this job alone.
     timeout-minutes: 30
+    concurrency:
+      # Per request: a second dispatch for the SAME pull request queues behind
+      # the first (never cancels it); dispatches for different pull requests
+      # prepare in parallel.
+      group: shared-db-guarded-merge-prepare-${{ inputs.pull_request }}
+      cancel-in-progress: false
+    # Read-only by construction: preparation observes, it never writes. The
+    # workflow-level grants above are for the `merge` job; this job narrows them.
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: read
+      checks: read
+      actions: read
+    outputs:
+      trusted_sha: ${{ steps.trusted_preflight.outputs.sha }}
+      head_sha: ${{ inputs.head_sha }}
     env:
       NODE_OPTIONS: ''
       NODE_PATH: ''
@@ -176,6 +209,103 @@ jobs:
           # the absolute quota cost is not yet metered per merge.
           GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
         run: node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-actions-quota.mjs"
+  # Stage 2 of 2: the short protected merge. Only this job shares the
+  # repository-wide group, and even that group is advisory: the exclusive merge
+  # lease acquired below is the sole mutation authority, released by holder and
+  # generation (never by timestamp), and every pre-lock fact is re-read from
+  # protected main while it is held. Nothing from `prepare` is trusted blindly.
+  merge:
+    name: Protected merge
+    needs: prepare
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    # Short by construction: the quota wait and the bounded preflight wait already
+    # happened in `prepare`; under the lease every external wait is zero.
+    timeout-minutes: 20
+    concurrency:
+      group: shared-db-guarded-merge
+      # Never cancel a merge that may hold the lease. A PENDING job replaced by a
+      # later dispatch never ran and never acquired anything (#3779 negative case);
+      # its run reports as cancelled and the dispatcher re-dispatches.
+      cancel-in-progress: false
+    env:
+      NODE_OPTIONS: ''
+      NODE_PATH: ''
+      BASH_ENV: ''
+      ENV: ''
+      LD_PRELOAD: ''
+      LD_LIBRARY_PATH: ''
+      PYTHONPATH: ''
+      PYTHONHOME: ''
+      PYTHONNOUSERSITE: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONSAFEPATH: '1'
+      GIT_CONFIG_GLOBAL: /dev/null
+      GIT_CONFIG_NOSYSTEM: '1'
+      GIT_CONFIG_COUNT: '0'
+      GIT_EXTERNAL_DIFF: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.head_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Capture trusted executable path; pull-request code is never executed
+        id: trusted_tools
+        run: echo "path=$PATH" >> "$GITHUB_OUTPUT"
+      - name: Check out protected main policy separately from the pull request
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: trusted-policy
+          # Full history (#3669): the merge-lane acquisition asks
+          # classifyBranchFreshness for the merge base of the head and the main
+          # tip. A depth-1 checkout has no merge base, so "main moved
+          # independently" (#2758) was always refused.
+          fetch-depth: 0
+      - name: Bind protected executable source and PR data before credentials
+        id: executable_source
+        working-directory: trusted-policy
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          trusted_sha="$(git rev-parse HEAD)"
+          git fetch origin main
+          test "$trusted_sha" = "$(git rev-parse origin/main)"
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/lib/agent-evidence-paths.mjs" \
+            --data-root "$GITHUB_WORKSPACE" --head-sha '${{ inputs.head_sha }}' \
+            --source-root "$GITHUB_WORKSPACE/trusted-policy" --source-sha "$trusted_sha"
+          echo "sha=$trusted_sha" >> "$GITHUB_OUTPUT"
+      - name: Refuse to proceed on an unprepared request
+        env:
+          PREPARED_TRUSTED_SHA: ${{ needs.prepare.outputs.trusted_sha }}
+          PREPARED_HEAD_SHA: ${{ needs.prepare.outputs.head_sha }}
+          REQUESTED_SHA: ${{ inputs.head_sha }}
+        run: |
+          set -euo pipefail
+          # Identity only. The preparation job proves it ran to completion for THIS
+          # exact head; it grants nothing. Main may have moved since: the under-lock
+          # preflight and freshness checks below decide compatibility freshly.
+          [[ "$PREPARED_TRUSTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'preparation did not publish a trusted main SHA' >&2; exit 1; }
+          [[ "$PREPARED_HEAD_SHA" = "$REQUESTED_SHA" ]] || { echo 'preparation ran for a different head' >&2; exit 1; }
+          echo "prepared against protected main $PREPARED_TRUSTED_SHA for head $REQUESTED_SHA"
+      - name: Mint read-only API token (pop-ai-watchers app)
+        id: read_token
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.POP_AI_WATCHERS_APP_ID }}
+          private-key: ${{ secrets.POP_AI_WATCHERS_PRIVATE_KEY }}
+          permission-actions: read
+          permission-checks: read
+          permission-contents: read
+          permission-issues: read
+          permission-pull-requests: read
+          permission-statuses: read
       - name: Acquire the exclusive merge lane
         id: merge_lock
         working-directory: trusted-policy
@@ -333,7 +463,7 @@ jobs:
             node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-live-proof-probe.mjs"
             node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-exact-head-approval.mjs"
             QUEUE_RETIREMENT_PHASE=14 PREFLIGHT_WAIT_SECONDS=0 \
-              TRUSTED_POLICY_SHA='${{ steps.trusted_preflight.outputs.sha }}' \
+              TRUSTED_POLICY_SHA='${{ steps.executable_source.outputs.sha }}' \
               SELF_AUTHORIZATION_RECEIPT="$RUNNER_TEMP/self-authorization-receipt.json" \
               node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-required-checks-preflight.mjs"
           }
@@ -409,7 +539,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           OWNER_SHA: ${{ steps.merge_lock.outputs.owner_sha }}
-          TRUSTED_MAIN_SHA: ${{ steps.trusted_preflight.outputs.sha }}
+          TRUSTED_MAIN_SHA: ${{ steps.executable_source.outputs.sha }}
           TRUSTED_PATH: ${{ steps.trusted_tools.outputs.path }}
           NODE_OPTIONS: ''
           NODE_PATH: ''

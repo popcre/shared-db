@@ -58,9 +58,9 @@
 -- visibility predicate, summary envelope (null-entity row), 8s timeout,
 -- grants. No SEARCH_MODE change. No PopSG object is touched.
 
-drop function if exists public.search_assets_full_text(text,int);
-drop function if exists public.search_style_groups_full_text(text,int);
-drop function if exists public.search_dam_document_counts(text,jsonb,text[],extensions.vector(384),real);
+drop function if exists public.search_assets_full_text(text,int); -- recreated below
+drop function if exists public.search_style_groups_full_text(text,int); -- recreated below
+drop function if exists public.search_dam_document_counts(text,jsonb,text[],extensions.vector(384),real); -- retired (no consumer)
 
 create or replace function public.search_dam_documents(
   p_query text, p_filters jsonb, p_limit int, p_offset int,

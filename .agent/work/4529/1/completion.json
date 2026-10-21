@@ -8,13 +8,11 @@
   ],
   "contract_ref": "refs/db-contracts/4529/1",
   "contract_sha256": "292ad6a8d5f209ed76ed0ad203bb0c4253cdfc6e6da78a25abd945bc9df4e091",
-  "head_sha": "214119bea00fb1a970812297de2525c599c4d672",
+  "head_sha": "a84e77b9c50957ba32302c06e039b469f305047a",
   "base_sha": "1b139f89ad731fb383ba73ae254e0e4d1c5efae5",
   "files_changed": [
     "supabase/migrations/20261021063716_popdam_search_high_df_timeout.sql",
-    "supabase/tests/popdam_search_high_df_timeout_contracts.sql",
-    ".agent/work/4529/1/contract.json",
-    ".agent/work/4529/1/completion.json"
+    "supabase/tests/popdam_search_high_df_timeout_contracts.sql"
   ],
   "db_reads": [],
   "db_writes": [

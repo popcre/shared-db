@@ -377,3 +377,4 @@ revoke all on function public.search_assets_full_text(text,int) from public, ano
 grant execute on function public.search_assets_full_text(text,int) to authenticated, service_role;
 revoke all on function public.search_style_groups_full_text(text,int) from public, anon;
 grant execute on function public.search_style_groups_full_text(text,int) to authenticated, service_role;
+

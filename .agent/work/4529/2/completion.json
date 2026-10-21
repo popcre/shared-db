@@ -8,7 +8,7 @@
   ],
   "contract_ref": "refs/db-contracts/4529/2",
   "contract_sha256": "1a7865b7d12911570948b5f65594fa78747d0f2362ceb90cfc5fc5311295ca7a",
-  "head_sha": "009c188ae6e25b81804d9ae1220c9f32d112247f",
+  "head_sha": "d50f3f5bea95909e73c182029baf1ed566f2c91c",
   "base_sha": "85193c31df6ce330577bfc88de25adb0ace10d0e",
   "files_changed": [
     "supabase/migrations/20261021134058_popdam_search_exact_relevance_paging.sql",

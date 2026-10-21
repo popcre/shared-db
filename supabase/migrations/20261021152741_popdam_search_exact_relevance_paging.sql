@@ -333,8 +333,7 @@ $$;
 revoke all on function public.search_dam_documents(text,jsonb,int,int,text[],extensions.vector(384),real,real) from public, anon;
 grant execute on function public.search_dam_documents(text,jsonb,int,int,text[],extensions.vector(384),real,real) to authenticated, service_role;
 
-comment on function public.search_dam_documents(text,jsonb,int,int,text[],extensions.vector(384),real,real) is
-  'DAM-entitled ranked search. Every keyword (FTS + substring) and semantic candidate is ranked before any bound; exact title matches rank 1.0. The page is the first offset+limit visible documents in rank order (rank-ordered probe) and has_more is exact. total_count/facets are exact when facets.totalExact is true; otherwise they cover a rank-ordered probe of 1000 assets and total_count is a lower bound (facets.totalKind = lower_bound). Summary envelope always returned (null-entity row on empty/out-of-range). Semantic leg model/dims-checked, floor before blend.';
+comment on function public.search_dam_documents(text,jsonb,int,int,text[],extensions.vector(384),real,real) is 'DAM-entitled ranked search. Every keyword (FTS + substring) and semantic candidate is ranked before any bound; exact title matches rank 1.0. The page is the first offset+limit visible documents in rank order (rank-ordered probe) and has_more is exact. total_count/facets are exact when facets.totalExact is true; otherwise they cover a rank-ordered probe of 1000 assets and total_count is a lower bound (facets.totalKind = lower_bound). Summary envelope always returned (null-entity row on empty/out-of-range). Semantic leg model/dims-checked, floor before blend.';
 
 create or replace function public.search_assets_full_text(p_query text, p_limit int default 10000)
 returns table(asset_id uuid, style_group_id uuid, rank real)

@@ -14,10 +14,11 @@
 -- Approach (C + A + page-side B):
 --   A. FTS tsqueries are hyphen-normalized and deduped; keyword match is a
 --      per-tsquery join (GIN-served) instead of `@@ ANY(array(...))`.
---   B. Page ranking uses a rank-ordered bounded candidate pool AFTER the
+--   B. Page ranking uses a deterministic bounded candidate pool AFTER the
 --      document-type prefilter and BEFORE full visibility (pool of the FTS
 --      scan + the complete substring/ILIKE set, which is where exact-ID
 --      title/path hits live). Substring floor is preserved via greatest().
+--      All substring like_pattern variants are kept (hyphen and space forms).
 --   C. Summary total_count / has_more / facets are computed from the UNBOUNDED
 --      key set (no pre-visibility truncation of the count path). ts_rank_cd is
 --      not evaluated for summary keys.
@@ -56,8 +57,8 @@ as $$
     where p.query_text is not null
       and websearch_to_tsquery('simple', regexp_replace(q.query_text, '[-_/]+', ' ', 'g'))::text <> ''
   ), distinct_queries as materialized (
-    select q.tsq, bool_or(q.allow_substring) allow_substring, min(q.like_pattern) like_pattern
-    from queries q group by q.tsq
+    select distinct q.tsq, q.allow_substring, q.like_pattern
+    from queries q
   ), keys as materialized (
     select d.document_type,d.entity_id,d.asset_id,d.style_group_id
     from distinct_queries q
@@ -171,20 +172,21 @@ as $$
     where p.query_text is not null
       and websearch_to_tsquery('simple', regexp_replace(q.query_text, '[-_/]+', ' ', 'g'))::text <> ''
   ), distinct_queries as materialized (
-    select q.tsq, bool_or(q.allow_substring) allow_substring, min(q.like_pattern) like_pattern
-    from queries q group by q.tsq
+    select distinct q.tsq, q.allow_substring, q.like_pattern
+    from queries q
   ), full_text_matches as materialized (
-    select d.document_type,d.entity_id,d.asset_id,d.style_group_id,d.search_tsv
-    from public.dam_search_documents d
+    select distinct d.document_type,d.entity_id,d.asset_id,d.style_group_id,d.search_tsv
+    from distinct_queries q
+    join public.dam_search_documents d on d.search_tsv @@ q.tsq
     where (p_document_types is null or d.document_type = any(p_document_types))
-      and d.search_tsv @@ any(array(select q.tsq from queries q))
   ), rank_pool as materialized (
     select d.document_type,d.entity_id,d.asset_id,d.style_group_id,d.search_tsv
     from full_text_matches d
+    order by d.document_type, d.entity_id, d.asset_id, d.style_group_id
     limit (select pool_limit from params)
   ), keyword_candidates as materialized (
     select d.document_type,d.entity_id,d.asset_id,d.style_group_id,
-      greatest((select max(ts_rank_cd(d.search_tsv, q.tsq)) from queries q where d.search_tsv @@ q.tsq),0.01)::real keyword_rank
+      greatest((select max(ts_rank_cd(d.search_tsv, q.tsq)) from distinct_queries q where d.search_tsv @@ q.tsq),0.01)::real keyword_rank
     from rank_pool d
     union all
     select d.document_type,d.entity_id,d.asset_id,d.style_group_id,
@@ -320,8 +322,8 @@ as $$
     where public.require_dam_access()
       and websearch_to_tsquery('simple', regexp_replace(q.query_text, '[-_/]+', ' ', 'g'))::text <> ''
   ), distinct_queries as materialized (
-    select q.tsq, bool_or(q.allow_substring) allow_substring, min(q.like_pattern) like_pattern
-    from queries q group by q.tsq
+    select distinct q.tsq, q.allow_substring, q.like_pattern
+    from queries q
   ), direct_candidates as materialized (
     select d.style_group_id,
       greatest(ts_rank_cd(d.search_tsv, q.tsq), 0.01)::real rank

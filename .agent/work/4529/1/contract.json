@@ -4,7 +4,7 @@
   "work_issue": 4529,
   "work_type": "structural",
   "route": "claim-first",
-  "goal": "Repair DAM high-DF search timeout for PopDAM #97 exact-ID gates",
+  "goal": "Repair DAM high-DF search timeout for PopDAM #97 exact-ID gates (review fixes applied)",
   "base_sha": "1b139f89ad731fb383ba73ae254e0e4d1c5efae5",
   "dispatcher": "MiMo chat unknown on edge-dev (PopDAM #97 claim-first)",
   "worker": "mimo-edge-dev-hdf-4531",

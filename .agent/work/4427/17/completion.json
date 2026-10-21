@@ -8,8 +8,8 @@
   ],
   "contract_ref": "refs/db-contracts/4427/17",
   "contract_sha256": "dc081dc53a2b54912f766ceaf231264af563d1643ae301b0ff2a9cc6bbfb1266",
-  "head_sha": "7f3102e23fdab66cdef5de3a344c1017cd05596a",
-  "base_sha": "9bc253224f00d4920822e5263d85727f5c4f9108",
+  "head_sha": "4f5af2aff2f08a51f7eab2d7d799d617e8fdd8c0",
+  "base_sha": "f2438ee10035758e86bc1c3c09a77af79d4bc0b4",
   "files_changed": [
     ".github/live-proofs/4427.sql",
     ".github/workflows/tools-offline-tests.yml",

@@ -1,0 +1,52 @@
+{
+  "schema_version": 2,
+  "generation": 15,
+  "evidence_parent": {
+    "work_issue": 3779,
+    "generation": 14,
+    "contract_sha256": "5c87f6acef9646b3abd9000447d6009b49c7812ce79899557adb9664baefbb38"
+  },
+  "work_issue": 3779,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Apply owner ruling 2026-10-21 (Albert Hazan, \"make it 1hr.\"): the protected-source stale-place inactivity window in scripts/check-pr-source-collisions.mjs drops from 24 hours to one hour; legacy inactive-24h nudges still parse; ruling recorded as docs/owner-rulings.md \u00a76.29. No other condition or fail-closed signal changes.",
+  "base_sha": "1b7edfedb5190f6b6d9ed9767d9e877e1ec35bae",
+  "dispatcher": "Claude chat 745ea991-2041-4729-8860-ca595c6faf46 on edge-dev",
+  "worker": "Same session; one constant, its comments, two tests and the ruling entry.",
+  "branch": "claude/3779-stale-place-one-hour",
+  "worktree": "/home/ahazan/repos/shared-db/.claude/worktrees/stale-1h",
+  "allowed_paths": [
+    "scripts/check-pr-source-collisions.mjs",
+    "scripts/check-pr-source-collisions.test.mjs",
+    "docs/owner-rulings.md",
+    ".agent/work/3779/15/contract.json",
+    ".agent/work/3779/15/completion.json"
+  ],
+  "file_writes": [
+    "scripts/check-pr-source-collisions.mjs",
+    "scripts/check-pr-source-collisions.test.mjs",
+    "docs/owner-rulings.md",
+    ".agent/work/3779/15/contract.json",
+    ".agent/work/3779/15/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No change to lastActivityAt; the cross-reference fix is a separate sub-session's pull request.",
+    "No removal of the nudge, failing-check or conflict conditions, and no change to fail-closed handling of unreadable signals.",
+    "No schema, data, setting or branch-protection change.",
+    "Do not close issue #3779."
+  ],
+  "required_checks": [
+    "git diff --check origin/main...HEAD",
+    "node --test scripts/check-pr-source-collisions.test.mjs scripts/lib/open-pr-files.test.mjs scripts/manage-migration-author-lanes.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs"
+  ],
+  "assumptions": [
+    "The implementation head e45d9f9130b95bc2835a5c1834bd3c35b8223a4a was authored before this contract was published; disclosed, and every later commit follows it.",
+    "Issue #3273, which introduced the rule, is closed; this lands under #3779 because the window directly governs how long a release hold on a protected source can stall."
+  ],
+  "stop_conditions": [
+    "Stop before any production, preview, database or repository-setting action."
+  ]
+}

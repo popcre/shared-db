@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "work_issue": 4552,
+  "outcome": "ready-for-merge",
+  "pr": 4554,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4552/2",
+  "contract_sha256": "02bd4487d5d72eecdfb4da4baec821657e38f9e3212d5828ad6b36f7438af356",
+  "base_sha": "921898c67dee1d3ebe461acace21dd9d594431c8",
+  "head_sha": "deed3473857918cf37aacf9016d1749e95a37aec",
+  "files_changed": [
+    "scripts/check-pr-source-collisions.mjs",
+    "scripts/check-pr-source-collisions.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "git diff --check origin/main...HEAD",
+      "exit_code": 0,
+      "evidence": "No whitespace errors on deed3473 against 921898c6."
+    },
+    {
+      "command": "node --test scripts/check-pr-source-collisions.test.mjs",
+      "exit_code": 0,
+      "evidence": "26 passed, 0 failed on deed3473 after merging main (October 21, 2026, edge-dev3)."
+    }
+  ],
+  "assumptions_resolved": [
+    "Bot labels still count (fail closed); only mention side-effect rows are ignored.",
+    "The implementation head preceded the contract publication; this evidence pair is the only commit after it.",
+    "Generation 1 retired: main moved; clean merge of origin/main, no conflict."
+  ],
+  "stop_conditions_hit": []
+}

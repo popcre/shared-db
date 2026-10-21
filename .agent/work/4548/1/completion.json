@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "work_issue": 4548,
+  "outcome": "ready-for-merge",
+  "pr": 4547,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4548/1",
+  "contract_sha256": "dd31c9b0985c9d156e6a2ef9e5e9c435661952cc9d29d0b2716d0aea3f014525",
+  "head_sha": "386f4409b392bd8beb014646d780ecbb4584305c",
+  "base_sha": "f1f63c7abdf02a6c69fc72ac8208ba41c634c572",
+  "files_changed": [
+    "docs/agents/standing-facts.md",
+    "docs/owner-rulings.md",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-author-lanes.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "assumptions_resolved": ["TTL cap is 60 minutes per owner rule."],
+  "stop_conditions_hit": [],
+  "checks": [
+    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "917 pass, 0 fail"},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "clean"}
+  ]
+}

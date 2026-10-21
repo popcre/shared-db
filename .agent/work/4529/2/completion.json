@@ -11,8 +11,6 @@
   "head_sha": "009c188ae6e25b81804d9ae1220c9f32d112247f",
   "base_sha": "85193c31df6ce330577bfc88de25adb0ace10d0e",
   "files_changed": [
-    ".agent/work/4529/2/completion.json",
-    ".agent/work/4529/2/contract.json",
     "supabase/migrations/20261021134058_popdam_search_exact_relevance_paging.sql",
     "supabase/tests/popdam_authorized_ranked_search_contracts.sql",
     "supabase/tests/popdam_search_high_df_timeout_contracts.sql"

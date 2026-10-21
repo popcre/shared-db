@@ -21,7 +21,7 @@ set statement_timeout = '2min';
 
 create table if not exists dflow.vendor_wechat_identity (
   id bigint generated always as identity primary key,
-  wechat_key text not null,
+  wechat_key text not null unique,
   unionid text,
   openid text not null,
   nickname text,
@@ -36,12 +36,6 @@ create table if not exists dflow.vendor_wechat_identity (
   check (wechat_key = coalesce(unionid, 'openid:' || openid)),
   check (status <> 'approved' or vendor_id is not null)
 );
-
-create unique index if not exists vendor_wechat_identity_wechat_key
-  on dflow.vendor_wechat_identity (wechat_key);
-
-create index if not exists vendor_wechat_identity_status
-  on dflow.vendor_wechat_identity (status, first_seen_at);
 
 comment on table dflow.vendor_wechat_identity is
   'WeChat login identities for vendor users; pending until an admin links vendor_id and approves (#4532).';

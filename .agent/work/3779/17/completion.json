@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "work_issue": 3779,
+  "outcome": "ready-for-merge",
+  "pr": 4546,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3779/17",
+  "contract_sha256": "50b226f6001008be91bd4a0fadbe9b8bd2add05674e87ff57ffc59d7dfb84b1d",
+  "base_sha": "921898c67dee1d3ebe461acace21dd9d594431c8",
+  "head_sha": "c8aefaba3d4cc2ee372adb406ff988e72c1f61b9",
+  "files_changed": [
+    ".github/workflows/migration-author-lease.yml",
+    "docs/verification/shared-release-holds/2026-10-21-legacy-sha-release-call-site-audit.md",
+    "docs/verification/shared-release-holds/README.md",
+    "plan_shared_release_hold_reduction.md",
+    "scripts/guarded-merge-preparation-split.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/release-hold-ownership.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "git diff --check origin/main...HEAD",
+      "exit_code": 0,
+      "evidence": "No whitespace errors on c8aefaba against 921898c6."
+    },
+    {
+      "command": "node --test scripts/release-hold-ownership.test.mjs scripts/lib/release-hold-evidence.test.mjs scripts/lib/exclusive-lease.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/manage-migration-author-lanes-surface.test.mjs scripts/guarded-merge-preparation-split.test.mjs scripts/lib/lanes/exclusive-policy.test.mjs scripts/mutex-release-on-refusal.test.mjs scripts/check-merge-queue-workflows.test.mjs scripts/coordination-scenarios.test.mjs scripts/queue-hygiene-report.test.mjs",
+      "exit_code": 0,
+      "evidence": "1107 passed, 0 failed on the refreshed tree (October 21, 2026, about 1:42 PM EDT, edge-dev)."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=358 sources=101 derived_digest=2ed6d57bcd56."
+    },
+    {
+      "command": "node scripts/check-current-workflow-policy.mjs",
+      "exit_code": 0,
+      "evidence": "Current workflow policy matrix matches implementation and cited owner rulings."
+    }
+  ],
+  "assumptions_resolved": [
+    "Step 8a first landing only; open items recorded in STATUS row 8.",
+    "The refreshed head preceded the contract publication; this evidence pair is the only commit after it."
+  ],
+  "stop_conditions_hit": []
+}

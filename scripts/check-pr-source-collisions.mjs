@@ -46,13 +46,14 @@ export const PROTECTED_SOURCE_PATHS=new Set([
 // to merge or close them. A place in the queue is now FORFEIT when ALL three
 // hold, and only then:
 //
-//   (a) the pull request has had no activity for 24+ hours;
+//   (a) the pull request has had no activity for 1+ hour (24 hours until
+//       owner ruling 2026-10-21, Albert Hazan: "make it 1hr");
 //   (b) its latest checks are failing OR it conflicts with main;
 //   (c) the newer pull request's session has posted a DATED nudge comment on
 //       it naming the stale state (see parseStalePlaceNudge).
 //
 // The place is RECLAIMED automatically: once the earlier pull request is
-// refreshed (any non-nudge activity inside 24h) and green (no failing check,
+// refreshed (any non-nudge activity inside the last hour) and green (no failing check,
 // no conflict), condition (a) or (b) stops holding and it precedes again. No
 // state is reset by hand because no state is kept.
 //
@@ -67,9 +68,14 @@ export const PROTECTED_SOURCE_PATHS=new Set([
 // proxy is the machine-readable marker naming the newer pull request's number,
 // posted as a dated comment on the stale one. A nudge that names a different
 // number yields the place to nobody.
-export const STALE_PLACE_AFTER_MS=24*60*60*1000
+// Skipping a stalled predecessor costs at most one refresh and re-review of
+// the newer pull request if the older one later lands; it never merges
+// anything. One hour still covers an owner mid-fix waiting on a normal check.
+export const STALE_PLACE_AFTER_MS=60*60*1000
 export const STALE_PLACE_NUDGE_PREFIX='stale-place-nudge:'
-export const STALE_PLACE_STATES=Object.freeze(['inactive-24h','checks-failing','conflicts-with-main'])
+// `inactive-24h` stays accepted so nudges already posted under the old window
+// still parse; new nudges should say `inactive-1h`.
+export const STALE_PLACE_STATES=Object.freeze(['inactive-1h','inactive-24h','checks-failing','conflicts-with-main'])
 
 export function stalePlaceNudgeLine(forPr,{date,states}){
   return `${STALE_PLACE_NUDGE_PREFIX} pr=#${Number(forPr)} date=${date} state=${states.join('+')}`

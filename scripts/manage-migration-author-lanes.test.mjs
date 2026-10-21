@@ -11969,7 +11969,7 @@ function freezeIo(){
 
 test('promotion merge freeze blocks merges, never production, and expires by TTL',()=>{
   const io=freezeIo(),now=new Date('2026-10-02T12:00:00Z')
-  assert.throws(()=>acquirePromotionFreeze({issue:1,pr:2,owner:'x',ttlMinutes:31,now},io),/between 1 and 30/)
+  assert.throws(()=>acquirePromotionFreeze({issue:1,pr:2,owner:'x',ttlMinutes:61,now},io),/between 1 and 60/)
   const freeze=acquirePromotionFreeze({issue:3901,pr:3902,owner:'claude-session',ttlMinutes:30,now},io)
   assert.equal(freeze.expiresAt,'2026-10-02T12:30:00.000Z')
   assert.equal(io.refs.has(MUTEX_REF),false)
@@ -12047,10 +12047,10 @@ test('an unreadable promotion freeze fails closed, cannot be overwritten, and na
 test('promotion freeze CLI acquires and releases through main()',()=>{
   const io=freezeIo(),oldLog=console.log,oldError=console.error,out=[];console.log=(line)=>out.push(String(line));console.error=()=>{}
   try{
-    assert.equal(main(['--acquire-promotion-freeze','--issue','3901','--pr','3902','--owner','claude-session','--ttl-minutes','30'],NOW,io),0)
+    assert.equal(main(['--acquire-promotion-freeze','--issue','3901','--pr','3902','--owner','claude-session','--ttl-minutes','60'],NOW,io),0)
     assert.equal(JSON.parse(out.at(-1)).owner,'claude-session')
     assert.ok(io.refs.has(PROMOTION_FREEZE_REF))
-    assert.notEqual(main(['--acquire-promotion-freeze','--issue','3901','--pr','3902','--owner','x','--ttl-minutes','31'],NOW,io),0)
+    assert.notEqual(main(['--acquire-promotion-freeze','--issue','3901','--pr','3902','--owner','x','--ttl-minutes','61'],NOW,io),0)
     assert.equal(main(['--release-promotion-freeze','--owner','claude-session'],NOW,io),0)
     assert.equal(JSON.parse(out.at(-1)).released,true)
     assert.equal(io.refs.has(PROMOTION_FREEZE_REF),false)

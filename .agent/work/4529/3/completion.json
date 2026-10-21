@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "work_issue": 4529,
+  "outcome": "ready-for-merge",
+  "pr": 4538,
+  "migration_versions": [
+    "20261021151917"
+  ],
+  "contract_ref": "refs/db-contracts/4529/3",
+  "contract_sha256": "9cbc8898fd84f70899ccd962a8e40cc753b549fd79cb7aaf1181f2ccf897764f",
+  "head_sha": "889a1d357be17818e5ae8859eb22410d06739ccd",
+  "base_sha": "f2438ee10035758e86bc1c3c09a77af79d4bc0b4",
+  "files_changed": [
+    "supabase/migrations/20261021151917_popdam_search_exact_relevance_paging.sql",
+    "supabase/tests/popdam_authorized_ranked_search_contracts.sql",
+    "supabase/tests/popdam_search_high_df_timeout_contracts.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "function public.search_dam_documents",
+    "function public.search_assets_full_text",
+    "function public.search_style_groups_full_text",
+    "function public.search_dam_document_counts"
+  ],
+  "checks": [
+    {
+      "exit_code": 0,
+      "command": "bash scripts/check-sql.sh",
+      "evidence": "Static checks passed."
+    },
+    {
+      "exit_code": 0,
+      "command": "git diff --check",
+      "evidence": "Exit 0."
+    }
+  ],
+  "assumptions_resolved": [
+    "Claim #4535 covers all four function objects at superseded version 20261021151917",
+    "Production read-only measurement: spider-man 1.1-4.1s, stitch 1.1-1.9s generic-plan execution of the new body",
+    "Totals exact below a 1000-asset probe, flagged lower_bound above it",
+    "SQL identical to the generation 2 head approved by Muse (05f14905) and StepFun (de81650a) apart from explicit projections"
+  ],
+  "stop_conditions_hit": []
+}

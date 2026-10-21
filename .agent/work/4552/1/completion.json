@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "work_issue": 4552,
+  "outcome": "ready-for-merge",
+  "pr": 4554,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4552/1",
+  "contract_sha256": "ca1dbc6f8265c37be8538eb665ef608be0975f87b4aed2b497e7af289572064d",
+  "base_sha": "1b7edfedb5190f6b6d9ed9767d9e877e1ec35bae",
+  "head_sha": "9c8ca66d2131f76408beafd3292c189912940c42",
+  "files_changed": ["scripts/check-pr-source-collisions.mjs","scripts/check-pr-source-collisions.test.mjs"],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {"command":"git diff --check origin/main...HEAD","exit_code":0,"evidence":"No whitespace errors on 9c8ca66d against 1b7edfed."},
+    {"command":"node --test scripts/check-pr-source-collisions.test.mjs","exit_code":0,"evidence":"23 passed, 0 failed on 9c8ca66d (October 21, 2026, edge-dev3)."}
+  ],
+  "assumptions_resolved": [
+    "Bot labels still count (fail closed); only mention side-effect rows are ignored.",
+    "The implementation head preceded the contract publication; this evidence pair is the only commit after it."
+  ],
+  "stop_conditions_hit": []
+}

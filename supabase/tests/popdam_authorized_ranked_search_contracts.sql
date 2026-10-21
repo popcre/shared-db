@@ -104,7 +104,7 @@ begin
     'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)'::regprocedure
   ) into v_definition;
 
-  -- #4529 (20261021134058): Style Group members are expanded lazily inside
+  -- #4529 (20261021151917): Style Group members are expanded lazily inside
   -- the rank-ordered visibility probes, so candidate_asset_ids is inlined.
   if position('candidate_asset_ids as not materialized' in v_definition) = 0
      or position('visible_assets as materialized' in v_definition) = 0 then

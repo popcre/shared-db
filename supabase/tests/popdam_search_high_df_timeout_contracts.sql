@@ -1,7 +1,7 @@
 -- #4529: high-DF search timeout contract tests (synthetic fixtures, disposable).
 -- Covers: spider-man/stitch/wall-art-canvas under 8s, exact title ranked first,
 -- consistent paging and exact has_more, exact vs lower-bound total flags,
--- no-match stays empty, signature identity, grants (#4529, 20261021134058).
+-- no-match stays empty, signature identity, grants (#4529, 20261021151917).
 -- Fixture rows are self-seeded and cleaned up; CI also wraps in begin/rollback.
 
 reset role;
@@ -68,7 +68,7 @@ end $$;
 
 -- 2. Exact identifier: a title equal to the query (extension, case and
 --    separators ignored) ranks above every other keyword tier at position 1,
---    and title-substring hits fill the rest of the top 5 (#4529, 20261021134058).
+--    and title-substring hits fill the rest of the top 5 (#4529, 20261021151917).
 do $$
 declare
   v_exact uuid := '45310000-0000-4000-8000-000000000005';
@@ -232,7 +232,7 @@ begin
   ) is null then
     raise exception 'search_dam_documents signature drifted from the 8-arg contract';
   end if;
-  -- 20261021134058 retired the unused counts helper; totals carry
+  -- 20261021151917 retired the unused counts helper; totals carry
   -- facets.totalExact instead.
   if to_regprocedure(
     'public.search_dam_document_counts(text,jsonb,text[],extensions.vector,real)'

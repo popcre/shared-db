@@ -46,8 +46,8 @@ export const PROTECTED_SOURCE_PATHS=new Set([
 // to merge or close them. A place in the queue is now FORFEIT when ALL three
 // hold, and only then:
 //
-//   (a) the pull request has had no activity for 1+ hour (24 hours until
-//       owner ruling 2026-10-21, Albert Hazan: "make it 1hr");
+//   (a) the pull request has had no activity for 1+ hour (it was 24 hours
+//       before owner ruling 2026-10-21, Albert Hazan: "make it 1hr");
 //   (b) its latest checks are failing OR it conflicts with main;
 //   (c) the newer pull request's session has posted a DATED nudge comment on
 //       it naming the stale state (see parseStalePlaceNudge).
@@ -72,6 +72,15 @@ export const PROTECTED_SOURCE_PATHS=new Set([
 // the newer pull request if the older one later lands; it never merges
 // anything. One hour still covers an owner mid-fix waiting on a normal check.
 export const STALE_PLACE_AFTER_MS=60*60*1000
+// The window rendered for humans, derived from the constant so the message can
+// never state a different window than the one enforced.
+export function stalePlaceWindowText(ms=STALE_PLACE_AFTER_MS){
+  const hours=ms/(60*60*1000)
+  return Number.isInteger(hours)?`${hours}h`:`${Math.round(ms/60000)}m`
+}
+export function stalePlaceSkipLine(row){
+  return `STALE-PLACE SKIP: ${row.file} — PR #${row.pr} "${row.title}" is inactive ${stalePlaceWindowText()}+ with failing checks or a main conflict, and a dated nudge names this pull request; it no longer precedes this one.`
+}
 export const STALE_PLACE_NUDGE_PREFIX='stale-place-nudge:'
 // `inactive-24h` stays accepted so nudges already posted under the old window
 // still parse; new nudges should say `inactive-1h`.
@@ -312,7 +321,7 @@ export function main(env=process.env,{gatherInput=gather,groupFacts=()=>readMerg
   }
   let input;try{input=gatherInput(env)}catch(cause){error(`ERROR: protected source collision audit is unavailable: ${cause.message}`);return 2}
   const skips=stalePlaceSkips(input.current,input.others,{now})
-  for(const row of skips)log(`STALE-PLACE SKIP: ${row.file} — PR #${row.pr} "${row.title}" is inactive 24h+ with failing checks or a main conflict, and a dated nudge names this pull request; it no longer precedes this one.`)
+  for(const row of skips)log(stalePlaceSkipLine(row))
   const ahead=openProtectedCollisions(input.current,input.others,{now})
   if(!ahead.length){log('No other ready open pull request edits the same protected coordination source.');return 0}
   log('QUEUED: an earlier ready open pull request edits the same protected coordination source. This pull request waits its turn in the merge queue; its merge group must be its base plus only this pull request, and is re-tested there.')

@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "work_issue": 3779,
+  "outcome": "ready-for-merge",
+  "pr": 4546,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/3779/13",
+  "contract_sha256": "05b5cedc2995f94c04a0d986718d59214f43b8e6278fa29eca2a5746393b2e74",
+  "base_sha": "f2438ee10035758e86bc1c3c09a77af79d4bc0b4",
+  "head_sha": "303345e8e1cb6d49e879eb7d742257cbfc64c2bd",
+  "files_changed": [
+    ".github/workflows/migration-author-lease.yml",
+    "docs/verification/shared-release-holds/2026-10-21-legacy-sha-release-call-site-audit.md",
+    "docs/verification/shared-release-holds/README.md",
+    "plan_shared_release_hold_reduction.md",
+    "scripts/guarded-merge-preparation-split.test.mjs",
+    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/release-hold-ownership.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "git diff --check origin/main...HEAD",
+      "exit_code": 0,
+      "evidence": "No whitespace errors on 303345e8 against f2438ee1."
+    },
+    {
+      "command": "node --test scripts/release-hold-ownership.test.mjs scripts/lib/exclusive-lease.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/manage-migration-author-lanes-surface.test.mjs scripts/guarded-merge-preparation-split.test.mjs scripts/lib/lanes/exclusive-policy.test.mjs scripts/mutex-release-on-refusal.test.mjs scripts/check-merge-queue-workflows.test.mjs scripts/coordination-scenarios.test.mjs scripts/queue-hygiene-report.test.mjs",
+      "exit_code": 0,
+      "evidence": "1099 passed, 0 failed on the step-8a tree against f2438ee1 (October 21, 2026, 11:45 AM EDT, edge-dev)."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=355 sources=100 derived_digest=63c2b8b9feea."
+    },
+    {
+      "command": "node scripts/check-current-workflow-policy.mjs",
+      "exit_code": 0,
+      "evidence": "Current workflow policy matrix matches implementation and cited owner rulings."
+    }
+  ],
+  "assumptions_resolved": [
+    "Step 8a first landing only; the workflow callers, point-of-use asserts, 8b and 8c remain open and are recorded in STATUS row 8.",
+    "The implementation head preceded the contract publication; this evidence pair is the only commit after it."
+  ],
+  "stop_conditions_hit": []
+}

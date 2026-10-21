@@ -1,4 +1,5 @@
 -- #4529 / PopDAM #97: high-DF keyword timeout repair for search_dam_documents.
+-- Reviewer redraw head marker 2026-10-21.
 -- Same 8-arg signature (incl. p_min_semantic_score). Body-only repair.
 -- derived-from: 20261020230556
 --

@@ -1,7 +1,10 @@
 -- #4529 / PopDAM #97: corrective fix-forward for 20261021063716 (Muse
 -- production-risk REJECT at 85193c31d). Same 8-arg search_dam_documents
 -- signature. Drops the unused search_dam_document_counts helper.
--- derived-from: 20261021063716
+-- derived-from: 20261020230556
+-- (Base is what production holds. 20261021063716 never reached preview or
+-- production; this file drops and recreates every object it writes, so it
+-- supersedes 20261021063716 entirely and that version is not a prerequisite.)
 --
 -- What 20261021063716 got wrong, and what this migration does instead:
 --   * It capped FTS candidates at 1000-8000 rows ordered by UUID before

@@ -7,7 +7,7 @@
     "20261021063716"
   ],
   "contract_ref": "refs/db-contracts/4529/1",
-  "contract_sha256": "4f862234c37f0939e998db372bdedeea900109671735688aeeb64169051446b9",
+  "contract_sha256": "292ad6a8d5f209ed76ed0ad203bb0c4253cdfc6e6da78a25abd945bc9df4e091",
   "head_sha": "f154570137cc74e7bcd6c888ae13d3b1d73ee14c",
   "base_sha": "1b139f89ad731fb383ba73ae254e0e4d1c5efae5",
   "files_changed": [

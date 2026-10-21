@@ -178,7 +178,7 @@ as $$
     select d.document_type,d.entity_id,d.asset_id,d.style_group_id,d.search_tsv
     from public.dam_search_documents d
     where (p_document_types is null or d.document_type = any(p_document_types))
-      and d.search_tsv @@ any(array(select q.tsq from distinct_queries q))
+      and d.search_tsv @@ any(array(select q.tsq from queries q))
   ), rank_pool as materialized (
     select d.document_type,d.entity_id,d.asset_id,d.style_group_id,d.search_tsv
     from full_text_matches d

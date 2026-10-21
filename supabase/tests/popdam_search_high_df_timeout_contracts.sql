@@ -1,8 +1,8 @@
--- #4529: high-DF search timeout contract tests (synthetic, disposable transaction).
+-- #4529: high-DF search timeout contract tests (synthetic fixtures, disposable).
 -- Covers: spider-man/stitch/wall-art-canvas under 8s, exact-ID title hit in top5,
 -- exact total_count on a filtered query matches search_dam_document_counts
 -- (uncapped), no-match stays empty, signature identity, grants.
--- Safe standalone; CI also wraps in begin/rollback.
+-- Fixture rows are self-seeded and cleaned up; CI also wraps in begin/rollback.
 
 reset role;
 do $$
@@ -10,6 +10,31 @@ begin
   if not (select public.require_dam_access()) then
     raise exception 'test cannot obtain DAM access';
   end if;
+end $$;
+
+-- 0. Seed synthetic high-DF fixtures (rolled back / deleted at end).
+do $$
+declare
+  v_spider uuid := '45310000-0000-4000-8000-000000000001';
+  v_stitch uuid := '45310000-0000-4000-8000-000000000002';
+  v_wall   uuid := '45310000-0000-4000-8000-000000000003';
+  v_spider2 uuid := '45310000-0000-4000-8000-000000000004';
+begin
+  delete from public.dam_search_documents where entity_id in (v_spider,v_stitch,v_wall,v_spider2);
+  delete from public.assets where id in (v_spider,v_stitch,v_wall,v_spider2);
+  insert into public.assets (id, filename, relative_path, file_type, quick_hash, modified_at, thumbnail_url, is_deleted)
+  values
+    (v_spider, 'zz4531-spider-man.psd', 'zz4531/spider-man.psd', 'psd', 'zz4531spider', now(), 'https://example.invalid/s.png', false),
+    (v_spider2,'zz4531-spider-man-alt.psd', 'zz4531/spider-man-alt.psd', 'psd', 'zz4531spider2', now(), 'https://example.invalid/s2.png', false),
+    (v_stitch, 'zz4531-stitch.psd', 'zz4531/stitch.psd', 'psd', 'zz4531stitch', now(), 'https://example.invalid/t.png', false),
+    (v_wall,   'zz4531-wall-art-canvas.psd', 'zz4531/wall-art-canvas.psd', 'psd', 'zz4531wall', now(), 'https://example.invalid/w.png', false);
+  insert into public.dam_search_documents
+    (document_type, entity_id, asset_id, title, path)
+  values
+    ('asset', v_spider, v_spider, 'zz4531 Spider-Man Hero Canvas', 'zz4531/spider-man.psd'),
+    ('asset', v_spider2,v_spider2,'zz4531 Spider-Man Variant Art', 'zz4531/spider-man-alt.psd'),
+    ('asset', v_stitch, v_stitch, 'zz4531 Stitch Tropical', 'zz4531/stitch.psd'),
+    ('asset', v_wall,   v_wall,   'zz4531 Wall Art Canvas', 'zz4531/wall-art-canvas.psd');
 end $$;
 
 -- 1. High-DF terms complete inside the 8s statement_timeout and return rows.
@@ -46,7 +71,6 @@ declare
   q text := 'spider-man';
   ident text;
 begin
-  -- pick a live title substring hit (stands in for the private exact-ID suite)
   select left(d.title, 80) into ident
   from public.dam_search_documents d
   where d.title ilike '%spider-man%'
@@ -149,4 +173,19 @@ begin
   if not auth_ok then
     raise exception 'authenticated must execute search_dam_documents';
   end if;
+end $$;
+
+-- 8. Cleanup fixtures (harness also rolls back).
+do $$
+begin
+  delete from public.dam_search_documents where entity_id in (
+    '45310000-0000-4000-8000-000000000001',
+    '45310000-0000-4000-8000-000000000002',
+    '45310000-0000-4000-8000-000000000003',
+    '45310000-0000-4000-8000-000000000004');
+  delete from public.assets where id in (
+    '45310000-0000-4000-8000-000000000001',
+    '45310000-0000-4000-8000-000000000002',
+    '45310000-0000-4000-8000-000000000003',
+    '45310000-0000-4000-8000-000000000004');
 end $$;

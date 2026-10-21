@@ -172,37 +172,28 @@ as $$
   ), distinct_queries as materialized (
     select q.tsq, bool_or(q.allow_substring) allow_substring, min(q.like_pattern) like_pattern
     from queries q group by q.tsq
-  ), like_keys as materialized (
-    -- complete substring set (exact-ID title/path hits live here)
+  ), full_text_matches as materialized (
+    select d.document_type,d.entity_id,d.asset_id,d.style_group_id,d.search_tsv
+    from public.dam_search_documents d
+    where (p_document_types is null or d.document_type = any(p_document_types))
+      and d.search_tsv @@ any(array(select q.tsq from queries q))
+  ), rank_pool as materialized (
+    select d.document_type,d.entity_id,d.asset_id,d.style_group_id,d.search_tsv
+    from full_text_matches d
+    limit (select pool_limit from params)
+  ), keyword_candidates as materialized (
+    select d.document_type,d.entity_id,d.asset_id,d.style_group_id,
+      greatest((select max(ts_rank_cd(d.search_tsv, q.tsq)) from queries q where d.search_tsv @@ q.tsq),0.01)::real keyword_rank
+    from rank_pool d
+    union all
     select d.document_type,d.entity_id,d.asset_id,d.style_group_id,
       case when d.title ilike q.like_pattern then 0.04 when d.path ilike q.like_pattern then 0.03
-        when d.customer ilike q.like_pattern or d.program ilike q.like_pattern then 0.02 else 0.01 end::real keyword_rank
+        when d.customer ilike q.like_pattern or d.program ilike q.like_pattern then 0.02 else 0.01 end::real
     from distinct_queries q
     join public.dam_search_documents d on q.allow_substring and
       (d.title ilike q.like_pattern or d.path ilike q.like_pattern
        or d.customer ilike q.like_pattern or d.program ilike q.like_pattern)
     where (p_document_types is null or d.document_type = any(p_document_types))
-  ), fts_pool as materialized (
-    -- bounded FTS candidates after document_type prefilter (option B)
-    select d.document_type,d.entity_id,d.asset_id,d.style_group_id,d.search_tsv
-    from distinct_queries q
-    join public.dam_search_documents d on d.search_tsv @@ q.tsq
-    where (p_document_types is null or d.document_type = any(p_document_types))
-    limit (select pool_limit from params)
-  ), fts_ranks as materialized (
-    select c.document_type,c.entity_id,c.asset_id,c.style_group_id,
-      greatest(max(ts_rank_cd(c.search_tsv, q.tsq)),0.01)::real keyword_rank
-    from fts_pool c
-    join distinct_queries q on c.search_tsv @@ q.tsq
-    group by c.document_type,c.entity_id,c.asset_id,c.style_group_id
-  ), keyword_candidates as materialized (
-    select document_type,entity_id,asset_id,style_group_id,max(keyword_rank)::real keyword_rank
-    from (
-      select * from fts_ranks
-      union all
-      select * from like_keys
-    ) c
-    group by 1,2,3,4
   ), semantic_candidates as materialized (
     select d.document_type,d.entity_id,d.asset_id,d.style_group_id,
       greatest(0,1-(d.embedding <=> p_query_embedding))::real semantic_rank

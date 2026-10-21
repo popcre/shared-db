@@ -111,9 +111,13 @@ as $$
     select m.document_type,m.entity_id,m.asset_id,m.style_group_id,m.title,m.path,m.customer,m.program,
       bool_or(m.in_substring) in_substring
     from (
-      select f.*, false in_substring from full_text_matches f
+      select f.document_type,f.entity_id,f.asset_id,f.style_group_id,f.title,f.path,f.customer,f.program,
+        false in_substring
+      from full_text_matches f
       union all
-      select s.*, true from substring_matches s
+      select s.document_type,s.entity_id,s.asset_id,s.style_group_id,s.title,s.path,s.customer,s.program,
+        true
+      from substring_matches s
     ) m
     group by m.document_type,m.entity_id,m.asset_id,m.style_group_id,m.title,m.path,m.customer,m.program
   ), keyword_candidates as materialized (
@@ -139,7 +143,7 @@ as $$
         + 0.09 * least(1.0, length(q.normalized_query)::numeric / greatest(length(k.title_key),1))
       ) from rank_queries q)::real keyword_rank
     from (
-      select m.*,
+      select m.document_type,m.entity_id,m.asset_id,m.style_group_id,m.title,m.path,m.customer,m.program,m.in_substring,
         -- title without a trailing file extension, case/separator-folded
         btrim(lower(regexp_replace(regexp_replace(btrim(coalesce(m.title,'')), '\.[[:alnum:]]{1,5}$', ''), '[-_/[:space:]]+', ' ', 'g'))) title_key,
         to_tsvector('simple', regexp_replace(coalesce(m.title,''), '[-_/]+', ' ', 'g')) title_tsv

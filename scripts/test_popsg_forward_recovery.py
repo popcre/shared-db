@@ -148,16 +148,23 @@ class RepairMarkers(unittest.TestCase):
         text = NEW.read_text()
         self.assertIn('-- derived-from: 20260917024050\n', text)
         self.assertIn("md5(prosrc) = '9d5dd045810fa3fce5cc3d508e1210ff'", text)
-        self.assertIn("md5(prosrc) = '49f04db740a09cb7e3ede5788ab3fbcb'", text)
+        self.assertIn("md5(prosrc) = '97e0d7ed121765f239867a48618f695b'", text)
         body = text.split('as $function$',1)[1].rsplit('$function$;',1)[0]
-        self.assertEqual(hashlib.md5(body.encode()).hexdigest(), '49f04db740a09cb7e3ede5788ab3fbcb')
+        self.assertEqual(hashlib.md5(body.encode()).hexdigest(), '97e0d7ed121765f239867a48618f695b')
         # A: live_files materialized once (no remaining not-materialized form).
         self.assertIn('live_files as materialized (', body)
         self.assertNotIn('live_files as not materialized (', body)
         # B: page_children stops joining style_guide_files; thumbs come from page_thumb.
         self.assertIn('page_thumb_ids as materialized (', body)
         self.assertIn('page_thumb as materialized (', body)
-        self.assertIn('left join page_thumb t on t.group_id = d.group_id', body)
+        # Thumbnail joins once per page row, never once per matched child.
+        self.assertIn('left join page_thumb th on th.group_id=pg.group_id', body)
+        self.assertNotIn('left join page_thumb t on t.group_id = d.group_id', body)
+        # page_children joins page on the hashable length-prefixed group_id, not a
+        # five-way IS NOT DISTINCT FROM (which forced a 94k x 50 nested loop).
+        self.assertIn('on pg.group_id = concat_ws(chr(31),', body.split('page_children as materialized (',1)[1].split('page_thumb_ids',1)[0])
+        # guide_facets deduplicates entity attributes before the lateral fan-out.
+        self.assertIn("'tags'::text as category, tag.value", body)
         self.assertIn('join public.style_guide_files f on f.id = t.style_guide_file_id', body)
         # Files path keeps its live style_guide_files join; Guides path must not.
         guides_body = body.split('execute $guides_query$', 1)[1]

@@ -517,15 +517,24 @@ with params as not materialized (
           from (
             select distinct
               d.root_label, d.licensor_name, d.property_folder, d.style_guide_folder, d.style_guide_name,
-              f.category, f.value
+              'tags'::text as category, tag.value
             from active_children d
+            cross join lateral unnest(d.tag_names) tag(value)
+            where tag.value is not null
+            union all
+            select
+              d.root_label, d.licensor_name, d.property_folder, d.style_guide_folder, d.style_guide_name,
+              f.category, f.value
+            from (
+              select distinct
+                c.root_label, c.licensor_name, c.property_folder, c.style_guide_folder, c.style_guide_name,
+                c.extension, c.has_preview, c.has_open_work, c.has_recoverable_error, c.has_error,
+                c.has_terminal_error, c.pdf_text_available
+              from active_children c
+            ) d
             cross join lateral (
               select 'extensions'::text as category, d.extension as value
                where d.extension is not null
-              union all
-              select 'tags', tag.value
-                from unnest(d.tag_names) tag(value)
-               where tag.value is not null
               union all
               select 'preview_states',
                      case when d.has_preview then 'available' else 'missing' end
@@ -546,6 +555,8 @@ with params as not materialized (
                        else 'unavailable'
                      end
             ) f(category, value)
+            group by d.root_label, d.licensor_name, d.property_folder, d.style_guide_folder, d.style_guide_name,
+                     f.category, f.value
           ) pairs
          group by category, value
       ) counts
@@ -563,11 +574,12 @@ with params as not materialized (
     select d.*, pg.group_id
     from active_children d
     join page pg
-      on pg.root_label is not distinct from d.root_label
-     and pg.licensor_name is not distinct from d.licensor_name
-     and pg.property_folder is not distinct from d.property_folder
-     and pg.style_guide_folder is not distinct from d.style_guide_folder
-     and pg.style_guide_name is not distinct from d.style_guide_name
+      on pg.group_id = concat_ws(chr(31),
+        coalesce(length(d.root_label)||':'||d.root_label, '-'),
+        coalesce(length(d.licensor_name)||':'||d.licensor_name, '-'),
+        coalesce(length(d.property_folder)||':'||d.property_folder, '-'),
+        coalesce(length(d.style_guide_folder)||':'||d.style_guide_folder, '-'),
+        coalesce(length(d.style_guide_name)||':'||d.style_guide_name, '-'))
   ), page_thumb_ids as materialized (
     select d.group_id,
            (array_agg(d.style_guide_file_id
@@ -584,7 +596,6 @@ with params as not materialized (
            count(distinct d.style_guide_file_id) as matched_file_count,
            coalesce(array_agg(distinct d.extension) filter (where d.extension is not null), '{}'::text[]) as file_extensions,
            max(d.modified_at) as modified_at,
-           max(t.thumbnail_url) as thumbnail_url,
            array_agg(distinct
                       case when d.has_preview then 'available' else 'missing' end
                       order by case when d.has_preview then 'available' else 'missing' end
@@ -621,7 +632,6 @@ with params as not materialized (
                     ) as pdf_content_states,
            max(d.rank) as rank
       from page_children d
-      left join page_thumb t on t.group_id = d.group_id
      group by d.group_id
   ), page_tags as materialized (
     select d.group_id,
@@ -634,9 +644,10 @@ with params as not materialized (
  'root_label',pg.root_label,'licensor_name',pg.licensor_name,'property_folder',pg.property_folder,
  'style_guide_folder',pg.style_guide_folder,'style_guide_name',pg.style_guide_name,
  'matched_file_count',m.matched_file_count,'file_extensions',to_jsonb(m.file_extensions),'tag_names',to_jsonb(t.tag_names),
- 'modified_at',m.modified_at,'thumbnail_url',m.thumbnail_url,'preview_states',to_jsonb(m.preview_states),
+ 'modified_at',m.modified_at,'thumbnail_url',th.thumbnail_url,'preview_states',to_jsonb(m.preview_states),
  'render_exception_states',to_jsonb(m.render_exception_states),'pdf_content_states',to_jsonb(m.pdf_content_states),'rank',m.rank) as result
  from page pg join page_metadata m on m.group_id=pg.group_id join page_tags t on t.group_id=pg.group_id
+ left join page_thumb th on th.group_id=pg.group_id
 )
   select jsonb_build_object(
     'result_mode', $1,
@@ -672,7 +683,7 @@ $function$;
 do $recovery_contract$
 begin
   if not (exists (select 1 from pg_proc where oid = to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)')
-  and md5(prosrc) = '49f04db740a09cb7e3ede5788ab3fbcb' and proowner = 'postgres'::regrole and prosecdef and provolatile = 's'
+  and md5(prosrc) = '97e0d7ed121765f239867a48618f695b' and proowner = 'postgres'::regrole and prosecdef and provolatile = 's'
   and (select array_agg(setting order by setting) from unnest(proconfig) setting) = array['search_path=pg_catalog, auth','work_mem=64MB'])
   and has_function_privilege('authenticated','public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)','execute')
   and not has_function_privilege('anon','public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)','execute')

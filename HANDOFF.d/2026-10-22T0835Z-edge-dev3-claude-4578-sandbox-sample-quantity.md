@@ -1,3 +1,9 @@
+---
+issue: 4578
+status: BLOCKED
+owner: claude/handoff-4578
+---
+
 # Handoff — #4578 sandbox dflow.sample.quantity_migration_state
 
 Issue: https://github.com/popcre/shared-db/issues/4578 · Written 2026-10-22 4:35 AM EDT by Claude chat 034fa3d5-6be1-4136-b732-2b2e22056a1b on edge-dev3.

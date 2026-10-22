@@ -9,6 +9,7 @@
   "head_sha": "386f4409b392bd8beb014646d780ecbb4584305c",
   "base_sha": "f1f63c7abdf02a6c69fc72ac8208ba41c634c572",
   "files_changed": [
+    ".agent/work/4548/1/contract.json",
     "docs/agents/standing-facts.md",
     "docs/owner-rulings.md",
     "scripts/manage-migration-author-lanes.mjs",
@@ -16,10 +17,20 @@
   ],
   "db_reads": [],
   "db_writes": [],
-  "assumptions_resolved": ["TTL cap is 60 minutes per owner rule."],
+  "assumptions_resolved": [
+    "TTL cap is 60 minutes per owner rule."
+  ],
   "stop_conditions_hit": [],
   "checks": [
-    {"command": "node --test scripts/manage-migration-author-lanes.test.mjs", "exit_code": 0, "evidence": "917 pass, 0 fail"},
-    {"command": "git diff --check", "exit_code": 0, "evidence": "clean"}
+    {
+      "command": "node --test scripts/manage-migration-author-lanes.test.mjs",
+      "exit_code": 0,
+      "evidence": "917 pass, 0 fail"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "clean"
+    }
   ]
 }

@@ -47,10 +47,10 @@ declare
   missing text;
 begin
   if to_regnamespace('dflow_prod') is null then
-    raise exception '#3869/20261022190036 self-check: schema dflow_prod is missing';
+    raise exception '#3869/20261022221940 self-check: schema dflow_prod is missing';
   end if;
   if to_regclass('dflow_prod."ProdOrderHeader"') is null then
-    raise exception '#3869/20261022190036 self-check: dflow_prod."ProdOrderHeader" is missing';
+    raise exception '#3869/20261022221940 self-check: dflow_prod."ProdOrderHeader" is missing';
   end if;
   select string_agg(want.col || ' ' || want.typ, ', ')
     into missing
@@ -69,12 +69,12 @@ begin
         and format_type(a.atttypid, a.atttypmod) = want.typ
   );
   if missing is not null then
-    raise exception '#3869/20261022190036 self-check: dflow_prod."ProdOrderHeader" shape differs; missing or mistyped: %', missing;
+    raise exception '#3869/20261022221940 self-check: dflow_prod."ProdOrderHeader" shape differs; missing or mistyped: %', missing;
   end if;
   if not exists (select 1 from pg_attribute a
                  where a.attrelid = 'coldlion.order_history_line'::regclass
                    and a.attname = 'created_time' and not a.attisdropped) then
-    raise exception '#3869/20261022190036 self-check: coldlion.order_history_line.created_time missing (20261013111713 not applied)';
+    raise exception '#3869/20261022221940 self-check: coldlion.order_history_line.created_time missing (20261013111713 not applied)';
   end if;
   -- Supporting access paths, both verified live on production 2026-10-22:
   -- an index leading with order_history_line.sales_order_no, one leading with
@@ -87,7 +87,7 @@ begin
       and (select c.relam from pg_class c where c.oid = i.indexrelid) = (select oid from pg_am where amname = 'btree')
       and at.attname = 'sales_order_no'
   ) then
-    raise exception '#3869/20261022190036 self-check: no valid index leads with coldlion.order_history_line.sales_order_no';
+    raise exception '#3869/20261022221940 self-check: no valid index leads with coldlion.order_history_line.sales_order_no';
   end if;
   if not exists (
     select 1 from pg_index i
@@ -99,17 +99,17 @@ begin
       and (select c.relam from pg_class c where c.oid = i.indexrelid) = (select oid from pg_am where amname = 'btree')
       and (a0.attname = 'prod_order_no' or (a0.attname = 'company_code' and a1.attname = 'prod_order_no'))
   ) then
-    raise exception '#3869/20261022190036 self-check: no valid index leads with coldlion.prod_history_line prod_order_no';
+    raise exception '#3869/20261022221940 self-check: no valid index leads with coldlion.prod_history_line prod_order_no';
   end if;
   if not exists (select 1 from pg_roles where rolname = 'designflow_prod_tracking_grants' and not rolcanlogin) then
-    raise exception '#3869/20261022190036 self-check: designflow_prod_tracking_grants missing or login-enabled';
+    raise exception '#3869/20261022221940 self-check: designflow_prod_tracking_grants missing or login-enabled';
   end if;
   if not exists (select 1 from pg_auth_members m
                  join pg_roles g on g.oid = m.roleid
                  join pg_roles b on b.oid = m.member
                  where g.rolname = 'designflow_prod_tracking_grants'
                    and b.rolname in ('designflow_prod_tracking_runtime', 'designflow_prod_backend_runtime')) then
-    raise exception '#3869/20261022190036 self-check: no production runtime inherits designflow_prod_tracking_grants';
+    raise exception '#3869/20261022221940 self-check: no production runtime inherits designflow_prod_tracking_grants';
   end if;
 end $$;
 
@@ -304,14 +304,14 @@ begin
       and c.relkind = 'v'
       and 'security_invoker=true' = any (coalesce(c.reloptions, '{}'))
   ) then
-    raise exception '#3869/20261022190036 post-check: view missing or not security_invoker';
+    raise exception '#3869/20261022221940 post-check: view missing or not security_invoker';
   end if;
   if (select string_agg(a.attname || ':' || format_type(a.atttypid, a.atttypmod), ',' order by a.attnum)
         from pg_attribute a
        where a.attrelid = 'dflow_prod.v_prod_order_sales_order_link'::regclass
          and a.attnum > 0 and not a.attisdropped)
      is distinct from 'prod_order_header_id:integer,company_code:character varying,prod_order_no:character varying,prod_reference_no:character varying,sales_order_no:bigint,link_sources:text[],source_count:integer,latest_fetched_at:timestamp with time zone,sales_order_start_date:date,sales_order_start_date_max:date,sales_order_cancel_date:date,sales_order_start_date_ever_changed:boolean' then
-    raise exception '#3869/20261022190036 post-check: view column list differs from the reviewed shape';
+    raise exception '#3869/20261022221940 post-check: view column list differs from the reviewed shape';
   end if;
   -- Group ACL is SELECT only, everywhere it was just granted.
   select string_agg(privilege_type, ',' order by privilege_type)
@@ -327,7 +327,7 @@ begin
   from aclexplode((select relacl from pg_class where oid = 'dflow_prod.v_prod_order_sales_order_link'::regclass))
   where grantee = 'designflow_prod_tracking_grants'::regrole;
   if v_acl_ohl is distinct from 'SELECT' or v_acl_phl is distinct from 'SELECT' or v_acl_view is distinct from 'SELECT' then
-    raise exception '#3869/20261022190036 post-check: tracking grants ACL differs (ohl=%, phl=%, view=%)', v_acl_ohl, v_acl_phl, v_acl_view;
+    raise exception '#3869/20261022221940 post-check: tracking grants ACL differs (ohl=%, phl=%, view=%)', v_acl_ohl, v_acl_phl, v_acl_view;
   end if;
   if not exists (select 1 from pg_policies
                  where schemaname = 'coldlion' and tablename = 'order_history_line'
@@ -337,26 +337,26 @@ begin
                  where schemaname = 'coldlion' and tablename = 'prod_history_line'
                    and policyname = 'coldlion_history_tracking_read'
                    and cmd = 'SELECT' and roles = array['designflow_prod_tracking_grants']::name[]) then
-    raise exception '#3869/20261022190036 post-check: a coldlion_history_tracking_read SELECT policy is missing';
+    raise exception '#3869/20261022221940 post-check: a coldlion_history_tracking_read SELECT policy is missing';
   end if;
   if not (select relrowsecurity from pg_class where oid = 'coldlion.order_history_line'::regclass)
      or not (select relrowsecurity from pg_class where oid = 'coldlion.prod_history_line'::regclass) then
-    raise exception '#3869/20261022190036 post-check: RLS is not enabled on both coldlion history tables (policies would be inert)';
+    raise exception '#3869/20261022221940 post-check: RLS is not enabled on both coldlion history tables (policies would be inert)';
   end if;
   if has_table_privilege('anon', 'dflow_prod.v_prod_order_sales_order_link', 'select')
      or has_table_privilege('authenticated', 'dflow_prod.v_prod_order_sales_order_link', 'select')
      or has_table_privilege('service_role', 'dflow_prod.v_prod_order_sales_order_link', 'select') then
-    raise exception '#3869/20261022190036 post-check: view is readable by a non-owner API role';
+    raise exception '#3869/20261022221940 post-check: view is readable by a non-owner API role';
   end if;
   if not has_table_privilege('designflow_prod_tracking_runtime', 'dflow_prod.v_prod_order_sales_order_link', 'select') then
-    raise exception '#3869/20261022190036 post-check: the tracking runtime cannot select the view';
+    raise exception '#3869/20261022221940 post-check: the tracking runtime cannot select the view';
   end if;
   -- popcre-tracking-prod still connects as designflow_prod_backend_runtime (live
   -- production grants it the group; the from-empty replay database does not), so
   -- assert the service login wherever its membership exists (review M1).
   if pg_has_role('designflow_prod_backend_runtime', 'designflow_prod_tracking_grants', 'member')
      and not has_table_privilege('designflow_prod_backend_runtime', 'dflow_prod.v_prod_order_sales_order_link', 'select') then
-    raise exception '#3869/20261022190036 post-check: backend runtime is in the grants group but cannot select the view';
+    raise exception '#3869/20261022221940 post-check: backend runtime is in the grants group but cannot select the view';
   end if;
   if not exists (select 1 from pg_index i
                  join pg_attribute at on at.attrelid = i.indrelid and at.attnum = i.indkey[0]
@@ -364,7 +364,7 @@ begin
                    and i.indisunique and i.indisvalid and i.indpred is null and i.indnkeyatts = 1
                    and i.indexrelid = 'dflow_prod.prod_order_header_id_uidx'::regclass
                    and at.attname = 'id') then
-    raise exception '#3869/20261022190036 post-check: unique index prod_order_header_id_uidx missing, invalid, or not on id';
+    raise exception '#3869/20261022221940 post-check: unique index prod_order_header_id_uidx missing, invalid, or not on id';
   end if;
 end $$;
 

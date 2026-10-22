@@ -1,4 +1,4 @@
--- Contract tests for 20261022190036_dflow_prod_prod_order_sales_order_link.sql
+-- Contract tests for 20261022221940_dflow_prod_prod_order_sales_order_link.sql
 -- (issue #3869, claim #4647). Self-contained begin/rollback.
 --
 -- A. Shape: view exists, security_invoker, reviewed column list.

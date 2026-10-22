@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "migration_version": "20261022155012",
+  "migration_sha256": "6d35802eb81f9fc9929717ea001ebbccbd7bac1d0dc09e4eb5c12679f49b62a4",
+  "checks": [],
+  "marker_schema_version": 1,
+  "marker_reviews": [
+    {
+      "line_start": 472,
+      "line_end": 472,
+      "disposition": "no_durable_target",
+      "reason": "The constant parameter-bound SELECT executes only during Guides search, not at migration application. The identical static CREATE OR REPLACE FUNCTION is the sole durable target and receives ordinary definition/catalog verification."
+    }
+  ]
+}

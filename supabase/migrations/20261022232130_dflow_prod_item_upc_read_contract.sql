@@ -42,9 +42,8 @@ DECLARE r text;
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_class WHERE oid='dflow_prod.item_detail_upc'::regclass
       AND reloptions @> ARRAY['security_invoker=true'])
-     OR NOT has_table_privilege('designflow_prod_item_master_runtime','dflow_prod.item_detail_upc','SELECT')
-     OR NOT has_table_privilege('designflow_prod_backend_runtime','dflow_prod.item_detail_upc','SELECT') THEN
-    RAISE EXCEPTION '#4659: intended or currently deployed runtime read contract failed';
+     OR NOT has_table_privilege('designflow_prod_item_master_runtime','dflow_prod.item_detail_upc','SELECT') THEN
+    RAISE EXCEPTION '#4659: intended Item Master runtime read contract failed';
   END IF;
   FOREACH r IN ARRAY ARRAY['anon','authenticated','service_role','designflow_prod_tracking_runtime','designflow_prod_data_sync_runtime'] LOOP
     IF has_table_privilege(r,'dflow_prod.item_detail_upc','SELECT') THEN

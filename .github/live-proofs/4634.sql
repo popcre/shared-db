@@ -1,4 +1,4 @@
--- #4634: production table-only acceptance; Management API enforces read_only.
+-- #4634: production table-only acceptance. Management API enforces read_only.
 SELECT to_regclass('dflow_prod.vendor_wechat_identity') IS NOT NULL
    AND EXISTS (SELECT 1 FROM pg_index i JOIN pg_attribute a
                ON a.attrelid=i.indrelid AND a.attnum=i.indkey[0]
@@ -10,4 +10,4 @@ SELECT to_regclass('dflow_prod.vendor_wechat_identity') IS NOT NULL
    AND has_table_privilege('designflow_prod_backend_runtime',
                           'dflow_prod.vendor_wechat_identity','INSERT')
    AND has_table_privilege('designflow_prod_backend_runtime',
-                          'dflow_prod.vendor_wechat_identity','UPDATE') AS passed;
+                          'dflow_prod.vendor_wechat_identity','UPDATE') as passed;

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-const sql = readFileSync(new URL('../supabase/migrations/20261022182134_dflow_prod_application_model_prerequisites.sql', import.meta.url), 'utf8');
+const sql = readFileSync(new URL('../supabase/migrations/20261022182809_dflow_prod_application_model_prerequisites.sql', import.meta.url), 'utf8');
 const container = process.env.DFLOW_MODEL_TEST_CONTAINER;
 function query(text) {
   return spawnSync('docker', ['exec', '-i', container, 'psql', '-U', 'postgres', '-X', '-At', '-v', 'ON_ERROR_STOP=1'], { input: text, encoding: 'utf8' });

@@ -383,7 +383,7 @@ insert into t2873_expected values
   ('designflow_prod_tracking_grants','table','dflow_prod.sample_workflow','INSERT'),
   ('designflow_prod_tracking_grants','table','dflow_prod.sample_workflow','UPDATE'),
   ('designflow_prod_tracking_grants','table','dflow_prod.sample_workflow','DELETE'),
-  -- #4585 tracking-grid Archive (20261022032420), on the group role.
+  -- #4585 tracking-grid Archive (20261022132119), on the group role.
   ('designflow_prod_tracking_grants','table','dflow_prod.tracking_grid_archive','SELECT'),
   ('designflow_prod_tracking_grants','table','dflow_prod.tracking_grid_archive','INSERT'),
   ('designflow_prod_tracking_grants','table','dflow_prod.tracking_grid_archive','DELETE'),

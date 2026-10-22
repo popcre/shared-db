@@ -4,9 +4,9 @@ import { readFileSync } from 'node:fs'
 import { inspectPrStructuralChange, structuralWritesMatch } from './db-flow/admission.mjs'
 import { validateClaimObjects } from './lib/lanes/claims.mjs'
 
-const migration = 'supabase/migrations/20261022110820_owner_uid_initplans.sql'
+const migration = 'supabase/migrations/20261022152626_owner_uid_initplans.sql'
 const sql = readFileSync(new URL('../' + migration, import.meta.url), 'utf8')
-const contract = JSON.parse(readFileSync(new URL('../.agent/work/4428/3/contract.json', import.meta.url)))
+const contract = JSON.parse(readFileSync(new URL('../.agent/work/4428/5/contract.json', import.meta.url)))
 
 test('canonical DDL inspector recognizes exactly the admitted ownership writes', () => {
   const inspected = inspectPrStructuralChange([{ filename: migration, status: 'added', content: sql }])

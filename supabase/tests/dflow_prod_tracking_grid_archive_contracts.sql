@@ -1,4 +1,4 @@
--- Contract tests for 20261022032420_dflow_prod_tracking_grid_archive.sql (issue #4585,
+-- Contract tests for 20261022132119_dflow_prod_tracking_grid_archive.sql (issue #4585,
 -- claim #4586). Self-contained begin/rollback.
 --
 -- A. Shape: four columns, PK (grid_type, row_id), grid_type check, clock_timestamp() default.

@@ -1,0 +1,106 @@
+# DesignFlow database release readiness
+
+Work issue: #4655. Application outcome: popcre/designflow-backend#232.
+
+This implementation is not activated or proven merely because its files exist.
+The six application manifests must reach their default branches, canonical source
+must pass independent review and guarded merge, and the centrally controlled
+production deployment gate must pass a live negative test. Until those facts are
+recorded on #4655, no automatic release or enforced deployment hold is claimed.
+
+## Release identity and source custody
+
+Each application records `.release/database.json` with its exact canonical source
+PRs/issues, migration paths/content hashes, and bounded table/column/runtime-role
+contracts. The parser accepts only six named applications, the configured
+production project, bounded identifiers, known fields, and fixed privilege names.
+No manifest SQL, shell, repository code, or arbitrary endpoint is executed.
+
+`config/designflow-db-releases.json` is the reviewed central policy. It pins each
+application's contract fingerprint, minimum baseline source requirements, schemas
+and runtime roles. Empty or weakened application requirements cannot erase that
+baseline. Database changes must update the canonical migration, this policy and
+the consuming application's manifest together. Agent/app workflow guidance must
+retain that requirement; automatic promotion does not capture ad-hoc sandbox SQL.
+
+Before accepting a requirement, the observer proves its PR is merged into canonical
+main, links exclusively to its work issue, declares exactly its authored migration
+set, and has the same migration bytes at its author head and current main. Changed,
+omitted, rewritten, forked or unmerged sources refuse. The current archive metadata
+correction remains blocked until its authentic preserved-source route is resolved;
+do not weaken content validation to conceal that correction.
+
+## Existing promotion only
+
+The central five-minute observer checks develop and main snapshots. Only develop
+can initiate promotion. It asks the existing native preview selector for a stored
+`merged_rehearsal` instruction and accepts only the exact required source PR,
+versions and current canonical main. Existing guards, reviewer evidence, claimed
+source custody, risk assessment and preview/production locks remain authoritative.
+
+Dry-run and apply are sequenced across bounded observer runs. Each native dispatch
+is preserved before its single API write. The migration workflow's deterministic
+run name uses its existing inputs; no 26th input or alternative SQL apply path is
+introduced. A missing, ambiguous, failed or uncertain dispatch requires authentic
+reconciliation. A timed-out write is never replayed as if it had not happened.
+
+Successful native production evidence is verified by the existing exact-source
+artifact verifier plus archive-byte digest, exact migration-content hashes,
+enforced catalog results and successful canonical producer jobs. Before expiring
+Actions artifacts can make an old prerequisite unverifiable, the observer preserves
+a compact create-only receipt under `refs/designflow-db-apply-receipts/`. Its owner
+is #4655's canonical release process; one record binds each required source head.
+Each reuse rechecks canonical source/producer ancestry and fresh SHA256 fingerprints
+of the production migration ledger. A changed ledger or source refuses. These
+receipts contain metadata/hashes, not business rows or credentials. Retain them
+while any application policy references that source; retirement requires a scoped
+review after every consumer has removed the dependency, never age-based deletion.
+Current read-only production catalogs independently check the
+declared columns, schema access and runtime privileges. Already applied source is
+idempotent success only after both checks. No application data is queried or copied.
+
+The existing central `SYNC_TOKEN` authenticates cross-repository reads/statuses;
+the existing central Supabase credential performs read-only catalog inspection.
+Neither credential is distributed to applications. Repeated source/evidence reads
+are cached within one observer run, and the observer preserves an API reserve.
+
+## Readiness is separate from release enforcement
+
+Statuses and a digest-bearing Actions artifact bind each result to an exact app
+commit and manifest. Main readiness additionally requires an actual merged PR
+from that repository's develop branch and an identical source tree. A main snapshot
+with missing production requirements waits; it never initiates a belated apply.
+Application acceptance and business acceptance remain separate from database
+readiness. A failed or waiting result is never reported as ready.
+
+The organization currently has GitHub Free, and private-repository protection and
+ruleset queries return the upgrade restriction. No billing/visibility change or
+enforced main-merge guarantee is implied. Statuses alone do not block all merges.
+
+An enforceable deployment hold belongs in the canonical infrastructure repository
+`popcre/infrastructure`, whose Terraform owns the six production Cloud Build
+triggers. The reviewed wrapper must authenticate the readiness artifact for the
+exact release and refuse before delegating the application build. Preserve the
+existing deployment capability and prove the negative case without replacing a
+production revision. Do not install a removable application-only check and describe
+it as centrally enforced.
+
+Google's existing repository read-token API can read GitHub contents/statuses, but
+the live token probe also read shared-db through an application repository resource.
+It is therefore not repository-scoped. Any wrapper identity/permission use requires
+the corresponding reviewed infrastructure change; never distribute a broad PAT.
+Reference: [Google repository read-token API](https://docs.cloud.google.com/build/docs/api/reference/rest/v2/projects.locations.connections.repositories/accessReadToken).
+
+## Verification and recovery
+
+Tests cover strict source/manifest validation, role/policy weakening, absent evidence,
+exact-commit drift, fail-closed statuses, idempotency and bounded preview identity.
+Synthetic PostgreSQL tests prove actual query behavior for positive column grants,
+schema/table/column/role denials, write privileges, empty contracts and read-only
+transaction enforcement. These are not production or application acceptance.
+
+Recover uncertain native operations through their existing issue and immutable
+records, never by deleting dispatch custody or releasing another author's claim.
+Roll back defective observer source through the guarded repository route; retain
+the last valid application runtime while readiness is unavailable. Structural
+rollback remains a new reviewed forward migration.

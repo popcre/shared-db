@@ -1,0 +1,192 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { manifestDigest } from './lib/designflow-db-release.mjs';
+import { assessRelease, runObserver, releasePolicy, dispatchTitle, verifyApplyReceipt, verifyAppliedFiles, workflowRuns, artifactContainsSource } from './designflow-db-release.mjs';
+
+const head = 'a'.repeat(40), repository = 'popcre/designflow-tracking';
+const path = 'supabase/migrations/20261022194647_synthetic.sql', content = '-- synthetic only\n';
+const requirement = { work_issue: 4646, source_pr: 4653, migrations: [{ version: '20261022194647', path,
+  sha256: createHash('sha256').update(content).digest('hex') }] };
+function fixture() {
+  const manifest = { schema_version: 1, repository, production_project_ref: 'qsllyeztdwjgirsysgai', requirements: [structuredClone(requirement)],
+    contracts: [{ schema: 'dflow_prod', relation: 'synthetic', columns: ['id'], privileges: [{ role: 'designflow_prod_backend_runtime', privileges: ['SELECT'] }] }] };
+  const policy = { schema_version: 1, production_project_ref: manifest.production_project_ref, branch: 'develop',
+    repositories: [{ repository, roles: ['designflow_prod_backend_runtime'], schemas: ['dflow_prod'], required_sources: [{ work_issue: 4646, source_pr: 4653 }],
+      contract_manifest_sha256: manifestDigest({ ...manifest, requirements: [] }) }] };
+  const effects = [];
+  const io = { applicationHead: async () => head,
+    sourceFacts: async () => ({ repository: 'popcre/shared-db', base_branch: 'main', merged: true, source_pr: 4653, work_issue: 4646,
+      head_sha40: 'b'.repeat(40), merge_sha40: 'c'.repeat(40), merge_in_main: true, files: [{ path, content }] }),
+    productionEvidence: async () => ({ source_pr: 4653, run_id: 123, artifact_digest: 'sha256:' + 'd'.repeat(64) }),
+    promote: async () => { effects.push('promote'); return { state: 'dispatched' }; },
+    catalog: async () => { effects.push('catalog'); return { checked_contracts: 1, failures: [] }; },
+    manifest: async () => manifest, status: async (...args) => effects.push(args) };
+  return { manifest, policy, io, effects };
+}
+const assess = f => assessRelease({ repository, head, manifest: f.manifest, policy: f.policy }, f.io);
+
+test('exact applied source plus current catalog contracts yields readiness, no dispatch', async () => {
+  const f = fixture(), result = await assess(f);
+  assert.equal(result.status, 'ready'); assert.equal(result.head_sha, head);
+  assert.equal(result.manifest_sha256, manifestDigest(f.manifest));
+  assert.deepEqual(f.effects, ['catalog']);
+});
+test('missing production proof dispatches only native promotion and never reports ready', async () => {
+  const f = fixture(); f.io.productionEvidence = async () => null;
+  const result = await assess(f); assert.equal(result.status, 'waiting');
+  assert.deepEqual(f.effects, ['promote']);
+});
+test('unmerged or altered canonical migration never dispatches or checks catalog', async () => {
+  for (const change of [s => s.merged = false, s => s.files[0].content += 'altered']) {
+    const f = fixture(), original = f.io.sourceFacts;
+    f.io.sourceFacts = async () => { const s = await original(); change(s); return s; };
+    await assert.rejects(assess(f)); assert.deepEqual(f.effects, []);
+  }
+});
+test('omitted baseline migration and weakened central contracts refuse', async () => {
+  for (const change of [m => m.requirements = [], m => m.contracts = [], m => m.contracts[0].columns = ['other']]) {
+    const f = fixture(); change(f.manifest); await assert.rejects(assess(f)); assert.deepEqual(f.effects, []);
+  }
+});
+test('contract fingerprint does not permit an unapproved role or schema', () => {
+  for (const change of [m => m.contracts[0].privileges[0].role = 'postgres', m => m.contracts[0].schema = 'coldlion']) {
+    const f = fixture(); change(f.manifest);
+    f.policy.repositories[0].contract_manifest_sha256 = manifestDigest({ ...f.manifest, requirements: [] });
+    assert.throws(() => releasePolicy(f.manifest, f.policy));
+  }
+});
+test('app repository, exact commit and production target must match', async () => {
+  const f = fixture(); await assert.rejects(assessRelease({ repository, head: 'main', manifest: f.manifest, policy: f.policy }, f.io));
+  f.manifest.repository = 'popcre/designflow-backend'; await assert.rejects(assess(f));
+  f.manifest.production_project_ref = 'xupnyeifmpsacrqahwwm'; await assert.rejects(assess(f));
+  assert.deepEqual(f.effects, []);
+});
+test('head drift before promotion has no side effect', async () => {
+  const f = fixture(); let reads = 0;
+  f.io.applicationHead = async () => ++reads === 1 ? head : 'e'.repeat(40);
+  f.io.productionEvidence = async () => null;
+  await assert.rejects(assess(f), /changed before promotion/); assert.deepEqual(f.effects, []);
+});
+test('head drift after catalog cannot publish readiness', async () => {
+  const f = fixture(); let reads = 0;
+  f.io.applicationHead = async () => ++reads === 1 ? head : 'e'.repeat(40);
+  await assert.rejects(assess(f), /changed before readiness/); assert.deepEqual(f.effects, ['catalog']);
+});
+test('catalog failure cannot produce a successful status', async () => {
+  const f = fixture(); f.io.catalog = async () => { throw Error('column absent'); };
+  const results = await runObserver(f.policy, f.io);
+  assert.equal(results[0].status, 'blocked');
+  assert.equal(f.effects.at(-1)[2], 'failure');
+  assert.ok(!f.effects.some(x => Array.isArray(x) && x[2] === 'success'));
+});
+test('source unavailability fails closed while other repositories still receive assessment', async () => {
+  const f = fixture(); f.policy.repositories.unshift({ repository: 'popcre/designflow-backend' });
+  f.io.applicationHead = async repo => { if (repo.endsWith('backend')) throw Error('unavailable'); return head; };
+  const results = await runObserver(f.policy, f.io);
+  assert.deepEqual(results.map(x => x.status), ['blocked', 'ready']);
+});
+test('waiting never creates success and an applied repeat does not dispatch twice', async () => {
+  const f = fixture(); f.io.productionEvidence = async () => null;
+  assert.equal((await runObserver(f.policy, f.io))[0].status, 'waiting');
+  assert.equal(f.effects.at(-1)[2], 'pending');
+  const fresh = fixture(); await assess(fresh); await assess(fresh);
+  assert.deepEqual(fresh.effects, ['catalog', 'catalog']);
+});
+test('dispatch correlation is deterministic and admits only bounded preview inputs', () => {
+  const m = { target: 'preview', commit_sha: head, merged_preview_source_pr: '4653', preview_allowlist: '20261022194647' };
+  assert.equal(dispatchTitle(m, 'apply'), `DB preview apply ${head} PR4653 20261022194647`);
+  for (const change of [x => x.target = 'production', x => x.commit_sha = 'main', x => x.preview_allowlist += '\n', x => x.merged_preview_source_pr = '-1']) {
+    const x = { ...m }; change(x); assert.throws(() => dispatchTitle(x, 'apply'));
+  }
+  assert.throws(() => dispatchTitle(m, 'production'));
+});
+
+test('main requires an authenticated develop-to-main source tree and cannot initiate promotion', async () => {
+  const f = fixture();
+  await assert.rejects(assessRelease({ repository, head, manifest: f.manifest, policy: f.policy, branch: 'main' }, f.io), /source tree/);
+  assert.deepEqual(f.effects, []);
+  f.io.sourceAllowed = async () => true; f.io.productionEvidence = async () => null;
+  const result = await assessRelease({ repository, head, manifest: f.manifest, policy: f.policy, branch: 'main' }, f.io);
+  assert.equal(result.status, 'waiting'); assert.deepEqual(f.effects, []);
+});
+test('develop and main readiness are independently checked and published', async () => {
+  const f = fixture(); f.policy.release_branches = ['develop', 'main']; f.io.sourceAllowed = async () => true;
+  const result = await runObserver(f.policy, f.io);
+  assert.deepEqual(result.map(r => [r.branch, r.status]), [['develop', 'ready'], ['main', 'ready']]);
+  assert.equal(f.effects.filter(x => Array.isArray(x) && x[2] === 'success').length, 2);
+});
+
+async function receiptFixture() {
+  const f = fixture(), facts = await f.io.sourceFacts();
+  const version = requirement.migrations[0].version, fingerprint = '9'.repeat(64);
+  const ledger = { [version]: fingerprint };
+  const receipt = { schema_version: 1, work_issue: 4646, source_pr: 4653,
+    source_head_sha: facts.head_sha40, source_merge_sha: facts.merge_sha40,
+    production_main_sha: 'f'.repeat(40), production_run_id: 123, production_run_attempt: 1,
+    artifact_id: 456, artifact_digest: 'sha256:' + '8'.repeat(64),
+    migration_hashes: { [version]: requirement.migrations[0].sha256 }, ledger_fingerprints: ledger,
+    catalog_sha256: '7'.repeat(64), captured_at: '2020-01-01T00:00:00.000Z' };
+  return { facts, ledger, receipt, version };
+}
+test('preserved exact-source apply receipt survives artifact retention without waiving ledger drift', async () => {
+  const f = await receiptFixture();
+  assert.equal(verifyApplyReceipt(requirement, f.facts, f.receipt, f.ledger).run_id, 123);
+  assert.throws(() => verifyApplyReceipt(requirement, f.facts, f.receipt, { [f.version]: '6'.repeat(64) }), /fingerprint changed/);
+});
+test('apply receipt refuses altered source, missing/extra migrations, wrong identities and future proof', async () => {
+  const mutations = [
+    r => r.source_head_sha = 'e'.repeat(40), r => r.source_merge_sha = 'e'.repeat(40),
+    r => r.work_issue++, r => r.source_pr++, r => r.production_run_id = 0,
+    r => r.production_run_attempt = 0, r => r.artifact_digest = 'unhashed',
+    r => r.migration_hashes[requirement.migrations[0].version] = '1'.repeat(64),
+    r => r.ledger_fingerprints = {}, r => r.migration_hashes.extra = '2'.repeat(64),
+    r => r.captured_at = '9999-01-01T00:00:00.000Z', r => r.authorized = true,
+  ];
+  for (const mutate of mutations) {
+    const f = await receiptFixture(); mutate(f.receipt);
+    assert.throws(() => verifyApplyReceipt(requirement, f.facts, f.receipt, f.ledger));
+  }
+});
+
+function appliedFiles() {
+  const version = requirement.migrations[0].version, baseline = '20200101000000';
+  return new Map([
+    ['migration-content-manifest.json', JSON.stringify({ [baseline]: '1'.repeat(64), [version]: requirement.migrations[0].sha256 })],
+    ['production-catalog-verification.json', JSON.stringify({ enforcing: true, errors: [], allowlist: [version] })],
+    ['production-ledger-before.txt', ` ${baseline} | ${baseline} | old\n`],
+    ['production-ledger-after.txt', ` ${baseline} | ${baseline} | old\n ${version} | ${version} | new\n`],
+  ]);
+}
+test('real apply file shape includes historical manifest hashes but only exact required ledger additions', () => {
+  assert.deepEqual(verifyAppliedFiles(requirement, appliedFiles()), { [requirement.migrations[0].version]: requirement.migrations[0].sha256 });
+});
+test('apply files refuse changed hashes, unexpected ledger changes and unenforced catalog', () => {
+  const mutations = [
+    f => f.set('migration-content-manifest.json', '{}'),
+    f => f.set('production-ledger-after.txt', f.get('production-ledger-after.txt') + ' 20210101000000 | 20210101000000 | extra\n'),
+    f => f.set('production-ledger-after.txt', f.get('production-ledger-after.txt').split('\n').slice(1).join('\n')),
+    f => f.set('production-catalog-verification.json', JSON.stringify({ enforcing: false, errors: [], allowlist: [requirement.migrations[0].version] })),
+    f => f.set('production-catalog-verification.json', JSON.stringify({ enforcing: true, errors: ['failed'], allowlist: [requirement.migrations[0].version] })),
+    f => f.set('production-catalog-verification.json', JSON.stringify({ enforcing: true, errors: [], allowlist: ['20200101000000'] })),
+  ];
+  for (const mutate of mutations) { const f = appliedFiles(); mutate(f); assert.throws(() => verifyAppliedFiles(requirement, f)); }
+});
+
+
+test('producer discovery reads subsequent pages and refuses truncated history', () => {
+  const visited=[];
+  const read=url=>{visited.push(url);return {workflow_runs: url.endsWith('page=1') ? Array.from({length:100},(_,i)=>({id:i+1})) : [{id:101}]};};
+  assert.equal(workflowRuns(read,'runs?event=workflow_dispatch').at(-1).id,101);
+  assert.equal(visited.length,2);
+  assert.throws(()=>workflowRuns(()=>({workflow_runs:Array(100).fill({id:1})}),'runs',2),/incomplete/);
+  assert.throws(()=>workflowRuns(()=>({}),'runs'),/unreadable/);
+});
+test('unrelated production artifacts cannot block or supply a required source', () => {
+  const files = new Map([['migration-content-manifest.json',JSON.stringify({'20261022194647':'0'.repeat(64)})], ['production-catalog-verification.json',JSON.stringify({allowlist:['20261022194647']})]]);
+  assert.equal(artifactContainsSource(requirement,files),false);
+  files.set('migration-content-manifest.json',JSON.stringify({[requirement.migrations[0].version]:requirement.migrations[0].sha256,other:'historical'}));
+  assert.equal(artifactContainsSource(requirement,files),true);
+  files.set('production-catalog-verification.json',JSON.stringify({allowlist:['20261022194648']}));
+  assert.equal(artifactContainsSource(requirement,files),false);
+});

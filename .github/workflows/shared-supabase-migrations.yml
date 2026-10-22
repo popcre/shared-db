@@ -1,4 +1,6 @@
 name: Shared Supabase Migrations
+# Deterministic dispatch identity uses existing inputs; no new apply authority.
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('DB {0} {1} {2} PR{3} {4}', inputs.target, inputs.mode, inputs.commit_sha, inputs.merged_preview_source_pr || inputs.source_pr, inputs.preview_allowlist || inputs.production_allowlist) || github.workflow }}
 
 on:
   # DELIBERATELY NO `paths:` FILTER. A path-filtered workflow creates NO check run

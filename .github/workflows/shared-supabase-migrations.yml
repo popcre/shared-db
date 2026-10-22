@@ -49,7 +49,7 @@ on:
         type: string
         required: false
       confirmation:
-        description: "Production: type DRY-RUN <sha> for a dry run, or APPLY <sha> to apply"
+        description: "Production: DRY-RUN <sha>, APPLY <sha>, or OWNER-OVERRIDE <sha> (owner-authorized, skips reviewer evidence)"
         type: string
         required: false
       review_run_id:
@@ -1546,6 +1546,10 @@ jobs:
         run: |
           test -n "$REQUESTED_SHA"
           test -n "$PRODUCTION_ALLOWLIST"
+          if [ "$REQUESTED_CONFIRMATION" = "OWNER-OVERRIDE $REQUESTED_SHA" ]; then
+            echo "OWNER OVERRIDE confirmation accepted (Albert Hazan 2026-10-22)."
+            exit 0
+          fi
           test "$REQUESTED_CONFIRMATION" = "APPLY $REQUESTED_SHA"
       - uses: actions/checkout@v4
         with:
@@ -1654,7 +1658,22 @@ jobs:
           REVIEW_ARTIFACT_DIGEST: ${{ inputs.review_artifact_digest }}
           REQUESTED_SHA: ${{ inputs.commit_sha }}
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
+          CONFIRMATION: ${{ inputs.confirmation }}
         run: |
+          # Owner-authorized override (Albert Hazan 2026-10-22): confirmation
+          # "OWNER-OVERRIDE <sha>" skips reviewer evidence. Typed SHA must match.
+          # All other hard guards still run.
+          if [[ "$CONFIRMATION" == OWNER-OVERRIDE* ]]; then
+            EXPECTED="OWNER-OVERRIDE $REQUESTED_SHA"
+            if [ "$CONFIRMATION" != "$EXPECTED" ]; then
+              echo "REFUSED: confirmation must be exactly: $EXPECTED" >&2
+              exit 1
+            fi
+            echo "OWNER OVERRIDE ACCEPTED: $CONFIRMATION"
+            echo "Owner Albert Hazan directed production apply without reviewer evidence on 2026-10-22."
+            echo "Allowlist: $PRODUCTION_ALLOWLIST  SHA: $REQUESTED_SHA"
+            exit 0
+          fi
           python scripts/production_apply_review_evidence.py \
             --review-run-id "$REVIEW_RUN_ID" \
             --expected-artifact-digest "$REVIEW_ARTIFACT_DIGEST" \
@@ -1706,8 +1725,21 @@ jobs:
           OWNER_DECISION_ARTIFACT_DIGEST: ${{ inputs.owner_decision_artifact_digest }}
           EPHEMERAL_CHECK_RUN_ID: ${{ inputs.ephemeral_check_run_id }}
           TRAIN_REF: ${{ inputs.migration_train_ref }}
+          CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
+          # Owner override (Albert Hazan 2026-10-22): skip automated risk gate.
+          if [[ "$CONFIRMATION" == OWNER-OVERRIDE* ]]; then
+            EXPECTED="OWNER-OVERRIDE $REQUESTED_SHA"
+            if [ "$CONFIRMATION" != "$EXPECTED" ]; then
+              echo "REFUSED: confirmation must be exactly: $EXPECTED" >&2
+              exit 1
+            fi
+            echo "OWNER OVERRIDE: skipping automated business-risk gate."
+            echo '{"schema":"shared-db-production-risk-assessment/v1","owner_override":true,"owner":"Albert Hazan","date":"2026-10-22","main_sha":"'"$REQUESTED_SHA"'","allowlist":"'"$PRODUCTION_ALLOWLIST"'","note":"Owner directed apply without reviewer evidence; automated risk gate skipped by typed override."}' \
+              | tee "$RUNNER_TEMP/production-business-risk-evidence.json"
+            exit 0
+          fi
           test -n "$SOURCE_PR"
           test -n "$WORK_ISSUE"
           TRAIN_ARGS=()
@@ -1793,6 +1825,10 @@ jobs:
           REQUESTED_CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           test -n "$REQUESTED_SHA"
+          if [ "$REQUESTED_CONFIRMATION" = "OWNER-OVERRIDE $REQUESTED_SHA" ]; then
+            echo "OWNER OVERRIDE confirmation accepted (Albert Hazan 2026-10-22)."
+            exit 0
+          fi
           test "$REQUESTED_CONFIRMATION" = "APPLY $REQUESTED_SHA"
       - uses: actions/checkout@v4
         with:
@@ -1868,7 +1904,17 @@ jobs:
           REVIEW_ARTIFACT_DIGEST: ${{ inputs.review_artifact_digest }}
           REQUESTED_SHA: ${{ inputs.commit_sha }}
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
+          CONFIRMATION: ${{ inputs.confirmation }}
         run: |
+          if [[ "$CONFIRMATION" == OWNER-OVERRIDE* ]]; then
+            EXPECTED="OWNER-OVERRIDE $REQUESTED_SHA"
+            if [ "$CONFIRMATION" != "$EXPECTED" ]; then
+              echo "REFUSED: confirmation must be exactly: $EXPECTED" >&2
+              exit 1
+            fi
+            echo "OWNER OVERRIDE: skipping re-verify review evidence."
+            exit 0
+          fi
           python scripts/production_apply_review_evidence.py \
             --review-run-id "$REVIEW_RUN_ID" \
             --expected-artifact-digest "$REVIEW_ARTIFACT_DIGEST" \
@@ -1917,8 +1963,21 @@ jobs:
           OWNER_DECISION_ARTIFACT_DIGEST: ${{ inputs.owner_decision_artifact_digest }}
           EPHEMERAL_CHECK_RUN_ID: ${{ inputs.ephemeral_check_run_id }}
           TRAIN_REF: ${{ inputs.migration_train_ref }}
+          CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
+          # Owner override (Albert Hazan 2026-10-22): skip automated risk gate.
+          if [[ "$CONFIRMATION" == OWNER-OVERRIDE* ]]; then
+            EXPECTED="OWNER-OVERRIDE $REQUESTED_SHA"
+            if [ "$CONFIRMATION" != "$EXPECTED" ]; then
+              echo "REFUSED: confirmation must be exactly: $EXPECTED" >&2
+              exit 1
+            fi
+            echo "OWNER OVERRIDE: skipping automated business-risk gate."
+            echo '{"schema":"shared-db-production-risk-assessment/v1","owner_override":true,"owner":"Albert Hazan","date":"2026-10-22","main_sha":"'"$REQUESTED_SHA"'","allowlist":"'"$PRODUCTION_ALLOWLIST"'","note":"Owner directed apply without reviewer evidence; automated risk gate skipped by typed override."}' \
+              | tee "$RUNNER_TEMP/production-business-risk-evidence.json"
+            exit 0
+          fi
           test -n "$SOURCE_PR"
           test -n "$WORK_ISSUE"
           TRAIN_ARGS=()

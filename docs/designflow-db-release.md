@@ -5,7 +5,8 @@ Work issue: #4655. Application outcome: popcre/designflow-backend#232.
 This implementation is not activated or proven merely because its files exist.
 The six application manifests must reach their default branches, canonical source
 must pass independent review and guarded merge, and the centrally controlled
-production deployment gate must pass a live negative test. Until those facts are
+main merge protection must pass a live negative test (or a centrally controlled
+deployment gate must be proven if native protection is unavailable). Until those facts are
 recorded on #4655, no automatic release or enforced deployment hold is claimed.
 
 ## Release identity and source custody
@@ -59,8 +60,12 @@ Current read-only production catalogs independently check the
 declared columns, schema access and runtime privileges. Already applied source is
 idempotent success only after both checks. No application data is queried or copied.
 
-The existing central `SYNC_TOKEN` authenticates cross-repository reads/statuses;
-the existing central Supabase credential performs read-only catalog inspection.
+The existing central `SYNC_TOKEN` authenticates canonical operator effects and
+cross-repository source reads. A separate short-lived token from the existing
+`pop-ai-watchers` App (ID5112061), limited to the six application repositories,
+publishes statuses with status-write and content-read permissions. The publisher
+refuses another identity or a missing token; there is no PAT fallback for statuses.
+The existing central Supabase credential performs read-only catalog inspection.
 Neither credential is distributed to applications. Repeated source/evidence reads
 are cached within one observer run, and the observer preserves an API reserve.
 
@@ -73,23 +78,36 @@ with missing production requirements waits; it never initiates a belated apply.
 Application acceptance and business acceptance remain separate from database
 readiness. A failed or waiting result is never reported as ready.
 
-The organization currently has GitHub Free, and private-repository protection and
-ruleset queries return the upgrade restriction. No billing/visibility change or
-enforced main-merge guarantee is implied. Statuses alone do not block all merges.
+The organization currently has GitHub Free, and private protection queries return
+an upgrade restriction. Albert authorized GitHub Team for two seats up to8USD/month
+beforetax; checkout confirms that amount, but purchase/terms confirmation is still
+pending. No completed upgrade or enforced merge guarantee is claimed.
 
-An enforceable deployment hold belongs in the canonical infrastructure repository
-`popcre/infrastructure`, whose Terraform owns the six production Cloud Build
-triggers. The reviewed wrapper must authenticate the readiness artifact for the
-exact release and refuse before delegating the application build. Preserve the
-existing deployment capability and prove the negative case without replacing a
-production revision. Do not install a removable application-only check and describe
-it as centrally enforced.
+After Team is active, the preferred enforcement is native main protection for the
+six apps: require the `database/production-ready` status specifically from App
+ID5112061, require an up-to-date pull request, enforce for administrators, and permit
+no bypass, forced update or deletion. Preserve any stricter existing protections.
+Prove a missing/failed/wrong-App check cannot permit a main merge. Keep the existing
+six production triggers on main, and retain Uma's application merge authority.
+The process does not automatically merge application code.
 
-Google's existing repository read-token API can read GitHub contents/statuses, but
-the live token probe also read shared-db through an application repository resource.
-It is therefore not repository-scoped. Any wrapper identity/permission use requires
-the corresponding reviewed infrastructure change; never distribute a broad PAT.
-Reference: [Google repository read-token API](https://docs.cloud.google.com/build/docs/api/reference/rest/v2/projects.locations.connections.repositories/accessReadToken).
+This native main gate can satisfy the requested pre-main protection without adding
+a new Cloud Build wrapper or mutating production infrastructure. Such a wrapper was
+proposed while private main protection was unavailable; it is not an activated
+capability. The infrastructure repository's production-forbidden policy remains
+intact. If native protection proves insufficient, return to a reviewed supported
+infrastructure route rather than changing triggers ad hoc.
+
+Statuses record a verified snapshot. GitHub does not give commit statuses an
+application-defined expiration time; the central observer rechecks the current
+heads every five minutes. Do not describe a cached green status as continuous
+production proof or general application acceptance. Database changes continue
+through the existing consumer-safety, rehearsal and production checks.
+
+The observer checks out the exact workflow producer SHA and refuses checkout
+source drift. A pinned App identity prevents a user token or application workflow
+from supplying the required central readiness status. It does not prevent an
+organization owner from deliberately changing protection settings.
 
 ## Verification and recovery
 

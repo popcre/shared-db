@@ -64,14 +64,15 @@ export async function assessRelease({ repository, head, manifest, policy, branch
   return { ...identity, status: 'ready', requirements: proven, catalog_sha256: hash(JSON.stringify(catalog)) };
 }
 
-function command(args, { input, timeout = 60_000 } = {}) {
-  try { return runGitHubCommand(args, { input, timeoutMs: timeout, maxBuffer: 20 * 1024 * 1024 }); }
+function command(args, { input, timeout = 60_000, token } = {}) {
+  const executor = token ? ((file, argv, options) => execFileSync(file, argv, { ...options, env: { ...process.env, GH_TOKEN: token } })) : undefined;
+  try { return runGitHubCommand(args, { executor, input, timeoutMs: timeout, maxBuffer: 20 * 1024 * 1024 }); }
   catch { throw Error(`GitHub operation refused or unavailable: ${args[0]}`); }
 }
-function api(endpoint, body) {
+function api(endpoint, body, { token } = {}) {
   const args = ['api', endpoint];
   if (body !== undefined) args.push('--method', 'POST', '--input', '-');
-  const output = command(args, { input: body === undefined ? undefined : JSON.stringify(body) });
+  const output = command(args, { token, input: body === undefined ? undefined : JSON.stringify(body) });
   return output.trim() ? JSON.parse(output) : null;
 }
 function pages(endpoint, limit = 5) {
@@ -369,9 +370,27 @@ async function catalog(contracts, project) {
   return verifyCatalogProof(contracts, rows[0].production_catalog_proof);
 }
 
+export function assertObserverSource(env, localHead) {
+  if (env.GITHUB_REPOSITORY !== CANONICAL || env.GITHUB_REF !== 'refs/heads/main' ||
+      !SHA.test(env.GITHUB_SHA ?? '') || env.GITHUB_SHA !== localHead)
+    throw Error('Observer source must equal its authenticated canonical workflow commit');
+  if (!env.DFLOW_READINESS_STATUS_TOKEN || env.DFLOW_READINESS_APP_SLUG !== 'pop-ai-watchers')
+    throw Error('The designated readiness App credential is unavailable; no publisher fallback');
+}
+
+export function publishAppStatus(repository, head, body, token, send = api) {
+  if (!token || !/^popcre\/designflow-(backend|bff|frontend|item-master|tracking|data-syncing)$/.test(repository) || !SHA.test(head))
+    throw Error('Exact application and designated App token required for readiness status');
+  const result = send(`repos/${repository}/statuses/${head}`, body, { token });
+  if (result?.creator?.login !== 'pop-ai-watchers[bot]' || result.state !== body.state || result.context !== body.context)
+    throw Error('Readiness status was not published by the designated App');
+  return result;
+}
+
 export async function main() {
   if (process.argv.slice(2).join(' ') !== '--observe' || process.env.GITHUB_REPOSITORY !== CANONICAL || process.env.GITHUB_REF !== 'refs/heads/main')
     throw Error('Observer executes only from canonical main with --observe');
+  assertObserverSource(process.env, execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', timeout: 10_000 }).trim());
   const policy = JSON.parse(readFileSync(policyPath, 'utf8'));
   const remaining = api('rate_limit').resources.core.remaining;
   if (!Number.isSafeInteger(remaining) || remaining < 1000) throw Error('GitHub API reserve is unavailable');
@@ -396,7 +415,7 @@ export async function main() {
     productionEvidence: (requirement, facts) => memo(evidenceCache, requirement.source_pr, () => productionEvidence(requirement, facts)),
     promote,
     catalog,
-    status: (repo, head, state, description) => api(`repos/${repo}/statuses/${head}`, { state, context: policy.status_context, description, target_url: url }),
+    status: (repo, head, state, description) => publishAppStatus(repo, head, { state, context: policy.status_context, description, target_url: url }, process.env.DFLOW_READINESS_STATUS_TOKEN),
   };
   const results = await runObserver(policy, io);
   process.stdout.write(JSON.stringify(results, null, 2) + '\n');

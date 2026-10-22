@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { manifestDigest } from './lib/designflow-db-release.mjs';
-import { assessRelease, runObserver, releasePolicy, dispatchTitle, verifyApplyReceipt, verifyAppliedFiles, workflowRuns, artifactContainsSource } from './designflow-db-release.mjs';
+import { assessRelease, runObserver, releasePolicy, dispatchTitle, verifyApplyReceipt, verifyAppliedFiles, workflowRuns, artifactContainsSource, assertObserverSource, publishAppStatus } from './designflow-db-release.mjs';
 
 const head = 'a'.repeat(40), repository = 'popcre/designflow-tracking';
 const path = 'supabase/migrations/20261022194647_synthetic.sql', content = '-- synthetic only\n';
@@ -189,4 +189,23 @@ test('unrelated production artifacts cannot block or supply a required source', 
   assert.equal(artifactContainsSource(requirement,files),true);
   files.set('production-catalog-verification.json',JSON.stringify({allowlist:['20261022194648']}));
   assert.equal(artifactContainsSource(requirement,files),false);
+});
+
+
+test('observer execution is bound to its exact producer commit and designated App, no fallback', () => {
+  const env={GITHUB_REPOSITORY:'popcre/shared-db',GITHUB_REF:'refs/heads/main',GITHUB_SHA:head,DFLOW_READINESS_STATUS_TOKEN:'synthetic-fixture-token',DFLOW_READINESS_APP_SLUG:'pop-ai-watchers'};
+  assert.doesNotThrow(()=>assertObserverSource(env,head));
+  for(const change of [e=>e.GITHUB_SHA='b'.repeat(40),e=>e.GITHUB_REPOSITORY='fork/shared-db',e=>e.GITHUB_REF='refs/heads/unreviewed',e=>delete e.DFLOW_READINESS_STATUS_TOKEN,e=>e.DFLOW_READINESS_APP_SLUG='another-app']){
+    const changed={...env};change(changed);assert.throws(()=>assertObserverSource(changed,head));
+  }
+});
+test('readiness statuses require designated App identity and exact bounded application', () => {
+  const body={state:'success',context:'database/production-ready'},calls=[];
+  const send=(endpoint,value,options)=>{calls.push({endpoint,value,options});return {...value,creator:{login:'pop-ai-watchers[bot]'}};};
+  assert.equal(publishAppStatus(repository,head,body,'synthetic-token',send).state,'success');
+  assert.equal(calls[0].options.token,'synthetic-token');
+  for(const [repo,sha,token] of [['fork/designflow-tracking',head,'fixture'],[repository,'main','fixture'],[repository,head,'']])assert.throws(()=>publishAppStatus(repo,sha,body,token,send));
+  assert.equal(calls.length,1);
+  assert.throws(()=>publishAppStatus(repository,head,body,'fixture',()=>({...body,creator:{login:'u2giants'}})),/designated App/);
+  assert.throws(()=>publishAppStatus(repository,head,body,'fixture',()=>({...body,state:'pending',creator:{login:'pop-ai-watchers[bot]'}})),/designated App/);
 });

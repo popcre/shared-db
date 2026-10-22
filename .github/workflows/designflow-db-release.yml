@@ -57,15 +57,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Mint the existing designated App status publisher for six applications
+        id: publisher
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.POP_AI_WATCHERS_APP_ID }}
+          private-key: ${{ secrets.POP_AI_WATCHERS_PRIVATE_KEY }}
+          owner: popcre
+          repositories: |
+            designflow-backend
+            designflow-bff
+            designflow-frontend
+            designflow-item-master
+            designflow-tracking
+            designflow-data-syncing
+          permission-contents: read
+          permission-statuses: write
       - name: Observe exact releases and reuse qualified canonical promotion
         env:
           # Existing central operator credential. Never copied to applications.
           GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          DFLOW_READINESS_STATUS_TOKEN: ${{ steps.publisher.outputs.token }}
+          DFLOW_READINESS_APP_SLUG: ${{ steps.publisher.outputs.app-slug }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SHARED_DB_SESSION_ID: github-actions-${{ github.run_id }}
           SHARED_DB_AUTHOR_ENGINE: codex

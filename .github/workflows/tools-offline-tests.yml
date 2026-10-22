@@ -159,6 +159,12 @@ jobs:
           set -euo pipefail
           node --test scripts/rls-public-admin-initplan.test.mjs
 
+      - name: Verify RLS owner uid source (#4428)
+        if: steps.route.outputs.pure_prose != 'true'
+        run: |
+          set -euo pipefail
+          node --test scripts/rls-owner-uid-initplan.test.mjs
+
       - name: Run throughput guard tests and prove planned files are present
         if: steps.route.outputs.pure_prose != 'true'
         run: |

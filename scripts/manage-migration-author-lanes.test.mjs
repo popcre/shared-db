@@ -414,7 +414,7 @@ test('every non-structural work type has a named exit and never accept',()=>{
     assert.notEqual(exit,'accept',`${workType} must never be accepted by the orchestrator`)
     assert.equal(queueExit(workType),exit)
   }
-  assert.throws(()=>queueExit('invented-work-type'),/no orchestrator exit is defined/)
+  assert.throws(()=>queueExit('invented-work-type'),/no structural-lane exit is defined/)
 })
 
 // OWNER RULING 2026-08-21 (issue #1366). Repository maintenance, documentation and
@@ -2208,7 +2208,7 @@ test('a live historical assignment never recreates an active lease for a retired
   io.getPr=()=>({state:'open',head:{sha:request.headSha}})
   const sha=io.makeOwnerCommit(`db-coordination reviewer-cursor sequence=7 reviewer=${reviewer} issue=${request.issue} pr=${request.pr} head=${request.headSha}`)
   io.refs.set(`${REVIEW_ASSIGNMENT_REF_PREFIX}/${request.issue}-${request.pr}-${request.headSha}`,sha)
-  assert.throws(()=>assignNextReviewer(request,io),/retired, quarantined or orchestrator-conflicting reviewer/)
+  assert.throws(()=>assignNextReviewer(request,io),/retired, quarantined or author-engine-conflicting reviewer/)
   assert.equal(io.refs.has(`${REVIEW_ACTIVE_REF_PREFIX}/${reviewer}`),false);assert.equal(io.refs.has(MUTEX_REF),false)
 })
 
@@ -2511,7 +2511,7 @@ test('a retired reviewer is replaced cleanly, without an exclusion deadlock (#20
   io.refs.set(`${REVIEW_ASSIGNMENT_REF_PREFIX}/${failedReview.issue}-${failedReview.pr}-${failedReview.headSha}`,sha)
   io.refs.set(reviewActiveRef('deepseek-chat'),sha)
   io.refs.set(REVIEW_CURSOR_REF,sha)
-  assert.throws(()=>assignNextReviewer(failedReview,io),/belongs to a retired, quarantined or orchestrator-conflicting reviewer[\s\S]*Record a governed replacement for this exact head/)
+  assert.throws(()=>assignNextReviewer(failedReview,io),/belongs to a retired, quarantined or author-engine-conflicting reviewer[\s\S]*Record a governed replacement for this exact head/)
   const replacement=replaceFailedReviewer({...replacementRequest,failureCode:'wrapper_terminal_failure'},io)
   assert.equal(replacement.reviewer,'muse-spark-1.3-contributor')
   assert.equal(reviewerReadsRepository(replacement.reviewer),true,'the replacement must be a reviewer that reads the code')
@@ -2781,8 +2781,8 @@ test('a historical replacement never recreates an active lease for a retired rev
   const sha=io.makeOwnerCommit(`db-coordination reviewer-failure-replacement sequence=${sequence} reviewer=${reviewer} issue=${failedReview.issue} pr=${failedReview.pr} head=${failedReview.headSha} failed-sequence=1 prior-sequence=1 failure-ref=self failed-reviewer=grok-4.6 code=provider_unavailable verdict=none artifact=none`)
   io.refs.set(`${REVIEW_REPLACEMENT_REF_PREFIX}/${failedReview.issue}-${failedReview.pr}-${failedReview.headSha}-1`,sha)
   io.refs.set(`refs/db-review-failures/${failedReview.issue}-${failedReview.pr}-${failedReview.headSha}-1`,sha)
-  assert.throws(()=>replaceFailedReviewer(replacementRequest,io),/retired, quarantined or orchestrator-conflicting reviewer/)
-  assert.throws(()=>assignNextReviewer(failedReview,io),/retired, quarantined or orchestrator-conflicting reviewer/)
+  assert.throws(()=>replaceFailedReviewer(replacementRequest,io),/retired, quarantined or author-engine-conflicting reviewer/)
+  assert.throws(()=>assignNextReviewer(failedReview,io),/retired, quarantined or author-engine-conflicting reviewer/)
   assert.equal(io.refs.has(`${REVIEW_ACTIVE_REF_PREFIX}/${reviewer}`),false);assert.equal(io.refs.has(MUTEX_REF),false)
 })
 
@@ -3066,7 +3066,7 @@ test('an ineligible reviewer stays readable but receives no new assignment',()=>
   // Still readable: the historical cursor parses and the name resolves.
   assert.equal(parseReviewCursor(io.getCommit(historical)).reviewer,ineligible)
   assert.equal(REVIEWERS.find((row)=>row.name===ineligible)?.wrapper,'ai-codex-review')
-  assert.throws(()=>assignNextReviewer(request,io),/belongs to a retired, quarantined or orchestrator-conflicting reviewer[\s\S]*Record a governed replacement for this exact head/)
+  assert.throws(()=>assignNextReviewer(request,io),/belongs to a retired, quarantined or author-engine-conflicting reviewer[\s\S]*Record a governed replacement for this exact head/)
   // Refused BEFORE any side effect: no assignment ref, no lease.
   assert.equal([...io.refs.keys()].some((ref)=>ref.startsWith(REVIEW_ASSIGNMENT_REF_PREFIX)),false)
   assert.equal(io.refs.get(reviewActiveRef(ineligible))??null,null)
@@ -7043,7 +7043,7 @@ test('retrying a slot-2 assignment must still refuse a durable assignment to a r
   io.refs.set(assignmentRef,rewritten)
   io.refs.delete(reviewActiveRef(second.reviewer))
   io.refs.set(reviewActiveRef('codex-gpt-5.6-sol'),rewritten)
-  assert.throws(()=>assignNextReviewer({...request,slot:2},io),/orchestrator-conflicting reviewer codex-gpt-5\.6-sol/)
+  assert.throws(()=>assignNextReviewer({...request,slot:2},io),/author-engine-conflicting reviewer codex-gpt-5\.6-sol/)
   // Same refusal for the live-orchestrator route the retirement made
   // undrawable: the filter itself still removes an engine-matching reviewer.
   assert.equal(reviewersForOrchestrator('codex',REVIEWERS).some((row)=>row.name==='codex-gpt-5.6-sol'),false)
@@ -8108,7 +8108,7 @@ test('#3827 every verdict-deadlock refusal names the quarantine-clear remedy',()
     io.refs.set(reviewActiveRef(name),sha)
     io.refs.set(REVIEW_CURSOR_REF,sha)
     assert.throws(()=>assignNextReviewer(failedReview,io),(error)=>{
-      assert.match(error.message,/belongs to a retired, quarantined or orchestrator-conflicting reviewer/)
+      assert.match(error.message,/belongs to a retired, quarantined or author-engine-conflicting reviewer/)
       assert.match(error.message,remedy)
       assert.match(error.message,noForge)
       assert.ok(error.message.includes(name),'the refusal must name the stuck reviewer so the operator knows which provider to clear')
@@ -8125,7 +8125,7 @@ test('#3827 every verdict-deadlock refusal names the quarantine-clear remedy',()
     const historical=io.makeOwnerCommit(`db-coordination reviewer-cursor sequence=64 reviewer=${name} issue=${failedReview.issue} pr=${failedReview.pr} head=${failedReview.headSha}`)
     io.refs.set(REVIEW_CURSOR_REF,historical)
     assert.throws(()=>assignNextReviewer(failedReview,io),(error)=>{
-      assert.match(error.message,/belongs to a retired, quarantined or orchestrator-conflicting reviewer/)
+      assert.match(error.message,/belongs to a retired, quarantined or author-engine-conflicting reviewer/)
       assert.match(error.message,remedy)
       assert.match(error.message,noForge)
       assert.ok(error.message.includes(name),'the refusal must name the stuck reviewer so the operator knows which provider to clear')
@@ -11969,16 +11969,16 @@ function freezeIo(){
 
 test('promotion merge freeze blocks merges, never production, and expires by TTL',()=>{
   const io=freezeIo(),now=new Date('2026-10-02T12:00:00Z')
-  assert.throws(()=>acquirePromotionFreeze({issue:1,pr:2,owner:'x',ttlMinutes:181,now},io),/between 1 and 180/)
-  const freeze=acquirePromotionFreeze({issue:3901,pr:3902,owner:'claude-session',ttlMinutes:90,now},io)
-  assert.equal(freeze.expiresAt,'2026-10-02T13:30:00.000Z')
+  assert.throws(()=>acquirePromotionFreeze({issue:1,pr:2,owner:'x',ttlMinutes:61,now},io),/between 1 and 60/)
+  const freeze=acquirePromotionFreeze({issue:3901,pr:3902,owner:'claude-session',ttlMinutes:30,now},io)
+  assert.equal(freeze.expiresAt,'2026-10-02T12:30:00.000Z')
   assert.equal(io.refs.has(MUTEX_REF),false)
   assert.throws(()=>acquirePromotionFreeze({issue:1,pr:2,owner:'other',ttlMinutes:10,now},io),/already set; promotion merge freeze held by "claude-session"/)
-  assert.throws(()=>acquireExclusive('merge',{owner:'a',pr:1,headSha:'abc',now},io),/merges are paused for a production run; promotion merge freeze held by "claude-session" for PR #3902 \(issue #3901\) until 2026-10-02T13:30:00.000Z/)
+  assert.throws(()=>acquireExclusive('merge',{owner:'a',pr:1,headSha:'abc',now},io),/merges are paused for a production run; promotion merge freeze held by "claude-session" for PR #3902 \(issue #3901\) until 2026-10-02T12:30:00.000Z/)
   const production=acquireExclusive('production',{owner:'p',headSha:'main',now},io)
   releaseOwnedRef(EXCLUSIVE_REFS.production,production.ownerSha,io)
   assert.throws(()=>releasePromotionFreeze({owner:'someone-else',now},io),/refusing to release another holder's freeze/)
-  assert.ok(acquireExclusive('merge',{owner:'a',pr:1,headSha:'abc',now:new Date('2026-10-02T13:31:00Z')},io).ownerSha,'an expired freeze never wedges merges')
+  assert.ok(acquireExclusive('merge',{owner:'a',pr:1,headSha:'abc',now:new Date('2026-10-02T12:31:00Z')},io).ownerSha,'an expired freeze never wedges merges')
   releaseOwnedRef(EXCLUSIVE_REFS.merge,io.refs.get(EXCLUSIVE_REFS.merge),io)
   assert.equal(releasePromotionFreeze({pr:3902},io).released,true,'the production cleanup releases by source PR')
   assert.equal(io.refs.has(PROMOTION_FREEZE_REF),false)
@@ -12018,7 +12018,7 @@ test('2026-10-02 ruling: --replace-failed-reviewer reuses a slot holder only on 
 
 test('promotion merge freeze also blocks repository-maintenance authorization',()=>{
   const io=freezeIo()
-  acquirePromotionFreeze({issue:3901,pr:3902,owner:'claude-session',ttlMinutes:180},io)
+  acquirePromotionFreeze({issue:3901,pr:3902,owner:'claude-session',ttlMinutes:30},io)
   assert.throws(()=>authorizeRepositoryMaintenanceStatus({pr:5,headSha:'a'.repeat(40),description:'d',targetUrl:'https://example.test/x'},io),/merges are paused for a production run; promotion merge freeze held by "claude-session"/)
   assert.equal(io.refs.has(MUTEX_REF),false)
 })
@@ -12050,7 +12050,7 @@ test('promotion freeze CLI acquires and releases through main()',()=>{
     assert.equal(main(['--acquire-promotion-freeze','--issue','3901','--pr','3902','--owner','claude-session','--ttl-minutes','60'],NOW,io),0)
     assert.equal(JSON.parse(out.at(-1)).owner,'claude-session')
     assert.ok(io.refs.has(PROMOTION_FREEZE_REF))
-    assert.notEqual(main(['--acquire-promotion-freeze','--issue','3901','--pr','3902','--owner','x','--ttl-minutes','181'],NOW,io),0)
+    assert.notEqual(main(['--acquire-promotion-freeze','--issue','3901','--pr','3902','--owner','x','--ttl-minutes','61'],NOW,io),0)
     assert.equal(main(['--release-promotion-freeze','--owner','claude-session'],NOW,io),0)
     assert.equal(JSON.parse(out.at(-1)).released,true)
     assert.equal(io.refs.has(PROMOTION_FREEZE_REF),false)

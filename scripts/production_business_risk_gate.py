@@ -28,6 +28,7 @@ from typing import Any, Callable
 
 from production_apply_review_evidence import verify as verify_review
 from production_migration_guard import parse_remote_versions
+from requalified_preview_runs import run_attempt_admitted
 from production_review_allowlist import normalize_review_allowlist
 from historical_preview_recovery import verify as verify_historical_preview
 from historical_preview_recovery import prove_pr_authored
@@ -627,6 +628,9 @@ PREVIEW_PRODUCER_PATHS = (
     # Runs FIRST in the preview job, to acquire the lane, before any evidence
     # byte exists. Unpinned, it was a complete forgery path.
     "scripts/manage-migration-author-lanes.mjs",
+    # Statically imported by the manager and read by its re-qualified preview
+    # admission (#4464/#4486); unpinned, an edited pin table would be trusted.
+    "scripts/db-flow/requalified-preview-runs.mjs",
     "scripts/generated-types-proof.mjs",
     # Existing normal canonical validators now used by authenticated nonclosing routing.
     "scripts/agent-work-contract-git-evidence.mjs",
@@ -1075,6 +1079,10 @@ def independent_sidecar_paths(
 # comparison, so the zero-comparison refusal still holds.
 PREVIEW_CUSTODY_ONLY_PATHS = frozenset((
     "scripts/manage-migration-author-lanes.mjs",
+    # Read only by the lane manager's re-qualified preview admission
+    # (#4464/#4486); it never shapes the apply. Added after the pinned run
+    # 39173012894 checked out fe39316, so it must be tolerated as absent there.
+    "scripts/db-flow/requalified-preview-runs.mjs",
     # Owner-authorized 2026-10-14 ("i authorize loosening that rule"):
     # review tooling and sidecar registry shipped after a pre-merge preview.
     "scripts/run-governed-review.mjs",
@@ -1703,8 +1711,7 @@ def prove_bound_mainline_post_merge_original(
         or any(binding.get(key) != value for key, value in expected.items())
         or not re.fullmatch(r"[a-z]{20}", str(binding.get("previewProjectRef") or ""))
         or binding.get("previewProjectRef") == PRODUCTION_PROJECT_REF
-        or type(run.get("run_attempt")) is not int
-        or run.get("run_attempt") != 1
+        or not run_attempt_admitted(run)
         or run_head != original_commit
     ):
         raise producer_error

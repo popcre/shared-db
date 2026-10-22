@@ -96,7 +96,15 @@ test('context migration preserves every historical identity hash verdict and rea
   const strikeRetirements = JSON.parse(fs.readFileSync(path.join(root, 'docs/verification/throughput-retired-identity-sites-4348.json'), 'utf8'));
   assert.equal(strikeRetirements.schema_version, 1);
   assert.equal(strikeRetirements.retired_by_issue, 4348);
-  assertHistoricalDispositions(historical, current, [...archive.sites, ...authorityRetirements.sites, ...historicalMgRetirements.sites, ...orchestratorRetirements.sites, ...strikeRetirements.sites]);
+  // #4348 reconciliation: preserve the retired marker-era reaper comment identity.
+  const reconciliationRetirements = JSON.parse(fs.readFileSync(path.join(root, 'docs/verification/throughput-retired-identity-sites-4348-reconciliation.json'), 'utf8'));
+  assert.equal(reconciliationRetirements.schema_version, 1);
+  assert.equal(reconciliationRetirements.retired_by_issue, 4348);
+  // #4524: the retired orchestrator skill's claim-first requirement loop was deleted with the skill.
+  const skillDriftRetirements = JSON.parse(fs.readFileSync(path.join(root, 'docs/verification/throughput-retired-identity-sites-4524.json'), 'utf8'));
+  assert.equal(skillDriftRetirements.schema_version, 1);
+  assert.equal(skillDriftRetirements.retired_by_issue, 4524);
+  assertHistoricalDispositions(historical, current, [...archive.sites, ...authorityRetirements.sites, ...historicalMgRetirements.sites, ...orchestratorRetirements.sites, ...strikeRetirements.sites, ...reconciliationRetirements.sites, ...skillDriftRetirements.sites]);
 });
 
 test('historical identity retirement refuses unexplained loss and changed verdicts', () => {

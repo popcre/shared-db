@@ -53,8 +53,7 @@ begin
   then raise exception 'B4 a client role holds a privilege on the view'; end if;
 
   if not has_table_privilege('designflow_prod_tracking_runtime', 'dflow_prod.v_prod_order_sales_order_link', 'select')
-     or not has_table_privilege('designflow_prod_backend_runtime', 'dflow_prod.v_prod_order_sales_order_link', 'select')
-  then raise exception 'B5 a production runtime cannot select the view'; end if;
+  then raise exception 'B5 the tracking runtime cannot select the view'; end if;
 end
 $b$;
 

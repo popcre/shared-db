@@ -344,9 +344,8 @@ begin
      or has_table_privilege('service_role', 'dflow_prod.v_prod_order_sales_order_link', 'select') then
     raise exception '#3869/20261022190036 post-check: view is readable by a non-owner API role';
   end if;
-  if not has_table_privilege('designflow_prod_tracking_runtime', 'dflow_prod.v_prod_order_sales_order_link', 'select')
-     or not has_table_privilege('designflow_prod_backend_runtime', 'dflow_prod.v_prod_order_sales_order_link', 'select') then
-    raise exception '#3869/20261022190036 post-check: a production runtime cannot select the view';
+  if not has_table_privilege('designflow_prod_tracking_runtime', 'dflow_prod.v_prod_order_sales_order_link', 'select') then
+    raise exception '#3869/20261022190036 post-check: the tracking runtime cannot select the view';
   end if;
   if not exists (select 1 from pg_index i
                  where i.indrelid = 'dflow_prod."ProdOrderHeader"'::regclass

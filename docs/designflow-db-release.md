@@ -78,10 +78,10 @@ with missing production requirements waits; it never initiates a belated apply.
 Application acceptance and business acceptance remain separate from database
 readiness. A failed or waiting result is never reported as ready.
 
-The organization currently has GitHub Free, and private protection queries return
-an upgrade restriction. Albert authorized GitHub Team for two seats up to8USD/month
-beforetax; checkout confirms that amount, but purchase/terms confirmation is still
-pending. No completed upgrade or enforced merge guarantee is claimed.
+The initial audit found GitHub Free and private protection queries returned an
+upgrade restriction. Albert authorized GitHub Team for two seats up to $8/month
+before tax; checkout confirmed that amount. Record actual purchase, protection
+configuration and enforcement proof on #4655 before claiming the gate is active.
 
 After Team is active, the preferred enforcement is native main protection for the
 six apps: require the `database/production-ready` status specifically from App

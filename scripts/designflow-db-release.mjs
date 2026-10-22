@@ -9,6 +9,8 @@ import { productionCatalogQuery, verifyCatalogProof } from './lib/designflow-db-
 import { readZipEntries } from './lib/zip-entries.mjs';
 import { selectArtifactFiles } from './lib/lanes/review-leases.mjs';
 import { fileMatchesLedgerStatements } from './check-applied-migration-edit.mjs';
+import { runGitHubCommand } from './lib/github-transport.mjs';
+import { createTreeReader } from './lib/github-tree.mjs';
 
 const CANONICAL = 'popcre/shared-db';
 const WORKFLOW = 'shared-supabase-migrations.yml';
@@ -63,7 +65,7 @@ export async function assessRelease({ repository, head, manifest, policy, branch
 }
 
 function command(args, { input, timeout = 60_000 } = {}) {
-  try { return execFileSync('gh', args, { encoding: 'utf8', input, timeout, maxBuffer: 20 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] }); }
+  try { return runGitHubCommand(args, { input, timeoutMs: timeout, maxBuffer: 20 * 1024 * 1024 }); }
   catch { throw Error(`GitHub operation refused or unavailable: ${args[0]}`); }
 }
 function api(endpoint, body) {
@@ -101,11 +103,13 @@ export function artifactContainsSource(requirement, files) {
     !!manifest && !Array.isArray(manifest) && requirement.migrations.every(m => manifest[m.version] === m.sha256);
 }
 
+const sourceTree = createTreeReader({ json: args => JSON.parse(command(args)), raw: args => command(args),
+  wrapError: () => Error('Canonical source tree is unavailable or incomplete') });
 function content(repository, path, ref) {
-  const data = api(`repos/${repository}/contents/${path}?ref=${ref}`);
-  if (data.type !== 'file' || data.encoding !== 'base64' || data.size > 8 * 1024 * 1024)
-    throw Error('Source content is not a bounded ordinary file');
-  return Buffer.from(data.content.replace(/\s/g, ''), 'base64').toString('utf8');
+  const text = sourceTree.readFileAtRef(repository, path, ref);
+  if (typeof text !== 'string' || Buffer.byteLength(text) > 8 * 1024 * 1024)
+    throw Error('Source content is absent or exceeds the bounded file size');
+  return text;
 }
 
 export function dispatchTitle(manifest, mode) {
@@ -250,8 +254,8 @@ async function productionEvidence(requirement, facts) {
         live_assertion: scope.liveAssertion, environment: 'production', verified_at: new Date().toISOString() };
       if (artifact.workflow_run?.head_sha !== run.head_sha || Number(artifact.workflow_run?.id) !== run.id) throw Error('Production artifact producer changed');
       let bytes;
-      try { bytes = execFileSync('gh', ['api', `repos/${CANONICAL}/actions/artifacts/${artifact.id}/zip`],
-        { encoding: null, timeout: 60_000, maxBuffer: 16 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] }); }
+      try { bytes = runGitHubCommand(['api', `repos/${CANONICAL}/actions/artifacts/${artifact.id}/zip`],
+        { encoding: null, timeoutMs: 60_000, maxBuffer: 16 * 1024 * 1024 }); }
       catch { throw Error('Production artifact download is unavailable'); }
       if (artifact.digest !== `sha256:${hash(bytes)}`) throw Error('Production archive digest differs');
       const files = selectArtifactFiles(readZipEntries(bytes), ['production-apply.txt', 'production-ledger-before.txt', 'production-ledger-after.txt',

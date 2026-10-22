@@ -23,6 +23,19 @@ BEGIN
       AND attnum>0 AND NOT attisdropped AND attname=ANY(ARRAY['item_pk','item_num_id','compan_code_fk','div_code_fk','UPC','EAN','GTIN','color_code_fk','size_code_fk','size_seq','whse_sku_id','item_active_status','coldlion_synced_at']))<>13 THEN
     RAISE EXCEPTION '#4659: production UPC source columns missing';
   END IF;
+  IF EXISTS (
+    SELECT FROM (VALUES
+      ('item_pk','int4'),('item_num_id','varchar'),('compan_code_fk','int4'),
+      ('div_code_fk','int4'),('UPC','varchar'),('EAN','varchar'),('GTIN','varchar'),
+      ('color_code_fk','varchar'),('size_code_fk','varchar'),('size_seq','int4'),
+      ('whse_sku_id','varchar'),('item_active_status','varchar'),('coldlion_synced_at','timestamptz')
+    ) AS expected(name,type_name)
+    LEFT JOIN pg_attribute a ON a.attrelid='dflow_prod."itemDetail"'::regclass
+      AND a.attname=expected.name AND a.attnum>0 AND NOT a.attisdropped
+    LEFT JOIN pg_type t ON t.oid=a.atttypid
+    WHERE t.typname IS DISTINCT FROM expected.type_name
+      OR (expected.name='item_num_id' AND a.atttypmod<>54)
+  ) THEN RAISE EXCEPTION '#4659: production UPC source column types differ'; END IF;
 END
 $pre$;
 CREATE VIEW dflow_prod.item_detail_upc WITH (security_invoker=true) AS
@@ -44,6 +57,13 @@ BEGIN
       AND reloptions @> ARRAY['security_invoker=true'])
      OR NOT has_table_privilege('designflow_prod_item_master_runtime','dflow_prod.item_detail_upc','SELECT') THEN
     RAISE EXCEPTION '#4659: intended Item Master runtime read contract failed';
+  END IF;
+  -- #4475 holds service-identity cutover. Fresh production metadata proves the
+  -- currently deployed shared backend inherits Item Master grants. Preserve that
+  -- existing bridge; do not broaden the backend grant group or create membership.
+  IF pg_has_role('designflow_prod_backend_runtime','designflow_prod_item_master_grants','member')
+     AND NOT has_table_privilege('designflow_prod_backend_runtime','dflow_prod.item_detail_upc','SELECT') THEN
+    RAISE EXCEPTION '#4659: existing shared-runtime bridge does not resolve UPC view';
   END IF;
   FOREACH r IN ARRAY ARRAY['anon','authenticated','service_role','designflow_prod_tracking_runtime','designflow_prod_data_sync_runtime'] LOOP
     IF has_table_privilege(r,'dflow_prod.item_detail_upc','SELECT') THEN

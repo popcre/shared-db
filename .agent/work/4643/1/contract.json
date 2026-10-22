@@ -1,0 +1,51 @@
+{
+  "schema_version": 2,
+  "generation": 1,
+  "work_issue": 4643,
+  "work_type": "structural",
+  "route": "claim-first",
+  "goal": "Drop the five text indexes on public.dam_search_documents that no live reader uses since 20261021223359 moved keyword search to dam_search_keys",
+  "base_sha": "5e305b96cc711841aa8da4ab5c0928dd30bffa1c",
+  "dispatcher": "Claude chat add21edf-7582-48a4-ac99-21704cebea77 on edge-dev3 (Albert: 'you take that issue and bring it to completion')",
+  "worker": "claude-add21edf-edge-dev3-4643",
+  "branch": "claude/4643-retire-dam-search-doc-text-indexes",
+  "worktree": "/home/ahazan/repos/shared-db/.claude/worktrees/awesome-faraday-ab2ca9",
+  "allowed_paths": [
+    "supabase/migrations/20261022184745_retire_dam_search_documents_text_indexes.sql",
+    "supabase/tests/dam_search_documents_text_indexes_retired.sql",
+    ".agent/work/4643/1/contract.json",
+    ".agent/work/4643/1/completion.json"
+  ],
+  "file_writes": [
+    "supabase/migrations/20261022184745_retire_dam_search_documents_text_indexes.sql",
+    "supabase/tests/dam_search_documents_text_indexes_retired.sql",
+    ".agent/work/4643/1/contract.json",
+    ".agent/work/4643/1/completion.json"
+  ],
+  "db_reads": [
+    "function public.search_dam_documents",
+    "table public.dam_search_documents"
+  ],
+  "db_writes": [
+    "index public.idx_dam_search_documents_customer_trgm",
+    "index public.idx_dam_search_documents_path_trgm",
+    "index public.idx_dam_search_documents_program_trgm",
+    "index public.idx_dam_search_documents_title_trgm",
+    "index public.idx_dam_search_documents_tsv"
+  ],
+  "prohibited_actions": [
+    "No change to search_dam_documents, dam_search_keys, the search_tsv column, the embedding indexes or the primary key",
+    "Never promote 20261021063716 or 20261021152741"
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "No live function filters dam_search_documents by search_tsv or trigram/ILIKE predicates (verified read-only on production 2026-10-22)"
+  ],
+  "stop_conditions": [
+    "Stop if any of the five index scan counters grows between two production reads"
+  ],
+  "evidence_parent": null
+}

@@ -1,6 +1,6 @@
 -- Read-only post-apply search contract. Performance proof remains on #4210.
 select exists (select 1 from pg_proc where oid = to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)')
-  and md5(prosrc) = '97e0d7ed121765f239867a48618f695b' and proowner = 'postgres'::regrole and prosecdef and provolatile = 's'
+  and md5(prosrc) = 'eb7e64398002f7f575d97708bf6641a5' and proowner = 'postgres'::regrole and prosecdef and provolatile = 's'
   and proconfig @> array['search_path=pg_catalog, auth','work_mem=64MB'])
   and has_function_privilege('authenticated','public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)','execute')
   and not has_function_privilege('anon','public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)','execute')

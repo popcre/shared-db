@@ -1,5 +1,5 @@
 -- #4634: production counterpart of sandbox-only migration 20261021150012 (#4534).
--- Version reserved by claim #4635. Production target verified from popcre-core-prod.
+-- Version reserved by claim #4637. Production target verified from popcre-core-prod.
 -- derived-from: none
 -- Same shape as sandbox; vendor_id deliberately has no FK because the application
 -- validates the environment-specific vendor mapping. WeChat activation is out of scope.

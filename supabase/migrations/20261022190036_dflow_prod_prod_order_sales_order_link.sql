@@ -1,8 +1,8 @@
 -- derived-from: none
 -- Issue #3869, generation 12 (production). Claim #4647.
 --
--- Live DesignFlow moved to Supabase dflow_prod (Oct 17 cutover; docs/
--- production-supabase-host-cutover.md). The sandbox link view (plm.v_prod_order_
+-- Live DesignFlow moved to Supabase dflow_prod (Oct 17 cutover; see
+-- popcre/designflow-tracking docs/production-supabase-host-cutover.md). The sandbox link view (plm.v_prod_order_
 -- sales_order_link, generations 7-11: 20261009170724 + perf fix 20261013174336)
 -- stays on the sandbox project; this is its PRODUCTION counterpart in dflow_prod,
 -- reading the production header table. New object in a new schema: derived-from
@@ -346,6 +346,13 @@ begin
   end if;
   if not has_table_privilege('designflow_prod_tracking_runtime', 'dflow_prod.v_prod_order_sales_order_link', 'select') then
     raise exception '#3869/20261022190036 post-check: the tracking runtime cannot select the view';
+  end if;
+  -- popcre-tracking-prod still connects as designflow_prod_backend_runtime (live
+  -- production grants it the group; the from-empty replay database does not), so
+  -- assert the service login wherever its membership exists (review M1).
+  if pg_has_role('designflow_prod_backend_runtime', 'designflow_prod_tracking_grants', 'member')
+     and not has_table_privilege('designflow_prod_backend_runtime', 'dflow_prod.v_prod_order_sales_order_link', 'select') then
+    raise exception '#3869/20261022190036 post-check: backend runtime is in the grants group but cannot select the view';
   end if;
   if not exists (select 1 from pg_index i
                  where i.indrelid = 'dflow_prod."ProdOrderHeader"'::regclass

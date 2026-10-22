@@ -4,7 +4,9 @@
 -- A. Shape: view exists, security_invoker, reviewed column list.
 -- B. ACL: designflow_prod_tracking_grants holds exactly SELECT on the view and on
 --    both coldlion history tables; anon, authenticated and service_role hold
---    nothing on the view; both production runtimes reach the view.
+--    nothing on the view; the tracking runtime reaches the view, and the backend
+--    runtime does wherever it holds the grants group (live production; the
+--    from-empty replay database never grants it that membership).
 -- C. RLS: one SELECT policy named coldlion_history_tracking_read on each coldlion
 --    history table, scoped to designflow_prod_tracking_grants.
 -- D. Index: unique valid prod_order_header_id_uidx on dflow_prod."ProdOrderHeader"(id).
@@ -54,6 +56,9 @@ begin
 
   if not has_table_privilege('designflow_prod_tracking_runtime', 'dflow_prod.v_prod_order_sales_order_link', 'select')
   then raise exception 'B5 the tracking runtime cannot select the view'; end if;
+  if pg_has_role('designflow_prod_backend_runtime', 'designflow_prod_tracking_grants', 'member')
+     and not has_table_privilege('designflow_prod_backend_runtime', 'dflow_prod.v_prod_order_sales_order_link', 'select')
+  then raise exception 'B5b backend runtime is in the grants group but cannot select the view'; end if;
 end
 $b$;
 

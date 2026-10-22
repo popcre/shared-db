@@ -1,0 +1,53 @@
+{
+  "schema_version": 2,
+  "generation": 1,
+  "evidence_parent": null,
+  "work_issue": 4588,
+  "work_type": "structural",
+  "route": "claim-first",
+  "goal": "Create hts_rag.hts_rag_ruling_ingest_jobs leased queue for cited CBP ruling ingest (designflow-backend#217)",
+  "base_sha": "4ed0f0fa6e0f41334941f4399fc31eee984d57c2",
+  "dispatcher": "Claude chat (designflow-backend#217 HTS audit M7) on edge-dev3",
+  "worker": "same session",
+  "branch": "db/4588-ruling-ingest-jobs",
+  "worktree": "/home/ahazan/repos/shared-db-4588",
+  "allowed_paths": [
+    "supabase/migrations/20261022032908_hts_rag_ruling_ingest_jobs.sql",
+    ".agent/work/4588/1/contract.json",
+    ".agent/work/4588/1/completion.json"
+  ],
+  "file_writes": [
+    "supabase/migrations/20261022032908_hts_rag_ruling_ingest_jobs.sql",
+    ".agent/work/4588/1/contract.json",
+    ".agent/work/4588/1/completion.json"
+  ],
+  "db_reads": [
+    "table hts_rag.hts_rag_determinations"
+  ],
+  "db_writes": [
+    "table hts_rag.hts_rag_ruling_ingest_jobs",
+    "index hts_rag.hts_rag_ruling_ingest_jobs_claim_idx",
+    "index hts_rag.hts_rag_ruling_ingest_jobs_open_uq",
+    "trigger set_updated_at on hts_rag.hts_rag_ruling_ingest_jobs",
+    "policy hts_rag_prod_worker_access on hts_rag.hts_rag_ruling_ingest_jobs",
+    "policy hts_rag_prod_worker_insert on hts_rag.hts_rag_ruling_ingest_jobs",
+    "policy hts_rag_prod_worker_update on hts_rag.hts_rag_ruling_ingest_jobs",
+    "policy hts_rag_alsand_worker_access on hts_rag.hts_rag_ruling_ingest_jobs",
+    "policy hts_rag_alsand_worker_insert on hts_rag.hts_rag_ruling_ingest_jobs",
+    "policy hts_rag_alsand_worker_update on hts_rag.hts_rag_ruling_ingest_jobs"
+  ],
+  "prohibited_actions": [
+    "Additive only; no change to existing HTS tables",
+    "Never invent or reuse a migration version; claim #4589 reserves 20261022032908"
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "git diff --check origin/main...HEAD"
+  ],
+  "assumptions": [
+    "Shared HTS connection uses schema hts_rag with source_environment production/alsand"
+  ],
+  "stop_conditions": [
+    "Stop if a required check fails"
+  ]
+}

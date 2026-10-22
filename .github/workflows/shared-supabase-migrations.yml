@@ -1825,6 +1825,10 @@ jobs:
           REQUESTED_CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           test -n "$REQUESTED_SHA"
+          if [ "$REQUESTED_CONFIRMATION" = "OWNER-OVERRIDE $REQUESTED_SHA" ]; then
+            echo "OWNER OVERRIDE confirmation accepted (Albert Hazan 2026-10-22)."
+            exit 0
+          fi
           test "$REQUESTED_CONFIRMATION" = "APPLY $REQUESTED_SHA"
       - uses: actions/checkout@v4
         with:

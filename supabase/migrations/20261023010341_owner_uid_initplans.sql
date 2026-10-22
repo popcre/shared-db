@@ -1,4 +1,4 @@
--- Issue #4428; claim #4593; reserved version 20261022110820.
+-- Issue #4428; claim #4624; reserved version 20261023010341.
 -- Wrap only the request-constant auth.uid() value in 17 ownership policies.
 -- user_id comparisons stay row-dependent. WITH CHECK inheritance preserved.
 -- catalog-verification: policies only (ALTER POLICY expressions); no new relations.

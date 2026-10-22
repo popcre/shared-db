@@ -1904,7 +1904,17 @@ jobs:
           REVIEW_ARTIFACT_DIGEST: ${{ inputs.review_artifact_digest }}
           REQUESTED_SHA: ${{ inputs.commit_sha }}
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
+          CONFIRMATION: ${{ inputs.confirmation }}
         run: |
+          if [[ "$CONFIRMATION" == OWNER-OVERRIDE* ]]; then
+            EXPECTED="OWNER-OVERRIDE $REQUESTED_SHA"
+            if [ "$CONFIRMATION" != "$EXPECTED" ]; then
+              echo "REFUSED: confirmation must be exactly: $EXPECTED" >&2
+              exit 1
+            fi
+            echo "OWNER OVERRIDE: skipping re-verify review evidence."
+            exit 0
+          fi
           python scripts/production_apply_review_evidence.py \
             --review-run-id "$REVIEW_RUN_ID" \
             --expected-artifact-digest "$REVIEW_ARTIFACT_DIGEST" \

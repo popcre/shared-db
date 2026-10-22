@@ -373,10 +373,15 @@ export function wrapperSpawnPlan(resolved,args,platform=process.platform){
 }
 
 const LIFECYCLE_POOL_PROVIDERS=new Set(['muse','deepseek','glm','stepfun'])
-function portableReviewPath(value,platform=process.platform){
+function portableReviewPath(value,platform=process.platform,tmp=tmpdir()){
   let path=String(value??'').replace(/\\/g,'/')
-  if(platform==='win32')path=path.replace(/^\/([a-z])\//i,'$1:/').toLowerCase()
+  // Git Bash prints MSYS forms (/c/repos/..., /tmp/...); fold them onto the native Windows path.
+  if(platform==='win32')path=path.replace(/^\/tmp(?=\/|$)/i,String(tmp).replace(/\\/g,'/').replace(/\/$/,'')).replace(/^\/([a-z])(?=\/|$)/i,'$1:').toLowerCase()
   return path.replace(/\/$/,'')
+}
+export function sameReviewPath(left,right,platform=process.platform,tmp=tmpdir()){
+  const a=portableReviewPath(left,platform,tmp)
+  return Boolean(a)&&a===portableReviewPath(right,platform,tmp)
 }
 function nativeReviewPath(value,platform=process.platform){
   const path=portableReviewPath(value,platform)
@@ -407,7 +412,7 @@ export function lifecyclePoolReportBody(stdout,{headSha,provider,worktree,source
   if(lines.length>1){
     try{lifecycleRecord=JSON.parse(lines.slice(0,-1).join('\n'))}catch{lifecycleRecord=null}
     const ok=lifecycleRecord&&typeof lifecycleRecord==='object'&&!Array.isArray(lifecycleRecord)&&lifecycleRecord.status==='completed'&&
-      (lifecycleRecord.verdict==='APPROVE'||lifecycleRecord.verdict==='REJECT')&&lifecycleRecord.report_path===pathLine&&
+      (lifecycleRecord.verdict==='APPROVE'||lifecycleRecord.verdict==='REJECT')&&sameReviewPath(lifecycleRecord.report_path,pathLine)&&
       lifecycleRecord.provider===provider&&String(lifecycleRecord.head??'').toLowerCase()===String(headSha??'').toLowerCase()&&
       /^[0-9a-f]{64}$/.test(String(lifecycleRecord.report_sha256??''))
     if(!ok)throw new Error('lifecycle review did not return exactly one absolute report path')

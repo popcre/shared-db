@@ -44,8 +44,8 @@ end
 $sync$;
 revoke all on function public.sync_style_guide_file_preview_state() from public, anon, authenticated;
 
-lock table public.style_guide_files in share row exclusive mode;
-
+-- create trigger holds SHARE ROW EXCLUSIVE on style_guide_files until commit, so no
+-- write can slip between the trigger and the backfill.
 create trigger trg_style_guide_file_preview_state
   after insert or update of is_active, thumbnail_url, thumbnail_error
   on public.style_guide_files

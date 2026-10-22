@@ -16,7 +16,7 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 OLD = ROOT / 'supabase/migrations/20261012005136_popsg_parse_search_query_once.sql'
-NEW = ROOT / 'supabase/migrations/20261020165118_popsg_search_forward_delivery_recovery.sql'
+NEW = ROOT / 'supabase/migrations/20261022032116_popsg_search_forward_delivery_recovery.sql'
 SIGNATURE = 'public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)'
 
 
@@ -174,7 +174,7 @@ class RepairMarkers(unittest.TestCase):
         self.assertIn('cross join lateral (', body)
         self.assertIn('pdf_text_available', body)
         self.assertIn('group by d.root_label, d.licensor_name, d.property_folder, d.style_guide_folder, d.style_guide_name', body)
-        sidecar = json.loads((ROOT / 'scripts/production-verification-sidecars/20261020165118.json').read_text())
+        sidecar = json.loads((ROOT / 'scripts/production-verification-sidecars/20261022032116.json').read_text())
         self.assertEqual(sidecar['migration_sha256'], hashlib.sha256(NEW.read_bytes()).hexdigest())
         for marker in sidecar['marker_reviews']:
             self.assertIn('execute $guides_query$', text.splitlines()[marker['line_start']-1])

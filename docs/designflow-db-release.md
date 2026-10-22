@@ -46,14 +46,22 @@ do not weaken content validation to conceal that correction.
 The central five-minute observer checks develop and main snapshots. Only develop
 can initiate promotion. It asks the existing native preview selector for a stored
 `merged_rehearsal` instruction and accepts only the exact required source PR,
-versions and current canonical main. Existing guards, reviewer evidence, claimed
+versions and current canonical main. The native issue/PR admission check is read-only:
+closed unfinished work is returned to its existing owner rather than silently
+reopened. An existing authenticated current ready record is reused without taking
+the global mutex or adding another issue event. First preparation rechecks under
+the native admission mutex and invokes the existing native preparation once;
+partial event/ref writes stop for reconciliation. Existing guards, reviewer evidence, claimed
 source custody, risk assessment and preview/production locks remain authoritative.
 
 Dry-run and apply are sequenced across bounded observer runs. Each native dispatch
 is preserved before its single API write. The migration workflow's deterministic
 run name uses its existing inputs; no 26th input or alternative SQL apply path is
-introduced. A missing, ambiguous, failed or uncertain dispatch requires authentic
-reconciliation. A timed-out write is never replayed as if it had not happened.
+introduced. A recorded dispatch whose run has not appeared yet stays pending and is never
+replayed. An ambiguous, failed or uncertain dispatch requires authentic reconciliation.
+Ordinary waiting does not fail the scheduled observer; a blocked proof does.
+Full synthetic database tests run for source PRs and manual runs, rather than on
+every scheduled read. A timed-out write is never replayed as if it had not happened.
 
 Successful native production evidence is verified by the existing exact-source
 artifact verifier plus archive-byte digest, exact migration-content hashes,
@@ -139,3 +147,18 @@ records, never by deleting dispatch custody or releasing another author's claim.
 Roll back defective observer source through the guarded repository route; retain
 the last valid application runtime while readiness is unavailable. Structural
 rollback remains a new reviewed forward migration.
+
+## Exact protection activation inputs
+
+Each application's `main_protection` in the central policy records the complete
+read-only baseline, its canonical JSON SHA256, and the exact desired GitHub request.
+The production-class action is reviewed against those inputs at the final source
+head. Immediately before each write, compare the complete live baseline again;
+abort on any drift. Preserve frontend's existing required review. No setting applies
+to sandbox commits or develop commits. The exact synthetic probe is sealed in `enforcement_probe`: temporary branches
+only, cloned protection payload, missing-status and wrong-publisher rejection,
+then cleanup of only the owned probe resources. Their names must not match
+application deployment triggers. A missing status may not be replaced by a
+manual success; the wrong-publisher probe deliberately proves this restriction. Read
+back main protection after activation and record publisher-bound enforcement proof
+on #4655. No actual main push or application release is used as a negative test.

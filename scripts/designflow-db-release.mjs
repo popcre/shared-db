@@ -4,7 +4,10 @@ import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { validateManifest, manifestDigest, verifyRequirementSource } from './lib/designflow-db-release.mjs';
 import { githubIo, parseQueueScope } from './manage-migration-author-lanes.mjs';
-import { readyRecord } from './db-flow/reconcile.mjs';
+import { readyRecord, preparePreviewDispatch } from './db-flow/reconcile.mjs';
+import { canonicalJson, sha256 } from './db-flow/evidence-bundle.mjs';
+import { admitIssue } from './lib/lanes/admission.mjs';
+import { formatEventComment } from './db-coordination-events.mjs';
 import { productionCatalogQuery, verifyCatalogProof } from './lib/designflow-db-catalog.mjs';
 import { readZipEntries } from './lib/zip-entries.mjs';
 import { selectArtifactFiles } from './lib/lanes/review-leases.mjs';
@@ -238,8 +241,7 @@ async function productionEvidence(requirement, facts) {
   if (!source.merged_at || source.head.sha !== facts.head_sha40) throw Error('Production discovery source changed');
   const since = encodeURIComponent(`>=${source.merged_at}`);
   const discovered = workflowRuns(api, `repos/${CANONICAL}/actions/workflows/${WORKFLOW}/runs?event=workflow_dispatch&status=success&created=${since}`);
-  const expectedSuffix = ` PR${requirement.source_pr} ${requirement.migrations.map(m => m.version).join(',')}`;
-  const ids = [...new Set([...mentioned, ...discovered.filter(r => r.display_title?.startsWith('DB production apply ') && r.display_title.endsWith(expectedSuffix)).map(r => String(r.id))])];
+  const ids = [...new Set([...mentioned, ...discovered.filter(r => productionRunMatches(r.display_title, requirement)).map(r => String(r.id))])];
   if (ids.length > 50) throw Error('Production evidence candidates exceed bounded verification');
   const verified = [];
   for (const id of ids) {
@@ -283,16 +285,75 @@ async function productionEvidence(requirement, facts) {
   return candidate.result;
 }
 
-// Two bounded scheduled passes sequence dry-run then apply; no sleeping worker,
-// no second SQL executor, and an uncertain dispatch is never replayed.
+export function productionRunMatches(title, requirement) {
+  const match = /^DB production apply ([a-f0-9]{40}) PR([1-9][0-9]*) ([0-9,]+)$/.exec(title ?? '');
+  const versions = match?.[3].split(',');
+  return !!match && Number(match[2]) === requirement.source_pr &&
+    new Set(versions).size === versions.length &&
+    versions.slice().sort().join(',') === requirement.migrations.map(m => m.version).sort().join(',');
+}
+
+// Reuse the native current candidate and admission proofs without changing issue
+// state or outcome history. A closed, unfinished issue needs its existing owner
+// to restore admission; the observer never silently reopens it.
+export function prepareReleaseReady(requirement, native = githubIo) {
+  const readOnly = Object.create(native);
+  readOnly.commentIssue = undefined;
+  readOnly.updateIssue = undefined;
+  const options = { preparePreviewDispatch: requirement.work_issue,
+    admitIssue: requirement.work_issue, pr: requirement.source_pr };
+  const flow = readOnly.flowAdapter(null, options);
+  const assertSession = () => {
+    const authority = flow.resolveMarker();
+    if (!authority?.live || authority.task !== authority.calling_task)
+      throw Error('Native claim-first session authority is required');
+  };
+  const candidate = () => {
+    assertSession();
+    admitIssue(requirement.work_issue, readOnly, { pr: requirement.source_pr, allowLegacy: true });
+    const ready = readyRecord(flow.selectCurrent(requirement.work_issue));
+    if (ready.route !== 'merged_rehearsal' || ready.pr !== requirement.source_pr ||
+        ready.manifest.preview_allowlist.split(',').sort().join(',') !== requirement.migrations.map(m => m.version).sort().join(','))
+      throw Error('Native preview instruction does not match the release requirement');
+    return ready;
+  };
+  const reuse = ready => {
+    const ref = `refs/db-preview-ready/${ready.ready_id}`;
+    const stored = flow.readRef(ref);
+    if (!stored) return null;
+    if (stored.digest !== sha256(canonicalJson(stored.record)) ||
+        readyRecord(stored.record).ready_id !== ready.ready_id ||
+        canonicalJson(readyRecord(stored.record)) !== canonicalJson(ready))
+      throw Error('Stored native ready instruction differs from current verified identity');
+    const outcome = flow.readRef(`refs/db-preview-ready-outcomes/${ready.ready_id}`);
+    if (outcome && outcome.record?.outcome !== 'dispatched')
+      throw Error('Native ready instruction has a conflicting terminal outcome');
+    const bindings = flow.events(requirement.work_issue).filter(e => e.schema_version === 2 &&
+      e.event_type === 'preview_ready' && e.ready_id === ready.ready_id);
+    if (bindings.length !== 1) throw Error('Native ready instruction requires one authenticated event binding');
+    return ready;
+  };
+  const existing = reuse(candidate());
+  if (existing) return existing; // No mutex, issue comment, or coordination write.
+  return flow.withMutex(() => {
+    const ready = candidate();
+    const concurrent = reuse(ready);
+    if (concurrent) return concurrent;
+    if (flow.events(requirement.work_issue).some(e => e.ready_id === ready.ready_id))
+      throw Error('Uncertain native ready preparation requires reconciliation before retry');
+    // The native admission mutex is already held. Native preparation retains its
+    // source/dependency proofs, immutable ready binding and supersession checks.
+    const prepared = preparePreviewDispatch(requirement.work_issue, { ...flow,
+      withMutex: fn => fn(),
+      appendEvent: event => native.commentIssue(event.work_issue, formatEventComment(event)) });
+    if (prepared.status !== 'PREVIEW_READY') throw Error('Native preparation did not complete');
+    return reuse(ready);
+  });
+}
+
+// Scheduled passes sequence dry-run then apply; uncertain writes are never replayed.
 function promote(requirement) {
-  const prepared = JSON.parse(execFileSync(process.execPath,
-    ['scripts/manage-migration-author-lanes.mjs', '--prepare-preview-dispatch', String(requirement.work_issue)],
-    { encoding: 'utf8', timeout: 120_000, maxBuffer: 1024 * 1024 }));
-  const ready = readyRecord(prepared.record);
-  if (prepared.status !== 'PREVIEW_READY' || ready.route !== 'merged_rehearsal' ||
-      ready.pr !== requirement.source_pr || ready.manifest.preview_allowlist.split(',').sort().join(',') !== requirement.migrations.map(m => m.version).sort().join(','))
-    throw Error('Stored native preview instruction does not match the release requirement');
+  const ready = prepareReleaseReady(requirement);
   if (api(`repos/${CANONICAL}/commits/main`).sha !== ready.manifest.commit_sha) throw Error('Canonical main changed before dispatch');
   for (const mode of ready.mode_sequence) {
     const ref = `refs/designflow-db-dispatches/${ready.ready_id}/${mode}`;
@@ -308,8 +369,9 @@ function promote(requirement) {
       const recorded = JSON.parse(message.slice(prefix.length));
       if (recorded.ready_id !== ready.ready_id || recorded.mode !== mode || recorded.title !== title) throw Error('Preserved dispatch identity changed');
       const run = runs[0];
-      if (!run || Date.parse(run.created_at) < Date.parse(recorded.created_at) - 1000)
-        throw Error('Preserved dispatch has no authenticated run; reconcile before retry');
+      if (!run) return { state: 'awaiting-run', mode, ready_id: ready.ready_id, replay_allowed: false };
+      if (Date.parse(run.created_at) < Date.parse(recorded.created_at) - 1000)
+        throw Error('Preserved dispatch predates its authenticated custody; reconcile before retry');
       if (run.status !== 'completed') return { state: 'running', mode, run_id: run.id };
       if (run.conclusion !== 'success') throw Error('Native rehearsal failed; repair its cause before recovery');
       continue;
@@ -419,7 +481,7 @@ export async function main() {
   };
   const results = await runObserver(policy, io);
   process.stdout.write(JSON.stringify(results, null, 2) + '\n');
-  if (results.some(r => r.status !== 'ready')) process.exitCode = 1;
+  if (results.some(r => r.status === 'blocked')) process.exitCode = 1;
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
   main().catch(() => { process.stderr.write('Database release observer refused; no readiness was authorized.\n'); process.exitCode = 1; });

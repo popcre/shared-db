@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { manifestDigest } from './lib/designflow-db-release.mjs';
-import { assessRelease, runObserver, releasePolicy, dispatchTitle, verifyApplyReceipt, verifyAppliedFiles, workflowRuns, artifactContainsSource, assertObserverSource, publishAppStatus } from './designflow-db-release.mjs';
+import { assessRelease, runObserver, releasePolicy, dispatchTitle, verifyApplyReceipt, verifyAppliedFiles, workflowRuns, artifactContainsSource, assertObserverSource, publishAppStatus, prepareReleaseReady, productionRunMatches } from './designflow-db-release.mjs';
 
 const head = 'a'.repeat(40), repository = 'popcre/designflow-tracking';
 const path = 'supabase/migrations/20261022194647_synthetic.sql', content = '-- synthetic only\n';
@@ -221,4 +221,68 @@ test('a failed tracking prerequisite does not hold an unrelated backend release'
   assert.equal(results.find(r=>r.repository===other.repository).status,'ready');
   assert.equal(f.effects.filter(x=>x==='catalog').length,1);
   assert.ok(!f.effects.includes('promote'));
+});
+
+// Compose real admission and native preview preparation over synthetic GitHub IO.
+function nativeReleaseFixture() {
+  const refs=new Map(), events=[], effects=[];
+  const state={closed:false,sql:'create table core.synthetic(id bigint);',linked:4646,race:null};
+  const current={issue:4646,pr:4653,head_sha:'b'.repeat(40),bundle_id:'d'.repeat(64),route:'merged_rehearsal',route_context:head,
+    manifest:{target:'preview',commit_sha:head,merged_preview_source_pr:'4653',preview_allowlist:requirement.migrations[0].version}};
+  const body=['```db-work-scope','status: ready','work_type: structural','route: claim-first','service_class: standard-application','change_type: migration','application_return_to: popcre/designflow-tracking','live_assertion: synthetic full-triple read succeeds','generated_types: not-applicable','priority: 5','depends_on:','writes:','  - table core.synthetic','```'].join('\n');
+  const flow={resolveMarker:()=>({live:true,task:'release',calling_task:'release'}),selectCurrent:()=>current,
+    actor:()=> 'release',now:()=> '2026-10-22T00:00:00.000Z',events:()=>events,
+    readRef:r=>refs.get(r),createRef:(r,d,record)=>{effects.push('ref');if(refs.has(r))return false;refs.set(r,{digest:d,record});return true;},
+    listReady:()=>[...refs].filter(([r])=>r.startsWith('refs/db-preview-ready/')).map(([,v])=>v),
+    withMutex:fn=>{effects.push('mutex');state.race?.();return fn();}};
+  const native={getIssue:()=>({number:4646,state:state.closed?'closed':'open',body,createdAt:'2026-10-22T00:00:00Z'}),
+    getPr:()=>({head:{sha:'b'.repeat(40)},merged_at:'2026-10-22T00:00:00Z'}),closingIssuesForPr:()=>[{number:state.linked}],
+    getPrFiles:()=>[{filename:requirement.migrations[0].path,status:'added'}],getFileAt:()=>state.sql,
+    issueComments:()=>[],updateIssue:()=>{effects.push('ISSUE_UPDATE');throw Error('unexpected issue update');},
+    commentIssue:(_issue,body)=>{const json=body.match(/```db-coordination-event\s*([\s\S]*?)```/);if(!json)throw Error('unexpected non-ready comment');events.push(JSON.parse(json[1]));effects.push('event');},
+    flowAdapter:()=>flow};
+  return {native,flow,state,current,refs,events,effects};
+}
+test('native release preparation emits exactly one event/ref across repeat and two-app calls without issue mutations',()=>{
+ const f=nativeReleaseFixture();const first=prepareReleaseReady(requirement,f.native);
+ const before=f.effects.slice();assert.equal(prepareReleaseReady(structuredClone(requirement),f.native).ready_id,first.ready_id);
+ assert.deepEqual(f.effects,before);assert.deepEqual(f.effects,['mutex','event','ref']);assert.equal(f.events.length,1);assert.equal(f.refs.size,1);
+});
+test('under-lock competing application preparation converges on one native ready identity',()=>{
+ const f=nativeReleaseFixture();let raced=false;
+ f.state.race=()=>{if(raced)return;raced=true;f.state.race=null;prepareReleaseReady(requirement,f.native);};
+ const ready=prepareReleaseReady(requirement,f.native);assert.ok(ready.ready_id);assert.equal(f.events.length,1);assert.equal(f.refs.size,1);assert.equal(f.effects.filter(x=>x==='event').length,1);
+});
+test('real admission refuses closed unfinished and wrong exact source PR without writes',()=>{
+ for(const mutate of [f=>f.state.closed=true,f=>f.state.linked=999,f=>f.state.sql='create table core.undeclared(id bigint);']){
+  const f=nativeReleaseFixture();mutate(f);assert.throws(()=>prepareReleaseReady(requirement,f.native));assert.deepEqual(f.effects,[]);
+ }
+});
+test('candidate source versions and route must match requirement before native writes',()=>{
+ for(const mutate of [f=>f.current.pr++,f=>f.current.manifest.preview_allowlist='20200101000000',f=>f.current.route='ordinary_preview_apply']){
+  const f=nativeReleaseFixture();mutate(f);assert.throws(()=>prepareReleaseReady(requirement,f.native));assert.deepEqual(f.effects,[]);
+ }
+});
+test('corrupt stored ready digest or missing/duplicate event fails without mutex or writes',()=>{
+ for(const mutate of [f=>[...f.refs.values()][0].digest='0'.repeat(64),f=>[...f.refs.values()][0].record.head_sha='e'.repeat(40),f=>f.events.length=0,f=>f.events.push({...f.events[0]})]){
+  const f=nativeReleaseFixture();prepareReleaseReady(requirement,f.native);mutate(f);const before=f.effects.slice();assert.throws(()=>prepareReleaseReady(requirement,f.native));assert.deepEqual(f.effects,before);
+ }
+});
+test('orphan native event without immutable ready refuses rather than appending another',()=>{
+ const f=nativeReleaseFixture();prepareReleaseReady(requirement,f.native);f.refs.clear();const count=f.events.length;
+ assert.throws(()=>prepareReleaseReady(requirement,f.native),/reconciliation/);assert.equal(f.events.length,count);assert.equal(f.refs.size,0);
+});
+test('production discovery compares exact unique version sets independent of ordering',()=>{
+ const req={...requirement,migrations:[...requirement.migrations,{version:'20261022194648'}]};
+ const prefix=`DB production apply ${head} PR4653 `;
+ assert.equal(productionRunMatches(prefix+'20261022194648,20261022194647',req),true);
+ for(const versions of ['20261022194647','20261022194647,20261022194647','20261022194647,20261022194649','20261022194647,20261022194648,20261022194649'])assert.equal(productionRunMatches(prefix+versions,req),false);
+ assert.equal(productionRunMatches(prefix.replace('PR4653','PR4654')+'20261022194647,20261022194648',req),false);
+ assert.equal(productionRunMatches(undefined,req),false);
+});
+test('admission and session authority are rechecked under mutex before any ready writes',()=>{
+ for(const mutate of [f=>f.state.closed=true,f=>f.state.sql='create table core.foreign_source(id bigint);',f=>f.flow.resolveMarker=()=>({live:true,task:'other',calling_task:'release'})]){
+  const f=nativeReleaseFixture();f.state.race=()=>{f.state.race=null;mutate(f);};
+  assert.throws(()=>prepareReleaseReady(requirement,f.native));assert.deepEqual(f.effects,['mutex']);assert.equal(f.events.length,0);assert.equal(f.refs.size,0);
+ }
 });

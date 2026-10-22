@@ -373,18 +373,22 @@ export function wrapperSpawnPlan(resolved,args,platform=process.platform){
 }
 
 const LIFECYCLE_POOL_PROVIDERS=new Set(['muse','deepseek','glm','stepfun'])
-function portableReviewPath(value,platform=process.platform,tmp=tmpdir()){
+function slashReviewPath(value,platform=process.platform,tmp=tmpdir()){
   let path=String(value??'').replace(/\\/g,'/')
   // Git Bash prints MSYS forms (/c/repos/..., /tmp/...); fold them onto the native Windows path.
-  if(platform==='win32')path=path.replace(/^\/tmp(?=\/|$)/i,String(tmp).replace(/\\/g,'/').replace(/\/$/,'')).replace(/^\/([a-z])(?=\/|$)/i,'$1:').toLowerCase()
+  if(platform==='win32')path=path.replace(/^\/tmp(?=\/|$)/i,String(tmp).replace(/\\/g,'/').replace(/\/$/,'')).replace(/^\/([a-z])(?=\/|$)/i,(_,drive)=>`${drive.toUpperCase()}:`)
   return path.replace(/\/$/,'')
+}
+function portableReviewPath(value,platform=process.platform,tmp=tmpdir()){
+  const path=slashReviewPath(value,platform,tmp)
+  return platform==='win32'?path.toLowerCase():path
 }
 export function sameReviewPath(left,right,platform=process.platform,tmp=tmpdir()){
   const a=portableReviewPath(left,platform,tmp)
   return Boolean(a)&&a===portableReviewPath(right,platform,tmp)
 }
 function nativeReviewPath(value,platform=process.platform){
-  const path=portableReviewPath(value,platform)
+  const path=slashReviewPath(value,platform)
   return platform==='win32'?path.replace(/\//g,'\\'):path
 }
 export function lifecyclePoolProvider(options){

@@ -21,7 +21,7 @@ INSERT INTO dflow_prod.users VALUES (1,'synthetic-admin@example.invalid','admin'
 CREATE TABLE dflow_prod."Roles"("Id" serial PRIMARY KEY,"Name" varchar NOT NULL);
 INSERT INTO dflow_prod."Roles"("Name") VALUES ('admin'),('designer'),('production'),('sales'),('sourcing_manager');
 CREATE TABLE dflow_prod."RolePermissions"("Id" serial PRIMARY KEY,"RoleId" integer NOT NULL,"UserId" integer,"ElementId" integer NOT NULL,"Access" boolean NOT NULL);
-INSERT INTO dflow_prod."RolePermissions"("RoleId","UserId","ElementId","Access") VALUES (2,NULL,100,true),(3,NULL,101,false),(4,4,102,true);
+INSERT INTO dflow_prod."RolePermissions"("RoleId","UserId","ElementId","Access") VALUES (2,2,100,true),(3,3,101,false),(4,4,102,true);
 CREATE TABLE dflow_prod.artists(id integer PRIMARY KEY);
 CREATE TABLE dflow_prod."FactoryTime"(id integer PRIMARY KEY,name text);
 INSERT INTO dflow_prod."FactoryTime" VALUES (1,'existing');
@@ -59,8 +59,8 @@ RESET ROLE;
 for(const [name,mutation,error] of [
  ['unknown legacy level',`UPDATE dflow_prod.users SET level='unmapped' WHERE id=2;`,/unknown users.level/],
  ['duplicate role name',`INSERT INTO dflow_prod."Roles"("Name") VALUES ('designer');`,/duplicate.*Roles/],
- ['orphan permission',`INSERT INTO dflow_prod."RolePermissions"("RoleId","ElementId","Access") VALUES (999,7,true);`,/orphan RoleId/],
- ['conflicting permission',`INSERT INTO dflow_prod."RolePermissions"("RoleId","ElementId","Access") VALUES (2,100,false);`,/conflicting Access/],
+ ['orphan permission',`INSERT INTO dflow_prod."RolePermissions"("RoleId","UserId","ElementId","Access") VALUES (999,1,7,true);`,/orphan RoleId/],
+ ['preexisting role-level permission',`INSERT INTO dflow_prod."RolePermissions"("RoleId","ElementId","Access") VALUES (2,100,false);`,/preexisting role-level permissions/],
  ['wrong existing role-column type',`ALTER TABLE dflow_prod."Roles" ADD COLUMN kind integer;`,/shape mismatch/],
  ['wrong existing bridge-column type',`ALTER TABLE dflow_prod.artists ADD COLUMN core_artist_id integer;`,/model-column shape mismatches/],
  ['wrong existing tags array type',`ALTER TABLE dflow_prod."FactoryTime" ADD COLUMN tags integer[] NOT NULL DEFAULT '{}';`,/array_position|text\[\]/],

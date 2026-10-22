@@ -1,8 +1,10 @@
 -- Issue #4638; claim #4641; application acceptance designflow-backend#232.
 -- derived-from: none
 -- Production dflow_prod is a distinct set of objects from the sandbox dflow/plm.
--- Reuses the reviewed role hierarchy contract in 20261008212538, retargeted to
+-- Adapts the reviewed role hierarchy contract in 20261008212538, retargeted to
 -- the production schema. Existing users.level, permission rows and role IDs stay.
+-- Production has no role-level permission rows. Assert that again before changes;
+-- never copy or rewrite permissions. Per-user overrides stay byte-for-byte.
 -- New nullable linkage columns are unpopulated compatibility bridges only; this
 -- does not activate canonical master-data ownership or copy mapping values.
 -- Rollback: preserve additive columns/tables and retain legacy application paths;
@@ -22,6 +24,10 @@ declare
   bad_shape text;
   dup_names text;
 begin
+  if exists (select 1 from dflow_prod."RolePermissions" where "UserId" is null) then
+    raise exception '#4638: preexisting role-level permissions require explicit mapping before hierarchy activation';
+  end if;
+
   select string_agg(p."Id"::text, ', ' order by p."Id")
     into orphan_ids
   from dflow_prod."RolePermissions" p
@@ -352,105 +358,6 @@ join (
   on map.old_level = lower(trim(u.level))
 join dflow_prod."Roles" r on r."Name" = map.leaf_name
 on conflict (user_id, role_id) do nothing;
-
--- ------------------------------------------------------------------------------
--- 6. Copy role-level RolePermissions onto categories (sourcing_manager → sourcing)
--- ------------------------------------------------------------------------------
-
--- Role-level rows only (`UserId IS NULL`). Per-user rows (Sample QC model) stay
--- on their existing row and keep working through the UserId override path —
--- copying those onto a category would hand the flag to everyone in the category.
---
--- Idempotency guard: ON CONFLICT cannot fire here because every inserted row has
--- UserId = NULL and the unique arbiter treats NULLs as distinct. Use NOT EXISTS
--- with Access comparison so a retry is a clean no-op.
-
--- F6: two role-level rows on the same (source role, ElementId) with different
--- Access are legal under the NULL-distinct unique arbiters. Any copy would be
--- an arbitrary pick. Abort rather than silently drop one.
-do $$
-declare
-  conflicting_source text;
-  conflicting_target text;
-begin
-  select string_agg(detail, '; ' order by detail)
-    into conflicting_source
-  from (
-    select source."Name" || ' ElementId=' || p."ElementId"::text
-           || ' Access values: ' || string_agg(p."Access"::text, ',' order by p."Access") as detail
-    from dflow_prod."RolePermissions" p
-    join dflow_prod."Roles" source on source."Id" = p."RoleId"
-    where p."UserId" is null
-    group by source."Name", p."ElementId"
-    having count(distinct p."Access") > 1
-  ) dup;
-
-  if conflicting_source is not null then
-    raise exception 'ABORT: role-level RolePermissions with conflicting Access on same (role, ElementId) — copy would be an arbitrary pick: %', md5(conflicting_source);
-  end if;
-
-  -- F6: an existing target row with the same ElementId but different Access
-  -- would silently swallow the source row via the NOT EXISTS guard. Abort
-  -- rather than drop.
-  select string_agg(detail, '; ' order by detail)
-    into conflicting_target
-  from (
-    select source."Name" || '→' || target."Name"
-           || ' ElementId=' || p."ElementId"::text
-           || ' source.Access=' || p."Access"::text
-           || ' target.Access=' || x."Access"::text as detail
-    from dflow_prod."RolePermissions" p
-    join dflow_prod."Roles" source on source."Id" = p."RoleId"
-    join dflow_prod."Roles" target
-      on target."Name" = case source."Name"
-           when 'designer'         then 'design'
-           when 'vendor'           then 'vendors'
-           when 'sourcing_manager' then 'sourcing'
-           when 'production'       then 'production'
-           when 'sales'            then 'sales'
-         end
-    join dflow_prod."RolePermissions" x
-      on x."RoleId" = target."Id"
-     and x."UserId" is null
-     and x."ElementId" = p."ElementId"
-     and x."Access" is distinct from p."Access"
-    where p."UserId" is null
-      and target."Name" is distinct from source."Name"
-  ) clash;
-
-  if conflicting_target is not null then
-    raise exception 'ABORT: target RolePermissions row with conflicting Access — source row would be silently dropped: %', md5(conflicting_target);
-  end if;
-end
-$$;
-
--- `select distinct` deduplicates exact-duplicate source rows; the pre-check
--- above aborts on conflicting Access, so no arbitrary pick can occur.
-insert into dflow_prod."RolePermissions" ("RoleId", "UserId", "ElementId", "Access")
-select distinct target."Id", p."UserId", p."ElementId", p."Access"
-from dflow_prod."RolePermissions" p
-join dflow_prod."Roles" source on source."Id" = p."RoleId"
-join dflow_prod."Roles" target
-  on target."Name" = case source."Name"
-       when 'designer'         then 'design'
-       when 'vendor'           then 'vendors'
-       when 'sourcing_manager' then 'sourcing'
-       when 'production'       then 'production'
-       when 'sales'            then 'sales'
-     end
-where p."UserId" is null
-  and target."Name" is distinct from source."Name"
-  and not exists (
-    select 1 from dflow_prod."RolePermissions" x
-    where x."RoleId" = target."Id"
-      and x."UserId" is null
-      and x."ElementId" = p."ElementId"
-      and x."Access" = p."Access"
-  );
-
--- production → production and sales → sales are name-identical: the existing
--- role-level rows already sit on the category row after the kind update above.
--- Nothing to copy. (Live 2026-10-08: zero role-level rows existed at all.)
 
 -- ------------------------------------------------------------------------------
 -- 7. Post-checks (the migration refuses to finish wrong)

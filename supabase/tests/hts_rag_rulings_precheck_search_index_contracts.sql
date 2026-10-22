@@ -1,5 +1,5 @@
 begin;
--- shared-db#4577 (claim #4622): HTS precheck search indexes on hts_rag_rulings. Rolled back.
+-- shared-db#4577 (claim #4626): HTS precheck search indexes on hts_rag_rulings. Rolled back.
 do $$
 begin
   assert public.hts_rag_fold_text(E'Décor Café Straße İSTANBUL') = 'decor cafe stra e istanbul',

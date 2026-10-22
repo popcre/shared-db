@@ -17,7 +17,15 @@
 -- Grants: dflow_prod uses per-table grants and no RLS. The tracking service
 -- (helpers/trackingArchive.js) runs SELECT, INSERT ... ON CONFLICT DO NOTHING and
 -- DELETE, so those three go to designflow_prod_tracking_grants, the NOLOGIN role
--- designflow_prod_tracking_runtime inherits (#2873). No other role gains access.
+-- designflow_prod_tracking_runtime inherits (#2873). Deliberately the group, not the
+-- runtime directly (unlike #4464/#4515): in production designflow_prod_backend_runtime
+-- is also a member of that group, and popcre-tracking-prod still logs in as the backend
+-- runtime until its own login switch (#4475; live read 21 Oct 2026 11:30 PM EDT showed
+-- only backend_runtime sessions). A direct runtime grant would leave Archive at 503.
+-- So both the tracking and backend runtimes reach this table; no other role does.
+-- scripts/proofs/2873-* carry the three new expected entries. Not re-runnable on a
+-- pre-existing table by design: CREATE TABLE fails loudly instead of accepting a
+-- wrong-shaped object.
 -- Rollback: drop table dflow_prod.tracking_grid_archive.
 
 set lock_timeout = '5s';
@@ -27,12 +35,14 @@ do $pre$
 begin
   if to_regnamespace('dflow_prod') is null
   then raise exception '#4585: schema dflow_prod is missing'; end if;
+  if not exists (select 1 from pg_roles where rolname = 'designflow_prod_tracking_runtime' and rolcanlogin)
+  then raise exception '#4585: designflow_prod_tracking_runtime missing'; end if;
   if not exists (select 1 from pg_roles where rolname = 'designflow_prod_tracking_grants' and not rolcanlogin and not rolbypassrls)
   then raise exception '#4585: designflow_prod_tracking_grants missing or not a NOLOGIN NOBYPASSRLS role'; end if;
 end
 $pre$;
 
-create table if not exists dflow_prod.tracking_grid_archive (
+create table dflow_prod.tracking_grid_archive (
   grid_type text not null
     check (grid_type in ('prod_tracking', 'licensing_tracking')),
   row_id bigint not null,
@@ -54,8 +64,21 @@ begin
   where has_table_privilege('designflow_prod_tracking_grants', 'dflow_prod.tracking_grid_archive', p)
         is distinct from (p in ('SELECT','INSERT','DELETE'));
   if v_bad is not null then raise exception '#4585: tracking privilege matrix differs: %', v_bad; end if;
-  if to_regrole('designflow_prod_tracking_runtime') is not null
-     and not has_table_privilege('designflow_prod_tracking_runtime', 'dflow_prod.tracking_grid_archive', 'SELECT,INSERT,DELETE')
-  then raise exception '#4585: tracking runtime cannot reach dflow_prod.tracking_grid_archive'; end if;
+  if exists (select 1 from unnest(array['SELECT','INSERT','DELETE']) p
+             where not has_table_privilege('designflow_prod_tracking_runtime', 'dflow_prod.tracking_grid_archive', p))
+  then raise exception '#4585: tracking runtime cannot SELECT, INSERT and DELETE dflow_prod.tracking_grid_archive'; end if;
+  if (select string_agg(a.attname || ':' || format_type(a.atttypid, a.atttypmod) || ':' || a.attnotnull, ',' order by a.attnum)
+      from pg_attribute a where a.attrelid = 'dflow_prod.tracking_grid_archive'::regclass and a.attnum > 0 and not a.attisdropped)
+     is distinct from 'grid_type:text:true,row_id:bigint:true,archived_at:timestamp with time zone:true,archived_by_user_id:integer:false'
+  then raise exception '#4585: dflow_prod.tracking_grid_archive columns differ'; end if;
+  if (select pg_get_constraintdef(c.oid) from pg_constraint c
+      where c.conrelid = 'dflow_prod.tracking_grid_archive'::regclass and c.contype = 'p')
+     is distinct from 'PRIMARY KEY (grid_type, row_id)'
+  then raise exception '#4585: primary key is not (grid_type, row_id)'; end if;
+  if (select pg_get_expr(d.adbin, d.adrelid) from pg_attrdef d join pg_attribute a
+        on a.attrelid = d.adrelid and a.attnum = d.adnum
+      where d.adrelid = 'dflow_prod.tracking_grid_archive'::regclass and a.attname = 'archived_at')
+     is distinct from 'clock_timestamp()'
+  then raise exception '#4585: archived_at default is not clock_timestamp()'; end if;
 end
 $post$;

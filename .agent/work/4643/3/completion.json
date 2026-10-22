@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "work_issue": 4643,
+  "outcome": "ready-for-merge",
+  "pr": 4650,
+  "migration_versions": [
+    "20261022191243"
+  ],
+  "contract_ref": "refs/db-contracts/4643/3",
+  "contract_sha256": "a9e2757aeadff81d5e19e47af9d8338554be6b3ce1393396c2c1d4308ff6e205",
+  "head_sha": "d6a6d008ff4d7381e59ffaea185a99cf2bd358ad",
+  "base_sha": "fc451fcc8375ce6ecfc3f8a753b1e54e5a964d01",
+  "files_changed": [
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production-verification-sidecars/20261022191243.json",
+    "supabase/migrations/20261022191243_retire_dam_search_documents_text_indexes.sql"
+  ],
+  "db_reads": [
+    "function public.search_dam_documents",
+    "table public.dam_search_documents"
+  ],
+  "db_writes": [
+    "index public.idx_dam_search_documents_customer_trgm",
+    "index public.idx_dam_search_documents_path_trgm",
+    "index public.idx_dam_search_documents_program_trgm",
+    "index public.idx_dam_search_documents_title_trgm",
+    "index public.idx_dam_search_documents_tsv"
+  ],
+  "checks": [
+    {
+      "exit_code": 0,
+      "command": "bash scripts/check-sql.sh",
+      "evidence": "Static checks passed."
+    },
+    {
+      "exit_code": 0,
+      "command": "python3 scripts/check_production_verification_sidecars.py --scan-version 20261022191243",
+      "evidence": "status OK, sidecar true"
+    },
+    {
+      "exit_code": 0,
+      "command": "git diff --check",
+      "evidence": "Exit 0."
+    }
+  ],
+  "assumptions_resolved": [
+    "Production read-only 2026-10-22: search_dam_documents applies all tsv/trigram/ILIKE predicates to dam_search_keys; all five indexes last scanned 2026-10-21 18:36 EDT, before 20261021223359 went live, unchanged at the 2026-10-22 recheck",
+    "Absence enforced by five catalog_absence sidecar checks on preview and production"
+  ],
+  "stop_conditions_hit": []
+}

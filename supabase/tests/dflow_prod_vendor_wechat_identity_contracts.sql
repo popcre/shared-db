@@ -52,6 +52,15 @@ begin
   end if;
 end $acl$;
 
+-- Test-only membership, rolled back with this file. Supabase's non-superuser
+-- postgres creates runtime roles with ADMIN but SET FALSE. Exercise the real
+-- runtime rather than skipping behavior or changing any production migration.
+do $test_authority$
+begin
+  if not pg_has_role(current_user, 'designflow_prod_backend_runtime', 'SET') then
+    execute format('grant designflow_prod_backend_runtime to %I with set true', current_user);
+  end if;
+end $test_authority$;
 set local role designflow_prod_backend_runtime;
 do $test$
 declare v_id bigint;

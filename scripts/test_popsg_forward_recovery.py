@@ -39,7 +39,7 @@ class ForwardRecovery(unittest.TestCase):
             cls.port = sock.getsockname()[1]
             sock.close()
             # 127.0.0.1 works on Windows and Linux; empty listen_addresses is not portable.
-            subprocess.run([str(cls.bin / 'pg_ctl'), '-D', str(cls.data), '-l', str(cls.directory / 'server.log'), '-o', f"-p {cls.port} -c listen_addresses=127.0.0.1", 'start', '-w'], check=True, capture_output=True)
+            subprocess.run([str(cls.bin / 'pg_ctl'), '-D', str(cls.data), '-l', str(cls.directory / 'server.log'), '-o', f"-p {cls.port} -h 127.0.0.1 -k \"\"", 'start', '-w'], check=True, capture_output=True)
             cls.env = {**os.environ, 'PGHOST': '127.0.0.1', 'PGPORT': str(cls.port), 'PGUSER': 'postgres', 'PGDATABASE': 'postgres'}
             cls.psql = ['psql', '-X', '-qAt', '-v', 'ON_ERROR_STOP=1']
         elif shutil.which('docker'):

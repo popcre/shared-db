@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "work_issue": 4643,
+  "outcome": "ready-for-merge",
+  "pr": 4645,
+  "migration_versions": ["20261022184745"],
+  "contract_ref": "refs/db-contracts/4643/1",
+  "contract_sha256": "a9ef86d94b28f2b307e1babce8c03c84fa347c8db554cf1d8ad53cd58f1c95d8",
+  "head_sha": "41236e838a1822b75f3ecd9ba9336044c1d90ad3",
+  "base_sha": "5e305b96cc711841aa8da4ab5c0928dd30bffa1c",
+  "files_changed": [".agent/work/4643/1/contract.json", "supabase/migrations/20261022184745_retire_dam_search_documents_text_indexes.sql", "supabase/tests/dam_search_documents_text_indexes_retired.sql"],
+  "db_reads": ["function public.search_dam_documents", "table public.dam_search_documents"],
+  "db_writes": [
+    "index public.idx_dam_search_documents_customer_trgm",
+    "index public.idx_dam_search_documents_path_trgm",
+    "index public.idx_dam_search_documents_program_trgm",
+    "index public.idx_dam_search_documents_title_trgm",
+    "index public.idx_dam_search_documents_tsv"
+  ],
+  "checks": [
+    {"exit_code": 0, "command": "bash scripts/check-sql.sh", "evidence": "Static checks passed."},
+    {"exit_code": 0, "command": "git diff --check", "evidence": "Exit 0."}
+  ],
+  "assumptions_resolved": [
+    "Production read-only 2026-10-22: search_dam_documents applies all tsv/trigram/ILIKE predicates to dam_search_keys; dam_search_documents is joined by key only"
+  ],
+  "stop_conditions_hit": []
+}

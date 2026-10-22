@@ -5347,7 +5347,7 @@ CATALOG_CONTRACTS["style_group_differential_installed_v1"] = "(-- #2421 installe
 if __name__ == "__main__":
     raise SystemExit(main())
 
-# Durable catalog outcome of the guarded DO block in migration 20261022031516
+# Durable catalog outcome of the guarded DO block in migration 20261022034947
 # (issue #4578): the idempotent re-apply of 20260722221200 must leave the
 # sample quantity-state column and its three named constraints in place.
 CATEGORY_DFLOW_SAMPLE_QUANTITY_STATE = """

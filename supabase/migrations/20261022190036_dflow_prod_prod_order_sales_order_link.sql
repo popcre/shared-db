@@ -339,6 +339,10 @@ begin
                    and cmd = 'SELECT' and roles = array['designflow_prod_tracking_grants']::name[]) then
     raise exception '#3869/20261022190036 post-check: a coldlion_history_tracking_read SELECT policy is missing';
   end if;
+  if not (select relrowsecurity from pg_class where oid = 'coldlion.order_history_line'::regclass)
+     or not (select relrowsecurity from pg_class where oid = 'coldlion.prod_history_line'::regclass) then
+    raise exception '#3869/20261022190036 post-check: RLS is not enabled on both coldlion history tables (policies would be inert)';
+  end if;
   if has_table_privilege('anon', 'dflow_prod.v_prod_order_sales_order_link', 'select')
      or has_table_privilege('authenticated', 'dflow_prod.v_prod_order_sales_order_link', 'select')
      or has_table_privilege('service_role', 'dflow_prod.v_prod_order_sales_order_link', 'select') then
@@ -355,10 +359,12 @@ begin
     raise exception '#3869/20261022190036 post-check: backend runtime is in the grants group but cannot select the view';
   end if;
   if not exists (select 1 from pg_index i
+                 join pg_attribute at on at.attrelid = i.indrelid and at.attnum = i.indkey[0]
                  where i.indrelid = 'dflow_prod."ProdOrderHeader"'::regclass
-                   and i.indisunique and i.indisvalid and i.indpred is null
-                   and i.indexrelid = 'dflow_prod.prod_order_header_id_uidx'::regclass) then
-    raise exception '#3869/20261022190036 post-check: unique index prod_order_header_id_uidx missing or invalid';
+                   and i.indisunique and i.indisvalid and i.indpred is null and i.indnkeyatts = 1
+                   and i.indexrelid = 'dflow_prod.prod_order_header_id_uidx'::regclass
+                   and at.attname = 'id') then
+    raise exception '#3869/20261022190036 post-check: unique index prod_order_header_id_uidx missing, invalid, or not on id';
   end if;
 end $$;
 

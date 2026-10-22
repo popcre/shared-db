@@ -209,3 +209,16 @@ test('readiness statuses require designated App identity and exact bounded appli
   assert.throws(()=>publishAppStatus(repository,head,body,'fixture',()=>({...body,creator:{login:'u2giants'}})),/designated App/);
   assert.throws(()=>publishAppStatus(repository,head,body,'fixture',()=>({...body,state:'pending',creator:{login:'pop-ai-watchers[bot]'}})),/designated App/);
 });
+
+test('a failed tracking prerequisite does not hold an unrelated backend release', async () => {
+  const f=fixture(), other=structuredClone(f.manifest);
+  other.repository='popcre/designflow-backend'; other.requirements=[];
+  f.policy.repositories.push({repository:other.repository,roles:['designflow_prod_backend_runtime'],schemas:['dflow_prod'],required_sources:[],contract_manifest_sha256:manifestDigest({...other,requirements:[]})});
+  f.io.manifest=async repo=>repo===repository?f.manifest:other;
+  f.io.sourceFacts=async()=>{throw Error('Tracking source is not merged');};
+  const results=await runObserver(f.policy,f.io);
+  assert.equal(results.find(r=>r.repository===repository).status,'blocked');
+  assert.equal(results.find(r=>r.repository===other.repository).status,'ready');
+  assert.equal(f.effects.filter(x=>x==='catalog').length,1);
+  assert.ok(!f.effects.includes('promote'));
+});

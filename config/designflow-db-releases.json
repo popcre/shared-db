@@ -23,18 +23,6 @@
         {
           "work_issue": 4634,
           "source_pr": 4636
-        },
-        {
-          "work_issue": 3869,
-          "source_pr": 4648
-        },
-        {
-          "work_issue": 4646,
-          "source_pr": 4653
-        },
-        {
-          "work_issue": 4585,
-          "source_pr": 4587
         }
       ],
       "contract_manifest_sha256": "178574a19b71c8f4630dab1880f8ae8932c123d39f665c6d3ce776c1fbe8a9f6"
@@ -50,27 +38,11 @@
       ],
       "required_sources": [
         {
-          "work_issue": 4638,
-          "source_pr": 4640
-        },
-        {
-          "work_issue": 4634,
-          "source_pr": 4636
-        },
-        {
-          "work_issue": 3869,
-          "source_pr": 4648
-        },
-        {
-          "work_issue": 4646,
-          "source_pr": 4653
-        },
-        {
-          "work_issue": 4585,
-          "source_pr": 4587
+          "work_issue": 4659,
+          "source_pr": 4661
         }
       ],
-      "contract_manifest_sha256": "c4e3ed207477a80e3e6b05a8004f25ee9bcd6c2366c7bc29764ebb3f1c5b969a"
+      "contract_manifest_sha256": "cbb8c245e2c4665b55e1682822205f95e9e366440899c9481a203342456d7a8b"
     },
     {
       "repository": "popcre/designflow-tracking",
@@ -86,10 +58,6 @@
         {
           "work_issue": 4638,
           "source_pr": 4640
-        },
-        {
-          "work_issue": 4634,
-          "source_pr": 4636
         },
         {
           "work_issue": 3869,
@@ -119,22 +87,6 @@
         {
           "work_issue": 4638,
           "source_pr": 4640
-        },
-        {
-          "work_issue": 4634,
-          "source_pr": 4636
-        },
-        {
-          "work_issue": 3869,
-          "source_pr": 4648
-        },
-        {
-          "work_issue": 4646,
-          "source_pr": 4653
-        },
-        {
-          "work_issue": 4585,
-          "source_pr": 4587
         }
       ],
       "contract_manifest_sha256": "be6acee5372525737f2e9cb64524a0a0a9f1873d0a51706be76ce7a123d7d930"
@@ -143,28 +95,7 @@
       "repository": "popcre/designflow-bff",
       "roles": [],
       "schemas": [],
-      "required_sources": [
-        {
-          "work_issue": 4638,
-          "source_pr": 4640
-        },
-        {
-          "work_issue": 4634,
-          "source_pr": 4636
-        },
-        {
-          "work_issue": 3869,
-          "source_pr": 4648
-        },
-        {
-          "work_issue": 4646,
-          "source_pr": 4653
-        },
-        {
-          "work_issue": 4585,
-          "source_pr": 4587
-        }
-      ],
+      "required_sources": [],
       "contract_manifest_sha256": "c9c19a5806cd7eed07af8d3b9b33d79bc13bd3821f647b806d2d924bf9853713"
     },
     {
@@ -185,12 +116,12 @@
           "source_pr": 4648
         },
         {
-          "work_issue": 4646,
-          "source_pr": 4653
-        },
-        {
           "work_issue": 4585,
           "source_pr": 4587
+        },
+        {
+          "work_issue": 4659,
+          "source_pr": 4661
         }
       ],
       "contract_manifest_sha256": "370eef80113ca10002830ccf9f580539cfa956e704cc7f8a43db6864cebc088e"

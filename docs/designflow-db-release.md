@@ -20,7 +20,17 @@ No manifest SQL, shell, repository code, or arbitrary endpoint is executed.
 `config/designflow-db-releases.json` is the reviewed central policy. It pins each
 application's contract fingerprint, minimum baseline source requirements, schemas
 and runtime roles. Empty or weakened application requirements cannot erase that
-baseline. Database changes must update the canonical migration, this policy and
+baseline. Baselines are application-specific, derived from actual consumers:
+backend needs role/model prerequisites and WeChat; tracking needs template fields,
+PO/raw-history access, milestones and archive; data-syncing needs the item sync
+fields; frontend needs roles, WeChat administration, unmatched orders and archive.
+BFF has no new-source dependency among these repairs. Item Master and the frontend
+also require the production UPC view/access repair (#4659), discovered by an actual
+read-only query under the deployed Item Master identity; Item Master checks both
+the currently deployed and intended service-specific readers. An unrelated
+application prerequisite must not hold a healthy app release.
+
+Database changes must update the canonical migration, this policy and
 the consuming application's manifest together. Agent/app workflow guidance must
 retain that requirement; automatic promotion does not capture ad-hoc sandbox SQL.
 
@@ -80,7 +90,7 @@ readiness. A failed or waiting result is never reported as ready.
 
 The initial audit found GitHub Free and private protection queries returned an
 upgrade restriction. Albert authorized GitHub Team for two seats up to $8/month
-before tax; checkout confirmed that amount. Record actual purchase, protection
+before tax; GitHub billing and organization API now confirm Team with two seats at that amount. Record protection
 configuration and enforcement proof on #4655 before claiming the gate is active.
 
 After Team is active, the preferred enforcement is native main protection for the
@@ -97,6 +107,13 @@ proposed while private main protection was unavailable; it is not an activated
 capability. The infrastructure repository's production-forbidden policy remains
 intact. If native protection proves insufficient, return to a reviewed supported
 infrastructure route rather than changing triggers ad hoc.
+
+Routine commits and sandbox source pushes acquire no new approval gate from this
+process. The required status applies to the final main release only and uses the
+existing structural review. The scheduled observer checks every five minutes;
+scheduling may be delayed by GitHub, so measure actual release latency before
+claiming any bound. An on-demand canonical run may refresh an exact release
+without weakening its checks.
 
 Statuses record a verified snapshot. GitHub does not give commit statuses an
 application-defined expiration time; the central observer rechecks the current

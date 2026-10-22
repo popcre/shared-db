@@ -12,9 +12,10 @@
 -- hts_rag_tariff_subheadings returns the distinct 6-digit subheadings of a
 -- tariffs array (digits only, first six), matching subheadingMatches().
 --
--- Both are pure, immutable helpers over their argument and read no table, so
--- the default EXECUTE grant is kept: the backend's primary and isolated HTS
--- roles must both be able to call them in the same query that hits the index.
+-- Both are pure, immutable SECURITY INVOKER helpers that read no table. The
+-- public-function lockdown trigger (20260729120000) strips PUBLIC EXECUTE, so
+-- the backend's service role and the four isolated HTS roles are granted
+-- EXECUTE explicitly: they call these in the same query that hits the index.
 -- Both tables get the indexes: public.hts_rag_rulings is the primary-connection
 -- fallback; hts_rag.hts_rag_rulings is the shared store (HTS_RAG_DB_ENABLED).
 
@@ -54,6 +55,12 @@ $function$;
 
 comment on function public.hts_rag_tariff_subheadings(jsonb) is
   'Issue #4577. Distinct 6-digit HTS subheadings in a tariffs array; used by hts_rag_rulings subheading indexes.';
+
+revoke all on function public.hts_rag_fold_text(text), public.hts_rag_tariff_subheadings(jsonb)
+  from public, anon, authenticated;
+grant execute on function public.hts_rag_fold_text(text), public.hts_rag_tariff_subheadings(jsonb)
+  to service_role, designflow_hts_prod_runtime, designflow_hts_alsand_runtime,
+     designflow_hts_prod_worker, designflow_hts_alsand_worker;
 
 create index hts_rag_rulings_search_trgm_idx
   on public.hts_rag_rulings

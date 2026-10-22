@@ -7,7 +7,7 @@
   "contract_ref": "refs/db-contracts/4655/6",
   "contract_sha256": "6dfbb726a2caed4df353c04fa768fdfd26ad26265bc6980db37ca8ef3c902e7b",
   "base_sha": "c9acaa4b7ff0d10f332e61fad349b7de5d000828",
-  "head_sha": "36bcd1f6c7781332377ea15a97042a120c1e25a1",
+  "head_sha": "66d4260c9d89f26732c575d63688fa6a2ae16175",
   "files_changed": [
     ".github/workflows/designflow-db-release.yml",
     ".github/workflows/shared-supabase-migrations.yml",
@@ -61,6 +61,16 @@
       "command": "python3 -m unittest scripts.test_production_business_risk_gate",
       "exit_code": 0,
       "evidence": "230 production risk gate tests passed, including preview producer data/exemption boundaries and multi-source rehearsal compatibility."
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "438 files scanned; every GitHub call uses canonical shared transport."
+    },
+    {
+      "command": "node scripts/check-repository-identity-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "Every literal slug matches native allowlist counts."
     }
   ],
   "assumptions_resolved": [

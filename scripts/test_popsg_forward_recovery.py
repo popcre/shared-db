@@ -154,7 +154,7 @@ class RepairMarkers(unittest.TestCase):
 
     def test_repaired_body_markers_and_static_provenance(self):
         text = NEW.read_text()
-        self.assertIn('-- derived-from: 20261022032116', text)
+        self.assertIn('-- derived-from: 20261012005136\n', text)
         self.assertIn("md5(prosrc) in ('9d5dd045810fa3fce5cc3d508e1210ff', '97e0d7ed121765f239867a48618f695b')", text)
         self.assertIn("md5(prosrc) = 'eb7e64398002f7f575d97708bf6641a5'", text)
         body = text.split('as $function$',1)[1].rsplit('$function$;',1)[0]

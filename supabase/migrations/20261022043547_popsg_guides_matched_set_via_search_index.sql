@@ -1,5 +1,6 @@
 -- Issue #4210; exact-object claim #4212 (reissued from retired 20261022032116).
--- derived-from: 20261022032116 (merged, never promoted; retired by claim reissue)
+-- Carries forward 20261022032116 (merged in #4507, retired by claim reissue, never promoted).
+-- derived-from: 20261012005136
 -- Guides matched set now starts from the is_active search_vector GIN index instead of
 -- probing style_guide_search_documents_pkey once per live file (220k probes, ~1M buffer
 -- hits for a broad term). Carries forward every 20261022032116 repair. Guards accept the

@@ -1,0 +1,65 @@
+{
+  "schema_version": 2,
+  "work_issue": 4655,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Automatically coordinate reviewed DesignFlow release database requirements through existing promotion and prove exact-source production readiness without bypassing ownership or release gates",
+  "base_sha": "c9acaa4b7ff0d10f332e61fad349b7de5d000828",
+  "dispatcher": "Codex chat 01a164d2-4b63-7713-ae00-054036db0416 on edge-dev3",
+  "worker": "codex",
+  "branch": "codex/dflow-database-release-gate",
+  "worktree": "/home/ahazan/.codex/worktrees/dflow-database-release-gate/shared-db",
+  "allowed_paths": [
+    "scripts/lib/designflow-db-release.mjs",
+    "scripts/lib/designflow-db-release.test.mjs",
+    "scripts/designflow-db-release.mjs",
+    "scripts/designflow-db-release.test.mjs",
+    "config/designflow-db-releases.json",
+    ".github/workflows/designflow-db-release.yml",
+    "docs/designflow-db-release.md",
+    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/lib/designflow-db-catalog.mjs",
+    "scripts/lib/designflow-db-catalog.test.mjs"
+  ],
+  "file_writes": [
+    "scripts/lib/designflow-db-release.mjs",
+    "scripts/lib/designflow-db-release.test.mjs",
+    "scripts/designflow-db-release.mjs",
+    "scripts/designflow-db-release.test.mjs",
+    "config/designflow-db-releases.json",
+    ".github/workflows/designflow-db-release.yml",
+    "docs/designflow-db-release.md",
+    ".github/workflows/shared-supabase-migrations.yml",
+    "scripts/lib/designflow-db-catalog.mjs",
+    "scripts/lib/designflow-db-catalog.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No database schema or data writes in this maintenance change",
+    "No manual production apply, foreign claim adoption, app merge, billing/visibility change, or unreviewed platform mutation",
+    "No user-provided SQL/shell execution or credentials in application manifests",
+    "No additional promotion engine or new scheduler outside existing GitHub Actions process"
+  ],
+  "required_checks": [
+    "node --test scripts/lib/designflow-db-release.test.mjs scripts/designflow-db-release.test.mjs",
+    "node scripts/check-cancelled-work.mjs"
+  ],
+  "assumptions": [
+    "Existing merged-preview and automatic production workflow remains canonical",
+    "All six DesignFlow application default branches are develop",
+    "Platform protection403 is a real limitation and must not be represented as an enforced main-merge gate",
+    "Existing migration workflow already has25 inputs; add only a deterministic run-name from existing inputs to authenticate delayed dispatch correlation, no new dispatch field"
+  ],
+  "stop_conditions": [
+    "Unverified credentials or artifact evidence refuses before dispatch/readiness",
+    "Exact source or target drift refuses; missing protected dependency remains blocked",
+    "Scope outside listed files requires a new prospective contract generation"
+  ],
+  "generation": 3,
+  "evidence_parent": {
+    "work_issue": 4655,
+    "generation": 2,
+    "contract_sha256": "8001d9e157647fecb61064439389ac9c240c131be078e3f25e360cbed7130c2b"
+  }
+}

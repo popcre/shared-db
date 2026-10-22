@@ -38,7 +38,10 @@ comment on table hts_rag.hts_rag_ruling_ingest_jobs is
   'Operational queue for background ingest of cited CBP rulings (leased, bounded retry, dead-letter). Not HTS learning evidence. Environment isolated; no browser/runtime role access; no DELETE.';
 
 create index hts_rag_ruling_ingest_jobs_claim_idx
-  on hts_rag.hts_rag_ruling_ingest_jobs (status, lease_expires_at);
+  on hts_rag.hts_rag_ruling_ingest_jobs (status, lease_expires_at)
+  where status in ('pending', 'claimed');
+create index hts_rag_ruling_ingest_jobs_source_determination_idx
+  on hts_rag.hts_rag_ruling_ingest_jobs (source_determination_id);
 create unique index hts_rag_ruling_ingest_jobs_open_uq
   on hts_rag.hts_rag_ruling_ingest_jobs (source_environment, ruling_number)
   where status in ('pending', 'claimed');
@@ -78,18 +81,56 @@ create policy hts_rag_alsand_worker_update on hts_rag.hts_rag_ruling_ingest_jobs
 do $verify$
 declare
   v_role text;
+  v_env text;
+  v_prefix text;
+  v_expression text;
   v_columns text;
 begin
-  if to_regclass('hts_rag.hts_rag_ruling_ingest_jobs') is null
-     or to_regclass('hts_rag.hts_rag_ruling_ingest_jobs_open_uq') is null
-     or to_regclass('hts_rag.hts_rag_ruling_ingest_jobs_claim_idx') is null then
-    raise exception 'VERIFY FAILED: ruling ingest jobs relation/index missing';
+  if not exists (select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'hts_rag' and c.relname = 'hts_rag_ruling_ingest_jobs'
+        and c.relkind = 'r' and c.relrowsecurity) then
+    raise exception 'VERIFY FAILED: ruling ingest jobs table missing or RLS disabled';
+  end if;
+  if not exists (select 1 from pg_indexes where schemaname = 'hts_rag' and indexname = 'hts_rag_ruling_ingest_jobs_open_uq'
+      and indexdef = 'CREATE UNIQUE INDEX hts_rag_ruling_ingest_jobs_open_uq ON hts_rag.hts_rag_ruling_ingest_jobs USING btree (source_environment, ruling_number) WHERE (status = ANY (ARRAY[''pending''::text, ''claimed''::text]))')
+     or not exists (select 1 from pg_indexes where schemaname = 'hts_rag' and indexname = 'hts_rag_ruling_ingest_jobs_claim_idx'
+      and indexdef = 'CREATE INDEX hts_rag_ruling_ingest_jobs_claim_idx ON hts_rag.hts_rag_ruling_ingest_jobs USING btree (status, lease_expires_at) WHERE (status = ANY (ARRAY[''pending''::text, ''claimed''::text]))')
+     or not exists (select 1 from pg_indexes where schemaname = 'hts_rag' and indexname = 'hts_rag_ruling_ingest_jobs_source_determination_idx'
+      and indexdef = 'CREATE INDEX hts_rag_ruling_ingest_jobs_source_determination_idx ON hts_rag.hts_rag_ruling_ingest_jobs USING btree (source_determination_id)') then
+    raise exception 'VERIFY FAILED: exact index definitions';
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid = 'hts_rag.hts_rag_ruling_ingest_jobs'::regclass and contype = 'f'
+      and pg_get_constraintdef(oid) = 'FOREIGN KEY (source_determination_id) REFERENCES hts_rag.hts_rag_determinations(id) ON DELETE SET NULL')
+     or not exists (select 1 from pg_constraint where conrelid = 'hts_rag.hts_rag_ruling_ingest_jobs'::regclass and contype = 'c'
+      and pg_get_constraintdef(oid) = 'CHECK ((source_environment = ANY (ARRAY[''production''::text, ''alsand''::text])))')
+     or not exists (select 1 from pg_constraint where conrelid = 'hts_rag.hts_rag_ruling_ingest_jobs'::regclass
+      and conname = 'hts_rag_ruling_ingest_jobs_terminal_completed_chk')
+     or not exists (select 1 from pg_trigger where tgrelid = 'hts_rag.hts_rag_ruling_ingest_jobs'::regclass
+      and tgname = 'set_updated_at' and not tgisinternal and tgfoid = 'app.set_updated_at()'::regprocedure) then
+    raise exception 'VERIFY FAILED: exact FK, checks or updated_at trigger';
   end if;
   if (select count(*) from pg_policies where schemaname = 'hts_rag'
       and tablename = 'hts_rag_ruling_ingest_jobs') <> 6 then
     raise exception 'VERIFY FAILED: ruling ingest jobs must have exactly six policies';
   end if;
   foreach v_role in array array['designflow_hts_prod_worker', 'designflow_hts_alsand_worker'] loop
+    v_env := case v_role when 'designflow_hts_prod_worker' then 'production' else 'alsand' end;
+    v_prefix := case v_role when 'designflow_hts_prod_worker' then 'hts_rag_prod_worker' else 'hts_rag_alsand_worker' end;
+    v_expression := format('(source_environment = %L::text)', v_env);
+    if not exists (select 1 from pg_roles where rolname = v_role and not rolsuper and not rolbypassrls) then
+      raise exception 'VERIFY FAILED: worker privilege attributes for %', v_role;
+    end if;
+    if not exists (select 1 from pg_policies where schemaname = 'hts_rag' and tablename = 'hts_rag_ruling_ingest_jobs'
+        and policyname = v_prefix || '_access' and cmd = 'SELECT' and roles = array[v_role]::name[]
+        and qual = v_expression and with_check is null)
+       or not exists (select 1 from pg_policies where schemaname = 'hts_rag' and tablename = 'hts_rag_ruling_ingest_jobs'
+        and policyname = v_prefix || '_insert' and cmd = 'INSERT' and roles = array[v_role]::name[]
+        and qual is null and with_check = v_expression)
+       or not exists (select 1 from pg_policies where schemaname = 'hts_rag' and tablename = 'hts_rag_ruling_ingest_jobs'
+        and policyname = v_prefix || '_update' and cmd = 'UPDATE' and roles = array[v_role]::name[]
+        and qual = v_expression and with_check = v_expression) then
+      raise exception 'VERIFY FAILED: exact environment policies for %', v_role;
+    end if;
     select string_agg(attname, ',' order by attname) into v_columns from pg_attribute
       where attrelid = 'hts_rag.hts_rag_ruling_ingest_jobs'::regclass and attnum > 0 and not attisdropped
         and has_column_privilege(v_role, attrelid, attnum, 'UPDATE');

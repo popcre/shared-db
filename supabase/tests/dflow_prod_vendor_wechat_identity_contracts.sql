@@ -4,8 +4,8 @@ do $test$
 declare v_id bigint;
 begin
   if (select count(*) from information_schema.columns where table_schema='dflow_prod'
-      and table_name='vendor_wechat_identity') <> 13 then
-    raise exception 'expected thirteen sandbox-compatible columns';
+      and table_name='vendor_wechat_identity') <> 12 then
+    raise exception 'expected twelve sandbox-compatible columns';
   end if;
   if not has_table_privilege('designflow_prod_backend_runtime',
       'dflow_prod.vendor_wechat_identity','SELECT')

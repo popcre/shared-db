@@ -308,6 +308,7 @@ jobs:
           done
           test "$ready" = true
           DFLOW_UPC_TEST_CONTAINER="$container" node --test scripts/dflow-prod-item-upc-read-contract.test.mjs
+          DFLOW_TRACKING_ACCESS_TEST_CONTAINER="$container" node --test scripts/proofs/shared-db-2873-observation.test.mjs scripts/proofs/dflow-tracking-access-exception.test.mjs
 
       - name: Run the self-hosted runner router tests
         # Named explicitly: scripts/*.test.mjs has no glob. Proves every state

@@ -39,7 +39,7 @@
     {
       "command": "node scripts/check-cancelled-work.mjs",
       "exit_code": 0,
-      "evidence": "OK — no cancelled instruction reintroduced (2 row(s) checked).\n",
+      "evidence": "OK \u2014 no cancelled instruction reintroduced (2 row(s) checked).\n",
       "evidence_sha256": "3f59b1b36f42b639b3c82a89879263a2c60361a26ea58787277210aa2775ffa0"
     },
     {
@@ -76,5 +76,5 @@
   ],
   "stop_conditions_hit": [],
   "migration_versions": [],
-  "pr": 4678
+  "pr": 4689
 }

@@ -2,7 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
+function assertSyntheticContainer(name) {
+ assert.match(name,/^dflow-(?:tracking-access|upc)-[a-zA-Z0-9][a-zA-Z0-9_.-]*$/,'Only dedicated synthetic tracking-access or UPC containers are permitted');
+}
 const container=process.env.DFLOW_TRACKING_ACCESS_TEST_CONTAINER;
+if(container)assertSyntheticContainer(container);
+test('container guard rejects shared, empty and malformed names before Docker access',()=>{
+ for(const name of ['postgres','production','dflow-release-gate-01a164d2','dflow-upc-','dflow-tracking-access-','dflow-upc-ci;other',''])assert.throws(()=>assertSyntheticContainer(name));
+ for(const name of ['dflow-tracking-access-15','dflow-upc-ci-123'])assert.doesNotThrow(()=>assertSyntheticContainer(name));
+});
 const catalog=readFileSync(new URL('./2873-catalog.sql',import.meta.url),'utf8');
 function q(sql,db='postgres'){return spawnSync('docker',['exec','-i',container,'psql','-U','postgres','-d',db,'-X','-At','-v','ON_ERROR_STOP=1'],{input:sql,encoding:'utf8'});}
 function ok(sql,db){const r=q(sql,db);assert.equal(r.status,0,r.stderr);return r.stdout.trim();}

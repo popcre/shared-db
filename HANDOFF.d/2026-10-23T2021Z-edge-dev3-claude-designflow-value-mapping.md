@@ -110,6 +110,8 @@ Albert asked us to:
 3. Open one shared-db structural issue per business area under #4248, loading `shared-db-change` first. Order: license agreements → `core.merch_group` load → items (with child tables) → factories → RFQ → production orders (needs the ColdLion production-order load first). You'll know it worked when each issue claims exact objects.
 4. Open a PR for this branch (docs only) and merge it per the repo rules. You'll know it worked when the crosswalk and plan are on `main`.
 
+After finishing each step above, re-read every later step (through step 4) and the crosswalk §2/§6, and write down any drift (renamed tables, changed rulings, new blockers) in your own handoff file before continuing.
+
 ## 7. Constraints
 
 - Shared-db structural work is claim-first. It needs a reviewer APPROVE at the exact head (observation-week rules apply).

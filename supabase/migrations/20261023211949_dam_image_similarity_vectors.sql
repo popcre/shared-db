@@ -66,6 +66,9 @@ create role dam_image_embed_login login inherit nosuperuser nocreatedb nocreater
 grant dam_image_embed_worker to dam_image_embed_login;
 
 grant usage on schema dam to dam_image_embed_worker, dam_image_embed_login;
+-- The poller's direct SQL casts vector text to extensions.halfvec, so the roles
+-- need USAGE on that schema too (function grants alone are not enough).
+grant usage on schema extensions to dam_image_embed_worker, dam_image_embed_login;
 
 -- =====================================================================================
 -- Embed gate. Absent admin_config key = disabled (fail safe at apply time).
@@ -85,7 +88,7 @@ as $$
 $$;
 
 comment on function dam.image_embed_enabled() is
-  'True only when admin_config.IMAGE_EMBED_ENABLED is exactly true; gates trigger enqueue and poller claim loops.';
+  'True only when admin_config.IMAGE_EMBED_ENABLED is exactly true. Read by the assets enqueue trigger; the GPU poller claim loop is expected to honour the same flag, but the database does not enforce that.';
 
 revoke execute on function dam.image_embed_enabled() from public, anon, authenticated;
 grant execute on function dam.image_embed_enabled() to service_role, dam_image_embed_worker;
@@ -629,7 +632,7 @@ returns table (
   sku text
 )
 language plpgsql
-stable
+volatile
 security definer
 set search_path = public, dam, extensions
 set statement_timeout = '8s'
@@ -638,7 +641,9 @@ declare
   v_stamps text[];
   v_weight numeric := greatest(0, least(coalesce(p_dino_weight, 0.60), 1));
   v_floor  numeric := greatest(0, least(coalesce(p_floor, 0.90), 1));
-  v_top_k  int     := greatest(1, least(coalesce(p_top_k, 200), 2000));
+  -- hnsw.ef_search is hard-capped at 1000 by pgvector; a larger p_top_k
+  -- must clamp here or set_config raises at query time.
+  v_top_k  int     := greatest(1, least(coalesce(p_top_k, 200), 1000));
   v_limit  int     := greatest(1, least(coalesce(p_limit, 50), 200));
 begin
   if p_model_stamps is not null and cardinality(array_remove(p_model_stamps, null)) > 0 then
@@ -826,17 +831,27 @@ begin
     raise exception 'VERIFY FAILED: a browser or service role holds a grant on an image-embed table';
   end if;
 
-  if not exists (select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
-                  where n.nspname = 'dam' and c.relname = 'dam_asset_image_vectors_vec_dino_hnsw')
-     or not exists (select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
-                  where n.nspname = 'dam' and c.relname = 'dam_asset_image_vectors_vec_siglip_hnsw') then
-    raise exception 'VERIFY FAILED: a partial HNSW leg index is missing';
+  if (select count(*) from pg_index i
+       join pg_class c on c.oid = i.indexrelid
+       join pg_namespace n on n.oid = c.relnamespace
+       join pg_am am on am.oid = c.relam
+       where n.nspname = 'dam'
+         and c.relname in ('dam_asset_image_vectors_vec_dino_hnsw',
+                           'dam_asset_image_vectors_vec_siglip_hnsw')
+         and am.amname = 'hnsw'
+         and i.indpred is not null
+         and pg_get_indexdef(i.indexrelid) like '%halfvec_cosine_ops%') <> 2 then
+    raise exception 'VERIFY FAILED: the two partial HNSW halfvec_cosine_ops leg indexes are missing or malformed';
   end if;
 
-  if not exists (select 1 from pg_index i join pg_class c on c.oid = i.indrelid
-                  join pg_namespace n on n.oid = c.relnamespace
-                  where n.nspname = 'dam' and c.relname = 'image_embed_jobs' and i.indisunique) then
-    raise exception 'VERIFY FAILED: unique active-index-per-asset index is missing';
+  if not exists (select 1 from pg_index i
+       join pg_class c on c.oid = i.indexrelid
+       join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'dam'
+         and c.relname = 'image_embed_jobs_one_active_index_per_asset_uq'
+         and i.indisunique
+         and i.indpred is not null) then
+    raise exception 'VERIFY FAILED: the unique partial active-index-per-asset index is missing or malformed';
   end if;
 
   if not exists (select 1 from pg_trigger where tgrelid = 'public.assets'::regclass

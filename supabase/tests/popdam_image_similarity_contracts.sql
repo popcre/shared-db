@@ -341,7 +341,7 @@ begin
 
   -- default stamp resolution from admin_config
   insert into public.admin_config (key, value)
-  values ('IMAGE_SIM_EMBEDDING_MODEL', 'zz486-stamp-v1'::jsonb)
+  values ('IMAGE_SIM_EMBEDDING_MODEL', '"zz486-stamp-v1"'::jsonb)
   on conflict (key) do update set value = excluded.value;
   select count(*) into v_count from public.search_dam_image_similarity(
     v_dino::extensions.halfvec, v_siglip::extensions.halfvec, 0.60, 0.0, 200, 50, null);
@@ -381,18 +381,22 @@ $phase9$;
 -- without the GUC (DeepSeek non-block requirement, made binding here).
 -- =====================================================================================
 insert into public.assets (id, filename, relative_path, file_type, quick_hash, modified_at, is_deleted, thumbnail_url)
-select '10000000-0000-4000-8000-' || lpad(g::text, 12, '0'),
+select ('10000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid,
        'zz486-seed-' || g || '.jpg', 'ZZ486/seed/' || g || '.jpg', 'jpg',
        'zz486-seed-' || g, now(), false,
        'https://cdn.example.test/zz486-seed-' || g || '.jpg'
 from generate_series(1, 1200) g;
 
 insert into dam.dam_asset_image_vectors (asset_id, vec_dino, vec_siglip, embedding_model, last_embedded_thumbnail_url)
-select '10000000-0000-4000-8000-' || lpad(g::text, 12, '0'),
+select ('10000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid,
        ('[' || (select string_agg((x % 97 + 1)::text, ',') from generate_series(g, g + 767) x) || ']')::extensions.halfvec,
        ('[' || (select string_agg((x % 89 + 1)::text, ',') from generate_series(g, g + 767) x) || ']')::extensions.halfvec,
        'zz486-stamp-v1', 'https://cdn.example.test/zz486-seed-' || g || '.jpg'
 from generate_series(1, 1200) g;
+
+-- a bulk insert inside a test transaction carries no statistics; without this
+-- the planner cannot know the seeded cardinality the no-GUC assertion relies on
+analyze dam.dam_asset_image_vectors;
 
 do $phase10$
 declare

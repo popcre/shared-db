@@ -1,0 +1,66 @@
+{
+  "schema_version": 2,
+  "work_issue": 4655,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Support independently authenticated multi-source production receipts in the existing DesignFlow readiness check, without extra ordinary commit gates or changing database promotion authority",
+  "base_sha": "e7aa3432e699c2fb52bfc76961201511d6e4482d",
+  "dispatcher": "Codex chat 01a164d2-4b63-7713-ae00-054036db0416 on edge-dev3",
+  "worker": "codex",
+  "branch": "codex/dflow-db-final-delivery",
+  "worktree": "/home/ahazan/.codex/worktrees/dflow-db-final-delivery/shared-db",
+  "allowed_paths": [
+    "scripts/lib/designflow-db-release.mjs",
+    "scripts/lib/designflow-db-release.test.mjs",
+    "scripts/designflow-db-release.mjs",
+    "scripts/designflow-db-release.test.mjs",
+    "config/designflow-db-releases.json",
+    "docs/designflow-db-release.md",
+    "docs/verification/throughput-dispositions/scripts~lib~designflow-db-release.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~designflow-db-release.mjs.json",
+    ".agent/work/4655/**"
+  ],
+  "file_writes": [
+    "scripts/lib/designflow-db-release.mjs",
+    "scripts/lib/designflow-db-release.test.mjs",
+    "scripts/designflow-db-release.mjs",
+    "scripts/designflow-db-release.test.mjs",
+    "config/designflow-db-releases.json",
+    "docs/designflow-db-release.md",
+    "docs/verification/throughput-dispositions/scripts~lib~designflow-db-release.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~designflow-db-release.mjs.json",
+    ".agent/work/4655/**"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No database schema or data writes in this maintenance change",
+    "No manual production apply, foreign claim adoption, app merge, billing/visibility change, or unreviewed platform mutation",
+    "No user-provided SQL/shell execution or credentials in application manifests",
+    "No additional promotion engine or new scheduler outside existing GitHub Actions process"
+  ],
+  "required_checks": [
+    "node --test scripts/lib/designflow-db-release.test.mjs scripts/designflow-db-release.test.mjs",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "node scripts/check-cancelled-work.mjs",
+    "node scripts/check-github-transport-conformance.mjs",
+    "node scripts/check-repository-identity-conformance.mjs"
+  ],
+  "assumptions": [
+    "Existing approved train and existing qualified single-source automatic promotion remain canonical. No new SQL executor, scheduler, reviewer tooling, source fingerprint gate or ordinary commit requirement.",
+    "Multiple PRs may legitimately implement the same still-open application issue; authenticate unique source PR and exact authored migration set separately. Preserve duplicate-PR/version/path refusals.",
+    "All batched production receipts must prove exact source map, native immutable artifact producer, source hashes, ledger and catalog. Never infer production readiness from schema alone.",
+    "Tracking/frontend require both original4648 and companion4673. Unreviewed/missing/stale/ambiguous proof remains blocked."
+  ],
+  "stop_conditions": [
+    "Unverified credentials or artifact evidence refuses before dispatch/readiness",
+    "Exact source or target drift refuses; missing protected dependency remains blocked",
+    "Scope outside listed files requires a new prospective contract generation"
+  ],
+  "generation": 14,
+  "evidence_parent": {
+    "work_issue": 4655,
+    "generation": 13,
+    "contract_sha256": "a6dc91aeebd7448d35cbda4e0ad4d8113e72e8a640327e400be967e628a2bf78"
+  }
+}

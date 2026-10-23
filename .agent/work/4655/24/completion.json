@@ -7,6 +7,8 @@
   "base_sha": "4a062785f3941fd03f735ac64f1eede05ba7c8fa",
   "head_sha": "b88a971620f159fc4514c4c8280723b19e3b9ee7",
   "files_changed": [
+    ".agent/work/4655/23/completion.json",
+    ".agent/work/4655/23/contract.json",
     ".github/workflows/tools-offline-tests.yml",
     "config/designflow-consumer-release-notify.yml",
     "docs/designflow-db-release.md",
@@ -39,7 +41,7 @@
     {
       "command": "node scripts/check-cancelled-work.mjs",
       "exit_code": 0,
-      "evidence": "OK — no cancelled instruction reintroduced (2 row(s) checked).\n",
+      "evidence": "OK \u2014 no cancelled instruction reintroduced (2 row(s) checked).\n",
       "evidence_sha256": "3f59b1b36f42b639b3c82a89879263a2c60361a26ea58787277210aa2775ffa0"
     },
     {

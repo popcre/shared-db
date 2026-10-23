@@ -268,3 +268,8 @@ Detail and live match rates: `docs/verification/cloudsql-piecemeal-cutover-20261
 - 2026-10-23, Albert: legacy license `NK` (Nick) → licensor `VM` Viacom Multi.
 - 2026-10-23, Albert: legacy licenses `GC` (Generic) and `MP` (Multiple) → licensor `ZZ` DTR - No License.
 - 2026-10-23, Albert: Disney, Marvel and Star Wars are three separate licensors regardless of ownership. Legacy `DS` (Dis/Mrv/SW) has no items in production (checked live 2026-10-23), so it maps to nothing and is retired.
+- 2026-10-23, Albert: licensed and non-licensed divisions use different MG05 and MG06 codes and meanings; value mapping is done per division, never across divisions. Division comes from ColdLion (`plm.item.raw->>'divisionCode'`), not DesignFlow `div_code_fk`, which disagrees for about 3,700 items (checked live 2026-10-23).
+- 2026-10-23, Albert: division EP001 is a different company that will not be in the system; its 451 DesignFlow items and their codes (`00 BK CO FB1 HCE KK KK1 LE RK SA SA2 SA3 SA4 SO SO1` …) are not migrated.
+- 2026-10-23, Albert: Roaring Brook (`RB`), Frida Kahlo (`FK`), ZAG (`ZG`) and Friends TV (`FR`) are inactive licensors; they are kept as inactive, not active, licensors.
+- Live 2026-10-23: `GC` Global Culture (6 items) occurs only in ColdLion division EH001, together with the other non-licensed theme codes (`AB AN BA DF FA FP HD KS KT MS ND PH ST WM`); in EH001 slot MG05 is a theme, not a licensor. The earlier `GC` → `ZZ` ruling applies only to the license list entry "Generic", not to these items.
+- Auto-mapped by name (no ruling needed): `NA` → NASA (`X-NASA`), `PF` → Paul Frank, `SB` → Steal-A-Brainrot, `DMC` → Miller Coors (`X-MILLERCOORS`).

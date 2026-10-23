@@ -15,7 +15,9 @@
     "docs/designflow-db-release.md",
     ".agent/work/4655/**",
     "scripts/test_production_business_risk_gate.py",
-    "scripts/production_business_risk_gate.py"
+    "scripts/production_business_risk_gate.py",
+    ".github/workflows/tools-offline-tests.yml",
+    "scripts/rls-packaging-access-initplan.test.mjs"
   ],
   "file_writes": [
     "config/designflow-consumer-release-notify.yml",
@@ -23,7 +25,9 @@
     "docs/designflow-db-release.md",
     ".agent/work/4655/**",
     "scripts/test_production_business_risk_gate.py",
-    "scripts/production_business_risk_gate.py"
+    "scripts/production_business_risk_gate.py",
+    ".github/workflows/tools-offline-tests.yml",
+    "scripts/rls-packaging-access-initplan.test.mjs"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -39,7 +43,8 @@
     "node scripts/check-throughput-truth-audit.mjs",
     "node scripts/check-cancelled-work.mjs",
     "node scripts/check-github-transport-conformance.mjs",
-    "node scripts/check-repository-identity-conformance.mjs"
+    "node scripts/check-repository-identity-conformance.mjs",
+    "node --test scripts/rls-style-guide-access-initplan.test.mjs scripts/rls-packaging-access-initplan.test.mjs"
   ],
   "assumptions": [
     "GitHub cron actual two events 04:51Z and09:38Z despite five-minute configuration causes hours of delay; retain cron as fallback and reuse existing central workflow_dispatch authority.",
@@ -50,17 +55,18 @@
     "CI lacksPyYAML; canonical template may useJSON syntax, which isvalidYAML, preservingexactworkflowsemantics andusingstdlibjson tests. No dependencyinstallation/new parser.",
     "Existing preview-runtime-data coverage has an explicit reasoned exemption interface for inert files. AddONLYthistemplate with checkable no-preview-use reason, retainingallothercoverageguards.",
     "Prior documents-only merge authorization failed solelybecauseanactiveproductionfreeze, notsourceclassification; re-runexistingcheckwhenfreezefree.",
-    "The existing PREVIEW_RUNTIME_DATA_EXEMPTIONS interface is defined in production_business_risk_gate.py, imported by the test; amend its real dictionary with only the canonical inert template and a checkable reason. Never monkeypatch it in tests or weaken any other producer coverage."
+    "The existing PREVIEW_RUNTIME_DATA_EXEMPTIONS interface is defined in production_business_risk_gate.py, imported by the test; amend its real dictionary with only the canonical inert template and a checkable reason. Never monkeypatch it in tests or weaken any other producer coverage.",
+    "Reuse exact already prepared external repair commit4f56f97a9fbee9af13e079b3957a28ab4bfae45a from PR4688: remove literal workflow conflict markers preserving BOTH RLS test steps; permit equivalent schema qualification in its test. Preserve author/provenance and foreign branch/PR; no new implementation/claim/source override. This is prerequisite CI repair, not permission to weaken or skip Tools offline tests."
   ],
   "stop_conditions": [
     "Unverified credentials or artifact evidence refuses before dispatch/readiness",
     "Exact source or target drift refuses; missing protected dependency remains blocked",
     "Scope outside listed files requires a new prospective contract generation"
   ],
-  "generation": 23,
+  "generation": 24,
   "evidence_parent": {
     "work_issue": 4655,
-    "generation": 22,
-    "contract_sha256": "5037429ed69602eddda1b8ba9ccef609c09858f5a7e44793a996f70f29962665"
+    "generation": 23,
+    "contract_sha256": "a7eafc194304f93b9fb618a11c7460bd4d4ef84e6aeb602305f02ac2b1d6dcd4"
   }
 }

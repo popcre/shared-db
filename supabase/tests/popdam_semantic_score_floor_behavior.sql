@@ -103,19 +103,19 @@ values
 -- sem-high: cos=0.90 (high, but strictly below 1.0 so floor=1.0 cannot pass it).
 update public.dam_search_documents
 set embedding = (
-  select (array[0.9::real, sqrt(0.19)::real] || array_fill(0.0::real, array[382]))::extensions.vector
+  select (array[0.9::real, sqrt(0.19)::real] || array_fill(0.0::real, array[766]))::extensions.vector
 ), embedding_model = 'google/siglip2-base-patch16-naflex'
 where asset_id = '34570000-0000-4000-8000-000000000011';
 
 update public.dam_search_documents
 set embedding = (
-  select (array[0.2::real, sqrt(0.96)::real] || array_fill(0.0::real, array[382]))::extensions.vector
+  select (array[0.2::real, sqrt(0.96)::real] || array_fill(0.0::real, array[766]))::extensions.vector
 ), embedding_model = 'google/siglip2-base-patch16-naflex'
 where asset_id = '34570000-0000-4000-8000-000000000012';
 
 update public.dam_search_documents
 set embedding = (
-  select (array[0.3::real, sqrt(0.91)::real] || array_fill(0.0::real, array[382]))::extensions.vector
+  select (array[0.3::real, sqrt(0.91)::real] || array_fill(0.0::real, array[766]))::extensions.vector
 ), embedding_model = 'google/siglip2-base-patch16-naflex'
 where asset_id = '34570000-0000-4000-8000-000000000013';
 
@@ -335,4 +335,5 @@ end;
 $$;
 
 rollback;
+
 

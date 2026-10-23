@@ -124,10 +124,10 @@ area left as a legacy copy for now, only that area's rows in the CSV change.
 
 | Disposition | Columns |
 |---|---|
-| covered (existing canonical column) | 129 |
-| add (new column on the canonical table) | 262 |
-| reshape (child table / row form / payload) | 149 |
-| not needed | 380 |
+| covered (existing canonical column) | 122 |
+| add (new column on the canonical table) | 263 |
+| reshape (child table / row form / payload) | 153 |
+| not needed | 382 |
 | do not move (passwords) | 3 |
 
 Corrections to the gap analysis found while building it:
@@ -202,7 +202,7 @@ case-insensitive, aliases included.
 | `customers` → `core.customer` (+alias) | 58 | 57 | 98% |
 | `licenseList` → `core.licensor` (+alias) | 19 | 12 | 63% |
 | `itemSize` → `core.product_size` | 495 | 79 | 16% |
-| `Factory` → `core.factory` (+alias) | 181 | 11 | 6% |
+| `Factory` → `core.factory` (+alias, exact normalized legal name) | 181 | 11 | 6% (34 with name/trade name/nickname token match, see plan) |
 | `ProdOrderHeader` → `plm.production_order` | 3,622 | 0 | 0% |
 | `itemDetail` → `plm.item_detail` | 21,841 | n/a | not needed (ruling) |
 
@@ -222,4 +222,5 @@ Findings:
   review.
 - Licensors: 7 unmatched codes, mostly umbrella or legacy entries
   (`GC` Generic, `MP` Multiple, `DS` Dis/Mrv/SW, `NU`, `NK`, `RB`, `FK`);
-  these need a licensing decision, not a guess (rule 2).
+  all are now decided by owner rulings recorded in
+  `docs/designflow-cloudsql-to-supabase-plan.md` ("Value-mapping decisions").

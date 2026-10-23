@@ -40,7 +40,7 @@ itemHeader,item_cost_ext,number | null,8,1,add,plm.item,item_cost_ext,
 itemHeader,item_depth_size,string | null,4,1,add,plm.item,item_depth_size,
 itemHeader,item_descr_name,string | null,99,1,covered,plm.item,name,
 itemHeader,item_displ_descr_name,string | null,57,1,add,plm.item,item_displ_descr_name,
-itemHeader,item_id_pk,number,164,0,covered,plm.item,id / source_id,
+itemHeader,item_id_pk,number,164,0,covered,plm.item,source_id,legacy DesignFlow item id; canonical key is plm.item.id
 itemHeader,item_length_size,number | null,0,2,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
 itemHeader,item_note,string | null,7,1,add,plm.item,item_note,
 itemHeader,item_num_id,string | null,124,6,covered,plm.item,item_number,
@@ -230,12 +230,12 @@ itemHeader,vendor_code_fk,string | null,13,1,add,plm.item,vendor_id,code becomes
 licenseList,licenseList_airbyte_emitted_at,string | null,3,0,add,plm.license_agreement (new),airbyte_emitted_at,
 licenseList,licenseList_airbyte_licenses_hashid,string | null,0,0,not_needed,,,no reference outside model definitions
 licenseList,licenseList_auditlog,string | null,0,0,not_needed,,,2026-10-23 ruling
-licenseList,licenseList_code,string | null,15,0,covered,plm.license_agreement (new),licensor_id (via core.licensor.code),
+licenseList,licenseList_code,string | null,15,0,add,plm.license_agreement (new),licensor_id,resolved through core.licensor.code
 licenseList,licenseList_fob_royalty_rate,number | null,26,0,add,plm.license_agreement (new),fob_royalty_rate,
-licenseList,licenseList_id,number,27,0,covered,plm.license_agreement (new),source_id,
+licenseList,licenseList_id,number,27,0,add,plm.license_agreement (new),source_id,
 licenseList,licenseList_royalty_rate,number | null,26,0,add,plm.license_agreement (new),royalty_rate,
-licenseList,licenseList_status,string | null,16,0,covered,plm.license_agreement (new),status,
-licenseList,licenseList_title,string | null,38,0,covered,plm.license_agreement (new),core.licensor.name (ColdLion authority),
+licenseList,licenseList_status,string | null,16,0,add,plm.license_agreement (new),status,
+licenseList,licenseList_title,string | null,38,0,covered,core.licensor,name,ColdLion is the authority for the licensor name
 merchGroup,companyCode_fk,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
 merchGroup,companyCode_id_fk,number | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
 merchGroup,createdTime,string | null,14,6,covered,core.merch_group,created_at,
@@ -246,7 +246,7 @@ merchGroup,is_active,boolean | null,156,3,add,core.merch_group,is_active,
 merchGroup,ItemNoCode,string | null,2,1,add,core.merch_group,item_no_code,kept by 2026-10-23 ColdLion ruling
 merchGroup,mg_code,string | null,285,1,covered,core.merch_group,code,
 merchGroup,mg_desc,string | null,179,1,covered,core.merch_group,name,
-merchGroup,mg_id,number,163,0,add,core.merch_group,metadata,legacy id kept for mapping; source identity column to be decided in the merch_group area issue
+merchGroup,mg_id,number,163,0,reshape,core.merch_group,metadata,legacy id kept in metadata for mapping; final source identity decided in the merch_group area issue
 merchGroup,mgCategory,string | null,67,2,add,core.merch_group,mg_category,
 merchGroup,mgCode2,string | null,50,2,add,core.merch_group,mg_code2,
 merchGroup,mgTypeCode,string | null,17,2,add,core.merch_group,mg_type_code,
@@ -256,11 +256,11 @@ merchGroup,parent_id,number | null,142,0,covered,core.merch_group,parent_id,
 customers,customers_airbyte_customers_hashid,string | null,0,0,not_needed,,,no reference outside model definitions
 customers,customers_airbyte_emitted_at,string | null,0,0,not_needed,,,no reference outside model definitions
 customers,customers_auditlog,string | null,0,0,not_needed,,,no reference outside model definitions
-customers,customers_code,string | null,15,0,covered,core.customer,core.company_source_ref,
+customers,customers_code,string | null,15,0,reshape,core.company_source_ref,source_code,
 customers,customers_dilution,string | null,12,0,add,core.customer,dilution,
 customers,customers_email,string | null,7,0,add,core.customer,email,
 customers,customers_expire,string | null,0,0,not_needed,,,no reference outside model definitions
-customers,customers_id,number,67,0,covered,core.customer,source ref,
+customers,customers_id,number,67,0,reshape,core.company_source_ref,source_id,
 customers,customers_lastname,string | null,0,0,not_needed,,,no reference outside model definitions
 customers,customers_level,string | null,0,0,not_needed,,,no reference outside model definitions
 customers,customers_logistic_load,string | null,12,0,add,core.customer,logistic_load,
@@ -276,11 +276,11 @@ customers,customers_subleveladmin,string | null,0,0,not_needed,,,no reference ou
 customers,customers_subscription,string | null,0,0,not_needed,,,no reference outside model definitions
 Factory,factory_access,string | null,19,0,add,core.factory,access,
 Factory,factory_country,string | null,49,0,covered,core.factory,country,
-Factory,factory_name,string | null,77,0,covered,core.factory,name,
-Factory,factory_nickname,string | null,143,0,add,core.factory,nickname,
+Factory,factory_name,string | null,77,0,add,core.factory,trade_name,DesignFlow name is a trade or rep name; core.factory.name keeps the ColdLion legal name (owner ruling 2026-10-23)
+Factory,factory_nickname,string | null,143,0,covered,core.factory,display_name,nickname shown everywhere (owner ruling 2026-10-23)
 Factory,factory_status,string | null,26,0,covered,core.factory,status,
 Factory,id,number,4691,28,reshape,core.factory_source_ref,source_id,ColdLion-sourced factories via source ref; DesignFlow-only factories need a DesignFlow source ref
-Factory,sort_order,number | null,16,0,add,core.factory,sort_order,
+Factory,sort_order,number | null,16,0,not_needed,,,generic name; gap analysis found no factory use
 vendor,factory_id_fk,number | null,204,0,covered,core.vendor,factory_id_fk,core.vendor mirrors the legacy table column for column
 vendor,vendor_access,string | null,25,0,covered,core.vendor,vendor_access,core.vendor mirrors the legacy table column for column
 vendor,vendor_address1,string | null,6,0,covered,core.vendor,vendor_address1,core.vendor mirrors the legacy table column for column
@@ -677,10 +677,10 @@ AuditLog,oldValue,string | null,103,0,add,app.activity,payload.old_value,"kept i
 AuditLog,ref_id_fk,number | null,18,0,covered,app.activity,target_id,
 AuditLog,user_id_fk,number | null,75,0,covered,app.activity,actor_profile_id,
 AuditLog,username,string | null,42,0,covered,app.activity,actor_profile_id,
-licensingStatus,assignee_id,number | null,32,0,covered,plm.licensing_status,see assignee rule,
+licensingStatus,assignee_id,number | null,32,0,reshape,plm.licensing_status_assignee (new),profile_id,single assignee becomes an assignee row
 licensingStatus,assignee_ids,Json,38,0,reshape,plm.licensing_status_assignee (new),assignee_ids,arrays become a join table to app.profile
 licensingStatus,assignor_id,number | null,10,0,add,plm.licensing_status,assignor_id,
-licensingStatus,attachments,Json | null,156,0,reshape,plm.licensing_attachment (new) -> app.file_object,file_object_id,JSON attachment list becomes rows
+licensingStatus,attachments,Json | null,156,0,reshape,plm.licensing_attachment (new),file_object_id,JSON attachment list becomes rows referencing app.file_object
 licensingStatus,date,string | null,568,0,covered,plm.licensing_status,due_date,
 licensingStatus,feedback,string | null,71,0,add,plm.licensing_status,feedback,
 licensingStatus,from,string | null,5143,13,add,plm.licensing_status,from,"generic name: reference count unreliable, confirm in code"
@@ -691,7 +691,7 @@ licensingStatus,package,boolean | null,42,0,add,plm.licensing_status,package,"ge
 licensingStatus,pop_comments,string | null,22,0,add,plm.licensing_status,pop_comments,
 licensingStatus,status,string | null,2983,20,covered,plm.licensing_status,status,
 licensingStatus,tagged_group_id,number | null,40,0,reshape,plm.licensing_status_assignee (new),tagged_group_id,arrays become a join table to app.profile
-licensingFeedbackReply,attachments,Json | null,156,0,reshape,plm.licensing_attachment (new) -> app.file_object,file_object_id,JSON attachment list becomes rows
+licensingFeedbackReply,attachments,Json | null,156,0,reshape,plm.licensing_attachment (new),file_object_id,JSON attachment list becomes rows referencing app.file_object
 licensingFeedbackReply,comment,string,238,1,covered,plm.licensing_feedback,body,
 licensingFeedbackReply,created_at,string,127,0,covered,plm.licensing_feedback,created_at,
 licensingFeedbackReply,created_by,number,48,0,covered,plm.licensing_feedback,author_name,
@@ -750,7 +750,7 @@ itemSize,itemSize_airbyte_emitted_at,string | null,0,0,not_needed,,,no reference
 itemSize,itemSize_airbyte_sizes_hashid,string | null,0,0,not_needed,,,no reference outside model definitions
 itemSize,itemSize_auditlog,string | null,3,0,add,core.product_size,auditlog,
 itemSize,itemSize_code,string | null,9,0,covered,core.product_size,code,
-itemSize,itemSize_id,number,23,0,covered,core.product_size,source ref,
+itemSize,itemSize_id,number,23,0,not_needed,,,sizes map by item MG04 code to core.product_size.code; legacy size id is not carried
 itemSize,itemSize_status,string | null,17,0,covered,core.product_size,status,
 itemSize,itemSize_title,string | null,36,0,covered,core.product_size,legacy_label,metric display label; canonical label is core.product_size.label
 itemSize,itemSize_unit,string | null,19,0,add,core.product_size,unit,

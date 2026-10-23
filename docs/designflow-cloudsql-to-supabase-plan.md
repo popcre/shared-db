@@ -275,3 +275,4 @@ Detail and live match rates: `docs/verification/cloudsql-piecemeal-cutover-20261
 - Auto-mapped by name (no ruling needed): `NA` → NASA (`X-NASA`), `PF` → Paul Frank, `SB` → Steal-A-Brainrot, `DMC` → Miller Coors (`X-MILLERCOORS`).
 - 2026-10-23, Albert: ColdLion division codes are right: SP001 = Spruce Licensed, EH001 = Spruce non-Licensed, CW001 = POP. DesignFlow `divisionCode.external_divisoncode` has SP001/EH001 swapped and is not used.
 - 2026-10-23, Albert: POP (CW001) leftover licensor codes go to a review list. Live: only 16 CW001 items — `MM`/`ABMM` Marilyn Monroe (13), `GEN` (2: invoicing, lenticular), `BK` (1: ticketing). `BK`'s other 111 items are EP001 and not migrated.
+- 2026-10-23, Albert: Marilyn Monroe (`MM`, `ABMM`; 13 POP items) is an old inactive licensor; kept as an inactive licensor.

@@ -246,7 +246,7 @@ merchGroup,is_active,boolean | null,156,3,add,core.merch_group,is_active,
 merchGroup,ItemNoCode,string | null,2,1,add,core.merch_group,item_no_code,kept by 2026-10-23 ColdLion ruling
 merchGroup,mg_code,string | null,285,1,covered,core.merch_group,code,
 merchGroup,mg_desc,string | null,179,1,covered,core.merch_group,name,
-merchGroup,mg_id,number,163,0,covered,core.merch_group,source_id,
+merchGroup,mg_id,number,163,0,add,core.merch_group,metadata,legacy id kept for mapping; source identity column to be decided in the merch_group area issue
 merchGroup,mgCategory,string | null,67,2,add,core.merch_group,mg_category,
 merchGroup,mgCode2,string | null,50,2,add,core.merch_group,mg_code2,
 merchGroup,mgTypeCode,string | null,17,2,add,core.merch_group,mg_type_code,
@@ -279,7 +279,7 @@ Factory,factory_country,string | null,49,0,covered,core.factory,country,
 Factory,factory_name,string | null,77,0,covered,core.factory,name,
 Factory,factory_nickname,string | null,143,0,add,core.factory,nickname,
 Factory,factory_status,string | null,26,0,covered,core.factory,status,
-Factory,id,number,4691,28,covered,core.factory,source_id,
+Factory,id,number,4691,28,reshape,core.factory_source_ref,source_id,ColdLion-sourced factories via source ref; DesignFlow-only factories need a DesignFlow source ref
 Factory,sort_order,number | null,16,0,add,core.factory,sort_order,
 vendor,factory_id_fk,number | null,204,0,covered,core.vendor,factory_id_fk,core.vendor mirrors the legacy table column for column
 vendor,vendor_access,string | null,25,0,covered,core.vendor,vendor_access,core.vendor mirrors the legacy table column for column
@@ -752,7 +752,7 @@ itemSize,itemSize_auditlog,string | null,3,0,add,core.product_size,auditlog,
 itemSize,itemSize_code,string | null,9,0,covered,core.product_size,code,
 itemSize,itemSize_id,number,23,0,covered,core.product_size,source ref,
 itemSize,itemSize_status,string | null,17,0,covered,core.product_size,status,
-itemSize,itemSize_title,string | null,36,0,covered,core.product_size,name,
+itemSize,itemSize_title,string | null,36,0,covered,core.product_size,legacy_label,metric display label; canonical label is core.product_size.label
 itemSize,itemSize_unit,string | null,19,0,add,core.product_size,unit,
 itemDetail,base_qty_hed,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
 itemDetail,carton_code_ext,string | null,0,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"

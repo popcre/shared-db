@@ -124,9 +124,9 @@ area left as a legacy copy for now, only that area's rows in the CSV change.
 
 | Disposition | Columns |
 |---|---|
-| covered (existing canonical column) | 131 |
-| add (new column on the canonical table) | 261 |
-| reshape (child table / row form / payload) | 148 |
+| covered (existing canonical column) | 129 |
+| add (new column on the canonical table) | 262 |
+| reshape (child table / row form / payload) | 149 |
 | not needed | 380 |
 | do not move (passwords) | 3 |
 

@@ -3,7 +3,7 @@
 Purpose: before DesignFlow moves from the legacy CloudSQL-shaped tables to the
 normalized canonical tables, every column the application code uses must have
 a home. Companion to `designflow-code-table-usage.md` (table level); this file
-is column level. Published 2026-10-23 at Albert's request ("merge the branch's docs to main via PR").
+is column level. To be published via PR on 2026-10-23 at Albert's request.
 
 Evidence basis: `types/database.types.ts` at `dd8fb725a`; code in the main
 checkouts of `designflow-backend`, `-item-master`, `-tracking`,

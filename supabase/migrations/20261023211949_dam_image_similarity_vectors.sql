@@ -290,7 +290,7 @@ begin
         attempts         = case when j.status = 'leased' then j.attempts + 1
                                 else j.attempts end,
         lease_owner      = case when j.status = 'leased' and j.attempts + 1 >= 5
-                                then j.lease_owner else v_worker end,
+                                then null else v_worker end,
         lease_expires_at = case when j.status = 'leased' and j.attempts + 1 >= 5
                                 then null
                                 else now() + make_interval(secs => v_lease) end,

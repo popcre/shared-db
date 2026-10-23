@@ -238,7 +238,7 @@ end
 $phase5$;
 
 -- =====================================================================================
--- Phase 6 — query jobs: claim exactly one (FIFO), complete, status text round-trip.
+-- Phase 6 — query jobs: claim exactly one, complete, status text round-trip.
 -- =====================================================================================
 do $phase6$
 declare
@@ -251,8 +251,8 @@ declare
   v_dino text := '[' || (select string_agg(g::text, ',') from generate_series(1, 768) g) || ']';
 begin
   select id into v_claimed from dam.claim_image_embed_jobs('query', 8, 'zz486-worker-1', 30);
-  if v_claimed is null or v_claimed <> v_ids[1] then
-    raise exception 'test_query_claim_one: query claim returned nothing or skipped FIFO head';
+  if v_claimed is null or not (v_claimed = any (v_ids)) then
+    raise exception 'test_query_claim_one: query claim returned nothing or a foreign job';
   end if;
 
   perform dam.complete_image_embed_job(

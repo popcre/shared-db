@@ -2,6 +2,7 @@
 -- Wrap only qualified constant helper subexpressions in 2 packaging policies.
 -- Role predicates, OR branches and email exception behavior preserved exactly.
 -- catalog-verification: policies only (ALTER POLICY expressions); no new relations.
+-- CI trigger 2026-10-23.
 
 set local search_path = core, app, auth, public, pg_catalog;
 

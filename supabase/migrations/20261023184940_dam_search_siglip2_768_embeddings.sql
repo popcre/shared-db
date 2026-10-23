@@ -1,4 +1,4 @@
--- Version: 20261023010034
+-- Version: 20261023184940
 -- Issue: popcre/shared-db#4664 (app u2giants/popdam3#97)
 -- Replace DAM semantic-search embeddings: gte-small/384 text -> google/siglip2-base-patch16-naflex/768
 -- (owner decision, Albert 2026-10-22). Image vectors come from assets.thumbnail_url via owner GPU.

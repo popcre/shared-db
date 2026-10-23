@@ -38,22 +38,22 @@ do $checks$
 begin
   -- L2: the group must hold USAGE on schema coldlion.
   if not has_schema_privilege('designflow_prod_tracking_grants', 'coldlion', 'usage') then
-    raise exception '#3869/20261023021000 post-check: designflow_prod_tracking_grants lacks USAGE on schema coldlion';
+    raise exception '#3869/20261023014911 post-check: designflow_prod_tracking_grants lacks USAGE on schema coldlion';
   end if;
   -- L5: the header relation must be an ordinary table.
   if (select relkind from pg_class where oid = 'dflow_prod."ProdOrderHeader"'::regclass) is distinct from 'r' then
-    raise exception '#3869/20261023021000 post-check: dflow_prod."ProdOrderHeader" is not an ordinary table';
+    raise exception '#3869/20261023014911 post-check: dflow_prod."ProdOrderHeader" is not an ordinary table';
   end if;
   -- L5: created_time must be exactly timestamptz (the view compares it as one).
   if (select format_type(a.atttypid, a.atttypmod) from pg_attribute a
        where a.attrelid = 'coldlion.order_history_line'::regclass
          and a.attname = 'created_time' and not a.attisdropped) is distinct from 'timestamp with time zone' then
-    raise exception '#3869/20261023021000 post-check: coldlion.order_history_line.created_time is not timestamptz';
+    raise exception '#3869/20261023014911 post-check: coldlion.order_history_line.created_time is not timestamptz';
   end if;
   -- The companion migration's objects must all be present (this file may only
   -- run after 20261022221940 on any target).
   if to_regclass('dflow_prod.v_prod_order_sales_order_link') is null then
-    raise exception '#3869/20261023021000 post-check: dflow_prod.v_prod_order_sales_order_link is missing (20261022221940 not applied)';
+    raise exception '#3869/20261023014911 post-check: dflow_prod.v_prod_order_sales_order_link is missing (20261022221940 not applied)';
   end if;
 end
 $checks$;

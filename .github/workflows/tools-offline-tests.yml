@@ -165,11 +165,19 @@ jobs:
           set -euo pipefail
           node --test scripts/rls-owner-uid-initplan.test.mjs
 
+<<<<<<< HEAD
       - name: Verify RLS style-guide access source (#4429)
         if: steps.route.outputs.pure_prose != 'true'
         run: |
           set -euo pipefail
           node --test scripts/rls-style-guide-access-initplan.test.mjs
+=======
+      - name: Verify RLS packaging access source (#4430)
+        if: steps.route.outputs.pure_prose != 'true'
+        run: |
+          set -euo pipefail
+          node --test scripts/rls-packaging-access-initplan.test.mjs
+>>>>>>> 56790c591 (wrap helper subexpressions in 2 packaging policies at version 20261023151801)
 
       - name: Run throughput guard tests and prove planned files are present
         if: steps.route.outputs.pure_prose != 'true'

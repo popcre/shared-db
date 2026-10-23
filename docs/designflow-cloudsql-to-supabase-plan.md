@@ -280,3 +280,9 @@ Detail and live match rates: `docs/verification/cloudsql-piecemeal-cutover-20261
 - 2026-10-23, Albert: do not import `117T3MV` and `17P1GF1` (`GEN`). POP licensor review list is now closed.
 - Live 2026-10-23 (imported scope: CW001, EH001, SP001, inventory items only = 18,048 items): item size (MG04) codes map to `core.product_size` for 17,149 items (95%); 708 blank; 38 distinct codes on the rest go to a review list. DesignFlow's own `itemSize` list (metric labels) is not used for mapping.
 - Live 2026-10-23: production-order vendor codes map to `core.factory` codes for 3,412 of 3,622 orders (94%). DesignFlow's `Factory` list (181 rows, 4 test rows) matches ColdLion vendors by name for only 34 rows; open question to Albert.
+- 2026-10-23, Albert (factories): DesignFlow factories and ColdLion vendors overlap but are not the same list. ColdLion holds the legal name (who POP pays); DesignFlow refers to a factory by trade name or, more often, the factory rep's name. Design: one canonical `core.factory`, ColdLion legal name kept as is, extended with:
+  - trade name;
+  - nickname — the name shown everywhere in the apps (existing `display_name` is its home unless review finds it used otherwise);
+  - rep names, one or more per factory (child table, not a list column);
+  - vendor user accounts, one or more per factory (`core.vendor` logins linked to the canonical factory id).
+  Factories POP has not yet done business with exist only in DesignFlow and are created without a ColdLion source reference; ColdLion attaches later by source identity. Mapping the 181 DesignFlow factories: automatic where name/trade name/nickname matches (34 today), the rest on a licensing-style review list; the 4 test rows are not imported.

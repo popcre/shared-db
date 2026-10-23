@@ -19,38 +19,39 @@
     {
       "command": "node --test scripts/lib/designflow-db-release.test.mjs scripts/designflow-db-release.test.mjs",
       "exit_code": 0,
-      "evidence": "Validated current implementation; full release suite152passed, zero skipped/failed. No other implementation changes beyond base77310."
+      "evidence": "1..99\n# tests 99\n# suites 0\n# pass 99\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 181.940013"
     },
     {
       "command": "node scripts/check-cancelled-work.mjs",
       "exit_code": 0,
-      "evidence": "Validated current implementation; full release suite152passed, zero skipped/failed. No other implementation changes beyond base77310."
+      "evidence": "OK \u2014 no cancelled instruction reintroduced (2 row(s) checked)."
     },
     {
       "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
-      "evidence": "Validated current implementation; full release suite152passed, zero skipped/failed. No other implementation changes beyond base77310."
+      "evidence": "truth audit OK: call_sites=361 sources=103 derived_digest=6b7257133267"
     },
     {
       "command": "python3 -m unittest scripts.test_production_business_risk_gate",
       "exit_code": 0,
-      "evidence": "Validated current implementation; full release suite152passed, zero skipped/failed. No other implementation changes beyond base77310."
+      "evidence": "...............................................\n----------------------------------------------------------------------\nRan 230 tests in 4.538s\n\nOK"
     },
     {
       "command": "node scripts/check-github-transport-conformance.mjs",
       "exit_code": 0,
-      "evidence": "Validated current implementation; full release suite152passed, zero skipped/failed. No other implementation changes beyond base77310."
+      "evidence": "GitHub transport conformance: 439 files scanned, every GitHub call goes through scripts/lib/github-transport.mjs."
     },
     {
       "command": "node scripts/check-repository-identity-conformance.mjs",
       "exit_code": 0,
-      "evidence": "Validated current implementation; full release suite152passed, zero skipped/failed. No other implementation changes beyond base77310."
+      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (41 entries)."
     }
   ],
   "assumptions_resolved": [
     "Exact protected settings semantics preserved; only unsupported empty contexts removed beside explicit App-bound checks. HTTP422 positively rejected both prior requests, no settings mutated.",
     "Complete live baselines verified twice: five authenticated absence/null baselines and frontend full1review baseline. Future apply aborts any complete baseline drift.",
-    "No new commit/sandbox/develop gate, no additional review requirement, no production deployment or app merge. Existing source observer1de and UPC77310 merged through guarded workflow; this is settings-input correction only."
+    "No new commit/sandbox/develop gate, no additional review requirement, no production deployment or app merge. Existing source observer1de and UPC77310 merged through guarded workflow; this is settings-input correction only.",
+    "Live activation verified all six exact reviewed main settings and six isolated missing-status/ordinary-user-spoof rejections; owned temporary probes cleaned. Durable issue evidence: https://github.com/popcre/shared-db/issues/4655#issuecomment-6354530581. This evidence-only correction records each command own output; implementation source remains cf34128 unchanged."
   ],
   "stop_conditions_hit": []
 }

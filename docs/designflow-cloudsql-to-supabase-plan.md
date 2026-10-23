@@ -258,3 +258,13 @@ Sources in this workspace
 •	`designflow-backend/models/db.js` — `search_path` is set only when multi-schema is on
 •	`designflow-backend/shared-db/docs/designflow-master-data-migration/designflow-schema-segregation.md` — target homes, and the 21 July 2026 `SET SCHEMA` incident
 •	`designflow-backend/shared-db/docs/unified-supabase-schema-map.md` — production project `qsllyeztdwjgirsysgai` and why `users` / `customers` are not dumped into `app` / `core`
+
+## Value-mapping decisions (owner rulings)
+
+Detail and live match rates: `docs/verification/cloudsql-piecemeal-cutover-20261002/designflow-legacy-column-crosswalk.md`.
+
+- 2026-10-23, Albert: every field the DesignFlow code uses must have a home; where Supabase production already has a table for the same data, its design is used and extended, or the legacy values are only mapped into it.
+- 2026-10-23, Albert: legacy license `NU` (NBCUniversal) → licensor `NB` NBC.
+- 2026-10-23, Albert: legacy license `NK` (Nick) → licensor `VM` Viacom Multi.
+- 2026-10-23, Albert: legacy licenses `GC` (Generic) and `MP` (Multiple) → licensor `ZZ` DTR - No License.
+- 2026-10-23, Albert: Disney, Marvel and Star Wars are three separate licensors regardless of ownership. Legacy `DS` (Dis/Mrv/SW) has no items in production (checked live 2026-10-23), so it maps to nothing and is retired.

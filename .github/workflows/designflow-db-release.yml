@@ -1,0 +1,104 @@
+name: DesignFlow database release readiness
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/designflow-db-release*'
+      - 'scripts/lib/designflow-db-*'
+      - 'config/designflow-db-releases.json'
+      - '.github/workflows/designflow-db-release.yml'
+      - '.github/workflows/shared-supabase-migrations.yml'
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test release validation, orchestration, and real synthetic catalog queries
+        shell: bash
+        run: |
+          set -euo pipefail
+          container="dflow-release-gate-ci-${GITHUB_RUN_ID}"
+          docker run -d --rm --name "$container" --memory 512m -e POSTGRES_HOST_AUTH_METHOD=trust postgres:17
+          trap 'docker stop "$container" >/dev/null' EXIT
+          ready=false
+          for attempt in {1..30}; do
+            if docker exec "$container" pg_isready -U postgres >/dev/null; then ready=true; break; fi
+            sleep 1
+          done
+          test "$ready" = true
+          DFLOW_RELEASE_CATALOG_TEST_CONTAINER="$container" node --test scripts/lib/designflow-db-release.test.mjs scripts/lib/designflow-db-catalog.test.mjs scripts/designflow-db-release.test.mjs
+
+  observe:
+    needs: test
+    if: >-
+      always() && github.repository == 'popcre/shared-db' && github.ref == 'refs/heads/main' &&
+      ((github.event_name == 'schedule' && needs.test.result == 'skipped') ||
+       (github.event_name == 'workflow_dispatch' && needs.test.result == 'success'))
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 20
+    environment: production
+    concurrency:
+      group: designflow-database-release-observer
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      actions: write
+      issues: write
+      pull-requests: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Mint the existing designated App status publisher for six applications
+        id: publisher
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.POP_AI_WATCHERS_APP_ID }}
+          private-key: ${{ secrets.POP_AI_WATCHERS_PRIVATE_KEY }}
+          owner: popcre
+          repositories: |
+            designflow-backend
+            designflow-bff
+            designflow-frontend
+            designflow-item-master
+            designflow-tracking
+            designflow-data-syncing
+          permission-contents: read
+          permission-statuses: write
+      - name: Observe exact releases and reuse qualified canonical promotion
+        env:
+          # Existing central operator credential. Never copied to applications.
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          DFLOW_READINESS_STATUS_TOKEN: ${{ steps.publisher.outputs.token }}
+          DFLOW_READINESS_APP_SLUG: ${{ steps.publisher.outputs.app-slug }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SHARED_DB_SESSION_ID: github-actions-${{ github.run_id }}
+          SHARED_DB_AUTHOR_ENGINE: codex
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/designflow-db-release.mjs --observe | tee "$RUNNER_TEMP/designflow-database-readiness.json"
+      - name: Preserve exact-source readiness results, including refusals
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: designflow-database-readiness
+          path: ${{ runner.temp }}/designflow-database-readiness.json
+          if-no-files-found: error
+          retention-days: 30

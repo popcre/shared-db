@@ -199,7 +199,7 @@ version 1 single-source receipt checks and promotion behavior remain unchanged.
 
 ## Immediate consumer notifications: source and activation
 
-Issue #4655 owns `config/designflow-consumer-release-notify.yml` as the canonical notification template. The six eventual copies belong at `.github/workflows/designflow-db-release-notify.yml` in the named application repositories. Change the template first and keep all six copies byte-identical. Retire the copies and dedicated dispatch credential only after a native cross-repository event trigger replaces them and actual event delivery is proved.
+Issue #4655 owns `config/designflow-consumer-release-notify.yml` as the canonical notification template. It uses JSON syntax (valid YAML) so its configuration tests require only Python’s standard library; no YAML package is required. The six eventual copies belong at `.github/workflows/designflow-db-release-notify.yml` in the named application repositories. Change the template first and keep all six copies byte-identical. Retire the copies and dedicated dispatch credential only after a native cross-repository event trigger replaces them and actual event delivery is proved.
 
 The five-minute cron is a fallback, not a latency guarantee: actual scheduled runs 39902566401 and 39933299973 arrived at 12:51 AM EDT and 5:38 AM EDT on October 23, 2026; no later scheduled run existed at 9:35 AM EDT that day. Notifications reuse the existing central workflow, which independently reads current application heads, requirements and production proof. A notification supplies no release authorization.
 

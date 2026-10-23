@@ -1,4 +1,4 @@
--- Issue #4692 (author claim #4699): PopDAM image-similarity home —
+-- Issue #4692 (author claim #4703): PopDAM image-similarity home —
 -- dam.dam_asset_image_vectors + dam.image_embed_jobs + worker heartbeat and the
 -- public SECURITY DEFINER entrypoints for the GPU poller, the Railway backfill
 -- op and the edge search. Design: u2giants/popdam3 plan_image_similarity_upload_search.md

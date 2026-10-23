@@ -1,4 +1,4 @@
--- PopDAM image-similarity contracts (#4692 / claim #4699, popdam3 #486).
+-- PopDAM image-similarity contracts (#4692 / claim #4703, popdam3 #486).
 -- Disposable-database transaction only; the harness owns BEGIN/ROLLBACK.
 -- Covers: grant/RLS posture, trigger enqueue (raster/PDF/gate), unique active
 -- index, claim exclusivity + expired-lease poison, query claim = 1, complete

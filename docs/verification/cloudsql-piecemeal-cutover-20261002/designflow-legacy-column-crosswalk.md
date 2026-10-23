@@ -161,3 +161,65 @@ New tables the crosswalk proposes: `plm.license_agreement`,
 - Proposed target names are a starting point for the per-area structural
   issues (gap analysis step 3); each issue confirms them against the code
   path before claiming objects.
+
+## 6. Tables with no Supabase design: do they fit as-is? (2026-10-23)
+
+Checked each table's columns (types at `dd8fb725a`) against §1.
+
+- **Fit unchanged except for references** (application-owned, no shared
+  truth): screen layouts, `grid_cell_notes`, custom grid (`UDF*`),
+  `UIElements`, `app_settings`, `ai_cache_events`, `email_logs`,
+  standardized products, lead-time tables, `LicenseFeedBacks`, `RFQStep`,
+  `RFQContainer`, `RFQWhse`, `RFQItemStatus`, `deliveryLocation`,
+  `FOBCountry`, sample cluster. The only required change: columns pointing at
+  users, factories, customers or items (`user_id_fk`, `factory_id_fk`,
+  `customer_id_fk`, `item_id_fk`, `RoleId`/`UserId`) must point at
+  `app.profile`, `core.factory`, `core.customer`, `plm.item`, `app.role`
+  (rule 3). Names may stay as they are where the app reads them; recreated
+  tables use snake_case.
+- **Fit only with a change:** `RolePermissions` (role/user keys to
+  `app.role`/`app.profile`); `groups` (`member_user_ids` array → join rows,
+  rule 5); `productUserAssignment`, `itemLicenseImage`,
+  `item_prod_order_detail_associations` (item keys → `plm.item`);
+  `auth_token`, `quote_auth_token` (tokens stored hashed, not browser-readable).
+- **Do not fit — would break rules 1–2:** `SeasonCode`, `divisionCode`,
+  `companyCode` (ColdLion code lists → one `core` lookup each, items point at
+  them); `item_character_associations` (characters must be `core.character`,
+  needs the approved old-to-new ID map); `externalApi`, `externalVendor`,
+  `externalCustomer` (copies of vendor/customer truth → `core.*_source_ref`).
+
+## 7. ColdLion-sourced tables: automatic value mapping (live, 2026-10-23)
+
+Read-only on production (`qsllyeztdwjgirsysgai`), legacy rows in
+`dflow_prod` matched to the new tables by code/number/name, trimmed and
+case-insensitive, aliases included.
+
+| Legacy → new | Legacy rows | Auto-mapped | Share |
+|---|---|---|---|
+| `itemHeader` → `plm.item` (item number) | 18,793 | 18,511 | 98.5% (134 blank numbers, 148 not in ColdLion load) |
+| `merchGroup` → loaded list (code + type) | 4,271 | 4,115 | 96.3% |
+| `itemDepth` → `core.product_depth` | 121 | 121 | 100% |
+| `customers` → `core.customer` (+alias) | 58 | 57 | 98% |
+| `licenseList` → `core.licensor` (+alias) | 19 | 12 | 63% |
+| `itemSize` → `core.product_size` | 495 | 79 | 16% |
+| `Factory` → `core.factory` (+alias) | 181 | 11 | 6% |
+| `ProdOrderHeader` → `plm.production_order` | 3,622 | 0 | 0% |
+| `itemDetail` → `plm.item_detail` | 21,841 | n/a | not needed (ruling) |
+
+Findings:
+
+- `core.merch_group` is **empty** live; the loaded ColdLion list sits in the
+  legacy-shaped `core."merchGroup"` (3,645 rows). The canonical table must be
+  loaded before item merch-group slots can map.
+- `plm.production_order` holds a different source (3,573 rows, numbers like
+  `D0555`, `COLDLION-SO-…` sales orders). No ColdLion production order
+  (numeric `prodOrderNo`) is loaded, so nothing maps until that load exists.
+- Sizes: legacy uses metric codes (`88.90x55.88`); the new list uses inch
+  labels per merch type. Only 16% overlap; the rest needs a conversion rule
+  or review.
+- Factories: DesignFlow keeps 181 of its own factory names; ColdLion has 93
+  vendors. Mapping goes through `vendor.factory_id_fk` / vendor codes, then
+  review.
+- Licensors: 7 unmatched codes, mostly umbrella or legacy entries
+  (`GC` Generic, `MP` Multiple, `DS` Dis/Mrv/SW, `NU`, `NK`, `RB`, `FK`);
+  these need a licensing decision, not a guess (rule 2).

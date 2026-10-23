@@ -1,0 +1,924 @@
+legacy_table,legacy_column,legacy_type,app_refs,sync_refs,disposition,target_table,target_column,note
+itemHeader,AllowedSizes_ext,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,art_piece_id,number | null,25,0,add,plm.item,art_piece_id,
+itemHeader,base_qty,number | null,1,2,add,plm.item,base_qty,
+itemHeader,carton_code_ext,string | null,0,2,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,carton_depth_size,number | null,7,1,add,plm.item,carton_depth_size,
+itemHeader,carton_length_size,number | null,7,1,add,plm.item,carton_length_size,
+itemHeader,carton_packtype_fk,string | null,0,2,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,carton_qty,number | null,1,3,add,plm.item,carton_qty,
+itemHeader,carton_weight_size,number | null,7,1,add,plm.item,carton_weight_size,
+itemHeader,carton_width_size,number | null,7,1,add,plm.item,carton_width_size,
+itemHeader,comm_code_ext,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,compan_code,string | null,3,0,covered,plm.item,company_id,
+itemHeader,compan_code_fk,number | null,17,8,covered,plm.item,company_id,
+itemHeader,compare_price,number | null,0,1,not_needed,,,2026-10-23 ruling
+itemHeader,costcomp1,number | null,0,1,not_needed,,,2026-10-23 ruling
+itemHeader,costcomp2,number | null,0,1,not_needed,,,2026-10-23 ruling
+itemHeader,costcomp3,number | null,0,1,not_needed,,,2026-10-23 ruling
+itemHeader,costcomp4,number | null,0,1,not_needed,,,2026-10-23 ruling
+itemHeader,costcomp5,number | null,0,1,not_needed,,,2026-10-23 ruling
+itemHeader,created_time_date,string | null,19,1,covered,plm.item,created_at,
+itemHeader,created_user_fk,string | null,2,2,add,plm.item,created_user_fk,
+itemHeader,discont_status,string | null,3,2,add,plm.item,discont_status,
+itemHeader,div_code,string | null,6,7,add,plm.item,div_code,
+itemHeader,div_code_fk,number | null,61,10,add,plm.item,division_id,code becomes FK to the core lookup
+itemHeader,ds_cat,string | null,2,2,add,plm.item,ds_cat,
+itemHeader,dsn_ref_num,string | null,36,1,add,plm.item,dsn_ref_num,
+itemHeader,due_date,string | null,18,0,add,plm.item,due_date,
+itemHeader,giftwrap,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,hts_num_ext_fk,string | null,15,2,add,plm.item,hts_code_id,code becomes FK to the core lookup
+itemHeader,hts2_num_ext_fk,string | null,7,1,add,plm.item,hts2_code_id,code becomes FK to the core lookup
+itemHeader,innerpack_qty,number | null,8,2,add,plm.item,innerpack_qty,
+itemHeader,is_item_active,boolean | null,17,0,covered,plm.item,status,
+itemHeader,is_item_old,boolean | null,12,0,add,plm.item,is_item_old,
+itemHeader,item_active_status,string | null,16,2,covered,plm.item,status,
+itemHeader,item_avail_status,string | null,1,2,add,plm.item,item_avail_status,
+itemHeader,item_cbm_size,number | null,0,2,not_needed,,,2026-10-23 ruling
+itemHeader,item_content,string | null,8,1,add,plm.item,item_content,
+itemHeader,item_cost_ext,number | null,8,1,add,plm.item,item_cost_ext,
+itemHeader,item_depth_size,string | null,4,1,add,plm.item,item_depth_size,
+itemHeader,item_descr_name,string | null,99,1,covered,plm.item,name,
+itemHeader,item_displ_descr_name,string | null,57,1,add,plm.item,item_displ_descr_name,
+itemHeader,item_id_pk,number,164,0,covered,plm.item,id / source_id,
+itemHeader,item_length_size,number | null,0,2,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,item_note,string | null,7,1,add,plm.item,item_note,
+itemHeader,item_num_id,string | null,124,6,covered,plm.item,item_number,
+itemHeader,item_type_id_fk,number | null,4,0,covered,plm.item,product_type_id,
+itemHeader,item_weight_size,number | null,8,1,add,plm.item,item_weight_size,
+itemHeader,item_width_size,number | null,8,1,add,plm.item,item_width_size,
+itemHeader,lic_brand_assurance_number,string | null,1,0,add,plm.item,lic_brand_assurance_number,
+itemHeader,lic_comment,string | null,4,0,add,plm.item,lic_comment,
+itemHeader,lic_compnay,string | null,0,0,not_needed,,,no reference outside model definitions
+itemHeader,lic_concept_approved,string | null,1,0,reshape,plm.licensing_status,milestone=concept_approved; lic_concept_approved,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_concept_approved_date,string | null,1,0,reshape,plm.licensing_status,milestone=concept_approved; lic_concept_approved_date,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_concept_rejected,string | null,1,0,reshape,plm.licensing_status,milestone=concept_rejected; lic_concept_rejected,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_concept_rejected_date,string | null,1,0,reshape,plm.licensing_status,milestone=concept_rejected; lic_concept_rejected_date,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_concept_submiteed,string | null,1,0,reshape,plm.licensing_status,milestone=concept_submiteed; lic_concept_submiteed,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_concept_submitted_date,string | null,1,0,reshape,plm.licensing_status,milestone=concept_submitted; lic_concept_submitted_date,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_dev_received,string | null,1,0,reshape,plm.licensing_status,milestone=dev_received; lic_dev_received,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_dev_sample_recv_date,string | null,1,0,reshape,plm.licensing_status,milestone=dev_sample_recv; lic_dev_sample_recv_date,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_dev_sample_sent,string | null,1,0,reshape,plm.licensing_status,milestone=dev_sample_sent; lic_dev_sample_sent,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_dev_sample_sent_date,string | null,1,0,reshape,plm.licensing_status,milestone=dev_sample_sent; lic_dev_sample_sent_date,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_item_desc,string | null,0,0,covered,plm.item,description,
+itemHeader,lic_licensorcode,string | null,0,0,not_needed,,,no reference outside model definitions
+itemHeader,lic_office_received,string | null,1,0,reshape,plm.licensing_status,milestone=office_received; lic_office_received,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_office_received_date,string | null,1,0,reshape,plm.licensing_status,milestone=office_received; lic_office_received_date,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_office_sent,string | null,1,0,reshape,plm.licensing_status,milestone=office_sent; lic_office_sent,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_office_sent_date,string | null,1,0,reshape,plm.licensing_status,milestone=office_sent; lic_office_sent_date,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_order_placed,string | null,1,0,reshape,plm.licensing_status,milestone=order_placed; lic_order_placed,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_order_placed_date,string | null,1,0,reshape,plm.licensing_status,milestone=order_placed; lic_order_placed_date,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_prepo_approved,string | null,1,0,reshape,plm.licensing_status,milestone=prepo_approved; lic_prepo_approved,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_prepo_approved_date,string | null,1,0,reshape,plm.licensing_status,milestone=prepo_approved; lic_prepo_approved_date,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_prepo_rejected,string | null,1,0,reshape,plm.licensing_status,milestone=prepo_rejected; lic_prepo_rejected,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_prepo_rejected_date,string | null,1,0,reshape,plm.licensing_status,milestone=prepo_rejected; lic_prepo_rejected_date,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_sample_made,string | null,1,0,reshape,plm.licensing_status,milestone=sample_made; lic_sample_made,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_sample_made_date,string | null,1,0,reshape,plm.licensing_status,milestone=sample_made; lic_sample_made_date,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_sample_no,string | null,4,0,add,plm.item,lic_sample_no,
+itemHeader,lic_sample_requested,string | null,1,0,reshape,plm.licensing_status,milestone=sample_requested; lic_sample_requested,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_sample_requested_date,string | null,1,0,reshape,plm.licensing_status,milestone=sample_requested; lic_sample_requested_date,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_tracking_updated_date,string | null,5,0,reshape,plm.licensing_status,milestone=tracking_updated; lic_tracking_updated_date,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_vendor_sent,string | null,1,0,reshape,plm.licensing_status,milestone=vendor_sent; lic_vendor_sent,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,lic_vendor_sent_date,string | null,1,0,reshape,plm.licensing_status,milestone=vendor_sent; lic_vendor_sent_date,"flag/date pairs become one milestone row each (status, completed_at) in the existing licensing status table"
+itemHeader,mfg_lead_time,number | null,7,3,add,plm.item,mfg_lead_time,
+itemHeader,mod_time_date,string | null,1,1,covered,plm.item,updated_at,
+itemHeader,mod_user_fk,string | null,6,2,add,plm.item,mod_user_fk,
+itemHeader,non_inv_item,string | null,0,3,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,OH_min_qty,number | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,old_item_num,string | null,0,1,not_needed,,,2026-10-23 ruling
+itemHeader,origin_country_fk,string | null,0,1,not_needed,,,2026-10-23 ruling
+itemHeader,pack_type,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,product_manager_fk,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,productmanager,string | null,3,0,add,plm.item,productmanager,
+itemHeader,ref_num,string | null,26,0,add,plm.item,ref_num,
+itemHeader,retail_price,number | null,25,1,add,plm.item,retail_price,
+itemHeader,royalty_code_fk,string | null,9,2,add,plm.item,royalty_code_id,code becomes FK to the core lookup
+itemHeader,royalty2_code_fk,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,salesper_code_fk,string | null,3,1,add,plm.item,salesperson_id,code becomes FK to the core lookup
+itemHeader,salesper2_code_fk,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,sample_start_date,string | null,18,0,add,plm.item,sample_start_date,
+itemHeader,season_code_fk,string | null,21,1,add,plm.item,season_id,code becomes FK to the core lookup
+itemHeader,season_code_fk_id,number | null,5,0,add,plm.item,season_id,code becomes FK to the core lookup
+itemHeader,selling_price,number | null,8,1,add,plm.item,selling_price,
+itemHeader,size_explo_code_ext,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,size_range_code_ext,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,tags,string | null,152,0,add,plm.item,tags,"generic name: reference count unreliable, confirm in code"
+itemHeader,udf_date01,string | null,10,2,reshape,plm.item_custom_value (new),slot udf_date01,"numbered user-defined slots become rows (slot, typed value) until each slot gets a business name"
+itemHeader,udf_date02,string | null,7,2,reshape,plm.item_custom_value (new),slot udf_date02,"numbered user-defined slots become rows (slot, typed value) until each slot gets a business name"
+itemHeader,udf_date03,string | null,7,1,reshape,plm.item_custom_value (new),slot udf_date03,"numbered user-defined slots become rows (slot, typed value) until each slot gets a business name"
+itemHeader,udf_date04,string | null,3,1,reshape,plm.item_custom_value (new),slot udf_date04,"numbered user-defined slots become rows (slot, typed value) until each slot gets a business name"
+itemHeader,udf_date05,string | null,6,1,reshape,plm.item_custom_value (new),slot udf_date05,"numbered user-defined slots become rows (slot, typed value) until each slot gets a business name"
+itemHeader,udf_date06,string | null,6,1,reshape,plm.item_custom_value (new),slot udf_date06,"numbered user-defined slots become rows (slot, typed value) until each slot gets a business name"
+itemHeader,udf_date07,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_date08,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_date09,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_date10,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_date11,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_date12,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_date13,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_date14,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_date15,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_date16,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_date17,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_date18,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_date19,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_date20,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_freeform_01,string | null,10,3,reshape,plm.item_custom_value (new),slot udf_freeform_01,"numbered user-defined slots become rows (slot, typed value) until each slot gets a business name"
+itemHeader,udf_freeform_02,string | null,1,2,reshape,plm.item_custom_value (new),slot udf_freeform_02,"numbered user-defined slots become rows (slot, typed value) until each slot gets a business name"
+itemHeader,udf_freeform_03,string | null,11,3,reshape,plm.item_custom_value (new),slot udf_freeform_03,"numbered user-defined slots become rows (slot, typed value) until each slot gets a business name"
+itemHeader,udf_freeform_04,string | null,0,2,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_freeform_05,string | null,4,1,reshape,plm.item_custom_value (new),slot udf_freeform_05,"numbered user-defined slots become rows (slot, typed value) until each slot gets a business name"
+itemHeader,udf_freeform_06,string | null,3,1,reshape,plm.item_custom_value (new),slot udf_freeform_06,"numbered user-defined slots become rows (slot, typed value) until each slot gets a business name"
+itemHeader,udf_freeform_07,string | null,7,1,reshape,plm.item_custom_value (new),slot udf_freeform_07,"numbered user-defined slots become rows (slot, typed value) until each slot gets a business name"
+itemHeader,udf_freeform_08,string | null,3,1,reshape,plm.item_custom_value (new),slot udf_freeform_08,"numbered user-defined slots become rows (slot, typed value) until each slot gets a business name"
+itemHeader,udf_freeform_09,string | null,3,1,reshape,plm.item_custom_value (new),slot udf_freeform_09,"numbered user-defined slots become rows (slot, typed value) until each slot gets a business name"
+itemHeader,udf_freeform_10,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_freeform_11,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_freeform_12,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_freeform_13,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_freeform_14,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_freeform_15,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_freeform_16,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_freeform_17,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_freeform_18,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_freeform_19,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_freeform_20,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_int01,number | null,5,2,reshape,plm.item_custom_value (new),slot udf_int01,"numbered user-defined slots become rows (slot, typed value) until each slot gets a business name"
+itemHeader,udf_int02,number | null,5,1,reshape,plm.item_custom_value (new),slot udf_int02,"numbered user-defined slots become rows (slot, typed value) until each slot gets a business name"
+itemHeader,udf_int03,number | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_int04,number | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_int05,number | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_int06,number | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_int07,number | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_int08,number | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_int09,number | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_int10,number | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_item_priceA,number | null,7,2,reshape,plm.item_price (new),price_level udf_item_priceA,"price levels A-H become rows (level, amount)"
+itemHeader,udf_item_priceB,number | null,7,2,reshape,plm.item_price (new),price_level udf_item_priceB,"price levels A-H become rows (level, amount)"
+itemHeader,udf_item_priceC,number | null,7,2,reshape,plm.item_price (new),price_level udf_item_priceC,"price levels A-H become rows (level, amount)"
+itemHeader,udf_item_priceD,number | null,7,2,reshape,plm.item_price (new),price_level udf_item_priceD,"price levels A-H become rows (level, amount)"
+itemHeader,udf_item_priceE,number | null,0,2,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_item_priceF,number | null,0,2,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_item_priceG,number | null,0,2,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_item_priceH,number | null,0,2,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_merchgroup01,string | null,24,2,reshape,plm.item_merch_group (new),slot 01 -> merch_group_id,one row per slot; the code and the _id companion collapse into one FK to core.merch_group
+itemHeader,udf_merchgroup01_id,number | null,11,0,reshape,plm.item_merch_group (new),slot 01 -> merch_group_id,one row per slot; the code and the _id companion collapse into one FK to core.merch_group
+itemHeader,udf_merchgroup02,string | null,22,2,reshape,plm.item_merch_group (new),slot 02 -> merch_group_id,one row per slot; the code and the _id companion collapse into one FK to core.merch_group
+itemHeader,udf_merchgroup02_id,number | null,11,0,reshape,plm.item_merch_group (new),slot 02 -> merch_group_id,one row per slot; the code and the _id companion collapse into one FK to core.merch_group
+itemHeader,udf_merchgroup03,string | null,13,2,reshape,plm.item_merch_group (new),slot 03 -> merch_group_id,one row per slot; the code and the _id companion collapse into one FK to core.merch_group
+itemHeader,udf_merchgroup03_id,number | null,11,0,reshape,plm.item_merch_group (new),slot 03 -> merch_group_id,one row per slot; the code and the _id companion collapse into one FK to core.merch_group
+itemHeader,udf_merchgroup04,string | null,13,2,reshape,plm.item_merch_group (new),slot 04 -> merch_group_id,one row per slot; the code and the _id companion collapse into one FK to core.merch_group
+itemHeader,udf_merchgroup04_id,number | null,9,0,reshape,plm.item_merch_group (new),slot 04 -> merch_group_id,one row per slot; the code and the _id companion collapse into one FK to core.merch_group
+itemHeader,udf_merchgroup05_fk,string | null,30,1,covered,plm.item,licensor_id,
+itemHeader,udf_merchgroup05_fk_id,number | null,14,0,covered,plm.item,licensor_id,
+itemHeader,udf_merchgroup06_fk,string | null,12,1,covered,plm.item,property_id,
+itemHeader,udf_merchgroup06_fk_id,number | null,13,0,covered,plm.item,property_id,
+itemHeader,udf_merchgroup07_fk,string | null,13,1,reshape,plm.item_merch_group (new),slot 07 -> merch_group_id,one row per slot; the code and the _id companion collapse into one FK to core.merch_group
+itemHeader,udf_merchgroup07_fk_id,number | null,8,0,reshape,plm.item_merch_group (new),slot 07 -> merch_group_id,one row per slot; the code and the _id companion collapse into one FK to core.merch_group
+itemHeader,udf_merchgroup08_fk,string | null,9,1,reshape,plm.item_merch_group (new),slot 08 -> merch_group_id,one row per slot; the code and the _id companion collapse into one FK to core.merch_group
+itemHeader,udf_merchgroup08_fk_id,number | null,5,0,reshape,plm.item_merch_group (new),slot 08 -> merch_group_id,one row per slot; the code and the _id companion collapse into one FK to core.merch_group
+itemHeader,udf_merchgroup09_fk,string | null,10,1,reshape,plm.item_merch_group (new),slot 09 -> merch_group_id,one row per slot; the code and the _id companion collapse into one FK to core.merch_group
+itemHeader,udf_merchgroup09_fk_id,number | null,9,0,reshape,plm.item_merch_group (new),slot 09 -> merch_group_id,one row per slot; the code and the _id companion collapse into one FK to core.merch_group
+itemHeader,udf_merchgroup10_fk,string | null,9,1,reshape,plm.item_merch_group (new),slot 10 -> merch_group_id,one row per slot; the code and the _id companion collapse into one FK to core.merch_group
+itemHeader,udf_merchgroup10_fk_id,number | null,5,0,reshape,plm.item_merch_group (new),slot 10 -> merch_group_id,one row per slot; the code and the _id companion collapse into one FK to core.merch_group
+itemHeader,udf_merchgroup11_fk,string | null,1,1,reshape,plm.item_merch_group (new),slot 11 -> merch_group_id,one row per slot; the code and the _id companion collapse into one FK to core.merch_group
+itemHeader,udf_merchgroup12_fk,string | null,0,1,not_needed,,,2026-10-23 ruling
+itemHeader,udf_merchgroup13_fk,string | null,0,1,not_needed,,,2026-10-23 ruling
+itemHeader,udf_merchgroup14_fk,string | null,0,1,not_needed,,,2026-10-23 ruling
+itemHeader,udf_merchgroup15_fk,string | null,12,0,reshape,plm.item_merch_group (new),slot 15 -> merch_group_id,one row per slot; the code and the _id companion collapse into one FK to core.merch_group
+itemHeader,udf_merchgroup15_fk_id,number | null,6,0,reshape,plm.item_merch_group (new),slot 15 -> merch_group_id,one row per slot; the code and the _id companion collapse into one FK to core.merch_group
+itemHeader,udf_merchgroup16_fk,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_merchgroup17_fk,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_merchgroup18_fk,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_merchgroup19_fk,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_merchgroup20_fk,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_merchgroup21_fk,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_merchgroup22_fk,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_merchgroup23_fk,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_merchgroup24_fk,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_merchgroup25_fk,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_num01,number | null,0,2,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_num02,number | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_num03,number | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_num04,number | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_num05,number | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_num06,number | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_num07,number | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_num08,number | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_num09,number | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_num10,number | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_yesno01,string | null,0,1,add,plm.item,is_movie_art,kept by 2026-10-23 ColdLion ruling
+itemHeader,udf_yesno02,string | null,0,1,not_needed,,,2026-10-23 ruling
+itemHeader,udf_yesno03,string | null,0,1,add,plm.item,is_character_likeness,kept by 2026-10-23 ColdLion ruling
+itemHeader,udf_yesno04,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_yesno05,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_yesno06,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_yesno07,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_yesno08,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_yesno09,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_yesno10,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_yesno11,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_yesno12,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_yesno13,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_yesno14,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udf_yesno15,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,udfnum01,string | null,5,0,add,plm.item,udfnum01,
+itemHeader,uom_code,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+itemHeader,uom_size_fk,string | null,7,1,add,plm.item,uom_size_id,code becomes FK to the core lookup
+itemHeader,uom_weight_fk,string | null,7,1,add,plm.item,uom_weight_id,code becomes FK to the core lookup
+itemHeader,vendor_code_fk,string | null,13,1,add,plm.item,vendor_id,code becomes FK to the core lookup
+licenseList,licenseList_airbyte_emitted_at,string | null,3,0,add,plm.license_agreement (new),airbyte_emitted_at,
+licenseList,licenseList_airbyte_licenses_hashid,string | null,0,0,not_needed,,,no reference outside model definitions
+licenseList,licenseList_auditlog,string | null,0,0,not_needed,,,2026-10-23 ruling
+licenseList,licenseList_code,string | null,15,0,covered,plm.license_agreement (new),licensor_id (via core.licensor.code),
+licenseList,licenseList_fob_royalty_rate,number | null,26,0,add,plm.license_agreement (new),fob_royalty_rate,
+licenseList,licenseList_id,number,27,0,covered,plm.license_agreement (new),source_id,
+licenseList,licenseList_royalty_rate,number | null,26,0,add,plm.license_agreement (new),royalty_rate,
+licenseList,licenseList_status,string | null,16,0,covered,plm.license_agreement (new),status,
+licenseList,licenseList_title,string | null,38,0,covered,plm.license_agreement (new),core.licensor.name (ColdLion authority),
+merchGroup,companyCode_fk,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+merchGroup,companyCode_id_fk,number | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+merchGroup,createdTime,string | null,14,6,covered,core.merch_group,created_at,
+merchGroup,createdUser,string | null,7,6,not_needed,,,2026-10-23 ruling
+merchGroup,divisionCode_fk,string | null,1,2,add,core.merch_group,division_code_fk,
+merchGroup,divisionCode_id_fk,number | null,15,0,add,core.merch_group,division_code_id_fk,
+merchGroup,is_active,boolean | null,156,3,add,core.merch_group,is_active,
+merchGroup,ItemNoCode,string | null,2,1,add,core.merch_group,item_no_code,kept by 2026-10-23 ColdLion ruling
+merchGroup,mg_code,string | null,285,1,covered,core.merch_group,code,
+merchGroup,mg_desc,string | null,179,1,covered,core.merch_group,name,
+merchGroup,mg_id,number,163,0,covered,core.merch_group,source_id,
+merchGroup,mgCategory,string | null,67,2,add,core.merch_group,mg_category,
+merchGroup,mgCode2,string | null,50,2,add,core.merch_group,mg_code2,
+merchGroup,mgTypeCode,string | null,17,2,add,core.merch_group,mg_type_code,
+merchGroup,modTime,string | null,4,6,covered,core.merch_group,updated_at,
+merchGroup,modUser,string | null,5,6,add,core.merch_group,mod_user,
+merchGroup,parent_id,number | null,142,0,covered,core.merch_group,parent_id,
+customers,customers_airbyte_customers_hashid,string | null,0,0,not_needed,,,no reference outside model definitions
+customers,customers_airbyte_emitted_at,string | null,0,0,not_needed,,,no reference outside model definitions
+customers,customers_auditlog,string | null,0,0,not_needed,,,no reference outside model definitions
+customers,customers_code,string | null,15,0,covered,core.customer,core.company_source_ref,
+customers,customers_dilution,string | null,12,0,add,core.customer,dilution,
+customers,customers_email,string | null,7,0,add,core.customer,email,
+customers,customers_expire,string | null,0,0,not_needed,,,no reference outside model definitions
+customers,customers_id,number,67,0,covered,core.customer,source ref,
+customers,customers_lastname,string | null,0,0,not_needed,,,no reference outside model definitions
+customers,customers_level,string | null,0,0,not_needed,,,no reference outside model definitions
+customers,customers_logistic_load,string | null,12,0,add,core.customer,logistic_load,
+customers,customers_logo,string | null,7,0,add,core.customer,logo,
+customers,customers_name,string | null,61,0,covered,core.customer,name,
+customers,customers_notes,string | null,0,0,not_needed,,,no reference outside model definitions
+customers,customers_notificationemail,string | null,0,0,not_needed,,,no reference outside model definitions
+customers,customers_notificationsms,string | null,0,0,not_needed,,,no reference outside model definitions
+customers,customers_passw,string | null,0,0,do_not_move,,,never moved: sign-in is Supabase Auth
+customers,customers_phonenum,string | null,2,0,covered,core.customer,phone,
+customers,customers_status,string | null,26,0,covered,core.customer,status,
+customers,customers_subleveladmin,string | null,0,0,not_needed,,,no reference outside model definitions
+customers,customers_subscription,string | null,0,0,not_needed,,,no reference outside model definitions
+Factory,factory_access,string | null,19,0,add,core.factory,access,
+Factory,factory_country,string | null,49,0,covered,core.factory,country,
+Factory,factory_name,string | null,77,0,covered,core.factory,name,
+Factory,factory_nickname,string | null,143,0,add,core.factory,nickname,
+Factory,factory_status,string | null,26,0,covered,core.factory,status,
+Factory,id,number,4691,28,covered,core.factory,source_id,
+Factory,sort_order,number | null,16,0,add,core.factory,sort_order,
+vendor,factory_id_fk,number | null,204,0,covered,core.vendor,factory_id_fk,core.vendor mirrors the legacy table column for column
+vendor,vendor_access,string | null,25,0,covered,core.vendor,vendor_access,core.vendor mirrors the legacy table column for column
+vendor,vendor_address1,string | null,6,0,covered,core.vendor,vendor_address1,core.vendor mirrors the legacy table column for column
+vendor,vendor_address2,string | null,3,0,covered,core.vendor,vendor_address2,core.vendor mirrors the legacy table column for column
+vendor,vendor_company_name,string | null,8,0,covered,core.vendor,vendor_company_name,core.vendor mirrors the legacy table column for column
+vendor,vendor_company_nickname,string | null,32,0,covered,core.vendor,vendor_company_nickname,core.vendor mirrors the legacy table column for column
+vendor,vendor_country,string | null,6,0,covered,core.vendor,vendor_country,core.vendor mirrors the legacy table column for column
+vendor,vendor_email,string | null,83,0,covered,core.vendor,vendor_email,core.vendor mirrors the legacy table column for column
+vendor,vendor_id,number,133,0,covered,core.vendor,vendor_id,core.vendor mirrors the legacy table column for column
+vendor,vendor_lastname,string | null,18,0,covered,core.vendor,vendor_lastname,core.vendor mirrors the legacy table column for column
+vendor,vendor_name,string | null,29,0,covered,core.vendor,vendor_name,core.vendor mirrors the legacy table column for column
+vendor,vendor_passw,string | null,4,0,do_not_move,,,never moved: sign-in is Supabase Auth; needs rotation review
+vendor,vendor_phone1,string | null,7,0,covered,core.vendor,vendor_phone1,core.vendor mirrors the legacy table column for column
+vendor,vendor_phone2,string | null,2,0,covered,core.vendor,vendor_phone2,core.vendor mirrors the legacy table column for column
+vendor,vendor_profile_photo,string | null,4,0,covered,core.vendor,vendor_profile_photo,core.vendor mirrors the legacy table column for column
+vendor,vendor_status,string | null,14,0,covered,core.vendor,vendor_status,core.vendor mirrors the legacy table column for column
+vendor,vendor_wechatId,string | null,5,0,covered,core.vendor,vendor_wechatId,core.vendor mirrors the legacy table column for column
+RFQItem,rfq_container_id_fk,number | null,17,0,add,plm.rfq_item,rfq_container_id_fk,
+RFQItem,rfqItem_active,number | null,18,0,covered,plm.rfq_item,status,
+RFQItem,rfqItem_adam_fix,string | null,4,0,add,plm.rfq_item,adam_fix,
+RFQItem,rfqItem_agent,string | null,8,0,add,plm.rfq_item,agent,
+RFQItem,rfqItem_archive,number | null,12,0,add,plm.rfq_item,archive,
+RFQItem,rfqItem_auditlog,string | null,2,0,add,plm.rfq_item,auditlog,
+RFQItem,rfqItem_case_pack,string | null,12,0,add,plm.rfq_item,case_pack,
+RFQItem,rfqItem_cbm_per_piece,string | null,2,0,add,plm.rfq_item,cbm_per_piece,
+RFQItem,rfqItem_cbm_per_price,string | null,8,0,add,plm.rfq_item,cbm_per_price,
+RFQItem,rfqItem_choosen_vendor,number | null,10,0,add,plm.rfq_item,choosen_vendor,
+RFQItem,rfqItem_comp_retail,string | null,6,0,add,plm.rfq_item,comp_retail,
+RFQItem,rfqItem_container_price,number | null,4,0,add,plm.rfq_item,container_price,
+RFQItem,rfqItem_copied_by,number | null,9,0,add,plm.rfq_item,copied_by,
+RFQItem,rfqItem_copied_from_id,number | null,14,0,add,plm.rfq_item,copied_from_id,
+RFQItem,rfqItem_copied_on,string | null,8,0,add,plm.rfq_item,copied_on,
+RFQItem,rfqItem_created_date,string | null,19,0,covered,plm.rfq_item,created_at,
+RFQItem,rfqItem_customer,number | null,7,0,add,plm.rfq_item,customer,
+RFQItem,rfqItem_date_modified,string | null,19,0,covered,plm.rfq_item,updated_at,
+RFQItem,rfqItem_default_cbm,string | null,2,0,add,plm.rfq_item,default_cbm,
+RFQItem,rfqItem_delivery_loc,number | null,6,0,add,plm.rfq_item,delivery_loc,
+RFQItem,rfqItem_depth,number | null,8,0,add,plm.rfq_item,depth,
+RFQItem,rfqItem_description,string | null,38,0,add,plm.rfq_item,description,
+RFQItem,rfqItem_dilution,string | null,10,0,add,plm.rfq_item,dilution,
+RFQItem,rfqItem_divCode_id_fk,string | null,14,0,add,plm.rfq_item,div_code_id_fk,
+RFQItem,rfqItem_duty_rate,string | null,12,0,add,plm.rfq_item,duty_rate,
+RFQItem,rfqItem_duty_rate_dollar_amount,string | null,11,0,add,plm.rfq_item,duty_rate_dollar_amount,
+RFQItem,rfqItem_duty_rate_equation,string | null,16,0,add,plm.rfq_item,duty_rate_equation,
+RFQItem,rfqItem_factories_step_at,string | null,10,0,add,plm.rfq_item,factories_step_at,
+RFQItem,rfqItem_fob_cost,string | null,9,0,add,plm.rfq_item,fob_cost,
+RFQItem,rfqItem_freight,string | null,8,0,add,plm.rfq_item,freight,
+RFQItem,rfqItem_gen_fob_buyer_margin,number | null,3,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=fob, buyer_margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_fob_buyer_target,number | null,3,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=fob, buyer_target","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_fob_entered_margin,number | null,11,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=fob, entered_margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_fob_entered_sell_price,number | null,11,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=fob, entered_sell_price","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_fob_margin,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=fob, margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_fob_netsell,string | null,1,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=fob, netsell","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_fob_pricesale,string | null,6,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=fob, pricesale","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_fob_royalty,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=fob, royalty","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_fob_sellprice,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=fob, sellprice","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_ldp_margin,string | null,1,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=ldp, margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_mddp_buyer_margin,number | null,3,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=mddp, buyer_margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_mddp_buyer_target,number | null,3,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=mddp, buyer_target","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_mddp_entered_margin,number | null,11,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=mddp, entered_margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_mddp_entered_sell_price,number | null,11,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=mddp, entered_sell_price","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_mddp_margin,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=mddp, margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_mddp_netsell,string | null,1,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=mddp, netsell","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_mddp_pricesale,string | null,6,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=mddp, pricesale","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_mddp_royalty,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=mddp, royalty","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_mddp_sellprice,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=mddp, sellprice","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_poe_buyer_margin,number | null,3,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=poe, buyer_margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_poe_buyer_target,number | null,3,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=poe, buyer_target","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_poe_entered_margin,number | null,11,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=poe, entered_margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_poe_entered_sell_price,number | null,11,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=poe, entered_sell_price","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_poe_margin,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=poe, margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_poe_netsell,string | null,1,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=poe, netsell","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_poe_pricesale,string | null,6,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=poe, pricesale","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_poe_royalty,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=poe, royalty","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_poe_sellprice,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=poe, sellprice","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_whse_buyer_margin,number | null,3,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=whse, buyer_margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_whse_buyer_target,number | null,3,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=whse, buyer_target","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_whse_entered_margin,number | null,11,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=whse, entered_margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_whse_entered_sell_price,number | null,11,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=whse, entered_sell_price","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_whse_margin,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=whse, margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_whse_netsell,string | null,1,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=whse, netsell","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_whse_pricesale,string | null,6,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=whse, pricesale","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_whse_royalty,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=whse, royalty","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_gen_whse_sellprice,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=gen, basis=whse, sellprice","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_id,number,128,0,covered,plm.rfq_item,source_id,
+RFQItem,rfqItem_is_landed_cost_manual,boolean,7,0,add,plm.rfq_item,is_landed_cost_manual,
+RFQItem,rfqItem_landed_cost,string | null,6,0,add,plm.rfq_item,landed_cost,
+RFQItem,rfqItem_lic_fob_buyer_margin,number | null,3,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=fob, buyer_margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_fob_buyer_target,number | null,3,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=fob, buyer_target","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_fob_entered_margin,number | null,11,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=fob, entered_margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_fob_entered_sell_price,number | null,11,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=fob, entered_sell_price","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_fob_margin,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=fob, margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_fob_netsell,string | null,0,0,not_needed,,,no reference outside model definitions
+RFQItem,rfqItem_lic_fob_pricesale,string | null,6,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=fob, pricesale","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_fob_royalty,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=fob, royalty","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_fob_sellprice,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=fob, sellprice","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_mddp_buyer_margin,number | null,3,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=mddp, buyer_margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_mddp_buyer_target,number | null,3,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=mddp, buyer_target","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_mddp_entered_margin,number | null,11,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=mddp, entered_margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_mddp_entered_sell_price,number | null,11,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=mddp, entered_sell_price","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_mddp_margin,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=mddp, margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_mddp_netsell,string | null,0,0,not_needed,,,no reference outside model definitions
+RFQItem,rfqItem_lic_mddp_pricesale,string | null,6,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=mddp, pricesale","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_mddp_royalty,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=mddp, royalty","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_mddp_sellprice,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=mddp, sellprice","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_poe_buyer_margin,number | null,3,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=poe, buyer_margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_poe_buyer_target,number | null,3,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=poe, buyer_target","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_poe_entered_margin,number | null,11,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=poe, entered_margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_poe_entered_sell_price,number | null,11,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=poe, entered_sell_price","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_poe_margin,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=poe, margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_poe_netsell,string | null,0,0,not_needed,,,no reference outside model definitions
+RFQItem,rfqItem_lic_poe_pricesale,string | null,6,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=poe, pricesale","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_poe_royalty,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=poe, royalty","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_poe_sellprice,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=poe, sellprice","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_whse_buyer_margin,number | null,3,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=whse, buyer_margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_whse_buyer_target,number | null,3,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=whse, buyer_target","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_whse_entered_margin,number | null,11,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=whse, entered_margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_whse_entered_sell_price,number | null,11,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=whse, entered_sell_price","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_whse_margin,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=whse, margin","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_whse_netsell,string | null,0,0,not_needed,,,no reference outside model definitions
+RFQItem,rfqItem_lic_whse_pricesale,string | null,6,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=whse, pricesale","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_whse_royalty,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=whse, royalty","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_lic_whse_sellprice,string | null,5,0,reshape,plm.rfq_item_price (new),"scenario=lic, basis=whse, sellprice","the 2x4 pricing grid becomes rows (scenario, basis) with one column per measure"
+RFQItem,rfqItem_license,string | null,7,0,add,plm.rfq_item,license,
+RFQItem,rfqItem_logistic_load,string | null,8,0,add,plm.rfq_item,logistic_load,
+RFQItem,rfqItem_notes,string | null,7,0,add,plm.rfq_item,notes,
+RFQItem,rfqItem_picture,string | null,11,0,add,plm.rfq_item,picture,
+RFQItem,rfqItem_picturethumb,string | null,13,0,add,plm.rfq_item,picturethumb,
+RFQItem,rfqItem_price_per_cbm,string | null,2,0,add,plm.rfq_item,price_per_cbm,
+RFQItem,rfqItem_price_sales_snapshots,string | null,4,0,add,plm.rfq_item,price_sales_snapshots,
+RFQItem,rfqItem_quantity,string | null,10,0,add,plm.rfq_item,quantity,
+RFQItem,rfqItem_quote_update,string | null,2,0,add,plm.rfq_item,quote_update,
+RFQItem,rfqItem_requested_price_cells,string | null,4,0,add,plm.rfq_item,requested_price_cells,
+RFQItem,rfqItem_rfq_group,number | null,19,0,covered,plm.rfq_item,rfq_group_id,
+RFQItem,rfqItem_royalty,number | null,6,0,add,plm.rfq_item,royalty,
+RFQItem,rfqItem_size_l_w,number | null,11,0,add,plm.rfq_item,size_l_w,
+RFQItem,rfqItem_source_item_id,number | null,5,0,covered,plm.rfq_item,item_id,
+RFQItem,rfqItem_source_item_num,string | null,4,0,add,plm.rfq_item,source_item_num,
+RFQItem,rfqItem_standardized_products,string | null,2,0,add,plm.rfq_item,standardized_products,
+RFQItem,rfqItem_step,number | null,14,0,add,plm.rfq_item,step,
+RFQItem,rfqItem_style_number,string | null,64,0,add,plm.rfq_item,style_number,
+RFQItem,rfqItem_tech_pack_link,string | null,6,0,add,plm.rfq_item,tech_pack_link,
+RFQItem,rfqItem_udf1,number | null,7,0,add,plm.rfq_item,udf1,
+RFQItem,rfqItem_udf2,number | null,15,0,add,plm.rfq_item,udf2,
+RFQItem,rfqItem_udf3,number | null,15,0,add,plm.rfq_item,udf3,
+RFQItem,rfqItem_udf4,number | null,15,0,add,plm.rfq_item,udf4,
+RFQItem,rfqItem_warehouse,string | null,5,0,add,plm.rfq_item,warehouse,
+RFQItem,rfqItem_wholesale,string | null,7,0,add,plm.rfq_item,wholesale,
+RFQVendor,carton_height,number | null,33,0,add,plm.rfq_vendor,carton_height,
+RFQVendor,carton_length,number | null,32,0,add,plm.rfq_vendor,carton_length,
+RFQVendor,carton_width,number | null,32,0,add,plm.rfq_vendor,carton_width,
+RFQVendor,fob_country,string | null,18,0,add,plm.rfq_vendor,fob_country,
+RFQVendor,fob_port,string | null,14,0,add,plm.rfq_vendor,fob_port,
+RFQVendor,lead_time,number | null,15,0,add,plm.rfq_vendor,lead_time,
+RFQVendor,price_terms,string | null,15,0,add,plm.rfq_vendor,price_terms,
+RFQVendor,quote_date,string | null,56,0,add,plm.rfq_vendor,quote_date,
+RFQVendor,req_status,number | null,52,0,add,plm.rfq_vendor,req_status,
+RFQVendor,requote_requested,boolean | null,21,0,add,plm.rfq_vendor,requote_requested,
+RFQVendor,RFQitem_id_fk,number | null,40,0,add,plm.rfq_vendor,rfqitem_id_fk,
+RFQVendor,RFQVendor_amount,string | null,38,0,add,plm.rfq_vendor,amount,
+RFQVendor,RFQVendor_archive_optout,boolean | null,7,0,add,plm.rfq_vendor,archive_optout,
+RFQVendor,RFQVendor_archived,boolean | null,14,0,add,plm.rfq_vendor,archived,
+RFQVendor,RFQVendor_cbm_pc,string | null,15,0,add,plm.rfq_vendor,cbm_pc,
+RFQVendor,RFQVendor_id,number,28,0,covered,plm.rfq_vendor,source_id,
+RFQVendor,RFQVendor_note,string | null,10,0,add,plm.rfq_vendor,note,
+RFQVendor,RFQVendor_status,string | null,10,0,covered,plm.rfq_vendor,status,
+RFQVendor,RFQVendor_suggested_amount,string | null,0,0,not_needed,,,no reference outside model definitions
+RFQVendor,RFQVendor_suggested_cbm_pc,string | null,0,0,not_needed,,,no reference outside model definitions
+RFQVendor,RFQVendor_suggested_note,string | null,0,0,not_needed,,,no reference outside model definitions
+RFQVendor,std_vendor_id_fk,string | null,20,0,add,plm.rfq_vendor,std_vendor_id_fk,
+RFQVendor,suggested_carton_height,number | null,0,0,not_needed,,,no reference outside model definitions
+RFQVendor,suggested_carton_length,number | null,0,0,not_needed,,,no reference outside model definitions
+RFQVendor,suggested_carton_width,number | null,0,0,not_needed,,,no reference outside model definitions
+RFQVendor,vendor_id_fk,number | null,64,0,covered,plm.rfq_vendor,factory_id,
+RFQGroup,data_added,string | null,0,0,not_needed,,,no reference outside model definitions
+RFQGroup,HasDuplicates,boolean | null,0,0,not_needed,,,no reference outside model definitions
+RFQGroup,IsLegacy,boolean | null,3,0,add,plm.rfq_group,is_legacy,
+RFQGroup,RFQGroup_id,number,40,0,covered,plm.rfq_group,source_id,
+RFQGroup,RFQGroup_name,string | null,120,0,covered,plm.rfq_group,name,
+RFQGroup,user_id_fk,number | null,75,0,add,plm.rfq_group,user_id_fk,
+RFQStep,RFQStep_access_level,string | null,1,0,add,plm.rfq_step (new),access_level,
+RFQStep,RFQStep_id,number,30,0,add,plm.rfq_step (new),id,
+RFQStep,RFQStep_notified_user_level,string | null,1,0,add,plm.rfq_step (new),notified_user_level,
+RFQStep,RFQStep_status,string | null,2,0,add,plm.rfq_step (new),status,
+RFQStep,RFQStep_title,string | null,28,0,add,plm.rfq_step (new),title,
+ProdOrderHeader,actual_etd,string | null,32,0,covered,plm.production_order,etd,
+ProdOrderHeader,actual_prod_complete,string | null,20,0,add,plm.production_order,actual_prod_complete,
+ProdOrderHeader,actual_prod_start,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,actual_Whse_eta,string | null,4,0,add,plm.production_order,actual_whse_eta,
+ProdOrderHeader,adjusted_cust_start_date,string | null,4,0,add,plm.production_order,adjusted_cust_start_date,
+ProdOrderHeader,agentProc,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,agentProcDate,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,aPTransactionNo,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,arrivalPortCode,string | null,4,0,add,plm.production_order,arrival_port_code,
+ProdOrderHeader,assembly_start_date,string | null,17,0,add,plm.production_order,assembly_start_date,
+ProdOrderHeader,booking_number,string | null,7,0,add,plm.production_order,booking_number,
+ProdOrderHeader,buyer_approval_date,string | null,12,0,add,plm.production_order,buyer_approval_date,
+ProdOrderHeader,cal_arrival_date,string | null,4,0,covered,plm.production_order,eta,
+ProdOrderHeader,calculate_fob_delivery,string | null,1,0,add,plm.production_order,calculate_fob_delivery,
+ProdOrderHeader,carrierCode,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,cbm,string | null,24,0,add,plm.production_order,cbm,"generic name: reference count unreliable, confirm in code"
+ProdOrderHeader,comment,string | null,238,1,add,plm.production_order,comment,"generic name: reference count unreliable, confirm in code"
+ProdOrderHeader,companyCode,string | null,92,14,covered,plm.production_order,company_id,
+ProdOrderHeader,conditions_not_met,string | null,1,0,add,plm.production_order,conditions_not_met,
+ProdOrderHeader,container_recvd,string | null,4,0,add,plm.production_order,container_recvd,
+ProdOrderHeader,containerNo,string | null,2,0,covered,plm.production_order,container_booking_group,
+ProdOrderHeader,createdTime,string | null,14,6,covered,plm.production_order,created_at,
+ProdOrderHeader,createdUser,string | null,7,6,add,plm.production_order,created_user,
+ProdOrderHeader,currencyCode,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,cust_cxl,string | null,4,0,add,plm.production_order,cust_cxl,
+ProdOrderHeader,cust_order_date,string | null,4,0,add,plm.production_order,cust_order_date,
+ProdOrderHeader,cust_start,string | null,4,0,add,plm.production_order,cust_start,
+ProdOrderHeader,customerCode,string | null,22,0,add,plm.production_order,customer_code,
+ProdOrderHeader,customerPONo,string | null,7,0,add,plm.production_order,customer_pono,
+ProdOrderHeader,cutterCode,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,depositAmount,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,depositBalance,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,depositDate,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,depositPaid,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,depositPosted,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,discountPerc,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,dlvy_loc_fk,number | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,doc_athome,boolean | null,4,0,reshape,plm.production_order_document (new),doc_type doc_athome,"document flags become rows (doc type, received)"
+ProdOrderHeader,doc_bl,boolean | null,6,0,reshape,plm.production_order_document (new),doc_type doc_bl,"document flags become rows (doc type, received)"
+ProdOrderHeader,doc_ctpat,boolean | null,6,0,reshape,plm.production_order_document (new),doc_type doc_ctpat,"document flags become rows (doc type, received)"
+ProdOrderHeader,doc_fcr,boolean | null,6,0,reshape,plm.production_order_document (new),doc_type doc_fcr,"document flags become rows (doc type, received)"
+ProdOrderHeader,doc_inv,boolean | null,6,0,reshape,plm.production_order_document (new),doc_type doc_inv,"document flags become rows (doc type, received)"
+ProdOrderHeader,doc_pl,boolean | null,6,0,reshape,plm.production_order_document (new),doc_type doc_pl,"document flags become rows (doc type, received)"
+ProdOrderHeader,doc_qc,boolean | null,6,0,reshape,plm.production_order_document (new),doc_type doc_qc,"document flags become rows (doc type, received)"
+ProdOrderHeader,doc_tsca,boolean | null,6,0,reshape,plm.production_order_document (new),doc_type doc_tsca,"document flags become rows (doc type, received)"
+ProdOrderHeader,dueDate,string | null,36,2,add,plm.production_order,due_date,
+ProdOrderHeader,exchangeRatePkey,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,factory_committed_prod_start,string | null,3,0,add,plm.production_order,factory_committed_prod_start,
+ProdOrderHeader,forwarderProc,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,forwarderProcDate,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,freight_forwarder_name,string | null,7,0,add,plm.production_order,freight_forwarder_name,
+ProdOrderHeader,freightForwarderCode,string | null,4,0,add,plm.production_order,freight_forwarder_code,
+ProdOrderHeader,ftySalesRep,string | null,7,0,add,plm.production_order,fty_sales_rep,
+ProdOrderHeader,hangTagOrderedDate,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,hangTagReceived,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,hangTagReceivedDate,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,hangTagsOrdered,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,id,number,4691,28,covered,plm.production_order,source_id,
+ProdOrderHeader,inspection_comment,string | null,4,0,add,plm.production_order,inspection_comment,
+ProdOrderHeader,inspection_result,string | null,9,0,add,plm.production_order,inspection_result,
+ProdOrderHeader,inspection_start_date,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,item_not_prepro_approved,string | null,1,0,add,plm.production_order,item_not_prepro_approved,
+ProdOrderHeader,lcno,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,mass_prod_start_date,string | null,19,0,add,plm.production_order,mass_prod_start_date,
+ProdOrderHeader,massProductionDays,string | null,22,0,add,plm.production_order,mass_production_days,
+ProdOrderHeader,material_arrival_date,string | null,15,0,add,plm.production_order,material_arrival_date,
+ProdOrderHeader,mg5,string | null,6,0,add,plm.production_order,mg5,"generic name: reference count unreliable, confirm in code"
+ProdOrderHeader,modtime,string | null,2,0,covered,plm.production_order,updated_at,
+ProdOrderHeader,modUser,string | null,5,6,add,plm.production_order,mod_user,
+ProdOrderHeader,num_docs,string | null,1,0,add,plm.production_order,num_docs,
+ProdOrderHeader,ok_to_pay_date,string | null,1,0,add,plm.production_order,ok_to_pay_date,
+ProdOrderHeader,origDueDate,string | null,2,0,add,plm.production_order,orig_due_date,
+ProdOrderHeader,origShipCancelDate,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,origShipDate,string | null,2,0,add,plm.production_order,orig_ship_date,
+ProdOrderHeader,packing_start_date,string | null,17,0,add,plm.production_order,packing_start_date,
+ProdOrderHeader,paid_date,string | null,6,0,add,plm.production_order,paid_date,
+ProdOrderHeader,payTermCode,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,photo_needed,boolean | null,6,0,add,plm.production_order,photo_needed,
+ProdOrderHeader,photo_recived,boolean | null,4,0,add,plm.production_order,photo_recived,
+ProdOrderHeader,postedDate,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,prepro_approval_date,string | null,1,0,add,plm.production_order,prepro_approval_date,
+ProdOrderHeader,price_ticket_needed,boolean | null,9,0,add,plm.production_order,price_ticket_needed,
+ProdOrderHeader,printed,string | null,16,0,add,plm.production_order,printed,
+ProdOrderHeader,prod_cost,string | null,6,0,add,plm.production_order,prod_cost,
+ProdOrderHeader,prodCostType,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,prodCountry,string | null,8,0,add,plm.production_order,prod_country,
+ProdOrderHeader,prodOrderDate,string | null,4,0,covered,plm.production_order,order_date,
+ProdOrderHeader,prodOrderNo,string,89,2,covered,plm.production_order,production_order_number,
+ProdOrderHeader,prodPrinterCode,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,prodQty,number | null,6,0,add,plm.production_order,prod_qty,
+ProdOrderHeader,prodReferenceNo,string | null,37,0,add,plm.production_order,prod_reference_no,
+ProdOrderHeader,prodRevDate,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,prodRevNo,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,prodTypeCode,string | null,6,2,add,plm.production_order,prod_type_code,
+ProdOrderHeader,qc_inspection_date,string | null,28,0,add,plm.production_order,qc_inspection_date,
+ProdOrderHeader,safety_test_date,string | null,4,0,add,plm.production_order,safety_test_date,
+ProdOrderHeader,safety_test_needed,boolean | null,6,0,add,plm.production_order,safety_test_needed,
+ProdOrderHeader,safety_test_passed,boolean | null,4,0,add,plm.production_order,safety_test_passed,
+ProdOrderHeader,salesOrderNo,string | null,28,0,add,plm.production_order,sales_order_no,
+ProdOrderHeader,sample_aprov_lead_days,string | null,4,0,add,plm.production_order,sample_aprov_lead_days,
+ProdOrderHeader,sample_start_date,string | null,18,0,add,plm.production_order,sample_start_date,
+ProdOrderHeader,seasonCode,string | null,23,3,add,plm.production_order,season_code,
+ProdOrderHeader,sent_po_date,string | null,6,0,covered,plm.production_order,sent_po_date,
+ProdOrderHeader,sewerCode,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,shipCancelDate,string | null,2,0,add,plm.production_order,ship_cancel_date,
+ProdOrderHeader,shipDate,string | null,24,2,covered,plm.production_order,requested_ship_date,
+ProdOrderHeader,shipPortCode,string | null,4,0,add,plm.production_order,ship_port_code,
+ProdOrderHeader,shipViaCode,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,svn,string | null,4,0,add,plm.production_order,svn,"generic name: reference count unreliable, confirm in code"
+ProdOrderHeader,ticket_order_date,string | null,3,0,add,plm.production_order,ticket_order_date,
+ProdOrderHeader,ticket_tracking_number,string | null,7,0,add,plm.production_order,ticket_tracking_number,
+ProdOrderHeader,tickets_receive_date,string | null,6,0,add,plm.production_order,tickets_receive_date,
+ProdOrderHeader,uDF01,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,uDFDate01,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,uDFDate02,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,udfnum01,string | null,5,0,add,plm.production_order,udfnum01,
+ProdOrderHeader,vendor_comment,string | null,4,0,add,plm.production_order,vendor_comment,
+ProdOrderHeader,vendor_start_date,string | null,6,0,add,plm.production_order,vendor_start_date,
+ProdOrderHeader,vendorCode,string | null,71,2,covered,plm.production_order,factory_id,
+ProdOrderHeader,vendorConfirm,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,vendorConfirmDate,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,vendorProc,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,vendorProcDate,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderHeader,warehouseCode,string | null,14,0,add,plm.production_order,warehouse_code,
+ProdOrderDetail,AllocatableWip,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,BOMFKey,number | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,CancelledQty,number | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,colorCode,string | null,7,1,add,plm.production_order_line,color_code,
+ProdOrderDetail,CompanyCode,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,ContainerDtlFkey,number | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,ContainerFkey,number | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,CostSheetFkey,number | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,createdTime,string | null,14,6,covered,plm.production_order_line,created_at,
+ProdOrderDetail,createdUser,string | null,7,6,add,plm.production_order_line,created_user,
+ProdOrderDetail,CustomerCode,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,CustPONumber,string | null,0,0,covered,plm.production_order_line,customer_po_number,
+ProdOrderDetail,dimCode,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+ProdOrderDetail,DivisionCode,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,DueDate,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,EDI943Proc,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,id,number,4691,28,covered,plm.production_order_line,source_id,
+ProdOrderDetail,itemDesc,string | null,9,1,add,plm.production_order_line,item_desc,
+ProdOrderDetail,itemNo,string | null,79,12,covered,plm.production_order_line,sku,
+ProdOrderDetail,itemPkey,number | null,0,1,covered,plm.production_order_line,item_id,
+ProdOrderDetail,labelCode,string | null,4,1,add,plm.production_order_line,label_code,
+ProdOrderDetail,merchGroup05Desc,string | null,14,0,add,plm.production_order_line,merch_group05_desc,
+ProdOrderDetail,modTime,string | null,4,6,covered,plm.production_order_line,updated_at,
+ProdOrderDetail,modUser,string | null,5,6,add,plm.production_order_line,mod_user,
+ProdOrderDetail,MovedQty,number | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,OrigDueDate,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,OrigShipCancelDate,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,OrigShipDate,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,pkey,number,27,0,covered,plm.production_order_line,source_id,
+ProdOrderDetail,prepackCode,string | null,9,0,add,plm.production_order_line,prepack_code,
+ProdOrderDetail,ProdCost,number | null,0,0,covered,plm.production_order_line,unit_cost,
+ProdOrderDetail,ProdLineFkey,number | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,prodLineSeq,number | null,0,0,covered,plm.production_order_line,line_number,
+ProdOrderDetail,ProdOrderCancelType,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,prodOrderNo,string | null,89,2,covered,plm.production_order_line,production_order_id,
+ProdOrderDetail,prodQty,number | null,6,0,covered,plm.production_order_line,quantity_ordered,
+ProdOrderDetail,ProdSeq,number | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,ReceiveFkey,number | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,RecvDtlFkey,number | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,SalesOrderFkey,number | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,SalesOrderNo,number | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,ShipCancelDate,string | null,0,0,covered,plm.production_order_line,cancel_date,
+ProdOrderDetail,ShipDate,string | null,0,0,covered,plm.production_order_line,start_ship_date,
+ProdOrderDetail,ShipmentFkey,number | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,sizeCode,string | null,0,1,not_needed,,,written only by the ColdLion sync (2026-10-23 ruling)
+ProdOrderDetail,SizeExplosionCode,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,StageCode,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,StageSeq,number | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,UDF01,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,UOMCode,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,VendorCode,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,VendorInvoiceFKey,number | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,WarehouseCode,string | null,0,0,not_needed,,,no reference outside model definitions
+ProdOrderDetail,wipQty,number | null,14,0,add,plm.production_order_line,wip_qty,
+users,_airbyte_emitted_at,string | null,0,0,not_needed,,,no reference outside model definitions
+users,_airbyte_users_hashid,string | null,0,0,not_needed,,,no reference outside model definitions
+users,adddate,string | null,1,0,covered,app.profile,created_at,
+users,auditlog,string | null,4,0,add,app.profile,auditlog,
+users,email,string | null,618,0,covered,app.profile,email,
+users,expire,string | null,0,0,not_needed,,,no reference outside model definitions
+users,graph_photo,string | null,17,0,covered,app.profile,avatar_url,
+users,graph_photo_synced_at,string | null,10,0,add,app.profile,graph_photo_synced_at,
+users,id,number,4691,28,covered,app.profile,source_refs,
+users,lastname,string | null,122,0,add,app.profile,lastname,
+users,level,string | null,248,3,add,app.profile,level,"generic name: reference count unreliable, confirm in code"
+users,name,string | null,2056,14,covered,app.profile,display_name,
+users,notes,string | null,202,0,add,app.profile,notes,"generic name: reference count unreliable, confirm in code"
+users,notificationemail,string | null,0,0,not_needed,,,no reference outside model definitions
+users,notificationsms,string | null,0,0,not_needed,,,no reference outside model definitions
+users,office_location,string | null,71,0,add,app.profile,office_location,
+users,passw,string | null,13,0,do_not_move,,,never moved: sign-in is Supabase Auth
+users,phonenum,string | null,0,0,not_needed,,,no reference outside model definitions
+users,preferred_language,string | null,11,0,add,app.profile,preferred_language,
+users,profile_photo,string | null,16,0,covered,app.profile,avatar_url,
+users,status,string | null,2983,20,covered,app.profile,status,
+users,subleveladmin,string | null,0,0,not_needed,,,no reference outside model definitions
+users,subscription,string | null,21,0,add,app.profile,subscription,
+AuditLog,actionDate,string | null,39,0,covered,app.activity,created_at,
+AuditLog,actionType,string | null,21,0,covered,app.activity,action,
+AuditLog,element_id,string | null,14,0,add,app.activity,payload.element_id,"kept inside the existing payload JSON, no new column"
+AuditLog,id,number,4691,28,covered,app.activity,source_id,
+AuditLog,moduleName,string | null,37,0,covered,app.activity,target_table,
+AuditLog,newValue,string | null,653,0,add,app.activity,payload.new_value,"kept inside the existing payload JSON, no new column"
+AuditLog,oldValue,string | null,103,0,add,app.activity,payload.old_value,"kept inside the existing payload JSON, no new column"
+AuditLog,ref_id_fk,number | null,18,0,covered,app.activity,target_id,
+AuditLog,user_id_fk,number | null,75,0,covered,app.activity,actor_profile_id,
+AuditLog,username,string | null,42,0,covered,app.activity,actor_profile_id,
+licensingStatus,assignee_id,number | null,32,0,covered,plm.licensing_status,see assignee rule,
+licensingStatus,assignee_ids,Json,38,0,reshape,plm.licensing_status_assignee (new),assignee_ids,arrays become a join table to app.profile
+licensingStatus,assignor_id,number | null,10,0,add,plm.licensing_status,assignor_id,
+licensingStatus,attachments,Json | null,156,0,reshape,plm.licensing_attachment (new) -> app.file_object,file_object_id,JSON attachment list becomes rows
+licensingStatus,date,string | null,568,0,covered,plm.licensing_status,due_date,
+licensingStatus,feedback,string | null,71,0,add,plm.licensing_status,feedback,
+licensingStatus,from,string | null,5143,13,add,plm.licensing_status,from,"generic name: reference count unreliable, confirm in code"
+licensingStatus,id,number,4691,28,covered,plm.licensing_status,source_id,
+licensingStatus,itemheader_id_fk,number | null,87,0,covered,plm.licensing_status,item_id,
+licensingStatus,moduser,string | null,14,0,add,plm.licensing_status,moduser,
+licensingStatus,package,boolean | null,42,0,add,plm.licensing_status,package,"generic name: reference count unreliable, confirm in code"
+licensingStatus,pop_comments,string | null,22,0,add,plm.licensing_status,pop_comments,
+licensingStatus,status,string | null,2983,20,covered,plm.licensing_status,status,
+licensingStatus,tagged_group_id,number | null,40,0,reshape,plm.licensing_status_assignee (new),tagged_group_id,arrays become a join table to app.profile
+licensingFeedbackReply,attachments,Json | null,156,0,reshape,plm.licensing_attachment (new) -> app.file_object,file_object_id,JSON attachment list becomes rows
+licensingFeedbackReply,comment,string,238,1,covered,plm.licensing_feedback,body,
+licensingFeedbackReply,created_at,string,127,0,covered,plm.licensing_feedback,created_at,
+licensingFeedbackReply,created_by,number,48,0,covered,plm.licensing_feedback,author_name,
+licensingFeedbackReply,id,number,4691,28,covered,plm.licensing_feedback,source_id,
+licensingFeedbackReply,licensing_status_id_fk,number,22,0,covered,plm.licensing_feedback,licensing_status_id,
+licensingFeedbackReply,tagged_user_ids,Json | null,20,0,reshape,plm.licensing_feedback_mention (new),profile_id,array becomes a join table
+itemAttachment,attachment_display_name,string,50,0,add,plm.item_attachment,attachment_display_name,
+itemAttachment,attachment_link,string,71,0,covered,plm.item_attachment,url,
+itemAttachment,attachment_type,string,25,0,covered,plm.item_attachment,attachment_type,
+itemAttachment,comment_id,number | null,4,0,add,plm.item_attachment,comment_id,
+itemAttachment,companyCode_name,string | null,11,0,add,plm.item_attachment,company_code_name,
+itemAttachment,divisionCode_name,string | null,12,1,add,plm.item_attachment,division_code_name,
+itemAttachment,dsn_ref_num,string | null,36,1,add,plm.item_attachment,dsn_ref_num,
+itemAttachment,item_attachment_colorCode,string | null,5,0,add,plm.item_attachment,color_code,
+itemAttachment,item_attachment_createdTime,string | null,4,0,covered,plm.item_attachment,created_at,
+itemAttachment,item_attachment_createdUser,string | null,3,0,add,plm.item_attachment,created_user,
+itemAttachment,item_attachment_fileName,string | null,33,0,add,plm.item_attachment,file_name,
+itemAttachment,item_attachment_id,number,8,0,covered,plm.item_attachment,source_id,
+itemAttachment,item_attachment_modTime,string | null,2,0,add,plm.item_attachment,mod_time,
+itemAttachment,item_attachment_modUser,string | null,2,0,add,plm.item_attachment,mod_user,
+itemAttachment,item_attachment_resourceId,number | null,8,0,covered,plm.item_attachment,file_object_id,
+itemAttachment,item_num_id_fk,number,56,0,covered,plm.item_attachment,item_id,
+itemAttachment,license_status,string | null,18,0,add,plm.item_attachment,license_status,
+itemAttachment,licensing_attachment,boolean | null,0,0,not_needed,,,no reference outside model definitions
+itemAttachment,licensing_feedback_id_fk,number | null,0,0,not_needed,,,no reference outside model definitions
+itemAttachment,primary_image,boolean | null,43,0,add,plm.item_attachment,primary_image,
+itemAttachment,uuid,string | null,110,0,add,plm.item_attachment,uuid,
+art_piece,age_group_id,number | null,11,0,add,plm.art_piece,age_group_id,
+art_piece,art_description,string | null,20,0,covered,plm.art_piece,name,
+art_piece,art_display_description,string | null,0,0,not_needed,,,no reference outside model definitions
+art_piece,art_number,string | null,19,0,add,plm.art_piece,art_number,
+art_piece,art_source_id,number | null,20,0,add,plm.art_piece,art_source_id,
+art_piece,art_type_id,number | null,11,0,covered,plm.art_piece,art_type,
+art_piece,artist_id,number | null,11,0,covered,plm.art_piece,artist_id,
+art_piece,big_theme_id,number | null,11,0,add,plm.art_piece,big_theme_id,
+art_piece,created_at,string | null,127,0,covered,plm.art_piece,created_at,
+art_piece,created_by,number,48,0,add,plm.art_piece,created_by,
+art_piece,divisioncode_id,number,38,0,add,plm.art_piece,divisioncode_id,
+art_piece,id,number,4691,28,covered,plm.art_piece,source_id,
+art_piece,is_active,boolean | null,156,3,add,plm.art_piece,is_active,
+art_piece,licensor_id,number | null,16,0,add,plm.art_piece,licensor_id,
+art_piece,little_theme_id,number | null,11,0,add,plm.art_piece,little_theme_id,
+art_piece,property_id,number | null,20,0,add,plm.art_piece,property_id,
+art_piece,season_code_id,number | null,11,0,add,plm.art_piece,season_code_id,
+art_piece,style_guide_id,number | null,11,0,add,plm.art_piece,style_guide_id,
+art_piece,tags,string | null,152,0,add,plm.art_piece,tags,"generic name: reference count unreliable, confirm in code"
+art_piece,updated_at,string | null,71,0,covered,plm.art_piece,updated_at,
+art_piece,updated_by,number | null,83,0,add,plm.art_piece,updated_by,
+sample_comments,comment,string,238,1,covered,app.comment,body,
+sample_comments,id,number,4691,28,covered,app.comment,source_id,
+sample_comments,inserted_date,string,20,0,covered,app.comment,created_at,
+sample_comments,parent_id,number | null,142,0,add,app.comment,parent_id,
+sample_comments,sample_id_fk,number,258,0,covered,app.comment,target_id,
+sample_comments,user_id,number,236,0,covered,app.comment,created_by_profile_id,
+itemSize,itemSize_airbyte_emitted_at,string | null,0,0,not_needed,,,no reference outside model definitions
+itemSize,itemSize_airbyte_sizes_hashid,string | null,0,0,not_needed,,,no reference outside model definitions
+itemSize,itemSize_auditlog,string | null,3,0,add,core.product_size,auditlog,
+itemSize,itemSize_code,string | null,9,0,covered,core.product_size,code,
+itemSize,itemSize_id,number,23,0,covered,core.product_size,source ref,
+itemSize,itemSize_status,string | null,17,0,covered,core.product_size,status,
+itemSize,itemSize_title,string | null,36,0,covered,core.product_size,name,
+itemSize,itemSize_unit,string | null,19,0,add,core.product_size,unit,
+itemDetail,base_qty_hed,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,carton_code_ext,string | null,0,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,carton_depth_size_hed,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,carton_length_size_hed,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,carton_packtype_fk,string | null,0,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,carton_qty,number | null,1,3,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,carton_weight_size_hed,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,carton_width_size_hed,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,coldlion_synced_at,string | null,4,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,color_code_fk,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,compan_code_fk,number | null,17,8,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,compare_price_hed,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,created_timedate,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,created_user_fk,string | null,2,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,dim_code_fk,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,discont_status,string | null,3,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,div_code_fk,number | null,61,10,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,ds_cat,string | null,2,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,EAN,string | null,2,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,GenerateUPC,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,GTIN,string | null,1,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,hts_num_hed_ext_fk,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,innerpk_qty_hed,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,item_active_status,string | null,16,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,item_avail_status,string | null,1,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,item_cbm_size,number | null,0,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,item_content_hed,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,item_cost_hed_ext,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,item_depth_size_hed,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,item_length_size_hed,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,item_num_id,string | null,124,6,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,item_pk,number,1,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,item_status_hed,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,item_weight_size_hed,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,item_width_size_hed,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,label_code_fk,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,mod_timedate,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,mod_user_fk,string | null,6,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,NMFC_code_hed,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,non_inv_item,string | null,0,3,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,pack_type_hed,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,prepack_code_fk,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,reserved_qty,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,retail_pric_hed,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,royalty_code_fk,string | null,9,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,salesperson_fk,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,season_code_hed,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,selling_price_hed,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,share_UPC,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,size_allowed_hed,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,size_code_fk,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,size_explo_code_hed_ext,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,size_seq,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_date01,string | null,10,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_date02,string | null,7,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_date03,string | null,7,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_date04,string | null,3,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_date05,string | null,6,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_date06,string | null,6,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_date07,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_date08,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_date09,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_date10,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_date11,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_date12,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_date13,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_date14,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_date15,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_date16,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_date17,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_date18,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_date19,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_date20,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_freeform_01,string | null,10,3,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_freeform_02,string | null,1,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_freeform_03,string | null,11,3,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_freeform_04,string | null,0,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_freeform_05,string | null,4,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_freeform_06,string | null,3,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_freeform_07,string | null,7,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_freeform_08,string | null,3,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_freeform_09,string | null,3,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_freeform_10,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_freeform_11,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_freeform_12,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_freeform_13,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_freeform_14,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_freeform_15,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_freeform_16,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_freeform_17,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_freeform_18,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_freeform_19,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_freeform_20,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_int01,number | null,5,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_int02,number | null,5,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_int03,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_int04,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_int05,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_int06,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_int07,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_int08,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_int09,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_int10,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_item_priceA,number | null,7,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_item_priceB,number | null,7,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_item_priceC,number | null,7,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_item_priceD,number | null,7,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_item_priceE,number | null,0,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_item_priceF,number | null,0,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_item_priceG,number | null,0,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_item_priceH,number | null,0,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup01,string | null,24,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup02,string | null,22,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup03,string | null,13,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup04,string | null,13,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup05,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup06,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup07,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup08,string | null,1,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup09,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup10,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup11,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup12,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup13,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup14,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup15,string | null,0,0,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup16,string | null,0,0,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup17,string | null,0,0,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup18,string | null,0,0,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup19,string | null,0,0,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup20,string | null,0,0,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup21,string | null,0,0,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup22,string | null,0,0,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup23,string | null,0,0,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup24,string | null,0,0,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_merchgroup25,string | null,0,0,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_num01,number | null,0,2,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_num02,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_num03,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_num04,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_num05,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_num06,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_num07,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_num08,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_num09,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_num10,number | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_yesno01,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_yesno02,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_yesno03,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_yesno04,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_yesno05,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_yesno06,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_yesno07,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_yesno08,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_yesno09,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_yesno10,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_yesno11,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_yesno12,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_yesno13,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_yesno14,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,udf_yesno15,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,uom_code_hed_fk,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,uom_size_fk_hed,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,uom_weight_fk_hed,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,UPC,string | null,9,5,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,upc_created_timedate,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,vendor_code_hed_fk,string | null,0,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"
+itemDetail,whse_sku_id,string | null,4,1,not_needed,,,"table is only joined, no column read (tracking lib.model.js:216); remaining name matches are item-header fields or UI text; ColdLion sync-only per 2026-10-23 ruling"

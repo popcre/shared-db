@@ -66,7 +66,7 @@ Needed by ruling (ColdLion): `udf_yesno01` (movie art), `udf_yesno03`
 Not needed (ColdLion sync-only, ruling): `old_item_num`, `compare_price`,
 `item_cbm_size`, `origin_country_fk`, `costcomp1`–`5`, `udf_yesno02` (share
 UPC). Not needed (only blanked): `udf_num02`–`10`, `udf_yesno04`–`15`.
-`udf_num01` is read and stays.
+`udfnum01` is read and stays (`udf_num01` is sync-only; see crosswalk §4).
 
 `art_piece` (item-master) has nine merch group references with no canonical
 foreign key.
@@ -246,9 +246,9 @@ depends on which schema copy is active.
 
 ## Next steps
 
-1. Albert to confirm which missing areas the new schema must carry vs. keep as legacy copies.
-2. Turn this into a column-by-column crosswalk checked against real queries
-   and the live schema.
+1. Done 2026-10-23: decision recorded in `designflow-legacy-column-crosswalk.md` §3
+   (every area with an app-read column is carried; as-is vs reshape in §2).
+2. Done 2026-10-23: `designflow-legacy-column-crosswalk.csv` (923 columns).
 3. One issue per business area, claim the objects (`shared-db-change`); start
    with license agreements, then items.
 4. Regenerate types and re-run the crosswalk until it shows zero gaps.

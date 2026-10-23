@@ -1,7 +1,7 @@
 # DesignFlow legacy → canonical crosswalk (2026-10-23)
 
 Follows `designflow-legacy-column-gap-analysis.md` (steps 1 and 2 of its
-"Next steps"). The column rows are in `designflow-legacy-column-crosswalk.csv`
+"Next steps"). The column rows are in the private `designflow-legacy-column-crosswalk.csv` (link in `docs/private-data-artifacts.md`)
 (923 legacy columns, 21 tables). This file holds the table-level verdict,
 the recorded decision, and how the CSV was built.
 

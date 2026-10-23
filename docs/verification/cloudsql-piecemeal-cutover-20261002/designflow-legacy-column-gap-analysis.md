@@ -248,7 +248,7 @@ depends on which schema copy is active.
 
 1. Done 2026-10-23: decision recorded in `designflow-legacy-column-crosswalk.md` §3
    (every area with an app-read column is carried; as-is vs reshape in §2).
-2. Done 2026-10-23: `designflow-legacy-column-crosswalk.csv` (923 columns).
+2. Done 2026-10-23: `designflow-legacy-column-crosswalk.csv` (923 columns; private, link in `docs/private-data-artifacts.md`).
 3. One issue per business area, claim the objects (`shared-db-change`); start
    with license agreements, then items.
 4. Regenerate types and re-run the crosswalk until it shows zero gaps.

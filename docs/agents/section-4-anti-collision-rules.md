@@ -1358,9 +1358,10 @@ future consolidation into the canonical claim module requires separate review.
 
 ### Immediate voluntary stop, succession and check-ins (#3618)
 
-Fresh author grants are at most thirty minutes, and a `--check-in-author`
-renewal re-grants up to one hour (2026-10-23: a check-in taken before CI must
-still be valid when the guarded merge job runs). The native `--check-in-author`
+Author leases are capped at one hour; a fresh claim defaults to thirty
+minutes, and `--check-in-author` renews to the full hour (2026-10-23: a
+check-in taken before CI must still be valid when the guarded merge job
+runs). The native `--check-in-author`
 entry point confirms the actual current owner, exact claim/issue/PR/head and
 local branch/head, re-proves canonical scope/source/reservation/collisions under
 the existing mutex, and creates a separate immutable owner confirmation bound

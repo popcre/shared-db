@@ -73,6 +73,8 @@ test('author must explicitly check in within sixty minutes; missing, stale, futu
   for(const record of [null,confirmation(claim(),{checked_in_at:new Date(now.valueOf()-60*60000-1).toISOString()}),confirmation(claim(),{checked_in_at:new Date(now.valueOf()+1).toISOString()})])assert.throws(()=>run({confirmationForClaim:()=>record}),/check-in|permission/)
   assert.throws(()=>run({claims:[claim({expiresAt:new Date(now.valueOf()+12*3600000)})]}),/permission/)
   assert.equal(run({now:new Date(now.valueOf()+60*60000-1)}).claim,12)
+  assert.equal(run({now:new Date(now.valueOf()+45*60000)}).claim,12)
+  assert.throws(()=>run({claims:[claim({expiresAt:new Date(now.valueOf()+61*60000)})]}),/permission/)
 })
 test('confirmation is immutable and binds full claim body, actual author session and exact PR head',()=>{
   for(const override of [{owner:'codex/other'},{author_session:'other'},{body_sha256:'b'.repeat(64)},{claim:13},{head_sha:'bad'},{extra:true}])assert.throws(()=>run({confirmationForClaim:holder=>confirmation(holder,override)}),/check-in/)

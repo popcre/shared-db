@@ -11,8 +11,8 @@ Read it in full before you claim a lane, author a migration, or rehearse on prev
 rules below are the operative summary.
 
 **Stopped-owner and check-in rule (2026-10-13, #3618; window widened 2026-10-23):** new author permissions
-are at most thirty minutes, and a `--check-in-author` renewal re-grants up to one
-hour. Explicitly check in through native `--check-in-author`
+default to thirty minutes and are capped at one hour; a `--check-in-author`
+renewal takes the full hour. Explicitly check in through native `--check-in-author`
 every sixty minutes and before protected actions; the migration gate verifies the
 actual confirmation timestamp. At normal completion, an external-block stop, or
 wrap-up, stop writers and finish native release or `--stop-author` readiness.

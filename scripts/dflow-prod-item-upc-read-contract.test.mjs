@@ -45,6 +45,25 @@ test('synthetic PG17 production UPC contract',{skip:!container},async t=>{
     assert.equal(ok('SET ROLE designflow_prod_item_master_runtime; SELECT count(*) FROM dflow_prod.item_detail_upc;'),'SET\n4');
    }finally{ok('GRANT designflow_prod_item_master_grants TO designflow_prod_backend_runtime;');}
   });
+  await t.test('existing view refuses without changing its prior definition',()=>{
+   const before=ok("SELECT pg_get_viewdef('dflow_prod.item_detail_upc'::regclass,true);");
+   const result=q(migration);assert.notEqual(result.status,0);assert.match(result.stderr,/#4659/);
+   assert.equal(ok("SELECT pg_get_viewdef('dflow_prod.item_detail_upc'::regclass,true);"),before);
+  });
+  await t.test('pre-existing whole-table grant refuses and preserves existing access',()=>{
+   ok('DROP VIEW dflow_prod.item_detail_upc; REVOKE ALL ON dflow_prod."itemDetail" FROM designflow_prod_item_master_grants; GRANT SELECT ON dflow_prod."itemDetail" TO designflow_prod_item_master_grants;');
+   const result=q(migration);assert.notEqual(result.status,0);assert.match(result.stderr,/thirteen-column isolation/);
+   assert.equal(ok("SELECT to_regclass('dflow_prod.item_detail_upc') IS NULL;"),'t');
+   assert.equal(ok("SELECT has_table_privilege('designflow_prod_item_master_grants','dflow_prod.\"itemDetail\"','SELECT');"),'t');
+   ok('REVOKE SELECT ON dflow_prod."itemDetail" FROM designflow_prod_item_master_grants;');ok(migration);
+  });
+  await t.test('unexpected inherited browser access rolls back view and new column grants',()=>{
+   ok('DROP VIEW dflow_prod.item_detail_upc; REVOKE ALL ON dflow_prod."itemDetail" FROM designflow_prod_item_master_grants; GRANT designflow_prod_item_master_grants TO anon;');
+   try{const result=q(migration);assert.notEqual(result.status,0);assert.match(result.stderr,/unexpected production UPC reader: anon/);
+    assert.equal(ok("SELECT to_regclass('dflow_prod.item_detail_upc') IS NULL;"),'t');
+    assert.equal(ok("SELECT has_column_privilege('designflow_prod_item_master_grants','dflow_prod.\"itemDetail\"','UPC','SELECT');"),'f');
+   }finally{ok('REVOKE designflow_prod_item_master_grants FROM anon;');}ok(migration);
+  });
   await t.test('invoker checks underlying privileges and RLS',()=>{
    ok('REVOKE SELECT ("UPC") ON dflow_prod."itemDetail" FROM designflow_prod_item_master_grants;');
    denied('designflow_prod_item_master_runtime','SELECT upc FROM dflow_prod.item_detail_upc;');

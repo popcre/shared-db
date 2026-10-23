@@ -19,6 +19,9 @@ BEGIN
   IF NOT has_schema_privilege('designflow_prod_item_master_grants','dflow_prod','USAGE') THEN
     RAISE EXCEPTION '#4659: existing Item Master schema access missing';
   END IF;
+  IF has_table_privilege('designflow_prod_item_master_grants','dflow_prod."itemDetail"','SELECT') THEN
+    RAISE EXCEPTION '#4659: pre-existing full source read would defeat thirteen-column isolation';
+  END IF;
   IF (SELECT count(*) FROM pg_attribute WHERE attrelid='dflow_prod."itemDetail"'::regclass
       AND attnum>0 AND NOT attisdropped AND attname=ANY(ARRAY['item_pk','item_num_id','compan_code_fk','div_code_fk','UPC','EAN','GTIN','color_code_fk','size_code_fk','size_seq','whse_sku_id','item_active_status','coldlion_synced_at']))<>13 THEN
     RAISE EXCEPTION '#4659: production UPC source columns missing';
@@ -59,7 +62,9 @@ BEGIN
     RAISE EXCEPTION '#4659: intended Item Master runtime read contract failed';
   END IF;
   -- #4475 holds service-identity cutover. Fresh production metadata proves the
-  -- currently deployed shared backend inherits Item Master grants. Preserve that
+  -- currently deployed shared backend inherits Item Master grants (known open
+  -- membership drift #4475; this migration neither legitimizes nor changes it).
+  -- Preserve that
   -- existing bridge; do not broaden the backend grant group or create membership.
   IF pg_has_role('designflow_prod_backend_runtime','designflow_prod_item_master_grants','member')
      AND NOT has_table_privilege('designflow_prod_backend_runtime','dflow_prod.item_detail_upc','SELECT') THEN

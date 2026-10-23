@@ -8,7 +8,7 @@
   ],
   "contract_ref": "refs/db-contracts/4430/1",
   "contract_sha256": "c3d5533a5f5658d5cc474f5ea6736077117bcdddec82563298f415ef0e3d6f5b",
-  "head_sha": "56790c59179b3e2cda3d63a39cc2abb8d44d99ad",
+  "head_sha": "f3dd5a80b378ab24fd98f2ef0b31a987e087d1cc",
   "base_sha": "c092d1b4b9462f940fc477a628e7b2119efb2244",
   "files_changed": [
     ".github/live-proofs/4430.sql",

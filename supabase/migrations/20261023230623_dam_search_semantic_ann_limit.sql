@@ -1,4 +1,5 @@
 -- Version: 20261023230623
+-- derived-from: 20261023184940
 -- Issue: popcre/shared-db#4664 (app u2giants/popdam3#97 follow-up)
 -- Fix search_dam_documents semantic leg: ANN top-K instead of full 50k sort.
 -- After the SigLIP2 library backfill (150k x 768), order-by-distance + limit 50000
@@ -325,4 +326,5 @@ as $$
 $$;
 revoke all on function public.search_dam_documents(text, jsonb, integer, integer, text[], extensions.vector, real, real) from public, anon;
 grant execute on function public.search_dam_documents(text, jsonb, integer, integer, text[], extensions.vector, real, real) to authenticated, service_role;
+
 

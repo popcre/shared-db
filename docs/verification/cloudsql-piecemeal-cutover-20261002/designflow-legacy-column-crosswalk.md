@@ -90,6 +90,32 @@ custom grids, standardized products, lead times and samples. Areas in §2
 reshaped" are carried in the canonical shape. Nothing the app reads stays
 behind only as a legacy copy.
 
+Albert, 2026-10-23 (second ruling): where the Supabase production database
+already has a table holding the same data as a DesignFlow (Cloud SQL) table,
+that Supabase design is used. If structure is missing, the Supabase table is
+extended (new columns or child tables); if nothing is missing, the work is
+only mapping the legacy values into it. Applied here:
+
+- Extend existing design: `plm.item`, `core.merch_group`, `core.customer`,
+  `core.factory`, `plm.rfq_item`, `plm.rfq_vendor`, `plm.rfq_group`,
+  `plm.production_order`, `plm.production_order_line`,
+  `plm.licensing_status`, `plm.licensing_feedback`, `plm.item_attachment`,
+  `plm.art_piece`, `app.profile`, `app.comment`, `core.product_size`, plus
+  the CSV's proposed child tables. `core.licensor` gets its royalty rates
+  through `plm.license_agreement` linked to it.
+- Value mapping only (nothing missing): `core.vendor`, `app.activity`
+  (extra fields fit `payload`), `app.notification`, `app.role`,
+  `core.age_group`, `core.art_types`, `core.artist`, `core.artist_types`,
+  `plm.merch_group_header`, `core.product_depth`, `plm.art_piece_attachment`,
+  and item type → `core.product_type` once that match is confirmed.
+- Every "covered" CSV row needs a value map (legacy code or integer id →
+  canonical uuid), recorded with `source_system` / `source_id`.
+- Areas with no Supabase design today (screen layouts, custom grids,
+  element permissions, standardized products, lead times, RFQ steps,
+  containers, warehouses, season/division/company/FOB/delivery lookups)
+  keep the §2 verdict: carried as application-owned tables, or a new
+  `core` lookup for shared code lists.
+
 Assumption: "must be present" was read as "must have a home in the new
 schema", not "may remain in the legacy-shaped copies". If Albert wants some
 area left as a legacy copy for now, only that area's rows in the CSV change.

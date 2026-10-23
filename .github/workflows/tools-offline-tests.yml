@@ -6,7 +6,7 @@
 # coldlion-licensor-property-production.yml, which no-ops for as long as the
 # production lane stays disabled, and the fourth
 # (tools/coldlion-production-lane-readiness.test.mjs) was referenced by no
-# workflow at all. The tests passed locally, so nothing was broken — but nothing
+# workflow at all. The tests passed locally, so nothing was broken â€” but nothing
 # was being guarded either.
 #
 # Design rules for this workflow:
@@ -16,11 +16,11 @@
 #      every push to main, unconditionally.
 #   2. It globs tools/*.test.mjs rather than listing filenames, so a new tools
 #      test is wired into CI the moment it is committed. That is what failed with
-#      PR #331 — an explicit list that nobody remembered to extend.
+#      PR #331 â€” an explicit list that nobody remembered to extend.
 #   3. Every test here must pass OFFLINE with NO secrets and NO database contact.
 #      These are pure contract/unit tests. Do not add a step that needs
 #      SUPABASE_*, COLDLION_API_KEY, DESIGNFLOW_API_KEY, or any project ref, and
-#      never set COLDLION_LICENSOR_PROPERTY_PRODUCTION_ENABLED here — enabling the
+#      never set COLDLION_LICENSOR_PROPERTY_PRODUCTION_ENABLED here â€” enabling the
 #      production lane is a separate, deliberately gated decision.
 #
 # The per-lane workflows (production, phase6-parallel, alert-monitor) still run
@@ -165,6 +165,12 @@ jobs:
           set -euo pipefail
           node --test scripts/rls-owner-uid-initplan.test.mjs
 
+      - name: Verify RLS style-guide access source (#4429)
+        if: steps.route.outputs.pure_prose != 'true'
+        run: |
+          set -euo pipefail
+          node --test scripts/rls-style-guide-access-initplan.test.mjs
+
       - name: Run throughput guard tests and prove planned files are present
         if: steps.route.outputs.pure_prose != 'true'
         run: |
@@ -217,7 +223,7 @@ jobs:
         if: steps.route.outputs.pure_prose != 'true'
         # The boundary classifier is MERGE-TIME enforcement: no pull-request
         # check can prove it refuses, because the refusal happens inside the
-        # guarded merge. These tests are that proof — dirty-first fixtures for
+        # guarded merge. These tests are that proof â€” dirty-first fixtures for
         # every out-of-boundary shape (FK targets, SECURITY DEFINER,
         # RLS-before-grant, CREATE OR REPLACE, riding-along workflows), plus the
         # sync test that keeps admission and enforcement from drifting apart
@@ -331,7 +337,7 @@ jobs:
           shopt -s nullglob
           FILES=(tools/*.test.mjs)
           if [ "${#FILES[@]}" -eq 0 ]; then
-            echo "::error::No tools/*.test.mjs files found — the glob or the checkout is wrong." >&2
+            echo "::error::No tools/*.test.mjs files found â€” the glob or the checkout is wrong." >&2
             exit 1
           fi
           echo "Running ${#FILES[@]} test files:"
@@ -358,7 +364,7 @@ jobs:
           echo "All four Step 7A test files present and covered by the glob above."
 
       # ---------------------------------------------------------------------------------
-      # #654 — the skills-versus-rulebook drift check must actually RUN, not skip.
+      # #654 â€” the skills-versus-rulebook drift check must actually RUN, not skip.
       #
       # scripts/check-skill-drift.mjs landed in #575 but SKIPPED in CI, because the skills
       # live in popcre/ai-devops and this job only ever checked out shared-db. A check

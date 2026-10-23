@@ -392,9 +392,9 @@ insert into t2873_expected values
   ('designflow_prod_tracking_grants','table','dflow_prod.sample_workflow','UPDATE'),
   ('designflow_prod_tracking_grants','table','dflow_prod.sample_workflow','DELETE'),
   -- #4585 tracking-grid Archive (20261022132119), on the group role.
-    ('designflow_prod_tracking_grants','table','coldlion.order_history_line','SELECT'),
-  ('designflow_prod_tracking_grants','table','coldlion.prod_history_line','SELECT'),
-  ('designflow_prod_tracking_grants','view','dflow_prod.v_prod_order_sales_order_link','SELECT'),
+ ('designflow_prod_tracking_grants','table','coldlion.order_history_line','SELECT'),
+ ('designflow_prod_tracking_grants','table','coldlion.prod_history_line','SELECT'),
+ ('designflow_prod_tracking_grants','view','dflow_prod.v_prod_order_sales_order_link','SELECT'),
 ('designflow_prod_tracking_grants','table','dflow_prod.tracking_grid_archive','SELECT'),
   ('designflow_prod_tracking_grants','table','dflow_prod.tracking_grid_archive','INSERT'),
   ('designflow_prod_tracking_grants','table','dflow_prod.tracking_grid_archive','DELETE'),

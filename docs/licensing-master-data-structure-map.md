@@ -12,7 +12,7 @@ authority for business meaning is
 [`business-rules/licensing-master-data.md`](business-rules/licensing-master-data.md);
 the machine-readable authority for which source family covers which licensor is
 [`config/db-data-admin-property-source-coverage.json`](../config/db-data-admin-property-source-coverage.json)
-(39 families; dispositions `exposed` / `not_applicable` / `blocked`). This page
+(39 families: 15 `exposed`, 24 `not_applicable_no_source_property_vocabulary`, 0 `blocked_missing_landing_shape`). This page
 never overrides either.
 
 ## The layers (counts live 2026-10-22)
@@ -20,15 +20,15 @@ never overrides either.
 | Layer | Role | Tables | Rows |
 |---|---|---|---|
 | ColdLion ERP mirrors | Feed targets for official licensor names and property membership | `plm.erp_licensor` (0 — guarded licensor sync not loaded yet; today's 27 `core.licensor` names are maintained by the licensing lane), `plm.erp_property` (10) | 0 / 10 |
-| Authorized portal scrapes | Own property names, ownership, entities, and **direct relationships** inside their coverage; raw, byte-for-byte, RLS'd | exposed property vocabularies (from the coverage manifest): Disney OPA Submissions `plm.opa_property` **1,524** (multi-studio, per-row `opa_property_studio_resolution`: disney 244 / marvel 205 / pixar 64 / lucasfilm 2 / unresolved 910 / ambiguous 20); Disney DCP Creative `plm.dcp_property` 237; Marvel DCP `plm.marvel_dcp_property` 18; **Marvel ASGARD** `plm.marvel_asgard_style_guide` 75; Lucasfilm DCP `plm.lucasfilm_dcp_property` 70; 20th-Century DCP `plm.twentieth_century_dcp_property` 0; **Paramount TrackerPlus Submissions** `plm.pmt_trackerplus_submission_property` 35; Paramount Creative `plm.pmt_property` 134; Warner STARLABS Creative `plm.wb_property` 525; NBCU Creative `plm.nbcu_property` 249; **WildBrain** `plm.wildbrain_era` 10; **Sega Submissions** `plm.sega_submission_property` 6; Sega DSI Creative `plm.sega_property` 440; **Coca-Cola** `plm.coke_asset_property_option` 166; **WWE** `plm.wwe_property` 1. Sesame's capture carries **no** source property vocabulary (not applicable). DCP families are Creative evidence only — they cannot assign property ownership | see left |
+| Authorized portal scrapes | Own property names, ownership, entities, and **direct relationships** inside their coverage; raw, byte-for-byte, RLS'd | exposed property vocabularies, purpose-labeled (from the coverage manifest). Submissions: Disney OPA `plm.opa_property` **1,524** — multi-studio; the evidence table `plm.opa_property_studio_resolution` is keyed `(licensed_property_id, studio_code)`, NOT one row per property: 515 properties carry a canonical studio (disney 244 / marvel 205 / pixar 64 / lucasfilm 2), 910 carry only `unresolved` evidence, 20 `ambiguous_crossover`, 79 carry no resolution row; Paramount TrackerPlus `plm.pmt_trackerplus_submission_property` 35; Sega `plm.sega_submission_property` 6; WWE `plm.wwe_property` 1. Creative (never assign property ownership; ASGARD guides are never promoted to submission Properties): Disney DCP Vault `plm.dcp_property` 237, Marvel DCP `plm.marvel_dcp_property` 18, **Marvel ASGARD** `plm.marvel_asgard_style_guide` 75, Lucasfilm DCP `plm.lucasfilm_dcp_property` 70, 20th-Century DCP `plm.twentieth_century_dcp_property` 0, Paramount Creative Library `plm.pmt_property` 134, Warner STARLABS `plm.wb_property` 525, NBCU Creative Asset Factory `plm.nbcu_property` 249, WildBrain Era `plm.wildbrain_era` 10, Sega DSI `plm.sega_property` 440, Coca-Cola asset-library options `plm.coke_asset_property_option` 166. Peanuts and Sesame captures carry **no** source property vocabulary (both `not_applicable_no_source_property_vocabulary`) | see left |
 | Canonical masters | Stable uuid identities shared by every app | `core.licensor` 27, `core.property` 262 (NOT NULL `licensor_id`; known caveats below), `core.customer` 826, `core.factory` 93 (+ aliases + `core.company_source_ref` 830 coldlion / 54 designflow_plm / 105 directus, `core.factory_source_ref` 104 coldlion / 0 designflow) | see left |
-| Relationship tables | Links become canonical **only when the authorized source publishes them** | per relationship: `*_source_edge` table + link table + `*_current` view (`property_character`, `property_style_guide`, `style_guide_character`, `property_franchise`) plus entity tables `core.character`, `core.style_guide`, `core.franchise` — **every one of these 11 objects holds 0 rows today** | 0 |
+| Relationship tables | Links become canonical **only when the authorized source publishes them** | **15 objects, all holding 0 rows today**: 4 edge tables (`property_character_source_edge`, `property_franchise_source_edge`, `property_style_guide_source_edge`, `style_guide_character_source_edge`), 4 link tables (`core.property_character_associations`, `core.property_franchise`, `core.property_style_guide`, `core.style_guide_character`), 4 `*_current` views, and the entity tables `core.character`, `core.style_guide`, `core.franchise` | 0 |
 | Application mirrors | Legacy-shaped copies each app keeps until its cutover | DesignFlow: `dflow_prod."licenseList"` 19; `dflow_prod.properties_and_characters` = **500 PROPERTY + 9,622 CHARACTER appearance rows (8,370 distinct names)** — never quote 10,122 as a property count; `dflow_prod.property_character_associations` 9,622; `dflow_prod.customers` 58 | live |
 
 `core.property` caveats (from the 2026-09-03 reconciliation): some rows are
 character-level entries filed as properties (most visibly in the Warner family —
-11 of 14 DC rows), and 197 of 262 rows appear in none of the four extracts then
-compared. It is the master, not a clean mirror of licensor catalogues.
+11 of 14 DC rows), and 197 of 260 rows (2026-09-03 count) appeared in none of
+the four extracts then compared. It is the master, not a clean mirror of licensor catalogues.
 
 Merch groups are a **separate system**: ColdLion dictionaries MG01–MG14 per
 division; licensors/properties can appear as *rows in the merchGroup tables* —
@@ -70,7 +70,7 @@ talent likeness, and DCP withdrawal signals — all in the business-rules file.
 ## Where each mapping stands (2026-10-22)
 
 - **Licensors:** old 19-row DesignFlow list → `core.licensor` mostly ruled
-  (see rulings above; the old `Dis/Mrv/SW` combo row splits three ways).
+  (see rulings above; `Dis/Mrv/SW` is live `dflow_prod."licenseList"` row 1, code DS — it splits three ways by ruling).
 - **Properties:** 500 old rows resolve **per licensor** through that licensor's
   authorized vocabulary (families table above), or — where the manifest says no
   source property vocabulary exists (e.g. Sesame) — through ColdLion-only rules
@@ -84,8 +84,10 @@ talent likeness, and DCP withdrawal signals — all in the business-rules file.
   needs the reviewed one-time match (ColdLion refs exist: 104).
 - **Characters:** 9,622 appearance rows / 8,370 distinct names wait on property
   resolution. The backfill plan resolves them to 6,538 canonical characters
-  (8,878 appearances auto-resolved by rule, 590 excluded) but has **not
-  started** — blocked on licensing round 2 and the §8a code ruling
+  (8,878 appearances auto-resolved by rule, 590 excluded by rule, 154 settled
+  by human identity decision) but has **not started** — the licensing question
+  stream CLOSED 2026-08-06 after round 3; the live blockers are the §8a
+  `EX`/`LB`/`JL` owner decision and the unrun backfill
   ([`fix_characters_style_guides.md`](../fix_characters_style_guides.md)). Old
   associations are evidence, never authority.
 
@@ -96,7 +98,11 @@ select type, count(*), count(distinct name) from dflow_prod.properties_and_chara
 select source_system, count(*) from core.company_source_ref group by 1;
 select count(*) from core.property;                       -- 262
 select count(*) from plm.opa_property;                    -- 1,524
-select studio_code, resolution_status, count(*) from plm.opa_property_studio_resolution group by 1,2;
+select studio_code, count(distinct licensed_property_id) from plm.opa_property_studio_resolution
+ where resolution_status = 'canonical' group by 1;        -- 244/205/64/2
+select count(*) from plm.opa_property p where not exists
+ (select 1 from plm.opa_property_studio_resolution r
+   where r.licensed_property_id = p.licensed_property_id); -- 79 no evidence row
 select 'factory_ref', source_system, count(*) from core.factory_source_ref group by 2;
 ```
 

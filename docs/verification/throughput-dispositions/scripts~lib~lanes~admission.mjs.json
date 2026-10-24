@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "source": "scripts/lib/lanes/admission.mjs",
+  "sites": [
+    {
+      "site": "scripts/lib/lanes/admission.mjs:204",
+      "semantic_key": "scripts/lib/lanes/admission.mjs:d86d469cd14a75d7342095510fc58b96dc73ce4f7337222eb2bc089c1d383407:context-73538db890ade6b41dad068606018ef4955923e101c781a4246db8f8cd62ca27",
+      "legacy_semantic_key": "scripts/lib/lanes/admission.mjs:d86d469cd14a75d7342095510fc58b96dc73ce4f7337222eb2bc089c1d383407:1",
+      "line_sha256": "d86d469cd14a75d7342095510fc58b96dc73ce4f7337222eb2bc089c1d383407",
+      "disposition": "excluded",
+      "reason": "Required serial attribution check, not a claim that a database object was never created or applied. The zero-migration merged-maintenance binding independently requires the trusted repository operator and an exact signed PR body; missing signed attribution throws before maintenance review eligibility is granted. Existing structural migration reservations, historical reviewer refusals and production authority remain separate and unchanged."
+    }
+  ]
+}

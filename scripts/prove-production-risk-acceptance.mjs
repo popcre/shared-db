@@ -29,12 +29,15 @@
 //      naming the EXACT main SHA being promoted, the EXACT ordered versions and
 //      the source PR, and assessing EVERY risk class the gate derived with a
 //      substantive written assessment (no class may be skipped or invented).
+// The explicit --train-ref route below instead proves a distinct current-target
+// assessment on its maintenance anchor; it never clears historical refusals.
 // Every other production gate (exact main, allowlist, preview/ephemeral
 // evidence, hard blocks, production lock, post-apply verification) is outside
 // this file and unchanged. A human is never asked.
 import { pathToFileURL } from 'node:url'
 import { assertDurableReviewApproval, githubIo } from './manage-migration-author-lanes.mjs'
 import { findingsDigest } from './lib/review-verdict-artifact.mjs'
+import { proveTrainTargetAssessment, publishTrainTargetAssessment } from './lib/production-train-target-assessment.mjs'
 
 export const ASSESSMENT_SCHEMA = 'shared-db-production-risk-assessment/v1'
 export const ACCEPTABLE_RISKS = Object.freeze(['expected_downtime', 'material_access_change', 'permanent_data_rewrite_or_loss'])
@@ -81,10 +84,12 @@ export function proveRiskAcceptance({ issue, pr, headSha, mainSha, allowlist, ri
   throw new RiskAcceptanceError(`no durable APPROVE at ${headSha} carries a matching reviewer risk assessment${failures.length ? ` (${failures.join('; ')})` : ''}`)
 }
 
-function main(argv) {
+export function main(argv, { proveTarget = proveTrainTargetAssessment, publishTarget = publishTrainTargetAssessment } = {}) {
   const opts = {}
   for (let i = 0; i < argv.length; i += 2) opts[argv[i].replace(/^--/, '')] = argv[i + 1]
-  const result = proveRiskAcceptance({ issue: opts.issue, pr: opts.pr, headSha: opts['head-sha'], mainSha: opts['main-sha'], allowlist: String(opts.allowlist ?? '').split(',').map((v) => v.trim()).filter(Boolean), risks: String(opts.risks ?? '').split(',').filter(Boolean) })
+  if (opts['train-ref'] && (opts.pr !== undefined || opts['head-sha'] !== undefined)) throw new RiskAcceptanceError('train target assessment refuses competing historical source selectors')
+  const targetOptions = { issue: Number(opts.issue), assessmentPr: opts['assessment-pr'] ? Number(opts['assessment-pr']) : undefined, assessmentHead: opts['assessment-head'], mainSha: opts['main-sha'], trainRef: opts['train-ref'], allowlist: String(opts.allowlist ?? '').split(',').filter(Boolean), risks: String(opts.risks ?? '').split(',').filter(Boolean) }
+  const result = opts['train-ref'] ? (opts['publish-train-assessment'] === 'true' ? publishTarget(targetOptions) : proveTarget(targetOptions)) : proveRiskAcceptance({ issue: opts.issue, pr: opts.pr, headSha: opts['head-sha'], mainSha: opts['main-sha'], allowlist: String(opts.allowlist ?? '').split(',').map((v) => v.trim()).filter(Boolean), risks: String(opts.risks ?? '').split(',').filter(Boolean) })
   process.stdout.write(`${JSON.stringify(result)}\n`)
 }
 

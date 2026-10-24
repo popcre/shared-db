@@ -38,3 +38,18 @@ test('acceptance needs the durable exact-head APPROVE and digest-bound findings'
   assert.throws(() => proveRiskAcceptance(args, io, () => [{ ...row, head_sha: 'f'.repeat(40) }]), /no durable APPROVE/)
   assert.throws(() => proveRiskAcceptance(args, io, () => [{ ...row, verdict: 'REVISE' }]), /no durable APPROVE/)
 })
+
+test('explicit train CLI forwards native binding and only explicit publisher flag writes index', async () => {
+  const {main}=await import('./prove-production-risk-acceptance.mjs')
+  const args=['--train-ref','refs/db-migration-trains/exact/000003-dispatched','--main-sha',MAIN,'--allowlist','20261022221940,20261023014911','--risks','material_access_change']
+  const original=console.log;console.log=()=>{}
+  const write=process.stdout.write;process.stdout.write=()=>true
+  let proofCalls=0,publishCalls=0
+  const deps={proveTarget:o=>{proofCalls++;assert.equal(o.mainSha,MAIN);assert.equal(o.trainRef,args[1]);assert.deepEqual(o.allowlist,['20261022221940','20261023014911']);assert.deepEqual(o.risks,['material_access_change']);return{schema:'proved'}},publishTarget:o=>{publishCalls++;assert.equal(o.assessmentPr,5000);assert.equal(o.assessmentHead,HEAD);assert.equal(o.issue,4655);return{schema:'published'}}}
+  try{
+    assert.throws(()=>main([...args,'--pr','4673'],deps),/competing historical source/)
+    main(args,deps);assert.equal(proofCalls,1);assert.equal(publishCalls,0)
+    main([...args,'--publish-train-assessment','true','--assessment-pr','5000','--assessment-head',HEAD,'--issue','4655'],deps)
+    assert.equal(proofCalls,1);assert.equal(publishCalls,1)
+  }finally{process.stdout.write=write;console.log=original}
+})

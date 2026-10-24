@@ -2,6 +2,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ACCEPTABLE_RISKS, ASSESSMENT_SCHEMA } from '../prove-production-risk-acceptance.mjs'
+import { loadTrainTargetEvidence, trainTargetRequest } from './production-train-target-assessment.mjs'
 
 export const REVIEW_ASSESSMENTS = Object.freeze([
   ['Role and permission changes', 'Inspect every changed grant, policy, role and security boundary, including sibling call paths.'],
@@ -98,7 +99,7 @@ Report all discovered findings together, including all sibling instances of each
   return text
 }
 
-export function loadReviewBrief(options, source, { github }) {
+export function loadReviewBrief(options, source, { github, loadTarget = loadTrainTargetEvidence }) {
   const read = path => {
     const response = github(['api', path])
     if (response.error || response.status !== 0) throw new Error('review packet evidence could not be read; no reviewer was started')
@@ -122,7 +123,10 @@ export function loadReviewBrief(options, source, { github }) {
     }
   }
   let riskRequest = ''
-  if (options.productionRiskMain !== undefined || options.productionRiskClasses !== undefined || options.productionRiskAllowlist !== undefined) {
+  if (options.productionRiskTrainRef !== undefined) {
+    const evidence = loadTarget({ mainSha: options.productionRiskMain, trainRef: options.productionRiskTrainRef, allowlist: String(options.productionRiskAllowlist ?? '').split(','), assessmentPr: source.pr, assessmentHead: source.headSha, issue: options.issue })
+    riskRequest = trainTargetRequest(evidence, options.productionRiskClasses)
+  } else if (options.productionRiskMain !== undefined || options.productionRiskClasses !== undefined || options.productionRiskAllowlist !== undefined) {
     const main = String(options.productionRiskMain ?? '').toLowerCase()
     const exact = /^[0-9a-f]{40}$/.test(main)
     // One recursive tree read per ref (§5.2-B); never a per-file Contents URL.

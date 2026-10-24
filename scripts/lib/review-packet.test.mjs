@@ -154,3 +154,16 @@ test('loadReviewBrief reads compare and one tree per ref only when asked, and pl
   assert.throws(() => loadReviewBrief(ask, source, { github: args => gh(args, { truncated: true, tree: [] }) }), /truncated or unreadable/)
   assert.throws(() => loadReviewBrief({ ...options, productionRiskClasses: riskClasses }, source, { github: gh }), /exact 40-hex main/)
 })
+
+test('train target option seals current-target evidence instead of the single-source risk request', () => {
+  const evidence = { binding: { schema: 'shared-db-production-train-target-assessment/v2', mainSha: riskMain }, files: [{ path: 'current-contract.sql', sha256: 'a'.repeat(64), body: 'current contract source' }], refusals: [{ ref: 'immutable refusal', body: 'Preserved canonical historical refusal' }] }
+  let received
+  const text = loadReviewBrief({ ...options, productionRiskMain: riskMain, productionRiskClasses: 'material_access_change', productionRiskAllowlist: '20261022221940,20261023014911', productionRiskTrainRef: 'refs/db-migration-trains/exact/000003-dispatched' }, source, { github, loadTarget: request => { received = request; return evidence } })
+  assert.equal(received.assessmentPr, source.pr)
+  assert.equal(received.assessmentHead, source.headSha)
+  assert.equal(received.mainSha, riskMain)
+  assert.deepEqual(received.allowlist, ['20261022221940','20261023014911'])
+  assert.match(text, /current contract source/)
+  assert.match(text, /Preserved canonical historical refusal/)
+  assert.doesNotMatch(text, /You assess only the migration bytes in your packet/)
+})

@@ -1807,6 +1807,13 @@ jobs:
             ROUTE_ARGS=(--preview-run-id "$PREVIEW_RUN_ID" --preview-digest "$PREVIEW_ARTIFACT_DIGEST" \
               --preview-project-ref "$PREVIEW_PROJECT_REF")
           fi
+          # The risk gate accepts EITHER assessment block: the merged-head v1
+          # block naming this main SHA, or a v2 block carried by the FIRST
+          # (pre-merge) review that binds the source PR head -- accepted only
+          # after the gate re-proves live that that head is an ancestor of this
+          # main and each allowlisted migration blob is byte-identical at both
+          # (scripts/prove-production-risk-acceptance.mjs). One review then
+          # suffices; the merged-head slot-2 block remains the fallback.
           # Pre-lane only: nothing is held yet, so a GitHub quota exhaustion may
           # wait up to 15 minutes for its reset. The lane-held run fails fast.
           python scripts/production_business_risk_gate.py \

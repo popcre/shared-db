@@ -48,6 +48,7 @@ export function loadTrainTargetEvidence({mainSha,trainRef,allowlist,assessmentPr
   if(io.mainSha()!==mainSha)fail('current main moved')
   const versions=Array.isArray(allowlist)?allowlist:String(allowlist??'').split(',')
   const train=readVerifiedTrainRecord({ref:trainRef,target:'production',commitSha:mainSha,allowlist:versions.join(',')},io)
+  if(!same(versions,train.entries.map(entry=>entry.version)))fail('ordered allowlist differs from exact train order')
   if(train.entries.length!==2||new Set(train.entries.map(e=>e.source_pr)).size!==2)fail('only an exact two-source production train is admitted')
   const anchor=io.getPr(assessmentPr)
   if(!anchor?.merged_at||anchor.merged!==true||anchor.head?.sha!==assessmentHead)fail('maintenance assessment anchor is not merged at the exact head')

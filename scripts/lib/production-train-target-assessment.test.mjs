@@ -44,6 +44,7 @@ test('packet seals both exact SQLs, all current contract bytes and authenticated
 test('packet refuses stale main, wrong target, nonlatest train, changed SQL, unmerged source, foreign anchor and omitted refusal findings',()=>{
  const mutations=[
  f=>f.setMain(h('9')),
+ f=>f.opts.allowlist=[...versions].reverse(),
  f=>f.io.compareCommits=()=>({status:'behind',behind_by:1}),
  f=>f.files.set(`${MAIN}:supabase/migrations/${versions[0]}_tracking_0.sql`,'changed source'),
  f=>f.prs.get(4648).merged=false,

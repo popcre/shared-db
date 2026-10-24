@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseMergedPrIssueBinding, verifyMergedPrIssueBinding, withMergedPrIssueBinding, resolveAdmittedIssueForPr, reviewTargetIsRecordable } from './manage-migration-author-lanes.mjs'
+import { parseMergedPrIssueBinding, verifyMergedPrIssueBinding, withMergedPrIssueBinding, resolveAdmittedIssueForPr, reviewTargetIsRecordable, derivePrOperationRoute, mergedPrReviewerReuseAllowed } from './manage-migration-author-lanes.mjs'
 
 test('verdict recording accepts a merged PR only through the same verified binding',()=>{
   const open={state:'open',head:{sha:HEAD}}
@@ -202,4 +202,97 @@ test('inherited, partial, ambiguous, foreign and removed evidence never bind',()
     [[...pair,...migration,{}],/inventory is unreadable/],
   ]
   for(const [files,pattern] of cases)assert.throws(()=>verifyMergedPrIssueBinding({pr:2726,issue:2506},fixture({files}).io),pattern)
+})
+
+// The maintenance case uses the same native immutable keyed contract and full
+// completion validators as the lane. No closing relation or migration is faked.
+function maintenanceFixture(){
+  const f=fixture(),key='2506/2',folder=`.agent/work/${key}`
+  f.state.contract={...f.state.contract,schema_version:2,generation:2,work_type:'repo-maintenance',route:'repo-maintenance',branch:'codex/issue-2506-maintenance',allowed_paths:['scripts/**',`${folder}/**`],file_writes:['scripts/tool.mjs'],db_reads:[],db_writes:[],evidence_parent:{work_issue:2506,generation:1,contract_sha256:'2'.repeat(64)}}
+  f.state.files=[{filename:`${folder}/contract.json`,status:'added'},{filename:`${folder}/completion.json`,status:'added'},{filename:'scripts/tool.mjs',status:'modified'}]
+  f.state.contractPath=`${folder}/contract.json`;f.state.completionPath=`${folder}/completion.json`
+  f.state.completion={schema_version:1,work_issue:2506,outcome:'ready-for-merge',pr:2726,contract_ref:`refs/db-contracts/${key}`,contract_sha256:contractHash(f.state.contract),base_sha:f.state.contract.base_sha,head_sha:HEAD,files_changed:['scripts/tool.mjs'],db_reads:[],db_writes:[],checks:[{command:'node --test',exit_code:0,evidence:'Native synthetic checks all passed.'}],assumptions_resolved:[],stop_conditions_hit:[],migration_versions:[]}
+  f.state.pr={...f.state.pr,state:'closed',merged:true,merge_commit_sha:'d'.repeat(40),base:{sha:f.state.contract.base_sha,ref:'main',repo:{full_name:'popcre/shared-db'}},head:{sha:HEAD,ref:f.state.contract.branch,repo:{full_name:'popcre/shared-db'}},user:{login:'u2giants'},author_association:'MEMBER',body:'Work issue #2506\nRefs #2506\nPosted by Codex chat fixture on fixture-host'}
+  f.io.getIssue=n=>({number:n,state:f.state.issueState??'open',body:'```db-work-scope\nstatus: ready\nwork_type: repo-maintenance\nroute: repo-maintenance\nchange_type: reviewer-tooling\npriority: 50\ndepends_on:\nwrites:\nreads:\n```'})
+  f.io.mainSha=()=>'c'.repeat(40)
+  f.io.compareCommits=()=>({status:'ahead',behind_by:0,total_commits:1,files:[]})
+  return f
+}
+
+import {contractHash} from './agent-work-contract.mjs'
+import {resolveReviewSource} from './run-governed-review.mjs'
+
+test('a merged nonclosing maintenance anchor binds with its real keyed published contract and complete empty database evidence',()=>{
+ const f=maintenanceFixture(),proof=verifyMergedPrIssueBinding({pr:2726,issue:2506},f.io)
+ assert.deepEqual({...proof,work:undefined},{pr:2726,issue:2506,versions:[],state:'open',route:'repo-maintenance',work:undefined})
+ assert.deepEqual(f.state.linked,[],'no GitHub closing relation was created')
+ const bound=withMergedPrIssueBinding(f.io,'2726:2506',()=>{})
+ assert.equal(reviewTargetIsRecordable(f.io.getPr(),{pr:2726,issue:2506,headSha:HEAD},bound),true)
+ f.state.completion.head_sha='b'.repeat(40)
+ f.io.compareCommits=(base,head)=>({status:'ahead',behind_by:0,total_commits:1,files:base===f.state.completion.head_sha&&head===HEAD?[{filename:f.state.completionPath,status:'added'}]:[]})
+ assert.equal(verifyMergedPrIssueBinding({pr:2726,issue:2506},f.io).route,'repo-maintenance','owned evidence-only tail remains supported')
+})
+
+test('maintenance binding refuses forged, unowned, legacy, database, migration and source-identity mutations',()=>{
+ const mutations=[
+  f=>f.state.refs.delete('refs/db-contracts/2506/2'),
+  f=>f.io.getCommit=()=>({message:'not a published contract'}),
+  f=>{const published={...f.state.contract,goal:'different published authority'};f.io.getCommit=()=>({message:`db-agent-contract issue=2506 generation=2 sha256=${contractHash(published)}\n\n${JSON.stringify(published)}`})},
+  f=>f.state.contract.db_reads=['table core.customer'],
+  f=>f.state.contract.db_writes=['table core.customer'],
+  f=>delete f.state.contract.db_reads,
+  f=>delete f.state.completion.db_reads,
+  f=>delete f.state.completion.db_writes,
+  f=>f.state.completion.db_writes=['table core.customer'],
+  f=>f.state.completion.migration_versions=['20261022221940'],
+  f=>delete f.state.completion.migration_versions,
+  f=>f.state.files.push({filename:'supabase/migrations/20261022221940_illegal.sql',status:'added'}),
+  f=>f.state.contract.route='structural',
+  f=>f.state.completion.contract_sha256='9'.repeat(64),
+  f=>f.state.completion.files_changed=[],
+  f=>f.state.completion.files_changed.push('scripts/tool.mjs'),
+  f=>f.state.completion.checks[0].exit_code=1,
+  f=>f.state.completion.stop_conditions_hit=['scope changed'],
+  f=>f.state.completion.base_sha='9'.repeat(40),
+  f=>f.state.issueState='closed',
+  f=>f.io.getIssue=n=>({number:n,state:'open',body:'```db-work-scope\nstatus: ready\nwork_type: structural\nroute: claim-first\nwrites:\n```'}),
+  f=>f.state.pr.merged_at=null,
+  f=>f.state.pr.head.repo.full_name='foreign/shared-db',
+  f=>f.state.pr.base.ref='develop',
+  f=>f.state.pr.merge_commit_sha='invalid',
+  f=>f.state.pr.author_association='NONE',
+  f=>f.state.pr.body='Work issue #2506\nRefs #2506',
+  f=>f.state.pr.body+='\nCloses #2506',
+  f=>f.io.mainSha=()=>'invalid',
+  f=>f.io.compareCommits=()=>({status:'behind',behind_by:1}),
+  f=>{f.state.completion.head_sha='b'.repeat(40);f.io.compareCommits=()=>({status:'ahead',behind_by:0,total_commits:1,files:[{filename:'scripts/tool.mjs',status:'modified'}]})},
+  f=>{f.state.completion.head_sha='b'.repeat(40);f.io.compareCommits=()=>({status:'ahead',behind_by:0,total_commits:250,files:[]})},
+  f=>{f.state.completion.head_sha='b'.repeat(40);f.io.compareCommits=()=>({status:'ahead',behind_by:0,total_commits:1})},
+  f=>{f.state.contract.schema_version=1;f.state.contract.generation=1;delete f.state.contract.evidence_parent;f.state.files=f.state.files.map(x=>({...x,filename:x.filename.replace('.agent/work/2506/2/','.agent/')}));f.state.contractPath='.agent/contract.json';f.state.completionPath='.agent/completion.json';f.state.completion.contract_sha256=contractHash(f.state.contract)}
+ ]
+ for(const mutate of mutations){const f=maintenanceFixture();mutate(f);assert.throws(()=>verifyMergedPrIssueBinding({pr:2726,issue:2506},f.io))}
+})
+
+test('native governed runner resolves the actual verified merged-maintenance route without any structural closing link',()=>{
+ const f=maintenanceFixture(),base=f.state.contract.base_sha,manifest=f.state.files
+ const git=(_binary,args)=>{
+  const command=args.slice(2)
+  let stdout=''
+  if(command[0]==='remote')stdout='https://github.com/popcre/shared-db.git\n'
+  else if(command[0]==='rev-parse')stdout=HEAD+'\n'
+  else if(command[0]==='merge-base')stdout=base+'\n'
+  else if(command[0]==='diff')stdout=manifest.map(file=>`${file.status==='added'?'A':'M'}\0${file.filename}\0`).join('')
+  else assert.ok(['status','cat-file'].includes(command[0]),`unexpected local source command ${command}`)
+  return{status:0,stdout}
+ }
+ const github=args=>({status:0,stdout:JSON.stringify(args[1].endsWith('/pulls/2726')?f.io.getPr():{base_commit:{sha:base},merge_base_commit:{sha:base},files:manifest})})
+ const result=resolveReviewSource({pr:2726,issue:2506,headSha:HEAD,worktree:'/synthetic/maintenance-review'},{git,github,digest:()=>'8'.repeat(64),io:f.io,env:{SHARED_DB_MERGED_PR_ISSUE_BINDING:'2726:2506'}})
+ assert.equal(result.headSha,HEAD);assert.equal(result.files.length,3)
+ assert.equal(result.repository,'popcre/shared-db');assert.deepEqual(f.state.linked,[])
+ f.io.readReviewerOperationRoute=()=>({pr:f.io.getPr(),files:f.state.files,linkedIssues:[]})
+ const bound=withMergedPrIssueBinding(f.io,'2726:2506',()=>{})
+ assert.equal(derivePrOperationRoute(2726,bound,{headSha:HEAD,issue:2506,allowMerged:true,snapshot:bound.readReviewerOperationRoute(2726)}).route,'repo-maintenance')
+ assert.equal(mergedPrReviewerReuseAllowed({pr:2726,issue:2506,headSha:HEAD,slot:2},bound),true,'native merged slot2 is independently eligible without replacing slot1')
+ f.state.completion.db_reads=['table core.customer']
+ assert.throws(()=>resolveReviewSource({pr:2726,issue:2506,headSha:HEAD,worktree:'/synthetic/maintenance-review'},{git,github,digest:()=>'8'.repeat(64),io:f.io,env:{SHARED_DB_MERGED_PR_ISSUE_BINDING:'2726:2506'}}),/empty database scope/)
 })

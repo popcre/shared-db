@@ -313,3 +313,28 @@ and dry-run provenance remain prerequisites. After a workflow change, launch a n
 historical recovery on reviewed current main; original apply runs retain their
 native historical byte/provenance checks. Qualification is not database delivery
 or application acceptance, and current reviewer-capability blockers remain open.
+
+### Exact current-train target assessment
+
+An explicitly validated production train may use an independently sealed current-
+target assessment when historical source review contracts differ from the current
+production contract. Ordinary single-source exact-head review remains unchanged;
+this route neither deletes nor converts a historical refusal into approval.
+
+The selected-source guard reads only the qualified train output and invokes
+`prove-production-risk-acceptance.mjs --train-ref <ref> --main-sha <sha>
+--allowlist <ordered-versions>`. Its native verifier must discover the create-only
+`refs/db-train-target-assessments/<train-id>/<main-sha>` index pointing to the
+existing assigned independent verdict. Missing, rejected, stale, ambiguous or
+changed-source/contract/refusal evidence stops before automatic dispatch. The
+assessment binds both source files, current contract, complete refusal findings
+and all five production risk conclusions, anchored to the reviewed maintenance
+repair. An author comment or a source approval from another head cannot substitute.
+
+Both pre-lane and lane-held business-risk checks receive the verified train record
+and its immutable ref. They retain per-source checks, guarded merge, exact authored
+bytes, original rehearsal mapping and fresh preview evidence. Each independently
+re-derives the risk classes and re-runs native current-target verification for that
+exact class set, main, ordered versions and sources. No new workflow input or apply
+executor is introduced. The existing serial apply, target proof, bounded ledger
+change and live runtime proof remain required.

@@ -678,7 +678,18 @@ def prove_preview_migration_contents(
 # `test_preview_producer_paths_cover_the_whole_executed_closure` fails if a new
 # script is wired into the workflow and not added here, so this list cannot
 # silently fall behind.
+# Current-target assessment is imported by review tooling before preview evidence.
+# Pin its newly reachable executable graph; this grants no custody-only tolerance.
+TRAIN_TARGET_PRODUCER_PATHS = (
+    "scripts/lib/production-train-target-assessment.mjs",
+    "scripts/db-flow/read-verified-train-record.mjs",
+    "scripts/db-flow/migration-train.mjs",
+    "scripts/db-flow/evidence-bundle.mjs",
+    "scripts/lib/review-verdict-artifact.mjs",
+)
+
 PREVIEW_PRODUCER_PATHS = (
+    *TRAIN_TARGET_PRODUCER_PATHS,
     PREVIEW_WORKFLOW,
     "scripts/production_migration_guard.py",
     # Hash-bound verification declarations are read by the catalog verifier in
@@ -3559,6 +3570,43 @@ def prove_ai_risk_acceptance(
     return evidence
 
 
+def prove_train_target_assessment(
+    *, train_ref: str, train: dict[str, Any], main_sha: str, allowlist: list[str],
+    train_prs: dict[int, tuple[str, str]], risks: list[str], work_issue: int,
+    runner: Callable[..., Any] = subprocess.run,
+) -> dict[str, Any]:
+    """Independent current-target authority; historical source verdicts stay intact."""
+    result = runner(
+        ["node", str(RISK_ACCEPTANCE_PROVER), "--train-ref", train_ref,
+         "--main-sha", main_sha, "--allowlist", ",".join(allowlist),
+         "--risks", ",".join(risks)],
+        text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8",
+    )
+    if result.returncode != 0:
+        raise RiskGateError((result.stderr or "current train target assessment is not proved").strip())
+    try:
+        evidence = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise RiskGateError("current train target assessment output is not JSON") from exc
+    expected = [{"version": e["version"], "pr": e["source_pr"],
+                 "headSha": train_prs[e["source_pr"]][0], "mergeSha": e["merge_sha"],
+                 "fileSha256": e["file_sha256"]} for e in train["entries"]]
+    sources = evidence.get("sources") if isinstance(evidence, dict) else None
+    actual = [{k: e.get(k) for k in expected[0]} for e in sources] if (
+        isinstance(sources, list) and all(isinstance(e, dict) for e in sources)) else None
+    if (
+        not isinstance(evidence, dict)
+        or evidence.get("schema") != "shared-db-production-train-target-assessment/v2"
+        or evidence.get("mainSha") != main_sha or evidence.get("orderedAllowlist") != allowlist
+        or evidence.get("target") != "production" or evidence.get("trainRef") != train_ref
+        or evidence.get("trainId") != train.get("train_id") or actual != expected
+        or evidence.get("workIssue") != work_issue
+        or (bool(risks) and sorted(evidence.get("assessedRisks") or {}) != sorted(risks))
+    ):
+        raise RiskGateError("current train target assessment is not bound to this exact promotion")
+    return evidence
+
+
 def enforce_automatic_risk_decision(
     review: dict[str, Any], decision: dict[str, Any], acceptance: Callable[[list[str]], dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
@@ -3603,6 +3651,9 @@ def assess(args: argparse.Namespace, *, api=gh_json, downloader=download_artifac
     prove_activation(activation, main_sha=args.main_sha, api=api, repo_root=repo_root)
     train_path = getattr(args, "migration_train_record", None)
     train = load_migration_train_record(train_path) if train_path else None
+    train_ref = optional_text(getattr(args, "migration_train_ref", None))
+    if train_ref and train is None:
+        raise RiskGateError("current train target assessment requires a verified migration train record")
     train_prs: dict[int, tuple[str, str]] = {}
     if train is None:
         pr_head, pr_merge_commit = prove_pr_and_checks(args.pr, args.main_sha, allowlist, api, repo_root)
@@ -3687,9 +3738,15 @@ def assess(args: argparse.Namespace, *, api=gh_json, downloader=download_artifac
                 except (RiskGateError, ValueError) as exc:
                     raise RiskGateError(f"migration train preview proof for source PR {train_pr}: {exc}") from exc
     decision = decide_business_risk(classify_sql(repo_root, allowlist), recovery_proven=True, review_approved=True)
+    train_assessment = None
+    if train_ref:
+        train_assessment = prove_train_target_assessment(
+            train_ref=train_ref, train=train, main_sha=args.main_sha, allowlist=allowlist,
+            train_prs=train_prs, risks=derived_risk_keys(decision), work_issue=args.work_issue,
+        )
     ai_risk_acceptance = enforce_automatic_risk_decision(
         review, decision,
-        lambda keys: prove_ai_risk_acceptance(
+        lambda keys: train_assessment if train_assessment is not None else prove_ai_risk_acceptance(
             issue=args.work_issue, pr=args.pr, head_sha=pr_head, main_sha=args.main_sha,
             allowlist=allowlist, risks=keys,
         ),
@@ -3747,6 +3804,7 @@ def assess(args: argparse.Namespace, *, api=gh_json, downloader=download_artifac
             "allowlist": allowlist,
             "ownerDecision": owner_evidence,
             "aiRiskAcceptance": ai_risk_acceptance,
+            **({"trainTargetAssessment": train_assessment} if train_assessment is not None else {}),
         },
     }
     if train is not None:
@@ -3796,6 +3854,7 @@ def main() -> int:
     # #3027 Step 6: the dispatched migration-train record, re-read from its
     # immutable ref by the workflow. Absent, the single source-PR rule is unchanged.
     parser.add_argument("--migration-train-record", type=Path)
+    parser.add_argument("--migration-train-ref")
     args = parser.parse_args()
     api = functools.partial(gh_json, rate_limit_wait_seconds=args.rate_limit_wait_seconds) if args.rate_limit_wait_seconds > 0 else gh_json
     try:

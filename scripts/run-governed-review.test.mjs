@@ -1728,3 +1728,9 @@ test('lifecycle report path comparison folds Git Bash MSYS forms onto native Win
   assert.equal(sameReviewPath('/c/repos/r.md','C:/repos/r.md','linux',tmp),false,'MSYS folding is Windows-only')
   assert.equal(sameReviewPath('','','win32',tmp),false)
 })
+
+test('governed train target option is explicit and retains native source assignment identity',()=>{
+  const parsed=parseArgs(['--issue','4655','--pr','5000','--head-sha','a'.repeat(40),'--production-risk-train-ref','refs/db-migration-trains/exact/000003-dispatched'])
+  assert.equal(parsed.productionRiskTrainRef,'refs/db-migration-trains/exact/000003-dispatched')
+  assert.equal(parsed.issue,4655);assert.equal(parsed.pr,5000);assert.equal(parsed.headSha,'a'.repeat(40))
+})

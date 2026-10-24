@@ -1202,6 +1202,8 @@ jobs:
           MAIN_SHA: ${{ inputs.commit_sha }}
           SOURCE_PR: ${{ steps.source_guard.outputs.source_pr || steps.train_source_guard.outputs.source_pr }}
           TRAIN_WORK_ISSUE: ${{ steps.train_source_guard.outputs.work_issue }}
+          TRAIN_REF: ${{ steps.train_source_guard.outputs.migration_train_ref }}
+          TRAIN_ALLOWLIST: ${{ inputs.preview_allowlist }}
           RECOVERED_MERGE_SHA: ${{ steps.source_guard.outputs.source_merge_sha || steps.train_source_guard.outputs.source_merge_sha }}
         run: |
           set -euo pipefail
@@ -1232,7 +1234,15 @@ jobs:
             echo "::error::ENGINEER ACTION REQUIRED: the newest guarded-merge authorization is not successful at source head ${SOURCE_HEAD} (state: ${GUARDED_STATE:-none}). Nothing was dispatched." >&2
             exit 2
           fi
-          PR_NUMBER="$SOURCE_PR" REQUESTED_SHA="$SOURCE_HEAD" node scripts/check-exact-head-approval.mjs
+          # Only the fully qualified explicit train uses its independent current-
+          # target assessment. Ordinary exact-source refusal is unchanged.
+          if [ -n "${TRAIN_REF:-}" ]; then
+            node scripts/prove-production-risk-acceptance.mjs \
+              --train-ref "$TRAIN_REF" --main-sha "$MAIN_SHA" --allowlist "$TRAIN_ALLOWLIST" \
+              > "$RUNNER_TEMP/automatic-train-target-assessment.json"
+          else
+            PR_NUMBER="$SOURCE_PR" REQUESTED_SHA="$SOURCE_HEAD" node scripts/check-exact-head-approval.mjs
+          fi
           echo "source_head=$SOURCE_HEAD" >> "$GITHUB_OUTPUT"
           ADMISSION="$(node scripts/manage-migration-author-lanes.mjs --resolve-admitted-issue-for-pr "$SOURCE_PR")"
           WORK_ISSUE="$(jq -r 'if (.issue | type) == "number" and .issue >= 1 then .issue else error("resolver returned no positive issue") end' <<<"$ADMISSION")"
@@ -1775,7 +1785,7 @@ jobs:
           test -n "$WORK_ISSUE"
           TRAIN_ARGS=()
           if [ -n "$TRAIN_REF" ]; then
-            TRAIN_ARGS=(--migration-train-record "$RUNNER_TEMP/migration-train-record.json")
+            TRAIN_ARGS=(--migration-train-record "$RUNNER_TEMP/migration-train-record.json" --migration-train-ref "$TRAIN_REF")
           fi
           # EXACTLY ONE EVIDENCE ROUTE (#2758). Preview evidence, or -- for a
           # migration the gate classifies as NOT high-risk to live data -- the
@@ -2013,7 +2023,7 @@ jobs:
           test -n "$WORK_ISSUE"
           TRAIN_ARGS=()
           if [ -n "$TRAIN_REF" ]; then
-            TRAIN_ARGS=(--migration-train-record "$RUNNER_TEMP/migration-train-record.json")
+            TRAIN_ARGS=(--migration-train-record "$RUNNER_TEMP/migration-train-record.json" --migration-train-ref "$TRAIN_REF")
           fi
           # EXACTLY ONE EVIDENCE ROUTE (#2758). Preview evidence, or -- for a
           # migration the gate classifies as NOT high-risk to live data -- the

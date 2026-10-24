@@ -2,12 +2,12 @@
 // the entrypoint re-exports every public name defined here. Edit here, not there.
 import { isTrustedOperatorComment } from '../../lib/repository-identity.mjs'
 import { AdmissionError, STRUCTURAL_ROUTES, evaluateAdmission, parseImpactBlock, inspectPrStructuralChange, inspectPrCuratedDataChange, structuralWritesMatch, NON_STRUCTURAL_CHANGE_TYPES } from '../../db-flow/admission.mjs'
-import { findCompletionRecord } from '../../lib/work-dependencies.mjs'
+import { findCompletionRecord, validateCompletionRecord } from '../../lib/work-dependencies.mjs'
 import { outcomeHistory, OutcomeError, OUTCOME_STATES, advanceOutcome } from '../../db-flow/outcome-lifecycle.mjs'
 import { coordinationEvent, formatEventComment } from '../../db-coordination-events.mjs'
 import { isEvidencePath, resolveEvidencePair } from '../../lib/agent-evidence-paths.mjs'
 import { validateGenerationLineage, refuseCommittedMutation } from '../../lib/evidence-generation-lineage.mjs'
-import { validateContract } from '../../agent-work-contract.mjs'
+import { validateContract, validateCompletionReport, validatePullRequestCompletion, reconcileReportWithContract } from '../../agent-work-contract.mjs'
 import path from 'node:path'
 import { REPO } from './constants.mjs'
 import { parseQueueScope } from './queue-routing.mjs'
@@ -116,7 +116,9 @@ export function admitIssue(number, io = githubIo, { pr = null, actor = 'manage-m
 // the PR body's single "Work issue #N" line, any issue-N branch name,
 // the merged head's .agent/completion.json (work_issue and pr), the PR's
 // migration versions equal to that record, and a permanent refs/db-claims
-// reservation for every version. Any mismatch, an unmerged PR, or a real
+// reservation for every version. A zero-migration maintenance anchor instead
+// requires a keyed published no-database contract and complete owned evidence;
+// it never gains a structural claim or apply authority. Any mismatch, an unmerged PR, or a real
 // closing link that disagrees refuses, and so does a closed work issue or a
 // renamed, copied, or removed migration file. The reservation check proves each
 // version was issued by the claim allocator; it does not by itself tie the
@@ -173,11 +175,63 @@ export function verifyMergedPrIssueBinding({pr,issue}, io = githubIo) {
     try{publishedContract=validateContract(JSON.parse(publishedMessage.split('\n').slice(2).join('\n').trim()))}catch{throw new LaneError(`merged PR issue binding refused: published contract ${contractRecordRef} is unreadable`)}
     try{refuseCommittedMutation(publishedContract,contractRecord)}catch(error){throw new LaneError(`merged PR issue binding refused: ${error.message}`)}
   }
+  // A merged maintenance anchor has no migration reservation to invent. Its
+  // separate, strictly keyed no-database authority is re-proved below; this does
+  // not relax the existing structural branch's nonempty versions/claims.
+  if(contractRecord.work_type==='repo-maintenance'||contractRecord.route==='repo-maintenance'){
+    return verifyMergedMaintenanceBinding({pr,issue,livePr,work,prFiles,pair,contractRecord,completion},io)
+  }
   const versions=migrationVersions(prFiles).sort()
   const recorded=Array.isArray(completion.migration_versions)?completion.migration_versions.map(String).sort():[]
   if(!versions.length||versions.length!==recorded.length||versions.some((v,i)=>v!==recorded[i]))throw new LaneError(`merged PR issue binding refused: PR migrations ${versions.join(',')||'none'} do not equal completion record ${recorded.join(',')||'none'}`)
   for(const version of versions)if(!io.readRef(`refs/db-claims/${version}`))throw new LaneError(`merged PR issue binding refused: version ${version} has no permanent claim reservation`)
   return {pr,issue,versions,state:String(work.state??'').toLowerCase()}
+}
+
+
+function verifyMergedMaintenanceBinding({pr,issue,livePr,work,prFiles,pair,contractRecord,completion},io){
+  const refuse=reason=>{throw new LaneError(`merged maintenance binding refused: ${reason}`)}
+  if(pair.key==='legacy'||contractRecord.work_type!=='repo-maintenance'||contractRecord.route!=='repo-maintenance'||
+    contractRecord.work_issue!==issue||pair.key!==`${issue}/${contractRecord.generation}`)refuse('one keyed published maintenance contract is required')
+  for(const record of [contractRecord,completion])for(const field of ['db_reads','db_writes']){
+    if(!Array.isArray(record[field])||record[field].length)refuse('maintenance contract and completion must have explicit empty database scope')
+  }
+  if(prFiles.some(file=>[file.filename,file.previous_filename].some(value=>MIGRATION_PATH.test(String(value??'').replace(/\\/g,'/'))))||
+    !Array.isArray(completion.migration_versions)||completion.migration_versions.length)refuse('maintenance binding cannot carry migrations')
+  if(livePr.base?.repo?.full_name!==REPO||livePr.head?.repo?.full_name!==REPO||livePr.base?.ref!=='main'||
+    livePr.head?.ref!==contractRecord.branch||!/^[0-9a-f]{40}$/.test(String(livePr.merge_commit_sha??'')))refuse('exact merged source identity differs')
+  if(!isTrustedOperatorComment({author:livePr.user?.login,author_association:livePr.author_association},REPO)||
+    !/^Posted by [A-Za-z][A-Za-z0-9 -]* chat [A-Za-z0-9-]+ on [A-Za-z0-9_.-]+\s*$/m.test(livePr.body??''))refuse('trusted signed source attribution missing')
+  const refs=[...String(livePr.body??'').matchAll(/\bRefs\s+#([1-9]\d*)\b/gi)].map(match=>Number(match[1]))
+  if(refs.length!==1||refs[0]!==issue||/\b(?:closes?|fix(?:es)?|resolves?)\s+#([1-9]\d*)\b/i.test(livePr.body??''))refuse('nonclosing maintenance issue reference differs')
+  try{
+    validateCompletionReport(completion,{validateCompletionRecord})
+    validatePullRequestCompletion(completion,{pr,headSha:livePr.head.sha})
+    const reconciled=reconcileReportWithContract(completion,contractRecord)
+    if(!reconciled.satisfied)refuse(reconciled.problems.join('; '))
+  }catch(error){refuse(`complete owned evidence is invalid (${error.message})`)}
+  if(completion.base_sha!==contractRecord.base_sha)refuse('completion source base differs from its published contract')
+  const actual=prFiles.filter(file=>!isEvidencePath(file.filename)).map(file=>file.filename).sort()
+  const reported=[...completion.files_changed].sort()
+  if(actual.length!==new Set(reported).size||JSON.stringify(actual)!==JSON.stringify(reported))refuse('completion file inventory differs from exact merged source')
+  const scope=parseQueueScope(work.body??'')
+  if(scope?.status!=='ready'||scope?.workType!=='repo-maintenance'||scope?.route!=='repo-maintenance'||scope?.writes?.length||scope?.reads?.length)refuse('open issue must remain ready no-database repository maintenance')
+  const main=io.mainSha?.()
+  if(!/^[0-9a-f]{40}$/.test(String(main??''))||typeof io.compareCommits!=='function')refuse('current main ancestry reader unavailable')
+  for(const base of [livePr.merge_commit_sha,livePr.head.sha]){
+    const ancestry=io.compareCommits(base,main)
+    if(!ancestry||!['ahead','identical'].includes(ancestry.status)||ancestry.behind_by!==0)refuse('merged maintenance source is not contained in current main')
+  }
+  if(completion.head_sha!==livePr.head.sha){
+    const tail=io.compareCommits(completion.head_sha,livePr.head.sha)
+    if(!tail||!['ahead','identical'].includes(tail.status)||tail.behind_by!==0||!Array.isArray(tail.files)||tail.files.length>=300||
+      !Number.isSafeInteger(tail.total_commits)||tail.total_commits>=250||
+      tail.files.some(file=>!isEvidencePath(file.filename)||file.previous_filename!==undefined||!['added','modified'].includes(file.status)))refuse('completion head is not followed only by complete owned evidence')
+  }
+  const latest=io.getPr(pr),latestWork=io.getIssue(issue)
+  if(io.mainSha()!==main||latest?.head?.sha!==livePr.head.sha||latest?.merge_commit_sha!==livePr.merge_commit_sha||
+    latest?.body!==livePr.body||!latest?.merged_at||latest.changed_files!==livePr.changed_files||String(latestWork?.state??'').toLowerCase()!=='open'||latestWork.body!==work.body)refuse('merged source, main or open issue changed during verification')
+  return {pr,issue,versions:[],state:String(work.state).toLowerCase(),route:'repo-maintenance',work}
 }
 
 export function withMergedPrIssueBinding(io, value, log = (line)=>console.error(line)) {
@@ -194,9 +248,12 @@ export function withMergedPrIssueBinding(io, value, log = (line)=>console.error(
     }
     if(!verified){
       verified=verifyMergedPrIssueBinding(binding,io)
-      log(`MERGED PR ISSUE BINDING: PR #${binding.pr} -> issue #${binding.issue} (versions ${verified.versions.join(',')}; body, completion record, and claim reservations agree)`)
+      log(verified.route==='repo-maintenance' ? `MERGED PR ISSUE BINDING: PR #${binding.pr} -> issue #${binding.issue} (no database objects; keyed published contract and complete owned evidence agree)` : `MERGED PR ISSUE BINDING: PR #${binding.pr} -> issue #${binding.issue} (versions ${verified.versions.join(',')}; body, completion record, and claim reservations agree)`)
     }
-    return [{number:binding.issue,state:verified.state,bound:true}]
+    // Maintenance assignment reads its scope from the same GraphQL snapshot.
+    // Carry the verified live issue into that snapshot, never an empty invented
+    // closing-link row that would discard the maintenance route authority.
+    return [{...(verified.route==='repo-maintenance'?verified.work:{}),number:binding.issue,state:verified.state,bound:true}]
   }
   bound.closingIssuesForPr=(number)=>{
     const linked=base(number)

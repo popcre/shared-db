@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "source": "scripts/lib/production-train-target-assessment.mjs",
+  "sites": [
+    {
+      "site": "scripts/lib/production-train-target-assessment.mjs:110",
+      "semantic_key": "scripts/lib/production-train-target-assessment.mjs:3754b7d40b3dc3ff3d5dd489656657728ce878f3ef2ece0e6dce71d3b9346793:context-8642fc8c4d62b29e94d9d58cdbae4aa26bea2936b1be20d4e372c32eb251dfca",
+      "legacy_semantic_key": "scripts/lib/production-train-target-assessment.mjs:3754b7d40b3dc3ff3d5dd489656657728ce878f3ef2ece0e6dce71d3b9346793:1",
+      "line_sha256": "3754b7d40b3dc3ff3d5dd489656657728ce878f3ef2ece0e6dce71d3b9346793",
+      "disposition": "excluded",
+      "reason": "Required serial evidence check, not a database-object existence claim. Every assessed risk value must be an independent non-placeholder string of at least 40 characters before the current-target assessment can authorize promotion. A missing substantive risk assessment throws immediately; it is never interpreted as approval or converted to a warning."
+    },
+    {
+      "site": "scripts/lib/production-train-target-assessment.mjs:111",
+      "semantic_key": "scripts/lib/production-train-target-assessment.mjs:838156a37bc58cd9421a6d6bd2fce662575e527b2ea221e2386f1dc60acb5f31:context-0b91a4ac15d5d134198fae5d9dd4559bb597d0ee203ce2af4a2624f614a5dfe4",
+      "legacy_semantic_key": "scripts/lib/production-train-target-assessment.mjs:838156a37bc58cd9421a6d6bd2fce662575e527b2ea221e2386f1dc60acb5f31:1",
+      "line_sha256": "838156a37bc58cd9421a6d6bd2fce662575e527b2ea221e2386f1dc60acb5f31",
+      "disposition": "excluded",
+      "reason": "Required serial evidence check, not an unproved missing-object report. The independently sealed assessment must cover exactly B1 through B5 before any findings are accepted. A missing or extra finding key throws immediately; the subsequent loop separately verifies each conclusion, substantive evidence and exact sealed source reference. Historical refusals remain intact."
+    }
+  ]
+}

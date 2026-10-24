@@ -1789,6 +1789,31 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source file missing"):
                 self.executed_closure()
 
+    def test_current_target_nested_import_graph_is_explicitly_pinned(self):
+        # The legacy scanner recognizes only ./bare-name imports. Walk this new
+        # graph using each importing file's directory, including nested and ../
+        # imports; stop at already pinned preexisting entry points to keep this
+        # bounded repair separate from a repository-wide scanner replacement.
+        import production_business_risk_gate as gate
+        root = Path(__file__).resolve().parents[1]
+        required = set(gate.TRAIN_TARGET_PRODUCER_PATHS)
+        previous = set(PREVIEW_PRODUCER_PATHS) - required
+        queue = ["scripts/lib/production-train-target-assessment.mjs"]
+        seen = set()
+        while queue:
+            source = queue.pop()
+            if source in seen or source in previous:
+                continue
+            seen.add(source)
+            body = (root / source).read_text(encoding="utf-8")
+            for imported in re.findall(r"(?:from\s+|import\s*)['\"]([^'\"]+)['\"]", body):
+                if imported.startswith("."):
+                    dependency = (root / source).parent.joinpath(imported).resolve().relative_to(root).as_posix()
+                    self.assertIn(dependency, PREVIEW_PRODUCER_PATHS, f"new current-target executable dependency is unpinned: {dependency}")
+                    queue.append(dependency)
+        self.assertEqual(seen, required)
+        self.assertTrue(required.isdisjoint(gate.PREVIEW_CUSTODY_ONLY_PATHS))
+
     def test_preview_producer_paths_cover_the_whole_executed_closure(self):
         """The list must not be able to fall silently behind reality.
 
@@ -4621,6 +4646,29 @@ class MigrationTrainPerEntryGate(unittest.TestCase):
         with self.assertRaisesRegex(RiskGateError, "authored no entry of the migration train"):
             self.run_assess(self.assess_args(path, pr=103), self.review(101, "1" * 40))
 
+    def test_explicit_train_reproves_current_target_even_with_no_flagged_risks(self):
+        path = self.root / "train.json"
+        path.write_text(json.dumps(self.record()), encoding="utf-8")
+        args = self.assess_args(path)
+        args.migration_train_ref = "refs/db-migration-trains/" + "d" * 64 + "/000003-dispatched"
+        assessment = {"bindingDigest": "f" * 64}
+        with mock.patch.object(self.gate, "prove_train_target_assessment", return_value=assessment) as proof:
+            result, _ = self.run_assess(args, self.review(102, "2" * 40))
+        self.assertEqual(proof.call_args.kwargs["risks"], [])
+        self.assertEqual(proof.call_args.kwargs["train_ref"], args.migration_train_ref)
+        self.assertEqual(result["governedEvidence"]["trainTargetAssessment"], assessment)
+        with mock.patch.object(self.gate, "prove_train_target_assessment", side_effect=RiskGateError("assessment index absent")):
+            with self.assertRaisesRegex(RiskGateError, "assessment index absent"):
+                self.run_assess(args, self.review(102, "2" * 40))
+
+    def test_train_ref_without_verified_record_never_uses_target_authority(self):
+        args = self.assess_args(None)
+        args.migration_train_ref = "refs/db-migration-trains/" + "d" * 64 + "/000003-dispatched"
+        with mock.patch.object(self.gate, "prove_train_target_assessment") as proof:
+            with self.assertRaisesRegex(RiskGateError, "requires a verified migration train record"):
+                self.run_assess(args, self.review(101, "1" * 40))
+        proof.assert_not_called()
+
     def test_no_train_keeps_the_single_source_pr_rule_unchanged(self):
         # PR 102 did not author V1, yet without a train the gate still binds
         # everything to the one --pr exactly as before, and a review naming a
@@ -4787,6 +4835,41 @@ class MainLineCustodyOnlyProducerDriftTests(unittest.TestCase):
         prove_preview_producer_matches_main(
             self.REF, target or exact_main(self.MAIN), self.MAIN, api,
             promoted_versions=promoted_versions or [], repo_root=Path("."))
+
+    def test_target_assessment_producers_never_inherit_custody_exemptions(self):
+        import production_business_risk_gate as gate
+        for path in gate.TRAIN_TARGET_PRODUCER_PATHS:
+            with self.subTest(path=path):
+                with self.assertRaisesRegex(RiskGateError, "different " + re.escape(path)):
+                    self.prove(self.api(changed=(path,)))
+                with self.assertRaisesRegex(RiskGateError, re.escape(path) + " absent where"):
+                    self.prove(self.api(absent_at_ref=(path,)))
+                with self.assertRaisesRegex(RiskGateError, re.escape(path) + " absent where"):
+                    self.prove(self.api(absent_at_ref=(path,)), target=authored_merge(self.MAIN))
+
+    def test_original_producers_before_target_module_existed_keep_existing_both_absent_rule(self):
+        import production_business_risk_gate as gate
+        # The ORIGINAL run is compared against its independently proved authored
+        # merge, never against a fabricated current-producer original. Neither
+        # historical tree could execute files absent from both of those trees.
+        base = self.api()
+        paths = set(gate.TRAIN_TARGET_PRODUCER_PATHS)
+        def historical(endpoint):
+            result = base(endpoint)
+            if isinstance(result, dict) and isinstance(result.get("tree"), list):
+                return {**result, "tree": [row for row in result["tree"] if row.get("path") not in paths]}
+            return result
+        self.prove(historical, target=authored_merge(self.MAIN))
+        # The original's main-line provenance remains mandatory even when the
+        # new helpers are legitimately absent on both historical sides.
+        foreign_base = self.api(main_line=False)
+        def foreign(endpoint):
+            result = foreign_base(endpoint)
+            if isinstance(result, dict) and isinstance(result.get("tree"), list):
+                return {**result, "tree": [row for row in result["tree"] if row.get("path") not in paths]}
+            return result
+        with self.assertRaises(RiskGateError):
+            self.prove(foreign, target=authored_merge(self.REF))
 
     def test_review_tooling_and_sidecar_registry_are_custody_only(self):
         # Owner-authorized 2026-10-14 ("i authorize loosening that rule").
@@ -5205,3 +5288,47 @@ class WorkflowCustodyConcurrencyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class CurrentTrainTargetAssessmentIntegrationTests(unittest.TestCase):
+    """Only native current-target authority may replace historical source risk proof."""
+
+    def fixture(self):
+        import production_business_risk_gate as gate
+        version = "20261023014911"
+        train = {"train_id": "d" * 64, "entries": [{"version": version, "source_pr": 4673,
+                  "merge_sha": "b" * 40, "file_sha256": "c" * 64}]}
+        kwargs = dict(train_ref="refs/db-migration-trains/" + "d" * 64 + "/000001-dispatched",
+                      train=train, main_sha="a" * 40, allowlist=[version],
+                      train_prs={4673: ("e" * 40, "b" * 40)}, risks=["material_access_change"], work_issue=3869)
+        evidence = {"schema": "shared-db-production-train-target-assessment/v2",
+                    "mainSha": kwargs["main_sha"], "orderedAllowlist": [version], "target": "production",
+                    "trainRef": kwargs["train_ref"], "trainId": train["train_id"], "workIssue": 3869,
+                    "sources": [{"version": version, "pr": 4673, "headSha": "e" * 40,
+                                 "mergeSha": "b" * 40, "fileSha256": "c" * 64}],
+                    "assessedRisks": {"material_access_change": "reviewed"}}
+        return gate, kwargs, evidence
+
+    def test_native_prover_receives_only_exact_train_target_and_derived_risks(self):
+        gate, kwargs, evidence = self.fixture()
+        runner = mock.Mock(return_value=subprocess.CompletedProcess([], 0, json.dumps(evidence), ""))
+        self.assertEqual(gate.prove_train_target_assessment(**kwargs, runner=runner), evidence)
+        argv = runner.call_args.args[0]
+        self.assertIn("--train-ref", argv)
+        self.assertEqual(argv[-2:], ["--risks", "material_access_change"])
+        self.assertNotIn("--pr", argv)
+
+    def test_native_no_index_stale_refusal_nonapprove_or_changed_source_errors_fail_closed(self):
+        gate, kwargs, _ = self.fixture()
+        for reason in ["assessment index absent", "stale main", "refusal digest changed", "verdict REJECT", "source bytes changed"]:
+            runner = mock.Mock(return_value=subprocess.CompletedProcess([], 2, "", reason))
+            with self.subTest(reason=reason), self.assertRaisesRegex(gate.RiskGateError, reason):
+                gate.prove_train_target_assessment(**kwargs, runner=runner)
+
+    def test_unbound_native_output_is_refused(self):
+        gate, kwargs, evidence = self.fixture()
+        for field, changed in [("mainSha", "f" * 40), ("trainRef", "other"), ("trainId", "f" * 64),
+                               ("target", "preview"), ("workIssue", 4655), ("sources", []),
+                               ("orderedAllowlist", []), ("assessedRisks", {})]:
+            runner = mock.Mock(return_value=subprocess.CompletedProcess([], 0, json.dumps({**evidence, field: changed}), ""))
+            with self.subTest(field=field), self.assertRaisesRegex(gate.RiskGateError, "not bound"):
+                gate.prove_train_target_assessment(**kwargs, runner=runner)

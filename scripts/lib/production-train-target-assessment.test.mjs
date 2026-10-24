@@ -29,7 +29,7 @@ function fixture(){
  const opts={mainSha:MAIN,trainRef,allowlist:versions,assessmentPr:PR,assessmentHead:ANCHOR,issue:ISSUE,risks:risk}
  return{io,opts,files,refs,commits,prs,prfiles,findings,train,trainRef,refusalRef,setMain:sha=>{main=sha}}
 }
-function assessment(binding){return{...structuredClone(binding),assessedRisks:{material_access_change:explanation},findings:Object.fromEntries(['B1','B2','B3','B4','B5'].map(k=>[k,{conclusion:'resolved',evidence:`${k}: ${explanation}`}]))}}
+function assessment(binding){return{...structuredClone(binding),assessedRisks:{material_access_change:explanation},findings:Object.fromEntries(['B1','B2','B3','B4','B5'].map(k=>[k,{conclusion:'resolved',evidence:`${k}: scripts/proofs/2873-catalog.sql ${explanation}`}]))}}
 const body=data=>`Independent findings\n\`\`\`production-train-target-assessment\n${JSON.stringify(data)}\n\`\`\`\n`
 
 test('packet seals both exact SQLs, all current contract bytes and authenticated immutable refusals',()=>{
@@ -71,8 +71,9 @@ test('historical refusal omission is detected even when archived; findings edits
 test('assessment validates exact live train, source, contract and refusal inventory plus every B1–B5 conclusion',()=>{
  const f=fixture(),e=loadTrainTargetEvidence(f.opts,f.io),data=assessment(e.binding)
  assert.equal(parseTrainTargetAssessment(body(data),e.binding,risk).schema,TRAIN_TARGET_SCHEMA)
- const mutations=[d=>d.mainSha=h('9'),d=>d.target='preview',d=>d.targetIdentity='other',d=>d.trainRef+='wrong',d=>d.trainDigest=h('9',64),d=>d.orderedAllowlist.reverse(),d=>d.sources[0].fileSha256=h('9',64),d=>d.sources[1].pr=1,d=>d.contractFiles.pop(),d=>d.contractFiles[0].sha256=h('9',64),d=>d.priorRefusals=[],d=>d.priorRefusals[0].sha=h('9'),d=>d.findings.B1.conclusion='unresolved',d=>delete d.findings.B2,d=>d.findings.B3.evidence='author says fixed',d=>d.assessedRisks={},d=>d.assessedRisks.recovery_unproven=explanation,d=>d.extra='unknown']
+ const mutations=[d=>d.mainSha=h('9'),d=>d.target='preview',d=>d.targetIdentity='other',d=>d.trainRef+='wrong',d=>d.trainDigest=h('9',64),d=>d.orderedAllowlist.reverse(),d=>d.sources[0].fileSha256=h('9',64),d=>d.sources[1].pr=1,d=>d.contractFiles.pop(),d=>d.contractFiles[0].sha256=h('9',64),d=>d.priorRefusals=[],d=>d.priorRefusals[0].sha=h('9'),d=>d.findings.B1.conclusion='unresolved',d=>delete d.findings.B2,d=>d.findings.B3.evidence='author says fixed',d=>d.findings.B4.evidence=explanation,d=>d.assessedRisks={},d=>d.assessedRisks.recovery_unproven=explanation,d=>d.extra='unknown']
  for(const mutate of mutations){const bad=structuredClone(data);mutate(bad);assert.throws(()=>parseTrainTargetAssessment(body(bad),e.binding,risk))}
+ const comparisons=structuredClone(data);comparisons.assessedRisks.material_access_change+=' SQL predicate x < 3 is scoped.';comparisons.findings.B1.evidence+=' SQL x > 1 is scoped.';assert.equal(parseTrainTargetAssessment(body(comparisons),e.binding,risk).schema,TRAIN_TARGET_SCHEMA)
  assert.throws(()=>parseTrainTargetAssessment(body(data)+body(data),e.binding,risk),/exactly one/)
  assert.throws(()=>parseTrainTargetAssessment(body(data),e.binding,['expected_downtime']),/coverage/)
 })

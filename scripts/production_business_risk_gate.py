@@ -678,7 +678,18 @@ def prove_preview_migration_contents(
 # `test_preview_producer_paths_cover_the_whole_executed_closure` fails if a new
 # script is wired into the workflow and not added here, so this list cannot
 # silently fall behind.
+# Current-target assessment is imported by review tooling before preview evidence.
+# Pin its newly reachable executable graph; this grants no custody-only tolerance.
+TRAIN_TARGET_PRODUCER_PATHS = (
+    "scripts/lib/production-train-target-assessment.mjs",
+    "scripts/db-flow/read-verified-train-record.mjs",
+    "scripts/db-flow/migration-train.mjs",
+    "scripts/db-flow/evidence-bundle.mjs",
+    "scripts/lib/review-verdict-artifact.mjs",
+)
+
 PREVIEW_PRODUCER_PATHS = (
+    *TRAIN_TARGET_PRODUCER_PATHS,
     PREVIEW_WORKFLOW,
     "scripts/production_migration_guard.py",
     # Hash-bound verification declarations are read by the catalog verifier in

@@ -199,6 +199,11 @@ jobs:
           node --test scripts/check-review-parallelism-brief.test.mjs
           node scripts/check-review-parallelism-brief.mjs
 
+      - name: Test independent current-target train assessment (#4655)
+        if: steps.route.outputs.pure_prose != 'true'
+        run: |
+          node --test scripts/lib/production-train-target-assessment.test.mjs scripts/lib/review-packet.test.mjs scripts/prove-production-risk-acceptance.test.mjs scripts/run-governed-review.test.mjs scripts/check-workflow-automatic-promotion-source.test.mjs
+
       - name: Run the main-tip freshness gate tests (#2047)
         if: steps.route.outputs.pure_prose != 'true'
         # Named explicitly, not globbed: scripts/ holds a mix of test and

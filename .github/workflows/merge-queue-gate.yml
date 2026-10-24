@@ -227,7 +227,7 @@ jobs:
     needs: verify
     if: github.event_name == 'merge_group' && success()
     runs-on: blacksmith-2vcpu-ubuntu-2404
-    timeout-minutes: 15
+    timeout-minutes: 25
     permissions:
       contents: write
       issues: read # openClaims lists open issues; without it the listing returns only PRs and the interlock refuses every group
@@ -326,7 +326,10 @@ jobs:
           # Ownership is the merge-lane hold, not the status write: production
           # cannot start while this ref exists. Poll until the mutation lands
           # or the budget expires; fail-closed either way on the non-merge path.
-          for attempt in $(seq 1 60); do
+          # The budget must outlast the slowest required merge-group check:
+          # supabase/tests takes ~7 minutes, so 5 minutes ejected every group
+          # (#4729). 180 x 5 s is 15 minutes, inside the 25-minute job timeout.
+          for attempt in $(seq 1 180); do
             state="$(node scripts/gh-read.mjs pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state --jq .state)"
             if [ "$state" = 'MERGED' ]; then
               echo "Queue merge landed for PR #$PR_NUMBER (attempt $attempt)."

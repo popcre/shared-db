@@ -80,7 +80,7 @@ export function loadTrainTargetEvidence({mainSha,trainRef,allowlist,assessmentPr
   }
   const contractBodies=TRAIN_TARGET_CONTRACT_FILES.map(path=>file(io,path,mainSha))
   const project=JSON.parse(contractBodies.find(f=>f.path==='config/designflow-db-releases.json').body).production_project_ref
-  if(!/^[a-z]{20}$/.test(project??'')||train.target_identity!==`supabase:${project}`)fail('train target identity differs from canonical production project')
+  if(!/^[a-z]{20}$/.test(project??'')||train.target_identity!==project)fail('train target identity differs from canonical production project')
   const priorRefusals=refusals.sort((a,b)=>a.ref.localeCompare(b.ref)).map(({body,...identity})=>identity)
   if(!priorRefusals.length)fail('target reassessment requires preserved historical refusals')
   const binding={schema:TRAIN_TARGET_SCHEMA,mainSha,target:'production',targetIdentity:train.target_identity,trainRef,trainId:train.train_id,trainDigest:hash(canonicalJson(train)),orderedAllowlist:versions,sources,sourcePrMap:Object.fromEntries(sources.map(s=>[s.version,s.pr])),contractFiles:contractBodies.map(({body,...identity})=>identity),priorRefusals,assessmentPr,assessmentHead,maintenanceIssue:issue,workIssue}

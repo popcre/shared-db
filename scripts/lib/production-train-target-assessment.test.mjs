@@ -3,17 +3,18 @@ import assert from 'node:assert/strict'
 import {createHash} from 'node:crypto'
 import {canonicalJson} from '../db-flow/evidence-bundle.mjs'
 import {proposeTrain,trainRecordRef} from '../db-flow/migration-train.mjs'
+import {runTrainCommand,trainIo} from './lanes/cli-train.mjs'
 import {findingsDigest} from './review-verdict-artifact.mjs'
 import {loadTrainTargetEvidence,trainTargetRequest,parseTrainTargetAssessment,proveTrainTargetAssessment,publishTrainTargetAssessment,trainTargetIndex,TRAIN_TARGET_CONTRACT_FILES,TRAIN_TARGET_SCHEMA} from './production-train-target-assessment.mjs'
 const h=(c,n=40)=>c.repeat(n),hash=s=>createHash('sha256').update(s).digest('hex'),MAIN=h('a'),ANCHOR=h('b'),PR=5000,ISSUE=4655,WORK=3869
 const versions=['20261022221940','20261023014911'],risk=['material_access_change']
 const explanation='The exact sealed policy and mutation assertions bound this change; unrelated backend drift remains excluded.'
-function fixture(){
+function fixture(targetIdentity='qsllyeztdwjgirsysgai'){
  const files=new Map(),refs=new Map(),commits=new Map(),prs=new Map(),prfiles=new Map(),findings=new Map()
  const sources=[4648,4673], heads=[h('c'),h('d')],merges=[h('e'),h('f')]
  const paths=versions.map((v,i)=>`supabase/migrations/${v}_tracking_${i}.sql`)
  const entries=versions.map((version,i)=>{const body=`-- immutable synthetic source ${i}\nselect ${i};\n`;for(const sha of [MAIN,heads[i]])files.set(`${sha}:${paths[i]}`,body);prs.set(sources[i],{number:sources[i],merged:true,merged_at:'2026-10-23',head:{sha:heads[i]},merge_commit_sha:merges[i]});prfiles.set(sources[i],[{filename:paths[i],status:'added'}]);return{version,file_sha256:hash(body),source_pr:sources[i],merge_sha:merges[i],dependencies:i?[versions[0]]:[],risk_class:'ddl-compatible',role:'postgres',preview_assertion:'exact preview',production_assertion:'exact production'}})
- const proposed=proposeTrain({target:'production',target_identity:'supabase:qsllyeztdwjgirsysgai',base_main_sha:MAIN,entries}), train={...proposed,state:'dispatched',generation:3},trainRef=trainRecordRef(train),trainSha=h('1')
+ const proposed=proposeTrain({target:'production',target_identity:targetIdentity,base_main_sha:MAIN,entries}), train={...proposed,state:'dispatched',generation:3},trainRef=trainRecordRef(train),trainSha=h('1')
  refs.set(trainRef,trainSha);commits.set(trainSha,{message:`db-migration-train ${JSON.stringify({digest:hash(canonicalJson(train)),record:train})}`})
  prs.set(PR,{number:PR,merged:true,merged_at:'2026-10-24',head:{sha:ANCHOR}})
  const contract='.agent/work/4655/30/contract.json';prfiles.set(PR,[{filename:'scripts/lib/production-train-target-assessment.mjs',status:'added'},{filename:contract,status:'added'}]);files.set(`${ANCHOR}:${contract}`,JSON.stringify({work_issue:ISSUE,work_type:'repo-maintenance',route:'repo-maintenance',db_reads:[],db_writes:[]}))
@@ -38,7 +39,7 @@ test('packet seals both exact SQLs, all current contract bytes and authenticated
  assert.equal(e.files.length,2+TRAIN_TARGET_CONTRACT_FILES.length)
  const request=trainTargetRequest(e,risk)
  assert.match(request,/Canonical independent refusal/);assert.match(request,/current contract/);assert.match(request,/immutable synthetic source 0/);assert.match(request,/immutable synthetic source 1/)
- assert.ok(request.includes(e.binding.bindingDigest));assert.equal(e.binding.targetIdentity,'supabase:qsllyeztdwjgirsysgai')
+ assert.ok(request.includes(e.binding.bindingDigest));assert.equal(e.binding.targetIdentity,'qsllyeztdwjgirsysgai')
 })
 
 test('packet refuses stale main, wrong target, nonlatest train, changed SQL, unmerged source, foreign anchor and omitted refusal findings',()=>{
@@ -99,4 +100,29 @@ test('native assessment requires independent durable APPROVE and exact digest; i
  f.refs.set(trainTargetIndex(e.binding),row.sha);f.findings.set(url,text+'changed')
  assert.throws(()=>proveTrainTargetAssessment(f.opts,f.io,deps),/digest changed/)
  assert.equal(f.refs.get(f.refusalRef),h('3'),'historical refusal never changed')
+})
+
+test('real native authorize and dispatch proof schema preserves the plain project ref through target assessment',()=>{
+ const f=fixture(),project=JSON.parse(f.files.get(`${MAIN}:config/designflow-db-releases.json`)).production_project_ref
+ f.refs.delete(f.trainRef)
+ f.io.treeFiles=sha=>[...f.files.keys()].filter(key=>key.startsWith(`${sha}:`)).map(key=>key.slice(41))
+ f.io.makeOwnerCommit=message=>{const sha=createHash('sha1').update(message).digest('hex');f.commits.set(sha,{message});return sha}
+ const manifest=proposeTrain({target:'production',target_identity:project,base_main_sha:MAIN,entries:f.train.entries})
+ const proof={main_sha:MAIN,target_identity:project,available_roles:['postgres'],applied_versions:[],main_migrations:{},merge_in_main:{},preview_assertions:{},production_assertions:{},production_dry_run:{result:'clean',target_identity:project,main_sha:MAIN,pending_versions:versions}}
+ for(const entry of manifest.entries){proof.main_migrations[entry.version]={file_sha256:entry.file_sha256,source_pr:entry.source_pr,merge_sha:entry.merge_sha};proof.merge_in_main[entry.merge_sha]=true;proof.preview_assertions[entry.version]={assertion:entry.preview_assertion,result:'passed'};proof.production_assertions[entry.version]={assertion:entry.production_assertion,result:'passed'}}
+ const inputs={manifest,proof},read=name=>inputs[name],native=trainIo(f.io)
+ // These are the existing CLI handler's parsed --authorize-train,
+ // --train-proof and --target-identity inputs, not a target-loader stub.
+ const authorized=runTrainCommand({authorizeTrain:'manifest',trainProof:'proof',authorizationDigest:h('9',64),targetIdentity:project},native,read)
+ inputs.authorized=authorized.record
+ const dispatched=runTrainCommand({dispatchTrain:'authorized'},native,read)
+ assert.equal(dispatched.record.target_identity,project)
+ assert.equal(dispatched.workflow_inputs.migration_train_ref,dispatched.ref)
+ const actual=loadTrainTargetEvidence({...f.opts,trainRef:dispatched.ref},f.io)
+ assert.equal(actual.binding.targetIdentity,project)
+ assert.equal(actual.binding.trainDigest,hash(canonicalJson(dispatched.record)))
+ for(const wrong of [`supabase:${project}`,'aaaaaaaaaaaaaaaaaaaa']){
+   const bad=fixture(wrong)
+   assert.throws(()=>loadTrainTargetEvidence(bad.opts,bad.io),/target identity differs from canonical production project/)
+ }
 })

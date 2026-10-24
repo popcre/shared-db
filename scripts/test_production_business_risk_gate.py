@@ -4621,6 +4621,29 @@ class MigrationTrainPerEntryGate(unittest.TestCase):
         with self.assertRaisesRegex(RiskGateError, "authored no entry of the migration train"):
             self.run_assess(self.assess_args(path, pr=103), self.review(101, "1" * 40))
 
+    def test_explicit_train_reproves_current_target_even_with_no_flagged_risks(self):
+        path = self.root / "train.json"
+        path.write_text(json.dumps(self.record()), encoding="utf-8")
+        args = self.assess_args(path)
+        args.migration_train_ref = "refs/db-migration-trains/" + "d" * 64 + "/000003-dispatched"
+        assessment = {"bindingDigest": "f" * 64}
+        with mock.patch.object(self.gate, "prove_train_target_assessment", return_value=assessment) as proof:
+            result, _ = self.run_assess(args, self.review(102, "2" * 40))
+        self.assertEqual(proof.call_args.kwargs["risks"], [])
+        self.assertEqual(proof.call_args.kwargs["train_ref"], args.migration_train_ref)
+        self.assertEqual(result["governedEvidence"]["trainTargetAssessment"], assessment)
+        with mock.patch.object(self.gate, "prove_train_target_assessment", side_effect=RiskGateError("assessment index absent")):
+            with self.assertRaisesRegex(RiskGateError, "assessment index absent"):
+                self.run_assess(args, self.review(102, "2" * 40))
+
+    def test_train_ref_without_verified_record_never_uses_target_authority(self):
+        args = self.assess_args(None)
+        args.migration_train_ref = "refs/db-migration-trains/" + "d" * 64 + "/000003-dispatched"
+        with mock.patch.object(self.gate, "prove_train_target_assessment") as proof:
+            with self.assertRaisesRegex(RiskGateError, "requires a verified migration train record"):
+                self.run_assess(args, self.review(101, "1" * 40))
+        proof.assert_not_called()
+
     def test_no_train_keeps_the_single_source_pr_rule_unchanged(self):
         # PR 102 did not author V1, yet without a train the gate still binds
         # everything to the one --pr exactly as before, and a review naming a
@@ -5205,3 +5228,47 @@ class WorkflowCustodyConcurrencyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class CurrentTrainTargetAssessmentIntegrationTests(unittest.TestCase):
+    """Only native current-target authority may replace historical source risk proof."""
+
+    def fixture(self):
+        import production_business_risk_gate as gate
+        version = "20261023014911"
+        train = {"train_id": "d" * 64, "entries": [{"version": version, "source_pr": 4673,
+                  "merge_sha": "b" * 40, "file_sha256": "c" * 64}]}
+        kwargs = dict(train_ref="refs/db-migration-trains/" + "d" * 64 + "/000001-dispatched",
+                      train=train, main_sha="a" * 40, allowlist=[version],
+                      train_prs={4673: ("e" * 40, "b" * 40)}, risks=["material_access_change"], work_issue=3869)
+        evidence = {"schema": "shared-db-production-train-target-assessment/v2",
+                    "mainSha": kwargs["main_sha"], "orderedAllowlist": [version], "target": "production",
+                    "trainRef": kwargs["train_ref"], "trainId": train["train_id"], "workIssue": 3869,
+                    "sources": [{"version": version, "pr": 4673, "headSha": "e" * 40,
+                                 "mergeSha": "b" * 40, "fileSha256": "c" * 64}],
+                    "assessedRisks": {"material_access_change": "reviewed"}}
+        return gate, kwargs, evidence
+
+    def test_native_prover_receives_only_exact_train_target_and_derived_risks(self):
+        gate, kwargs, evidence = self.fixture()
+        runner = mock.Mock(return_value=subprocess.CompletedProcess([], 0, json.dumps(evidence), ""))
+        self.assertEqual(gate.prove_train_target_assessment(**kwargs, runner=runner), evidence)
+        argv = runner.call_args.args[0]
+        self.assertIn("--train-ref", argv)
+        self.assertEqual(argv[-2:], ["--risks", "material_access_change"])
+        self.assertNotIn("--pr", argv)
+
+    def test_native_no_index_stale_refusal_nonapprove_or_changed_source_errors_fail_closed(self):
+        gate, kwargs, _ = self.fixture()
+        for reason in ["assessment index absent", "stale main", "refusal digest changed", "verdict REJECT", "source bytes changed"]:
+            runner = mock.Mock(return_value=subprocess.CompletedProcess([], 2, "", reason))
+            with self.subTest(reason=reason), self.assertRaisesRegex(gate.RiskGateError, reason):
+                gate.prove_train_target_assessment(**kwargs, runner=runner)
+
+    def test_unbound_native_output_is_refused(self):
+        gate, kwargs, evidence = self.fixture()
+        for field, changed in [("mainSha", "f" * 40), ("trainRef", "other"), ("trainId", "f" * 64),
+                               ("target", "preview"), ("workIssue", 4655), ("sources", []),
+                               ("orderedAllowlist", []), ("assessedRisks", {})]:
+            runner = mock.Mock(return_value=subprocess.CompletedProcess([], 0, json.dumps({**evidence, field: changed}), ""))
+            with self.subTest(field=field), self.assertRaisesRegex(gate.RiskGateError, "not bound"):
+                gate.prove_train_target_assessment(**kwargs, runner=runner)

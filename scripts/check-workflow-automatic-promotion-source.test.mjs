@@ -165,3 +165,49 @@ test('existing train validation changes target only for explicit mapped historic
  assert.match(jobSection(),/migration_train_ref:\$train_ref/);
  assert.equal((text.slice(0,text.indexOf('\npermissions:')).match(/^      [a-z_]+:/gm)||[]).length,25);
 });
+
+test('only the qualified train uses a current-target assessment; ordinary refusal is retained', () => {
+  const job = jobSection();
+  const guard = job.split('      - name: Re-prove current main, guarded merge, and durable exact-head verdict', 2)[1].split('      # ISSUE #3039.', 1)[0];
+  assert.match(guard, /TRAIN_REF: \$\{\{ steps\.train_source_guard\.outputs\.migration_train_ref \}\}/);
+  assert.doesNotMatch(guard, /TRAIN_REF: \$\{\{ inputs\./);
+  assert.match(guard, /if \[ -n "\$\{TRAIN_REF:-\}" \]; then\n\s+node scripts\/prove-production-risk-acceptance\.mjs/);
+  assert.match(guard, /--train-ref "\$TRAIN_REF" --main-sha "\$MAIN_SHA" --allowlist "\$TRAIN_ALLOWLIST"/);
+  assert.match(guard, /else\n\s+PR_NUMBER="\$SOURCE_PR" REQUESTED_SHA="\$SOURCE_HEAD" node scripts\/check-exact-head-approval\.mjs\n\s+fi/);
+  const text = workflowText();
+  assert.equal((text.match(/TRAIN_ARGS=\(--migration-train-record "\$RUNNER_TEMP\/migration-train-record\.json" --migration-train-ref "\$TRAIN_REF"\)/g) || []).length, 2);
+});
+
+test('the real shell routes train failures without falling back to source approval', () => {
+  const text = jobSection();
+  const begin = text.indexOf('          if [ -n "${TRAIN_REF:-}" ]; then');
+  assert.ok(begin >= 0);
+  const end = text.indexOf('\n          fi', begin) + '\n          fi'.length;
+  const block = text.slice(begin, end).split('\n').map(l => l.slice(10)).join('\n');
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'train-assessment-route-'));
+  const calls = path.join(dir, 'calls');
+  writeFileSync(path.join(dir, 'node'), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\ncase "$1" in\n *prove-production-risk-acceptance.mjs) exit "$TRAIN_EXIT";;\n *check-exact-head-approval.mjs) exit "$SOURCE_EXIT";;\n *) exit 99;;\nesac\n', { mode: 0o755 });
+  const run = (train, trainExit, sourceExit) => {
+    writeFileSync(calls, '');
+    const result = spawnSync(bashCommand, ['-c', `set -euo pipefail\n${block}\nprintf 'QUALIFIED\\n'`], {
+      cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: `${dir}${path.delimiter}${process.env.PATH}`,
+        CALLS: calls, RUNNER_TEMP: dir, TRAIN_REF: train, MAIN_SHA: MAIN, TRAIN_ALLOWLIST: ALLOW,
+        SOURCE_PR: '4673', SOURCE_HEAD: MERGE, TRAIN_EXIT: String(trainExit), SOURCE_EXIT: String(sourceExit) },
+    });
+    return { ...result, calls: readFileSync(calls, 'utf8') };
+  };
+  for (const exit of [2, 3]) {
+    const result = run('refs/db-migration-trains/fixture/000001-dispatched', exit, 0);
+    assert.notEqual(result.status, 0);
+    assert.doesNotMatch(result.stdout, /QUALIFIED/);
+    assert.match(result.calls, /prove-production-risk-acceptance/);
+    assert.doesNotMatch(result.calls, /check-exact-head-approval/);
+  }
+  const train = run('refs/db-migration-trains/fixture/000001-dispatched', 0, 2);
+  assert.equal(train.status, 0, train.stderr);
+  assert.doesNotMatch(train.calls, /check-exact-head-approval/);
+  const ordinary = run('', 0, 2);
+  assert.notEqual(ordinary.status, 0);
+  assert.match(ordinary.calls, /check-exact-head-approval/);
+  assert.doesNotMatch(ordinary.calls, /prove-production-risk-acceptance/);
+});

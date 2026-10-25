@@ -282,3 +282,18 @@ when maintenance commits intervened, and still requires that exact commit's
 successful rehearsal. Missing history, malformed identities and unreadable status
 remain refusals. Existing review, authorization, merge lock and production freeze
 checks apply to every group. Tracked with the delivery-evidence repair on #4655.
+
+### Tracking current-state recovery assertions (#4655)
+
+The original successful Tracking apply remains the historical producer. A current
+catalogue report with no behavioral assertions cannot replace its unavailable
+archive: `validateCurrentLiveBinding` deliberately refuses that report, even when
+the enforcing catalogue verifier exits successfully. Recovery run40220100990
+exposed this missing coverage; it produced no certificate and reapplied nothing.
+
+The exact-hash sidecar for `20261024234538` supplies a fixed verifier-owned
+installed-state contract for the Tracking link view and its bounded access model.
+It does not authorize SQL from sidecar input, change the applied migration, claim
+historical ledger changes, settle unrelated role drift, or prove application
+acceptance. The same signed certificate, original-attempt identity, approval,
+source fingerprint, current-main and subsequent native stage gates still apply.

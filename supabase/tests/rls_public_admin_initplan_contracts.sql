@@ -6,7 +6,12 @@
 -- Other36 tables add108 actual command probes; strict positive controls may expose baseline errors.
 -- Source is not evidence of passed DML, performance, preview or live acceptance.
 begin;
-set local statement_timeout = '20s';
+-- 60s, raised from 20s (issue #4746): the nested-loop command-matrix DO block is a
+-- single statement whose ephemeral-runner wall time spans 15-30s across observed runs
+-- (2026-10-23/25 job logs), so a 20s cap sat inside the variance band and timed the
+-- file out on slow first runs while warm reruns passed. The cap exists to catch hangs,
+-- not to bound this workload tightly; the perf section below re-lowers it to 30s.
+set local statement_timeout = '60s';
 set local lock_timeout = '3s';
 
 create temp table rls4427_manifest (

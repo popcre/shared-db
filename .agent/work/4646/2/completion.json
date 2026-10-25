@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "work_issue": 4646,
+  "outcome": "ready-for-merge",
+  "pr": 4752,
+  "migration_versions": [
+    "20261025124542"
+  ],
+  "contract_ref": "refs/db-contracts/4646/2",
+  "contract_sha256": "13866af62ea0fde7b0fc05a184969808010abf623ff99503ac41e571913777b6",
+  "base_sha": "211c1290be6409605417308a4c1e1fe80598503e",
+  "head_sha": "e4380b40994d7cd277a100a39b27ae1eb80b8429",
+  "files_changed": [
+    "config/designflow-db-releases.json",
+    "scripts/dflow-prod-milestone-schedule.test.mjs",
+    "scripts/proofs/2873-catalog.sql",
+    "scripts/proofs/2873-contract.json",
+    "scripts/proofs/2873-role-contract.sql",
+    "scripts/proofs/shared-db-2873-observation.test.mjs",
+    "supabase/migrations/20261025124542_dflow_prod_milestone_schedule.sql"
+  ],
+  "db_reads": [
+    "table dflow_prod.\"ProdOrderHeader\"",
+    "table dflow_prod.\"FactoryTime\""
+  ],
+  "db_writes": [
+    "table dflow_prod.prod_order_milestone_schedule",
+    "sequence dflow_prod.prod_order_milestone_schedule_id_seq",
+    "index dflow_prod.prod_order_milestone_schedule_upsert_key",
+    "index dflow_prod.prod_order_milestone_schedule_status_needed_idx",
+    "index dflow_prod.prod_order_milestone_schedule_factory_time_id_idx",
+    "index dflow_prod.prod_order_milestone_schedule_catalog_stage_key",
+    "index dflow_prod.prod_order_milestone_schedule_legacy_name_key"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "All static migration guards passed; no shared target executed. Output SHA256 abd5243ce578a3febe35f2f17d5124f82f8cc1c3095ce853724227a9a0b17e2e"
+    },
+    {
+      "command": "node --test scripts/proofs/shared-db-2873-observation.test.mjs",
+      "exit_code": 0,
+      "evidence": "10 tests passed, zero skipped; both473 matrices and narrow backend inheritance checked. Output SHA256 ca98ffbee50ba716326f134e243a6ad1fbef60af97e436210391671a9201b38c"
+    },
+    {
+      "command": "DFLOW_TRACKING_TEST_CONTAINER=codex-milestone4646-owned-20261025 node --test scripts/dflow-prod-milestone-schedule.test.mjs",
+      "exit_code": 0,
+      "evidence": "23 tests passed, zero skipped on owned network-none tmpfs PostgreSQL17; direct tracking runtime identity insert/S/U, denied DELETE/sequence, FKs, upsert, constraints, bad parents/roles, policy mutations; fixture removed after run. Output SHA256 9d9a8cd2516bd586c816a43e198c91eee4d135b86c5eb930ddfef5a4d4894ce4"
+    },
+    {
+      "command": "node --test scripts/proofs/shared-db-2873-observation.test.mjs scripts/designflow-db-release.test.mjs scripts/lib/designflow-db-release.test.mjs",
+      "exit_code": 0,
+      "evidence": "116 passed, zero skipped; release source requirements and observer tests. Output SHA256 4bd6d6807ec4aad88dfc08cb66cc3bd3b47b9813bdd1beab277341bb5c8cadc1"
+    }
+  ],
+  "assumptions_resolved": [
+    "Native claim4750 admitted4638/3869 database-applied dependencies; separate fresh production catalog/runtime proof confirms prerequisite.",
+    "Fresh version20261025124542 reserved natively, old4653/version never reused.",
+    "Only central4646 requirement changed to4752; peer tracking4735 change is separate.",
+    "Source readiness only; required independent review, guarded merge, preview, automatic production and app persistence acceptance remain separate."
+  ],
+  "stop_conditions_hit": []
+}

@@ -355,6 +355,22 @@ jobs:
             -f context='Migration guarded merge authorization' \
             -f description='Queue interlock lost ownership before the mutation landed; authorization revoked'
 
+      # Fail fast when the interlock refuses BEFORE publishing (for example a
+      # live promotion merge freeze makes --acquire-merge refuse). Without
+      # this, the required context is never posted and GitHub holds the group
+      # in AWAITING_CHECKS until check_response_timeout_minutes, stalling every
+      # entry behind it (2026-10-25: PR #4759 head entry stalled ~30 minutes).
+      - name: Publish fail-closed authorization when the interlock refuses before publishing
+        if: failure() && steps.publish.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_GROUP_SHA: ${{ github.event.merge_group.head_sha }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/$MERGE_GROUP_SHA" \
+            -f state=failure \
+            -f context='Migration guarded merge authorization' \
+            -f description='Queue interlock refused before authorization; group fails closed'
+
       - name: Release the exclusive merge lane with ownership proof
         if: always() && steps.merge_lock.outputs.owner_sha != ''
         env:

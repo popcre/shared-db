@@ -1780,7 +1780,7 @@ changes for it and do not re-raise it as a blocker.
   value anywhere.
 
 **Evidence.** The completed capture is at
-`docs/verification/cloudsql-designflow-capture-2026-08-10/`;
+[`verification/cloudsql-designflow-capture-2026-08-10/README.md`](verification/cloudsql-designflow-capture-2026-08-10/README.md);
 the ruling and the privilege analysis are on issue **#705**. That capture's README describes
 the waiver as "for this capture only" and "not a general waiver"; **this section supersedes
 that wording** — the exception is standing, on the terms above.

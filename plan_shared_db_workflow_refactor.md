@@ -28,7 +28,7 @@ Planning date: **2026-09-20**. Tracker: [#3306 — non-orchestrator repository-m
 
 **Historical implementation baseline refreshed September 20, 2026.** The original planning publication implemented none of these fixes. The [fresh baseline](docs/verification/workflow-refactor-baseline-20260920T1932Z.md) identifies intervening merged work and active owners; do not rebuild those changes. After Step 0, choose a ready step from the dependency map in §9; this is not a mandatory fifteen-step serial train. Re-read this table and all downstream phases before starting each phase. A done row must link an actual commit, test artifact and live result where required, not merely an issue number or a claimed count. A landed-but-unproven step must name exactly one owned live-proof issue opened at landing, and remains partial.
 
-Companion handoff: `2026-09-20T1507Z-916-codex-workflow-refactor.md`. Investigation: [workflow bottleneck audit](docs/verification/shared-db-workflow-bottleneck-audit-20260920.md). The handoff carries execution context; this plan is the implementation specification. Update their current-state claims as execution progresses; do not restart completed work from historical text.
+Companion handoff: `HANDOFF.d/2026-09-20T1507Z-916-codex-workflow-refactor.md` (retired). Investigation: [workflow bottleneck audit](docs/verification/shared-db-workflow-bottleneck-audit-20260920.md). The handoff carries execution context; this plan is the implementation specification. Update their current-state claims as execution progresses; do not restart completed work from historical text.
 
 ## 1. Ultimate goal
 

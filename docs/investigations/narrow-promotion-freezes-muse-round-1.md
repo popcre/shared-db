@@ -322,7 +322,7 @@ Independent design approval is retained above. No implementation, deployment or 
 | 5. Adversarial/concurrency verification | OPEN | §9.5 |
 | 6. Reviewed rollout, measured acceptance and rollback | OPEN | §9.6; live proof remains on #4039 |
 
-**Fresh-session starting point:** verify retained design verdict and live publication state. Do not start implementation without later authorization. This session was authorized only to investigate. Successor registration: `handoff`.
+**Fresh-session starting point:** verify retained design verdict and live publication state. Do not start implementation without later authorization. This session was authorized only to investigate. Successor registration: `HANDOFF.d/2026-10-07T1545Z-edge-dev3-codex-narrow-promotion-freezes.md` (retired).
 
 ## 1. Ultimate goal
 

@@ -727,5 +727,7 @@ test('guarded merge admits to the queue with the merge-queue admission app token
   const admissions = src.match(/^\s*admit_to_queue\s*$/gm) ?? []
   assert.equal(admissions.length, 2, 'both queue-mode admissions must go through admit_to_queue')
   const mint = src.match(/id: queue_admission_token[\s\S]*?(?=\n\s*- name:)/)[0]
-  assert.doesNotMatch(mint, /permission-contents|permission-pull-requests|SYNC_TOKEN|AUTHORITY_TOKEN/)
+  // Exactly the two permissions GitHub's enqueue needs, nothing broader.
+  assert.deepEqual(mint.match(/permission-[a-z-]+: \w+/g), ['permission-contents: write', 'permission-merge-queues: write'])
+  assert.doesNotMatch(mint, /SYNC_TOKEN|AUTHORITY_TOKEN/)
 })

@@ -381,8 +381,9 @@ jobs:
           PR_NUMBER="${{ inputs.pull_request }}" REQUESTED_SHA="${{ inputs.head_sha }}" node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-exact-head-approval.mjs"
       # Queue admission must come from an app token: a merge-queue entry created with
       # GITHUB_TOKEN starts no merge_group workflows, so GitHub ejects it after 30
-      # minutes (#4731). popcre-merge-queue-admission holds only merge_queues:write
-      # and is installed on this repository alone. Absent secret or mint failure ->
+      # minutes (#4731). popcre-merge-queue-admission is installed on this repository
+      # alone; GitHub's enqueue needs contents:write plus merge_queues:write (probed
+      # 2026-10-25), so the token asks for exactly those. Absent secret or mint failure ->
       # empty output -> admission falls back to github.token (the old behavior).
       - name: Mint queue-admission token (popcre-merge-queue-admission app)
         id: queue_admission_token
@@ -391,6 +392,7 @@ jobs:
         with:
           app-id: ${{ secrets.MERGE_QUEUE_ADMISSION_APP_ID }}
           private-key: ${{ secrets.MERGE_QUEUE_ADMISSION_PRIVATE_KEY }}
+          permission-contents: write
           permission-merge-queues: write
       - name: Re-prove the head and merge while the lock is held
         id: guarded_merge

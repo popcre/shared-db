@@ -1115,8 +1115,8 @@ browser evidence. Shared-db schema PR CI runs `scripts/check-sql.sh`, a clean pr
 and the relevant rollback-safe SQL suites. Production must continue to prove
 `app.db_data_admin_feature_gate` absent until Step 13.
 
-The first development-shell visual check is retained at
-`docs/verification/db-data-admin-development.png`.
+The first development-shell visual check was captured at
+`docs/verification/db-data-admin-development.png` (screenshot not tracked in this repository).
 It proves the deployed shell renders, but it does not satisfy the later grid/detail/merge/tree
 screenshots listed above.
 

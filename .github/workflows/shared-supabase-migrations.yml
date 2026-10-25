@@ -174,7 +174,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TRAIN_REF: ${{ inputs.migration_train_ref }}
-          TRAIN_TARGET: ${{ inputs.target }}
+          TRAIN_TARGET: ${{ inputs.target == 'preview' && inputs.mode == 'apply' && inputs.historical_preview_source_pr_map != '' && inputs.historical_preview_source_pr == '' && inputs.merged_preview_source_pr == '' && inputs.merged_preview_source_pr_map == '' && inputs.claim_pr == '' && inputs.claim_head_sha == '' && inputs.source_pr == '' && 'production' || inputs.target }}
           TRAIN_COMMIT: ${{ inputs.commit_sha }}
           TRAIN_ALLOWLIST: ${{ inputs.target == 'production' && inputs.production_allowlist || inputs.preview_allowlist }}
         run: node scripts/manage-migration-author-lanes.mjs --verify-train-dispatch "$TRAIN_REF" --target "$TRAIN_TARGET" --commit-sha "$TRAIN_COMMIT" --allowlist "$TRAIN_ALLOWLIST"
@@ -1066,7 +1066,7 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       inputs.target == 'preview' &&
       inputs.mode == 'apply' &&
-      (inputs.merged_preview_source_pr != '' || inputs.merged_preview_source_pr_map != '' || (inputs.historical_preview_source_pr != '' && inputs.historical_preview_source_pr_map == ''))
+      (inputs.merged_preview_source_pr != '' || inputs.merged_preview_source_pr_map != '' || (inputs.historical_preview_source_pr != '' && inputs.historical_preview_source_pr_map == '') || (inputs.migration_train_ref != '' && inputs.historical_preview_source_pr_map != ''))
     needs: [validate, preview]
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 15
@@ -1111,13 +1111,14 @@ jobs:
       # That proof travels in the SAME preview artifact the merged lane uses, so it
       # is read back here rather than trusted from inputs.
       - name: Read the historical recovery proof from the exact preview artifact
-        if: inputs.historical_preview_source_pr != '' && inputs.historical_preview_source_pr_map == ''
+        if: (inputs.historical_preview_source_pr != '' && inputs.historical_preview_source_pr_map == '') || (inputs.migration_train_ref != '' && inputs.historical_preview_source_pr_map != '')
         uses: actions/download-artifact@v4
         with:
           name: preview-migration-apply-${{ inputs.commit_sha }}
           path: ${{ runner.temp }}/recovery-evidence
       - name: Refuse anything except one fully qualified merged or recovered source PR
         id: source_guard
+        if: inputs.migration_train_ref == '' || inputs.historical_preview_source_pr_map == ''
         env:
           SOURCE_PR: ${{ inputs.merged_preview_source_pr }}
           SOURCE_MAP: ${{ inputs.merged_preview_source_pr_map }}
@@ -1171,13 +1172,37 @@ jobs:
           fi
           echo "source_pr=$QUALIFIED_PR" >> "$GITHUB_OUTPUT"
           # <<< END automatic-promotion-source-guard
+      - name: Qualify the explicit historical production train
+        id: train_source_guard
+        if: inputs.migration_train_ref != '' && inputs.historical_preview_source_pr_map != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRAIN_REF: ${{ inputs.migration_train_ref }}
+          MAIN_SHA: ${{ inputs.commit_sha }}
+          ALLOWLIST: ${{ inputs.preview_allowlist }}
+          HISTORICAL_MAP: ${{ inputs.historical_preview_source_pr_map }}
+          SOURCE_PR: ${{ inputs.merged_preview_source_pr }}
+          SOURCE_MAP: ${{ inputs.merged_preview_source_pr_map }}
+          HISTORICAL_PR: ${{ inputs.historical_preview_source_pr }}
+          CLAIM_PR: ${{ inputs.claim_pr }}
+          CLAIM_HEAD: ${{ inputs.claim_head_sha }}
+          PRODUCTION_PR: ${{ inputs.source_pr }}
+        run: |
+          set -euo pipefail
+          python scripts/qualify_automatic_promotion_train.py \
+            --target preview --mode apply --ref "$TRAIN_REF" --main "$MAIN_SHA" --allowlist "$ALLOWLIST" \
+            --historical-map "$HISTORICAL_MAP" --source-pr "$SOURCE_PR" --source-map "$SOURCE_MAP" \
+            --historical-pr "$HISTORICAL_PR" --claim-pr "$CLAIM_PR" --claim-head "$CLAIM_HEAD" --production-pr "$PRODUCTION_PR" \
+            --recovery "$RUNNER_TEMP/recovery-evidence/historical-preview-source.json" \
+            --train-output "$RUNNER_TEMP/automatic-production-train.json" >> "$GITHUB_OUTPUT"
       - name: Re-prove current main, guarded merge, and durable exact-head verdict
         id: governed_review
         env:
           GH_TOKEN: ${{ github.token }}
           MAIN_SHA: ${{ inputs.commit_sha }}
-          SOURCE_PR: ${{ steps.source_guard.outputs.source_pr }}
-          RECOVERED_MERGE_SHA: ${{ steps.source_guard.outputs.source_merge_sha }}
+          SOURCE_PR: ${{ steps.source_guard.outputs.source_pr || steps.train_source_guard.outputs.source_pr }}
+          TRAIN_WORK_ISSUE: ${{ steps.train_source_guard.outputs.work_issue }}
+          RECOVERED_MERGE_SHA: ${{ steps.source_guard.outputs.source_merge_sha || steps.train_source_guard.outputs.source_merge_sha }}
         run: |
           set -euo pipefail
           git fetch origin main
@@ -1211,6 +1236,7 @@ jobs:
           echo "source_head=$SOURCE_HEAD" >> "$GITHUB_OUTPUT"
           ADMISSION="$(node scripts/manage-migration-author-lanes.mjs --resolve-admitted-issue-for-pr "$SOURCE_PR")"
           WORK_ISSUE="$(jq -r 'if (.issue | type) == "number" and .issue >= 1 then .issue else error("resolver returned no positive issue") end' <<<"$ADMISSION")"
+          if [ -n "${TRAIN_WORK_ISSUE:-}" ]; then test "$WORK_ISSUE" = "$TRAIN_WORK_ISSUE"; fi
           echo "work_issue=$WORK_ISSUE" >> "$GITHUB_OUTPUT"
       # ISSUE #3039. Ask the production gate's own evidence question BEFORE
       # dispatching. A historical rebind whose original apply ran on an older
@@ -1219,11 +1245,12 @@ jobs:
       # non-high-risk migration, or refuses without dispatching.
       - name: Qualify the evidence route the production gate accepts
         id: evidence_route
+        if: steps.train_source_guard.outputs.source_pr == ''
         env:
           GH_TOKEN: ${{ github.token }}
           MAIN_SHA: ${{ inputs.commit_sha }}
           PRODUCTION_ALLOWLIST: ${{ inputs.preview_allowlist }}
-          SOURCE_PR: ${{ steps.source_guard.outputs.source_pr }}
+          SOURCE_PR: ${{ steps.source_guard.outputs.source_pr || steps.train_source_guard.outputs.source_pr }}
           HISTORICAL_PREVIEW_PR: ${{ inputs.historical_preview_source_pr }}
           RECOVERY_EVIDENCE: ${{ runner.temp }}/recovery-evidence/historical-preview-source.json
         run: |
@@ -1246,7 +1273,7 @@ jobs:
         env:
           MAIN_SHA: ${{ inputs.commit_sha }}
           PRODUCTION_ALLOWLIST: ${{ inputs.preview_allowlist }}
-          SOURCE_PR: ${{ steps.source_guard.outputs.source_pr }}
+          SOURCE_PR: ${{ steps.source_guard.outputs.source_pr || steps.train_source_guard.outputs.source_pr }}
           SOURCE_HEAD: ${{ steps.governed_review.outputs.source_head }}
           WORK_ISSUE: ${{ steps.governed_review.outputs.work_issue }}
           PREVIEW_DIGEST: ${{ steps.preview_evidence.outputs.digest }}
@@ -1290,8 +1317,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MAIN_SHA: ${{ inputs.commit_sha }}
           PRODUCTION_ALLOWLIST: ${{ inputs.preview_allowlist }}
+          TRAIN_REF: ${{ steps.train_source_guard.outputs.migration_train_ref }}
           DERIVATION_OVERRIDE: ${{ inputs.derivation_override }}
-          SOURCE_PR: ${{ steps.source_guard.outputs.source_pr }}
+          SOURCE_PR: ${{ steps.source_guard.outputs.source_pr || steps.train_source_guard.outputs.source_pr }}
           WORK_ISSUE: ${{ steps.governed_review.outputs.work_issue }}
           PREVIEW_DIGEST: ${{ steps.preview_evidence.outputs.digest }}
           REVIEW_DIGEST: ${{ steps.automatic_review_evidence.outputs.artifact-digest }}
@@ -1311,6 +1339,7 @@ jobs:
             --arg sha "$MAIN_SHA" \
             --arg allowlist "$PRODUCTION_ALLOWLIST" \
             --arg derivation_override "$DERIVATION_OVERRIDE" \
+            --arg train_ref "${TRAIN_REF:-}" \
             --arg source_pr "$SOURCE_PR" \
             --arg work_issue "$WORK_ISSUE" \
             --arg run_id "$GITHUB_RUN_ID" \
@@ -1318,7 +1347,7 @@ jobs:
             --arg preview_digest "$PREVIEW_DIGEST" \
             --arg binding "${SHARED_DB_MERGED_PR_ISSUE_BINDING:-}" \
             --arg ephemeral "${EPHEMERAL_CHECK_RUN_ID:-}" \
-            '{ref:"main",inputs:({target:"production",mode:"apply",production_allowlist:$allowlist,derivation_override:$derivation_override,commit_sha:$sha,confirmation:("APPLY " + $sha),review_run_id:$run_id,review_artifact_digest:$review_digest,source_pr:$source_pr,work_issue:$work_issue,merged_pr_issue_binding:$binding} + (if $ephemeral == "" then {preview_run_id:$run_id,preview_artifact_digest:$preview_digest} else {ephemeral_check_run_id:$ephemeral} end))}' \
+            '{ref:"main",inputs:({target:"production",mode:"apply",production_allowlist:$allowlist,derivation_override:$derivation_override,commit_sha:$sha,confirmation:("APPLY " + $sha),review_run_id:$run_id,review_artifact_digest:$review_digest,source_pr:$source_pr,work_issue:$work_issue,merged_pr_issue_binding:$binding} + (if $ephemeral == "" then {preview_run_id:$run_id,preview_artifact_digest:$preview_digest} else {ephemeral_check_run_id:$ephemeral} end) + (if $train_ref == "" then {} else {migration_train_ref:$train_ref} end))}' \
             > "$RUNNER_TEMP/automatic-production-dispatch.json"
           gh api --method POST \
             "repos/${GITHUB_REPOSITORY}/actions/workflows/shared-supabase-migrations.yml/dispatches" \
@@ -1778,6 +1807,13 @@ jobs:
             ROUTE_ARGS=(--preview-run-id "$PREVIEW_RUN_ID" --preview-digest "$PREVIEW_ARTIFACT_DIGEST" \
               --preview-project-ref "$PREVIEW_PROJECT_REF")
           fi
+          # The risk gate accepts EITHER assessment block: the merged-head v1
+          # block naming this main SHA, or a v2 block carried by the FIRST
+          # (pre-merge) review that binds the source PR head -- accepted only
+          # after the gate re-proves live that that head is an ancestor of this
+          # main and each allowlisted migration blob is byte-identical at both
+          # (scripts/prove-production-risk-acceptance.mjs). One review then
+          # suffices; the merged-head slot-2 block remains the fallback.
           # Pre-lane only: nothing is held yet, so a GitHub quota exhaustion may
           # wait up to 15 minutes for its reset. The lane-held run fails fast.
           python scripts/production_business_risk_gate.py \

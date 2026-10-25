@@ -336,6 +336,10 @@ jobs:
             exit 1
           fi
 
+      - name: Test automatic train qualification offline
+        if: steps.route.outputs.pure_prose != 'true'
+        run: python3 -m unittest scripts.test_qualify_automatic_promotion_train
+
       - name: Run every tools/*.test.mjs
         if: steps.route.outputs.pure_prose != 'true'
         run: |

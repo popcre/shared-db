@@ -702,8 +702,10 @@ jobs:
       - name: Check the GitHub API quota before scanning open pull requests
         env:
           GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
-          # Holds no lock: a GitHub quota exhaustion may wait up to 15 minutes.
-          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
+          # Holds no lock: a GitHub quota exhaustion may wait up to 2 minutes.
+          # 2026-10-23: the former 15-minute wait silently stalled merges behind
+          # pure throttling (zero guard value); a faster refusal re-runs cheaply.
+          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '120'
         run: node scripts/check-actions-quota.mjs
 
       # ONE read of every open pull request's complete file list, shared by both
@@ -714,8 +716,10 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          # Holds no lock: a GitHub quota exhaustion may wait up to 15 minutes.
-          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
+          # Holds no lock: a GitHub quota exhaustion may wait up to 2 minutes.
+          # 2026-10-23: the former 15-minute wait silently stalled merges behind
+          # pure throttling (zero guard value); a faster refusal re-runs cheaply.
+          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '120'
         run: node scripts/lib/open-pr-files.mjs --out "$RUNNER_TEMP/open-pr-files.json"
 
       - name: Report earlier open PRs editing the same protected coordination source (overlap queues; unreadable audit refuses)
@@ -724,8 +728,10 @@ jobs:
           GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           OPEN_PR_FILES_SNAPSHOT: ${{ runner.temp }}/open-pr-files.json
-          # Holds no lock: a GitHub quota exhaustion may wait up to 15 minutes.
-          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
+          # Holds no lock: a GitHub quota exhaustion may wait up to 2 minutes.
+          # 2026-10-23: the former 15-minute wait silently stalled merges behind
+          # pure throttling (zero guard value); a faster refusal re-runs cheaply.
+          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '120'
         run: node scripts/check-pr-source-collisions.mjs
 
       # Merge-time twin of the step above (#3721): overlapping protected-source
@@ -747,8 +753,10 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
           OPEN_PR_FILES_SNAPSHOT: ${{ github.event_name == 'pull_request' && format('{0}/open-pr-files.json', runner.temp) || '' }}
-          # Holds no lock: a GitHub quota exhaustion may wait up to 15 minutes.
-          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '900'
+          # Holds no lock: a GitHub quota exhaustion may wait up to 2 minutes.
+          # 2026-10-23: the former 15-minute wait silently stalled merges behind
+          # pure throttling (zero guard value); a faster refusal re-runs cheaply.
+          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '120'
         run: node scripts/check-pr-object-collisions.mjs
 
   # The Orchestrator marker guard was retired with the coordinator role (#3874).
@@ -768,7 +776,7 @@ jobs:
       contents: read
       checks: read
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -781,7 +789,10 @@ jobs:
           # On merge_group the asserted head is the synthetic group commit,
           # which is where the lane jobs report when triggered by the group.
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
-        run: node scripts/db-flow/runner-lanes.mjs --aggregate --repo "$REPO" --head-sha "$HEAD_SHA" --timeout-minutes 50
+        # 2026-10-23: three all-green queue entries starved behind this job's
+        # 50-minute wait while their lane assertions were already complete, so
+        # the aggregate wait drops to 15 minutes (job budget 60 -> 25).
+        run: node scripts/db-flow/runner-lanes.mjs --aggregate --repo "$REPO" --head-sha "$HEAD_SHA" --timeout-minutes 15
 
   # ---- moved from .github/workflows/pii-forward-guard.yml (#3746) ----
   # Guard: no NEW email-shaped personal identifiers enter this PUBLIC repository.

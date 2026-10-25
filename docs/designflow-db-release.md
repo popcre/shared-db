@@ -175,9 +175,19 @@ complete read must still match that absence immediately before activation.
 
 A requirement identifies one canonical source PR and exactly the migrations it
 added. Two different source PRs may implement the same issue; PRs, issue/PR
-pairs, migration versions and paths remain unique. Tracking and frontend require
-both #4648 and its #4673 companion. Contract digests remain independent of this
-source list. A pending companion set reports `qualified-migration-train-required`
+pairs, migration versions and paths remain unique. Tracking and frontend now
+require the combined successor #4735 (version `20261024234538`, source SHA256
+`98210290dca92fbbf9b8a995c4bbc13e8bd6af22d88e6ff8eb75c73984640d04`),
+which production apply [40151562831 attempt 1](https://github.com/popcre/shared-db/actions/runs/40151562831/attempts/1)
+delivered successfully. The later attempt 2 refused stale main and did not change
+that successful attempt 1 delivery. The historical #4648/#4673 SQL files, reviewer refusals and preview
+ledgers remain intact. Both original versions are permanently blocked from any
+new allowlist by `HARD_BLOCKED` and classified as retired by the existing pending
+version policy; no ledger row is fabricated and no historical claim is adopted.
+Consumer manifests must name the actual successor before they can pass the
+updated central baseline. Other requirements, including milestone persistence,
+remain independent and are not declared delivered by this replacement.
+Contract digests remain independent of this source list. A pending companion set reports `qualified-migration-train-required`
 and never starts its members as unrelated single-source promotions. An operator
 must qualify the existing native train; this observer grants no train authority.
 
@@ -196,3 +206,22 @@ the original archive, producer, train, all current sources and the entire live
 ledger are authenticated again. Missing or expired archive/log provenance,
 changed source, partial apply or ambiguous maps refuse readiness. Existing
 version 1 single-source receipt checks and promotion behavior remain unchanged.
+
+## Immediate consumer notifications: source and activation
+
+Issue #4655 owns `config/designflow-consumer-release-notify.yml` as the canonical notification template. It uses JSON syntax (valid YAML) so its configuration tests require only Python’s standard library; no YAML package is required. The six eventual copies belong at `.github/workflows/designflow-db-release-notify.yml` in the named application repositories. Change the template first and keep all six copies byte-identical. Retire the copies and dedicated dispatch credential only after a native cross-repository event trigger replaces them and actual event delivery is proved.
+
+The five-minute cron is a fallback, not a latency guarantee: actual scheduled runs 39902566401 and 39933299973 arrived at 12:51 AM EDT and 5:38 AM EDT on October 23, 2026; no later scheduled run existed at 9:35 AM EDT that day. Notifications reuse the existing central workflow, which independently reads current application heads, requirements and production proof. A notification supplies no release authorization.
+
+This source does not activate credentials, install an App or publish application workflows. Obtain assigned independent exact-input APPROVE before provisioning the resources below. Keep source approval, configuration activation, actual central observer execution/status publication, and real develop-event delivery distinct.
+
+Proposed exact actions:
+1. Create a private GitHub App owned by popcre, requested slug popcre-dflow-db-release-dispatch, homepage https://github.com/popcre/shared-db, no webhook, no OAuth/client secret use, no organization/account permissions, repository Actions WRITE only plus GitHub implicit metadata READ. Install ONLY on popcre/shared-db, not all repositories. Do not modify the existing pop-ai-watchers App or existing status publisher permissions.
+2. Generate one new dedicated private key; transport only via its protected downloaded file and pipes, store in 1Password vibe_coding with durable title/context/tags and actual App/installation IDs. Never expose values in chat, logs, arguments or commits. Delete no existing credential and perform no rotation.
+3. Set the new dedicated key as repository Actions secret DFLOW_RELEASE_DISPATCH_PRIVATE_KEY in exactly popcre/designflow-backend, designflow-bff, designflow-frontend, designflow-item-master, designflow-tracking and designflow-data-syncing. Set public variable DFLOW_RELEASE_DISPATCH_APP_ID in those six repositories to the actual new App ID. No central SYNC_TOKEN or watcher private key is copied. The new key can mint only central installation Actions-write tokens; no repository contents, admin or database permission is granted. Actions-write includes cancellation/dispatch capability; review that explicit limited residual risk.
+4. Add the exact workflow below to the six already-owned sandbox change sets, preserving all current app work. Publish through normal application process only after relevant production database prerequisites are proved; do not self-merge application PRs to develop/main. No commit hook, new required check, human reviewer requirement, new scheduler, runtime executor or deployed receiver/service. Keep central cron as fallback. Fork PRs receive no credential.
+5. Before declaring activation, independently verify App permissions/install repository selection and each repository secret/variable metadata, then mint a bounded installation token in a protected local process, issue the SAME fixed workflow_dispatch request, and verify actual central observer execution and designated App status publication. Final develop event delivery remains tied to the normal app merge; do not simulate that by deploying app code or falsely claim it already occurred.
+
+Recovery: before any activation preserve current App/secret metadata; changes are additive. If verification fails, leave notifications unactivated and repair within scope; do not remove existing checks/scheduler or weaken status-publisher binding. No production SQL or app runtime modification is part of these configuration actions.
+
+The fixed template accepts only develop/main pushes and same-repository PR events targeting main. It checks out no application code and accepts no caller-provided workflow, ref or SQL. Repository Actions-write is the minimum dispatch permission but also permits cancellation/other Actions operations in shared-db; this residual risk remains explicit. The dedicated key is new, never the existing central operator credential or watcher key. No required check, commit hook, webhook receiver, scheduler or executor is added.

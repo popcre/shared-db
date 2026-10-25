@@ -118,6 +118,28 @@ production dispatch is a recovery/engineering path only and is not authorized by
 policy. That recovery path still requires the successful review-evidence workflow run ID and its
 exact `sha256:` artifact digest; #2716 removes transcription only from the ordinary automatic path.
 
+**Pre-merge risk fold (2026-10-24).** The FIRST governed review may carry the risk assessment
+before the merge, so one review usually suffices instead of two. The allocator-invoked runner
+(`scripts/run-governed-review.mjs`) accepts `--production-risk-classes` and
+`--production-risk-allowlist` WITHOUT `--production-risk-main` on an open source PR; the request
+section states honestly that the block binds the reviewed PR head (schema
+`shared-db-production-risk-assessment/v2`, `head_sha` in place of `main_sha`) and that the
+promoted main does not exist yet. The production gate accepts such a block only after re-proving,
+live through the GitHub API at apply time, that the reviewed head is an ancestor of the exact
+promoted main and that each allowlisted migration's blob is byte-identical at both
+(`scripts/prove-production-risk-acceptance.mjs`); the apply pin and promotion freeze still refuse
+a main that moved. If that re-proof fails, the v2 block authorizes nothing and the merged-head
+(slot 2) review described above remains the fallback, unchanged.
+
+**Owner-override confirmation (owner ruling 2026-10-22, affirmed standing 2026-10-23,
+`docs/owner-rulings.md` §6.30).** The production apply workflow also accepts a confirmation of
+exactly `OWNER-OVERRIDE <sha>`. It skips only the automated business-risk gate and records
+`owner_override` evidence naming the owner, date, exact SHA and ordered allowlist. An AI
+dispatcher uses it when reviewer tooling is failing, skipped or undrawable — the owner has
+accepted that business risk; he performs no technical review (§6.23 unchanged). Every other
+gate still binds: exact target pin, production lock, ordered allowlist, hard blocks, and
+post-apply live verification. The automated gate returns the moment a reviewer is drawable.
+
 **Three gates, and NONE of them is sufficient alone:**
 
 1. **`production-apply-review`** — deterministic. The typed string, the exact SHA, and the whole
@@ -288,3 +310,19 @@ and force an operator to edit the safety guard under pressure while production s
 Do not "tidy" it into symmetry.
 
 A named CLOSED historical claim in native preview preparation selects proof, not custody: a declared acting session may prepare only after the existing candidate path proves the uniquely selected claim, exact merged source PR, main ancestry, admitted issue/PR and complete scope/source/route gates. These checks run again under the preparation mutex. Any matching open claim, unreadable claim, malformed or ambiguous history, unmerged source or admission mismatch refuses before ready-record publication. OPEN claims still require their actual lease owner; this route neither adopts nor edits a historical claim.
+
+An explicit `migration_train_ref` on a mapped historical preview APPLY may qualify
+an immutable latest DISPATCHED **production** train through the existing automatic
+job. This narrow preview input has exactly two ordered versions from two authoring
+PRs, an exact current-main and recovered-source/merge map, full native source proof
+for both PRs and exactly one common open work issue. The last entry selects the
+source whose unchanged guarded-merge, durable verdict and current scope admission
+must pass before automatic review evidence or dispatch. A durable rejection still
+refuses. Other maps remain refused; ordinary single-source handling is unchanged.
+This route accepts preview proof only, never ephemeral substitution. It uses the
+same v2 evidence artifact and serial production workflow with the verified train
+ref; it creates no manual production authority. Genuine native train authorization
+and dry-run provenance remain prerequisites. After a workflow change, launch a new
+historical recovery on reviewed current main; original apply runs retain their
+native historical byte/provenance checks. Qualification is not database delivery
+or application acceptance, and current reviewer-capability blockers remain open.

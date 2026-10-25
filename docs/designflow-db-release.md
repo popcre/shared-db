@@ -271,3 +271,14 @@ bot identity never substitutes for cryptographic verification. Ordinary native
 checks receive no production credential; their database state claim is the signed
 read-only workflow observation, while central readiness still checks its own
 fresh ledger and catalogue.
+
+### Maintenance recovery while a migration rehearsal is pending
+
+The merge queue's preview ordering hold applies to migration-bearing groups.
+Maintenance may repair the evidence needed by a pending rehearsal; it creates no
+preview success status and grants no database authority. The next migration group
+selects the latest migration-bearing commit on main's first-parent history, even
+when maintenance commits intervened, and still requires that exact commit's
+successful rehearsal. Missing history, malformed identities and unreadable status
+remain refusals. Existing review, authorization, merge lock and production freeze
+checks apply to every group. Tracked with the delivery-evidence repair on #4655.

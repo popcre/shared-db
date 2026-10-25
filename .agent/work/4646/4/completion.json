@@ -6,10 +6,10 @@
   "migration_versions": [
     "20261025125632"
   ],
-  "contract_ref": "refs/db-contracts/4646/3",
-  "contract_sha256": "f7d7f80f497656889a30c9d26cbcf6201bad8caf89f6bf16bcef5c5fc0fd2ac9",
+  "contract_ref": "refs/db-contracts/4646/4",
+  "contract_sha256": "1e82e3164710fc1467af75a80f536c3c7af6bd3270f67b98070f67621d8548fe",
   "base_sha": "211c1290be6409605417308a4c1e1fe80598503e",
-  "head_sha": "ffca33ecdd49cb7d0153362f4d2808b238fb50fa",
+  "head_sha": "2e5deb4ed88e924b99cbdae1f34904f7226a1033",
   "files_changed": [
     "config/designflow-db-releases.json",
     "scripts/dflow-prod-milestone-schedule.test.mjs",
@@ -17,7 +17,8 @@
     "scripts/proofs/2873-contract.json",
     "scripts/proofs/2873-role-contract.sql",
     "scripts/proofs/shared-db-2873-observation.test.mjs",
-    "supabase/migrations/20261025125632_dflow_prod_milestone_schedule.sql"
+    "supabase/migrations/20261025125632_dflow_prod_milestone_schedule.sql",
+    "supabase/tests/dflow_prod_contract.sql"
   ],
   "db_reads": [
     "table dflow_prod.\"ProdOrderHeader\"",
@@ -36,7 +37,7 @@
     {
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
-      "evidence": "All static migration guards passed; no shared target executed. Output SHA256 abd5243ce578a3febe35f2f17d5124f82f8cc1c3095ce853724227a9a0b17e2e"
+      "evidence": "Static guards passed. Output SHA256 abd5243ce578a3febe35f2f17d5124f82f8cc1c3095ce853724227a9a0b17e2e"
     },
     {
       "command": "node --test scripts/proofs/shared-db-2873-observation.test.mjs",
@@ -46,7 +47,7 @@
     {
       "command": "DFLOW_TRACKING_TEST_CONTAINER=codex-milestone4646-owned-20261025 node --test scripts/dflow-prod-milestone-schedule.test.mjs",
       "exit_code": 0,
-      "evidence": "23 tests passed, zero skipped on owned network-none tmpfs PostgreSQL17; direct tracking runtime identity insert/S/U, denied DELETE/sequence, FKs, upsert, constraints, bad parents/roles, policy mutations; fixture removed after run. Output SHA256 f9844c4298b332b4e91c7bb3db19a7d1b126713666280dc88e3e7052860da7a3"
+      "evidence": "24 tests passed, zero skips; original23 functional tests plus actual frozen-baseline count queries unchanged after migration and detect unexpected new table+identity. Output SHA256 9e43a64db9702896e0c38453d275d166ba20c0c758517bc81a6a18551159a10f"
     },
     {
       "command": "node --test scripts/designflow-db-release.test.mjs scripts/lib/designflow-db-release.test.mjs",
@@ -60,7 +61,8 @@
     "No schema change from prior seventeen-field candidate; directtracking runtime and restrictive grants retained.",
     "Only central4646 requirement changed to4752; no peer source edits.",
     "Native review, merge, preview and automatic production not completed by this source report.",
-    "Superseded generation2 files and earlier generation3 draft retained in immutable Git history and native refs; final PR diff contains only current generation3 pair as native resolver requires."
+    "Superseded generation2 files and earlier generation3 draft retained in immutable Git history and native refs; final PR diff contains only current generation3 pair as native resolver requires.",
+    "Authentic CI sole nonquarantined failure expected103 tables found104 repaired by exact table and identity-sequence frozen baseline exclusions; original baseline103/97 unchanged. Superseded generation3 pair retained in immutable history/native ref, only current4 pair in PR diff."
   ],
   "stop_conditions_hit": []
 }

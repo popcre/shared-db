@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
-  "generation": 3,
+  "generation": 4,
   "evidence_parent": {
     "work_issue": 4646,
-    "generation": 2,
-    "contract_sha256": "13866af62ea0fde7b0fc05a184969808010abf623ff99503ac41e571913777b6"
+    "generation": 3,
+    "contract_sha256": "f7d7f80f497656889a30c9d26cbcf6201bad8caf89f6bf16bcef5c5fc0fd2ac9"
   },
   "work_issue": 4646,
   "work_type": "structural",
@@ -27,7 +27,10 @@
     ".agent/work/4646/2/contract.json",
     ".agent/work/4646/2/completion.json",
     ".agent/work/4646/3/contract.json",
-    ".agent/work/4646/3/completion.json"
+    ".agent/work/4646/3/completion.json",
+    "supabase/tests/dflow_prod_contract.sql",
+    ".agent/work/4646/4/contract.json",
+    ".agent/work/4646/4/completion.json"
   ],
   "file_writes": [
     "supabase/migrations/20261025125632_dflow_prod_milestone_schedule.sql",
@@ -41,7 +44,10 @@
     ".agent/work/4646/2/contract.json",
     ".agent/work/4646/2/completion.json",
     ".agent/work/4646/3/contract.json",
-    ".agent/work/4646/3/completion.json"
+    ".agent/work/4646/3/completion.json",
+    "supabase/tests/dflow_prod_contract.sql",
+    ".agent/work/4646/4/contract.json",
+    ".agent/work/4646/4/completion.json"
   ],
   "db_reads": [
     "table dflow_prod.\"ProdOrderHeader\"",
@@ -76,7 +82,8 @@
     "Production app acceptance is separate and needs exact one-PO reviewed feature activation",
     "Generation2 corrects pre-merge source completion checks only; independent review, guarded merge, preview, production and application acceptance remain separate mandatory gates, not falsely completed checks",
     "Own4750/version20261025124542 natively parked with source retained; fresh4753/version20261025125632 uses supported exact Codex chat label; unused prior7113 reviewer draw is not a provider failure",
-    "Source PR4752 resumes exactly as native park note instructs; prior generation2 records preserved immutable history"
+    "Source PR4752 resumes exactly as native park note instructs; prior generation2 records preserved immutable history",
+    "Generation4 updates frozen baseline count exclusions for new independently tested milestone table and identity sequence after authentic CI expected103 found104; baseline103/97 and all existing assertions remain unchanged."
   ],
   "stop_conditions": [
     "Native dependency or collision refusal",

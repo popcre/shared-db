@@ -28,7 +28,7 @@ name: Merge Queue Gate
 #   4. holds the group when the PRECEDING main commit added migrations until
 #      that exact commit carries `Post-merge preview rehearsal: success` —
 #      GitHub serializes merges, but only this gate knows a migration merge must
-#      rehearse on shared preview before the next migration merges;
+#      rehearse on shared preview before the next migration merges; maintenance may repair its evidence;
 #   5. publishes the required `Migration guarded merge authorization` commit
 #      status on the group SHA — success only after every proof above, failure
 #      (fail-closed) whenever any of them refuses.
@@ -189,7 +189,7 @@ jobs:
           node scripts/check-exact-head-approval.mjs
           node scripts/merge-queue-contract.mjs
 
-      - name: Require the previous main migration merge to have completed preview rehearsal
+      - name: Require the latest preceding migration merge to have completed preview rehearsal
         if: github.event_name == 'merge_group'
         env:
           GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
@@ -198,14 +198,12 @@ jobs:
           set -euo pipefail
           git fetch --no-tags origin main
           git cat-file -e "${BASE_SHA}^{commit}"
-          parent="$(git rev-parse "${BASE_SHA}^1")"
-          mapfile -t paths < <(git diff-tree --no-commit-id --name-only -r "$parent" "$BASE_SHA")
-          needs_preview="$(printf '%s\n' "${paths[@]}" | node --input-type=module -e "import { baseNeedsPreview } from './scripts/merge-queue-contract.mjs'; let s = ''; for await (const c of process.stdin) s += c; console.log(baseNeedsPreview(s.split(/\r?\n/).filter(Boolean)) ? 'yes' : 'no')")"
-          if [ "$needs_preview" = no ]; then
-            echo 'The preceding main commit added no migration; no preview hold is needed.'
+          target="$(node scripts/merge-queue-contract.mjs --preview-rehearsal-target --base-sha "$BASE_SHA" --group-sha "$GITHUB_SHA")"
+          if [ "$target" = none ]; then
+            echo 'This group changes no migration; shared-preview ordering is preserved for the next migration group.'
             exit 0
           fi
-          node scripts/merge-queue-contract.mjs --require-preview-rehearsal --sha "$BASE_SHA"
+          node scripts/merge-queue-contract.mjs --require-preview-rehearsal --sha "$target"
 
       - name: Publish fail-closed authorization when queue validation fails
         if: github.event_name == 'merge_group' && failure()

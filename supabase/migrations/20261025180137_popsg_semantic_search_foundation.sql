@@ -1,4 +1,5 @@
 -- Version: 20261025180137
+-- derived-from: 20260930185929
 -- Issue: popcre/shared-db#4437 (app u2giants/popdam3#107)
 -- PopSG semantic-plus-keyword search, stage 1: embedding foundation.
 --

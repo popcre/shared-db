@@ -1,4 +1,4 @@
--- #4646 / author claim #4750: production milestone persistence only.
+-- #4646 / author claim #4753: production milestone persistence only.
 -- derived-from: none
 -- Depends on #3869 database-applied: reuse its valid unique production-header ID index.
 -- New empty table only; no projections, parent index creation or source access changes.

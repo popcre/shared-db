@@ -5,7 +5,7 @@ import { isAbsolute } from 'node:path';
 import { spawnSync } from 'node:child_process';
 // Synthetic PostgreSQL container only; no production connection is accepted.
 const container=process.env.DFLOW_TRACKING_TEST_CONTAINER;
-const path=process.env.DFLOW_TRACKING_PROD_MIGRATION || new URL('../supabase/migrations/20261025124542_dflow_prod_milestone_schedule.sql',import.meta.url).pathname;
+const path=process.env.DFLOW_TRACKING_PROD_MIGRATION || new URL('../supabase/migrations/20261025125632_dflow_prod_milestone_schedule.sql',import.meta.url).pathname;
 if(path) assert.ok(isAbsolute(path),'migration path must be absolute');
 const migration=path?readFileSync(path,'utf8'):null;
 const skip=!container||!migration;

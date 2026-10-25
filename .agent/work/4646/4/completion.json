@@ -18,7 +18,9 @@
     "scripts/proofs/2873-role-contract.sql",
     "scripts/proofs/shared-db-2873-observation.test.mjs",
     "supabase/migrations/20261025125632_dflow_prod_milestone_schedule.sql",
-    "supabase/tests/dflow_prod_contract.sql"
+    "supabase/tests/dflow_prod_contract.sql",
+    ".agent/work/4646/3/contract.json",
+    ".agent/work/4646/3/completion.json"
   ],
   "db_reads": [
     "table dflow_prod.\"ProdOrderHeader\"",

@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "work_issue": 4655,
+  "outcome": "ready-for-merge",
+  "pr": 4774,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4655/49",
+  "contract_sha256": "bae7ce66c17b3a3b396e221ae6e5840017c645a17fafdb37f5e6ff0c76b3f030",
+  "base_sha": "85a37a9b8ce757c51a1c56274a307ef7bfb4a9b5",
+  "head_sha": "c0463a5c3d2d8c46b2833d30dbd5ed2708f45477",
+  "files_changed": [
+    ".github/workflows/tools-offline-tests.yml",
+    "config/production-verification-sidecar-registry.json",
+    "docs/designflow-db-release.md",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20261024234538.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_dflow_tracking_catalog_contract.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python3 -m unittest scripts.test_dflow_tracking_catalog_contract scripts.test_production_catalog_recovery_evidence",
+      "exit_code": 0,
+      "evidence": "..s............\n----------------------------------------------------------------------\nRan 15 tests in 0.017s\n\nOK (skipped=1)\n\nFull captured stdout/stderr SHA256: 29e43b5e21bee18576df4b34a82829bf686bfba4edb8b89f994ee7a89eb21394"
+    },
+    {
+      "command": "node --test scripts/lib/production-catalog-recovery.test.mjs scripts/designflow-db-release.test.mjs",
+      "exit_code": 0,
+      "evidence": "TAP version 13\n# Subtest: exact applied source plus current catalog contracts yields readiness, no dispatch\nok 1 - exact applied source plus current catalog contracts yields readiness, no dispatch\n  ---\n  duration_ms: 3.044594\n  type: 'test'\n  ...\n# Subtest: missing production proof dispatches only native promotion and never reports ready\nok 2 - missing production proof dispatches only native promotion and never reports ready\n  ---\n  duration_ms: 0.55048\n  type: 'test'\n  ...\n# Subtest: unmerged or altered canonical migration never dispatches or checks catalog\nok 3 - unmerged or altered canonical migration never dispatches or checks catalog\n  ---\n  duration_ms: 0.68932\n  type: 'test'\n  ...\n# Subtest: omitted baseline migration and weakened central contracts refuse\nok 4 - omitted baseline migration and weakened central contracts refuse\n  ---\n  duration_ms: 1.104864\n  type: 'test'\n  ...\n# Subtest: contract fingerprint does not permit an unapproved role or schema\nok 5 - contract fingerprin\n[bounded excerpt; full capture hash below]\ne current-live refuses expired certificate\n  ---\n  duration_ms: 0.115756\n  type: 'test'\n  ...\n# Subtest: native current-live refuses changed certificate digest\nok 103 - native current-live refuses changed certificate digest\n  ---\n  duration_ms: 0.116273\n  type: 'test'\n  ...\n# Subtest: native current-live refuses changed original pin\nok 104 - native current-live refuses changed original pin\n  ---\n  duration_ms: 0.134208\n  type: 'test'\n  ...\n# Subtest: native current-live refuses invented binding\nok 105 - native current-live refuses invented binding\n  ---\n  duration_ms: 0.187854\n  type: 'test'\n  ...\n# Subtest: native current-live refuses changed catalogue bytes\nok 106 - native current-live refuses changed catalogue bytes\n  ---\n  duration_ms: 0.142121\n  type: 'test'\n  ...\n# Subtest: native current-live refuses missing actual approval\nok 107 - native current-live refuses missing actual approval\n  ---\n  duration_ms: 0.261272\n  type: 'test'\n  ...\n# Subtest: native current-live refuses unreadable GitHub\nok 108 - native current-live refuses unreadable GitHub\n  ---\n  duration_ms: 0.23626\n  type: 'test'\n  ...\n# Subtest: retained exact inner ZIP and bundle roundtrip without artifact or log dependency\nok 109 - retained exact inner ZIP and bundle roundtrip without artifact or log dependency\n  ---\n  duration_ms: 22.40821\n  type: 'test'\n  ...\n# Subtest: bare ref, mutated signed authorizing fields, altered inner bytes and oversized retention refuse\nok 110 - bare ref, mutated signed authorizing fields, altered inner bytes and oversized retention refuse\n  ---\n  duration_ms: 154.789099\n  type: 'test'\n  ...\n# Subtest: native retained receipt permits authentic expiry or404 but rejects403/network and available mismatch\nok 111 - native retained receipt permits authentic expiry or404 but rejects403/network and available mismatch\n  ---\n  duration_ms: 104.968722\n  type: 'test'\n  ...\n1..111\n# tests 111\n# suites 0\n# pass 111\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 436.965394\n\nFull captured stdout/stderr SHA256: 284d315076aa5bfa7a15ba74eb4ba062eeefc5365cd6cfea0435c9dafa4d0b06"
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "GitHub transport conformance: 453 files scanned, every GitHub call goes through scripts/lib/github-transport.mjs.\n\nFull captured stdout/stderr SHA256: 4f65c89be34fd6ec3110b0617e5f33216d4a980f8d62d013b1b21a19526e491d"
+    },
+    {
+      "command": "node scripts/check-repository-identity-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (41 entries).\n\nFull captured stdout/stderr SHA256: f8fc9efe8e2e551bef107c31428a941f2adc9d99a824dc6249d88ffbe332085c"
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=369 sources=107 derived_digest=941b3641cd11\n\nFull captured stdout/stderr SHA256: 891e550986b5d02fbe86059e8d22802909ff6f2ce2204ea2eec7b6b0e1ff0d39"
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base 85a37a9b8ce757c51a1c56274a307ef7bfb4a9b5",
+      "exit_code": 0,
+      "evidence": "{\"status\":\"OK\",\"sidecars\":91,\"scans\":[{\"version\":\"20260621151155\",\"markers\":[259,304,308,344,348,372,376,397,401,430,456,460,506],\"sidecar\":true},{\"version\":\"20260701154948\",\"markers\":[66,81,85,90,94,99,103],\"sidecar\":true},{\"version\":\"20260710135600\",\"markers\":[11,43,46,69,72,118,121,124,141,144,163,222,235,239,243,247,251,255,259,263,267,271,274,277,280,283,286,289,292,295,298,301,304,307,310,313,316,320,324,328,332,336,340,344,348,352,356,360,364,368,372,375,378,381,384,387,390,393,396,399,402,405,408,411,414,417,420,423,426],\"sidecar\":true},{\"version\":\"20260710135700\",\"markers\":[655],\"sidecar\":true},{\"version\":\"20260710135900\",\"markers\":[11,34,49,67,71,75,79,83,87,90,93,96,100,104,108,112,116,120,124,127,130,133,136,139,142,145,148],\"sidecar\":true},{\"version\":\"20260710135950\",\"markers\":[11,14,43,62,70,80,94,104,133,143,158,161,164,167,170,173,176,179,182,191,194,205,215,222,232,243,255,258,261,264,267,270,279,282,291,301,311,320,343,366,376,386,411,425,428,431,434,437,440,450,462,4\n[bounded excerpt; full capture hash below]\n293,3297,3301,3305,3309,3313,3317,3321,3325,3329,3333,3337,3341,3345,3349,3353,3357,3361,3365,3369,3373,3377,3381,3385,3389,3393,3397,3401,3405,3409,3413,3417,3421,3425,3429,3433,3437,3441,3445,3449,3453,3457,3461,3465,3469,3473,3477,3481,3484,3487,3490,3493,3496,3499,3502,3505,3508,3511,3514,3517,3520,3523,3526,3529,3532,3535,3538,3541,3544,3547,3550,3553,3556,3559,3562,3565,3568,3571,3574,3577,3580,3583,3586,3589,3592,3595,3598,3601,3604,3607,3610,3613,3616,3619,3622,3625,3628,3631,3634,3637,3640,3643,3646,3649,3652,3655,3658,3661,3664,3667,3670,3673,3676,3679,3682,3685,3688,3691,3694,3697,3701,3705,3709,3713,3717,3721,3725,3729,3733,3737,3741,3745,3749,3753,3757,3761,3765,3769,3773,3777,3781,3785,3789,3793,3797,3801,3805,3809,3813,3817,3821,3825,3829,3833,3837,3841,3845,3849,3853,3857,3861,3865,3869,3873,3877,3881,3885,3889,3893,3897],\"sidecar\":true},{\"version\":\"20260727154500\",\"markers\":[11,19,23,27,30,33,36,43,58,62,65,144,148,151,229,233,236,561,565,568,571,828,832,835,838,967,971,974,977,980,985,1004,1011,1014,1023,1025,1042,1045,1055,1057,1074,1081,1084,1121,1124,1129,1134,1194,1197,1202,1207,1210,1213,1250,1253,1622,1626,1629,1632,1635,1647,1650,1723],\"sidecar\":true},{\"version\":\"20260807030000\",\"markers\":[325],\"sidecar\":true},{\"version\":\"20260823233716\",\"markers\":[67,71,131,139],\"sidecar\":true},{\"version\":\"20260825010603\",\"markers\":[],\"sidecar\":false},{\"version\":\"20260825031841\",\"markers\":[20],\"sidecar\":true},{\"version\":\"20260825050407\",\"markers\":[290],\"sidecar\":true},{\"version\":\"20260825082910\",\"markers\":[2313,2319,2323,2324,2325,2326,2327,2328,2329,2330,2331,2332,2333,2334,2335,2336,2337,2338,2339,2340,2342,2349,2360,2361,2362,2363,2364,2365,2367,2390,2392,2395,2396,2397,2398,2401,2405,2412,2415,2423,2428,2431,2445,2446,2447,2450,2507,2546,2559,2575,2576,2577,2578,2580,2582,2585,2617,2642,2659,2660,2680,2681,2691,2692,2705,2714,2725,2726,2727,2728,2729,2730,2731,2732,2733,2734,2735,2736,2737,2738,2739,2740,2741,2742,2743,2744,2746,2747],\"sidecar\":true}]}\n\nFull captured stdout/stderr SHA256: 1ffda3d324138a6ffdcf3cc283018c75e2cc6d487dee8145296515fffca63e5f"
+    },
+    {
+      "command": "DFLOW_TRACKING_CATALOG_DOCKER=1 python3 -m unittest scripts.test_dflow_tracking_catalog_contract",
+      "exit_code": 0,
+      "evidence": "....\n----------------------------------------------------------------------\nRan 4 tests in 2.468s\n\nOK\n\nFull captured stdout/stderr SHA256: 60978264b8c24833f1fd8d29b913c049793d9038b83f49f9592f1ac37827bb7c"
+    },
+    {
+      "command": "node scripts/check-workflow-yaml.mjs",
+      "exit_code": 0,
+      "evidence": "OK: 49 workflow YAML files parse clean with no conflict markers (/home/ahazan/.codex/worktrees/b54b/shared-db/.github/workflows)\n\nFull captured stdout/stderr SHA256: b7558357ee2b35c042f99c94238b8691ccc447a045deaf147b52c64ea5c3ee36"
+    },
+    {
+      "command": "node --test scripts/check-workflow-yaml.test.mjs",
+      "exit_code": 0,
+      "evidence": "TAP version 13\n# Subtest: parser accepts: plain mapping\nok 1 - parser accepts: plain mapping\n  ---\n  duration_ms: 1.480584\n  type: 'test'\n  ...\n# Subtest: parser accepts: nested mapping and sequence\nok 2 - parser accepts: nested mapping and sequence\n  ---\n  duration_ms: 0.322334\n  type: 'test'\n  ...\n# Subtest: parser accepts: sequence at the same indent as its key\nok 3 - parser accepts: sequence at the same indent as its key\n  ---\n  duration_ms: 0.144861\n  type: 'test'\n  ...\n# Subtest: parser accepts: block literal with chomping and comment\nok 4 - parser accepts: block literal with chomping and comment\n  ---\n  duration_ms: 0.164505\n  type: 'test'\n  ...\n# Subtest: parser accepts: block folded header with comment\nok 5 - parser accepts: block folded header with comment\n  ---\n  duration_ms: 0.144753\n  type: 'test'\n  ...\n# Subtest: parser accepts: block scalar indent indicator\nok 6 - parser accepts: block scalar indent indicator\n  ---\n  duration_ms: 0.055258\n  type: 'test'\n  ...\n# Subtest: \n[bounded excerpt; full capture hash below]\n quote\n  ---\n  duration_ms: 0.036533\n  type: 'test'\n  ...\n# Subtest: parser refuses: unterminated single quote\nok 44 - parser refuses: unterminated single quote\n  ---\n  duration_ms: 0.031955\n  type: 'test'\n  ...\n# Subtest: parser refuses: unclosed flow sequence\nok 45 - parser refuses: unclosed flow sequence\n  ---\n  duration_ms: 0.029226\n  type: 'test'\n  ...\n# Subtest: parser refuses: bad indentation of a mapping entry\nok 46 - parser refuses: bad indentation of a mapping entry\n  ---\n  duration_ms: 0.173787\n  type: 'test'\n  ...\n# Subtest: parser refuses: stray content after the document node\nok 47 - parser refuses: stray content after the document node\n  ---\n  duration_ms: 0.107784\n  type: 'test'\n  ...\n# Subtest: parser produces the structure it claims to\nok 48 - parser produces the structure it claims to\n  ---\n  duration_ms: 0.808851\n  type: 'test'\n  ...\n# Subtest: conflict markers are detected on raw lines, column 0 only\nok 49 - conflict markers are detected on raw lines, column 0 only\n  ---\n  duration_ms: 0.213278\n  type: 'test'\n  ...\n# Subtest: checkWorkflowText refuses a marker-corrupted workflow and names the marker lines\nok 50 - checkWorkflowText refuses a marker-corrupted workflow and names the marker lines\n  ---\n  duration_ms: 0.263921\n  type: 'test'\n  ...\n# Subtest: the real .github/workflows directory passes the guard\nok 51 - the real .github/workflows directory passes the guard\n  ---\n  duration_ms: 12.814062\n  type: 'test'\n  ...\n# Subtest: a marker-corrupted COPY of the real directory is refused (never touch the real files)\nok 52 - a marker-corrupted COPY of the real directory is refused (never touch the real files)\n  ---\n  duration_ms: 4.383048\n  type: 'test'\n  ...\n# Subtest: an empty workflow directory is refused, not a vacuous pass\nok 53 - an empty workflow directory is refused, not a vacuous pass\n  ---\n  duration_ms: 0.130658\n  type: 'test'\n  ...\n1..53\n# tests 53\n# suites 0\n# pass 53\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 127.008978\n\nFull captured stdout/stderr SHA256: f60d0c86c04c66a047e0b057761c6c6b7ea8de3be9bb7f5fb05191c1d35a0b28"
+    }
+  ],
+  "assumptions_resolved": [
+    "Each required command was freshly executed separately and its actual stdout/stderr captured; evidence is the real output or marked bounded excerpt, with raw capture hash.",
+    "Exact PostgreSQL17 source-derived view hash and index/RLS/policy/grant-option mutation negatives pass; fixture is now wired into normal tools CI.",
+    "Assigned DeepSeek REJECT of generation46/head ec2699f02ff71549cd5ffc0e87bfb95b63a4f0fd remains immutable at f658b025296dc0d5937a06845e5537543e0b4095; prior46 pair preserved in ancestry and private copy, not rewritten.",
+    "All existing source/approval/production/retention checks remain. No genuine current-live certificate, database-applied stage or application acceptance is claimed."
+  ],
+  "stop_conditions_hit": []
+}

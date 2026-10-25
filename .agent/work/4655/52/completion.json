@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/4655/52",
   "contract_sha256": "e2c0ee90302a1c146fc4b3b11f5a7ed32e4ea0f78e92261bdddcb0101fbd800a",
-  "base_sha": "07dca16e7614162cc2e6e9cacb28b307dc42222",
+  "base_sha": "07dca16e7614162cc2e6e9cacb28b307dc42222d",
   "head_sha": "feca7cdb0f1fcb0dc4601a2383a9adcfd1508a12",
   "files_changed": [
     "docs/designflow-db-release.md",
@@ -40,7 +40,8 @@
     "Real native Database Contract Tests40231840088 succeeded on exact implementationfeca7cdb0f1fcb0dc4601a2383a9adcfd1508a12, before evidence metadata was written.",
     "Artifact12613812802 sha256:304c204ffe6205c714c9ba85b8485aa75c6885ac8e54ecaffda0a648cdfaf035 retains the full raw test log SHA2565479ff706e85ce50a9c2883828916c0316d4a2b49d40adb2612d3fde7e740d13. Independently verified all198 unique cardinality-command-sample-variant combinations, exact returned rows and raw-plan row counts, nine summaries, ten measured samples plus one warmup per variant, zero regression flags.",
     "The30s setting and workflow job budget remain. Aggregate timer boundary intentionally becomes per command/cardinality batch; role, DML rollback, final restoration and raw evidence controls remain. This is local synthetic proof only, no shared-preview/production or live RLS acceptance.",
-    "Producer4774 source and its approval remain unchanged while this separate fixture repair proceeds; foreign completed4759 and4755 are preserved."
+    "Producer4774 source and its approval remain unchanged while this separate fixture repair proceeds; foreign completed4759 and4755 are preserved.",
+    "Immutable pre-work contract52 base is the unambiguous39-character Git prefix of current main; Git resolves it to full 07dca16e7614162cc2e6e9cacb28b307dc42222d. This completion binds the full actual merge base; the published contract is not rewritten."
   ],
   "stop_conditions_hit": []
 }

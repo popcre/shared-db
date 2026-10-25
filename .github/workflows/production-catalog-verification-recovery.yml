@@ -145,8 +145,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           CURRENT_LIVE_OUTPUT: ${{ runner.temp }}/current-live
-          CURRENT_LIVE_INPUTS: >-
-            {"main_sha":"${{ inputs.main_sha }}","apply_main_sha":"${{ inputs.apply_main_sha }}","source_pr":"${{ inputs.source_pr }}","work_issue":"${{ inputs.work_issue }}","original_run_id":"${{ inputs.apply_run_id }}","original_attempt":"${{ inputs.original_attempt }}","original_artifact_id":"${{ inputs.original_artifact_id }}","original_artifact_digest":"${{ inputs.apply_artifact_digest }}","ordered_allowlist":"${{ inputs.ordered_allowlist }}"}
+          CURRENT_LIVE_INPUTS: ${{ toJSON(inputs) }}
         run: node scripts/designflow-db-release.mjs --reverify-current-live
       - name: Attest exact metadata-only current-live certificate
         id: current-live-attestation

@@ -602,6 +602,23 @@ function exactPositive(value) {
   if(typeof value!=='number'&&!/^[1-9][0-9]*$/.test(String(value)))throw Error('Exact positive identity required');
   const n=Number(value);if(!Number.isSafeInteger(n)||n<1)throw Error('Current-live positive identity required');return n;
 }
+export function parseCurrentLiveInputs(raw){
+ // Workflow inputs are a flat string map. Parse its original tokens so duplicate
+ // keys cannot be silently replaced by JSON.parse, even outside Actions.
+ if(typeof raw!=='string'||raw.length>8192)throw Error('Bounded workflow inputs required');
+ const parsed=JSON.parse(raw);if(!parsed||Array.isArray(parsed)||typeof parsed!=='object'||Object.values(parsed).some(v=>typeof v!=='string'))throw Error('Flat string input map required');
+ let at=0;const space=()=>{while(/\s/.test(raw[at]??'')&&at<raw.length)at++};
+ const token=()=>{space();const m=/^"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"/.exec(raw.slice(at));if(!m)throw Error('Flat string workflow input required');at+=m[0].length;return JSON.parse(m[0])};
+ space();if(raw[at++]!=='{')throw Error('Workflow input object required');const values={};
+ space();while(raw[at]!=='}'){
+  const key=token();if(Object.hasOwn(values,key))throw Error('Duplicate workflow input');space();if(raw[at++]!==':')throw Error('Input separator required');values[key]=token();space();if(raw[at]===','){at++;continue}if(raw[at]!=='}')throw Error('Input map malformed');
+ }
+ at++;space();if(at!==raw.length)throw Error('Trailing workflow input');
+ const keys=['mode','source_pr','work_issue','original_attempt','original_artifact_id','main_sha','apply_main_sha','ordered_allowlist','apply_run_id','apply_artifact_digest'];
+ if(Object.keys(values).length!==keys.length||keys.some(k=>!Object.hasOwn(values,k))||values.mode!=='current-live-reverification')throw Error('Exact current-live workflow inputs required');
+ if(!SHA.test(values.main_sha)||!SHA.test(values.apply_main_sha)||!/^sha256:[a-f0-9]{64}$/.test(values.apply_artifact_digest)||!/^\d{14}(?:,\d{14})*$/.test(values.ordered_allowlist)||new Set(values.ordered_allowlist.split(',')).size!==values.ordered_allowlist.split(',').length)throw Error('Exact current-live source bindings required');
+ return {main_sha:values.main_sha,apply_main_sha:values.apply_main_sha,ordered_allowlist:values.ordered_allowlist,source_pr:exactPositive(values.source_pr),work_issue:exactPositive(values.work_issue),original_run_id:exactPositive(values.apply_run_id),original_attempt:exactPositive(values.original_attempt),original_artifact_id:exactPositive(values.original_artifact_id),original_artifact_digest:values.apply_artifact_digest};
+}
 function assertAncestor(base,head) {
   const c=api(`repos/${CANONICAL}/compare/${base}...${head}`);
   if(!['ahead','identical'].includes(c.status)||c.behind_by!==0)throw Error('Current-live producer ancestry refused');
@@ -656,7 +673,7 @@ function recheckProducerCounter(producer) {
 }
 async function runCurrentLiveReverification() {
   if(process.env.GITHUB_REPOSITORY!==CANONICAL||process.env.GITHUB_REF!=='refs/heads/main')throw Error('Current-live proof only runs on canonical main');
-  const input=JSON.parse(process.env.CURRENT_LIVE_INPUTS??'null');if(!input||input.main_sha!==process.env.GITHUB_SHA||(process.env.GITHUB_WORKFLOW_SHA&&process.env.GITHUB_WORKFLOW_SHA!==input.main_sha)||!SHA.test(input.main_sha))throw Error('Exact current verifier main required');
+  const input=parseCurrentLiveInputs(process.env.CURRENT_LIVE_INPUTS);if(!input||input.main_sha!==process.env.GITHUB_SHA||(process.env.GITHUB_WORKFLOW_SHA&&process.env.GITHUB_WORKFLOW_SHA!==input.main_sha)||!SHA.test(input.main_sha))throw Error('Exact current verifier main required');
   if(api(`repos/${CANONICAL}/commits/main`).sha!==input.main_sha||execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()!==input.main_sha)throw Error('Verifier main changed');
   const source_pr=exactPositive(input.source_pr),work_issue=exactPositive(input.work_issue),versions=String(input.ordered_allowlist??'').split(',');
   if(!versions.length||versions.some(v=>!/^\d{14}$/.test(v))||new Set(versions).size!==versions.length)throw Error('Exact ordered versions required');

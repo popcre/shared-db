@@ -405,3 +405,10 @@ test('artifact absence accepts authenticated exact404 only, never transport/auth
  assert.equal(authenticatedMissingArtifact(error),true);
  for(const e of [{}, {...error,transientTransport:true},{...error,rateLimitExhausted:true},{stdout:error.stdout.replace('404 Not Found','403 Forbidden')},{stdout:error.stdout.replace('Not Found\",','Unauthorized\",')},{stdout:'HTTP/2 404\n\nnot json'},{stdout:'HTTP/2 200\n\n'+error.stdout}])assert.throws(()=>authenticatedMissingArtifact(e));
 });
+
+import {parseCurrentLiveInputs} from './designflow-db-release.mjs';
+function currentLiveInputs(){return {mode:'current-live-reverification',source_pr:'4735',work_issue:'3869',original_attempt:'1',original_artifact_id:'30',main_sha:'a'.repeat(40),apply_main_sha:'b'.repeat(40),ordered_allowlist:'20261024234538',apply_run_id:'10',apply_artifact_digest:'sha256:'+'c'.repeat(64)}}
+test('workflow JSON inputs preserve quoted values and reject duplicate/unknown identity keys',()=>{
+ const input=currentLiveInputs();assert.equal(parseCurrentLiveInputs(JSON.stringify(input)).original_run_id,10);
+ for(const raw of [JSON.stringify({...input,source_pr:'4735","main_sha":"'+'d'.repeat(40)}),JSON.stringify(input).replace('"source_pr":"4735"','"source_pr":"4735","source_pr":"4736"'),JSON.stringify(input).replace('"main_sha":','"m\\u0061in_sha":"'+'d'.repeat(40)+'","main_sha":'),JSON.stringify({...input,unknown:'value'}),JSON.stringify({...input,mode:'legacy-catalog-failure'}),JSON.stringify({...input,work_issue:3869}),JSON.stringify({...input,source_pr:'1e3'}),JSON.stringify(input).slice(0,-1)+',}'])assert.throws(()=>parseCurrentLiveInputs(raw));
+});

@@ -291,8 +291,10 @@ archive: `validateCurrentLiveBinding` deliberately refuses that report, even whe
 the enforcing catalogue verifier exits successfully. Recovery run 40220100990
 exposed this missing coverage; it produced no certificate and reapplied nothing.
 
-The exact-hash sidecar for `20261024234538` supplies a fixed verifier-owned
-installed-state contract for the Tracking link view and its bounded access model.
+Trusted main must first register the fixed verifier-owned installed-state contract
+for the Tracking link view and its bounded access model. Only after that registration
+lands may a separate change add the exact-hash sidecar for `20261024234538`;
+the guarded merge checker deliberately rejects an unknown contract before then.
 It does not authorize SQL from sidecar input, change the applied migration, claim
 historical ledger changes, settle unrelated role drift, or prove application
 acceptance. The same signed certificate, original-attempt identity, approval,

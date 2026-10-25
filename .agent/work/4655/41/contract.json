@@ -1,0 +1,87 @@
+{
+  "allowed_paths": [
+    ".github/workflows/production-catalog-verification-recovery.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "scripts/production_catalog_recovery_evidence.py",
+    "scripts/test_production_catalog_recovery_evidence.py",
+    "scripts/lib/production-catalog-recovery.mjs",
+    "scripts/lib/production-catalog-recovery.test.mjs",
+    "scripts/designflow-db-release.mjs",
+    "scripts/designflow-db-release.test.mjs",
+    "docs/designflow-db-release.md",
+    "docs/verification/throughput-dispositions/scripts~designflow-db-release.mjs.json",
+    "scripts/db-flow/outcome-lifecycle.mjs",
+    "scripts/db-flow/admission-outcome.test.mjs",
+    "scripts/publish-work-stage-evidence.mjs",
+    "scripts/publish-work-stage-evidence.test.mjs",
+    "scripts/lib/current-live-attestation.mjs",
+    "scripts/lib/current-live-attestation.test.mjs",
+    "docs/verification/throughput-dispositions/scripts~lib~current-live-attestation.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~publish-work-stage-evidence.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~lib~production-catalog-recovery.mjs.json",
+    ".agent/work/4655/41/**"
+  ],
+  "assumptions": [
+    "Root selected separate existing recovery workflow mode, not a new apply engine; no database writes/app acceptance authority.",
+    "Original archive remains preferred; only positive authenticated404 or verifiedexpiration permits separate current-state proof.",
+    "No push/PR/merge/production run until root ends milestone window.",
+    "Existing24milestonePG17 suite wiring only when source4752 is available in current canonical main.",
+    "Root authorizes GitHub-only native typed certificate verification; fresh ledger and catalogue run only in existing read-only Recovery and existing central production observer. No credentials added to ordinary native checks.",
+    "Root authorizes thin existing native stage publisher CLI: default verify-only, explicit publish, exact existing evidence comment; no generic admission/reopen/DB credentials.",
+    "Root chose official pinned GitHub artifact attestation of metadata-only inner ZIP and bounded retention of ZIP+bundle; exact signed workflow/source/run/attempt/repositoryID+ownerID and OIDC issuer mandatory. Never bare ref/log-only fallback. New job only id-token and attestations write; no database write or new credential."
+  ],
+  "base_sha": "c349d2a2801aac0c730cc68c5becf81540f8f880",
+  "branch": "codex/dflow-current-live-reverification",
+  "db_reads": [],
+  "db_writes": [],
+  "dispatcher": "Codex root chat01a16a92-7296-7f42-9465-79db583ec931 on edge-dev3",
+  "evidence_parent": {
+    "work_issue": 4655,
+    "generation": 40,
+    "contract_sha256": "b38426675649a91e83374d9db63809601d7e0759b90975513bd171ebad590dd8"
+  },
+  "file_writes": [
+    ".github/workflows/production-catalog-verification-recovery.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "scripts/production_catalog_recovery_evidence.py",
+    "scripts/test_production_catalog_recovery_evidence.py",
+    "scripts/lib/production-catalog-recovery.mjs",
+    "scripts/lib/production-catalog-recovery.test.mjs",
+    "scripts/designflow-db-release.mjs",
+    "scripts/designflow-db-release.test.mjs",
+    "docs/designflow-db-release.md",
+    "docs/verification/throughput-dispositions/scripts~designflow-db-release.mjs.json",
+    "scripts/db-flow/outcome-lifecycle.mjs",
+    "scripts/db-flow/admission-outcome.test.mjs",
+    "scripts/publish-work-stage-evidence.mjs",
+    "scripts/publish-work-stage-evidence.test.mjs",
+    "scripts/lib/current-live-attestation.mjs",
+    "scripts/lib/current-live-attestation.test.mjs",
+    "docs/verification/throughput-dispositions/scripts~lib~current-live-attestation.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~publish-work-stage-evidence.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~lib~production-catalog-recovery.mjs.json",
+    ".agent/work/4655/41/**"
+  ],
+  "generation": 41,
+  "goal": "Add separate strictly typed verification-only current-live proof for original successful production attempt with authentically unavailable archive; retain legacy routes and source/evidence refusals, wire existing milestone PG17 tests when available",
+  "prohibited_actions": [
+    "No migration/schema/data/ledger writes, app actions/credentials/statuses, production dispatch, source push/PR/merge.",
+    "No legacy schema reinterpretation, fabricated historical before/after or old ZIP reassignment."
+  ],
+  "required_checks": [
+    "python3 -m unittest scripts.test_production_catalog_recovery_evidence",
+    "node --test scripts/lib/production-catalog-recovery.test.mjs scripts/designflow-db-release.test.mjs scripts/db-flow/admission-outcome.test.mjs scripts/publish-work-stage-evidence.test.mjs scripts/lib/current-live-attestation.test.mjs",
+    "node scripts/check-github-transport-conformance.mjs",
+    "node scripts/check-repository-identity-conformance.mjs",
+    "node scripts/check-throughput-truth-audit.mjs"
+  ],
+  "route": "repo-maintenance",
+  "schema_version": 2,
+  "stop_conditions": [
+    "Stop on necessary authority/design expansion, never fabricate historical artifacts or relax original source/refusal checks."
+  ],
+  "work_issue": 4655,
+  "work_type": "repo-maintenance",
+  "worker": "codex",
+  "worktree": "/tmp/dflow-current-live-reverification"
+}

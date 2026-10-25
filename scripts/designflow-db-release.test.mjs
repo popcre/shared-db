@@ -393,3 +393,15 @@ test('canonical tracking/frontend baselines require the actual successor and rej
  }
  assert.deepEqual(policy.repositories.find(a=>a.repository==='popcre/designflow-backend').required_sources,[{work_issue:4638,source_pr:4640},{work_issue:4634,source_pr:4636}]);
 });
+
+import {parseOriginalUpload,authenticatedMissingArtifact} from './designflow-db-release.mjs';
+test('original upload requires exactly one authenticated log identity',()=>{
+ const sha='a'.repeat(40),hex='b'.repeat(64),log=`Artifact ID 12\nSHA256 digest of uploaded artifact zip is ${hex}\nArtifact production-migration-apply-${sha}.zip successfully finalized\n`;
+ assert.equal(parseOriginalUpload(log,{head_sha:sha},3).artifact_id,12);
+ for(const text of ['',log+'Artifact ID 13\n',log+`SHA256 digest of uploaded artifact zip is ${'c'.repeat(64)}\n`,log.replace(sha,'d'.repeat(40))])assert.throws(()=>parseOriginalUpload(text,{head_sha:sha},3));
+});
+test('artifact absence accepts authenticated exact404 only, never transport/auth failures',()=>{
+ const error={stdout:'HTTP/2.0 404 Not Found\r\nContent-Type: application/json\r\n\r\n{"message":"Not Found","status":"404"}'};
+ assert.equal(authenticatedMissingArtifact(error),true);
+ for(const e of [{}, {...error,transientTransport:true},{...error,rateLimitExhausted:true},{stdout:error.stdout.replace('404 Not Found','403 Forbidden')},{stdout:error.stdout.replace('Not Found\",','Unauthorized\",')},{stdout:'HTTP/2 404\n\nnot json'},{stdout:'HTTP/2 200\n\n'+error.stdout}])assert.throws(()=>authenticatedMissingArtifact(e));
+});

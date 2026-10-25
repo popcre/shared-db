@@ -320,7 +320,16 @@ jobs:
           done
           test "$ready" = true
           DFLOW_UPC_TEST_CONTAINER="$container" node --test scripts/dflow-prod-item-upc-read-contract.test.mjs
+          DFLOW_TRACKING_TEST_CONTAINER="$container" node --test scripts/dflow-prod-milestone-schedule.test.mjs
           DFLOW_TRACKING_ACCESS_TEST_CONTAINER="$container" node --test scripts/proofs/shared-db-2873-observation.test.mjs scripts/proofs/dflow-tracking-access-exception.test.mjs
+
+      - name: Test the exact Tracking catalogue against isolated PostgreSQL17
+        if: steps.route.outputs.pure_prose != 'true'
+        run: DFLOW_TRACKING_CATALOG_DOCKER=1 python3 -m unittest scripts.test_dflow_tracking_catalog_contract
+
+      - name: Test separate current-live evidence and native stage publication
+        if: steps.route.outputs.pure_prose != 'true'
+        run: node --test scripts/lib/production-catalog-recovery.test.mjs scripts/lib/current-live-attestation.test.mjs scripts/designflow-db-release.test.mjs scripts/db-flow/admission-outcome.test.mjs scripts/publish-work-stage-evidence.test.mjs
 
       - name: Run the self-hosted runner router tests
         # Named explicitly: scripts/*.test.mjs has no glob. Proves every state

@@ -224,6 +224,15 @@ ALTER_RELATION_RE = re.compile(
     r"^\s*alter\s+(table|view|materialized\s+view|foreign\s+table)\s+"
     rf"(if\s+exists\s+)?(?:only\s+)?{QUALIFIED}"
 )
+# Issue #4761: `alter function <name>(<args>) set|reset <setting>` changes only
+# `pg_proc.proconfig`. It names a routine that must still exist and a setting
+# whose presence is a catalog fact, so it is derived and checked rather than
+# leaving the batch with "nothing to verify" (production run 40209290700).
+ALTER_ROUTINE_SETTING_RE = re.compile(
+    rf"^\s*alter\s+(?:function|procedure|routine)\s+{QUALIFIED}\s*(\([^()]*\))?\s+"
+    rf"(set|reset)\s+({IDENT}|all)\b"
+)
+ALTER_ROUTINE_HEAD_RE = re.compile(r"^\s*alter\s+(?:function|procedure|routine)\b")
 ALTER_SCHEMA_RENAME_RE = re.compile(
     rf"^\s*alter\s+schema\s+({IDENT})\s+rename\s+to\s+({IDENT})\s*$"
 )
@@ -1677,6 +1686,7 @@ class Targets:
         noop_declaration: dict | None = None,
         indexes: set[tuple[str, str]] | None = None,
         schema_renames: set[tuple[str, str, str | None]] | None = None,
+        function_settings: list[tuple[str, str | None, str, str]] | None = None,
     ) -> None:
         # ORDER IS LOAD-BEARING and must be the order the statements appear in,
         # not sorted: a batch may `grant` a privilege and then `revoke` it, and
@@ -1699,6 +1709,9 @@ class Targets:
         self.seeded = sorted(seeded)
         self.indexes = sorted(indexes or set())
         self.schema_renames = sorted(schema_renames or set())
+        # (family, normalized signature or None, setting, "set"|"reset"), in
+        # statement order with only the last word per routine+setting kept.
+        self.function_settings = list(function_settings or [])
         # Relations an `... if exists` statement named. Read if present, NEVER
         # required: the migration said in its own SQL that it tolerates absence.
         self.optional = sorted(set(optional or set()) - set(tables) - set(views))
@@ -1732,6 +1745,7 @@ class Targets:
             or self.privileges
             or self.indexes
             or self.schema_renames
+            or self.function_settings
         )
 
     def as_dict(self) -> dict[str, list[str]]:
@@ -1747,6 +1761,10 @@ class Targets:
             "schema_renames": [
                 f"{source}|{destination}|{comment if comment is not None else ''}"
                 for source, destination, comment in self.schema_renames
+            ],
+            "function_settings": [
+                f"{signature or family}|{action}|{setting}"
+                for family, signature, setting, action in self.function_settings
             ],
             "privilege_assertions": [e.describe() for e in self.privileges],
             "unassertable_statements": self.notes,
@@ -2810,6 +2828,7 @@ def derive_targets(migrations: dict[str, Path], allowlist: list[str]) -> Targets
     indexes: set[tuple[str, str]] = set()
     schema_rename_pairs: set[tuple[str, str]] = set()
     schema_comments: dict[str, str] = {}
+    settings: dict[tuple[str, str | None, str], tuple[str, str | None, str, str]] = {}
 
     for version in allowlist:
         path = migrations.get(version)
@@ -2850,6 +2869,29 @@ def derive_targets(migrations: dict[str, Path], allowlist: list[str]) -> Targets
                     notes.append(f"{version}: excluded session-temporary routine `{name}` from durable catalog verification")
                 else:
                     functions.add(name)
+                    # CREATE OR REPLACE rewrites proconfig from its own SET
+                    # clauses; an earlier ALTER ... SET no longer describes it.
+                    settings = {k: v for k, v in settings.items() if k[0] != name}
+                continue
+            if match := ALTER_ROUTINE_SETTING_RE.match(statement):
+                name = f"{match.group(1)}.{match.group(2)}"
+                arguments, action, setting = match.group(3), match.group(4), match.group(5)
+                functions.add(name)
+                signature = None
+                if arguments is not None:
+                    signature, problem = normalize_function_acl_signature(name + arguments)
+                    if signature is None:
+                        notes.append(f"{version}: routine setting target `{name}{arguments}` is checked by family only: {problem}")
+                if setting == "all":
+                    settings = {k: v for k, v in settings.items() if k[:2] != (name, signature)}
+                settings.pop((name, signature, setting), None)
+                settings[(name, signature, setting)] = (name, signature, setting, action)
+                continue
+            if ALTER_ROUTINE_HEAD_RE.match(statement):
+                notes.append(
+                    f"{version}: ALTER of a routine was not safely parseable and was not "
+                    f"silently accepted: `{statement.strip()[:240]}`"
+                )
                 continue
             if match := CREATE_POLICY_RE.match(statement):
                 rls.add(f"{match.group(1)}.{match.group(2)}")
@@ -2964,7 +3006,53 @@ def derive_targets(migrations: dict[str, Path], allowlist: list[str]) -> Targets
         noop_declaration=noop,
         indexes=indexes,
         schema_renames=schema_renames,
+        function_settings=list(settings.values()),
     )
+
+
+def _render_function_settings(add, targets: Targets, data: dict) -> list[str]:
+    """Check `alter routine ... set|reset` against `pg_proc.proconfig` (#4761).
+
+    Only the setting NAME is asserted: strip_sql blanks literals, so the value is
+    not compared. A SET whose name is absent, a RESET whose name is still present,
+    or a literal signature that resolves to no routine is a HARD FAIL.
+    """
+    if not targets.function_settings:
+        return []
+    failures: list[str] = []
+    families = {row.get("name"): row.get("overloads") or [] for row in data.get("functions") or []}
+    oids = {row.get("signature"): row.get("oid") for row in data.get("function_setting_signatures") or []}
+    add("## Routine settings (`pg_proc.proconfig`)")
+    add("")
+    add("| routine | statement | setting | proconfig | verdict |")
+    add("| --- | --- | --- | --- | --- |")
+    for family, signature, setting, action in targets.function_settings:
+        overloads = families.get(family) or []
+        label = signature or family
+        if signature is not None:
+            oid = oids.get(signature)
+            overloads = [o for o in overloads if oid is not None and str(o.get("oid")) == str(oid)]
+            if len(overloads) != 1:
+                add(f"| `{label}` | {action} | `{setting}` | | **FAIL** |")
+                failures.append(f"{label}: routine named by `alter ... {action} {setting}` does not resolve to exactly one overload")
+                continue
+        elif len(overloads) != 1:
+            add(f"| `{label}` | {action} | `{setting}` | | RECORD |")
+            continue
+        config = [str(x) for x in overloads[0].get("config") or []]
+        names = {entry.split("=", 1)[0] for entry in config}
+        if action == "set":
+            ok = setting in names
+        elif setting == "all":
+            ok = not config
+        else:
+            ok = setting not in names
+        shown = ", ".join(f"`{x}`" for x in config) or "_none_"
+        add(f"| `{label}` | {action} | `{setting}` | {shown} | {'PASS' if ok else '**FAIL**'} |")
+        if not ok:
+            failures.append(f"{label}: `alter ... {action} {setting}` applied but proconfig does not reflect it")
+    add("")
+    return failures
 
 
 def diagnose_catalog_coverage(repo_root: Path, allowlist: list[str]) -> dict[str, Any]:
@@ -3023,6 +3111,8 @@ def build_catalog_sql(targets: Targets) -> str:
     signature_values = "array[" + ", ".join("'" + x.replace("'", "''") + "'" for x in signatures) + "]::text[]"
     normalized_signatures = [normalize_function_acl_signature(x)[0] for x in signatures]
     normalized_values = "array[" + ", ".join("NULL" if x is None else "'" + x.replace("'", "''") + "'" for x in normalized_signatures) + "]::text[]"
+    setting_values = sorted({row[1] for row in targets.function_settings if row[1] is not None})
+    setting_signatures = "array[" + ", ".join("'" + x.replace("'", "''") + "'" for x in setting_values) + "]::text[]"
     index_names = _sql_array([row[0] for row in targets.indexes])
     index_relations = _sql_array([row[1] for row in targets.indexes])
     schema_names = _sql_array(
@@ -3173,6 +3263,11 @@ select jsonb_build_object(
     from rel
     join pg_class c on c.oid = rel.oid
     cross join lateral aclexplode(c.relacl) a), '[]'::jsonb),
+  'function_setting_signatures', coalesce((
+    select jsonb_agg(jsonb_build_object('signature', signature,
+      'oid', to_regprocedure(signature)::oid::text) order by signature)
+    from unnest({setting_signatures}) as s(signature)
+  ), '[]'::jsonb),
   'function_acl_signatures', coalesce((
     select jsonb_agg(jsonb_build_object('signature', signature,
       'oid', to_regprocedure(normalized_signature)::oid::text) order by signature)
@@ -3188,6 +3283,7 @@ select jsonb_build_object(
           'prokind', p.prokind::text,
           'owner', pg_get_userbyid(p.proowner),
           'has_definition', pg_get_functiondef(p.oid) is not null,
+          'config', coalesce(to_jsonb(p.proconfig), '[]'::jsonb),
           -- FUNCTION PRIVILEGES (issue #697 review, H1). Without these the
           -- report showed a function existing with a readable definition and
           -- said NOTHING about whether its revoke took -- while a section
@@ -4177,6 +4273,7 @@ def render_report(
                 f"`{overload.get('prokind')}` | {overload.get('has_definition')} |"
             )
     add("")
+    failures.extend(_render_function_settings(add, targets, data))
 
     add("## Function privileges (`proacl` + `has_function_privilege`)")
     add("")
@@ -5361,6 +5458,44 @@ and exists(select 1 from pg_proc p where p.oid=to_regprocedure('public.get_dam_o
 # Owner: #2421. Generated verbatim from its authoritative committed probe;
 # the equality test requires regeneration whenever that source changes.
 CATALOG_CONTRACTS["style_group_differential_installed_v1"] = "(-- #2421 installed-state probe only. Read-only; application acceptance separately\n-- requires the deployed differential worker and a full week of zero drift.\nWITH installed AS (\n  SELECT oid,prosecdef,provolatile,proconfig,proretset FROM pg_proc\n  WHERE oid=to_regprocedure('public.rebuild_style_groups_batch(uuid,integer,timestamptz)')\n), clocks AS (\n  SELECT count(*) AS n FROM pg_attribute a\n  JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum\n  WHERE attrelid IN ('public.assets'::regclass,'public.style_groups'::regclass)\n    AND attname='style_group_changed_at' AND atttypid='timestamptz'::regtype\n    AND attnotnull AND NOT attisdropped\n    AND pg_get_expr(d.adbin,d.adrelid)='now()'\n), triggers AS (\n  SELECT count(*) AS n FROM (VALUES\n    ('public.assets','assets_style_group_change_clock','public.stamp_style_group_asset_change()',23),\n    ('public.style_groups','style_groups_style_group_change_clock','public.stamp_style_group_definition_change()',23),\n    ('public.style_group_tags','style_group_tags_change_clock','public.touch_style_group_tag_change()',29)\n  ) e(relation,name,signature,type)\n  JOIN pg_trigger t ON t.tgrelid=to_regclass(e.relation) AND t.tgname=e.name\n    AND t.tgfoid=to_regprocedure(e.signature) AND t.tgtype=e.type\n    AND t.tgnargs=0 AND NOT t.tgisinternal AND t.tgenabled='O'\n), indexes AS (\n  SELECT count(*) AS n FROM (VALUES\n    ('public.assets_style_group_changed_at_idx','CREATE INDEX assets_style_group_changed_at_idx ON public.assets USING btree (style_group_changed_at, id) WHERE (is_deleted = false)'),\n    ('public.style_groups_style_group_changed_at_idx','CREATE INDEX style_groups_style_group_changed_at_idx ON public.style_groups USING btree (style_group_changed_at, id)'),\n    ('public.assets_ungrouped_style_cursor_idx','CREATE INDEX assets_ungrouped_style_cursor_idx ON public.assets USING btree (id) WHERE ((is_deleted = false) AND (style_group_id IS NULL))'),\n    ('public.assets_style_group_id_active_idx','CREATE INDEX assets_style_group_id_active_idx ON public.assets USING btree (style_group_id, id) WHERE ((is_deleted = false) AND (style_group_id IS NOT NULL))')\n  ) e(name,definition)\n  JOIN pg_index i ON i.indexrelid=to_regclass(e.name)\n    AND i.indisvalid AND i.indisready AND pg_get_indexdef(i.indexrelid)=e.definition\n)\nSELECT coalesce((\n  EXISTS(SELECT FROM supabase_migrations.schema_migrations WHERE version='20261012012727')\n  AND (SELECT n=2 FROM clocks) AND (SELECT n=3 FROM triggers)\n  AND (SELECT n=4 FROM indexes)\n  AND EXISTS(SELECT FROM installed WHERE prosecdef AND provolatile='v' AND proretset\n    AND pg_get_function_result(oid)='TABLE(next_cursor uuid, groups_created integer, assets_assigned integer, assets_ungrouped integer, done boolean, rows_examined integer)'\n    AND md5(pg_get_functiondef(oid))='9222e39f7953290f2050123aa07811b6'\n    AND proconfig @> ARRAY['search_path=public','statement_timeout=120s','lock_timeout=0']\n    AND has_function_privilege('service_role',oid,'EXECUTE')\n    AND NOT has_function_privilege('anon',oid,'EXECUTE')\n    AND NOT has_function_privilege('authenticated',oid,'EXECUTE'))\n  AND md5(pg_get_functiondef(to_regprocedure('public.rebuild_style_groups_batch(uuid,integer)')))='65c89b152f1d4aa49f3877043a16bd6b'\n  AND md5(pg_get_functiondef(to_regprocedure('public.clear_style_group_batch(uuid,integer)')))='3dbea0ab37aa21181efa966cbb4e1d8f'\n  AND EXISTS(SELECT FROM pg_proc p WHERE p.oid=to_regprocedure('public.style_group_key_for_sku(text)')\n    AND p.provolatile='i' AND p.proisstrict AND p.proparallel='s'\n    AND md5(pg_get_functiondef(p.oid))='2edf6ba6ecea92b56defb5ddc811e701')\n  AND NOT EXISTS(SELECT FROM (VALUES\n    ('public.stamp_style_group_asset_change()'),\n    ('public.stamp_style_group_definition_change()'),\n    ('public.touch_style_group_tag_change()')\n  ) e(signature) LEFT JOIN pg_proc p ON p.oid=to_regprocedure(e.signature)\n    WHERE p.oid IS NULL OR NOT p.prosecdef OR p.provolatile<>'v'\n      OR NOT coalesce(p.proconfig,ARRAY[]::text[]) @> ARRAY['search_path=public, pg_temp']\n      OR has_function_privilege('anon',p.oid,'EXECUTE')\n      OR has_function_privilege('authenticated',p.oid,'EXECUTE'))\n  AND EXISTS(SELECT FROM pg_proc p WHERE p.oid=to_regprocedure('public.queue_nightly_rebuild_style_groups()')\n    AND p.prosecdef AND p.provolatile='v' AND p.proconfig @> ARRAY['search_path=public']\n    AND has_function_privilege('service_role',p.oid,'EXECUTE')\n    AND NOT has_function_privilege('anon',p.oid,'EXECUTE')\n    AND NOT has_function_privilege('authenticated',p.oid,'EXECUTE')\n    AND md5(pg_get_functiondef(p.oid))='ae23005822bc9f0b500c06776ab9bee4')\n),false) as passed)"
+
+# Fixed, read-only catalog contract for issue #3869 / migration 20261024234538.
+# The sidecar binds this contract to the complete canonical migration bytes;
+# these checks bind the installed view definition and every access assertion
+# made by that migration's post-checks.
+CATALOG_CONTRACTS["dflow_tracking_catalog_v1"] = r"""
+select coalesce((
+  exists (select 1 from pg_class c
+    where c.oid=to_regclass('dflow_prod.v_prod_order_sales_order_link')
+      and c.relkind='v'
+      and c.reloptions @> array['security_invoker=true']::text[]
+      and md5(pg_get_viewdef(c.oid,true))='8b6c0b76bc35da4e3cfe4fbbd15a64ee'
+      )
+  and (select string_agg(a.attname||':'||format_type(a.atttypid,a.atttypmod),',' order by a.attnum)
+       from pg_attribute a where a.attrelid=to_regclass('dflow_prod.v_prod_order_sales_order_link')
+       and a.attnum>0 and not a.attisdropped) =
+      'prod_order_header_id:integer,company_code:character varying,prod_order_no:character varying,prod_reference_no:character varying,sales_order_no:bigint,link_sources:text[],source_count:integer,latest_fetched_at:timestamp with time zone,sales_order_start_date:date,sales_order_start_date_max:date,sales_order_cancel_date:date,sales_order_start_date_ever_changed:boolean'
+  and exists (select 1 from pg_index i join pg_attribute a on a.attrelid=i.indrelid and a.attnum=i.indkey[0]
+    where i.indexrelid=to_regclass('dflow_prod.prod_order_header_id_uidx')
+      and i.indrelid=to_regclass('dflow_prod."ProdOrderHeader"')
+      and i.indisunique and i.indisvalid and i.indisready and i.indislive
+      and i.indpred is null and i.indexprs is null and i.indnkeyatts=1 and i.indnatts=1 and a.attname='id')
+  and (select count(*)=1 and bool_and(privilege_type='SELECT' and not is_grantable) from aclexplode((select relacl from pg_class where oid=to_regclass('coldlion.order_history_line'))) where grantee='designflow_prod_tracking_grants'::regrole)
+  and (select count(*)=1 and bool_and(privilege_type='SELECT' and not is_grantable) from aclexplode((select relacl from pg_class where oid=to_regclass('coldlion.prod_history_line'))) where grantee='designflow_prod_tracking_grants'::regrole)
+  and (select count(*)=1 and bool_and(privilege_type='SELECT' and not is_grantable) from aclexplode((select relacl from pg_class where oid=to_regclass('dflow_prod.v_prod_order_sales_order_link'))) where grantee='designflow_prod_tracking_grants'::regrole)
+  and has_schema_privilege('designflow_prod_tracking_grants','coldlion','USAGE')
+  and exists (select 1 from pg_roles where rolname='designflow_prod_tracking_grants' and not rolcanlogin and not rolsuper and not rolcreaterole and not rolcreatedb)
+  and exists (select 1 from pg_policies where schemaname='coldlion' and tablename='order_history_line' and policyname='coldlion_history_tracking_read' and permissive='PERMISSIVE' and cmd='SELECT' and roles=array['designflow_prod_tracking_grants']::name[] and qual='true')
+  and exists (select 1 from pg_policies where schemaname='coldlion' and tablename='prod_history_line' and policyname='coldlion_history_tracking_read' and permissive='PERMISSIVE' and cmd='SELECT' and roles=array['designflow_prod_tracking_grants']::name[] and qual='true')
+  and exists (select 1 from pg_class where oid=to_regclass('coldlion.order_history_line') and relrowsecurity)
+  and exists (select 1 from pg_class where oid=to_regclass('coldlion.prod_history_line') and relrowsecurity)
+  and not has_table_privilege('anon','dflow_prod.v_prod_order_sales_order_link','SELECT')
+  and not has_table_privilege('authenticated','dflow_prod.v_prod_order_sales_order_link','SELECT')
+  and not has_table_privilege('service_role','dflow_prod.v_prod_order_sales_order_link','SELECT')
+  and has_table_privilege('designflow_prod_tracking_runtime','dflow_prod.v_prod_order_sales_order_link','SELECT')
+  and (not pg_has_role('designflow_prod_backend_runtime','designflow_prod_tracking_grants','member') or has_table_privilege('designflow_prod_backend_runtime','dflow_prod.v_prod_order_sales_order_link','SELECT'))
+),false) as passed
+"""
 
 if __name__ == "__main__":
     raise SystemExit(main())

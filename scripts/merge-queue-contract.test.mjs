@@ -13,6 +13,7 @@ import {
   assertQueueAuthorizationCurrent,
   awaitPreviewRehearsal,
   baseNeedsPreview,
+  previewRehearsalTarget,
   checkQueueOrder,
   latestContextState,
   main as contractMain,
@@ -128,7 +129,7 @@ const approvedDetail = {
 
 test('the approved rule is exactly one all-green PR built and merged at a time', () => {
   assert.deepEqual(QUEUE_RULE.parameters, {
-    check_response_timeout_minutes: 30,
+    check_response_timeout_minutes: 90,
     grouping_strategy: 'ALLGREEN',
     max_entries_to_build: 1,
     max_entries_to_merge: 1,
@@ -451,7 +452,7 @@ test('--recheck-interlock CLI uses newest status and fail-closed production 404 
 
 // #3566: GitHub read back ruleset 24024180 with identical values in ITS key order;
 // JSON-string comparison refused the live approved queue.
-const GITHUB_ORDER_PARAMETERS = { merge_method: 'MERGE', max_entries_to_build: 1, min_entries_to_merge: 1, max_entries_to_merge: 1, min_entries_to_merge_wait_minutes: 0, grouping_strategy: 'ALLGREEN', check_response_timeout_minutes: 30 }
+const GITHUB_ORDER_PARAMETERS = { merge_method: 'MERGE', max_entries_to_build: 1, min_entries_to_merge: 1, max_entries_to_merge: 1, min_entries_to_merge_wait_minutes: 0, grouping_strategy: 'ALLGREEN', check_response_timeout_minutes: 90 }
 
 test('queue parameters compare by key and value, not by key order (#3566)', () => {
   assert.notEqual(JSON.stringify(GITHUB_ORDER_PARAMETERS), JSON.stringify(QUEUE_RULE.parameters), 'fixture must reproduce the differing order')
@@ -637,4 +638,25 @@ test('resolveAuthorizedHead: empty tree span over an authorized ancestor is mode
   assert.equal(resolved.authorizedHead, impl)
   assert.equal(resolved.mode, 'ancestor')
   assert.notEqual(resolved.authorizedHead, tip)
+})
+
+
+test('maintenance can repair evidence while a later migration retains the pending first-parent rehearsal', () => {
+  const baseSha = 'a'.repeat(40), groupSha = 'b'.repeat(40), pending = 'c'.repeat(40)
+  const calls = []
+  const git = (paths, latest = pending) => (args) => {
+    calls.push(args)
+    if (args[0] === 'diff') return paths
+    if (args[0] === 'log') return latest
+    return ''
+  }
+  assert.equal(previewRehearsalTarget({ baseSha, groupSha }, git('scripts/repair.mjs\nREADME.md')), null)
+  assert.equal(calls.some((args) => args[0] === 'log'), false)
+  calls.length = 0
+  assert.equal(previewRehearsalTarget({ baseSha, groupSha }, git('supabase/migrations/20261025125632_next.sql')), pending)
+  assert.deepEqual(calls.find((args) => args[0] === 'log'), ['log', '--first-parent', '-1', '--format=%H', baseSha, '--', 'supabase/migrations/'])
+  assert.deepEqual(calls.at(-1), ['merge-base', '--is-ancestor', pending, baseSha])
+  assert.throws(() => previewRehearsalTarget({ baseSha, groupSha }, git('supabase/migrations/20261025125632_next.sql', '')), /unavailable/)
+  assert.throws(() => previewRehearsalTarget({ baseSha: 'main', groupSha }, git('')), /exact/)
+  assert.throws(() => previewRehearsalTarget({ baseSha, groupSha }, () => { throw new Error('git unavailable') }), /git unavailable/)
 })

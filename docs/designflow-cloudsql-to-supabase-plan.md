@@ -286,3 +286,4 @@ Detail and live match rates: `docs/verification/cloudsql-piecemeal-cutover-20261
   - rep names, one or more per factory (child table, not a list column);
   - vendor user accounts, one or more per factory (`core.vendor` logins linked to the canonical factory id).
   Factories POP has not yet done business with exist only in DesignFlow and are created without a ColdLion source reference; ColdLion attaches later by source identity. Mapping the 181 DesignFlow factories: automatic where name/trade name/nickname matches (34 today), the rest on a licensing-style review list; the 4 test rows are not imported.
+- 2026-10-25, Albert (product categories): each factory or trading company carries one or more product categories it produces (link table to a product-category list; 22 categories from the owner's list). Nickname left blank in the review keeps the DesignFlow nickname; a blank trading company means POP deals with the factory directly.

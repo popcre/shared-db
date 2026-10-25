@@ -3,6 +3,11 @@ name: Production Catalog Verification Recovery
 on:
   workflow_dispatch:
     inputs:
+      mode: {description: "Proof kind; legacy failed-catalog recovery stays unchanged", required: true, default: legacy-catalog-failure, type: choice, options: [legacy-catalog-failure, current-live-reverification]}
+      source_pr: {description: "Current-live only: exact merged source PR", required: false, type: string}
+      work_issue: {description: "Current-live only: existing structural issue", required: false, type: string}
+      original_attempt: {description: "Current-live only: exact successful original attempt", required: false, type: string}
+      original_artifact_id: {description: "Current-live only: authentic original upload artifact ID", required: false, type: string}
       main_sha: {description: "Exact current origin/main SHA", required: true, type: string}
       apply_main_sha: {description: "Exact main SHA used by the historical production apply", required: true, type: string}
       ordered_allowlist: {description: "Exact applied migration versions", required: true, type: string}
@@ -15,6 +20,7 @@ permissions:
 
 jobs:
   verify-only:
+    if: ${{ inputs.mode != 'current-live-reverification' }}
     runs-on: blacksmith-2vcpu-ubuntu-2404
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
@@ -118,5 +124,43 @@ jobs:
             ${{ runner.temp }}/catalog-verification/production-catalog-verification.md
             ${{ runner.temp }}/catalog-verification/production-catalog-verification.json
             ${{ runner.temp }}/production-catalog-recovery-binding.json
+          if-no-files-found: error
+          retention-days: 90
+
+  current-live:
+    permissions: {actions: read, contents: read, pull-requests: read, issues: read, id-token: write, attestations: write}
+    name: Current live reverification
+    if: ${{ inputs.mode == 'current-live-reverification' }}
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: "${{ inputs.main_sha }}", fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Reverify current state without applying migrations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          CURRENT_LIVE_OUTPUT: ${{ runner.temp }}/current-live
+          CURRENT_LIVE_INPUTS: ${{ toJSON(inputs) }}
+        run: node scripts/designflow-db-release.mjs --reverify-current-live
+      - name: Attest exact metadata-only current-live certificate
+        id: current-live-attestation
+        uses: actions/attest-build-provenance@9d57eef8c06cd9d6b433effeeb7a6a77b3ff94ad
+        with:
+          subject-path: ${{ runner.temp }}/current-live/current-live-content.zip
+      - name: Preserve signed verification bundle
+        env:
+          BUNDLE_PATH: ${{ steps.current-live-attestation.outputs.bundle-path }}
+        run: cp -- "$BUNDLE_PATH" "$RUNNER_TEMP/current-live/current-live-attestation.jsonl"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: production-current-live-${{ inputs.source_pr }}-${{ inputs.apply_run_id }}-${{ inputs.original_attempt }}
+          path: |
+            ${{ runner.temp }}/current-live/current-live-content.zip
+            ${{ runner.temp }}/current-live/current-live-attestation.jsonl
           if-no-files-found: error
           retention-days: 90

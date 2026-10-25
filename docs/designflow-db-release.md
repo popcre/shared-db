@@ -288,15 +288,22 @@ checks apply to every group. Tracked with the delivery-evidence repair on #4655.
 The original successful Tracking apply remains the historical producer. A current
 catalogue report with no behavioral assertions cannot replace its unavailable
 archive: `validateCurrentLiveBinding` deliberately refuses that report, even when
-the enforcing catalogue verifier exits successfully. Recovery run40220100990
+the enforcing catalogue verifier exits successfully. Recovery run 40220100990
 exposed this missing coverage; it produced no certificate and reapplied nothing.
 
-The exact-hash sidecar for `20261024234538` supplies a fixed verifier-owned
-installed-state contract for the Tracking link view and its bounded access model.
+Trusted main must first register the fixed verifier-owned installed-state contract
+for the Tracking link view and its bounded access model. Only after that registration
+lands may a separate change add the exact-hash sidecar for `20261024234538`;
+the guarded merge checker deliberately rejects an unknown contract before then.
 It does not authorize SQL from sidecar input, change the applied migration, claim
 historical ledger changes, settle unrelated role drift, or prove application
 acceptance. The same signed certificate, original-attempt identity, approval,
 source fingerprint, current-main and subsequent native stage gates still apply.
+
+The self-contained PostgreSQL17 fixture runs in the normal tools CI job, with
+view-definition, index, RLS, policy and grant-option mutation negatives. Each
+completion check records its own freshly captured output; the rejected generation46
+record remains unchanged in history and its immutable published contract.
 
 ### Retained certificate storage remains bounded (#4655)
 

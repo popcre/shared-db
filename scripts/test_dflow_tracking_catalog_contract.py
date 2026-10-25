@@ -117,6 +117,11 @@ create role anon; create role authenticated; create role service_role;
             psql("grant select on coldlion.order_history_line to designflow_prod_tracking_grants with grant option;")
             self.assertFalse(passed())
             psql("revoke all on coldlion.order_history_line from designflow_prod_tracking_grants; grant select on coldlion.order_history_line to designflow_prod_tracking_grants;")
+            psql('drop index dflow_prod.prod_order_header_id_uidx; create index prod_order_header_id_uidx on dflow_prod."ProdOrderHeader"(id);')
+            self.assertFalse(passed())
+            psql('drop index dflow_prod.prod_order_header_id_uidx;')
+            psql(MIGRATION.read_text())
+            self.assertTrue(passed())
             source = MIGRATION.read_text()
             body = source.split("create or replace view dflow_prod.v_prod_order_sales_order_link", 1)[1].split("comment on view", 1)[0]
             psql("create or replace view dflow_prod.v_prod_order_sales_order_link" + body.replace("interval '300 days'", "interval '301 days'", 1))

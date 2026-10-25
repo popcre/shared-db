@@ -169,3 +169,18 @@ test('published role proof accepts scoped runtime access and rejects browser, DE
   ['GRANT USAGE ON SEQUENCE dflow_prod.prod_order_milestone_schedule_id_seq TO designflow_prod_tracking_grants;',/direct identity sequence access/i],
  ]) {setup();succeeds(mutation);fails(block,pattern);}
 });
+
+test('frozen production baseline counts exclude only the separately tested milestone additions', { skip }, () => {
+ const baseline=readFileSync(new URL('../supabase/tests/dflow_prod_contract.sql',import.meta.url),'utf8');
+ const executable=baseline.replace(/--[^\n]*/g,'');
+ const tableQuery=executable.match(/select count\(\*\) into v_tables[\s\S]*?;/)[0].replace(' into v_tables','');
+ const sequenceQuery=executable.match(/select count\(\*\) into v_sequences[\s\S]*?;/)[0].replace(' into v_sequences','');
+ succeeds(fixture);
+ const before=[succeeds(tableQuery),succeeds(sequenceQuery)];
+ succeeds(migration);
+ assert.deepEqual([succeeds(tableQuery),succeeds(sequenceQuery)],before);
+ succeeds('CREATE TABLE dflow_prod.unexpected_new_table(id bigint GENERATED ALWAYS AS IDENTITY);');
+ assert.deepEqual([Number(succeeds(tableQuery)),Number(succeeds(sequenceQuery))],before.map(x=>Number(x)+1));
+ succeeds('DROP TABLE dflow_prod.unexpected_new_table;');
+ assert.match(baseline,/if v_tables <> 103 then/);assert.match(baseline,/if v_sequences <> 97 then/);
+});

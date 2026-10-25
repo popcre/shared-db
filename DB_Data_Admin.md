@@ -1053,7 +1053,7 @@ disappear in exactly the intended applications, and nothing else breaks" a check
 - No picker path reads `core.*`, `plm.*`, `ingest.*`, `public.erp_*`, or
   `erp_items_current`/`erp_customer`/`erp_vendor`/`prod_order_*` directly.
   Search both SQL-style names and Supabase schema chaining:
-  `rg -n "from\\s+core\\.|from\\s+plm\\.|\\.schema\\([\"'](core|plm|ingest)[\"']\\)|erp_items_current|erp_customer|erp_vendor|prod_order_" src`
+  `rg -n "from\\s+core\\.|from\\s+plm\\.|\\.schema\\(`\"'`[\"']\\)|erp_items_current|erp_customer|erp_vendor|prod_order_" src`
 - No active code path holds Customer/Vendor identity by mutable name string (UUID or stable
   source code only). `rg -n "customer.*name|vendor.*name|factory.*name" src` — classify each
   hit as display-only, stable-code/UUID lookup, or unsafe name identity.
@@ -1116,7 +1116,7 @@ and the relevant rollback-safe SQL suites. Production must continue to prove
 `app.db_data_admin_feature_gate` absent until Step 13.
 
 The first development-shell visual check is retained at
-[`docs/verification/db-data-admin-development.png`](docs/verification/db-data-admin-development.png).
+`docs/verification/db-data-admin-development.png`.
 It proves the deployed shell renders, but it does not satisfy the later grid/detail/merge/tree
 screenshots listed above.
 

@@ -6,7 +6,7 @@
 
 **Implementation tracker:** [GitHub #1090](https://github.com/u2giants/shared-db/issues/1090). The architecture is not an issue. #1090 tracks execution only.
 
-**Paired handoff:** [`HANDOFF.d/2026-08-17T0016Z-al8960ofc-codex-licensing-plan-review-fixes.md`](HANDOFF.d/2026-08-17T0016Z-al8960ofc-codex-licensing-plan-review-fixes.md)
+**Paired handoff:** `HANDOFF.d/2026-08-17T0016Z-al8960ofc-codex-licensing-plan-review-fixes.md`
 
 **Repository:** `u2giants/shared-db`
 
@@ -175,7 +175,7 @@ This is not a bug reproduction. It is a database and application architecture im
 - treating DesignFlow as a fallback authority;
 - recreating source-specific landing tables that already exist;
 - deleting historical landing evidence or canonical records;
-- rewriting ColdLion's software or schema, or asking Albert to administer that third-party system. The older exclusion must not block the October 11, 2026 owner-directed replacement of licensed MG06 choices with approved submission Properties; that cutover and legacy Item mapping are governed by [Submission Property identity and the ColdLion cutover](docs/business-rules/licensing-master-data.md#submission-property-identity-and-the-coldlion-cutover) and tracked on #2541. This plan does not claim that the external update or mapping is delivered;
+- rewriting ColdLion's software or schema, or asking Albert to administer that third-party system. The older exclusion must not block the October 11, 2026 owner-directed replacement of licensed MG06 choices with approved submission Properties; that cutover and legacy Item mapping are governed by [Submission Property identity and the ColdLion cutover](docs/business-rules/licensing-master-data.md) and tracked on #2541. This plan does not claim that the external update or mapping is delivered;
 - migrating unrelated customer, vendor, item, order, sample, product-depth, or royalty-rate structures;
 - changing production Cloud SQL, GCP triggers, secrets, Terraform, or DesignFlow production infrastructure;
 - replacing the source portals' private repositories with one public scraper repository;

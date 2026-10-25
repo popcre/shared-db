@@ -379,10 +379,26 @@ jobs:
           node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-migration-pr-lease.mjs"
           node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-live-proof-probe.mjs"
           PR_NUMBER="${{ inputs.pull_request }}" REQUESTED_SHA="${{ inputs.head_sha }}" node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-exact-head-approval.mjs"
+      # Queue admission must come from an app token: a merge-queue entry created with
+      # GITHUB_TOKEN starts no merge_group workflows, so GitHub ejects it after 30
+      # minutes (#4731). popcre-merge-queue-admission is installed on this repository
+      # alone; GitHub's enqueue needs contents:write plus merge_queues:write (probed
+      # 2026-10-25), so the token asks for exactly those. Absent secret or mint failure ->
+      # empty output -> admission falls back to github.token (the old behavior).
+      - name: Mint queue-admission token (popcre-merge-queue-admission app)
+        id: queue_admission_token
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.MERGE_QUEUE_ADMISSION_APP_ID }}
+          private-key: ${{ secrets.MERGE_QUEUE_ADMISSION_PRIVATE_KEY }}
+          permission-contents: write
+          permission-merge-queues: write
       - name: Re-prove the head and merge while the lock is held
         id: guarded_merge
         env:
           GH_TOKEN: ${{ github.token }}
+          QUEUE_ADMISSION_TOKEN: ${{ steps.queue_admission_token.outputs.token || github.token }}
           AUTHORITY_FILE_IDENTITY: ${{ steps.trusted_underlock_preflight.outputs.authority_file_identity }}
           # The merge lane is held: never sit on it waiting for a quota reset.
           GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '0'
@@ -476,6 +492,14 @@ jobs:
               node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-required-checks-preflight.mjs"
           }
           queue_mode="$(node "$GITHUB_WORKSPACE/trusted-policy/scripts/merge-queue-contract.mjs" --queue-mode)" || queue_mode="unknown"
+          # Exact-head queue admission as the admission app (#4731). The PR node id is
+          # read with github.token; only the enqueue itself uses the app token.
+          admit_to_queue() {
+            pr_node="$(node "$GITHUB_WORKSPACE/trusted-policy/scripts/gh-read.mjs" pr view '${{ inputs.pull_request }}' --repo "$GITHUB_REPOSITORY" --json id --jq .id)"
+            GH_TOKEN="$QUEUE_ADMISSION_TOKEN" gh api graphql \
+              -f query='mutation($id:ID!,$oid:GitObjectID!){enqueuePullRequest(input:{pullRequestId:$id,expectedHeadOid:$oid}){mergeQueueEntry{position}}}' \
+              -f id="$pr_node" -f oid="$REQUESTED_SHA" --jq .data.enqueuePullRequest.mergeQueueEntry.position
+          }
           echo "merge queue mode: $queue_mode"
           if [ "$queue_mode" != 'active' ] && [ "$queue_mode" != 'inactive' ]; then
             echo "::error::merge queue mode is unknown; refusing before any merge attempt"
@@ -483,7 +507,7 @@ jobs:
           fi
           if [ "$queue_mode" = 'active' ]; then
             prove_retained_all14
-            gh pr merge "${{ inputs.pull_request }}" --repo "$GITHUB_REPOSITORY" --merge --match-head-commit "${{ inputs.head_sha }}"
+            admit_to_queue
             echo "Queue admission complete: GitHub's merge queue now owns the merge of PR #${{ inputs.pull_request }}."
             exit 0
           fi
@@ -505,7 +529,7 @@ jobs:
               # administrator bypass.
               echo "GitHub requires the merge queue; switching this admission to queue mode"
               prove_retained_all14
-              gh pr merge "${{ inputs.pull_request }}" --repo "$GITHUB_REPOSITORY" --merge --match-head-commit "${{ inputs.head_sha }}"
+              admit_to_queue
               echo "Queue admission complete: GitHub's merge queue now owns the merge of PR #${{ inputs.pull_request }}."
               exit 0
             fi

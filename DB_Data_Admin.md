@@ -1053,7 +1053,7 @@ disappear in exactly the intended applications, and nothing else breaks" a check
 - No picker path reads `core.*`, `plm.*`, `ingest.*`, `public.erp_*`, or
   `erp_items_current`/`erp_customer`/`erp_vendor`/`prod_order_*` directly.
   Search both SQL-style names and Supabase schema chaining:
-  `rg -n "from\\s+core\\.|from\\s+plm\\.|\\.schema\\((?:[\"\x60])(core|plm|ingest)(?:[\"\x60])\\)|erp_items_current|erp_customer|erp_vendor|prod_order_" src`
+  `rg -n "from\\s+core\\.|from\\s+plm\\.|\\.schema\\((?:[\"'\x60])(core|plm|ingest)(?:[\"'\x60])\\)|erp_items_current|erp_customer|erp_vendor|prod_order_" src`
 - No active code path holds Customer/Vendor identity by mutable name string (UUID or stable
   source code only). `rg -n "customer.*name|vendor.*name|factory.*name" src` — classify each
   hit as display-only, stable-code/UUID lookup, or unsafe name identity.

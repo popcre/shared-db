@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "work_issue": 4655,
+  "outcome": "ready-for-merge",
+  "pr": 4779,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4655/52",
+  "contract_sha256": "e2c0ee90302a1c146fc4b3b11f5a7ed32e4ea0f78e92261bdddcb0101fbd800a",
+  "base_sha": "07dca16e7614162cc2e6e9cacb28b307dc42222",
+  "head_sha": "feca7cdb0f1fcb0dc4601a2383a9adcfd1508a12",
+  "files_changed": [
+    "docs/designflow-db-release.md",
+    "supabase/tests/rls_public_admin_initplan_contracts.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "\nFull captured stdout/stderr SHA256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "GitHub transport conformance: 453 files scanned, every GitHub call goes through scripts/lib/github-transport.mjs.\n\nFull captured stdout/stderr SHA256: 4f65c89be34fd6ec3110b0617e5f33216d4a980f8d62d013b1b21a19526e491d"
+    },
+    {
+      "command": "node scripts/check-repository-identity-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "Repository identity conformance OK: every remaining literal slug is allowlisted with an exact count (41 entries).\n\nFull captured stdout/stderr SHA256: f8fc9efe8e2e551bef107c31428a941f2adc9d99a824dc6249d88ffbe332085c"
+    },
+    {
+      "command": "gh run list --repo popcre/shared-db --workflow database-contract-tests.yml --commit \"$(git rev-parse HEAD)\" --event pull_request --limit 1 --json databaseId,status,conclusion,headSha,url",
+      "exit_code": 0,
+      "evidence": "[{\"conclusion\":\"success\",\"databaseId\":40231840088,\"headSha\":\"feca7cdb0f1fcb0dc4601a2383a9adcfd1508a12\",\"status\":\"completed\",\"url\":\"https://github.com/popcre/shared-db/actions/runs/40231840088\"}]\n\nFull captured stdout/stderr SHA256: 65d8ec2a9056f81fe88e999d46537805dc44188787c5b7af5967e1657c3fc9df"
+    }
+  ],
+  "assumptions_resolved": [
+    "Real native Database Contract Tests40231840088 succeeded on exact implementationfeca7cdb0f1fcb0dc4601a2383a9adcfd1508a12, before evidence metadata was written.",
+    "Artifact12613812802 sha256:304c204ffe6205c714c9ba85b8485aa75c6885ac8e54ecaffda0a648cdfaf035 retains the full raw test log SHA2565479ff706e85ce50a9c2883828916c0316d4a2b49d40adb2612d3fde7e740d13. Independently verified all198 unique cardinality-command-sample-variant combinations, exact returned rows and raw-plan row counts, nine summaries, ten measured samples plus one warmup per variant, zero regression flags.",
+    "The30s setting and workflow job budget remain. Aggregate timer boundary intentionally becomes per command/cardinality batch; role, DML rollback, final restoration and raw evidence controls remain. This is local synthetic proof only, no shared-preview/production or live RLS acceptance.",
+    "Producer4774 source and its approval remain unchanged while this separate fixture repair proceeds; foreign completed4759 and4755 are preserved."
+  ],
+  "stop_conditions_hit": []
+}

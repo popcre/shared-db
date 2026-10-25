@@ -68,6 +68,18 @@ class RoutineSettingTests(unittest.TestCase):
             "alter function app.f(integer) reset work_mem;\n")
         self.assertEqual(targets.function_settings, [("app.f", "app.f(integer)", "work_mem", "reset")])
 
+    def test_reset_all_requires_empty_proconfig(self):
+        targets = self._derive(
+            "alter function app.f(integer) set work_mem = '1MB';\n"
+            "alter function app.f(integer) reset all;\n")
+        self.assertEqual(targets.function_settings, [("app.f", "app.f(integer)", "all", "reset")])
+        overload = {"identity": "app.f(integer)", "oid": "7", "prokind": "f", "has_definition": True}
+        for config, failed in (([], False), (["work_mem=1MB"], True)):
+            data = {"functions": [{"name": "app.f", "overloads": [dict(overload, config=config)]}],
+                    "function_setting_signatures": [{"signature": "app.f(integer)", "oid": "7"}]}
+            _, failures = render_report(["20990101000000"], targets, data, None, [], True)
+            self.assertEqual(bool(failures), failed, config)
+
     def test_later_create_or_replace_drops_setting_expectation(self):
         targets = self._derive(
             "alter function app.f() set work_mem = '1MB';\n"

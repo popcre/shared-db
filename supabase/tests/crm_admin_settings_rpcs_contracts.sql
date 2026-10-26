@@ -1,4 +1,4 @@
--- Contract test for the CRM admin settings RPCs (migration 20261026154345, #4811).
+-- Contract test for the CRM admin settings RPCs (migration 20261026155023, #4811).
 -- All fixture changes roll back.
 --
 -- Proves, as real authenticated users (SET LOCAL role + JWT sub):

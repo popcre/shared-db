@@ -3,12 +3,12 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
-import { CURRENT_LIVE_KIND, assertCurrentLiveProducer, validateCurrentLiveBinding, proveCurrentLiveAssignedSource, authenticatedArtifact404, currentLiveArtifactMetadata, openCurrentLivePackage, retainedCurrentLivePackage, CURRENT_LIVE_RECEIPT_PREFIX } from './lib/production-catalog-recovery.mjs';
+import { selectCurrentLivePackageFiles, CURRENT_LIVE_KIND, assertCurrentLiveProducer, validateCurrentLiveBinding, proveCurrentLiveAssignedSource, authenticatedArtifact404, currentLiveArtifactMetadata, openCurrentLivePackage, retainedCurrentLivePackage, assertEquivalentRetainedCurrentLiveReceipt, CURRENT_LIVE_RECEIPT_PREFIX } from './lib/production-catalog-recovery.mjs';
 import { validateManifest, manifestDigest, verifyRequirementSource } from './lib/designflow-db-release.mjs';
 import { githubIo, parseQueueScope, trainIo } from './manage-migration-author-lanes.mjs';
 import { readyRecord, preparePreviewDispatch } from './db-flow/reconcile.mjs';
 import { canonicalJson, sha256 } from './db-flow/evidence-bundle.mjs';
-import { admitIssue } from './lib/lanes/admission.mjs';
+import { admitIssue, mergedPrSourceIssues } from './lib/lanes/admission.mjs';
 import { formatEventComment } from './db-coordination-events.mjs';
 import { productionCatalogQuery, verifyCatalogProof } from './lib/designflow-db-catalog.mjs';
 import { readZipEntries } from './lib/zip-entries.mjs';
@@ -134,9 +134,10 @@ export function dispatchTitle(manifest, mode) {
   return `DB preview ${mode} ${manifest.commit_sha} PR${manifest.merged_preview_source_pr} ${manifest.preview_allowlist}`;
 }
 
-export function sourceFacts(requirement) {
+export function sourceFacts(requirement, sourceIo = { api, pages, content, githubIo }) {
+  const { api, pages, content, githubIo } = sourceIo;
   const pr = api(`repos/${CANONICAL}/pulls/${requirement.source_pr}`);
-  const linked = githubIo.closingIssuesForPr(requirement.source_pr);
+  const linked = mergedPrSourceIssues(githubIo, `${requirement.source_pr}:${requirement.work_issue}`);
   if (linked.length !== 1 || Number(linked[0].number) !== requirement.work_issue)
     throw Error('Canonical source must link exclusively to its required work issue');
   const main = api(`repos/${CANONICAL}/commits/main`).sha;
@@ -728,7 +729,7 @@ async function currentLiveEvidence(requirement,facts,ledger) {
       if(!packageFiles){
         if(a.workflow_run?.id!==run.id||a.workflow_run?.head_sha!==run.head_sha)throw Error('Current-live artifact producer changed');
         const bytes=runGitHubCommand(['api',`repos/${CANONICAL}/actions/artifacts/${a.id}/zip`],{encoding:null,timeoutMs:60000,maxBuffer:16*1024*1024});if(a.digest!==`sha256:${hash(bytes)}`)throw Error('Current-live artifact digest changed');
-        packageFiles=selectArtifactFiles(readZipEntries(bytes),['current-live-content.zip','current-live-attestation.jsonl']);
+        packageFiles=selectCurrentLivePackageFiles(readZipEntries(bytes));
       }
       const files=openCurrentLivePackage(packageFiles,{repositoryId:repo.id,ownerId:repo.owner?.id,verifierSha:run.head_sha,runId:run.id,runAttempt:run.run_attempt});
       const binding=JSON.parse(files.get('current-live-binding.json')),catalogBytes=files.get('production-catalog-verification.json'),catalog=JSON.parse(catalogBytes);
@@ -742,7 +743,14 @@ async function currentLiveEvidence(requirement,facts,ledger) {
       const ref=`${prefix}${run.id}`,message=CURRENT_LIVE_RECEIPT_PREFIX+JSON.stringify(receipt);
       if(Buffer.byteLength(message)>96*1024)throw Error('Metadata-only retained receipt exceeds reviewed size bound');
       const prior=githubIo.readRef(ref);
-      if(prior){if(githubIo.getCommit(prior)?.message!==message)throw Error('Immutable retained certificate changed');}
+      if(prior){
+        const priorMessage=githubIo.getCommit(prior)?.message;
+        if(priorMessage!==message){
+          if(!priorMessage?.startsWith(CURRENT_LIVE_RECEIPT_PREFIX)||Buffer.byteLength(priorMessage)>96*1024)throw Error('Immutable retained certificate changed');
+          let priorReceipt;try{priorReceipt=JSON.parse(priorMessage.slice(CURRENT_LIVE_RECEIPT_PREFIX.length))}catch{throw Error('Immutable retained certificate changed')}
+          assertEquivalentRetainedCurrentLiveReceipt(priorReceipt,receipt,packageFiles);
+        }
+      }
       else{const sha=githubIo.makeOwnerCommit(message);if(!githubIo.createRef(ref,sha)||githubIo.readRef(ref)!==sha)throw Error('Retained certificate preservation refused');}
       verified.push(result);
     }

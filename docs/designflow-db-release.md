@@ -304,3 +304,46 @@ The self-contained PostgreSQL17 fixture runs in the normal tools CI job, with
 view-definition, index, RLS, policy and grant-option mutation negatives. Each
 completion check records its own freshly captured output; the rejected generation46
 record remains unchanged in history and its immutable published contract.
+
+### Retained certificate storage remains bounded (#4655)
+
+A real current-live producer carries the complete authenticated original run,
+job and later-attempt facts. Its signed metadata ZIP can exceed the receipt's
+96 KiB limit after base64 encoding. New receipts therefore store that exact ZIP
+with lossless gzip compression; the signed ZIP itself and attestation bundle
+are unchanged. Legacy uncompressed receipts remain readable. The reader rejects
+mixed encodings, malformed data, receipts above the unchanged 96 KiB limit and
+ZIP expansion beyond the existing 4 MiB authenticated-package bound. Restored
+bytes must still pass the original signature, producer, source and ledger checks.
+This storage change grants no new production or application acceptance.
+
+Existing immutable receipt references are preserved when a lossless encoding
+changes. Their restored ZIP and bundle must exactly equal the newly authenticated
+candidate bytes and all source, ledger and proof fields must remain identical.
+A different encoding never authorizes a changed certificate or rewritten reference.
+
+### Local RLS benchmark statement boundaries (#4655)
+
+Tracking producer delivery exposed two consecutive queue failures in the unchanged
+`rls_public_admin_initplan_contracts.sql` timing fixture. Its single `DO` statement
+ran all 198 samples under one 30-second PostgreSQL statement timer. The repair
+executes the original nine cardinality/command cells as separate statements,
+each still bounded by that same 30-second timer. This intentionally changes the
+aggregate timer boundary; it does not increase the per-statement setting or the
+workflow job budget.
+
+All three row sizes, three commands, alternating original/candidate pairs, one
+warmup plus ten measured pairs per cell, actual authenticated nonowner/nonbypass
+execution, sample rollback, exact 198-sample completeness, and final policy/ACL/
+helper/RLS/owner restoration checks remain. Raw plans and timings are retained.
+The temporary batch function and all fixture changes stay inside the existing
+rollback-only disposable database test. This grants no shared-preview or
+production execution authority and supplies no live application acceptance.
+
+Current-live artifact readers preserve the two exact ZIP and attestation members as binary bytes before authentication. Unexpected, missing, empty or oversized members fail closed. Generic text proof readers retain their existing behavior. This changes the verifier source closure and requires a fresh signed current-live run after merge; prior certificates are retained as historical evidence.
+
+The pinned attestation build type is `https://actions.github.io/buildtypes/workflow/v1`, confirmed in the official CLI’s authenticated result for [current-live run40258907625](https://github.com/popcre/shared-db/actions/runs/40258907625). The previous synthetic URI and all unrecognized types are rejected; the remaining certificate and provenance checks are unchanged.
+
+Declared release requirements use a separately named read-only merged-source identity binding when GitHub has no closing link. The existing body, current completion, migration-version and permanent reservation checks remain mandatory; conflicting real links refuse. This changes the trusted reader closure and requires a fresh certificate after merge.
+
+Read-only source identity accepts genuinely open or closed work after proving the same immutable merged-head evidence, published contract and reserved migrations. Admission and reviewer bindings still require open work, with no closed-work option or state override.

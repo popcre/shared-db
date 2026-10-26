@@ -144,12 +144,12 @@ begin
   select count(*) into v_n from core.taxonomy_source_ref t join core.property p on p.id=t.entity_id and p.licensor_id=v_vm
    where t.source_system='paramount_trackerplus' and t.source_table='plm.pmt_trackerplus_submission_property'
      and t.source_id in (select property_local_key from plm.pmt_trackerplus_submission_property where capture_id=v_capture);
-  if v_n<>40 then raise exception '#2599 verification: expected 40 VM submission refs, found %', v_n; end if;
+  if v_n<>40 then raise exception '#2599 post-condition: expected 40 VM submission refs, found %', v_n; end if;
   select count(*) into v_n from core.taxonomy_source_ref where source_system='licensing_mg06_submission_mapping' and source_id like 'VM/%';
-  if v_n<>37 then raise exception '#2599 verification: expected 37 VM code mapping refs, found %', v_n; end if;
+  if v_n<>37 then raise exception '#2599 post-condition: expected 37 VM code mapping refs, found %', v_n; end if;
   if exists(select 1 from core.taxonomy_source_ref t join plm.pmt_trackerplus_submission_property s on s.capture_id=v_capture and s.property_local_key=t.source_id
      join core.property p on p.id=t.entity_id where t.source_system='paramount_trackerplus' and p.name is distinct from s.exact_label) then
-    raise exception '#2599 verification: a canonical VM row does not carry its exact submission name';
+    raise exception '#2599 post-condition: a canonical VM row does not carry its exact submission name';
   end if;
 end
 $vm_submission_canonical$;

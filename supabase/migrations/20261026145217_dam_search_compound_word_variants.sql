@@ -3,8 +3,10 @@
 -- "spiderman" also searches "spider man" (matches "Spider-Man"), "door mat" also
 -- searches "doormat", etc. A split or join is emitted only when the corpus
 -- (dam_search_keys title/path, trigram-indexed regex) contains that form as a
--- whole word, optionally plural ("door mats"), so arbitrary splits ("cove ring")
--- are never generated. Compound probes run only for queries of at most six words.
+-- whole word (a singular query form also accepts a plural corpus form: "door mats"),
+-- so arbitrary splits ("cove ring") are never generated. Compound probes run only
+-- for queries of at most six words, split only words of 6-20 letters, and are
+-- capped at 40 probes per call.
 -- Variants feed the existing synonym passes. search_dam_documents is unchanged:
 -- it already unions every variant this function returns.
 --
@@ -14,6 +16,8 @@
 -- enable_seqscan=off: measured on production, the per-candidate EXISTS probes
 -- otherwise seq-scan dam_search_keys (2.3 s for 6 probes) instead of using the
 -- GIN trigram indexes (~25 ms per probe). It is call-scoped (does not leak).
+-- jit=off: the seqscan penalty inflates plan cost past jit_above_cost, and JIT
+-- compilation would add ~0.8 s per call.
 -- ROWS 4 is kept: an under-estimate is the safer direction for the ranked plan;
 -- typical queries return 2-5 variants.
 CREATE OR REPLACE FUNCTION public.expand_dam_search_queries(p_query text)
@@ -22,6 +26,7 @@ CREATE OR REPLACE FUNCTION public.expand_dam_search_queries(p_query text)
  STABLE SECURITY DEFINER ROWS 4
  SET search_path TO 'public'
  SET enable_seqscan TO 'off'
+ SET jit TO 'off'
 AS $function$
   with normalized as (
     select nullif(
@@ -50,7 +55,9 @@ AS $function$
     cross join word_count c
     cross join lateral generate_series(3, length(w.w) - 3) as k
     where c.n <= 6
-      and w.w ~ '^[[:alpha:]]{6,30}$'
+      and w.w ~ '^[[:alpha:]]{6,20}$'
+    order by w.ord, k
+    limit 40
   ),
   split_ok as (
     select distinct on (s.ord) s.ord, s.a || ' ' || s.b as repl

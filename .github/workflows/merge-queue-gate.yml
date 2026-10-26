@@ -203,7 +203,7 @@ jobs:
             echo 'This group changes no migration; shared-preview ordering is preserved for the next migration group.'
             exit 0
           fi
-          node scripts/merge-queue-contract.mjs --require-preview-rehearsal --sha "$target"
+          node scripts/merge-queue-contract.mjs --require-preview-rehearsal --sha "$target" --base-sha "$BASE_SHA"
 
       - name: Publish fail-closed authorization when queue validation fails
         if: github.event_name == 'merge_group' && failure()

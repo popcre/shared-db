@@ -94,7 +94,7 @@ function verifiedIntermediatePairs(before,after,rows,git,expectedPr,readContract
     // contents are still authenticated by the groups loop below. Any other
     // path — source, foreign issue, unknown metadata — keeps refusing.
     const issueDir=record.paths[0]?.split('/').slice(0,3).join('/') ?? ''
-    const sameIssuePair=new RegExp(`^${issueDir.replace(/\//g,'\\/')}/\\d+/(contract|completion)\\.json$`)
+    const sameIssuePair=new RegExp(`^${issueDir.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/\\d+/(contract|completion)\\.json$`)
     const touched=new Set()
     for(const c of tail){
       const parents=run(['rev-list','--parents','-n','1',c]).split(' ').slice(1);if(parents.length!==1)return false
@@ -422,9 +422,10 @@ export function derivePaidContentProof(before, after, protectedMain, git, exclud
         // line endings or a trailing newline (the wholesale rewrites Python
         // text mode produces). Both sides drifting, or any other author byte
         // change, is a genuine conflict and keeps refusing. The winning bytes
-        // must come from a parent that is protected-main content, and the
-        // resolution at the merged head still has to normalize to the winning
-        // side exactly, so an author can never smuggle new bytes through.
+        // come from protected main, or from the paid-start side when only the
+        // author drifted, and the resolution at the merged head still has to
+        // normalize to the winning side exactly, so an author can never
+        // smuggle new bytes through.
         const authorDrift=normalized[1]!==normalized[0],mainDrift=normalized[2]!==normalized[0]
         const foldLineEndings=text=>text.replace(/\r\n/g,'\n')
         const trailingNewlineEqual=(x,y)=>x===y || x===`${y}\n` || y===`${x}\n`

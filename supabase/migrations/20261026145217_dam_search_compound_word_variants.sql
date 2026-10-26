@@ -2,10 +2,20 @@
 -- derived-from: 20260714173500
 -- "spiderman" also searches "spider man" (matches "Spider-Man"), "door mat" also
 -- searches "doormat", etc. A split or join is emitted only when the corpus
--- (dam_search_keys title/path, trigram-indexed regex) actually contains that
--- form, so arbitrary splits ("cove ring") are never generated. Variants feed the
--- existing synonym passes. search_dam_documents is unchanged: it already unions
--- every variant this function returns.
+-- (dam_search_keys title/path, trigram-indexed regex) contains that form as a
+-- whole word, optionally plural ("door mats"), so arbitrary splits ("cove ring")
+-- are never generated. Compound probes run only for queries of at most six words.
+-- Variants feed the existing synonym passes. search_dam_documents is unchanged:
+-- it already unions every variant this function returns.
+--
+-- Access: the probes read dam_search_keys, which only DAM users may search, so
+-- the function now requires public.require_dam_access() (as search_dam_documents
+-- does) and is not executable by PUBLIC/anon.
+-- enable_seqscan=off: measured on production, the per-candidate EXISTS probes
+-- otherwise seq-scan dam_search_keys (2.3 s for 6 probes) instead of using the
+-- GIN trigram indexes (~25 ms per probe). It is call-scoped (does not leak).
+-- ROWS 4 is kept: an under-estimate is the safer direction for the ranked plan;
+-- typical queries return 2-5 variants.
 CREATE OR REPLACE FUNCTION public.expand_dam_search_queries(p_query text)
  RETURNS TABLE(query_text text)
  LANGUAGE sql
@@ -18,6 +28,7 @@ AS $function$
       btrim(regexp_replace(coalesce(p_query, ''), '\s+', ' ', 'g')),
       ''
     ) as raw_query
+    where public.require_dam_access()
   ),
   words as (
     select t.w, t.ord
@@ -47,8 +58,8 @@ AS $function$
     where exists (
       select 1
       from public.dam_search_keys k
-      where k.title ~* ('(^|[^[:alnum:]])' || s.a || '[^[:alnum:]]+' || s.b)
-         or k.path ~* ('(^|[^[:alnum:]])' || s.a || '[^[:alnum:]]+' || s.b)
+      where k.title ~* ('(^|[^[:alnum:]])' || s.a || '[^[:alnum:]]+' || s.b || 's?([^[:alnum:]]|$)')
+         or k.path ~* ('(^|[^[:alnum:]])' || s.a || '[^[:alnum:]]+' || s.b || 's?([^[:alnum:]]|$)')
     )
     order by s.ord, abs(length(s.a) - length(s.b)), length(s.a) desc
   ),
@@ -65,8 +76,8 @@ AS $function$
       and exists (
         select 1
         from public.dam_search_keys k
-        where k.title ~* ('(^|[^[:alnum:]])' || w1.w || w2.w)
-           or k.path ~* ('(^|[^[:alnum:]])' || w1.w || w2.w)
+        where k.title ~* ('(^|[^[:alnum:]])' || w1.w || w2.w || 's?([^[:alnum:]]|$)')
+           or k.path ~* ('(^|[^[:alnum:]])' || w1.w || w2.w || 's?([^[:alnum:]]|$)')
       )
   ),
   compound_variants as (
@@ -169,3 +180,9 @@ AS $function$
   ) variants
   where query_text is not null;
 $function$;
+
+REVOKE ALL ON FUNCTION public.expand_dam_search_queries(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.expand_dam_search_queries(text) TO authenticated, service_role;
+
+COMMENT ON FUNCTION public.expand_dam_search_queries(text) IS
+  'DAM search query variants: hyphen/slash normalization, corpus-verified compound-word join/split variants (#4800), and active dam_search_synonyms expansions. Requires DAM access.';

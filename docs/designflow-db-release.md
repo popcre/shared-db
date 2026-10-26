@@ -339,3 +339,5 @@ helper/RLS/owner restoration checks remain. Raw plans and timings are retained.
 The temporary batch function and all fixture changes stay inside the existing
 rollback-only disposable database test. This grants no shared-preview or
 production execution authority and supplies no live application acceptance.
+
+Current-live artifact readers preserve the two exact ZIP and attestation members as binary bytes before authentication. Unexpected, missing, empty or oversized members fail closed. Generic text proof readers retain their existing behavior. This changes the verifier source closure and requires a fresh signed current-live run after merge; prior certificates are retained as historical evidence.

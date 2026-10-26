@@ -131,7 +131,7 @@ jobs:
             if [ "$DRY_RUN" = "true" ]; then ARGS+=(--dry-run); fi
             node tools/coldlion-landing/backfill-history.mjs "${ARGS[@]}"
           else
-            ARGS=(--windows "$WINDOWS" --forward)
+            ARGS=(--windows "$WINDOWS" --forward --prod-open)
             if [ "$DRY_RUN" = "true" ]; then ARGS+=(--dry-run); fi
             node tools/coldlion-landing/sync-history.mjs "${ARGS[@]}"
           fi

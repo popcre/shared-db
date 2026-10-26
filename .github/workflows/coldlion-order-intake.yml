@@ -89,9 +89,11 @@ jobs:
         run: psql --version
 
       - name: Run the offline intake tests before touching anything
-        run: node --test tools/coldlion-order-intake-*.test.mjs
+        id: gate
+        run: node --test tools/coldlion-order-intake-*.test.mjs tools/coldlion-landing-history.test.mjs
 
       - name: Refuse to run without an explicit target
+        id: target
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
           COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
@@ -148,3 +150,18 @@ jobs:
           ARGS=(--write)
           if [ -n "${LIMIT:-}" ]; then ARGS+=(--limit "$LIMIT"); fi
           node tools/coldlion-landing/order-intake-write.mjs "${ARGS[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # Production history on the same hourly cadence (Albert Hazan, 2026-10-26:
+      # "production-history feed should match order feed run timing"). Seals any
+      # trailing closed week still outstanding, then re-reads the OPEN week unsealed,
+      # one request per stage, serialized. Last, so it can never block sales-order
+      # staging or the writer; a failure here still turns the run red. Skipped on
+      # dry_run (writes nothing anywhere) and claim_only (a bounded staging-only
+      # dispatch; production history is not part of it).
+      - name: Sync production history (closed weeks + open week)
+        if: ${{ !cancelled() && steps.gate.outcome == 'success' && steps.target.outcome == 'success' && github.event.inputs.dry_run != 'true' && github.event.inputs.claim_only != 'true' }}
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+        run: node tools/coldlion-landing/sync-history.mjs --windows 3 --prod-open --no-header-tracks | tee -a "$GITHUB_STEP_SUMMARY"

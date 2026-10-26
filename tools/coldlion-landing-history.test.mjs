@@ -592,7 +592,7 @@ test("no stage is invented for sales history anywhere in the transaction", () =>
   assert.match(sql, /stage_code is not distinct from null/);
 });
 
-function prodSql() {
+function prodSql(extra = {}) {
   counter = 0;
   const runId = "22222222-2222-4222-8222-222222222222";
   const projected = projectProdHistoryWindow(
@@ -612,6 +612,7 @@ function prodSql() {
     finishedAt: "2026-09-08T00:00:01Z",
     durationMs: 1000,
     notes: "lines=1",
+    ...extra,
   });
 }
 
@@ -1074,9 +1075,28 @@ test("the loaders refuse a target that is not the canonical landing shape", () =
   assert.throws(() => assertHistoryShape({}, () => [["order_history_line.id"]]), /not the canonical landing shape/);
 });
 
+test("each builder refuses the other feed's scope", () => {
+  assert.throws(() => orderSql({ sealed: false, scope: prodHistoryScope("ISS") }), /\/orderHistory scope only/);
+  assert.throws(() => buildProdHistoryLoadSql({ scope: ORDER_HISTORY }), /staged \/prodHistory scope only/);
+});
+
+test("--prod-open is off by default and parsed when given", () => {
+  assert.equal(parseSyncArgs(["--today", "2026-10-26"]).prodOpen, false);
+  assert.equal(parseSyncArgs(["--prod-open"]).prodOpen, true);
+});
+
+test("a sealed production load filters children of open-week line versions and never asserts them", () => {
+  const sql = prodSql();
+  assert.match(sql, /create temp table _old_line on commit drop as\n[\s\S]*?join coldlion\.prod_history_line l on l\.id = m\.id\n[\s\S]*?where r\.request_params \? 'unsealedForward';/);
+  assert.match(sql, /delete from _stage_component s using _old_line o where s\.line_local_id = o\.local_id;/);
+  assert.match(sql, /delete from _stage_lookup s using _old_line o where s\.line_local_id = o\.local_id;/);
+  assert.match(sql, /set component_quantities_asserted = true[\s\S]*?and not exists \(select 1 from _old_line o where o\.local_id = m\.local_id\);/);
+  assert.ok(sql.indexOf("create temp table _old_line") < sql.indexOf("set component_quantities_asserted"));
+});
+
 test("unsealed mode is /orderHistory or a STAGED /prodHistory scope only", () => {
-  assert.throws(() => orderSql({ sealed: false, scope: { endpoint: "/prodHistory", stage: null } }), /staged \/prodHistory only/);
-  assert.throws(() => orderSql({ sealed: false, scope: { endpoint: "/orderHistory", stage: "ISS" } }), /staged \/prodHistory only/);
+  assert.throws(() => prodSql({ sealed: false, scope: { endpoint: "/prodHistory", stage: null } }), /staged \/prodHistory/);
+  assert.throws(() => orderSql({ sealed: false, scope: { endpoint: "/orderHistory", stage: "ISS" } }), /\/orderHistory scope only/);
 });
 
 test("--forward is parsed and --today drives the closed-window clamp", () => {

@@ -197,7 +197,8 @@ export async function loadWindowScope({
         lines: projected.lines.length,
         components: projected.components.length,
         lastLookups: projected.lastLookups.length,
-        asserted: projected.assertableLineIds.length,
+        // An unsealed (open-week) load never asserts, so it never reports any.
+        asserted: sealed ? projected.assertableLineIds.length : 0,
         excludedEp001: projected.excludedEp001,
       };
       sql = buildProdHistoryLoadSql({

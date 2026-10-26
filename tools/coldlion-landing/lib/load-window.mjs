@@ -391,8 +391,11 @@ function unsealedPreamble({ scope, window, runId, requestedBy, companyCode, star
   // A header-track load (created/modified filters over a wide start window) is not a grid
   // window, so it cannot collide with a sealed one; only a start-date window is checked.
   const headerTrack = headerFilterEntries(window).length > 0;
+  if (headerTrack && scope.stage) {
+    throw new Error("header tracks are /orderHistory filters; a /prodHistory header-track load is refused");
+  }
   const params = headerTrack
-    ? { companyCode, fromDate: window.requestFrom, toDate: window.requestTo, ...Object.fromEntries(headerFilterEntries(window)), size: pageSize, ...(scope.stage ? { stageCode: scope.stage } : {}), unsealedHeaderTrack: true, unsealedForward: true }
+    ? { companyCode, fromDate: window.requestFrom, toDate: window.requestTo, ...Object.fromEntries(headerFilterEntries(window)), size: pageSize, unsealedHeaderTrack: true, unsealedForward: true }
     : { companyCode, fromDate: window.from, toDate: window.to, size: pageSize, ...(scope.stage ? { stageCode: scope.stage } : {}), unsealedForward: true };
   return `begin;
 ${headerTrack ? "" : `
@@ -614,6 +617,7 @@ export function buildOrderHistoryLoadSql({
   stampColumns = false,
   sealed = true,
 }) {
+  if (scope.endpoint !== "/orderHistory" || scope.stage) throw new Error("buildOrderHistoryLoadSql takes the /orderHistory scope only");
   const lineSpec = orderLineSpec(stampColumns);
   const head = {
     scope,
@@ -733,6 +737,7 @@ export function buildProdHistoryLoadSql({
   notes,
   sealed = true,
 }) {
+  if (scope.endpoint !== "/prodHistory" || !scope.stage) throw new Error("buildProdHistoryLoadSql takes a staged /prodHistory scope only");
   const lines = withLocals(projected.lines);
   const components = withLocals(projected.components);
   const lookups = withLocals(projected.lastLookups);
@@ -821,5 +826,9 @@ function assertionSql(localIds) {
   from _map_line m
  where m.id = l.id
    and m.local_id in (${list})
-   and not l.component_quantities_asserted;`;
+   and not l.component_quantities_asserted
+   -- A line version an hourly open-week read created first keeps the children THAT load
+   -- wrote; this load's children were dropped above. The guard checks STORED evidence, so
+   -- asserting from this fetch's reconciliation could abort the window on every retry.
+   and not exists (select 1 from _old_line o where o.local_id = m.local_id);`;
 }

@@ -89,7 +89,7 @@ jobs:
         run: psql --version
 
       - name: Run the offline intake tests before touching anything
-        run: node --test tools/coldlion-order-intake-*.test.mjs
+        run: node --test tools/coldlion-order-intake-*.test.mjs tools/coldlion-landing-history.test.mjs
 
       - name: Refuse to run without an explicit target
         env:
@@ -154,7 +154,8 @@ jobs:
       # trailing closed week still outstanding, then re-reads the OPEN week unsealed,
       # one request per stage, serialized. Last, so it can never block sales-order
       # staging or the writer; a failure here still turns the run red. Skipped on
-      # dry_run and claim_only dispatches, which promise no landing writes.
+      # dry_run (writes nothing anywhere) and claim_only (a bounded staging-only
+      # dispatch; production history is not part of it).
       - name: Sync production history (closed weeks + open week)
         if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' && github.event.inputs.claim_only != 'true' }}
         env:

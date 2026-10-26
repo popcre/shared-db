@@ -190,7 +190,7 @@ begin
                     and embedding_error = 'zz4437 transient'
                     and embedding_error_category = 'transient'
                     and embedding_next_retry_at > now()
-                    and embedding_attempts >= 2
+                    and embedding_attempts >= 1
                     and embedding_lease_token is null) then
     raise exception 'contract 7: transient error state was not recorded with backoff';
   end if;

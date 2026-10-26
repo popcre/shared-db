@@ -148,7 +148,7 @@ begin
              c.style_guide_name, c.directory_path, c.relative_path, c.filename, c.file_extension,
              c.tag_names, c.size_bytes, c.modified_at, c.thumbnail_url, c.is_active,
              t.status, coalesce(t.text_length, 0), c.source_identity,
-             encode(digest(c.source_identity || '|' || coalesce(c.thumbnail_url, ''), 'sha256'), 'hex'),
+             encode(extensions.digest(c.source_identity || '|' || coalesce(c.thumbnail_url, ''), 'sha256'), 'hex'),
              setweight(to_tsvector('simple', coalesce(c.filename, '')), 'A')
              || setweight(to_tsvector('simple', coalesce(c.style_guide_name, '') || ' ' ||
                                                 coalesce(c.property_folder, '') || ' ' ||

@@ -461,7 +461,8 @@ prepare rls4427_prepared_policy as select count(*) from public.admin_config wher
 set local plan_cache_mode='force_generic_plan';
 
 do $equivalence$
-declare v_phase text; v_context text; v_role text; v_subject text;
+declare v_diff text;
+ v_phase text; v_context text; v_role text; v_subject text;
  v_case record; v_policy record; v_clause text; v_result jsonb; v_admin boolean;
  v_before jsonb; v_after jsonb; v_count bigint;
 begin
@@ -553,7 +554,11 @@ begin
  if exists(select 1 from (select context,probe,result from rls4427_results where phase='original') b
  full join (select context,probe,result from rls4427_results where phase='candidate') a
  using(context,probe) where b.result is distinct from a.result) then
-  raise exception '4427 before/after result or SQLSTATE differs';
+  select string_agg(coalesce(b.context,'-')||'/'||coalesce(b.probe,'-')||' before='||coalesce(b.result::text,'NULL')||' after='||coalesce(a.result::text,'NULL'), ' ||| ') into v_diff
+  from (select context,probe,result from rls4427_results where phase='original') b
+  full join (select context,probe,result from rls4427_results where phase='candidate') a using(context,probe)
+  where b.result is distinct from a.result;
+  raise exception '4427 before/after result or SQLSTATE differs: %', v_diff;
  end if;
 -- STRICT positive control: every operational admin DML must affect1 row.
 -- plm legacy identity has onlySELECT policy and is intentionally negative DML.

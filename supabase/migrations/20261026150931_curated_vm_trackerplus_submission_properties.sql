@@ -71,6 +71,7 @@ declare
     array['YS','314a356c641835f1c9a19554d3c0b6178dd026c853d7881283b76bacdd33fa4c'],
     array['ZM','5744915091dbd41a9ea5f61b01dc5d8a1d775c0a44c79d13d3145b571447dd5a']
   ];
+  v_pair text[];
   r record; v_id uuid; v_name text; v_n integer; v_codes text[]; v_rows integer;
 begin
   perform 1 from core.licensor where id=v_vm and code='VM' and name='VIACOM MULTI';
@@ -84,9 +85,11 @@ begin
     raise exception '#2599: TrackerPlus capture % does not hold the expected 40-row manifest', v_capture;
   end if;
 
-  if exists(select 1 from (select v_map[i][1] code, v_map[i][2] local_key from generate_subscripts(v_map,1) i) m where not exists(select 1 from plm.pmt_trackerplus_submission_property p where p.capture_id=v_capture and p.property_local_key=m.local_key)) then
-    raise exception '#2599: a reviewed code maps to a key outside the capture';
-  end if;
+  foreach v_pair slice 1 in array v_map loop
+    if not exists(select 1 from plm.pmt_trackerplus_submission_property p where p.capture_id=v_capture and p.property_local_key=v_pair[2]) then
+      raise exception '#2599: reviewed code % maps to a key outside the capture', v_pair[1];
+    end if;
+  end loop;
 
   for r in select property_local_key k, exact_label l from plm.pmt_trackerplus_submission_property where capture_id=v_capture order by property_local_key loop
     v_id:=null;
@@ -96,7 +99,10 @@ begin
       select count(*),min(id::text)::uuid into v_n,v_id from core.property where licensor_id=v_vm and lower(name)=lower(r.l);
       if v_n>1 then raise exception '#2599: % VM rows share one submission label ignoring case (key %)', v_n, r.k; end if;
       if v_n=0 then
-        select array_agg(m.code) into v_codes from (select v_map[i][1] code, v_map[i][2] local_key from generate_subscripts(v_map,1) i) m where m.local_key=r.k;
+        v_codes:='{}';
+        foreach v_pair slice 1 in array v_map loop
+          if v_pair[2]=r.k then v_codes:=v_codes||v_pair[1]; end if;
+        end loop;
         select count(*),min(p.id::text)::uuid into v_n,v_id from core.property p where p.licensor_id=v_vm and p.code = any(coalesce(v_codes,'{}'))
           and not exists(select 1 from core.taxonomy_source_ref x where x.source_system='paramount_trackerplus' and x.entity_id=p.id)
           and not exists(select 1 from plm.pmt_trackerplus_submission_property s where s.capture_id=v_capture and lower(s.exact_label)=lower(p.name) and s.property_local_key<>r.k);
@@ -131,12 +137,14 @@ begin
     end if;
   end loop;
 
-  insert into core.taxonomy_source_ref(entity_schema,entity_table,entity_id,source_system,source_table,source_id,source_code,source_name,confidence,raw)
-  select 'core','property',t.entity_id,'licensing_mg06_submission_mapping','mg06-to-submissions-mapping-20261015','VM/'||m.code,m.code,null,'verified',
-    jsonb_build_object('authorising_issue',2599,'related_issue',2541,'workbook_sha256',v_workbook,'property_local_key',m.local_key)
-  from (select v_map[i][1] code, v_map[i][2] local_key from generate_subscripts(v_map,1) i) m
-  join core.taxonomy_source_ref t on t.source_system='paramount_trackerplus' and t.source_table='plm.pmt_trackerplus_submission_property' and t.source_id=m.local_key
-  on conflict (source_system,source_table,source_id) do nothing;
+  foreach v_pair slice 1 in array v_map loop
+    insert into core.taxonomy_source_ref(entity_schema,entity_table,entity_id,source_system,source_table,source_id,source_code,source_name,confidence,raw)
+    select 'core','property',t.entity_id,'licensing_mg06_submission_mapping','mg06-to-submissions-mapping-20261015','VM/'||v_pair[1],v_pair[1],null,'verified',
+      jsonb_build_object('authorising_issue',2599,'related_issue',2541,'workbook_sha256',v_workbook,'property_local_key',v_pair[2])
+    from core.taxonomy_source_ref t
+    where t.source_system='paramount_trackerplus' and t.source_table='plm.pmt_trackerplus_submission_property' and t.source_id=v_pair[2]
+    on conflict (source_system,source_table,source_id) do nothing;
+  end loop;
 
   select count(*) into v_n from core.taxonomy_source_ref t join core.property p on p.id=t.entity_id and p.licensor_id=v_vm
    where t.source_system='paramount_trackerplus' and t.source_table='plm.pmt_trackerplus_submission_property'

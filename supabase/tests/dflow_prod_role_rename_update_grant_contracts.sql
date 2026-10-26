@@ -2,6 +2,13 @@
 -- is rolled back. Execute the exact source migration, never a copied grant.
 -- This test needs no business rows or successful historical data backfills.
 BEGIN;
+DO $relation_kind$
+BEGIN
+  IF (SELECT relkind FROM pg_class WHERE oid = 'dflow_prod."Roles"'::regclass) IS DISTINCT FROM 'r'::"char" THEN
+    RAISE EXCEPTION 'Role rename grant requires the existing Roles table';
+  END IF;
+END
+$relation_kind$;
 ALTER TABLE dflow_prod."Roles" RENAME TO role_rename_4832_saved;
 CREATE TABLE dflow_prod."Roles" (
   "Id" integer CONSTRAINT role_rename_4832_fixture_pk PRIMARY KEY,

@@ -22,7 +22,40 @@ alter table crm.department
 create index if not exists crm_department_salesperson_profile_idx
   on crm.department (salesperson_profile_id);
 comment on column crm.department.salesperson_profile_id is
-  'Salesperson (app.profile with the sales role) assigned to this customer department. Null = unassigned.';
+  'Salesperson (active app.profile with the sales role) assigned to this customer department. Null = unassigned. Enforced by trigger crm_department_salesperson_guard.';
+
+-- crm.department is browser-writable for sales/licensing users, so the
+-- assignee rule is enforced at the table, not only inside the admin RPC.
+create or replace function crm.enforce_department_salesperson()
+returns trigger
+language plpgsql
+security definer
+set search_path = app, public
+as $$
+begin
+  if new.salesperson_profile_id is not null
+     and (tg_op = 'INSERT' or new.salesperson_profile_id is distinct from old.salesperson_profile_id)
+     and not exists (
+       select 1
+       from app.profile p
+       join app.user_role ur on ur.profile_id = p.id and ur.revoked_at is null
+       join app.role r on r.id = ur.role_id and r.slug = 'sales'
+       where p.id = new.salesperson_profile_id and p.status = 'active'
+     ) then
+    raise exception 'crm: salesperson must be an active user with the sales role'
+      using errcode = 'invalid_parameter_value';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function crm.enforce_department_salesperson() from public, anon;
+comment on function crm.enforce_department_salesperson() is
+  'Trigger: crm.department.salesperson_profile_id must name an active profile holding the sales role when set or changed.';
+
+create or replace trigger crm_department_salesperson_guard
+  before insert or update of salesperson_profile_id on crm.department
+  for each row execute function crm.enforce_department_salesperson();
 
 -- 0. One app.role row per app.app_role value (no-op where rows already exist).
 insert into app.role (slug, name)
@@ -114,6 +147,7 @@ begin
     from app.profile p
     left join auth.users au on au.id = p.auth_user_id
     left join (
+      -- Counts every assigned department, active or not.
       select d.salesperson_profile_id as pid, count(*)::int as n
       from crm.department d
       where d.salesperson_profile_id is not null
@@ -180,7 +214,7 @@ begin
   perform pg_advisory_xact_lock(hashtext('api.crm_admin_access_invariant'));
 
   select coalesce(array_agg(r.id), array[]::uuid[]) into v_role_ids
-  from app.role r where r.slug::text = any(v_roles);
+  from app.role r where r.slug = any(v_roles::app.app_role[]);
 
   update app.user_role ur
      set revoked_at = now()
@@ -197,6 +231,8 @@ begin
         granted_by_profile_id = excluded.granted_by_profile_id
     where app.user_role.revoked_at is not null;
 
+  -- Fail closed: counts database grants only (not JWT app_metadata roles). If
+  -- no active granted administrator exists, insert one into app.user_role.
   if not exists (
     select 1 from app.user_role ur
     join app.role r on r.id = ur.role_id
@@ -319,6 +355,8 @@ begin
      set status = p_status::app.entity_status
    where p.id = p_profile_id;
 
+  -- Fail closed: counts database grants only (not JWT app_metadata roles). If
+  -- no active granted administrator exists, insert one into app.user_role.
   if not exists (
     select 1 from app.user_role ur
     join app.role r on r.id = ur.role_id

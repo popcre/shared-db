@@ -1,5 +1,6 @@
 -- Contract test for the CRM admin settings RPCs (migration 20261026155023, #4811).
--- All fixture changes roll back.
+-- All fixture changes roll back. Requires two active authenticated profiles
+-- (supabase/ci-bootstrap/020_test_fixture_seed.sql provides four in CI).
 --
 -- Proves, as real authenticated users (SET LOCAL role + JWT sub):
 --   * a non-administrator is refused by all seven functions (insufficient_privilege);
@@ -37,6 +38,10 @@ begin
   on conflict (profile_id, role_id) do update set revoked_at = null;
   update app.user_role set revoked_at = now()
    where profile_id = v_b_profile and revoked_at is null;
+  update app.user_role ur set revoked_at = now()
+    from app.role r
+   where r.id = ur.role_id and r.slug = 'sales'
+     and ur.profile_id = v_a_profile and ur.revoked_at is null;
   insert into app.app_access (profile_id, app) values (v_b_profile, 'crm')
   on conflict (profile_id, app) do update set revoked_at = null;
 
@@ -277,6 +282,30 @@ begin
       raise exception 'unexpected grants on %', v_call;
     end if;
   end loop;
+
+  -- Storage objects and the table-level assignee guard.
+  if to_regclass('crm.crm_department_salesperson_profile_idx') is null
+     or not exists (select 1 from information_schema.columns
+                    where table_schema = 'crm' and table_name = 'department'
+                      and column_name = 'salesperson_profile_id')
+     or not exists (select 1 from pg_trigger
+                    where tgrelid = 'crm.department'::regclass
+                      and tgname = 'crm_department_salesperson_guard') then
+    raise exception 'department salesperson column, index or guard trigger missing';
+  end if;
+  v_refused := false;
+  begin
+    update crm.department set salesperson_profile_id = gen_random_uuid() where id = v_department;
+  exception when invalid_parameter_value or foreign_key_violation then v_refused := true;
+  end;
+  if not v_refused then raise exception 'direct write of unknown salesperson accepted'; end if;
+  -- A (administrator, no sales role) written directly must be refused by the trigger.
+  v_refused := false;
+  begin
+    update crm.department set salesperson_profile_id = v_a_profile where id = v_department;
+  exception when invalid_parameter_value then v_refused := true;
+  end;
+  if not v_refused then raise exception 'direct write of non-sales salesperson accepted'; end if;
 
   raise notice 'crm_admin_settings_rpcs_contracts: PASS';
 end;

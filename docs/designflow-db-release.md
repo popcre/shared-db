@@ -321,3 +321,21 @@ Existing immutable receipt references are preserved when a lossless encoding
 changes. Their restored ZIP and bundle must exactly equal the newly authenticated
 candidate bytes and all source, ledger and proof fields must remain identical.
 A different encoding never authorizes a changed certificate or rewritten reference.
+
+### Local RLS benchmark statement boundaries (#4655)
+
+Tracking producer delivery exposed two consecutive queue failures in the unchanged
+`rls_public_admin_initplan_contracts.sql` timing fixture. Its single `DO` statement
+ran all 198 samples under one 30-second PostgreSQL statement timer. The repair
+executes the original nine cardinality/command cells as separate statements,
+each still bounded by that same 30-second timer. This intentionally changes the
+aggregate timer boundary; it does not increase the per-statement setting or the
+workflow job budget.
+
+All three row sizes, three commands, alternating original/candidate pairs, one
+warmup plus ten measured pairs per cell, actual authenticated nonowner/nonbypass
+execution, sample rollback, exact 198-sample completeness, and final policy/ACL/
+helper/RLS/owner restoration checks remain. Raw plans and timings are retained.
+The temporary batch function and all fixture changes stay inside the existing
+rollback-only disposable database test. This grants no shared-preview or
+production execution authority and supplies no live application acceptance.

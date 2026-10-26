@@ -275,4 +275,124 @@ begin
 end
 $contracts$;
 
+
+-- Contract 9 (#4437 review B1): a thumbnail-only change re-syncs the document,
+-- recomputes content_sha256 over the new image URL and invalidates the vector.
+update public.style_guide_search_documents
+   set embedding = (select ('[' || string_agg('0.3', ',') || ']')::extensions.vector
+                      from generate_series(1, 768)),
+       embedding_model = 'google/siglip2-base-patch16-naflex',
+       embedding_updated_at = now(),
+       embedding_attempts = 1
+ where style_guide_file_id = '44370000-0000-4000-8000-000000000004';
+
+update public.style_guide_files
+   set thumbnail_url = 'https://example.invalid/four-rerendered.jpg'
+ where id = '44370000-0000-4000-8000-000000000004';
+
+insert into public.style_guide_search_sync_queue (style_guide_file_id, queued_at)
+values ('44370000-0000-4000-8000-000000000004', now() - interval '1 minute')
+on conflict (style_guide_file_id) do update
+   set queued_at = now() - interval '1 minute';
+
+do $contracts$
+declare
+  v_result record;
+begin
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  select * into v_result from public.refresh_style_guide_matviews(null, 100, 'search');
+  if v_result.search_documents_synced is distinct from 1 then
+    raise exception 'contract 9: thumbnail-only change did not resync (%)', v_result.search_documents_synced;
+  end if;
+  if not exists (select 1
+                   from public.style_guide_search_documents d
+                   join public.style_guide_files f on f.id = d.style_guide_file_id
+                  where d.style_guide_file_id = '44370000-0000-4000-8000-000000000004'
+                    and d.thumbnail_url = 'https://example.invalid/four-rerendered.jpg'
+                    and d.embedding is null
+                    and d.embedding_model is null
+                    and d.embedding_attempts = 0
+                    and d.content_sha256 = encode(extensions.digest(
+                        md5(f.relative_path || '|' || coalesce(f.size_bytes::text, '') || '|' ||
+                            coalesce(f.modified_at::text, '') || '|' || coalesce(f.tag_search_text, '') || '|' ||
+                            coalesce(f.style_guide_folder, '') || '|' || coalesce(f.property_folder, '') || '|' ||
+                            coalesce(f.licensor_name, '') || '|' || f.is_active::text)
+                        || '|' || 'https://example.invalid/four-rerendered.jpg', 'sha256'), 'hex')) then
+    raise exception 'contract 9: re-rendered thumbnail did not invalidate the embedding or recompute identity';
+  end if;
+  perform set_config('request.jwt.claims', null, true);
+end
+$contracts$;
+
+-- Contract 10 (#4437 review B1): the claim hands the worker the LIVE thumbnail
+-- and skips documents whose stored snapshot is stale until the refresh heals
+-- them.
+update public.style_guide_search_documents
+   set thumbnail_url = 'https://example.invalid/stale-snapshot.jpg',
+       embedding = null, embedding_model = null, embedding_updated_at = null,
+       embedding_attempts = 0, embedding_error = null, embedding_error_category = null,
+       embedding_next_retry_at = null
+ where style_guide_file_id = '44370000-0000-4000-8000-000000000004';
+
+do $contracts$
+declare
+  v_claimed record;
+  v_result record;
+begin
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  if exists (select 1 from public.claim_sg_search_embedding_documents(p_limit => 10, p_worker_id => 'zz4437-worker')
+              where style_guide_file_id = '44370000-0000-4000-8000-000000000004') then
+    raise exception 'contract 10: claim handed out a stale-snapshot document';
+  end if;
+
+  insert into public.style_guide_search_sync_queue (style_guide_file_id, queued_at)
+  values ('44370000-0000-4000-8000-000000000004', now() - interval '1 minute')
+  on conflict (style_guide_file_id) do update
+     set queued_at = now() - interval '1 minute';
+  select * into v_result from public.refresh_style_guide_matviews(null, 100, 'search');
+  if v_result.search_documents_synced is distinct from 1 then
+    raise exception 'contract 10: stale thumbnail did not resync (%)', v_result.search_documents_synced;
+  end if;
+
+  select * into v_claimed
+    from public.claim_sg_search_embedding_documents(p_limit => 10, p_worker_id => 'zz4437-worker')
+   where style_guide_file_id = '44370000-0000-4000-8000-000000000004';
+  if v_claimed.style_guide_file_id is null
+     or v_claimed.thumbnail_url is distinct from 'https://example.invalid/four-rerendered.jpg' then
+    raise exception 'contract 10: healed document was not claimable with its live thumbnail';
+  end if;
+  perform set_config('request.jwt.claims', null, true);
+end
+$contracts$;
+
+-- Contract 11 (#4437 review M4): the structural objects themselves.
+do $contracts$
+begin
+  if not exists (select 1 from pg_attribute a
+                  where a.attrelid = to_regclass('public.style_guide_search_documents')
+                    and a.attname = 'embedding' and not a.attisdropped
+                    and a.atttypid = 'extensions.vector'::regtype and a.atttypmod = 768) then
+    raise exception 'contract 11: embedding column is not extensions.vector(768)';
+  end if;
+  if not exists (select 1 from pg_attribute a
+                  where a.attrelid = to_regclass('public.style_guide_search_documents')
+                    and a.attname = 'content_sha256' and not a.attisdropped
+                    and a.atttypid = 'text'::regtype) then
+    raise exception 'contract 11: content_sha256 column is not text';
+  end if;
+  if not exists (select 1 from pg_indexes i
+                  where i.schemaname = 'public'
+                    and i.indexname = 'idx_sg_search_documents_embedding_hnsw'
+                    and i.indexdef like '%USING hnsw%vector_cosine_ops%') then
+    raise exception 'contract 11: HNSW index missing or wrong shape';
+  end if;
+  if not exists (select 1 from pg_indexes i
+                  where i.schemaname = 'public'
+                    and i.indexname = 'idx_sg_search_documents_embedding_pending'
+                    and i.indexdef like '%WHERE (is_active AND (content_sha256 IS NOT NULL) AND (embedding IS NULL))%') then
+    raise exception 'contract 11: pending-claim index missing or wrong predicate';
+  end if;
+end
+$contracts$;
+
 rollback;

@@ -5076,7 +5076,7 @@ POPSG_REFRESH_SEARCH_SYNC_QUEUE_CONTRACT = (
     " and not has_table_privilege('authenticated',c.oid,'SELECT')"
     " and has_table_privilege('service_role',c.oid,'SELECT'))"
     " and exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.style_guide_files_queue_search_sync()')"
-    " and p.prosecdef and md5(p.prosrc)='2b082d5e84238234f3d20669b2931f0c'"
+    " and p.prosecdef and md5(p.prosrc)='abddc252ee3f9c30c35e13eba7020402'"
     " and not has_function_privilege('authenticated',p.oid,'EXECUTE'))"
     " and exists (select 1 from pg_trigger t where t.tgrelid=to_regclass('public.style_guide_files')"
     " and t.tgname='trg_style_guide_files_queue_search_sync' and not t.tgisinternal and t.tgenabled='O'"

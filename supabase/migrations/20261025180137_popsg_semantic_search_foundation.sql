@@ -1,5 +1,5 @@
 -- Version: 20261025180137
--- derived-from: 20260930185929
+-- derived-from: 20260930185929, 20260917005221
 -- Issue: popcre/shared-db#4437 (app u2giants/popdam3#107)
 -- PopSG semantic-plus-keyword search, stage 1: embedding foundation.
 --
@@ -49,6 +49,69 @@ create index if not exists idx_sg_search_documents_embedding_hnsw
   on public.style_guide_search_documents
   using hnsw (embedding extensions.vector_cosine_ops)
   where embedding is not null;
+
+-- Review H3: the claim scan filters is_active + identified + not-yet-embedded
+-- and orders by (document_updated_at, style_guide_file_id) for UPDATE SKIP
+-- LOCKED; without this partial index every claim call seq-scans the corpus.
+create index if not exists idx_sg_search_documents_embedding_pending
+  on public.style_guide_search_documents (document_updated_at, style_guide_file_id)
+  where is_active and content_sha256 is not null and embedding is null;
+
+-- Review B2: backfill the existing corpus at apply time. Without this the
+-- historical documents keep content_sha256 null forever (the refresh only
+-- visits identity-changed rows) and the claim RPC has nothing to hand the
+-- worker; stage 2 would stay keyword-only for the whole library.
+update public.style_guide_search_documents d
+   set content_sha256 = encode(extensions.digest(
+         d.source_identity || '|' || coalesce(f.thumbnail_url, ''), 'sha256'), 'hex'),
+       thumbnail_url = f.thumbnail_url
+  from public.style_guide_files f
+ where f.id = d.style_guide_file_id
+   and (d.content_sha256 is null or d.thumbnail_url is distinct from f.thumbnail_url);
+
+analyze public.style_guide_search_documents;
+
+-- Review B1: a thumbnail-only change must requeue. The queue trigger's skip
+-- comparison covered the eight source_identity inputs only, so a re-render
+-- (or a first successful render after thumbnail_error) never enqueued and
+-- content_sha256 could not observe the one input it exists to watch.
+-- Re-derived from 20260917005221 with thumbnail_url added to the comparison;
+-- the trigger binding survives create or replace.
+create or replace function public.style_guide_files_queue_search_sync()
+returns trigger
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+begin
+  if tg_op = 'UPDATE'
+     and new.relative_path is not distinct from old.relative_path
+     and new.size_bytes is not distinct from old.size_bytes
+     and new.modified_at is not distinct from old.modified_at
+     and new.tag_search_text is not distinct from old.tag_search_text
+     and new.style_guide_folder is not distinct from old.style_guide_folder
+     and new.property_folder is not distinct from old.property_folder
+     and new.licensor_name is not distinct from old.licensor_name
+     and new.thumbnail_url is not distinct from old.thumbnail_url
+     and new.is_active is not distinct from old.is_active then
+    return null;
+  end if;
+
+  if new.is_active then
+    insert into public.style_guide_search_sync_queue (style_guide_file_id)
+    values (new.id)
+    on conflict (style_guide_file_id) do update
+      set queued_at = excluded.queued_at;
+  end if;
+
+  return null;
+end;
+$function$;
+
+comment on function public.style_guide_files_queue_search_sync() is
+  'Issue #3023, #4437. Enqueues an active style_guide_files row for search-document sync when it is inserted or any source_identity input (including thumbnail_url, the embedding content input) changes.';
+
+revoke all on function public.style_guide_files_queue_search_sync() from public, anon, authenticated;
 
 -- 2) refresh_style_guide_matviews: maintain content_sha256 and invalidate
 --    embeddings on content change. Unchanged content keeps the vector, its
@@ -130,6 +193,9 @@ begin
               -- the document is_active = false. Without this clause the row is
               -- never re-selected and stays invisible to unified search forever.
               or d.is_active is distinct from f.is_active
+              -- #4437 review B1: thumbnail-only changes must re-sync too; they
+              -- change content_sha256 and must invalidate the stored vector.
+              or d.thumbnail_url is distinct from f.thumbnail_url
               or d.source_identity is distinct from
                  md5(f.relative_path || '|' || coalesce(f.size_bytes::text, '') || '|' ||
                      coalesce(f.modified_at::text, '') || '|' || coalesce(f.tag_search_text, '') || '|' ||
@@ -236,6 +302,7 @@ begin
           and f.is_active
           and (d.style_guide_file_id is null
                or d.is_active is distinct from f.is_active
+               or d.thumbnail_url is distinct from f.thumbnail_url
                or d.source_identity is distinct from
                  md5(f.relative_path || '|' || coalesce(f.size_bytes::text, '') || '|' ||
                      coalesce(f.modified_at::text, '') || '|' || coalesce(f.tag_search_text, '') || '|' ||
@@ -288,15 +355,23 @@ begin
   if (select auth.role()) <> 'service_role' or nullif(btrim(p_worker_id),'') is null then
     raise exception 'service_role and worker id required' using errcode = '42501';
   end if;
+  -- Review B1 second half: the worker must embed the LIVE thumbnail the
+  -- content identity names. Joining style_guide_files both supplies the live
+  -- URL and skips documents whose stored snapshot is stale until the refresh
+  -- re-syncs them, so a vector is never written against yesterday's image.
   return query with candidates as (
-    select d.style_guide_file_id from public.style_guide_search_documents d
-    where d.is_active and d.content_sha256 is not null
-      and d.embedding is null and d.embedding_attempts < d.embedding_max_attempts
-      and (d.embedding_next_retry_at is null or d.embedding_next_retry_at <= now())
-      and (d.embedding_lease_expires_at is null or d.embedding_lease_expires_at <= now())
-      and d.embedding_error_category is distinct from 'permanent'
-    order by d.document_updated_at, d.style_guide_file_id for update skip locked
-    limit greatest(1, least(coalesce(p_limit, 100), 1000))
+    select d.style_guide_file_id, f.thumbnail_url as live_thumbnail_url
+      from public.style_guide_search_documents d
+      join public.style_guide_files f on f.id = d.style_guide_file_id
+     where d.is_active and f.is_active
+       and d.thumbnail_url is not distinct from f.thumbnail_url
+       and d.content_sha256 is not null
+       and d.embedding is null and d.embedding_attempts < d.embedding_max_attempts
+       and (d.embedding_next_retry_at is null or d.embedding_next_retry_at <= now())
+       and (d.embedding_lease_expires_at is null or d.embedding_lease_expires_at <= now())
+       and d.embedding_error_category is distinct from 'permanent'
+     order by d.document_updated_at, d.style_guide_file_id for update of d skip locked
+     limit greatest(1, least(coalesce(p_limit, 100), 1000))
   ), claimed as (
     update public.style_guide_search_documents d
        set embedding_lease_token = gen_random_uuid(),
@@ -364,8 +439,11 @@ security definer
 set search_path = public
 as $$
 begin
-  if (select auth.role()) <> 'service_role' or p_category not in ('transient','permanent') then
-    raise exception 'invalid embedding error' using errcode = '42501';
+  if (select auth.role()) <> 'service_role' then
+    raise exception 'service_role required' using errcode = '42501';
+  end if;
+  if p_category not in ('transient','permanent') then
+    raise exception 'invalid embedding error category' using errcode = '22023';
   end if;
   update public.style_guide_search_documents
      set embedding_error = left(coalesce(p_error, 'unknown embedding error'), 1000),
@@ -422,9 +500,8 @@ set search_path = public
 as $$
 declare v_count int;
 begin
-  if (select auth.role()) <> 'service_role'
-     and not public.has_role(auth.uid(), 'admin') then
-    raise exception 'admin required' using errcode = '42501';
+  if (select auth.role()) <> 'service_role' then
+    raise exception 'service_role required' using errcode = '42501';
   end if;
   update public.style_guide_search_documents
      set embedding_error = null,
@@ -497,6 +574,39 @@ begin
   end loop;
   if array_length(v_missing, 1) > 0 then
     raise exception 'catalogue verification failed, missing: %', v_missing;
+  end if;
+
+  -- Review M4: assert the structural objects themselves, not just the
+  -- function catalogue: vector typmod, both indexes' shape, and the
+  -- post-backfill invariant that every active document of an active file is
+  -- claimable (no null content identity left behind).
+  if not exists (
+    select 1 from pg_attribute a
+     where a.attrelid = to_regclass('public.style_guide_search_documents')
+       and a.attname = 'embedding' and not a.attisdropped
+       and a.atttypid = 'extensions.vector'::regtype and a.atttypmod = 768) then
+    raise exception 'embedding column is not extensions.vector(768)';
+  end if;
+  if not exists (
+    select 1 from pg_indexes i
+     where i.schemaname = 'public'
+       and i.indexname = 'idx_sg_search_documents_embedding_hnsw'
+       and i.indexdef like '%USING hnsw%vector_cosine_ops%') then
+    raise exception 'embedding HNSW index missing or wrong shape';
+  end if;
+  if not exists (
+    select 1 from pg_indexes i
+     where i.schemaname = 'public'
+       and i.indexname = 'idx_sg_search_documents_embedding_pending'
+       and i.indexdef like '%WHERE (is_active AND (content_sha256 IS NOT NULL) AND (embedding IS NULL))%') then
+    raise exception 'embedding pending index missing or wrong predicate';
+  end if;
+  if exists (
+    select 1
+      from public.style_guide_search_documents d
+      join public.style_guide_files f on f.id = d.style_guide_file_id
+     where d.is_active and f.is_active and d.content_sha256 is null) then
+    raise exception 'backfill left active documents without content identity';
   end if;
 end;
 $verify$;

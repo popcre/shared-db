@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "work_issue": 4787,
+  "outcome": "ready-for-merge",
+  "pr": 4786,
+  "head_sha": "75f9b3994c0dc9f722338db953b4fd9da3b49bfb",
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4787/3",
+  "contract_sha256": "a6f84f58731884e0dd25ad55a415ab416cab079eb4d4ff7857177cecd56273a1",
+  "files_changed": [
+    "scripts/merge-queue-contract.mjs",
+    "scripts/merge-queue-contract.test.mjs",
+    "docs/merge-queue-operation.md",
+    ".agent/work/4787/3/contract.json",
+    ".agent/work/4787/3/completion.json",
+    ".agent/work/4787/1/contract.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/merge-queue-contract.test.mjs",
+      "exit_code": 0,
+      "evidence": "37 pass / 0 fail (two new tests pin descendant-tip satisfaction, no-success descendants, target-failure refusal, and SHA validation)"
+    },
+    {
+      "command": "node --check scripts/merge-queue-contract.mjs",
+      "exit_code": 0,
+      "evidence": "syntax OK after edit"
+    }
+  ],
+  "assumptions_resolved": [
+    "A rehearsal on a first-parent descendant replays the same pending migration; its success proves at least as much as the target's own"
+  ],
+  "stop_conditions_hit": []
+}

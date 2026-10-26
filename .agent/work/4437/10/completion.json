@@ -11,8 +11,6 @@
   "head_sha": "9d508878d39d7f3742e917e61c681c76c00d94eb",
   "base_sha": "1750572e9ea80cfc40070b83ead0b076f6dcc96e",
   "files_changed": [
-    ".agent/work/4437/7/completion.json",
-    ".agent/work/4437/7/contract.json",
     ".github/live-proofs/3458.sql",
     "docs/verification/throughput-guard-truth-baseline-20260828.json",
     "scripts/production_catalog_verification.py",

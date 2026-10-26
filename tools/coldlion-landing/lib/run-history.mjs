@@ -6,7 +6,7 @@
 
 import { randomUUID } from "node:crypto";
 import { fetchWindowScope } from "./http.mjs";
-import { buildOrderHistoryLoadSql, buildProdHistoryLoadSql } from "./load-window.mjs";
+import { assertUnsealedScope, buildOrderHistoryLoadSql, buildProdHistoryLoadSql } from "./load-window.mjs";
 import { projectOrderHistoryWindow } from "./project-order-history.mjs";
 import { projectProdHistoryWindow } from "./project-prod-history.mjs";
 import { COMPANY_CODE, PAGE_SIZE, allScopes, scopeLabel } from "./scopes.mjs";
@@ -147,9 +147,7 @@ export async function loadWindowScope({
   orderStampColumns,
   sealed = true,
 }) {
-  if (!sealed && (scope.stage || scope.endpoint !== "/orderHistory")) {
-    throw new Error("an unsealed forward load is defined for /orderHistory only");
-  }
+  if (!sealed) assertUnsealedScope(scope);
   const runId = randomUUID();
   const startedAt = new Date();
   try {
@@ -207,6 +205,7 @@ export async function loadWindowScope({
         projected,
         ...finish(startedAt),
         notes: notesFor(summary),
+        sealed,
       });
     } else {
       const projected = projectOrderHistoryWindow(rows, { runId, fetchedAt });

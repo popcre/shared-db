@@ -12,6 +12,20 @@ import {
 } from "./coldlion-sync-common.mjs";
 import { assertExpectedTarget } from "./coldlion-landing/lib/db.mjs";
 
+// The /items sweep is offset-paged, so a row that moves between pages mid-sweep is
+// returned twice (the 2026-10-25 and 2026-10-26 nightlies failed on
+// item_import_staging_pkey). Keep the LAST copy of each company/division/item key -- the
+// most recently read -- and report how many were folded, never silently.
+export function dedupeItems(items) {
+  const byKey = new Map();
+  for (const row of items) {
+    const key = ["companyCode", "divisionCode", "itemNo"].map((field) => String(row?.[field] ?? "").trim()).join("\u0000");
+    byKey.delete(key);
+    byKey.set(key, row);
+  }
+  return { items: [...byKey.values()], folded: items.length - byKey.size };
+}
+
 export function buildItemImportPayload(items, options = {}) {
   return {
     sweepId: options.sweepId ?? randomUUID(),
@@ -106,13 +120,15 @@ async function main() {
   let stage = "fetch";
   try {
     const sweep = await collectItems(readColdlionApiKey());
+    const { items, folded } = dedupeItems(sweep.rows);
+    sweep.rows = items;
     const payload = buildItemImportPayload(sweep.rows, sweep);
     const divisions = sweep.rows.reduce((counts, row) => {
       counts[row.divisionCode ?? "(missing)"] = (counts[row.divisionCode ?? "(missing)"] ?? 0) + 1;
       return counts;
     }, {});
     process.stdout.write(`${JSON.stringify({ items: sweep.rows.length, pagesFetched: sweep.pagesFetched,
-      terminalReached: sweep.terminalReached, divisions, apply,
+      terminalReached: sweep.terminalReached, duplicateKeysFolded: folded, divisions, apply,
       resolutionGuard: process.env.ITEM_MASTER_ALLOW_RESOLUTION_DROP === "true" ? "BYPASSED" : "enforced" }, null, 2)}\n`);
     if (apply) {
       stage = "apply";

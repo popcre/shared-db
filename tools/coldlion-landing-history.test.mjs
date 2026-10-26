@@ -22,7 +22,7 @@ import { buildOrderHistoryLoadSql, buildProdHistoryLoadSql } from "./coldlion-la
 import { assertHistoryShape, hasOrderStampColumns, historyShapeSql, interpretOrderStampColumns, loadedWindowsSql, loadWindowScope, orderStampColumnsSql } from "./coldlion-landing/lib/run-history.mjs";
 import { createHash } from "node:crypto";
 import { newYorkToday, parseArgs as parseBackfillArgs, runUnsealedOrderWindow, selectScopes, validateUnsealedOrderWindow } from "./coldlion-landing/backfill-history.mjs";
-import { forwardScan, headerTrackScan, parseArgs as parseSyncArgs } from "./coldlion-landing/sync-history.mjs";
+import { forwardScan, headerTrackScan, parseArgs as parseSyncArgs, prodOpenScan } from "./coldlion-landing/sync-history.mjs";
 import { headerTrackWindow as headerTrackWindowForTest } from "./coldlion-landing/lib/order-intake-windows.mjs";
 
 // ---------------------------------------------------------------------------------
@@ -1074,8 +1074,9 @@ test("the loaders refuse a target that is not the canonical landing shape", () =
   assert.throws(() => assertHistoryShape({}, () => [["order_history_line.id"]]), /not the canonical landing shape/);
 });
 
-test("forward mode is /orderHistory only", () => {
-  assert.throws(() => orderSql({ sealed: false, scope: prodHistoryScope("ISS") }), /orderHistory only/);
+test("unsealed mode is /orderHistory or a STAGED /prodHistory scope only", () => {
+  assert.throws(() => orderSql({ sealed: false, scope: { endpoint: "/prodHistory", stage: null } }), /staged \/prodHistory only/);
+  assert.throws(() => orderSql({ sealed: false, scope: { endpoint: "/orderHistory", stage: "ISS" } }), /staged \/prodHistory only/);
 });
 
 test("--forward is parsed and --today drives the closed-window clamp", () => {
@@ -1216,4 +1217,57 @@ test("the header scan loads created then modified, unsealed, and reports a faile
   assert.equal(result.tracks, 1);
   assert.equal(result.lines, 4);
   assert.equal(failures.length, 1);
+});
+
+// ---------------------------------------------------------------------------------
+// /prodHistory open week, unsealed (Albert Hazan, 2026-10-26: "production-history feed
+// should match order feed run timing")
+// ---------------------------------------------------------------------------------
+
+test("the open-week production scan reads every stage of the current week, unsealed, in order", async () => {
+  const seen = [];
+  const failures = [];
+  const result = await prodOpenScan({
+    args: { today: "2026-10-26", company: "EDGEHOME", pageSize: 200 },
+    apiKey: "synthetic-test-key",
+    failures,
+    load: async ({ scope, window, sealed }) => {
+      seen.push(`${scope.stage} ${window.from} ${sealed}`);
+      if (scope.stage === "INTRAN") throw new Error("vendor down");
+      return { fetched: { rows: 2 }, summary: { lines: 2 } };
+    },
+  });
+  assert.deepEqual(seen, ["ISS 2026-10-20 false", "INTRAN 2026-10-20 false", "REC 2026-10-20 false"]);
+  assert.equal(result.stages, 2, "one stage failing does not stop the others");
+  assert.equal(failures.length, 1, "and the failure keeps the run red");
+});
+
+test("an unsealed production load writes no ledger or page evidence and refuses a sealed week", () => {
+  const sql = buildProdHistoryLoadSql({
+    window: windowContaining("2026-10-26"),
+    scope: prodHistoryScope("REC"),
+    runId: "00000000-0000-4000-8000-000000000001",
+    requestedBy: "test",
+    companyCode: "EDGEHOME",
+    pages: [{ httpStatus: 200, bodyStatus: 200 }],
+    completion: { rows: 0 },
+    projected: { lines: [], components: [], lastLookups: [], assertableLineIds: [] },
+    startedAt: "2026-10-26T12:00:00Z",
+    finishedAt: "2026-10-26T12:00:01Z",
+    durationMs: 1000,
+    notes: "",
+    sealed: false,
+  });
+  assert.doesNotMatch(sql, /insert into coldlion\.window_ledger|history_page_ledger|update coldlion\.window_ledger/);
+  assert.match(sql, /stage_code is not distinct from 'REC'/);
+  assert.match(sql, /already loaded \(sealed\)/);
+  assert.match(sql, /"unsealedForward":true/);
+  assert.match(sql, /"stageCode":"REC"/);
+  assert.match(sql, /delete from _stage_component s using _old_line/);
+});
+
+test("the hourly intake also runs the production open-week sync", () => {
+  const intake = readWorkflow("coldlion-order-intake.yml");
+  assert.match(intake, /sync-history\.mjs --windows 3 --prod-open --no-header-tracks/);
+  assert.match(readWorkflow("coldlion-landing-sync.yml"), /--forward --prod-open/);
 });

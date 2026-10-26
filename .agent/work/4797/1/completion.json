@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/4797/1",
   "contract_sha256": "179079e09e6e3ffb1756c492ab5ddd962492ee71110e3e1f1d28203c6ef60ae8",
-  "head_sha": "3dffab0adc91245bd5e1de0ab56d0f0eab11ce45",
+  "head_sha": "1b902e1115b61f19396fbbe430d208f807b44353",
   "base_sha": "1750572e9ea80cfc40070b83ead0b076f6dcc96e",
   "files_changed": [
     "scripts/lib/lanes/review-circuit-breaker.mjs",

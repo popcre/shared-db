@@ -180,40 +180,40 @@ begin
             content_sha256 = excluded.content_sha256,
             -- #4437: a changed content identity invalidates the embedding and
             -- requeues it; unchanged content keeps vector, stamp and retry state.
-            embedding = case when public.style_guide_search_documents.content_sha256
+            embedding = case when d.content_sha256
                                   = excluded.content_sha256
-                        then public.style_guide_search_documents.embedding end,
-            embedding_model = case when public.style_guide_search_documents.content_sha256
+                        then d.embedding end,
+            embedding_model = case when d.content_sha256
                                         = excluded.content_sha256
-                              then public.style_guide_search_documents.embedding_model end,
-            embedding_updated_at = case when public.style_guide_search_documents.content_sha256
+                              then d.embedding_model end,
+            embedding_updated_at = case when d.content_sha256
                                               = excluded.content_sha256
-                                  then public.style_guide_search_documents.embedding_updated_at end,
-            embedding_error = case when public.style_guide_search_documents.content_sha256
+                                  then d.embedding_updated_at end,
+            embedding_error = case when d.content_sha256
                                         = excluded.content_sha256
-                              then public.style_guide_search_documents.embedding_error end,
-            embedding_error_category = case when public.style_guide_search_documents.content_sha256
+                              then d.embedding_error end,
+            embedding_error_category = case when d.content_sha256
                                                   = excluded.content_sha256
-                                        then public.style_guide_search_documents.embedding_error_category end,
-            embedding_next_retry_at = case when public.style_guide_search_documents.content_sha256
+                                        then d.embedding_error_category end,
+            embedding_next_retry_at = case when d.content_sha256
                                                   = excluded.content_sha256
-                                        then public.style_guide_search_documents.embedding_next_retry_at end,
-            embedding_attempts = case when public.style_guide_search_documents.content_sha256
+                                        then d.embedding_next_retry_at end,
+            embedding_attempts = case when d.content_sha256
                                             = excluded.content_sha256
-                                then public.style_guide_search_documents.embedding_attempts else 0 end,
-            embedding_max_attempts = case when public.style_guide_search_documents.content_sha256
+                                then d.embedding_attempts else 0 end,
+            embedding_max_attempts = case when d.content_sha256
                                                 = excluded.content_sha256
-                                    then public.style_guide_search_documents.embedding_max_attempts
+                                    then d.embedding_max_attempts
                                     else 5 end,
-            embedding_lease_token = case when public.style_guide_search_documents.content_sha256
+            embedding_lease_token = case when d.content_sha256
                                                 = excluded.content_sha256
-                                        then public.style_guide_search_documents.embedding_lease_token end,
-            embedding_lease_owner = case when public.style_guide_search_documents.content_sha256
+                                        then d.embedding_lease_token end,
+            embedding_lease_owner = case when d.content_sha256
                                                 = excluded.content_sha256
-                                        then public.style_guide_search_documents.embedding_lease_owner end,
-            embedding_lease_expires_at = case when public.style_guide_search_documents.content_sha256
+                                        then d.embedding_lease_owner end,
+            embedding_lease_expires_at = case when d.content_sha256
                                                     = excluded.content_sha256
-                                            then public.style_guide_search_documents.embedding_lease_expires_at end,
+                                            then d.embedding_lease_expires_at end,
             search_vector = excluded.search_vector,
             document_updated_at = now()
       returning d.style_guide_file_id

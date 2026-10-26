@@ -1,0 +1,48 @@
+{
+  "schema_version": 2,
+  "generation": 5,
+  "evidence_parent": {
+    "work_issue": 4832,
+    "generation": 4,
+    "contract_sha256": "5f658548999e4f8dd143bfe3fa48a3d13bc6aebada1c6f6e4f5af69dbd21c872"
+  },
+  "work_issue": 4832,
+  "work_type": "structural",
+  "route": "claim-first",
+  "goal": "Deliver the reviewed minimal role rename grant, assert the exact table kind in the rolled-back fixture, and bind current delivery evidence and release tests.",
+  "base_sha": "e976e9daf56163786aca014fea63e6f7c72e98f2",
+  "dispatcher": "Codex chat 01a17951-45e4-7ae3-a348-77944f949013 on edge-dev3",
+  "worker": "codex",
+  "branch": "codex/role-rename-permission-20261026",
+  "worktree": "/tmp/dflow-role-db-20261026",
+  "allowed_paths": [
+    "supabase/migrations/20261026193803_dflow_prod_role_rename_update_grant.sql",
+    "supabase/tests/dflow_prod_role_rename_update_grant_contracts.sql",
+    "HANDOFF.d/2026-10-26T1801Z-edge-dev3-codex-role-rename-permission.md"
+  ],
+  "file_writes": [
+    "supabase/migrations/20261026193803_dflow_prod_role_rename_update_grant.sql",
+    "supabase/tests/dflow_prod_role_rename_update_grant_contracts.sql",
+    "HANDOFF.d/2026-10-26T1801Z-edge-dev3-codex-role-rename-permission.md"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "table dflow_prod.\"Roles\"",
+    "view dflow_prod.\"Roles\""
+  ],
+  "prohibited_actions": [
+    "No direct production SQL, row changes or broadened grants",
+    "Do not change other sessions or gates"
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "PostgreSQL 16 non-superuser fixture and exact grant migration contract"
+  ],
+  "assumptions": [
+    "Production backend inherits designflow_prod_backend_grants"
+  ],
+  "stop_conditions": [
+    "Any review refusal or protected promotion refusal",
+    "Unexpected privilege or data changes"
+  ]
+}

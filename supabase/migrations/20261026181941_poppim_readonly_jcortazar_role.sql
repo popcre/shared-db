@@ -16,8 +16,9 @@
 --   * app tables profile, activity, comment, notification, app_access,
 --     user_role, role, file_object;
 --   * core tables licensor, character, contact_company, contact,
---     customer, factory, product_type.
--- core.property is deferred: it is under active claim #4809; a follow-up grants it.
+--     customer, product_type.
+-- core.property and core.factory are deferred: active claims #4809 and #4749
+-- hold them; a follow-up grants them.
 -- Nothing in crm, dam, plm, dflow*, coldlion, auth, vault, storage or ingest.
 --
 -- BYPASSRLS: these tables are RLS-scoped to the signed-in browser user
@@ -95,5 +96,4 @@ grant select on core.character to poppim_readonly_jcortazar;
 grant select on core.contact_company to poppim_readonly_jcortazar;
 grant select on core.contact to poppim_readonly_jcortazar;
 grant select on core.customer to poppim_readonly_jcortazar;
-grant select on core.factory to poppim_readonly_jcortazar;
 grant select on core.product_type to poppim_readonly_jcortazar;

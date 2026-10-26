@@ -8,11 +8,12 @@
 --
 -- WHAT THIS CREATES. One NOLOGIN role, poppim_readonly_jcortazar, with SELECT
 -- only on the objects poppim-web reads (grep of src/ for .schema/.from/.rpc):
---   * every pim table (not the coldlion_* view);
---   * api views pm_product_board, pim_item_picker, pm_product_assets,
---     pm_customer_list, pm_factory_list. pm_product_board and pim_item_picker are
---     security_invoker views over plm.item; plm is deliberately NOT granted, so
---     those two views refuse for this role. pim.product is the direct source;
+--   * the 24 pim tables poppim-web reads (listed below). Not granted:
+--     pim.coldlion_item_image_metadata (coldlion is excluded) and the
+--     pim.ai_activity_triage* tables (not read by poppim-web);
+--   * NO api views. The Poppim api views are security_invoker and read plm, dam
+--     or core tables outside this grant set, so a grant on them would be inert.
+--     The role reads the underlying pim/app/core tables directly instead;
 --   * app tables profile, activity, comment, notification, app_access,
 --     user_role, role, file_object;
 --   * core tables licensor, character, contact_company, contact,
@@ -31,8 +32,17 @@
 -- schema, no function EXECUTE granted. The only PUBLIC-executable functions in
 -- these four schemas (verified 2026-10-26) are stable lookups (current_profile_id,
 -- has_role, has_any_role, has_app_access, jwt_role_names) and trigger-only
--- functions that cannot be called directly. default_transaction_read_only and a
--- 30s statement_timeout are role defaults as an extra guard.
+-- functions that cannot be called directly. The SELECT-only grant set is the
+-- write boundary. default_transaction_read_only is a user-settable default (the
+-- session can turn it off), so it is a convenience, not a privilege boundary.
+-- statement_timeout 30s and idle_in_transaction_session_timeout 60s protect
+-- production load; connection limit 3.
+--
+-- PLAIN CREATE ROLE (no if-not-exists) on purpose: production was verified on
+-- 2026-10-26 to hold no poppim_readonly* role, and a pre-existing role with
+-- unknown attributes must fail the apply rather than be silently adopted.
+-- ROLLBACK (forward fix): revoke the grants below, then
+-- drop role poppim_readonly_jcortazar;
 --
 -- LOGIN: the role is NOLOGIN here. Login and password are enabled afterwards
 -- outside git; the password lives only in 1Password vibe_coding.
@@ -47,7 +57,6 @@ alter role poppim_readonly_jcortazar set idle_in_transaction_session_timeout = '
 alter role poppim_readonly_jcortazar set default_transaction_read_only = on;
 
 grant usage on schema pim to poppim_readonly_jcortazar;
-grant usage on schema api to poppim_readonly_jcortazar;
 grant usage on schema app to poppim_readonly_jcortazar;
 grant usage on schema core to poppim_readonly_jcortazar;
 
@@ -76,11 +85,6 @@ grant select on pim.stage to poppim_readonly_jcortazar;
 grant select on pim.stage_history to poppim_readonly_jcortazar;
 grant select on pim.view_pref to poppim_readonly_jcortazar;
 
-grant select on api.pm_product_board to poppim_readonly_jcortazar;
-grant select on api.pim_item_picker to poppim_readonly_jcortazar;
-grant select on api.pm_product_assets to poppim_readonly_jcortazar;
-grant select on api.pm_customer_list to poppim_readonly_jcortazar;
-grant select on api.pm_factory_list to poppim_readonly_jcortazar;
 
 grant select on app.profile to poppim_readonly_jcortazar;
 grant select on app.activity to poppim_readonly_jcortazar;

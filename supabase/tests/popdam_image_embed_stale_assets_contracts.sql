@@ -78,7 +78,7 @@ do $phase3$
 declare
   v_ids uuid[];
 begin
-  select array_agg(id order by id) into v_ids from public.image_embed_stale_assets(null, null);
+  select array_agg(t.x order by t.x) into v_ids from public.image_embed_stale_assets(null, null) as t(x);
   if v_ids is distinct from array['00000000-0000-4000-8000-000000000491',
                                  '00000000-0000-4000-8000-000000000493',
                                  '00000000-0000-4000-8000-000000000494']::uuid[] then
@@ -97,21 +97,21 @@ declare
   v_page3 uuid[];
   v_last  uuid;
 begin
-  select array_agg(id order by id) into v_page1 from public.image_embed_stale_assets(null, 2);
+  select array_agg(t.x order by t.x) into v_page1 from public.image_embed_stale_assets(null, 2) as t(x);
   if cardinality(coalesce(v_page1, '{}'::uuid[])) <> 2
      or v_page1[1] <> '00000000-0000-4000-8000-000000000491' then
     raise exception 'page 1 wrong: %', v_page1;
   end if;
 
   v_last := v_page1[cardinality(v_page1)];
-  select array_agg(id order by id) into v_page2 from public.image_embed_stale_assets(v_last, 2);
+  select array_agg(t.x order by t.x) into v_page2 from public.image_embed_stale_assets(v_last, 2) as t(x);
   if cardinality(coalesce(v_page2, '{}'::uuid[])) <> 1
      or v_page2[1] <> '00000000-0000-4000-8000-000000000494' then
     raise exception 'page 2 wrong: %', v_page2;
   end if;
 
   v_last := v_page2[cardinality(v_page2)];
-  select array_agg(id order by id) into v_page3 from public.image_embed_stale_assets(v_last, 2);
+  select array_agg(t.x order by t.x) into v_page3 from public.image_embed_stale_assets(v_last, 2) as t(x);
   if cardinality(coalesce(v_page3, '{}'::uuid[])) <> 0 then
     raise exception 'exhausted cursor returned rows: %', v_page3;
   end if;
@@ -132,7 +132,7 @@ do $phase5$
 declare
   v_ids uuid[];
 begin
-  select array_agg(id order by id) into v_ids from public.image_embed_stale_assets(null, null);
+  select array_agg(t.x order by t.x) into v_ids from public.image_embed_stale_assets(null, null) as t(x);
   if v_ids is distinct from array['00000000-0000-4000-8000-000000000491',
                                  '00000000-0000-4000-8000-000000000493']::uuid[] then
     raise exception 're-embed window did not admit the PREVIOUS stamp: %', v_ids;

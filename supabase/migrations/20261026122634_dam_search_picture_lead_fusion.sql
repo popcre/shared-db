@@ -2,9 +2,11 @@
 -- derived-from: 20261025163006
 -- Issue: popcre/shared-db#4664 (app u2giants/popdam3#97 follow-up)
 -- Owner 2026-10-25: picture match must lead ranking (was keyword + 0.35*semantic).
--- Swap the fusion to semantic + 0.35*keyword so SigLIP2 picture similarity
--- outranks folder/title text. Exact title keyword still contributes 0.35 so
--- SKU/identifier search keeps working.
+-- Fusion is now greatest(keyword, semantic + 0.35*keyword):
+--   * picture similarity can outrank weak folder/title text hits
+--   * exact-title / SKU keyword still scores 1.0+ (contract rank >= 1.0)
+--   * text-only calls (null embedding) keep the old keyword scale
+-- Keyword path and 30s timeout unchanged. Body derived from 20261025163006.
 
 set statement_timeout = '15min';
 
@@ -37,7 +39,7 @@ set search_path = public, extensions
 set statement_timeout = '30s'
 as $$
   select set_config('hnsw.ef_search', '100', true);
-  -- body copied from 20261023230623 with semantic ORDER BY fixed below
+  -- body copied from 20261025163006 with semantic ORDER BY fixed below
   with params as materialized (
     select nullif(trim(p_query),'') query_text,
       greatest(1,least(coalesce(p_limit,100),20000)) page_limit,
@@ -128,11 +130,11 @@ as $$
   ), candidate_ranks as materialized (
     select c.document_type,c.entity_id,c.asset_id,c.style_group_id,max(c.keyword_rank)::real keyword_rank,
       max(c.semantic_rank)::real semantic_rank,
-      (coalesce(max(c.semantic_rank),0) + coalesce(max(c.keyword_rank),0) * 0.35)::real rank
+      greatest(coalesce(max(c.keyword_rank),0), coalesce(max(c.semantic_rank),0) + coalesce(max(c.keyword_rank),0) * 0.35)::real rank
     from (select k.*,null::real semantic_rank from keyword_candidates k union all
       select s.document_type,s.entity_id,s.asset_id,s.style_group_id,null::real,s.semantic_rank from semantic_candidates s) c
     group by c.document_type,c.entity_id,c.asset_id,c.style_group_id
-    having coalesce(max(c.semantic_rank),0) + coalesce(max(c.keyword_rank),0) * 0.35 >= (select min_rank from params)
+    having greatest(coalesce(max(c.keyword_rank),0), coalesce(max(c.semantic_rank),0) + coalesce(max(c.keyword_rank),0) * 0.35) >= (select min_rank from params)
   ), ordered_candidates as materialized (
     select c.document_type,c.entity_id,c.asset_id,c.style_group_id,c.keyword_rank,c.semantic_rank,c.rank,
       row_number() over (order by c.rank desc, c.document_type, c.entity_id) rn

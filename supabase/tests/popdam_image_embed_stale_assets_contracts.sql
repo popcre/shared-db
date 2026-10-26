@@ -1,4 +1,4 @@
--- PopDAM image-embed stale-asset enumeration contracts (#4814 / claim #4815,
+-- PopDAM image-embed stale-asset enumeration contracts (#4814 / claim #4818,
 -- popdam3 #486 Step 4b). Disposable-database transaction only; the harness
 -- owns BEGIN/ROLLBACK. Covers: service_role-only execute posture, the three
 -- staleness legs (missing vector, watermark change, stamp outside the active

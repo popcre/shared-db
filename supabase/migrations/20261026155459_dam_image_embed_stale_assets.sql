@@ -1,4 +1,4 @@
--- Issue #4814 (author claim #4815): PopDAM image-similarity Step 4b —
+-- Issue #4814 (author claim #4818): PopDAM image-similarity Step 4b —
 -- public.image_embed_stale_assets(...) service_role wrapper so the Railway
 -- rebuild-image-vectors op can enumerate stale assets over PostgREST.
 -- Design: u2giants/popdam3 plan_image_similarity_upload_search.md Step 4b

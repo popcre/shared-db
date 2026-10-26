@@ -1,5 +1,3 @@
--- derived-from: 20261011201710_curated_warner_property_the_exorcist_1973.sql
---
 -- Issue popcre/shared-db#2599 (with #2541): Viacom Multi (VM) canonical Properties from the
 -- Paramount TrackerPlus submission scrape, plus the licensing team's reviewed ColdLion MG06
 -- code mapping onto them.

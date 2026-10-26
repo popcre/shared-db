@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "work_issue": 4787,
+  "work_type": "repo-maintenance",
+  "route": "self-service-additive",
+  "goal": "Teach the merge-queue preview hold to accept a post-merge rehearsal success posted on a first-parent descendant of the held migration commit, ending the exact-SHA deadlock observed 2026-10-25 (4721517d).",
+  "base_sha": "2e4b4d93305a3a2962a089334d13e94d2dcde74e",
+  "dispatcher": "ZCode chat unknown on hetz",
+  "worker": "ZCode chat unknown on hetz",
+  "branch": "zcode/queue-descendant-rehearsal",
+  "worktree": "/worksp/shared-db/.wt-queue-rehearsal-fix",
+  "allowed_paths": [
+    "scripts/merge-queue-contract.mjs",
+    "scripts/merge-queue-contract.test.mjs",
+    "docs/merge-queue-operation.md",
+    ".agent/work/4787/1/contract.json",
+    ".agent/work/4787/1/completion.json"
+  ],
+  "file_writes": [
+    "scripts/merge-queue-contract.mjs",
+    "scripts/merge-queue-contract.test.mjs",
+    "docs/merge-queue-operation.md",
+    ".agent/work/4787/1/contract.json",
+    ".agent/work/4787/1/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "no supabase migration files",
+    "no changes outside allowed_paths",
+    "no manual posting of the rehearsal status"
+  ],
+  "required_checks": [
+    "node --test scripts/merge-queue-contract.test.mjs",
+    "node --check scripts/merge-queue-contract.mjs"
+  ],
+  "assumptions": [
+    "A rehearsal on a first-parent descendant replays the same pending migration, so its success proves at least as much as the target's own",
+    "The rehearsal workflow posting the status remains the only legitimate poster"
+  ],
+  "stop_conditions": [
+    "tests fail after the change",
+    "the queue gate still refuses after the fix merges and a descendant rehearsal succeeds"
+  ]
+}

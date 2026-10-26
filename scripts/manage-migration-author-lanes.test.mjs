@@ -12828,3 +12828,11 @@ test('real flowAdapter admits only qualified closed merged proof selectors witho
   const undeclared=fixture();delete process.env.SHARED_DB_SESSION_ID;assert.equal(undeclared.adapter().resolveMarker().live,false);
  } finally {if(prior===undefined)delete process.env.SHARED_DB_SESSION_ID;else process.env.SHARED_DB_SESSION_ID=prior;}
 });
+
+test('curated claim objects are limited to exact core tables (#2599)',async()=>{
+  const {requireCuratedClaimObjects}=await import('./manage-migration-author-lanes.mjs')
+  assert.doesNotThrow(()=>requireCuratedClaimObjects(['table core.property','table core.taxonomy_source_ref'],2599))
+  assert.throws(()=>requireCuratedClaimObjects([],2599),/at least one exact core/)
+  assert.throws(()=>requireCuratedClaimObjects(['table plm.item'],2599),/only curated core/)
+  assert.throws(()=>requireCuratedClaimObjects(['function core.f()'],2599),/only curated core/)
+})

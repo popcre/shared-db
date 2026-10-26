@@ -1,4 +1,5 @@
 -- #4800: generic compound-word join/split query variants for DAM keyword search.
+-- derived-from: 20260831145707
 -- "spiderman" also searches "spider man" (matches "Spider-Man"), "door mat" also
 -- searches "doormat", etc. A split or join is emitted only when the corpus
 -- (dam_search_keys title/path, trigram-indexed regex) actually contains that

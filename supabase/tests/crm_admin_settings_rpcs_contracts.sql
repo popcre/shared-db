@@ -4,7 +4,7 @@
 -- Proves, as real authenticated users (SET LOCAL role + JWT sub):
 --   * a non-administrator is refused by all seven functions (insufficient_privilege);
 --   * an administrator can list roles and the directory, replace a user's role set,
---     toggle app access, change status, bulk-assign customers, and read history;
+--     toggle app access, change status, assign departments to salespeople, list department assignments, and read history;
 --   * unknown roles/apps/statuses/fields are rejected, and an administrator cannot
 --     remove their own administrator role, their own CRM access, or deactivate self.
 begin;
@@ -15,6 +15,7 @@ declare
   v_a_profile uuid; v_a_auth uuid;
   v_b_profile uuid; v_b_auth uuid;
   v_customer uuid;
+  v_department uuid;
   v_obj jsonb;
   v_arr jsonb;
   v_n integer;
@@ -42,6 +43,9 @@ begin
   insert into core.customer (name, status)
   values ('ZZ CRM Admin Fixture ' || gen_random_uuid()::text, 'active')
   returning id into v_customer;
+  insert into crm.department (company_id, name, sort_order)
+  values (v_customer, 'ZZ CRM Admin Fixture Dept', 1)
+  returning id into v_department;
 
   -- Non-administrator: every function refuses.
   perform set_config('request.jwt.claim.sub', v_b_auth::text, true);
@@ -52,7 +56,8 @@ begin
     format('select api.crm_admin_set_user_roles(%L, array[''viewer''])', v_b_profile),
     format('select api.crm_admin_set_app_access(%L, ''crm'', true)', v_b_profile),
     format('select api.crm_admin_set_user_status(%L, ''active'')', v_b_profile),
-    format('select api.crm_admin_assign_customers(array[%L]::uuid[], %L, ''salesperson'')', v_customer, v_b_profile),
+    format('select api.crm_admin_assign_departments(array[%L]::uuid[], %L)', v_department, v_b_profile),
+    'select api.crm_admin_department_assignments()',
     'select api.crm_admin_access_history(10)'
   ] loop
     v_refused := false;
@@ -82,7 +87,7 @@ begin
   select e into v_obj from jsonb_array_elements(v_arr) e where e->>'id' = v_b_profile::text;
   if v_obj is null or not (v_obj ?& array['id','email','display_name','avatar_url','status',
        'created_at','last_sign_in_at','roles','apps','crm_access',
-       'salesperson_customer_count','owner_customer_count']) then
+       'department_count']) then
     raise exception 'directory object wrong: %', v_obj;
   end if;
   if (v_obj->>'crm_access')::boolean is not true or v_obj->'roles' <> '[]'::jsonb then
@@ -153,24 +158,35 @@ begin
   end;
   if not v_refused then raise exception 'deleted status accepted'; end if;
 
-  v_n := api.crm_admin_assign_customers(array[v_customer], v_b_profile, 'salesperson');
-  if v_n <> 1 then raise exception 'assign salesperson count %', v_n; end if;
-  v_n := api.crm_admin_assign_customers(array[v_customer], v_b_profile, 'account_owner');
-  if v_n <> 1 then raise exception 'assign owner count %', v_n; end if;
+  -- B holds the sales role at this point.
+  v_n := api.crm_admin_assign_departments(array[v_department], v_b_profile);
+  if v_n <> 1 then raise exception 'assign department count %', v_n; end if;
   select e into v_obj from jsonb_array_elements(api.crm_admin_user_directory()) e
    where e->>'id' = v_b_profile::text;
-  if (v_obj->>'salesperson_customer_count')::int < 1 or (v_obj->>'owner_customer_count')::int < 1 then
-    raise exception 'customer counts wrong: %', v_obj;
+  if (v_obj->>'department_count')::int < 1 then
+    raise exception 'department_count wrong: %', v_obj;
   end if;
-  v_n := api.crm_admin_assign_customers(array[v_customer], null, 'salesperson');
+  select e into v_obj from jsonb_array_elements(api.crm_admin_department_assignments()) e
+   where e->>'id' = v_department::text;
+  if v_obj is null or v_obj->>'salesperson_profile_id' <> v_b_profile::text
+     or v_obj->>'customer_id' <> v_customer::text
+     or not (v_obj ?& array['id','name','division','category','status','is_active','customer_id',
+       'customer_name','customer_display_name','customer_status','salesperson_profile_id']) then
+    raise exception 'department assignment object wrong: %', v_obj;
+  end if;
+  v_n := api.crm_admin_assign_departments(array[v_department], null);
   if v_n <> 1 then raise exception 'unassign count %', v_n; end if;
+  if (select salesperson_profile_id from crm.department where id = v_department) is not null then
+    raise exception 'department not unassigned';
+  end if;
 
+  -- A profile without the sales role is rejected.
   v_refused := false;
   begin
-    perform api.crm_admin_assign_customers(array[v_customer], v_b_profile, 'designer');
+    perform api.crm_admin_assign_departments(array[v_department], v_a_profile);
   exception when invalid_parameter_value then v_refused := true;
   end;
-  if not v_refused then raise exception 'unknown field accepted'; end if;
+  if not v_refused then raise exception 'non-sales assignee accepted'; end if;
 
   v_arr := api.crm_admin_access_history(500);
   if not v_arr @> jsonb_build_array(jsonb_build_object(
@@ -197,10 +213,10 @@ begin
   end;
   if not v_refused then raise exception 'unknown profile accepted'; end if;
 
-  if api.crm_admin_assign_customers(null, v_b_profile, 'salesperson') <> 0
-     or api.crm_admin_assign_customers(array[]::uuid[], v_b_profile, 'salesperson') <> 0
-     or api.crm_admin_assign_customers(array[gen_random_uuid()], v_b_profile, 'salesperson') <> 0 then
-    raise exception 'empty/unknown customer arrays must update nothing';
+  if api.crm_admin_assign_departments(null, v_b_profile) <> 0
+     or api.crm_admin_assign_departments(array[]::uuid[], v_b_profile) <> 0
+     or api.crm_admin_assign_departments(array[gen_random_uuid()], v_b_profile) <> 0 then
+    raise exception 'empty/unknown department arrays must update nothing';
   end if;
 
   if jsonb_array_length(api.crm_admin_access_history(0)) > 1
@@ -245,7 +261,8 @@ begin
     'api.crm_admin_set_user_roles(uuid,text[])',
     'api.crm_admin_set_app_access(uuid,text,boolean)',
     'api.crm_admin_set_user_status(uuid,text)',
-    'api.crm_admin_assign_customers(uuid[],uuid,text)',
+    'api.crm_admin_assign_departments(uuid[],uuid)',
+    'api.crm_admin_department_assignments()',
     'api.crm_admin_access_history(integer)'
   ] loop
     if to_regprocedure(v_call) is null then

@@ -2,15 +2,27 @@
 -- CRM admin settings RPCs (issue #4811).
 --
 -- popcrm-web gains an admin Settings area: designate salespeople and other
--- roles, manage per-app access and user status, bulk-assign customers to a
--- salesperson or account owner, and read an access-change history. The
+-- roles, manage per-app access and user status, assign customer departments
+-- to salespeople, and read an access-change history. Owner ruling (Albert,
+-- 2026-10-26): "customers aren't assigned to one salesperson, departments at
+-- customers are assigned to salespeople.". The
 -- browser cannot read the `app` schema, so every operation is an `api`
 -- security-definer function hard-gated to administrators, modelled on
 -- api.crm_admin_user_list (20260715184500).
 --
--- Additive only: seven new functions plus an idempotent insert that ensures an
+-- Additive only: one nullable column crm.department.salesperson_profile_id
+-- with its index, eight new functions, and an idempotent insert that ensures an
 -- app.role row exists for every app.app_role enum value. Nothing is renamed or
 -- dropped.
+
+-- 00. Department salesperson assignment.
+alter table crm.department
+  add column if not exists salesperson_profile_id uuid
+    references app.profile(id) on delete set null;
+create index if not exists crm_department_salesperson_profile_idx
+  on crm.department (salesperson_profile_id);
+comment on column crm.department.salesperson_profile_id is
+  'Salesperson (app.profile with the sales role) assigned to this customer department. Null = unassigned.';
 
 -- 0. One app.role row per app.app_role value (no-op where rows already exist).
 insert into app.role (slug, name)
@@ -98,22 +110,15 @@ begin
           where ur.profile_id = p.id and ur.revoked_at is null and r.slug = 'administrator'
         )
       )                        as crm_access,
-      coalesce(sc.n, 0)        as salesperson_customer_count,
-      coalesce(oc.n, 0)        as owner_customer_count
+      coalesce(dc.n, 0)        as department_count
     from app.profile p
     left join auth.users au on au.id = p.auth_user_id
     left join (
-      select c.primary_salesperson_profile_id as pid, count(*)::int as n
-      from core.customer c
-      where c.primary_salesperson_profile_id is not null
+      select d.salesperson_profile_id as pid, count(*)::int as n
+      from crm.department d
+      where d.salesperson_profile_id is not null
       group by 1
-    ) sc on sc.pid = p.id
-    left join (
-      select c.account_owner_profile_id as pid, count(*)::int as n
-      from core.customer c
-      where c.account_owner_profile_id is not null
-      group by 1
-    ) oc on oc.pid = p.id
+    ) dc on dc.pid = p.id
     where p.status <> 'deleted'
   ) u;
 
@@ -124,7 +129,7 @@ $$;
 revoke all on function api.crm_admin_user_directory() from public, anon;
 grant execute on function api.crm_admin_user_directory() to authenticated;
 comment on function api.crm_admin_user_directory() is
-  'Admin-only directory of all non-deleted profiles with last sign-in, active roles[], apps[], crm_access and customer assignment counts. Powers popcrm-web Settings.';
+  'Admin-only directory of all non-deleted profiles with last sign-in, active roles[], apps[], crm_access and department_count. Powers popcrm-web Settings.';
 
 -- 3. Replace a user's active role set.
 create or replace function api.crm_admin_set_user_roles(p_profile_id uuid, p_roles text[])
@@ -334,8 +339,8 @@ grant execute on function api.crm_admin_set_user_status(uuid, text) to authentic
 comment on function api.crm_admin_set_user_status(uuid, text) is
   'Admin-only: switch a user between active and inactive. You cannot deactivate yourself or the last active administrator. Returns the user''s directory object.';
 
--- 6. Bulk-assign customers to a salesperson or account owner (null unassigns).
-create or replace function api.crm_admin_assign_customers(p_customer_ids uuid[], p_profile_id uuid, p_field text)
+-- 6. Assign customer departments to a salesperson (null unassigns).
+create or replace function api.crm_admin_assign_departments(p_department_ids uuid[], p_profile_id uuid)
 returns integer
 language plpgsql
 volatile
@@ -349,42 +354,76 @@ begin
     raise exception 'crm: not authorized' using errcode = 'insufficient_privilege';
   end if;
 
-  if p_field is null or p_field not in ('salesperson', 'account_owner') then
-    raise exception 'crm: field must be salesperson or account_owner'
+  if p_profile_id is not null and not exists (
+    select 1
+    from app.profile p
+    join app.user_role ur on ur.profile_id = p.id and ur.revoked_at is null
+    join app.role r on r.id = ur.role_id and r.slug = 'sales'
+    where p.id = p_profile_id and p.status = 'active'
+  ) then
+    raise exception 'crm: salesperson must be an active user with the sales role'
       using errcode = 'invalid_parameter_value';
   end if;
 
-  if p_profile_id is not null and not exists (
-    select 1 from app.profile p where p.id = p_profile_id and p.status <> 'deleted'
-  ) then
-    raise exception 'crm: profile not found' using errcode = 'no_data_found';
-  end if;
-
-  if p_customer_ids is null or cardinality(p_customer_ids) = 0 then
+  if p_department_ids is null or cardinality(p_department_ids) = 0 then
     return 0;
   end if;
 
-  if p_field = 'salesperson' then
-    update core.customer c
-       set primary_salesperson_profile_id = p_profile_id,
-           updated_at = now()
-     where c.id = any(p_customer_ids);
-  else
-    update core.customer c
-       set account_owner_profile_id = p_profile_id,
-           updated_at = now()
-     where c.id = any(p_customer_ids);
-  end if;
+  update crm.department d
+     set salesperson_profile_id = p_profile_id,
+         updated_at = now()
+   where d.id = any(p_department_ids);
 
   get diagnostics v_count = row_count;
   return v_count;
 end;
 $$;
 
-revoke all on function api.crm_admin_assign_customers(uuid[], uuid, text) from public, anon;
-grant execute on function api.crm_admin_assign_customers(uuid[], uuid, text) to authenticated;
-comment on function api.crm_admin_assign_customers(uuid[], uuid, text) is
-  'Admin-only: set core.customer primary salesperson (p_field=salesperson) or account owner (p_field=account_owner) for the given customers; null profile unassigns. Unknown customer ids are skipped; any non-deleted profile may be named. Returns rows updated.';
+revoke all on function api.crm_admin_assign_departments(uuid[], uuid) from public, anon;
+grant execute on function api.crm_admin_assign_departments(uuid[], uuid) to authenticated;
+comment on function api.crm_admin_assign_departments(uuid[], uuid) is
+  'Admin-only: set crm.department.salesperson_profile_id for the given departments; null unassigns, otherwise the profile must be active and hold the sales role. Unknown department ids are skipped. Returns rows updated.';
+
+-- 6b. Department assignment list.
+create or replace function api.crm_admin_department_assignments()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = app, public
+as $$
+declare
+  result jsonb;
+begin
+  if not coalesce(app.has_role('administrator'), false) then
+    raise exception 'crm: not authorized' using errcode = 'insufficient_privilege';
+  end if;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'id', d.id,
+           'name', d.name,
+           'division', d.division,
+           'category', d.category,
+           'status', d.status,
+           'is_active', d.is_active,
+           'customer_id', c.id,
+           'customer_name', c.name,
+           'customer_display_name', c.display_name,
+           'customer_status', c.status::text,
+           'salesperson_profile_id', d.salesperson_profile_id
+         ) order by lower(c.name), c.id, d.sort_order nulls last, lower(d.name), d.id), '[]'::jsonb)
+  into result
+  from crm.department d
+  join core.customer c on c.id = d.company_id;
+
+  return result;
+end;
+$$;
+
+revoke all on function api.crm_admin_department_assignments() from public, anon;
+grant execute on function api.crm_admin_department_assignments() to authenticated;
+comment on function api.crm_admin_department_assignments() is
+  'Admin-only: every customer department with its customer and assigned salesperson_profile_id, ordered by customer name, then sort_order and name.';
 
 -- 7. Role and app grant/revoke history, newest first.
 --    Derived from the current granted_at/revoked_at columns: a re-grant

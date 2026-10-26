@@ -1,0 +1,50 @@
+{
+  "schema_version": 2,
+  "generation": 4,
+  "evidence_parent": {
+    "work_issue": 4832,
+    "generation": 3,
+    "contract_sha256": "730adcf6c4611db4e51d6f3fd568ca3b89a23965777662f261deb2e3187dee26"
+  },
+  "work_issue": 4832,
+  "work_type": "structural",
+  "route": "claim-first",
+  "goal": "Correct the test environment gap with a fully rolled-back synthetic role-table fixture, execute the exact atomic grant migration inside it, and exercise the real runtime under Supabase non-superuser SET-role semantics. Deliver and prove the unchanged three-column permission repair.",
+  "base_sha": "e976e9daf56163786aca014fea63e6f7c72e98f2",
+  "dispatcher": "Codex chat 01a17951-45e4-7ae3-a348-77944f949013 on edge-dev3",
+  "worker": "codex",
+  "branch": "codex/role-rename-permission-20261026",
+  "worktree": "/tmp/dflow-role-db-20261026",
+  "allowed_paths": [
+    "supabase/migrations/20261026174936_dflow_prod_role_rename_update_grant.sql",
+    "supabase/migrations/20261026193803_dflow_prod_role_rename_update_grant.sql",
+    "supabase/tests/dflow_prod_role_rename_update_grant_contracts.sql",
+    "HANDOFF.d/2026-10-26T1801Z-edge-dev3-codex-role-rename-permission.md"
+  ],
+  "file_writes": [
+    "supabase/migrations/20261026174936_dflow_prod_role_rename_update_grant.sql",
+    "supabase/migrations/20261026193803_dflow_prod_role_rename_update_grant.sql",
+    "supabase/tests/dflow_prod_role_rename_update_grant_contracts.sql",
+    "HANDOFF.d/2026-10-26T1801Z-edge-dev3-codex-role-rename-permission.md"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "table dflow_prod.\"Roles\"",
+    "view dflow_prod.\"Roles\""
+  ],
+  "prohibited_actions": [
+    "No direct production SQL, row changes or broadened grants",
+    "Do not change other sessions or gates"
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "PostgreSQL 16 non-superuser fixture and exact grant migration contract"
+  ],
+  "assumptions": [
+    "Production backend inherits designflow_prod_backend_grants"
+  ],
+  "stop_conditions": [
+    "Any review refusal or protected promotion refusal",
+    "Unexpected privilege or data changes"
+  ]
+}

@@ -1,29 +1,29 @@
 {
   "schema_version": 2,
-  "generation": 2,
+  "generation": 3,
   "evidence_parent": {
     "work_issue": 4437,
-    "generation": 1,
-    "contract_sha256": "6d1a03839a4df91a55f885b244030f89bc61bee21c36c2390d513d942e1cc2f7"
+    "generation": 2,
+    "contract_sha256": "9efba062634dacb78c97dcf05f4ea110352d7f2c3ff71a996f252fcafd92d4d0"
   },
   "work_issue": 4437,
   "work_type": "structural",
   "route": "claim-first",
-  "goal": "PopSG semantic-plus-keyword search stage 1 (claim #4771, migration version 20261025180137): SigLIP2/768 embedding storage, lease/retry state and cosine HNSW index on public.style_guide_search_documents; refresh_style_guide_matviews maintains content_sha256 and invalidates embeddings on content change; service-role-only worker RPCs claim_sg_search_embedding_documents, upsert_sg_search_embedding, mark_sg_search_embedding_error, get_sg_search_embedding_status, reset_sg_search_embedding_errors. Additive only: no query result changes. The pre-work scope declaration is claim issue #4771's immutable db-claim block (2026-10-25); this contract ref was published by the successor session on 2026-10-25 with a truthful ref timestamp because the authoring session omitted the publication step. Generation 2 realigns db_writes to the issue #4437 scope (the claim #4771 object set) after the reviewer-draw binding refused generation 1; the implementation is unchanged.",
+  "goal": "PopSG semantic-plus-keyword search stage 1 (claim #4771, migration version 20261025180137): SigLIP2/768 embedding storage, lease/retry state and cosine HNSW index on public.style_guide_search_documents; refresh_style_guide_matviews maintains content_sha256 and invalidates embeddings on content change; service-role-only worker RPCs claim_sg_search_embedding_documents, upsert_sg_search_embedding, mark_sg_search_embedding_error, get_sg_search_embedding_status, reset_sg_search_embedding_errors. Additive only: no query result changes. The pre-work scope declaration is claim issue #4771's immutable db-claim block (2026-10-25); this contract ref was published by the successor session on 2026-10-25 with a truthful ref timestamp because the authoring session omitted the publication step. Generation 3 drops search_style_guide_library_v2 from declared writes: the governed-review binding compares declared writes to this pull request's parsed objects, and that function belongs to the stage-2 pull request under the same claim.",
   "base_sha": "2e4b4d93305a3a2962a089334d13e94d2dcde74e",
   "dispatcher": "claim-first (claim #4771, owner zcode-chat-unknown@hetz)",
   "worker": "ZCode chat unknown on hetz",
   "branch": "zcode/popsg-4437-semantic-search",
   "worktree": "/worksp/shared-db/.claude/worktrees/popsg-4437-semantic-search",
   "allowed_paths": [
-    ".agent/work/4437/2/contract.json",
-    ".agent/work/4437/2/completion.json",
+    ".agent/work/4437/3/contract.json",
+    ".agent/work/4437/3/completion.json",
     "supabase/migrations/20261025180137_popsg_semantic_search_foundation.sql",
     "supabase/tests/popsg_semantic_search_foundation_contracts.sql"
   ],
   "file_writes": [
-    ".agent/work/4437/2/contract.json",
-    ".agent/work/4437/2/completion.json",
+    ".agent/work/4437/3/contract.json",
+    ".agent/work/4437/3/completion.json",
     "supabase/migrations/20261025180137_popsg_semantic_search_foundation.sql",
     "supabase/tests/popsg_semantic_search_foundation_contracts.sql"
   ],
@@ -36,7 +36,6 @@
     "table public.style_guide_search_documents",
     "column public.style_guide_search_documents.embedding",
     "index public.idx_sg_search_documents_embedding_hnsw",
-    "function public.search_style_guide_library_v2",
     "function public.refresh_style_guide_matviews",
     "function public.claim_sg_search_embedding_documents",
     "function public.upsert_sg_search_embedding",

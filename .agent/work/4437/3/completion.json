@@ -6,8 +6,8 @@
   "migration_versions": [
     "20261025180137"
   ],
-  "contract_ref": "refs/db-contracts/4437/2",
-  "contract_sha256": "9efba062634dacb78c97dcf05f4ea110352d7f2c3ff71a996f252fcafd92d4d0",
+  "contract_ref": "refs/db-contracts/4437/3",
+  "contract_sha256": "9397ab8292d6e886eef9c1e91a2478ec37c5a4e35303b4b267982bf6db1faf22",
   "head_sha": "f235a8e7833d36d356c0a38a529e0c74b7b7fe02",
   "base_sha": "2e4b4d93305a3a2962a089334d13e94d2dcde74e",
   "files_changed": [
@@ -19,7 +19,6 @@
     "table public.style_guide_search_documents",
     "column public.style_guide_search_documents.embedding",
     "index public.idx_sg_search_documents_embedding_hnsw",
-    "function public.search_style_guide_library_v2",
     "function public.refresh_style_guide_matviews",
     "function public.claim_sg_search_embedding_documents",
     "function public.upsert_sg_search_embedding",

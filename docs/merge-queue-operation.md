@@ -134,3 +134,5 @@ contexts, or the guarded lane:
 
 Rollback never reverses the `popcre` organization transfer; that is a separate owner decision with
 its own authorization (plan §13).
+
+<!-- retrigger: runner starvation on 8d8421c63 (#513 flavor); no content change -->

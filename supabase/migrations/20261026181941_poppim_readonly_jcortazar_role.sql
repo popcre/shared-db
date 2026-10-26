@@ -44,29 +44,56 @@ alter role poppim_readonly_jcortazar set statement_timeout = '30s';
 alter role poppim_readonly_jcortazar set idle_in_transaction_session_timeout = '60s';
 alter role poppim_readonly_jcortazar set default_transaction_read_only = on;
 
-grant usage on schema pim, api, app, core to poppim_readonly_jcortazar;
+grant usage on schema pim to poppim_readonly_jcortazar;
+grant usage on schema api to poppim_readonly_jcortazar;
+grant usage on schema app to poppim_readonly_jcortazar;
+grant usage on schema core to poppim_readonly_jcortazar;
 
-grant select on
-  pim.checklist_item, pim.customer_ext, pim.customer_order, pim.design,
-  pim.design_asset, pim.design_collection, pim.factory_ext, pim.product,
-  pim.product_assignee, pim.product_field, pim.product_file, pim.product_link,
-  pim.product_sample, pim.product_style_group, pim.product_submission,
-  pim.product_tag, pim.product_time_entry, pim.product_update, pim.project,
-  pim.revision_request, pim.saved_view, pim.stage, pim.stage_history,
-  pim.view_pref
-  to poppim_readonly_jcortazar;
+grant select on pim.checklist_item to poppim_readonly_jcortazar;
+grant select on pim.customer_ext to poppim_readonly_jcortazar;
+grant select on pim.customer_order to poppim_readonly_jcortazar;
+grant select on pim.design to poppim_readonly_jcortazar;
+grant select on pim.design_asset to poppim_readonly_jcortazar;
+grant select on pim.design_collection to poppim_readonly_jcortazar;
+grant select on pim.factory_ext to poppim_readonly_jcortazar;
+grant select on pim.product to poppim_readonly_jcortazar;
+grant select on pim.product_assignee to poppim_readonly_jcortazar;
+grant select on pim.product_field to poppim_readonly_jcortazar;
+grant select on pim.product_file to poppim_readonly_jcortazar;
+grant select on pim.product_link to poppim_readonly_jcortazar;
+grant select on pim.product_sample to poppim_readonly_jcortazar;
+grant select on pim.product_style_group to poppim_readonly_jcortazar;
+grant select on pim.product_submission to poppim_readonly_jcortazar;
+grant select on pim.product_tag to poppim_readonly_jcortazar;
+grant select on pim.product_time_entry to poppim_readonly_jcortazar;
+grant select on pim.product_update to poppim_readonly_jcortazar;
+grant select on pim.project to poppim_readonly_jcortazar;
+grant select on pim.revision_request to poppim_readonly_jcortazar;
+grant select on pim.saved_view to poppim_readonly_jcortazar;
+grant select on pim.stage to poppim_readonly_jcortazar;
+grant select on pim.stage_history to poppim_readonly_jcortazar;
+grant select on pim.view_pref to poppim_readonly_jcortazar;
 
-grant select on
-  api.pm_product_board, api.pim_item_picker, api.pm_product_assets,
-  api.pm_customer_list, api.pm_factory_list
-  to poppim_readonly_jcortazar;
+grant select on api.pm_product_board to poppim_readonly_jcortazar;
+grant select on api.pim_item_picker to poppim_readonly_jcortazar;
+grant select on api.pm_product_assets to poppim_readonly_jcortazar;
+grant select on api.pm_customer_list to poppim_readonly_jcortazar;
+grant select on api.pm_factory_list to poppim_readonly_jcortazar;
 
-grant select on
-  app.profile, app.activity, app.comment, app.notification, app.app_access,
-  app.user_role, app.role, app.file_object
-  to poppim_readonly_jcortazar;
+grant select on app.profile to poppim_readonly_jcortazar;
+grant select on app.activity to poppim_readonly_jcortazar;
+grant select on app.comment to poppim_readonly_jcortazar;
+grant select on app.notification to poppim_readonly_jcortazar;
+grant select on app.app_access to poppim_readonly_jcortazar;
+grant select on app.user_role to poppim_readonly_jcortazar;
+grant select on app.role to poppim_readonly_jcortazar;
+grant select on app.file_object to poppim_readonly_jcortazar;
 
-grant select on
-  core.licensor, core.property, core.character, core.contact_company,
-  core.contact, core.customer, core.factory, core.product_type
-  to poppim_readonly_jcortazar;
+grant select on core.licensor to poppim_readonly_jcortazar;
+grant select on core.property to poppim_readonly_jcortazar;
+grant select on core.character to poppim_readonly_jcortazar;
+grant select on core.contact_company to poppim_readonly_jcortazar;
+grant select on core.contact to poppim_readonly_jcortazar;
+grant select on core.customer to poppim_readonly_jcortazar;
+grant select on core.factory to poppim_readonly_jcortazar;
+grant select on core.product_type to poppim_readonly_jcortazar;

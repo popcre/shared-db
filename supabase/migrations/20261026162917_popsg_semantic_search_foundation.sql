@@ -1,5 +1,5 @@
 -- Version: 20261026162917
--- derived-from: 20260930185929, 20260917005221
+-- derived-from: 20260930185929, 20260917005221, 20261011203652
 -- Issue: popcre/shared-db#4437 (app u2giants/popdam3#107)
 -- PopSG semantic-plus-keyword search, stage 1: embedding foundation.
 --
@@ -18,7 +18,7 @@
 -- stays the sole claimer (service_role-only claim/upsert/mark RPCs, lease
 -- token + expiry, bounded retries with backoff, permanent-error category).
 --
--- Stage 2 (separate version under the same claim #4768) threads
+-- Stage 2 (separate version under the same claim #4820) threads
 -- p_query_embedding into search_style_guide_library_v2: authorization and
 -- filters first, then semantic candidate ranking, preserving keyword matches,
 -- totals, facets, sorting and pagination; semantic outage degrades to keyword.
@@ -332,8 +332,139 @@ begin
 end;
 $function$;
 
+-- 2b) Scheduled-path refresh. Review round 2, blocking finding B1: the hourly
+--     cron job `refresh-style-guide-matviews` runs
+--     `select public.refresh_style_guide_matviews()`, which resolves to this
+--     two-default-argument overload, not to the stepping overload above. Left
+--     as the 20260917005221 body it computed no content_sha256 (new documents
+--     stayed unidentifiable forever), silently consumed thumbnail-only
+--     re-renders the fixed trigger enqueued, and kept stale vectors across
+--     source-identity changes. It now delegates to the stepping overload so
+--     the invariant has exactly ONE implementation on both live paths.
+create or replace function public.refresh_style_guide_matviews(
+  p_run_id uuid default null,
+  p_search_batch_size integer default 5000
+)
+returns table (
+  refreshed_at timestamptz,
+  search_documents_synced integer
+)
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+begin
+  -- #4437 review round 2, B1: the scheduler's no-argument command lands here.
+  -- Delegating to the stepping overload with p_step 'all' reproduces the
+  -- historical two-argument behavior (both matviews concurrently, then the
+  -- bounded search-document sync and run stamping) while carrying the
+  -- content_sha256 maintenance and embedding invalidation everywhere.
+  return query
+  select * from public.refresh_style_guide_matviews(
+    p_run_id => p_run_id,
+    p_search_batch_size => p_search_batch_size,
+    p_step => 'all');
+end;
+$function$;
+
+comment on function public.refresh_style_guide_matviews(uuid, integer) is
+  'Issues #2212, #3023, #4437. Scheduler entry point (hourly cron, no arguments): delegates to the stepping overload so both live paths maintain content_sha256 and invalidate embeddings on any content change, including thumbnail-only re-renders. Service-role only.';
+
+revoke all on function public.refresh_style_guide_matviews(uuid, integer) from public;
+revoke all on function public.refresh_style_guide_matviews(uuid, integer) from anon;
+revoke all on function public.refresh_style_guide_matviews(uuid, integer) from authenticated;
+grant execute on function public.refresh_style_guide_matviews(uuid, integer) to service_role;
+
+-- 2c) await_style_guide_matview_refresh pins md5(prosrc) of the scheduled
+--     overload; re-derive it from 20261011203652 with only that pin updated
+--     so a successful cron run still proves the reviewed body. Everything
+--     else (command check, schedules, bounded wait, privileges) is unchanged.
+create or replace function public.await_style_guide_matview_refresh(p_run_id uuid)
+returns table (ready boolean, refreshed_at timestamptz)
+language plpgsql
+security definer
+set search_path to pg_catalog, public
+as $function$
+declare
+  v_start timestamptz;
+  v_ingest timestamptz;
+  v_state text;
+  v_job bigint;
+  v_wait_minutes integer;
+  v_finished timestamptz;
+  v_inflight boolean;
+begin
+  if p_run_id is null then
+    raise exception 'A crawl run is required';
+  end if;
+  select r.refresh_started_at, r.ingest_completed_at, r.lifecycle_state
+    into v_start, v_ingest, v_state
+    from public.style_guide_crawl_runs r where r.id = p_run_id for update;
+  if not found or v_ingest is null or v_state not in ('reconciling', 'refreshing') then
+    raise exception 'Crawl must have finished ingestion and reconciliation before awaiting refresh';
+  end if;
+  select j.jobid, case j.schedule when '*/15 * * * *' then 20 else 65 end
+    into v_job, v_wait_minutes from cron.job j
+   where j.jobname = 'refresh-style-guide-matviews' and j.active
+     and j.schedule in ('*/15 * * * *', '7 * * * *')
+     and j.username = 'postgres' and j.database = current_database()
+     and regexp_replace(lower(regexp_replace(j.command, '[[:space:]]', '', 'g')), ';$', '') = 'selectpublic.refresh_style_guide_matviews()';
+  if v_job is null then
+    raise exception 'The existing PopSG refresh scheduler is unavailable or its command changed';
+  end if;
+  -- The no-argument scheduler command resolves to the two-default-argument
+  -- overload, not a zero-argument function. Pin the live, reviewed body so
+  -- future drift cannot silently weaken what a successful cron run proves.
+  -- #4437 review round 2, B1: the pinned body is the 20261026162917 delegating
+  -- wrapper, which carries the content-identity invariant on the cron path.
+  if to_regprocedure('public.refresh_style_guide_matviews()') is not null
+     or not exists (select 1 from pg_proc p
+       where p.oid = to_regprocedure('public.refresh_style_guide_matviews(uuid,integer)')
+         and p.prosecdef and p.pronargdefaults = 2
+         and md5(p.prosrc) = '044a40244377bb9b64dc65efbc7ccf6a') then
+    raise exception 'The scheduled PopSG refresh contract changed';
+  end if;
+  if v_start is null then
+    v_start := clock_timestamp();
+    update public.style_guide_crawl_runs
+       set refresh_started_at = v_start, lifecycle_state = 'refreshing'
+     where id = p_run_id;
+  end if;
+  -- A refresh started before this crawl entered refresh is never evidence.
+  -- cron.job_run_details has a sequential history scan; existing pg_cron
+  -- retention keeps this small. No index on extension-owned relations is assumed.
+  -- Completion of a cron run proves both matviews refreshed successfully.
+  select max(d.end_time) into v_finished from cron.job_run_details d
+   where d.jobid = v_job and d.status = 'succeeded'
+     and d.start_time >= greatest(v_start, v_ingest)
+     and d.end_time >= d.start_time;
+  if v_finished is null and clock_timestamp() - v_start > make_interval(mins => v_wait_minutes) then
+    -- A qualifying job may still be running. Allow only the existing two-minute
+    -- database execution budget, with a schedule-dependent absolute wait cap. A hung
+    -- run can never turn this into unbounded polling; no timeout is changed.
+    select exists (select 1 from cron.job_run_details d
+      where d.jobid = v_job and d.status in ('starting', 'connecting', 'sending', 'running')
+        and d.end_time is null and d.start_time >= greatest(v_start, v_ingest)
+        and d.start_time >= clock_timestamp() - interval '2 minutes') into v_inflight;
+    if not v_inflight or clock_timestamp() - v_start > make_interval(mins => v_wait_minutes + 2) then
+      raise exception 'No successful scheduled PopSG refresh within the bounded wait window';
+    end if;
+  end if;
+  -- Never stamp refresh_completed_at here: the existing search-only step must
+  -- drain search synchronization before the caller can complete the crawl.
+  return query select v_finished is not null, v_finished;
+end;
+$function$;
+comment on function public.await_style_guide_matview_refresh(uuid) is
+  'Issue #3458 / PopDAM #335, re-pinned by #4437. Service-only bounded wait for successful existing cron refresh begun after crawl refresh_started_at. ready=false means retry (30s); ready=true allows the existing search-only RPC. Never marks a crawl complete, changes scheduler configuration, or refreshes in the API request.';
+revoke all on function public.await_style_guide_matview_refresh(uuid) from public, anon, authenticated;
+grant execute on function public.await_style_guide_matview_refresh(uuid) to service_role;
+
 -- 3) Worker claim: bounded batch of not-yet-embedded active documents.
-create function public.claim_sg_search_embedding_documents(
+-- create or replace (review round 2, L6): preview rehearsed the parked
+-- 20261025180137 and already holds these objects; a bare create function
+-- would abort the reissued version's preview replay with 42710/42723.
+create or replace function public.claim_sg_search_embedding_documents(
   p_limit integer default 100,
   p_worker_id text default null,
   p_lease_seconds integer default 300
@@ -365,6 +496,12 @@ begin
       join public.style_guide_files f on f.id = d.style_guide_file_id
      where d.is_active and f.is_active
        and d.thumbnail_url is not distinct from f.thumbnail_url
+       -- Review round 2, M1: a document without a thumbnail has no embeddable
+       -- image; claiming it burns five worker calls that can only fail. Such
+       -- documents stay identified (content_sha256 over the empty thumbnail)
+       -- and become claimable the moment a successful render lands (the
+       -- trigger requeues and the refresh recomputes the digest).
+       and f.thumbnail_url is not null
        and d.content_sha256 is not null
        and d.embedding is null and d.embedding_attempts < d.embedding_max_attempts
        and (d.embedding_next_retry_at is null or d.embedding_next_retry_at <= now())
@@ -391,7 +528,7 @@ end;
 $$;
 
 -- 4) Worker write: lease-token + content-identity guarded; stale writes rejected.
-create function public.upsert_sg_search_embedding(
+create or replace function public.upsert_sg_search_embedding(
   p_style_guide_file_id uuid,
   p_content_sha256 text,
   p_lease_token uuid,
@@ -427,7 +564,7 @@ end;
 $$;
 
 -- 5) Worker failure report: bounded backoff, transient/permanent categories.
-create function public.mark_sg_search_embedding_error(
+create or replace function public.mark_sg_search_embedding_error(
   p_style_guide_file_id uuid,
   p_content_sha256 text,
   p_lease_token uuid,
@@ -465,29 +602,38 @@ end;
 $$;
 
 -- 6) Coverage meter for the #4437 acceptance ("coverage measured separately
---    for DAM and SG").
-create function public.get_sg_search_embedding_status() returns jsonb
+--    for DAM and SG"). Review round 2 (M1/L1): pending counts only what the
+--    claim can actually hand the worker (active, identified, thumbnail
+--    present, retries left); never-rendered documents are reported in their
+--    own waiting_for_thumbnail bucket instead of masquerading as backlog or,
+--    worse, as exhausted worker failures.
+create or replace function public.get_sg_search_embedding_status() returns jsonb
 language sql
 stable
 security definer
-set search_path = public
+set search_path to public
 as $$
 select jsonb_build_object(
   'total_documents', count(*),
-  'embedded_documents', count(*) filter (where embedding is not null),
-  'pending_documents', count(*) filter (where embedding is null
-                                        and content_sha256 is not null
-                                        and embedding_attempts < embedding_max_attempts
-                                        and embedding_error_category is distinct from 'permanent'),
-  'unidentified_documents', count(*) filter (where content_sha256 is null),
-  'leased_documents', count(*) filter (where embedding_lease_expires_at > now()),
-  'errored_documents', count(*) filter (where embedding_error is not null),
-  'exhausted_documents', count(*) filter (where embedding is null
-                                          and (embedding_attempts >= embedding_max_attempts
-                                               or embedding_error_category = 'permanent')),
-  'oldest_pending_updated_at', min(document_updated_at) filter (where embedding is null),
-  'newest_updated_at', max(document_updated_at))
-  from public.style_guide_search_documents;
+  'embedded_documents', count(*) filter (where d.embedding is not null),
+  'pending_documents', count(*) filter (where d.is_active and d.embedding is null
+                                        and d.content_sha256 is not null
+                                        and f.thumbnail_url is not null
+                                        and d.embedding_attempts < d.embedding_max_attempts
+                                        and d.embedding_error_category is distinct from 'permanent'),
+  'waiting_for_thumbnail_documents', count(*) filter (where d.is_active and d.embedding is null
+                                                      and d.content_sha256 is not null
+                                                      and f.thumbnail_url is null),
+  'unidentified_documents', count(*) filter (where d.content_sha256 is null),
+  'leased_documents', count(*) filter (where d.embedding_lease_expires_at > now()),
+  'errored_documents', count(*) filter (where d.embedding_error is not null),
+  'exhausted_documents', count(*) filter (where d.embedding is null
+                                          and (d.embedding_attempts >= d.embedding_max_attempts
+                                               or d.embedding_error_category = 'permanent')),
+  'oldest_pending_updated_at', min(d.document_updated_at) filter (where d.embedding is null and d.is_active),
+  'newest_updated_at', max(d.document_updated_at))
+  from public.style_guide_search_documents d
+  left join public.style_guide_files f on f.id = d.style_guide_file_id;
 $$;
 
 -- 7) Admin/worker reset of exhausted retries.
@@ -580,6 +726,22 @@ begin
   -- function catalogue: vector typmod, both indexes' shape, and the
   -- post-backfill invariant that every active document of an active file is
   -- claimable (no null content identity left behind).
+  --
+  -- Review round 2 (L5): assert ALL twelve new columns, not just the vector.
+  -- plpgsql bodies are not validated at create time, so a missing state
+  -- column would otherwise surface only at the first worker call.
+  foreach v_name in array array[
+    'embedding', 'embedding_model', 'embedding_updated_at', 'embedding_error',
+    'embedding_error_category', 'embedding_next_retry_at', 'embedding_attempts',
+    'embedding_max_attempts', 'embedding_lease_token', 'embedding_lease_owner',
+    'embedding_lease_expires_at', 'content_sha256'] loop
+    if not exists (
+      select 1 from pg_attribute a
+       where a.attrelid = to_regclass('public.style_guide_search_documents')
+         and a.attname = v_name and not a.attisdropped and a.attnum > 0) then
+      raise exception 'column % is missing from style_guide_search_documents', v_name;
+    end if;
+  end loop;
   if not exists (
     select 1 from pg_attribute a
      where a.attrelid = to_regclass('public.style_guide_search_documents')
@@ -607,6 +769,23 @@ begin
       join public.style_guide_files f on f.id = d.style_guide_file_id
      where d.is_active and f.is_active and d.content_sha256 is null) then
     raise exception 'backfill left active documents without content identity';
+  end if;
+
+  -- Review round 2 (B1): the scheduler's no-argument command must resolve to
+  -- the two-default-argument overload that carries the content-identity
+  -- invariant, and await_style_guide_matview_refresh must pin exactly that
+  -- body, or an hourly cron run proves the wrong refresh.
+  if to_regprocedure('public.refresh_style_guide_matviews()') is not null
+     or not exists (select 1 from pg_proc p
+       where p.oid = to_regprocedure('public.refresh_style_guide_matviews(uuid,integer)')
+         and p.prosecdef and p.pronargdefaults = 2
+         and md5(p.prosrc) = '044a40244377bb9b64dc65efbc7ccf6a') then
+    raise exception 'the scheduled refresh overload is not the reviewed delegating body';
+  end if;
+  if not exists (select 1 from pg_proc p
+       where p.oid = to_regprocedure('public.await_style_guide_matview_refresh(uuid)')
+         and position('044a40244377bb9b64dc65efbc7ccf6a' in p.prosrc) > 0) then
+    raise exception 'await_style_guide_matview_refresh does not pin the reviewed scheduled body';
   end if;
 end;
 $verify$;

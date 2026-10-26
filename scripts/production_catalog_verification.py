@@ -5123,7 +5123,7 @@ POPSG_REFRESH_SEARCH_SYNC_QUEUE_CONTRACT = (
     " and t.tgname='trg_style_guide_files_queue_search_sync' and not t.tgisinternal and t.tgenabled='O'"
     " and t.tgfoid=to_regprocedure('public.style_guide_files_queue_search_sync()'))"
     " and exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.refresh_style_guide_matviews(uuid,integer)')"
-    " and p.prosecdef and md5(p.prosrc)='52b676f90e4500dc323c2f9e6e6f3c97'"
+    " and p.prosecdef and md5(p.prosrc)='044a40244377bb9b64dc65efbc7ccf6a'"
     " and not has_function_privilege('authenticated',p.oid,'EXECUTE')"
     " and has_function_privilege('service_role',p.oid,'EXECUTE'))"
 )

@@ -12,7 +12,12 @@ values
   ('44370000-0000-4000-8000-000000000002', 'ZZ4437', 'TestLicensor/SemB/two.pdf', 'SemB', 'two.pdf', 'two', 'pdf', 'two', 'TestProperty', 'SemB', 200, '2026-10-01', true, 'https://example.invalid/two.jpg', null),
   ('44370000-0000-4000-8000-000000000003', 'ZZ4437', 'TestLicensor/SemC/three.pdf', 'SemC', 'three.pdf', 'three', 'pdf', 'three', 'TestProperty', 'SemC', 300, '2026-10-01', false, null, null),
   ('44370000-0000-4000-8000-000000000004', 'ZZ4437', 'TestLicensor/SemD/four.pdf', 'SemD', 'four.pdf', 'four', 'pdf', 'four', 'TestProperty', 'SemD', 400, '2026-10-01', true, 'https://example.invalid/four.jpg', null),
-  ('44370000-0000-4000-8000-000000000005', 'ZZ4437', 'TestLicensor/SemE/five.pdf', 'SemE', 'five.pdf', 'five', 'pdf', 'five', 'TestProperty', 'SemE', 500, '2026-10-01', true, 'https://example.invalid/five.jpg', null);
+  ('44370000-0000-4000-8000-000000000005', 'ZZ4437', 'TestLicensor/SemE/five.pdf', 'SemE', 'five.pdf', 'five', 'pdf', 'five', 'TestProperty', 'SemE', 500, '2026-10-01', true, 'https://example.invalid/five.jpg', null),
+  -- Review round 2, M1: an active file whose render has not produced a
+  -- thumbnail yet. Identified (digest over the empty thumbnail), but the
+  -- claim must not hand it to the worker and the meter must report it in its
+  -- own waiting bucket instead of as backlog or as a worker failure.
+  ('44370000-0000-4000-8000-000000000006', 'ZZ4437', 'TestLicensor/SemF/six.pdf', 'SemF', 'six.pdf', 'six', 'pdf', 'six', 'TestProperty', 'SemF', 600, '2026-10-01', true, null, 'render pending');
 
 insert into public.style_guide_search_documents
   (style_guide_file_id, root_label, licensor_name, property_folder, style_guide_folder,
@@ -77,12 +82,19 @@ begin
      or has_function_privilege('authenticated', 'public.claim_sg_search_embedding_documents(integer,text,integer)', 'execute')
      or has_function_privilege('anon', 'public.upsert_sg_search_embedding(uuid,text,uuid,extensions.vector(768),text)', 'execute')
      or has_function_privilege('authenticated', 'public.upsert_sg_search_embedding(uuid,text,uuid,extensions.vector(768),text)', 'execute')
+     or has_function_privilege('anon', 'public.mark_sg_search_embedding_error(uuid,text,uuid,text,text)', 'execute')
+     or has_function_privilege('authenticated', 'public.mark_sg_search_embedding_error(uuid,text,uuid,text,text)', 'execute')
      or has_function_privilege('anon', 'public.get_sg_search_embedding_status()', 'execute')
-     or has_function_privilege('authenticated', 'public.get_sg_search_embedding_status()', 'execute') then
+     or has_function_privilege('authenticated', 'public.get_sg_search_embedding_status()', 'execute')
+     or has_function_privilege('anon', 'public.reset_sg_search_embedding_errors(uuid[])', 'execute')
+     or has_function_privilege('authenticated', 'public.reset_sg_search_embedding_errors(uuid[])', 'execute') then
     raise exception 'contract 1: a browser role can execute a worker-only embedding RPC';
   end if;
   if not has_function_privilege('service_role', 'public.claim_sg_search_embedding_documents(integer,text,integer)', 'execute')
-     or not has_function_privilege('service_role', 'public.get_sg_search_embedding_status()', 'execute') then
+     or not has_function_privilege('service_role', 'public.upsert_sg_search_embedding(uuid,text,uuid,extensions.vector(768),text)', 'execute')
+     or not has_function_privilege('service_role', 'public.mark_sg_search_embedding_error(uuid,text,uuid,text,text)', 'execute')
+     or not has_function_privilege('service_role', 'public.get_sg_search_embedding_status()', 'execute')
+     or not has_function_privilege('service_role', 'public.reset_sg_search_embedding_errors(uuid[])', 'execute') then
     raise exception 'contract 1: service_role lost a worker embedding RPC';
   end if;
 
@@ -195,13 +207,15 @@ begin
     raise exception 'contract 7: transient error state was not recorded with backoff';
   end if;
 
-  -- Meter counts every document row regardless of is_active: A is pending
-  -- with a transient error, the inactive C is still un-embedded and pending,
-  -- D and E are embedded, and B is exhausted with a recorded error.
+  -- Meter semantics (review round 2, M1/L1): pending counts only claimable
+  -- work -- A (active, identified, thumbnail present, retries left, transient
+  -- error); F (no thumbnail yet) sits in waiting_for_thumbnail; the inactive
+  -- C is neither; D and E are embedded; B is exhausted with a recorded error.
   select public.get_sg_search_embedding_status() into v_json;
-  if (v_json ->> 'total_documents')::int is distinct from 5
+  if (v_json ->> 'total_documents')::int is distinct from 6
      or (v_json ->> 'embedded_documents')::int is distinct from 2
-     or (v_json ->> 'pending_documents')::int is distinct from 2
+     or (v_json ->> 'pending_documents')::int is distinct from 1
+     or (v_json ->> 'waiting_for_thumbnail_documents')::int is distinct from 1
      or (v_json ->> 'exhausted_documents')::int is distinct from 1
      or (v_json ->> 'errored_documents')::int is distinct from 2
      or (v_json ->> 'leased_documents')::int is distinct from 0
@@ -367,6 +381,8 @@ $contracts$;
 
 -- Contract 11 (#4437 review M4): the structural objects themselves.
 do $contracts$
+declare
+  v_column text;
 begin
   if not exists (select 1 from pg_attribute a
                   where a.attrelid = to_regclass('public.style_guide_search_documents')
@@ -392,6 +408,121 @@ begin
                     and i.indexdef like '%WHERE (is_active AND (content_sha256 IS NOT NULL) AND (embedding IS NULL))%') then
     raise exception 'contract 11: pending-claim index missing or wrong predicate';
   end if;
+  -- Review round 2, L5: every state column the RPCs write must exist, not
+  -- just the vector; a missing one would otherwise surface only at the first
+  -- worker call.
+  foreach v_column in array array[
+    'embedding', 'embedding_model', 'embedding_updated_at', 'embedding_error',
+    'embedding_error_category', 'embedding_next_retry_at', 'embedding_attempts',
+    'embedding_max_attempts', 'embedding_lease_token', 'embedding_lease_owner',
+    'embedding_lease_expires_at', 'content_sha256'] loop
+    if not exists (select 1 from pg_attribute a
+                    where a.attrelid = to_regclass('public.style_guide_search_documents')
+                      and a.attname = v_column and not a.attisdropped and a.attnum > 0) then
+      raise exception 'contract 11: column % is missing', v_column;
+    end if;
+  end loop;
+  -- Review round 2, B1: the scheduled no-argument command must resolve to the
+  -- reviewed delegating body, and the await helper must pin exactly that body.
+  if to_regprocedure('public.refresh_style_guide_matviews()') is not null
+     or not exists (select 1 from pg_proc p
+       where p.oid = to_regprocedure('public.refresh_style_guide_matviews(uuid,integer)')
+         and p.prosecdef and p.pronargdefaults = 2
+         and md5(p.prosrc) = '044a40244377bb9b64dc65efbc7ccf6a') then
+    raise exception 'contract 11: the scheduled refresh overload is not the reviewed delegating body';
+  end if;
+  if not exists (select 1 from pg_proc p
+       where p.oid = to_regprocedure('public.await_style_guide_matview_refresh(uuid)')
+         and position('044a40244377bb9b64dc65efbc7ccf6a' in p.prosrc) > 0) then
+    raise exception 'contract 11: await_style_guide_matview_refresh does not pin the reviewed scheduled body';
+  end if;
+end
+$contracts$;
+
+
+-- Contract 12 (#4437 review round 2, B1): the SCHEDULED refresh path -- the
+-- no-argument overload the hourly cron command actually resolves to -- must
+-- maintain content identity exactly like the stepping overload: a
+-- thumbnail-only re-render invalidates the vector, and a brand-new file gets
+-- a claimable document with content_sha256 on its first cron cycle. M1: the
+-- claim never hands out a document with no thumbnail to embed.
+update public.style_guide_files
+   set thumbnail_url = 'https://example.invalid/five-rerendered.jpg'
+ where id = '44370000-0000-4000-8000-000000000005';
+
+insert into public.style_guide_files
+  (id, root_label, relative_path, directory_path, filename, basename_no_ext,
+   file_extension, normalized_name, property_folder, style_guide_folder,
+   size_bytes, modified_at, is_active, thumbnail_url, thumbnail_error)
+values
+  ('44370000-0000-4000-8000-000000000007', 'ZZ4437', 'TestLicensor/SemG/seven.pdf', 'SemG', 'seven.pdf', 'seven', 'pdf', 'seven', 'TestProperty', 'SemG', 700, '2026-10-03', true, 'https://example.invalid/seven.jpg', null);
+
+do $contracts$
+declare
+  v_result record;
+  v_claimed record;
+begin
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+  if exists (select 1 from public.claim_sg_search_embedding_documents(p_limit => 10, p_worker_id => 'zz4437-worker')
+              where style_guide_file_id = '44370000-0000-4000-8000-000000000006') then
+    raise exception 'contract 12: claim handed out a document without a thumbnail';
+  end if;
+
+  select * into v_result from public.refresh_style_guide_matviews();
+  if v_result.search_documents_synced is distinct from 2 then
+    raise exception 'contract 12: scheduled refresh synced % rows, expected the re-render and the new file',
+      v_result.search_documents_synced;
+  end if;
+
+  if not exists (select 1
+                   from public.style_guide_search_documents d
+                   join public.style_guide_files f on f.id = d.style_guide_file_id
+                  where d.style_guide_file_id = '44370000-0000-4000-8000-000000000005'
+                    and d.thumbnail_url = 'https://example.invalid/five-rerendered.jpg'
+                    and d.embedding is null
+                    and d.embedding_model is null
+                    and d.embedding_attempts = 0
+                    and d.content_sha256 = encode(extensions.digest(
+                        md5(f.relative_path || '|' || coalesce(f.size_bytes::text, '') || '|' ||
+                            coalesce(f.modified_at::text, '') || '|' || coalesce(f.tag_search_text, '') || '|' ||
+                            coalesce(f.style_guide_folder, '') || '|' || coalesce(f.property_folder, '') || '|' ||
+                            coalesce(f.licensor_name, '') || '|' || f.is_active::text)
+                        || '|' || 'https://example.invalid/five-rerendered.jpg', 'sha256'), 'hex')) then
+    raise exception 'contract 12: the scheduled path did not invalidate the re-rendered thumbnail';
+  end if;
+
+  if not exists (select 1
+                   from public.style_guide_search_documents d
+                   join public.style_guide_files f on f.id = d.style_guide_file_id
+                  where d.style_guide_file_id = '44370000-0000-4000-8000-000000000007'
+                    and d.is_active
+                    and d.content_sha256 = encode(extensions.digest(
+                        md5(f.relative_path || '|' || coalesce(f.size_bytes::text, '') || '|' ||
+                            coalesce(f.modified_at::text, '') || '|' || coalesce(f.tag_search_text, '') || '|' ||
+                            coalesce(f.style_guide_folder, '') || '|' || coalesce(f.property_folder, '') || '|' ||
+                            coalesce(f.licensor_name, '') || '|' || f.is_active::text)
+                        || '|' || 'https://example.invalid/seven.jpg', 'sha256'), 'hex')) then
+    raise exception 'contract 12: a brand-new file was left unidentified by the scheduled path';
+  end if;
+  if not exists (select 1
+                   from public.style_guide_search_documents d
+                   join public.style_guide_files f on f.id = d.style_guide_file_id
+                  where d.style_guide_file_id = '44370000-0000-4000-8000-000000000007'
+                    and d.thumbnail_url is not distinct from f.thumbnail_url) then
+    raise exception 'contract 12: the new document was not claimable (stale or missing thumbnail snapshot)';
+  end if;
+
+  select * into v_claimed
+    from public.claim_sg_search_embedding_documents(p_limit => 10, p_worker_id => 'zz4437-worker')
+   where style_guide_file_id = '44370000-0000-4000-8000-000000000007';
+  if v_claimed.style_guide_file_id is null
+     or v_claimed.thumbnail_url is distinct from 'https://example.invalid/seven.jpg'
+     or v_claimed.attempt is distinct from 1 then
+    raise exception 'contract 12: the newly synced document was not claimable with its live thumbnail';
+  end if;
+
+  perform set_config('request.jwt.claims', null, true);
 end
 $contracts$;
 

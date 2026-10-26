@@ -45,8 +45,11 @@ jobs:
           [[ "$REVIEWED_MAIN_SHA" =~ ^[0-9a-f]{40}$ ]]
           git fetch origin main
           test "$(git rev-parse HEAD)" = "$REVIEWED_MAIN_SHA"
-          test "$(git rev-parse origin/main)" = "$REVIEWED_MAIN_SHA"
-          MAIN_SHA="$REVIEWED_MAIN_SHA" node scripts/check-main-tip-freshness.mjs
+          # #4845: main may move after this dispatch (verified prefix), but the
+          # evidence run itself must start at the reviewed commit, because the
+          # production job matches the run's head_sha to it.
+          test "$GITHUB_SHA" = "$REVIEWED_MAIN_SHA"
+          MAIN_SHA="$REVIEWED_MAIN_SHA" node scripts/check-main-tip-freshness.mjs --production
       - name: Normalize allowlist and write canonical evidence
         env:
           REVIEWED_MAIN_SHA: ${{ inputs.reviewed_main_sha }}

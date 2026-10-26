@@ -344,4 +344,6 @@ Current-live artifact readers preserve the two exact ZIP and attestation members
 
 The pinned attestation build type is `https://actions.github.io/buildtypes/workflow/v1`, confirmed in the official CLI’s authenticated result for [current-live run40258907625](https://github.com/popcre/shared-db/actions/runs/40258907625). The previous synthetic URI and all unrecognized types are rejected; the remaining certificate and provenance checks are unchanged.
 
-Declared release requirements use the native verified merged-PR issue binding when GitHub has no closing link. The existing body, current completion, migration-version and permanent reservation checks remain mandatory; conflicting real links refuse. This changes the trusted reader closure and requires a fresh certificate after merge.
+Declared release requirements use a separately named read-only merged-source identity binding when GitHub has no closing link. The existing body, current completion, migration-version and permanent reservation checks remain mandatory; conflicting real links refuse. This changes the trusted reader closure and requires a fresh certificate after merge.
+
+Read-only source identity accepts genuinely open or closed work after proving the same immutable merged-head evidence, published contract and reserved migrations. Admission and reviewer bindings still require open work, with no closed-work option or state override.

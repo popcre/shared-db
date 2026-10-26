@@ -430,6 +430,10 @@ test('actual sourceFacts accepts a rigorously verified merged reference-only wor
 });
 test('actual sourceFacts preserves real links and refuses conflicting or invalid fallback evidence',()=>{
  const linked=sourceBindingFixture();linked.state.linked=[{number:4646}];assert.equal(sourceFacts(linked.required,linked.io).work_issue,4646);
- for(const mutate of [f=>f.state.linked=[{number:99}],f=>f.state.linked=[{number:4646},{number:99}],f=>f.state.pr.body='Refs #4646',f=>f.state.pr.merged_at=null,f=>f.state.issueState='closed',f=>f.state.completion.work_issue=99,f=>f.state.completion.migration_versions=[],f=>f.state.reserved=false]){const f=sourceBindingFixture();mutate(f);assert.throws(()=>sourceFacts(f.required,f.io));}
+ for(const mutate of [f=>f.state.linked=[{number:99}],f=>f.state.linked=[{number:4646},{number:99}],f=>f.state.pr.body='Refs #4646',f=>f.state.pr.merged_at=null,f=>f.state.issueState='unknown',f=>f.state.completion.work_issue=99,f=>f.state.completion.migration_versions=[],f=>f.state.reserved=false]){const f=sourceBindingFixture();mutate(f);assert.throws(()=>sourceFacts(f.required,f.io));}
  const changed=sourceBindingFixture();let reads=0;changed.io.content=()=>++reads===1?'original':'modified';assert.throws(()=>sourceFacts(changed.required,changed.io),/changed after source approval/);
+});
+
+test('sourceFacts retains historical identity after reference-only work is genuinely closed',()=>{
+ const f=sourceBindingFixture();f.state.issueState='closed';assert.equal(sourceFacts(f.required,f.io).work_issue,4646);
 });

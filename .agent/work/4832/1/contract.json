@@ -1,0 +1,41 @@
+{
+  "schema_version": 2,
+  "generation": 1,
+  "evidence_parent": null,
+  "work_issue": 4832,
+  "work_type": "structural",
+  "route": "claim-first",
+  "goal": "Complete and deliver the drafted narrow production role rename UPDATE repair; draft and local test preceded this contract publication, not represented as pre-draft authorization.",
+  "base_sha": "0ac481cb6b1c0a81ffd9a53ab2f4ae4c970fbec4",
+  "dispatcher": "codex/01a17951-45e4-7ae3-a348-77944f949013",
+  "worker": "codex",
+  "branch": "codex/role-rename-permission-20261026",
+  "worktree": "/tmp/dflow-role-db-20261026",
+  "allowed_paths": [
+    "supabase/migrations/20261026174936_dflow_prod_role_rename_update_grant.sql",
+    "supabase/tests/dflow_prod_role_rename_update_grant_contracts.sql"
+  ],
+  "file_writes": [
+    "supabase/migrations/20261026174936_dflow_prod_role_rename_update_grant.sql",
+    "supabase/tests/dflow_prod_role_rename_update_grant_contracts.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "table dflow_prod.\"Roles\""
+  ],
+  "prohibited_actions": [
+    "No direct production SQL, row changes or broadened grants",
+    "Do not change other sessions or gates"
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "Docker PostgreSQL 16 before/after runtime contract"
+  ],
+  "assumptions": [
+    "Production backend inherits designflow_prod_backend_grants"
+  ],
+  "stop_conditions": [
+    "Any review refusal or protected promotion refusal",
+    "Unexpected privilege or data changes"
+  ]
+}

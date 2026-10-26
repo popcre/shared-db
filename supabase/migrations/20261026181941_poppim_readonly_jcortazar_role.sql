@@ -40,7 +40,7 @@
 create role poppim_readonly_jcortazar nologin noinherit nosuperuser nocreatedb nocreaterole noreplication bypassrls connection limit 3;
 
 comment on role poppim_readonly_jcortazar is
-  'Issue #4836. Read-only Poppim diagnostic login for Jessica Cortazar (jcortazar@popcre.com). SELECT on pim, Poppim api views, Poppim app tables and needed core tables only.';
+  'Issue #4836. Read-only Poppim diagnostic login for Jessica Cortazar. SELECT on pim, Poppim api views, Poppim app tables and needed core tables only.';
 
 alter role poppim_readonly_jcortazar set statement_timeout = '30s';
 alter role poppim_readonly_jcortazar set idle_in_transaction_session_timeout = '60s';

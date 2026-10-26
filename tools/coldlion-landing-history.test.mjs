@@ -881,7 +881,7 @@ test("evidence for a production line sealed by an earlier window is skipped, not
       `${target} would abort the whole window against a sealed parent, and every retry with it`,
     );
   }
-  assert.match(sql, /already sealed by an earlier window/, "a skip nobody can see is a silent loss");
+  assert.match(sql, /already sealed by an earlier load/, "a skip nobody can see is a silent loss");
 });
 
 // ---------------------------------------------------------------------------------
@@ -1170,7 +1170,7 @@ test("the sandbox sync runs the offline tests first, masks the password and boun
   const echoes = sandboxSync.match(/echo[^\n]*\$SANDBOX_PASSWORD[^\n]*/g) ?? [];
   assert.deepEqual(echoes, ['echo "::add-mask::$SANDBOX_PASSWORD"'], "the raw password is only ever masked, never printed");
   assert.match(sandboxSync, /--from "\$FROM" --limit "\$LIMIT"/);
-  assert.match(sandboxSync, /--windows "\$WINDOWS" --forward/);
+  assert.match(sandboxSync, /--windows "\$WINDOWS" --forward --prod-open/);
 });
 
 test("--today is validated", () => {
@@ -1264,6 +1264,7 @@ test("an unsealed production load writes no ledger or page evidence and refuses 
   assert.match(sql, /"unsealedForward":true/);
   assert.match(sql, /"stageCode":"REC"/);
   assert.match(sql, /delete from _stage_component s using _old_line/);
+  assert.doesNotMatch(sql, /component_quantities_asserted = true/, "an open week never seals evidence");
 });
 
 test("the hourly intake also runs the production open-week sync", () => {

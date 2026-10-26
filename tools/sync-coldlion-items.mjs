@@ -15,15 +15,24 @@ import { assertExpectedTarget } from "./coldlion-landing/lib/db.mjs";
 // The /items sweep is offset-paged, so a row that moves between pages mid-sweep is
 // returned twice (the 2026-10-25 and 2026-10-26 nightlies failed on
 // item_import_staging_pkey). Keep the LAST copy of each company/division/item key -- the
-// most recently read -- and report how many were folded, never silently.
-export function dedupeItems(items) {
+// most recently read -- and report how many were folded, never silently. The key is
+// trimmed of spaces only, exactly as plm.import_item_master_data btrim()s it into the
+// staging primary key, so two rows fold here only when the database would collide.
+// A fold of more than MAX_FOLDED_ITEMS is not page drift: refuse the sweep loudly.
+export const MAX_FOLDED_ITEMS = 50;
+
+export function dedupeItems(items, { maxFolded = MAX_FOLDED_ITEMS } = {}) {
   const byKey = new Map();
   for (const row of items) {
-    const key = ["companyCode", "divisionCode", "itemNo"].map((field) => String(row?.[field] ?? "").trim()).join("\u0000");
+    const key = ["companyCode", "divisionCode", "itemNo"].map((field) => String(row?.[field] ?? "").replace(/^ +| +$/g, "")).join("\u0000");
     byKey.delete(key);
     byKey.set(key, row);
   }
-  return { items: [...byKey.values()], folded: items.length - byKey.size };
+  const folded = items.length - byKey.size;
+  if (folded > maxFolded) {
+    throw new Error(`/items sweep returned ${folded} duplicate item keys (limit ${maxFolded}); refusing to import`);
+  }
+  return { items: [...byKey.values()], folded };
 }
 
 export function buildItemImportPayload(items, options = {}) {

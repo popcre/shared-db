@@ -392,7 +392,7 @@ function unsealedPreamble({ scope, window, runId, requestedBy, companyCode, star
   // window, so it cannot collide with a sealed one; only a start-date window is checked.
   const headerTrack = headerFilterEntries(window).length > 0;
   const params = headerTrack
-    ? { companyCode, fromDate: window.requestFrom, toDate: window.requestTo, ...Object.fromEntries(headerFilterEntries(window)), size: pageSize, unsealedHeaderTrack: true, unsealedForward: true }
+    ? { companyCode, fromDate: window.requestFrom, toDate: window.requestTo, ...Object.fromEntries(headerFilterEntries(window)), size: pageSize, ...(scope.stage ? { stageCode: scope.stage } : {}), unsealedHeaderTrack: true, unsealedForward: true }
     : { companyCode, fromDate: window.from, toDate: window.to, size: pageSize, ...(scope.stage ? { stageCode: scope.stage } : {}), unsealedForward: true };
   return `begin;
 ${headerTrack ? "" : `
@@ -588,7 +588,7 @@ begin
     join coldlion.prod_history_line l on l.id = m.id
    where l.component_quantities_asserted;
   if v_n > 0 then
-    raise notice 'skipped component and lookup evidence for % production line(s) already sealed by an earlier window', v_n;
+    raise notice 'skipped component and lookup evidence for % production line(s) already sealed by an earlier load', v_n;
   end if;
 end $sealed$;`;
 }
@@ -796,7 +796,9 @@ export function buildProdHistoryLoadSql({
       count: "prod_history_last_lookup",
     }),
     sealedRecurrenceNoticeSql(),
-    assertionSql(assertable),
+    // Quantity assertion seals a line's evidence. An open week is still accumulating, so
+    // only the sealed close-of-week load asserts; an hourly read never does.
+    sealed ? assertionSql(assertable) : "",
     sealed ? pageLedgerSql({ scope, window, runId, companyCode, pages }) : "",
     sealed
       ? epilogue({ scope, window, runId, companyCode, completion, finishedAt, durationMs, notes })

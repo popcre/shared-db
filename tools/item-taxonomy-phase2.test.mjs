@@ -163,4 +163,6 @@ test("an /items sweep that returns one item twice keeps the last copy and says s
   const { items, folded } = dedupeItems(rows);
   assert.equal(folded, 1);
   assert.deepEqual(items.map((row) => row.itemDesc ?? row.itemNo), ["B", "new"]);
+  assert.equal(dedupeItems([{ itemNo: "A" }, { itemNo: "A\t" }]).folded, 0, "only spaces are trimmed, as btrim does");
+  assert.throws(() => dedupeItems(rows, { maxFolded: 0 }), /refusing to import/);
 });

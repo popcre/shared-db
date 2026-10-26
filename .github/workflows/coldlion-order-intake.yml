@@ -153,9 +153,10 @@ jobs:
       # "production-history feed should match order feed run timing"). Seals any
       # trailing closed week still outstanding, then re-reads the OPEN week unsealed,
       # one request per stage, serialized. Last, so it can never block sales-order
-      # staging or the writer; a failure here still turns the run red.
+      # staging or the writer; a failure here still turns the run red. Skipped on
+      # dry_run and claim_only dispatches, which promise no landing writes.
       - name: Sync production history (closed weeks + open week)
-        if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' }}
+        if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' && github.event.inputs.claim_only != 'true' }}
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
           COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai

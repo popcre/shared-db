@@ -31,7 +31,7 @@ declare
   v_capture uuid;
   v_manifest constant text := '263eccc71645bf9c63e658d8521cba1706f965dd256f47360b6cb63db1c97b6b';
   v_workbook constant text := '32917567f1f57c78346922361faf0792e4a1fc3142c1bb82747141f4278ee724';
-  v_actor constant text := 'shared-db migration 20261026145343';
+  v_actor constant text := 'shared-db migration 20261026150931';
   v_map constant text[][] := array[
     array['90','d77c37fd1c1d426a1dc3b24ec73faba375bebb856e911963ca46e665b140b4d6'],
     array['AM1','efe401285997afdcc59ae945b1581da3ba72299448eeeb293bc327975aa64c8a'],
@@ -108,7 +108,7 @@ begin
           encode(extensions.digest('2599/create/'||r.k,'sha256'),'hex'),v_actor,array['licensor_id','name','code','status'],clock_timestamp()+interval '1 minute');
         insert into core.property(licensor_id,name,code,status,metadata)
         values(v_vm,r.l,null,'potential',jsonb_build_object('curated',true,'import_owned',false,'authorising_issue',2599,
-          'owner_instruction_date','2026-10-26','migration','20261026145343','curated_source',
+          'owner_instruction_date','2026-10-26','migration','20261026150931','curated_source',
           jsonb_build_object('source_system','paramount_trackerplus','capture_id',v_capture,'property_local_key',r.k)))
         returning id into v_id;
       else
@@ -119,7 +119,7 @@ begin
             encode(extensions.digest('2599/rename/'||v_id::text,'sha256'),'hex'),v_actor,array['name'],clock_timestamp()+interval '1 minute');
           update core.property set name=r.l,
             metadata=coalesce(metadata,'{}')||jsonb_build_object('submission_canonical',jsonb_build_object('authorising_issue',2599,
-              'migration','20261026145343','previous_name',v_name,'property_local_key',r.k))
+              'migration','20261026150931','previous_name',v_name,'property_local_key',r.k))
           where id=v_id;
           get diagnostics v_rows=row_count;
           if v_rows<>1 then raise exception '#2599: rename changed % rows', v_rows; end if;

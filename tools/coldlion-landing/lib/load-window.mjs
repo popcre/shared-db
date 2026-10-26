@@ -578,7 +578,7 @@ insert into _inserted (grain, n) select ${sqlText(count)}, count(*) from ins;`;
 
 /**
  * Say out loud, in the run log, when a window carried production lines whose evidence was
- * already sealed by an earlier window. Their child rows were skipped on purpose above;
+ * already sealed by an earlier load. Their child rows were skipped on purpose above;
  * silence would make that indistinguishable from a vendor that sent nothing.
  */
 function sealedRecurrenceNoticeSql() {

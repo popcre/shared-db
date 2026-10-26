@@ -1080,6 +1080,11 @@ test("each builder refuses the other feed's scope", () => {
   assert.throws(() => buildProdHistoryLoadSql({ scope: ORDER_HISTORY }), /staged \/prodHistory scope only/);
 });
 
+test("a /prodHistory header-track load is refused", () => {
+  const window = headerTrackWindowForTest("2026-10-26", "created");
+  assert.throws(() => prodSql({ sealed: false, window }), /header-track load is refused/);
+});
+
 test("--prod-open is off by default and parsed when given", () => {
   assert.equal(parseSyncArgs(["--today", "2026-10-26"]).prodOpen, false);
   assert.equal(parseSyncArgs(["--prod-open"]).prodOpen, true);

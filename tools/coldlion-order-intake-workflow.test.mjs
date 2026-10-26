@@ -119,7 +119,9 @@ test("scheduled runs do not inject --limit (oldest-first budget would starve new
 
 test("the production-history step runs last, is gated by the history contracts, and is skipped on dry-run and claim-only", () => {
   const history = step("Sync production history (closed weeks + open week)", null);
-  assert.match(history, /if: \$\{\{ !cancelled\(\) && github\.event\.inputs\.dry_run != 'true' && github\.event\.inputs\.claim_only != 'true' \}\}/);
+  assert.match(history, /if: \$\{\{ !cancelled\(\) && steps\.gate\.outcome == 'success' && steps\.target\.outcome == 'success' && github\.event\.inputs\.dry_run != 'true' && github\.event\.inputs\.claim_only != 'true' \}\}/);
+  assert.match(step("Run the offline intake tests before touching anything", "Refuse to run without an explicit target"), /id: gate/);
+  assert.match(step("Refuse to run without an explicit target", "Stage, detect, and decode"), /id: target/);
   assert.match(history, /sync-history\.mjs --windows 3 --prod-open --no-header-tracks/);
   assert.match(workflow, /node --test tools\/coldlion-order-intake-\*\.test\.mjs tools\/coldlion-landing-history\.test\.mjs/);
 });

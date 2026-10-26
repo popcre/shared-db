@@ -89,9 +89,11 @@ jobs:
         run: psql --version
 
       - name: Run the offline intake tests before touching anything
+        id: gate
         run: node --test tools/coldlion-order-intake-*.test.mjs tools/coldlion-landing-history.test.mjs
 
       - name: Refuse to run without an explicit target
+        id: target
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
           COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
@@ -157,7 +159,7 @@ jobs:
       # dry_run (writes nothing anywhere) and claim_only (a bounded staging-only
       # dispatch; production history is not part of it).
       - name: Sync production history (closed weeks + open week)
-        if: ${{ !cancelled() && github.event.inputs.dry_run != 'true' && github.event.inputs.claim_only != 'true' }}
+        if: ${{ !cancelled() && steps.gate.outcome == 'success' && steps.target.outcome == 'success' && github.event.inputs.dry_run != 'true' && github.event.inputs.claim_only != 'true' }}
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
           COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai

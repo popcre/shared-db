@@ -458,12 +458,17 @@ revoke all on function public.refresh_style_guide_matviews(uuid, integer, text) 
 revoke all on function public.refresh_style_guide_matviews(uuid, integer, text) from authenticated;
 grant execute on function public.refresh_style_guide_matviews(uuid, integer, text) to service_role;
 
--- Catalogue-only self verification (no data scans)
+-- Catalogue-only self verification (no data scans). search_path is pinned so
+-- pg_get_function_identity_arguments renders the vector parameter schema-
+-- qualified (extensions.vector(768)) regardless of the applying session's
+-- path; with extensions visible it renders bare and the comparison would
+-- fail on every clean replay (CI caught this via the contract test).
 do $verify$
 declare
   v_missing text[] := array[]::text[];
   v_name text;
 begin
+  perform set_config('search_path', 'public', true);
   foreach v_name in array array[
     'public.refresh_style_guide_matviews(uuid,integer,text)',
     'public.claim_sg_search_embedding_documents(integer,text,integer)',
@@ -475,15 +480,17 @@ begin
       select 1 from pg_proc p
         join pg_namespace n on n.oid = p.pronamespace
        where n.nspname = split_part(v_name, '.', 1)
+         -- match on proname: the v_name label carries a dotted type
+         -- (extensions.vector) that would break a split_part('.', 2) key
          and p.proname = split_part(split_part(v_name, '.', 2), '(', 1)
          and pg_get_function_identity_arguments(p.oid)
-             = case split_part(v_name, '.', 2)
-                 when 'refresh_style_guide_matviews(uuid,integer,text)' then 'p_run_id uuid, p_search_batch_size integer, p_step text'
-                 when 'claim_sg_search_embedding_documents(integer,text,integer)' then 'p_limit integer, p_worker_id text, p_lease_seconds integer'
-                 when 'upsert_sg_search_embedding(uuid,text,uuid,extensions.vector(768),text)' then 'p_style_guide_file_id uuid, p_content_sha256 text, p_lease_token uuid, p_embedding extensions.vector(768), p_embedding_model text'
-                 when 'mark_sg_search_embedding_error(uuid,text,uuid,text,text)' then 'p_style_guide_file_id uuid, p_content_sha256 text, p_lease_token uuid, p_error text, p_category text'
-                 when 'get_sg_search_embedding_status()' then ''
-                 when 'reset_sg_search_embedding_errors(uuid[])' then 'p_style_guide_file_ids uuid[]'
+             = case p.proname
+                 when 'refresh_style_guide_matviews' then 'p_run_id uuid, p_search_batch_size integer, p_step text'
+                 when 'claim_sg_search_embedding_documents' then 'p_limit integer, p_worker_id text, p_lease_seconds integer'
+                 when 'upsert_sg_search_embedding' then 'p_style_guide_file_id uuid, p_content_sha256 text, p_lease_token uuid, p_embedding extensions.vector, p_embedding_model text'
+                 when 'mark_sg_search_embedding_error' then 'p_style_guide_file_id uuid, p_content_sha256 text, p_lease_token uuid, p_error text, p_category text'
+                 when 'get_sg_search_embedding_status' then ''
+                 when 'reset_sg_search_embedding_errors' then 'p_style_guide_file_ids uuid[]'
                end) then
       v_missing := v_missing || v_name;
     end if;

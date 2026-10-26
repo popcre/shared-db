@@ -15,8 +15,9 @@
 --     those two views refuse for this role. pim.product is the direct source;
 --   * app tables profile, activity, comment, notification, app_access,
 --     user_role, role, file_object;
---   * core tables licensor, property, character, contact_company, contact,
+--   * core tables licensor, character, contact_company, contact,
 --     customer, factory, product_type.
+-- core.property is deferred: it is under active claim #4809; a follow-up grants it.
 -- Nothing in crm, dam, plm, dflow*, coldlion, auth, vault, storage or ingest.
 --
 -- BYPASSRLS: these tables are RLS-scoped to the signed-in browser user
@@ -90,7 +91,6 @@ grant select on app.role to poppim_readonly_jcortazar;
 grant select on app.file_object to poppim_readonly_jcortazar;
 
 grant select on core.licensor to poppim_readonly_jcortazar;
-grant select on core.property to poppim_readonly_jcortazar;
 grant select on core.character to poppim_readonly_jcortazar;
 grant select on core.contact_company to poppim_readonly_jcortazar;
 grant select on core.contact to poppim_readonly_jcortazar;

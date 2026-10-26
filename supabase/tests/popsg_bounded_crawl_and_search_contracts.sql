@@ -571,8 +571,17 @@ begin
   -- refresh_style_guide_matviews cannot be called here (it issues REFRESH ...
   -- CONCURRENTLY, which PostgreSQL forbids inside a transaction block), so the
   -- deployed definition is read from the catalogue.
-  if position('d.is_active is distinct from f.is_active' in
+  -- #4437 review round 2, B1: the scheduled two-default-argument overload now
+  -- DELEGATES to the stepping overload (one implementation of the invariant on
+  -- both live paths), so the predicate lives in the (uuid,integer,text) body.
+  -- Assert both halves: the scheduled body delegates, and the body it hands
+  -- control to still keys on is_active drift.
+  if position('p_step => ''all''' in
               pg_get_functiondef('public.refresh_style_guide_matviews(uuid,integer)'::regprocedure)) = 0 then
+    raise exception 'contract 14: the scheduled refresh overload no longer delegates to the stepping overload';
+  end if;
+  if position('d.is_active is distinct from f.is_active' in
+              pg_get_functiondef('public.refresh_style_guide_matviews(uuid,integer,text)'::regprocedure)) = 0 then
     raise exception 'contract 14: refresh_style_guide_matviews cannot re-activate a returning file, so it stays invisible to search';
   end if;
 
@@ -675,8 +684,11 @@ begin
      or has_table_privilege('anon', 'public.style_guide_search_sync_queue', 'select') then
     raise exception 'contract 16: the search sync queue is exposed to API roles';
   end if;
+  -- #4437 review round 2, B1: with the scheduled overload delegating to the
+  -- stepping overload, the queue-driven candidate scan is asserted on the body
+  -- that actually performs it.
   if position('from public.style_guide_search_sync_queue q' in
-              pg_get_functiondef('public.refresh_style_guide_matviews(uuid,integer)'::regprocedure)) = 0 then
+              pg_get_functiondef('public.refresh_style_guide_matviews(uuid,integer,text)'::regprocedure)) = 0 then
     raise exception 'contract 16: refresh_style_guide_matviews still scans every file for search sync';
   end if;
 

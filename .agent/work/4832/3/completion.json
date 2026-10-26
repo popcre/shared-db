@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "work_issue": 4832,
+  "outcome": "ready-for-merge",
+  "pr": 4834,
+  "migration_versions": [
+    "20261026193803"
+  ],
+  "contract_ref": "refs/db-contracts/4832/3",
+  "contract_sha256": "730adcf6c4611db4e51d6f3fd568ca3b89a23965777662f261deb2e3187dee26",
+  "head_sha": "aef4f7b3caf4e15bb01918e13a1b66f2b69ae36a",
+  "base_sha": "e976e9daf56163786aca014fea63e6f7c72e98f2",
+  "files_changed": [
+    "HANDOFF.d/2026-10-26T1801Z-edge-dev3-codex-role-rename-permission.md",
+    "supabase/migrations/20261026193803_dflow_prod_role_rename_update_grant.sql",
+    "supabase/tests/dflow_prod_role_rename_update_grant_contracts.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "table dflow_prod.\"Roles\"",
+    "view dflow_prod.\"Roles\""
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL guard passed"
+    },
+    {
+      "command": "Docker PostgreSQL 16 before/after runtime contract",
+      "exit_code": 0,
+      "evidence": "PostgreSQL 16: before migration rejects missing grant; after migration runtime rename/readback passes and rolls back; kind and DELETE remain denied."
+    }
+  ],
+  "assumptions_resolved": [
+    "Live production catalogue confirms inherited SELECT and absent UPDATE.",
+    "GitHub governed inventory recovered; native new claim 4842 protects fresh reserved version and both conservative relation keys."
+  ],
+  "stop_conditions_hit": []
+}

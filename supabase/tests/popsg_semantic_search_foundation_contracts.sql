@@ -207,6 +207,41 @@ begin
     raise exception 'contract 7: transient error state was not recorded with backoff';
   end if;
 
+  -- Review round 3, M2: the backoff is exponential 30 * power(2, attempts - 1)
+  -- seconds (written with power(), never a bare ^ operator whose integer
+  -- reading could be argued bitwise). attempts=2 must land at ~60 seconds.
+  declare
+    v_retry timestamptz;
+  begin
+    update public.style_guide_search_documents
+       set embedding_next_retry_at = null
+     where style_guide_file_id = '44370000-0000-4000-8000-000000000001';
+    select lease_token into v_token
+      from public.claim_sg_search_embedding_documents(p_limit => 1, p_worker_id => 'zz4437-worker')
+     where style_guide_file_id = '44370000-0000-4000-8000-000000000001';
+    if v_token is null then
+      raise exception 'contract 7: backoff-progression re-claim found nothing to lease';
+    end if;
+    perform public.mark_sg_search_embedding_error(
+      p_style_guide_file_id => '44370000-0000-4000-8000-000000000001',
+      p_content_sha256 => (select content_sha256 from public.style_guide_search_documents
+                             where style_guide_file_id = '44370000-0000-4000-8000-000000000001'),
+      p_lease_token => v_token,
+      p_error => 'zz4437 second',
+      p_category => 'transient');
+    select embedding_next_retry_at into v_retry
+      from public.style_guide_search_documents
+     where style_guide_file_id = '44370000-0000-4000-8000-000000000001';
+    if v_retry < now() + interval '55 seconds' or v_retry > now() + interval '65 seconds' then
+      raise exception 'contract 7: backoff at attempts=2 is not the exponential 60 seconds (%)', v_retry;
+    end if;
+    update public.style_guide_search_documents
+       set embedding_error = 'zz4437 transient',
+           embedding_error_category = 'transient',
+           embedding_next_retry_at = null
+     where style_guide_file_id = '44370000-0000-4000-8000-000000000001';
+  end;
+
   -- Meter semantics (review round 2, M1/L1): pending counts only claimable
   -- work -- A (active, identified, thumbnail present, retries left, transient
   -- error); F (no thumbnail yet) sits in waiting_for_thumbnail; the inactive
@@ -440,12 +475,16 @@ end
 $contracts$;
 
 
--- Contract 12 (#4437 review round 2, B1): the SCHEDULED refresh path -- the
--- no-argument overload the hourly cron command actually resolves to -- must
--- maintain content identity exactly like the stepping overload: a
--- thumbnail-only re-render invalidates the vector, and a brand-new file gets
--- a claimable document with content_sha256 on its first cron cycle. M1: the
--- claim never hands out a document with no thumbnail to embed.
+-- Contract 12 (#4437 review round 2 B1, round 3 hardening): the SCHEDULED
+-- refresh path -- the no-argument overload the hourly cron command resolves
+-- to -- delegates to the stepping overload, so the search-sync behavior it
+-- runs is exercised here through the stepping 'search' step (the matview
+-- REFRESH ... CONCURRENTLY statements cannot be assumed executable inside
+-- the CI wrapper's transaction, so they are never invoked from a test; the
+-- delegation itself is byte-pinned by contract 11, 3458 test 2 and bounded
+-- contract 14). A thumbnail-only re-render invalidates the vector, and a
+-- brand-new file gets a claimable document with content_sha256 on its first
+-- cycle. M1: the claim never hands out a document with no thumbnail.
 update public.style_guide_files
    set thumbnail_url = 'https://example.invalid/five-rerendered.jpg'
  where id = '44370000-0000-4000-8000-000000000005';
@@ -469,7 +508,7 @@ begin
     raise exception 'contract 12: claim handed out a document without a thumbnail';
   end if;
 
-  select * into v_result from public.refresh_style_guide_matviews();
+  select * into v_result from public.refresh_style_guide_matviews(null, 100, 'search');
   if v_result.search_documents_synced is distinct from 2 then
     raise exception 'contract 12: scheduled refresh synced % rows, expected the re-render and the new file',
       v_result.search_documents_synced;

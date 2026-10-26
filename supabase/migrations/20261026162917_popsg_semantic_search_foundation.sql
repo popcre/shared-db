@@ -487,9 +487,11 @@ begin
     raise exception 'service_role and worker id required' using errcode = '42501';
   end if;
   -- Review B1 second half: the worker must embed the LIVE thumbnail the
-  -- content identity names. Joining style_guide_files both supplies the live
-  -- URL and skips documents whose stored snapshot is stale until the refresh
-  -- re-syncs them, so a vector is never written against yesterday's image.
+  -- content identity names. The freshness predicate keeps the stored snapshot
+  -- equal to the live URL, so what the claim returns is exactly what
+  -- content_sha256 names, and documents whose snapshot has drifted are skipped
+  -- until the refresh re-syncs them -- a vector is never written against
+  -- yesterday's image.
   return query with candidates as (
     select d.style_guide_file_id, f.thumbnail_url as live_thumbnail_url
       from public.style_guide_search_documents d
@@ -589,7 +591,7 @@ begin
                                          then 'permanent' else 'transient' end,
          embedding_next_retry_at = case when p_category = 'transient'
                                              and embedding_attempts < embedding_max_attempts
-                                        then now() + make_interval(secs => least(3600, 30 * (2 ^ greatest(0, embedding_attempts - 1))::int)) end,
+                                        then now() + make_interval(secs => least(3600, 30 * power(2, greatest(0, embedding_attempts - 1))::int)) end,
          embedding_lease_token = null,
          embedding_lease_owner = null,
          embedding_lease_expires_at = null
@@ -630,7 +632,9 @@ select jsonb_build_object(
   'exhausted_documents', count(*) filter (where d.embedding is null
                                           and (d.embedding_attempts >= d.embedding_max_attempts
                                                or d.embedding_error_category = 'permanent')),
-  'oldest_pending_updated_at', min(d.document_updated_at) filter (where d.embedding is null and d.is_active),
+  'oldest_pending_updated_at', min(d.document_updated_at) filter (where d.is_active and d.embedding is null
+                                                                  and d.content_sha256 is not null
+                                                                  and f.thumbnail_url is not null),
   'newest_updated_at', max(d.document_updated_at))
   from public.style_guide_search_documents d
   left join public.style_guide_files f on f.id = d.style_guide_file_id;

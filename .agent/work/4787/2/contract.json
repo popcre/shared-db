@@ -1,8 +1,8 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "work_issue": 4787,
   "work_type": "repo-maintenance",
-  "route": "self-service-additive",
+  "route": "repo-maintenance",
   "goal": "Teach the merge-queue preview hold to accept a post-merge rehearsal success posted on a first-parent descendant of the held migration commit, ending the exact-SHA deadlock observed 2026-10-25 (4721517d).",
   "base_sha": "2e4b4d93305a3a2962a089334d13e94d2dcde74e",
   "dispatcher": "ZCode chat unknown on hetz",
@@ -13,15 +13,16 @@
     "scripts/merge-queue-contract.mjs",
     "scripts/merge-queue-contract.test.mjs",
     "docs/merge-queue-operation.md",
-    ".agent/work/4787/1/contract.json",
-    ".agent/work/4787/1/completion.json"
+    ".agent/work/4787/2/contract.json",
+    ".agent/work/4787/2/completion.json",
+    ".agent/work/4787/1/contract.json"
   ],
   "file_writes": [
     "scripts/merge-queue-contract.mjs",
     "scripts/merge-queue-contract.test.mjs",
     "docs/merge-queue-operation.md",
-    ".agent/work/4787/1/contract.json",
-    ".agent/work/4787/1/completion.json"
+    ".agent/work/4787/2/contract.json",
+    ".agent/work/4787/2/completion.json"
   ],
   "db_reads": [],
   "db_writes": [],
@@ -41,5 +42,11 @@
   "stop_conditions": [
     "tests fail after the change",
     "the queue gate still refuses after the fix merges and a descendant rehearsal succeeds"
-  ]
+  ],
+  "generation": 2,
+  "evidence_parent": {
+    "work_issue": 4787,
+    "generation": 1,
+    "contract_sha256": "c5d23e930c02853afdebc7444aea886f83df0a95a793fff49e5a985beaccc326"
+  }
 }

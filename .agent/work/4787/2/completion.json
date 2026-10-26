@@ -3,16 +3,17 @@
   "work_issue": 4787,
   "outcome": "ready-for-merge",
   "pr": 4786,
-  "head_sha": "3bfcd40a1c82f248122098b8b9e8ae62facfa166",
+  "head_sha": "75f9b3994c0dc9f722338db953b4fd9da3b49bfb",
   "migration_versions": [],
-  "contract_ref": "refs/db-contracts/4787/1",
-  "contract_sha256": "c5d23e930c02853afdebc7444aea886f83df0a95a793fff49e5a985beaccc326",
+  "contract_ref": "refs/db-contracts/4787/2",
+  "contract_sha256": "769f5b2edcc9fe99e4dc1baf4d3f6f7166b79da7a3e17d9babb2ec4b071c35e8",
   "files_changed": [
     "scripts/merge-queue-contract.mjs",
     "scripts/merge-queue-contract.test.mjs",
     "docs/merge-queue-operation.md",
-    ".agent/work/4787/1/contract.json",
-    ".agent/work/4787/1/completion.json"
+    ".agent/work/4787/2/contract.json",
+    ".agent/work/4787/2/completion.json",
+    ".agent/work/4787/1/contract.json"
   ],
   "db_reads": [],
   "db_writes": [],

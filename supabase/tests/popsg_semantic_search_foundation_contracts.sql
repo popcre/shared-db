@@ -226,16 +226,17 @@ $contracts$;
 -- Contract 8: refresh_style_guide_matviews maintains content_sha256 and
 -- invalidates the embedding exactly when content identity changes. D's file
 -- changes (modified_at drives source_identity); E's is queued unchanged.
--- Replica mode keeps the change-queueing trigger from double-writing our
--- explicit queue rows.
-set local session_replication_role = replica;
+-- The seeding inserts already queued every fixture row through the files
+-- trigger, so these are upserts that re-stamp both entries as older than
+-- the refresh call.
 update public.style_guide_files
    set modified_at = '2026-10-02'
  where id = '44370000-0000-4000-8000-000000000004';
 insert into public.style_guide_search_sync_queue (style_guide_file_id, queued_at)
 values ('44370000-0000-4000-8000-000000000004', now() - interval '1 minute'),
-       ('44370000-0000-4000-8000-000000000005', now() - interval '1 minute');
-set local session_replication_role = origin;
+       ('44370000-0000-4000-8000-000000000005', now() - interval '1 minute')
+on conflict (style_guide_file_id) do update
+   set queued_at = now() - interval '1 minute';
 
 do $contracts$
 declare

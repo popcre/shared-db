@@ -252,6 +252,63 @@ test('the hold releases on success, waits on pending, and refuses failure', asyn
   )
 })
 
+test('a successful rehearsal on a first-parent descendant satisfies the hold', async () => {
+  const noSleep = async () => {}
+  const TIP = 'c'.repeat(40)
+  const OLDER = 'd'.repeat(40)
+  const statuses = {
+    [SHA]: [],
+    [OLDER]: [{ context: PREVIEW_REHEARSAL_CONTEXT, state: 'pending', created_at: '2026-10-25T20:00:00Z', id: 2 }],
+    [TIP]: [{ context: PREVIEW_REHEARSAL_CONTEXT, state: 'success', created_at: '2026-10-25T21:00:00Z', id: 3 }],
+  }
+  const result = await awaitPreviewRehearsal({
+    sha: SHA,
+    budgetMs: 1000,
+    readStatuses: async (commit) => statuses[commit] ?? [],
+    readDescendantTips: async () => [TIP, OLDER],
+    sleep: noSleep,
+  })
+  assert.equal(result.state, 'success')
+  assert.equal(result.via, TIP)
+})
+
+test('descendants without a success never satisfy the hold, and target failure still refuses', async () => {
+  const noSleep = async () => {}
+  const TIP = 'c'.repeat(40)
+  const readDescendantTips = async () => [TIP]
+  await assert.rejects(
+    awaitPreviewRehearsal({
+      sha: SHA,
+      budgetMs: 10,
+      intervalMs: 100,
+      readStatuses: async () => [],
+      readDescendantTips,
+      sleep: noSleep,
+    }),
+    /did not complete a successful post-merge preview rehearsal/,
+  )
+  await assert.rejects(
+    awaitPreviewRehearsal({
+      sha: SHA,
+      budgetMs: 1000,
+      readStatuses: async (commit) => (commit === SHA ? [{ context: PREVIEW_REHEARSAL_CONTEXT, state: 'failure', created_at: '2026-10-25T20:00:00Z', id: 1 }] : [{ context: PREVIEW_REHEARSAL_CONTEXT, state: 'success', created_at: '2026-10-25T21:00:00Z', id: 2 }]),
+      readDescendantTips,
+      sleep: noSleep,
+    }),
+    /is failure; recover preview/,
+  )
+  await assert.rejects(
+    awaitPreviewRehearsal({
+      sha: SHA,
+      budgetMs: 1000,
+      readStatuses: async () => [],
+      readDescendantTips: async () => ['not-a-sha'],
+      sleep: noSleep,
+    }),
+    /descendant tips must be/,
+  )
+})
+
 // ---------------------------------------------------------------------------
 // Queue authorization interlock (workflow-refactor closeout §5)
 // ---------------------------------------------------------------------------

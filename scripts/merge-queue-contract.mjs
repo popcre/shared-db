@@ -536,7 +536,16 @@ export function rehearsalState(statuses, context = PREVIEW_REHEARSAL_CONTEXT) {
 
 // Bounded wait for the exact-SHA rehearsal status. Every dependency is
 // injected in tests; the workflow calls the CLI, which uses live reads.
-export async function awaitPreviewRehearsal({ sha, readStatuses, sleep, now = Date.now, budgetMs, intervalMs = 15000, log = console.log }) {
+//
+// A successful rehearsal on a first-parent DESCENDANT of the target also
+// satisfies the hold: the rehearsal replays the migration history, so a run
+// on a later tip proves at least as much as one on the target itself. This
+// matters when main advanced (through non-migration merges) while the
+// target's own rehearsal was blocked — by then the rehearsal workflow only
+// accepts the current tip, so waiting for the exact SHA would be a permanent
+// deadlock. Explicit failure/error on the TARGET still refuses; a descendant
+// without a success simply does not count.
+export async function awaitPreviewRehearsal({ sha, readStatuses, readDescendantTips, sleep, now = Date.now, budgetMs, intervalMs = 15000, log = console.log }) {
   if (!/^[0-9a-f]{40}$/i.test(String(sha ?? ''))) throw new MergeQueueError('a 40-character main commit SHA is required for the preview hold')
   if (typeof readStatuses !== 'function') throw new MergeQueueError('a status reader is required')
   const started = now()
@@ -546,6 +555,15 @@ export async function awaitPreviewRehearsal({ sha, readStatuses, sleep, now = Da
     if (state === 'success') return { waitedMs: now() - started, state }
     if (state === 'failure' || state === 'error') {
       throw new MergeQueueError(`${PREVIEW_REHEARSAL_CONTEXT} on ${sha} is ${state}; recover preview through the governed procedures, never by marking the status manually`)
+    }
+    if (typeof readDescendantTips === 'function') {
+      for (const tip of await readDescendantTips(sha)) {
+        if (!/^[0-9a-f]{40}$/i.test(String(tip ?? ''))) throw new MergeQueueError('descendant tips must be 40-character commit SHAs')
+        if (rehearsalState(await readStatuses(tip)) === 'success') {
+          log(`${PREVIEW_REHEARSAL_CONTEXT}: satisfied by descendant ${tip} while awaiting ${sha}`)
+          return { waitedMs: now() - started, state: 'success', via: tip }
+        }
+      }
     }
     if (now() + intervalMs > deadline) {
       throw new MergeQueueError(`main ${sha} added a migration and did not complete a successful post-merge preview rehearsal within ${Math.round(budgetMs / 60000)} minutes (last state: ${state ?? 'none'})`)
@@ -635,15 +653,25 @@ export async function main(argv, env = process.env, deps = {}) {
     }
     const budgetMs = seconds(env.PREVIEW_HOLD_MAX_SECONDS, 1500) * 1000
     const intervalMs = seconds(env.PREVIEW_HOLD_POLL_SECONDS, 15) * 1000
-    await awaitPreviewRehearsal({
+    // First-parent descendants of the held target on origin/main, newest
+    // first. Bounded: an absurd history is a refusal, not a status crawl.
+    const readDescendantTips = deps.readDescendantTips ?? ((held) => {
+      const out = execFileSync('git', ['rev-list', '--first-parent', '--max-count=200', `${held}..origin/main`], { encoding: 'utf8' }).trim()
+      if (!out) return []
+      const tips = out.split(/\r?\n/)
+      if (tips.some((tip) => !/^[0-9a-f]{40}$/.test(tip))) throw new MergeQueueError('descendant tip enumeration is malformed')
+      return tips
+    })
+    const satisfied = await awaitPreviewRehearsal({
       sha,
       budgetMs,
       intervalMs,
       readStatuses: deps.readStatuses ?? (async (commit) => readAuthorizationStatuses(commit, { repo, read })),
+      readDescendantTips,
       sleep: deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
       now: deps.now ?? Date.now,
     })
-    console.log(`${PREVIEW_REHEARSAL_CONTEXT}: success on ${sha}`)
+    console.log(`${PREVIEW_REHEARSAL_CONTEXT}: success on ${satisfied.via ?? sha}${satisfied.via ? ` (descendant of ${sha})` : ''}`)
     return 0
   }
 

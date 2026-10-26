@@ -45,7 +45,7 @@ begin
 end;
 $$;
 
-revoke all on function api.crm_admin_role_list() from public;
+revoke all on function api.crm_admin_role_list() from public, anon;
 grant execute on function api.crm_admin_role_list() to authenticated;
 comment on function api.crm_admin_role_list() is
   'Admin-only list of roles ({slug, name, description}) ordered by slug. Powers popcrm-web Settings.';
@@ -98,12 +98,22 @@ begin
           where ur.profile_id = p.id and ur.revoked_at is null and r.slug = 'administrator'
         )
       )                        as crm_access,
-      (select count(*)::int from core.customer c
-        where c.primary_salesperson_profile_id = p.id) as salesperson_customer_count,
-      (select count(*)::int from core.customer c
-        where c.account_owner_profile_id = p.id)       as owner_customer_count
+      coalesce(sc.n, 0)        as salesperson_customer_count,
+      coalesce(oc.n, 0)        as owner_customer_count
     from app.profile p
     left join auth.users au on au.id = p.auth_user_id
+    left join (
+      select c.primary_salesperson_profile_id as pid, count(*)::int as n
+      from core.customer c
+      where c.primary_salesperson_profile_id is not null
+      group by 1
+    ) sc on sc.pid = p.id
+    left join (
+      select c.account_owner_profile_id as pid, count(*)::int as n
+      from core.customer c
+      where c.account_owner_profile_id is not null
+      group by 1
+    ) oc on oc.pid = p.id
     where p.status <> 'deleted'
   ) u;
 
@@ -111,7 +121,7 @@ begin
 end;
 $$;
 
-revoke all on function api.crm_admin_user_directory() from public;
+revoke all on function api.crm_admin_user_directory() from public, anon;
 grant execute on function api.crm_admin_user_directory() to authenticated;
 comment on function api.crm_admin_user_directory() is
   'Admin-only directory of all non-deleted profiles with last sign-in, active roles[], apps[], crm_access and customer assignment counts. Powers popcrm-web Settings.';
@@ -160,8 +170,9 @@ begin
       using errcode = 'check_violation';
   end if;
 
-  -- Serialize role changes so the last-administrator check cannot race.
-  lock table app.user_role in share row exclusive mode;
+  -- Serialize role and status changes so the last-administrator check
+  -- cannot race (same lock key as crm_admin_set_user_status).
+  perform pg_advisory_xact_lock(hashtext('api.crm_admin_access_invariant'));
 
   select coalesce(array_agg(r.id), array[]::uuid[]) into v_role_ids
   from app.role r where r.slug::text = any(v_roles);
@@ -196,7 +207,7 @@ begin
 end;
 $$;
 
-revoke all on function api.crm_admin_set_user_roles(uuid, text[]) from public;
+revoke all on function api.crm_admin_set_user_roles(uuid, text[]) from public, anon;
 grant execute on function api.crm_admin_set_user_roles(uuid, text[]) to authenticated;
 comment on function api.crm_admin_set_user_roles(uuid, text[]) is
   'Admin-only: make a user''s active roles exactly p_roles (soft grant/revoke on app.user_role). Rejects unknown slugs, removing your own administrator role, and leaving zero active administrators. Returns the user''s directory object.';
@@ -254,7 +265,7 @@ begin
 end;
 $$;
 
-revoke all on function api.crm_admin_set_app_access(uuid, text, boolean) from public;
+revoke all on function api.crm_admin_set_app_access(uuid, text, boolean) from public, anon;
 grant execute on function api.crm_admin_set_app_access(uuid, text, boolean) to authenticated;
 comment on function api.crm_admin_set_app_access(uuid, text, boolean) is
   'Admin-only: grant or revoke one app (soft grant/revoke on app.app_access). You cannot remove your own CRM access. Returns the user''s directory object.';
@@ -288,19 +299,40 @@ begin
       using errcode = 'check_violation';
   end if;
 
+  -- Only active <-> inactive transitions; archived/potential are not managed here.
+  if not exists (
+    select 1 from app.profile p
+    where p.id = p_profile_id and p.status in ('active', 'inactive')
+  ) then
+    raise exception 'crm: only active or inactive users can change status here'
+      using errcode = 'check_violation';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext('api.crm_admin_access_invariant'));
+
   update app.profile p
      set status = p_status::app.entity_status
    where p.id = p_profile_id;
+
+  if not exists (
+    select 1 from app.user_role ur
+    join app.role r on r.id = ur.role_id
+    join app.profile p on p.id = ur.profile_id
+    where r.slug = 'administrator' and ur.revoked_at is null and p.status = 'active'
+  ) then
+    raise exception 'crm: at least one active administrator is required'
+      using errcode = 'check_violation';
+  end if;
 
   return (select e from jsonb_array_elements(api.crm_admin_user_directory()) e
           where e->>'id' = p_profile_id::text);
 end;
 $$;
 
-revoke all on function api.crm_admin_set_user_status(uuid, text) from public;
+revoke all on function api.crm_admin_set_user_status(uuid, text) from public, anon;
 grant execute on function api.crm_admin_set_user_status(uuid, text) to authenticated;
 comment on function api.crm_admin_set_user_status(uuid, text) is
-  'Admin-only: set a user''s status to active or inactive. You cannot deactivate yourself. Returns the user''s directory object.';
+  'Admin-only: switch a user between active and inactive. You cannot deactivate yourself or the last active administrator. Returns the user''s directory object.';
 
 -- 6. Bulk-assign customers to a salesperson or account owner (null unassigns).
 create or replace function api.crm_admin_assign_customers(p_customer_ids uuid[], p_profile_id uuid, p_field text)
@@ -349,10 +381,10 @@ begin
 end;
 $$;
 
-revoke all on function api.crm_admin_assign_customers(uuid[], uuid, text) from public;
+revoke all on function api.crm_admin_assign_customers(uuid[], uuid, text) from public, anon;
 grant execute on function api.crm_admin_assign_customers(uuid[], uuid, text) to authenticated;
 comment on function api.crm_admin_assign_customers(uuid[], uuid, text) is
-  'Admin-only: set core.customer primary salesperson (p_field=salesperson) or account owner (p_field=account_owner) for the given customers; null profile unassigns. Returns rows updated.';
+  'Admin-only: set core.customer primary salesperson (p_field=salesperson) or account owner (p_field=account_owner) for the given customers; null profile unassigns. Unknown customer ids are skipped; any non-deleted profile may be named. Returns rows updated.';
 
 -- 7. Role and app grant/revoke history, newest first.
 --    Derived from the current granted_at/revoked_at columns: a re-grant
@@ -388,7 +420,7 @@ begin
     from app.app_access aa
     where aa.revoked_at is not null
   ), top as (
-    select * from ev order by at desc nulls last limit v_limit
+    select * from ev order by at desc nulls last, profile_id, kind, value, action limit v_limit
   )
   select coalesce(jsonb_agg(jsonb_build_object(
            'at', t.at,
@@ -398,7 +430,7 @@ begin
            'profile_id', t.profile_id,
            'profile_name', coalesce(p.display_name, p.email::text),
            'actor_name', coalesce(a.display_name, a.email::text)
-         ) order by t.at desc nulls last), '[]'::jsonb)
+         ) order by t.at desc nulls last, t.profile_id, t.kind, t.value, t.action), '[]'::jsonb)
   into result
   from top t
   left join app.profile p on p.id = t.profile_id
@@ -408,7 +440,7 @@ begin
 end;
 $$;
 
-revoke all on function api.crm_admin_access_history(integer) from public;
+revoke all on function api.crm_admin_access_history(integer) from public, anon;
 grant execute on function api.crm_admin_access_history(integer) to authenticated;
 comment on function api.crm_admin_access_history(integer) is
   'Admin-only: newest-first role/app grant and revoke events ({at, kind, action, value, profile_id, profile_name, actor_name}) derived from app.user_role and app.app_access. A re-grant overwrites the earlier grant time; revocations have no recorded actor. p_limit clamped to 1..1000.';

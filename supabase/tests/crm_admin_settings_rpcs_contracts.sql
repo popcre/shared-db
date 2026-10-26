@@ -182,7 +182,85 @@ begin
     raise exception 'history missing viewer revoke';
   end if;
 
+  -- Edge inputs.
+  v_refused := false;
+  begin
+    perform api.crm_admin_set_user_roles(v_b_profile, null);
+  exception when invalid_parameter_value then v_refused := true;
+  end;
+  if not v_refused then raise exception 'null roles accepted'; end if;
+
+  v_refused := false;
+  begin
+    perform api.crm_admin_set_user_roles(gen_random_uuid(), array['viewer']);
+  exception when no_data_found then v_refused := true;
+  end;
+  if not v_refused then raise exception 'unknown profile accepted'; end if;
+
+  if api.crm_admin_assign_customers(null, v_b_profile, 'salesperson') <> 0
+     or api.crm_admin_assign_customers(array[]::uuid[], v_b_profile, 'salesperson') <> 0
+     or api.crm_admin_assign_customers(array[gen_random_uuid()], v_b_profile, 'salesperson') <> 0 then
+    raise exception 'empty/unknown customer arrays must update nothing';
+  end if;
+
+  if jsonb_array_length(api.crm_admin_access_history(0)) > 1
+     or jsonb_array_length(api.crm_admin_access_history(-5)) > 1 then
+    raise exception 'history limit not clamped';
+  end if;
+  perform api.crm_admin_access_history(null);
+
+  -- Last-administrator invariant: make A the only database administrator, then act
+  -- as B holding administrator only through JWT app_metadata (not a DB grant).
   perform set_config('role', 'postgres', true);
+  update app.user_role ur set revoked_at = now()
+    from app.role r
+   where r.id = ur.role_id and r.slug = 'administrator'
+     and ur.revoked_at is null and ur.profile_id <> v_a_profile;
+  perform set_config('request.jwt.claim.sub', v_b_auth::text, true);
+  perform set_config('request.jwt.claims', jsonb_build_object(
+    'sub', v_b_auth, 'role', 'authenticated',
+    'app_metadata', jsonb_build_object('roles', jsonb_build_array('administrator')))::text, true);
+  perform set_config('role', 'authenticated', true);
+
+  v_refused := false;
+  begin
+    perform api.crm_admin_set_user_status(v_a_profile, 'inactive');
+  exception when check_violation then v_refused := true;
+  end;
+  if not v_refused then raise exception 'last administrator deactivation accepted'; end if;
+
+  v_refused := false;
+  begin
+    perform api.crm_admin_set_user_roles(v_a_profile, array['viewer']);
+  exception when check_violation then v_refused := true;
+  end;
+  if not v_refused then raise exception 'last administrator role removal accepted'; end if;
+
+  perform set_config('role', 'postgres', true);
+
+  -- Static: exact signatures, security definer, pinned search_path, grants.
+  foreach v_call in array array[
+    'api.crm_admin_role_list()',
+    'api.crm_admin_user_directory()',
+    'api.crm_admin_set_user_roles(uuid,text[])',
+    'api.crm_admin_set_app_access(uuid,text,boolean)',
+    'api.crm_admin_set_user_status(uuid,text)',
+    'api.crm_admin_assign_customers(uuid[],uuid,text)',
+    'api.crm_admin_access_history(integer)'
+  ] loop
+    if to_regprocedure(v_call) is null then
+      raise exception 'missing function %', v_call;
+    end if;
+    if not (select p.prosecdef and p.proconfig @> array['search_path=app, public']
+            from pg_proc p where p.oid = to_regprocedure(v_call)) then
+      raise exception '% must be security definer with pinned search_path', v_call;
+    end if;
+    if not has_function_privilege('authenticated', to_regprocedure(v_call), 'execute')
+       or has_function_privilege('anon', to_regprocedure(v_call), 'execute') then
+      raise exception 'unexpected grants on %', v_call;
+    end if;
+  end loop;
+
   raise notice 'crm_admin_settings_rpcs_contracts: PASS';
 end;
 $$;

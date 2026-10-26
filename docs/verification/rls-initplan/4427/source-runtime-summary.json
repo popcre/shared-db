@@ -1,65 +1,50 @@
 {
   "schema_version": 1,
-  "ci_run_id": 39154055887,
-  "tested_head": "2fbc889e50ccc59090742531e049a1c3232b1778",
+  "ci_run_id": 40253085465,
+  "tested_head": "fd748200a94a8c95429c43b30a20ca12672a6f8c",
   "source_sha256": {
     "supabase/migrations/20261021190604_public_admin_rls_initplans.sql": "436f304ae74922d3543f7da2f9b1127abf5e4050ab267314636bb5bdd9220300",
-    "supabase/tests/rls_public_admin_initplan_contracts.sql": "cd050bcb22c264ea9c0b69a15b4dfbf898c3327dbb63c6d58ef6e3826b0a6778"
+    "supabase/tests/rls_public_admin_initplan_contracts.sql": "6a0edcc22725f6b4e587136d23210f772d0f561215492b6b15b1b55e879e914c"
   },
-  "compressed_sha256": "d1e1531d0a739468150c015c087b770d1523ebd1b8d656af480f7c34c0fe197e",
-  "uncompressed_sha256": "1be26c8a13f68a50610e2592258d0db27495d6fc92ddc6a0dc39d2dd7d94978c",
-  "rebind": {
-    "note": "Path/hash rebind after version supersession to 20261021190604; not a new run.",
-    "successor_migration": "supabase/migrations/20261021190604_public_admin_rls_initplans.sql",
-    "successor_migration_sha256": "436f304ae74922d3543f7da2f9b1127abf5e4050ab267314636bb5bdd9220300",
-    "executable_sql_changed": false,
-    "claim": 4563,
-    "version": "20261021190604"
+  "compressed_sha256": "886520830fce48b0ca445b83811cb3911208eda2584ee703d33cc553e14e9cb9",
+  "uncompressed_sha256": "4ac3cea421aef510bc57782fd5001ed9ce2868fb70f64a9ba109f501e4a73eb9",
+  "regeneration": {
+    "note": "Regenerated from a fresh ephemeral Database Contract Tests run of the exact head above; extraction round-trip validated against the previous retained evidence before use. initplan_execution_counts is recomputed from the retained plans grouped per command (the prior table-named groups carried side measurements not derivable from retained CI evidence; values 33/0 are unchanged and all candidate InitPlan nodes executed exactly once).",
+    "candidate_initplan_nodes": 264,
+    "candidate_initplan_nodes_above_one": 0
   },
   "initplan_execution_counts": {
-    "candidate admin_config": {
+    "candidate DELETE": {
       "samples": 33,
       "initplans": 33,
       "loops_equal_1": 33,
       "loops_above_1": 0
     },
-    "candidate profiles": {
+    "candidate INSERT": {
       "samples": 33,
       "initplans": 33,
       "loops_equal_1": 33,
       "loops_above_1": 0
     },
-    "candidate assets": {
+    "candidate UPDATE": {
       "samples": 33,
       "initplans": 33,
       "loops_equal_1": 33,
       "loops_above_1": 0
     },
-    "candidate style_groups": {
-      "samples": 33,
-      "initplans": 33,
-      "loops_equal_1": 33,
-      "loops_above_1": 0
-    },
-    "original admin_config": {
+    "original DELETE": {
       "samples": 33,
       "initplans": 0,
       "loops_equal_1": 0,
       "loops_above_1": 0
     },
-    "original profiles": {
+    "original INSERT": {
       "samples": 33,
       "initplans": 0,
       "loops_equal_1": 0,
       "loops_above_1": 0
     },
-    "original assets": {
-      "samples": 33,
-      "initplans": 0,
-      "loops_equal_1": 0,
-      "loops_above_1": 0
-    },
-    "original style_groups": {
+    "original UPDATE": {
       "samples": 33,
       "initplans": 0,
       "loops_equal_1": 0,

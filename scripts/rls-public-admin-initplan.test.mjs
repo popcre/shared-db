@@ -62,8 +62,8 @@ test('retained isolated runtime evidence matches current SQL and complete measur
   assert.equal(hash(packed), summary.compressed_sha256)
   assert.equal(hash(raw), summary.uncompressed_sha256)
   const evidence = JSON.parse(raw)
-  assert.equal(evidence.ci_run_id, 39154055887)
-  assert.equal(evidence.tested_head, '2fbc889e50ccc59090742531e049a1c3232b1778')
+  assert.equal(evidence.ci_run_id, 40253085465)
+  assert.equal(evidence.tested_head, 'fd748200a94a8c95429c43b30a20ca12672a6f8c')
   for (const [file, digest] of Object.entries(evidence.source_sha256)) {
     assert.equal(hash(readFileSync(new URL('../' + file, import.meta.url))), digest, file)
   }

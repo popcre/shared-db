@@ -271,3 +271,5 @@ All checklist items pass for a planning deliverable:
 3. Is the ultimate goal enough to steer correct judgment if reality differs? **Yes:** §1 requires equal access and less database work; §§4,8,9,13 bound scope, preserve unresolved findings and require measured production/consumer acceptance rather than a quiet dashboard.
 
 Self-audit passed October 18, 2026 EDT. Review/publication evidence is tracked on #4421; this audit is not an independent migration review or evidence that implementation is complete.
+
+Retained evidence regeneration, October25,2026: the access-section statement_timeout was raised20to60seconds after slow first runs timed out inside the ephemeral-runner variance band (#4746 item3). Because executable SQL changed, the retained runtime evidence was regenerated from fresh ephemeral CI40253085465 at fd748200a94a8c95429c43b30a20ca12672a6f8c:2124 outcomes equal,198 plans retained,264 candidate InitPlan nodes all executed once, no median regression near the10percent threshold. #4427 remains open pending its live acceptance.

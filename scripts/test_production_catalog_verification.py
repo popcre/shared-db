@@ -1813,7 +1813,7 @@ class BehavioralSidecarTests(unittest.TestCase):
         # #4437 re-derived the queue trigger function (thumbnail_url joined the
         # skip comparison); the newest body wins for that pin. The 2-arg
         # refresh function is still the 20260917005221 body.
-        rederived = Path(__file__).resolve().parents[1] / "supabase/migrations/20261025180137_popsg_semantic_search_foundation.sql"
+        rederived = Path(__file__).resolve().parents[1] / "supabase/migrations/20261026162917_popsg_semantic_search_foundation.sql"
         rederived_body = rederived.read_bytes().replace(b"\r\n", b"\n").decode().split("$function$")
         self.assertEqual(len(rederived_body), 5, "#4437 migration must define exactly two $function$ bodies")
         self.assertIn("md5(p.prosrc)='" + hashlib.md5(rederived_body[1].encode()).hexdigest() + "'", sql)

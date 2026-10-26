@@ -553,7 +553,15 @@ begin
  if exists(select 1 from (select context,probe,result from rls4427_results where phase='original') b
  full join (select context,probe,result from rls4427_results where phase='candidate') a
  using(context,probe) where b.result is distinct from a.result) then
-  raise exception '4427 before/after result or SQLSTATE differs';
+  select jsonb_agg(diff order by coalesce(diff->>'context',''), coalesce(diff->>'probe','')) into v_result
+  from (
+   select jsonb_build_object('context',coalesce(b.context,a.context),'probe',coalesce(b.probe,a.probe),
+    'before',b.result,'after',a.result) as diff
+   from (select context,probe,result from rls4427_results where phase='original') b
+   full join (select context,probe,result from rls4427_results where phase='candidate') a
+   using(context,probe) where b.result is distinct from a.result
+  ) d;
+  raise exception '4427DIAG before/after result or SQLSTATE differs: %', v_result;
  end if;
 -- STRICT positive control: every operational admin DML must affect1 row.
 -- plm legacy identity has onlySELECT policy and is intentionally negative DML.

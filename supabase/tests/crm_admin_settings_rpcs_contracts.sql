@@ -39,9 +39,8 @@ begin
   insert into app.app_access (profile_id, app) values (v_b_profile, 'crm')
   on conflict (profile_id, app) do update set revoked_at = null;
 
-  insert into core.customer (name, code, status)
-  values ('ZZ CRM Admin Fixture ' || gen_random_uuid()::text,
-          'ZZCRMADM' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 10), 'active')
+  insert into core.customer (name, status)
+  values ('ZZ CRM Admin Fixture ' || gen_random_uuid()::text, 'active')
   returning id into v_customer;
 
   -- Non-administrator: every function refuses.

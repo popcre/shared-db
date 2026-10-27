@@ -201,7 +201,8 @@ defect):
   settled `COS` and stock-order rules and are recognised separately, not via this field.
 - **Case Pack** stays item-grain: `/itemDetails` returns `cartonQty`, `innerPackQty`,
   `cartonPackType` and carton dimensions/weight, with real varying values (1, 4, 7 observed).
-  Auto-fill as the item default; the sheet's line-level exceptions (380 text/multiline cells in
+  Auto-fill as the item default only after resolving the applicable variant
+  (see [Dim Codes and pack variants](#dim-codes-pack-variants-and-possible-edi-multipliers)); the sheet's line-level exceptions (380 text/multiline cells in
   the historical profile) stay human.
 
 - **FOB point is a production-order detail (Albert, 2026-09-17), and `/prodtracking` is where
@@ -502,6 +503,48 @@ and it is done by owner decision, never by an automated mapping.
   Authority: Albert Hazan, 2026-09-29. **Settled owner ruling.**
 
 ## How ColdLion works — our working model of the ERP
+
+### Dim Codes, pack variants, and possible EDI multipliers
+
+**Settled for the reported pack variants — JamieLynn, relayed by Albert Hazan
+in chat, 2026-10-27.** Business question: can two records with the same style
+represent different case packs, and does Dim Code help distinguish them?
+JamieLynn's answer: “We used Dim code 5 for the 5 piece. Updated the other line
+back to 9. Not sure why it changed to 3 maybe an EDI multiplier.”
+The reported five-piece version uses Dim Code 5; the other reported version is
+nine pieces. This is authority for those variants, not a rule that all Dim Codes
+are numbers equal to the case pack.
+
+**Verified implementation evidence, not additional business authority —
+2026-10-27, direct API recheck at 12:11 PM EDT.** The live item-details response
+shows the five-piece record with Dim Code 5 and the corrected nine-piece record
+with blank Dim Code. Both report an inner-pack quantity of one. The production
+details response links the checked production line to the five-piece record and
+Dim Code 5. A saved landing snapshot still showed the earlier value of three.
+Keep transaction identifiers and raw responses in approved private evidence;
+case-pack reconciliation remains on PopDAM #527 / shared-db #4858.
+
+#### What this changes
+
+A style number and label alone need not distinguish the applicable pack.
+Use the transaction's exact item identity and available Dim Code to distinguish
+variants; consult the pack quantity on that matching source record. Do not
+choose an arbitrary style match, treat blank Dim Code as proof of missing data,
+or assume the numeric code itself defines the quantity. If the transaction
+does not identify the version, its applicable pack remains **Unknown**.
+This qualifies the older item-default guidance above: a default is usable only
+when its variant is resolved, and assortment quantities remain distinct from
+single-item defaults (see [product identity and prepacks](product-items-and-identifiers.md#prepacks-and-assortments)).
+
+**Unknown — EDI cause and three inners.** JamieLynn suggested an EDI multiplier
+as a possible explanation for the unexpected three; she did not confirm the
+cause. Future quantity investigations should check EDI conversions/multipliers
+alongside pack variant and source freshness. Do not automatically multiply or
+divide case packs, inner packs, or ordered units, or infer three inners from
+nine divided by three. The reported three inners are not confirmed by the API's
+inner-pack quantity of one. A vendor defect, a universal Dim Code convention,
+and the mapping of both sales-order lines remain unproven.
+
 
 **Status: Settled where marked; the two Unknowns are named explicitly.** Built from ColdLion's own
 answers (JamieLynn, 2026-08-17 through 2026-08-28) and from what we have verified live against the

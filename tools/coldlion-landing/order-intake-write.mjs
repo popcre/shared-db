@@ -31,6 +31,7 @@ import { isClientSpawnFault, isClientUriFault, proveTarget, queryRows, runSql } 
 import {
   buildWriteFailureSql,
   buildWriteSql,
+  buildIdentityGuardSql,
   buildWriterObjectAssertionSql,
   parseWriteSummary,
 } from "./lib/order-intake-write.mjs";
@@ -118,6 +119,20 @@ async function main() {
       (options.order !== null ? ` (order ${options.order})` : "") +
       (options.limit !== null ? ` (limit ${options.limit})` : ""),
   );
+
+  // The recurring component-identity guard (SO 7128092, 2026-10-26): every
+  // run re-proves that each staged component of every created order has
+  // exactly one coldlion line ref, carrying its identity and its SKU. A
+  // violation fails the run loudly instead of drifting silently.
+  const [guard] = queryRows(buildIdentityGuardSql(), {});
+  const [missing, duplicate, skuMismatch, withoutIdentity, expected, identityQuarantined, sample = ""] = guard ?? [];
+  console.log(
+    `component identity guard: expected=${expected} missing=${missing} duplicate=${duplicate} ` +
+      `skuMismatch=${skuMismatch} withoutIdentity=${withoutIdentity} identityQuarantined=${identityQuarantined}`,
+  );
+  if (guard === undefined || [missing, duplicate, skuMismatch, withoutIdentity, identityQuarantined].some((v) => v !== "0")) {
+    throw new Error(`component identity guard failed: ${sample || "no summary row"}`);
+  }
 }
 
 // Direct-run guard: main() runs only when this file is the node entry point,

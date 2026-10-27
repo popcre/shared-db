@@ -276,13 +276,15 @@ begin
   -- documents that no keyword matches, with the blended rank shape
   -- (keyword + coalesce(semantic,0)*0.35), and the floor excludes only
   -- semantic candidates (keyword hits below the floor survive).
-  -- The stored vector is near-orthogonal to the query vector, so its cosine
-  -- similarity is well below 1 and an unreachable floor (clamped to 1.0 in the
-  -- body) can exclude it while keyword hits survive.
+  -- File 13 becomes SEMANTIC-ONLY: its keyword vector no longer matches the
+  -- query, its stored embedding is near-orthogonal to the query embedding
+  -- (cosine similarity well below 1), so an unreachable floor (clamped to 1.0
+  -- in the body) excludes it from the semantic arm while keyword hits survive.
   update public.style_guide_search_documents
      set embedding = (select ('[' || string_agg(case when g = 1 then '1' else '0' end, ',') || ']')::extensions.vector
                         from generate_series(1, 768) g),
-         embedding_model = 'google/siglip2-base-patch16-naflex'
+         embedding_model = 'google/siglip2-base-patch16-naflex',
+         search_vector = to_tsvector('simple', 'zzzsemanticonlytoken')
    where style_guide_file_id = '25060000-0000-4000-8000-000000000013';
   v_result := public.search_style_guide_library_v2(
     p_result_mode => 'files', p_query => 'uniquechildtoken',

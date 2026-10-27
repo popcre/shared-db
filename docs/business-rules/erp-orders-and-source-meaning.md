@@ -199,10 +199,15 @@ defect):
   are per-customer label/program codes — neither is order type.
 - CONTRACTUAL SAMPLE / DAVID SAMPLE / C STOCK / STOCK sheet order types correspond to the
   settled `COS` and stock-order rules and are recognised separately, not via this field.
-- **Case Pack** stays item-grain: `/itemDetails` returns `cartonQty`, `innerPackQty`,
+- **Direct-item Case Pack defaults** stay item-grain: `/itemDetails` returns `cartonQty`, `innerPackQty`,
   `cartonPackType` and carton dimensions/weight, with real varying values (1, 4, 7 observed).
   Auto-fill as the item default; the sheet's line-level exceptions (380 text/multiline cells in
   the historical profile) stay human.
+  **Settled — Albert Hazan, 2026-10-26:** for an assortment component, Case Pack
+  means "Pieces of that design per carton" (verbatim answer in the owner chat).
+  Use the component's manifest quantity, not the whole assortment's carton size
+  or its standalone item default. Physical cartons are counted once across the
+  designs packed together. Existing explicit line-level exceptions remain inputs.
 
 - **FOB point is a production-order detail (Albert, 2026-09-17), and `/prodtracking` is where
   the ERP keeps it — but the specific port is not populated today.** `/prodtracking` is the

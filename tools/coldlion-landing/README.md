@@ -280,3 +280,11 @@ or substitutes an assortment parent's quantity for a component's default.
 This does not change item linking, source identities, or line-level exceptions.
 Existing blanks require a separate exact-preimage, blank-only application repair;
 do not replay entire orders to fill case pack.
+
+For assortment components, the owner's 2026-10-26 ruling uses ColdLion
+`quantity` (pieces of that design per carton). `order_qty` is the ordered
+quantity of that design, and `prepackQty` is the whole assortment pack; neither
+is a substitute. Nonpositive, missing or conflicting component manifest values
+remain unknown. Source-only ColdLion components share a physical-parent key in
+OrderList and PO tracking, so equal per-component carton counts are counted once.
+Google/manual assortment exceptions retain their existing source rules.

@@ -194,7 +194,7 @@ winning_components as (
   select distinct on (wl.sales_order_no, wl.sales_order_line_no,
                       wl.master_item_no, c.sub_item_no, c.sub_label_code)
     c.line_id, wl.sales_order_no, wl.sales_order_line_no, wl.master_item_no,
-    c.sub_item_no, c.sub_label_code, c.order_qty,
+    c.sub_item_no, c.sub_label_code, c.quantity, c.order_qty,
     c.component_source_hash
   from coldlion.intake_order_component c
   join winning_lines wl on wl.id = c.line_id
@@ -237,9 +237,23 @@ case_pack as (
             and exact_label.division_code = l.division_code
             and exact_label.item_no = coalesce(nullif(btrim(c.sub_item_no), ''), l.master_item_no)
             and exact_label.label_code = case when nullif(btrim(c.sub_item_no), '') is null then nullif(btrim(l.label_code), '') else nullif(btrim(c.sub_label_code), '') end))
+  where nullif(btrim(c.sub_item_no), '') is null
   group by l.id, coalesce(nullif(btrim(c.sub_item_no), ''), l.master_item_no)
   having count(distinct d.carton_qty) = 1
      and count(d.carton_qty) = count(*)
+  union all
+  -- Owner ruling 2026-10-26: Case Pack means pieces of THIS design per
+  -- carton. ColdLion component.quantity is that per-carton manifest value;
+  -- carton_qty on the standalone item and the parent prepackQty are different.
+  select l.id as line_id, nullif(btrim(c.sub_item_no), '') as sku,
+         min(c.quantity) as carton_qty
+  from winning_lines l
+  join ordinalled c on c.line_id = l.id
+  where nullif(btrim(c.sub_item_no), '') is not null
+  group by l.id, nullif(btrim(c.sub_item_no), '')
+  having count(distinct c.quantity) = 1
+     and count(c.quantity) = count(*)
+     and min(c.quantity) > 0
 ),
 customer_ref as (
   -- Customer resolution FIRST: core.company_source_ref (source_system

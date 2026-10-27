@@ -352,6 +352,11 @@ test("case pack default: exact source label before unanimous non-null variant de
   assert.match(casePack, /having count\(distinct d\.carton_qty\) = 1/);
   assert.match(casePack, /and count\(d\.carton_qty\) = count\(\*\)/);
   assert.doesNotMatch(casePack, /limit 1|distinct on|d\.carton_qty > 0/i);
+  assert.match(casePack, /where nullif\(btrim\(c\.sub_item_no\), ''\) is null[\s\S]*union all/);
+  assert.match(casePack, /min\(c\.quantity\) as carton_qty/);
+  assert.match(casePack, /having count\(distinct c\.quantity\) = 1/);
+  assert.match(casePack, /and count\(c\.quantity\) = count\(\*\)/);
+  assert.match(casePack, /and min\(c\.quantity\) > 0/);
   // order_depth_inches stays NULL: Albert's 2026-09-17 input-column list
   // omits col 18 and the writer must not "complete" it.
   assert.doesNotMatch(sql, /order_depth_inches/);

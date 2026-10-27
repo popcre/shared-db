@@ -199,7 +199,7 @@ defect):
   are per-customer label/program codes — neither is order type.
 - CONTRACTUAL SAMPLE / DAVID SAMPLE / C STOCK / STOCK sheet order types correspond to the
   settled `COS` and stock-order rules and are recognised separately, not via this field.
-- **Case Pack** stays item-grain: `/itemDetails` returns `cartonQty`, `innerPackQty`,
+- **Case Pack for a direct-item line** uses the resolved item variant: `/itemDetails` returns `cartonQty`, `innerPackQty`,
   `cartonPackType` and carton dimensions/weight, with real varying values (1, 4, 7 observed).
   Auto-fill as the item default only after resolving the applicable variant
   (see [Dim Codes and pack variants](#dim-codes-pack-variants-and-possible-edi-multipliers)); the sheet's line-level exceptions (380 text/multiline cells in

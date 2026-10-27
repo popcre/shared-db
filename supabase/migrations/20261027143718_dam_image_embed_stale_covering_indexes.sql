@@ -1,4 +1,6 @@
--- derived-from: 20261027020503 (follow-up named there), 20261025163955 (table), 20260830013942 (covering-index precedent)
+-- derived-from: none
+-- New objects (not a re-derivation): the follow-up named by 20261027020503,
+-- on tables created by 20261025163955; covering-index precedent 20260830013942.
 -- Issue #4870 (author claim #4900; app u2giants/popdam3 #486, workstream #4814):
 -- covering indexes so public.image_embed_stale_assets enumeration is
 -- index-driven instead of heap-fetch bound.

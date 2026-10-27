@@ -105,3 +105,23 @@ jobs:
           fi
           git commit -m "chore: sync shared-db @ ${{ github.repository }}@${GITHUB_SHA::7}"
           git push
+
+  # Run once after the whole matrix. A failed mirror does not strand successful heads.
+  notify-designflow:
+    {
+      "needs": [
+        "sync"
+      ],
+      "if": "${{ always() && github.repository == 'popcre/shared-db' && github.ref == 'refs/heads/main' }}",
+      "runs-on": "blacksmith-2vcpu-ubuntu-2404",
+      "timeout-minutes": 5,
+      "steps": [
+        {
+          "name": "Refresh DesignFlow readiness after the complete mirror batch, including partial failures",
+          "env": {
+            "GH_TOKEN": "${{ secrets.SYNC_TOKEN }}"
+          },
+          "run": "set -euo pipefail\ngh workflow run designflow-db-release.yml --repo \"$GITHUB_REPOSITORY\" --ref main\n"
+        }
+      ]
+    }

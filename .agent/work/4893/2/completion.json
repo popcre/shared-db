@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "work_issue": 4893,
+  "outcome": "ready-for-merge",
+  "pr": 4894,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4893/2",
+  "contract_sha256": "b207dff2c0b72100e6f54d8ca7dfee528d9c7969f8349dbbfd391aed08d7d5e2",
+  "head_sha": "8607dd599e98eb3f10ff43d6418fbc1ca13659e4",
+  "base_sha": "38a37cdbfb07115120815aa080e378d0f412a679",
+  "files_changed": [
+    "tools/coldlion-landing/README.md",
+    "tools/coldlion-landing/lib/order-intake-write.mjs",
+    "tools/coldlion-order-intake-claim.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test tools/coldlion-order-intake-*.test.mjs",
+      "exit_code": 0,
+      "evidence": "Executed with COLDLION_INTAKE_TEST_PG_CONTAINER=orderlist4886pg; 88 passed,0 failed,0 skipped, including all81 original tests and6 actual PostgreSQL full writer/helper scenarios: changed SKU exact replacement and honest unmatched; same SKU wrong automatic link; manual/not-applicable/valid preservation; ambiguous/conflicting/absent unchanged preservation; append-only second-refresh and byte-identical repeat; real bridge drift inside actual helper and post-clear fault both roll back header,line,classification,old link,metadata,refs,intake and injected bridge mutation. Isolated postgres17 container network none, no published ports, generated synthetic fixtures only. Output SHA256 94b076678bd6208c301d16cb29c7db479f656d8fa9bdb6c225d4e2b15065ff7d"
+    },
+    {
+      "command": "actual PostgreSQL buildWriterObjectAssertionSql preflight",
+      "exit_code": 0,
+      "evidence": "No missing tables,columns,routines,indexes,constraints or triggers."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Clean"
+    },
+    {
+      "command": "isolated PostgreSQL actual writer/helper integration: stale automatic refresh, protected preservation, candidate drift/failure rollback, second-run identity",
+      "exit_code": 0,
+      "evidence": "88 passed,0 failed,0 skipped, including all81 original tests and6 actual PostgreSQL full writer/helper scenarios: changed SKU exact replacement and honest unmatched; same SKU wrong automatic link; manual/not-applicable/valid preservation; ambiguous/conflicting/absent unchanged preservation; append-only second-refresh and byte-identical repeat; real bridge drift inside actual helper and post-clear fault both roll back header,line,classification,old link,metadata,refs,intake and injected bridge mutation. Isolated postgres17 container network none, no published ports, generated synthetic fixtures only. Output SHA256 94b076678bd6208c301d16cb29c7db479f656d8fa9bdb6c225d4e2b15065ff7d"
+    }
+  ],
+  "assumptions_resolved": [
+    "Helper4888 production verified live by migration ledger, exact routine signature, service-only EXECUTE.",
+    "Current upstream bbf1708a2c5d55ee6d226e10526e0615a6e3882e integrated normally; no caller-owned path changed upstream.",
+    "Gen2 published before source edits, runtime dependencies declared under native maintenance contract interpretation."
+  ],
+  "stop_conditions_hit": [],
+  "notes": [
+    "Application526 stays open for live ordinary-run and signed-in acceptance; existing classification/link repair is separate exact input decision. Parent retains merge/production/data correction decisions. No production application-data writes."
+  ]
+}

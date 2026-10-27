@@ -6,9 +6,9 @@
   "migration_versions": [
     "20261027012301"
   ],
-  "contract_ref": "refs/db-contracts/4437/15",
-  "contract_sha256": "3da8ed3162e62fdf9f8ee0eb205bdc74c75e7c67bc48a69dff1d75e69f285a0d",
-  "head_sha": "2d24b3f636699cafa0b6c50d07d363c2adbb4ba4",
+  "contract_ref": "refs/db-contracts/4437/16",
+  "contract_sha256": "6be275ef84355f364245af6dad77ccdb4316211217899a37a93f5f91be58c9c2",
+  "head_sha": "fc0e981eef9c0ee1f0ee1753e5899e2f67f7fa85",
   "base_sha": "f07920dd65e76add7da74362f03b597a489da4a6",
   "files_changed": [
     ".github/live-proofs/3023.sql",

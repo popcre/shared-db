@@ -1,4 +1,4 @@
--- Version: 20261026162917
+-- Version: 20261027012301
 -- derived-from: 20260930185929, 20260917005221, 20261011203652
 -- Issue: popcre/shared-db#4437 (app u2giants/popdam3#107)
 -- PopSG semantic-plus-keyword search, stage 1: embedding foundation.
@@ -415,7 +415,7 @@ begin
   -- The no-argument scheduler command resolves to the two-default-argument
   -- overload, not a zero-argument function. Pin the live, reviewed body so
   -- future drift cannot silently weaken what a successful cron run proves.
-  -- #4437 review round 2, B1: the pinned body is the 20261026162917 delegating
+  -- #4437 review round 2, B1: the pinned body is the 20261027012301 delegating
   -- wrapper, which carries the content-identity invariant on the cron path.
   if to_regprocedure('public.refresh_style_guide_matviews()') is not null
      or not exists (select 1 from pg_proc p

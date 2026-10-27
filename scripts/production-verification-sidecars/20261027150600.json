@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "migration_version": "20261027061216",
-  "migration_sha256": "33a6e411e60598c1227aff4fc016b48aecd56932faecebc5035d67a3f2d468d1",
+  "migration_version": "20261027150600",
+  "migration_sha256": "4483d5c53285db32311b90677420abfb33d2d9f269ab5e5769bf40309143929b",
   "checks": [
     {
       "id": "popsg_search_v2_semantic_17arg",

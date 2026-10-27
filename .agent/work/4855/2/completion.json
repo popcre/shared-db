@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "work_issue": 4855,
+  "contract_ref": "refs/db-contracts/4855/2",
+  "base_sha": "438f8b175b839348fba9eea7079ad35047a9a825",
+  "files_changed": [
+    ".agent/work/4855/2/completion.json",
+    ".agent/work/4855/2/contract.json",
+    "scripts/test_orderlist_assortment_quantities.py",
+    "supabase/migrations/20261027114857_orderlist_assortment_quantities.sql"
+  ],
+  "db_reads": [
+    "table plm.production_order_line",
+    "table plm.production_order_line_source_ref",
+    "table coldlion.intake_order_line",
+    "table coldlion.intake_order_component",
+    "table coldlion.item_detail",
+    "table coldlion.prepack_detail"
+  ],
+  "db_writes": [
+    "function public.get_dam_order_assortment_quantities"
+  ],
+  "checks": [
+    {
+      "command": "scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Passed locally on the resumed source; actual function exercised in disposable PostgreSQL 17."
+    },
+    {
+      "command": "python3 scripts/test_orderlist_assortment_quantities.py",
+      "exit_code": 0,
+      "evidence": "Passed locally on the resumed source; actual function exercised in disposable PostgreSQL 17."
+    }
+  ],
+  "assumptions_resolved": [
+    "Renamed unapplied migration to newly reserved version; SQL body unchanged."
+  ],
+  "stop_conditions_hit": [],
+  "outcome": "ready-for-merge",
+  "pr": 4857,
+  "migration_versions": [
+    "20261027114857"
+  ],
+  "contract_sha256": "295963ecfba116c323e2184abc5c80b4aa41c96342ef4795e82a6f9c52eecbc5",
+  "head_sha": "d157a58857f57eb02d82f5da758c1cfeeedae4e4"
+}

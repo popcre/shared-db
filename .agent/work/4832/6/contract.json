@@ -1,0 +1,49 @@
+{
+  "schema_version": 2,
+  "generation": 6,
+  "evidence_parent": {
+    "work_issue": 4832,
+    "generation": 5,
+    "contract_sha256": "c42d654a85853f57c5bc992862a5f9e42086d4b675f5d03b847bc30e75d9fd4c"
+  },
+  "work_issue": 4832,
+  "work_type": "structural",
+  "route": "claim-first",
+  "goal": "Recover PR4834 under fresh claim4872/version20261027022851 and current session ownership; restore only the three existing role-editor column UPDATE privileges with exact rolled-back runtime tests and fresh protected delivery evidence.",
+  "base_sha": "91d4ff65fb600e20aa62cfc00fa22a3c94bc4a11",
+  "dispatcher": "Codex chat 01a17a03-63b6-7081-ab54-29fa144bf678 on edge-dev3",
+  "worker": "codex",
+  "branch": "codex/role-rename-permission-20261026",
+  "worktree": "/tmp/role4832-author-01a17a03",
+  "allowed_paths": [
+    "supabase/migrations/20261027022851_dflow_prod_role_rename_update_grant.sql",
+    "supabase/tests/dflow_prod_role_rename_update_grant_contracts.sql"
+  ],
+  "file_writes": [
+    "supabase/migrations/20261027022851_dflow_prod_role_rename_update_grant.sql",
+    "supabase/tests/dflow_prod_role_rename_update_grant_contracts.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "table dflow_prod.\"Roles\"",
+    "view dflow_prod.\"Roles\""
+  ],
+  "prohibited_actions": [
+    "No manual structural production SQL, broader grants, role assignment, role creation or deletion.",
+    "Never reopen/reuse released claims4833/4842 or spent versions20261026174936/20261026193803.",
+    "Do not edit foreign worktrees, claims, source, or gates."
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "PostgreSQL 16 non-superuser fixture and exact grant migration contract"
+  ],
+  "assumptions": [
+    "The preserved old source remains immutable in history; final net source diff carries only the newly reserved migration, retargeted contract test, and one current evidence pair.",
+    "Production backend inherits designflow_prod_backend_grants; refresh exact target and least-privilege catalogue before delivery and acceptance.",
+    "Old review does not authorize newly reserved source; fresh exact-head review and ordinary protected preview/automatic production are required."
+  ],
+  "stop_conditions": [
+    "Unresolved material review or protected delivery refusal.",
+    "Unexpected object collision, privilege broadening, target mismatch or fixture/membership change."
+  ]
+}

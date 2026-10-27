@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "work_issue": 4832,
+  "outcome": "ready-for-merge",
+  "pr": 4834,
+  "migration_versions": [
+    "20261027022851"
+  ],
+  "contract_ref": "refs/db-contracts/4832/6",
+  "contract_sha256": "9b762c868d8e5df90343ef24ebfc9e08203a98e79c25894b9f6503a266a43198",
+  "head_sha": "e78aea51b59b7aeeed69597d34c9219f305b1f00",
+  "base_sha": "91d4ff65fb600e20aa62cfc00fa22a3c94bc4a11",
+  "files_changed": [
+    "supabase/migrations/20261027022851_dflow_prod_role_rename_update_grant.sql",
+    "supabase/tests/dflow_prod_role_rename_update_grant_contracts.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "table dflow_prod.\"Roles\"",
+    "view dflow_prod.\"Roles\""
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL guards passed. Protected scratch log SHA256 1b255b76a2eae686764dec4ea1a163c38923e6092ea3df9d27c43224de57a626."
+    },
+    {
+      "command": "PostgreSQL 16 non-superuser fixture and exact grant migration contract",
+      "exit_code": 0,
+      "evidence": "Fresh exact migration executed in synthetic PostgreSQL16 fixture under ci_fixture non-superuser with ADMIN TRUE / INHERIT FALSE / SET FALSE. Missing UPDATE reproduced; exact three-column ACL, runtime rename/readback, denied kind/DELETE, and full transaction rollback passed. Independent sentinel/table/grant/membership restoration assertion passed. Synthetic baseline includes existing runtime schema USAGE. Log SHA256 bd93803dd57a79b7788bc82ccf8eae621851a67e040171f9cad049ce35f1a90e."
+    }
+  ],
+  "assumptions_resolved": [
+    "Handoff PR4844 normally merged at91d4ff65fb600e20aa62cfc00fa22a3c94bc4a11 before fresh ownership/claim.",
+    "Native fresh claim4872 is OPEN/active for actual successor identity, exact table/view keys and permanent new version20261027022851. Both spent versions remain absent from final source.",
+    "Preserved source d8738ff484c22cec1a50578e41b2b1824d3a59dd is retained as ordinary merge ancestry, original remote branch advances without force; only new grant/test and current evidence pair appear in net diff."
+  ],
+  "stop_conditions_hit": []
+}

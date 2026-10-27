@@ -1,4 +1,4 @@
--- Version: 20261027150858
+-- Version: 20261027183509
 -- derived-from: 20261022155012, 20261025121119, 20261027012301
 -- Issue: popcre/shared-db#4437 (app u2giants/popdam3#107), claim #4820 stage 2.
 -- Semantic-plus-keyword search: thread p_query_embedding (SigLIP2/768, the one

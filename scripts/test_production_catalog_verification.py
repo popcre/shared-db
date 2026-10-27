@@ -1760,7 +1760,7 @@ class BehavioralSidecarTests(unittest.TestCase):
         temp, root, migration = self.fixture(change)
         with temp:
             sql = build_behavior_sql(self.load(root, migration))
-        forward = Path(__file__).resolve().parents[1] / "supabase/migrations/20261027061216_popsg_semantic_search_stage2.sql"
+        forward = Path(__file__).resolve().parents[1] / "supabase/migrations/20261027150858_popsg_semantic_search_stage2.sql"
         import hashlib
         expected = hashlib.md5(forward.read_text().split("$function$")[1].encode()).hexdigest()
         self.assertIn(expected, sql)
@@ -1774,7 +1774,7 @@ class BehavioralSidecarTests(unittest.TestCase):
         temp, root, migration = self.fixture(change)
         with temp:
             sql = build_behavior_sql(self.load(root, migration))
-        forward = Path(__file__).resolve().parents[1] / "supabase/migrations/20261027061216_popsg_semantic_search_stage2.sql"
+        forward = Path(__file__).resolve().parents[1] / "supabase/migrations/20261027150858_popsg_semantic_search_stage2.sql"
         import hashlib
         body = forward.read_bytes().replace(b"\r\n", b"\n").decode().split("$function$")
         self.assertEqual(len(body), 3, "forward migration must define exactly one $function$ body")
@@ -1790,7 +1790,7 @@ class BehavioralSidecarTests(unittest.TestCase):
         temp, root, migration = self.fixture(change)
         with temp:
             sql = build_behavior_sql(self.load(root, migration))
-        forward = Path(__file__).resolve().parents[1] / "supabase/migrations/20261027061216_popsg_semantic_search_stage2.sql"
+        forward = Path(__file__).resolve().parents[1] / "supabase/migrations/20261027150858_popsg_semantic_search_stage2.sql"
         import hashlib
         body = forward.read_bytes().replace(b"\r\n", b"\n").decode().split("$function$")
         self.assertEqual(len(body), 3, "forward migration must define exactly one $function$ body")

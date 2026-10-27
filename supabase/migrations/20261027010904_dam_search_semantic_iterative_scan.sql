@@ -1,24 +1,30 @@
+-- Version: 20261027010904
 -- #4664: filtered SigLIP2 semantic search returned only ~3-100 rows.
 -- derived-from: 20261025163006
 -- Cause: HNSW stops at its ef_search=100 candidate list and the document-type /
 -- model filters are applied afterwards, so p_document_types=['style_group'] kept 3
 -- semantic rows (null types: ~108) even though LIMIT is 2000.
 -- Fix (search_dam_documents only; keyword leg, ranking and output unchanged):
---   * hnsw.iterative_scan = relaxed_order as a function SET clause, so the HNSW
---     leg keeps scanning until the filtered LIMIT is met (assets: 2000 rows, 0.6 s);
+--   * hnsw.iterative_scan = relaxed_order via set_config in the body (hosted apply
+--     role may not attach an extension GUC as a function SET clause, 42501), so the
+--     HNSW leg keeps scanning until the filtered LIMIT is met (assets: 2000 rows,
+--     0.6 s measured session-level);
 --   * when assets are not searched, an exact distance sort replaces HNSW
 --     (style groups: 2000 rows, ~0.1 s warm / 4 s cold) because a filtered HNSW walk
 --     over a 4% subset is slow (15 s for 964 rows).
 -- Final ordering is still by rank.
+
+set statement_timeout = '15min';
+
 CREATE OR REPLACE FUNCTION public.search_dam_documents(p_query text, p_filters jsonb, p_limit integer, p_offset integer, p_document_types text[] DEFAULT NULL::text[], p_query_embedding extensions.vector DEFAULT NULL::extensions.vector, p_min_rank real DEFAULT 0, p_min_semantic_score real DEFAULT NULL::real)
  RETURNS TABLE(document_type text, entity_id uuid, asset_id uuid, style_group_id uuid, keyword_rank real, semantic_rank real, rank real, total_count bigint, has_more boolean, facets jsonb)
  LANGUAGE sql
  STABLE SECURITY DEFINER
  SET search_path TO 'public', 'extensions'
  SET statement_timeout TO '30s'
- SET hnsw.iterative_scan TO 'relaxed_order'
 AS $function$
   select set_config('hnsw.ef_search', '100', true);
+  select set_config('hnsw.iterative_scan', 'relaxed_order', true);
   -- body from 20261025163006; semantic leg split into HNSW (iterative scan) and exact legs (#4664)
   with params as materialized (
     select nullif(trim(p_query),'') query_text,
@@ -95,7 +101,7 @@ AS $function$
     from keyword_features k
   ), semantic_ann as materialized (
     -- HNSW leg: used whenever assets are searched. hnsw.iterative_scan=relaxed_order
-    -- (function SET clause) keeps scanning past ef_search until the post-filtered
+    -- (set_config at the top of the body) keeps scanning past ef_search until the post-filtered
     -- LIMIT is met, instead of stopping at the ~100-row candidate list (#4664).
     -- HNSW returns distance order; do NOT add a secondary sort key here.
     select d.document_type,d.entity_id,d.asset_id,d.style_group_id,

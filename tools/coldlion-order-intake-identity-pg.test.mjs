@@ -52,10 +52,20 @@ create table plm.production_order_line (id uuid primary key default gen_random_u
   line_number text, sku text, quantity_ordered numeric, order_person text, order_type text,
   customer_po_number text, assortment_id text, assortment_component_ordinal integer, case_pack numeric,
   ship_to text, start_ship_date date, cancel_date date, metadata jsonb, source_system text, source_id text,
+  source_style_type text, item_id uuid, master_data_match_status text,
+  sku_normalized text generated always as (nullif(btrim(lower(sku)), '')) stored,
   updated_at timestamptz default now(), unique (source_system, source_id));
 create table plm.production_order_line_source_ref (production_order_line_id uuid references plm.production_order_line (id) on delete cascade, source_system text,
   source_id text, is_primary boolean, metadata jsonb, unique (source_system, source_id));
 create unique index production_order_line_source_ref_primary_uidx on plm.production_order_line_source_ref (production_order_line_id, source_system) where is_primary;
+create table coldlion.division (company_code text, division_code text, division_desc text);
+create table core.customer (id uuid primary key);
+create table public.style_tracker_rows (id uuid primary key, sku text);
+create table plm.style_tracker_item_bridge (style_tracker_row_id uuid, tracker_type text, plm_item_id uuid);
+create schema if not exists dam;
+create function dam.orderlist_product_facts(uuid, text) returns table (facts jsonb) language sql as $$select '{}'::jsonb$$;
+create function public.link_dam_order_lines_scoped(uuid[]) returns jsonb language sql as $$select '{}'::jsonb$$;
+insert into coldlion.division values ('POP', 'D1', 'POP Creations (Licensed Products)');
 insert into coldlion.routing_code_map values ('W1', 'Import', 'Ross DC');
 insert into plm.erp_customer values ('ROSS', '00000000-0000-0000-0000-0000000000aa', true);
 `;
@@ -176,10 +186,10 @@ select l.id, 'AA0631P1P03', 24, 'hash-new', l.last_seen_run from coldlion.intake
 test("the committed repair restores SO 7128092 to exactly four merged D3691 lines, and the guard passes", { skip: !container }, () => {
   psql(`drop database if exists ${DB}`, "postgres");
   psql(`create database ${DB}`, "postgres");
-  psql(SCHEMA + `create schema dam; create table dam.production_order_snapshot (id uuid primary key default gen_random_uuid(), production_order_line_id uuid);`);
+  psql(SCHEMA + `create table dam.production_order_snapshot (id uuid primary key default gen_random_uuid(), production_order_line_id uuid);`);
   const PH = "aaaaaaaa-0000-0000-0000-000000000001";
   const D = "aaaaaaaa-0000-0000-0000-000000000002";
-  const line = (id, header, sku, qty) => `('${id}', '${header}', '1', '${sku}', ${qty}, '62004433',
+  const line = (id, header, sku, qty) => `('${id}', '${header}', '1', '${sku}', ${qty}, '62004433', 'licensed',
     jsonb_build_object('master_item_no', 'AA06301', 'sub_item_no', '${sku}', 'sub_label_code', null))`;
   const ref = (id, system, sourceId) => `('${id}', '${system}', '${sourceId}', true, '{"origin":"coldlion_intake"}')`;
   psql(`${stage(run(), COMPONENTS)}
@@ -188,7 +198,7 @@ insert into plm.production_order (id, production_order_number, metadata) values
   ('${PH}', 'COLDLION-SO-${SO}', '{"production_order_number_origin":"coldlion_intake_placeholder"}'),
   ('${D}', 'D3691', '{}');
 insert into plm.production_order_source_ref values ('${PH}', 'coldlion', 'coldlion:so-header:${SO}', true, '{}');
-insert into plm.production_order_line (id, production_order_id, line_number, sku, quantity_ordered, customer_po_number, metadata) values
+insert into plm.production_order_line (id, production_order_id, line_number, sku, quantity_ordered, customer_po_number, source_style_type, metadata) values
   ${line("1ed185c1-8822-4edd-8f29-096c30cf26d1", D, "AA063PFPF02", 1000)},
   ${line("298f50a9-9d46-4ffe-9a72-e6153e93b361", PH, "AA063PFPF02", 1000)},
   ${line("65dfc580-681d-4577-a894-f86aadcfefe7", PH, "AA0631P1P02", 1000)},

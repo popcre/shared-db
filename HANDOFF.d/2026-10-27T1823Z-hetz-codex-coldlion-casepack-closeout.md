@@ -16,8 +16,11 @@ meaning, consolidate those questions into one message before dependent writes.
 
 Already settled, do not re-ask:
 
-- Albert's assortment meaning, October 26, 2026: **“Pieces of that design per
-  carton.”** It is neither the entire assortment nor a standalone-item default.
+- Albert's assortment meaning, corrected October 27, 2026 (relaying Yuchen):
+  **“It Should show the total total pieces in the whole carton.”** Every
+  assortment component's Case Pack is the whole physical carton's piece count
+  (parent ColdLion prepack quantity), the same on every member. This supersedes
+  the October 26 reading ("Pieces of that design per carton").
 - JamieLynn, relayed by Albert on October 27, clarified that the original
   three-piece order line was fully cancelled and replaced by the five-piece
   version, distinguished by Dim Code 5. A different, closely numbered style is
@@ -51,7 +54,7 @@ ColdLion case packs, close the gap, document Dim Code meaning through the
 business-rules skill, recheck the API, and use a subagent for remaining fixes.
 He then requested wrap-up. No new scope may start during closeout.
 
-Success means correct saved per-design packs, a recurring import that preserves
+Success means correct saved whole-carton packs, a recurring import that preserves
 that meaning, physical assortment cartons counted once, correct treatment of
 cancelled/replacement lines, and signed-in live proof. A green build, a prepared
 workflow, or a documentation PR is not delivery of those outcomes.
@@ -149,12 +152,12 @@ merge-stage acquisition, or production schema apply happened for this change.
 
 ## 5. Findings and governing meaning
 
-For assortment members, component quantity is pieces of that design per carton;
-component order quantity is ordered units. Parent prepack quantity and parent
-line total are different. Merely filling the pack would make existing tracking
-sum the same cartons once per design. The proposed views group a physical
-parent and count agreed carton ratios once. Unequal design packs can share a
-carton count. Conflicting/missing ratios remain unknown; preserve Google rules.
+For assortment members (owner correction 2026-10-27), Case Pack is the whole
+carton's piece count: the parent line's prepack quantity, the same on every
+component. Component order quantity is ordered units of that design. Cartons
+are the parent line quantity divided by that total, counted once per physical
+parent, never summed per design. Conflicting/missing totals remain unknown;
+preserve Google rules. PR #4859 implements this.
 
 Dim Code distinguishes reported variants, but its numeric text is not a
 universal formula. The current [item-detail projection](https://github.com/popcre/shared-db/blob/c413638a62d2e4ba9900586a69f512ce186dfdb7/tools/coldlion-landing/lib/master-specs.mjs)

@@ -38,6 +38,11 @@
       "command": "git diff --check",
       "exit_code": 0,
       "evidence": "No whitespace errors"
+    },
+    {
+      "command": "supabase/tests/coldlion_component_case_packs.sql on an ephemeral database",
+      "exit_code": 0,
+      "evidence": "Database Contract Tests run 40430455082 job 121946789112 passed on exact source head 66048b541, including all active SQL fixtures and the new component pack fixture."
     }
   ],
   "assumptions_resolved": [

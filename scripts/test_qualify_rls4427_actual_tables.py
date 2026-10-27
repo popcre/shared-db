@@ -48,7 +48,8 @@ class Actual4427StaticTests(unittest.TestCase):
         self.assertIn('insert into public.assets',pre)
         self.assertIn('INSERT INTO public.style_groups',pre)
         self.assertIn('commit;',pre)
-        for damaged in [source.replace(m.END,''),source+m.BEGIN,source.replace('begin;','select 1;',1)]:
+        self.assertEqual(m.hashlib.sha256(source.encode()).hexdigest(),m.SOURCE_SQL_SHA256)
+        for damaged in [source.replace(m.END,''),source+'-- drift',source.replace('begin;','select 1;',1)]:
             with self.assertRaises(RuntimeError):m.fixture_sql(damaged)
         self.assertIn('count(*) from rls4427_performance)<>198',source)
         self.assertEqual(source.count('select pg_temp.rls4427_measure_batch('),9)
@@ -84,6 +85,18 @@ class Actual4427StaticTests(unittest.TestCase):
         damaged=copy.deepcopy(after);damaged['policies'][1]['check']='true'
         with self.assertRaises(RuntimeError):m.validate_policy_delta(before,damaged,'original')
         with self.assertRaises(RuntimeError):m.validate_policy_delta(before,after,'candidate')
+
+    def test_entrypoint_uses_sql_error_not_unsupported_quit_status(self):
+        entry=(m.ROOT/'supabase/tests/rls_public_admin_actual_table_performance.sql').read_text()
+        self.assertIn('\\if :SHELL_ERROR',entry)
+        self.assertIn("raise exception '4427 driver failure'",entry)
+        self.assertNotIn('\\quit',entry)
+        source=P.read_text()
+        self.assertIn('error.returncode != 3',source)
+        self.assertIn('psql_shell_failure_signal_proven=True',source)
+        self.assertIn("checkout != os.environ['GITHUB_SHA']",source)
+        self.assertIn("'HEAD:' + relative",source)
+        self.assertIn('actual != committed',source)
 
     def test_unowned_drop_and_create_refuse_without_subprocess(self):
         with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()

@@ -3,5 +3,5 @@
 \! python3 scripts/qualify_rls4427_actual_tables.py
 \if :SHELL_ERROR
   \echo '4427 actual-table qualification failed; no acceptance may be claimed'
-  \quit 1
+  do $failure$ begin raise exception '4427 driver failure'; end $failure$;
 \endif

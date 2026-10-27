@@ -18,8 +18,8 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / 'supabase/tests/rls_public_admin_initplan_contracts.sql'
-BEGIN = '-- RLS4427_ACTUAL_TABLE_FIXTURE_BEGIN'
-END = '-- RLS4427_ACTUAL_TABLE_FIXTURE_END'
+SOURCE_SQL_SHA256 = '166a1d7cae922b27c229c31162b612ccb1957a27440806681a15677151354667'
+END = '-- Invoker-only probing, with each write reverted by a private subtransaction.'
 ADMIN = '00000000-7541-4000-8000-000000000001'
 MEMBER = '00000000-7541-4000-8000-000000000002'
 CASES = [('assets', 'INSERT'), ('assets', 'UPDATE'),
@@ -34,7 +34,7 @@ def assert_ci(env):
     required = {'GITHUB_ACTIONS': 'true', 'CI': 'true', 'GITHUB_REPOSITORY': 'popcre/shared-db', 'GITHUB_WORKFLOW': 'Database Contract Tests',
                 'PGHOST': '127.0.0.1', 'PGPORT': '54322', 'PGUSER': 'postgres', 'PGDATABASE': 'postgres'}
     if any(env.get(k) != v for k, v in required.items()):
-        raise RuntimeError('4427 refuses outside the native isolated Database Contract Tests runner')
+        raise RuntimeError('4427 refuses mismatched declared native CI context; parent must independently prove resource custody')
     if not re.fullmatch('[a-f0-9]{40}', env.get('GITHUB_SHA', '')):
         raise RuntimeError('4427 requires the exact native CI source SHA')
     if any(env.get(k) for k in ('SUPABASE_ACCESS_TOKEN', 'SUPABASE_DB_PASSWORD_PRODUCTION',
@@ -43,9 +43,11 @@ def assert_ci(env):
 
 
 def fixture_sql(source):
-    if source.count(BEGIN) != 1 or source.count(END) != 1:
-        raise RuntimeError('4427 fixture boundaries changed')
-    fragment = source.split(BEGIN)[1].split(END)[0]
+    if hashlib.sha256(source.encode()).hexdigest() != SOURCE_SQL_SHA256:
+        raise RuntimeError('4427 retained exact fixture source hash changed')
+    if source.count(END) != 1:
+        raise RuntimeError('4427 fixture boundary changed')
+    fragment = source[source.index('begin;'):source.index(END)]
     if not fragment.lstrip().startswith('begin;') or 'create temp table rls4427_manifest' not in fragment:
         raise RuntimeError('4427 actual source fixture/preconditions missing')
     return fragment + "\ncommit;\n"
@@ -216,10 +218,41 @@ class NativeCI:
         self.owned.remove(db)
 
     def run(self):
+        # Source/context guards supplement independently reviewed native workflow custody.
+        # Environment values alone cannot cryptographically prove an actual GitHub runner.
+        checkout = subprocess.run(['/usr/bin/git', 'rev-parse', 'HEAD'], cwd=ROOT,
+            env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'}, capture_output=True, text=True,
+            timeout=10, check=True).stdout.strip()
+        if checkout != os.environ['GITHUB_SHA']:
+            raise RuntimeError('4427 native CI SHA does not match actual checked-out source')
+        source_hashes = {}
+        for relative in ('scripts/qualify_rls4427_actual_tables.py',
+                         'supabase/tests/rls_public_admin_actual_table_performance.sql',
+                         'supabase/tests/rls_public_admin_initplan_contracts.sql'):
+            committed = subprocess.run(['/usr/bin/git', 'show', 'HEAD:' + relative], cwd=ROOT,
+                env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'}, capture_output=True,
+                timeout=10, check=True).stdout
+            actual = (ROOT / relative).read_bytes()
+            if actual != committed:
+                raise RuntimeError('4427 executed source differs from exact checked-out Git source')
+            source_hashes[relative] = hashlib.sha256(actual).hexdigest()
         samples = []
         template = self.prefix + '_seed'
         try:
+            # Prove the exact psql shell-failure/SQL-error signal before any DB creation.
+            try:
+                self.sql('postgres', "\\! false\n\\if :SHELL_ERROR\nselect 1/0;\n\\endif\n")
+            except subprocess.CalledProcessError as error:
+                if error.returncode != 3 or not re.search(r'\b22012\b', error.stderr or ''):
+                    raise RuntimeError('4427 native psql failure signal was not exact') from error
+            else:
+                raise RuntimeError('4427 native psql shell failure did not fail closed')
             # Source is the standard runner's credential-free, synthetic CI database.
+            # Host client/server incompatibility must fail closed, never silently change executor.
+            tool_versions = {}
+            for tool in ('psql','pg_dump','pg_restore'):
+                tool_versions[tool] = subprocess.run(['/usr/bin/' + tool, '--version'],
+                    env=self.env, capture_output=True, text=True, timeout=10, check=True).stdout.strip()
             self.sql('postgres', """do $g$ begin
 if (select count(*) from auth.users where email in
 ('zz-fixture-user-1@fixture.invalid','zz-fixture-user-2@fixture.invalid',
@@ -323,7 +356,7 @@ end $g$;""")
                 raise RuntimeError('4427 incomplete 330-DML/44-SELECT matrix')
             summary = summarize(samples)
             return dict(schema_version=1, source_sha=os.environ['GITHUB_SHA'],
-                qualification='ISOLATED_ACTUAL_TABLES_ONLY', production_acceptance='NOT_EVALUATED',
+                executed_source_sha256=source_hashes, tool_versions=tool_versions, psql_shell_failure_signal_proven=True, qualification='ISOLATED_ACTUAL_TABLES_ONLY', production_acceptance='NOT_EVALUATED',
                 historical_flags='PRESERVED_UNATTRIBUTED', source_sql_sha256=hashlib.sha256(original.encode()).hexdigest(),
                 original_contract_output_sha256=hashlib.sha256(original_result.encode()).hexdigest(),
                 template_snapshots=base_metadata, samples=samples, summary=summary,

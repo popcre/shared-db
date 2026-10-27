@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "work_issue": 4889,
+  "outcome": "ready-for-merge",
+  "pr": 4891,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4889/1",
+  "contract_sha256": "20bc7149cc4b1c9203f15625ea9534e3e50c96170034b0a222cdf0b5eb1584dd",
+  "head_sha": "1ec48172d6364478e94b7532d788502fd3154bcc",
+  "base_sha": "9c24d1ffe393db6c8e756b00ca1ef0c3432d9bb6",
+  "files_changed": [
+    "docs/agents/review-recovery-policy.md",
+    "scripts/lib/lanes/review-circuit-breaker.mjs",
+    "scripts/lib/lanes/review-circuit-breaker.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/lib/lanes/review-circuit-breaker.test.mjs",
+      "exit_code": 0,
+      "evidence": "215/215 pass, no skipped cases, 83.8 seconds; 15 new real-Git recovery/adversarial cases. Actual immutable4855 replay also passed conservatively against9c24d1ffe with published4855 contracts."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Pass on final source1ec48172d6364478e94b7532d788502fd3154bcc"
+    }
+  ],
+  "assumptions_resolved": [
+    "Current endpoint failed/cancelled/returned outcomes refuse; source/merge checks and strict approval equivalence preserved.",
+    "Actual legacy start f2cc437\u21928f453d is conservatively unchanged; no paths excluded, no old report accepted as approval."
+  ],
+  "stop_conditions_hit": []
+}

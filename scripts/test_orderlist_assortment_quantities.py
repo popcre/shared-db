@@ -70,7 +70,7 @@ insert into coldlion.item_detail values ('PACK-5','EDGEHOME','DIV-B','OTHER');
 -- Duplicate component records remain ambiguous.
 insert into coldlion.prepack_detail values ('EDGEHOME','DIV-A','CODE-6','SKU-6',4,'');
 """)
-        run(target, (ROOT / 'supabase/migrations/20261027114857_orderlist_assortment_quantities.sql').read_text())
+        run(target, (ROOT / 'supabase/migrations/20261027150048_orderlist_assortment_quantities.sql').read_text())
         run(target, """
 do $$ begin
  if has_function_privilege('anon','public.get_dam_order_assortment_quantities(uuid[])','execute') then raise exception 'anonymous grant'; end if;

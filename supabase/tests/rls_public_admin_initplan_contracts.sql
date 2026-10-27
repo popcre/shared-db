@@ -5,6 +5,7 @@
 -- Tested command fixtures: assets INSERT/UPDATE/SELECT; admin_config ALL; profiles SELECT.
 -- Other36 tables add108 actual command probes; strict positive controls may expose baseline errors.
 -- Source is not evidence of passed DML, performance, preview or live acceptance.
+-- RLS4427_ACTUAL_TABLE_FIXTURE_BEGIN
 begin;
 set local statement_timeout = '20s';
 set local lock_timeout = '3s';
@@ -212,6 +213,7 @@ INSERT INTO public.style_tracker_rows (id,source_sheet,tracker_type,source_workb
 INSERT INTO public.tiff_optimization_queue (id,relative_path,filename,file_size,file_modified_at) VALUES ('44273600-0000-4000-8000-000000000035'::uuid,'zz-rls4427-public-tiff_optimization_queue-seed','zz-rls4427-public-tiff_optimization_queue-seed',0,now());
 INSERT INTO public.user_roles (id,user_id,role) VALUES ('44273600-0000-4000-8000-000000000036'::uuid,'00000000-7541-4000-8000-000000000003'::uuid,'user'::public.app_role);
 
+-- RLS4427_ACTUAL_TABLE_FIXTURE_END
 -- Invoker-only probing, with each write reverted by a private subtransaction.
 -- Variables survive the exception rollback; rows and trigger effects do not.
 create function pg_temp.rls4427_probe(statement_text text) returns jsonb

@@ -535,3 +535,38 @@ test("the run refuses an invalid run id and the SQL never widens its own scope",
   assert.match(sql, /set state = 'created', state_changed_at = now\(\)/);
   assert.match(sql, /set state = 'quarantined', state_changed_at = now\(\)/);
 });
+
+
+test("division classification comes from the landed source identity and is persisted before scoped linking", () => {
+  const canonical = cteBlock(sql, "canonical_lines");
+  assert.match(canonical, /left join coldlion\.division d\s+on d\.company_code = wl\.company_code and d\.division_code = wl\.division_code/);
+  assert.match(canonical, /case d\.division_desc/);
+  assert.doesNotMatch(canonical, /when '(?:CW001|SP001|EH001)'/);
+  const inserts = cteBlock(sql, "line_inserts");
+  assert.match(inserts, /source_style_type,\s+master_data_match_status/);
+  assert.match(inserts, /then 'unmatched' else 'not_applicable' end/);
+  assert.match(cteBlock(sql, "line_updates"), /source_style_type = coalesce\(pl\.source_style_type, cl\.source_style_type\)/);
+  assert.ok(WRITE_REQUIRED_CONSTRAINTS.some(c => c.table === "division" && c.definition === "PRIMARY KEY (company_code, division_code)"));
+});
+
+test("ordinary reimport preserves source and manual-link metadata and passes only exact scoped line IDs", () => {
+  const updates = cteBlock(sql, "line_updates");
+  assert.equal((updates.match(/coalesce\(pl\.metadata, '\{\}'::jsonb\) \|\| jsonb_build_object/g) || []).length, 2);
+  const scope = cteBlock(sql, "link_scope");
+  assert.match(scope, /select li\.id, li\.source_style_type from line_inserts li/);
+  assert.match(scope, /ref\.source_system = 'coldlion' and ref\.source_id = cl\.line_source_id/);
+  assert.match(scope, /pl\.production_order_id = cl\.production_order_id/);
+  assert.doesNotMatch(sql, /relink_dam_order_lines_bulk/);
+});
+
+test("unknown or conflicting divisions fail before commit, and all helper batches share the writer transaction", () => {
+  const afterWrites = sql.slice(sql.indexOf("do $link_intake$"));
+  assert.match(afterWrites, /s\.expected_type is null/);
+  assert.match(afterWrites, /l\.source_style_type is distinct from s\.expected_type/);
+  assert.match(afterWrites, /raise exception 'ColdLion intake division classification unknown or conflicts/);
+  assert.match(afterWrites, /row_number\(\) over \(order by line_id\) - 1\) \/ 500/);
+  assert.match(afterWrites, /receipt := public\.link_dam_order_lines_scoped\(batch\)/);
+  assert.ok(afterWrites.indexOf("link_dam_order_lines_scoped(batch)") < afterWrites.indexOf("commit;"));
+  assert.ok(drySql.indexOf("link_dam_order_lines_scoped(batch)") < drySql.indexOf("rollback;"));
+  assert.match(buildWriterObjectAssertionSql(), /to_regprocedure\('public\.link_dam_order_lines_scoped\(uuid\[\]\)'\) is null/);
+});

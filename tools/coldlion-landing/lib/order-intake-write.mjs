@@ -121,6 +121,10 @@ export function buildWriteSql({ runId, write = false, limit = null, order = null
   const scopeLimit = limit !== null ? `\n  limit ${sqlNumber(limit)}` : "";
   return `begin;
 
+create temporary table coldlion_orderlist_link_scope (
+  line_id uuid primary key, expected_type text
+) on commit drop;
+
 insert into coldlion.sync_run
   (id, endpoint, company_code, request_params, status, requested_by,
    started_at, finished_at, notes)
@@ -413,6 +417,11 @@ canonical_lines as (
   select wl.sales_order_no, wl.sales_order_line_no, wl.master_item_no,
          wl.po_number, wl.sales_person_code1, wl.start_date, wl.cancel_date,
          wl.line_qty, wl.line_source_hash,
+         case d.division_desc
+           when 'POP Creations (Licensed Products)' then 'licensed'
+           when 'Spruce (Licensed Products)' then 'licensed'
+           when 'Edge Home' then 'generic'
+         end as source_style_type,
          o.sub_item_no, o.sub_label_code,
          coalesce(nullif(btrim(o.sub_item_no), ''), wl.master_item_no) as sku,
          case when nullif(btrim(o.sub_item_no), '') is not null
@@ -428,6 +437,8 @@ canonical_lines as (
            || wl.sales_order_line_no::text || ':component:'
            || o.component_ordinal::text as line_source_id
   from winning_lines wl
+  left join coldlion.division d
+    on d.company_code = wl.company_code and d.division_code = wl.division_code
   join claimable c on c.sales_order_no = wl.sales_order_no
   join coldlion.routing_code_map m on m.code = c.warehouse_code
   join ordinalled o on o.line_id = wl.id
@@ -445,7 +456,8 @@ line_inserts as (
     (production_order_id, line_number, sku, quantity_ordered, order_person,
      order_type, customer_po_number, assortment_id,
      assortment_component_ordinal, case_pack, ship_to, start_ship_date,
-     cancel_date, metadata, source_system, source_id)
+     cancel_date, metadata, source_system, source_id, source_style_type,
+     master_data_match_status)
   select cl.production_order_id, cl.sales_order_line_no::text, cl.sku,
          cl.quantity_ordered, cl.sales_person_code1, cl.order_type,
          cl.po_number, cl.assortment_id, cl.assortment_component_ordinal,
@@ -457,13 +469,15 @@ line_inserts as (
            'sub_label_code', cl.sub_label_code,
            'master_item_no', cl.master_item_no,
            'component_source_hash', cl.component_source_hash),
-         'coldlion', cl.line_source_id
+         'coldlion', cl.line_source_id, cl.source_style_type,
+         case when nullif(btrim(cl.sku), '') is not null and cl.source_style_type is not null
+              then 'unmatched' else 'not_applicable' end
   from canonical_lines cl
   where not exists (
     select 1 from plm.production_order_line_source_ref r
     where r.source_system = 'coldlion'
       and r.source_id = cl.line_source_id)
-  returning id, source_id
+  returning id, source_id, source_style_type
 ),
 line_refs as (
   -- is_primary = true on exactly one ref per line — the single coldlion ref
@@ -539,7 +553,8 @@ line_updates as (
          ship_to = cl.ship_to,
          start_ship_date = cl.start_date,
          cancel_date = cl.cancel_date,
-         metadata = jsonb_build_object(
+         source_style_type = coalesce(pl.source_style_type, cl.source_style_type),
+         metadata = coalesce(pl.metadata, '{}'::jsonb) || jsonb_build_object(
            'line_qty', cl.line_qty,
            'po_number_normalized', cl.po_number_normalized,
            'sub_item_no', cl.sub_item_no,
@@ -553,13 +568,14 @@ line_updates as (
      and (pl.production_order_id, pl.line_number, pl.sku, pl.quantity_ordered,
           pl.order_person, pl.order_type, pl.customer_po_number,
           pl.assortment_id, pl.assortment_component_ordinal, pl.case_pack,
-          pl.ship_to, pl.start_ship_date, pl.cancel_date, pl.metadata)
+          pl.ship_to, pl.start_ship_date, pl.cancel_date, pl.source_style_type, pl.metadata)
        is distinct from
          (cl.production_order_id, cl.sales_order_line_no::text, cl.sku,
           cl.quantity_ordered, cl.sales_person_code1, cl.order_type,
           cl.po_number, cl.assortment_id, cl.assortment_component_ordinal,
           cl.case_pack, cl.ship_to, cl.start_date, cl.cancel_date,
-          jsonb_build_object(
+          coalesce(pl.source_style_type, cl.source_style_type),
+          coalesce(pl.metadata, '{}'::jsonb) || jsonb_build_object(
             'line_qty', cl.line_qty,
             'po_number_normalized', cl.po_number_normalized,
             'sub_item_no', cl.sub_item_no,
@@ -567,6 +583,21 @@ line_updates as (
             'master_item_no', cl.master_item_no,
             'component_source_hash', cl.component_source_hash))
   returning pl.id
+),
+link_scope as (
+  -- Read RETURNING for new lines; existing rows use the pre-statement snapshot.
+  -- Never scan or relink an unrelated order, or a line moved to another header.
+  insert into pg_temp.coldlion_orderlist_link_scope (line_id, expected_type)
+  select li.id, li.source_style_type from line_inserts li
+  union all
+  select pl.id, cl.source_style_type
+  from canonical_lines cl
+  join plm.production_order_line_source_ref ref
+    on ref.source_system = 'coldlion' and ref.source_id = cl.line_source_id
+  join plm.production_order_line pl on pl.id = ref.production_order_line_id
+    and pl.production_order_id = cl.production_order_id
+    and pl.source_system = 'coldlion' and pl.source_id = cl.line_source_id
+  returning line_id
 ),
 created as (
   -- pending → created, with the deterministic claim evidence (refs only,
@@ -640,6 +671,30 @@ select
   (select count(*) from scope)
   - (select count(*) from created)
   - (select count(*) from quarantined) as orders_left_pending;
+-- This separate statement sees all preceding CTE writes. Failure here rolls
+-- back the entire intake, including classification, source refs and run counts.
+do $link_intake$
+declare
+  batch uuid[];
+  receipt jsonb;
+begin
+  if exists (select 1 from pg_temp.coldlion_orderlist_link_scope s
+             left join plm.production_order_line l on l.id = s.line_id
+             where s.expected_type is null
+                or l.source_style_type is distinct from s.expected_type) then
+    raise exception 'ColdLion intake division classification unknown or conflicts with existing line; no changes committed';
+  end if;
+  for batch in
+    select array_agg(line_id order by line_id)
+    from (select line_id, (row_number() over (order by line_id) - 1) / 500 as chunk
+          from pg_temp.coldlion_orderlist_link_scope) s
+    group by chunk order by chunk
+  loop
+    receipt := public.link_dam_order_lines_scoped(batch);
+    raise notice 'ColdLion intake Master Data links: %', receipt;
+  end loop;
+end;
+$link_intake$;
 ${write ? "commit;" : "rollback;"}
 `;
 }
@@ -748,9 +803,11 @@ export const WRITE_REQUIRED_TABLES = Object.freeze([
   "core.company_source_ref",
   "plm.erp_customer",
   "coldlion.item_detail",
+  "coldlion.division",
 ]);
 
 export const WRITE_REQUIRED_CONSTRAINTS = Object.freeze([
+  { schema: "coldlion", table: "division", conname: "coldlion_division_pkey", definition: "PRIMARY KEY (company_code, division_code)" },
   { schema: "plm", table: "production_order_source_ref", conname: "production_order_source_ref_unique", definition: "UNIQUE (source_system, source_id)" },
   { schema: "plm", table: "production_order_line_source_ref", conname: "production_order_line_source_ref_unique", definition: "UNIQUE (source_system, source_id)" },
   { schema: "plm", table: "production_order", conname: "production_order_source_system_source_id_key", definition: "UNIQUE (source_system, source_id)" },
@@ -860,6 +917,10 @@ export const WRITE_REQUIRED_COLUMNS = Object.freeze([
   { schema: "coldlion", table: "item_detail", column: "item_no" },
   { schema: "coldlion", table: "item_detail", column: "item_pkey" },
   { schema: "coldlion", table: "item_detail", column: "carton_qty" },
+  { schema: "coldlion", table: "division", column: "company_code" },
+  { schema: "coldlion", table: "division", column: "division_code" },
+  { schema: "coldlion", table: "division", column: "division_desc" },
+  { schema: "plm", table: "production_order_line", column: "source_style_type" },
   // Every staging column the winner selection reads (Phase B specs).
   ...INTAKE_READ_COLUMNS,
 ]);
@@ -899,6 +960,9 @@ export function buildWriterObjectAssertionSql() {
     "  values " + columnRows + NL +
     ")," + NL +
     "missing as (" + NL +
+    "  select 'public.link_dam_order_lines_scoped(uuid[])' as missing_object" + NL +
+    "  where pg_catalog.to_regprocedure('public.link_dam_order_lines_scoped(uuid[])') is null" + NL +
+    "  union all" + NL +
     "  select t.table_schema || '.' || t.table_name as missing_object" + NL +
     "    from required_tables t" + NL +
     "   where not exists (" + NL +

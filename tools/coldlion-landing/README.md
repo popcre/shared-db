@@ -267,3 +267,24 @@ credential, and the offline tests running before any write.
 No real ColdLion values appear in this directory. The fixtures are synthetic and
 the loaders print counts, scopes and window dates only — this repository is
 public.
+
+
+## OrderList intake Master Data links
+
+The canonical writer resolves the staged company/division against the landed
+`coldlion.division` identity before saving `source_style_type`. Classification
+follows the [settled division rule](../../docs/business-rules/merchandise-and-product-taxonomy.md#what-each-division-produces).
+An absent/unrecognized source division description, or a conflicting existing
+classification, fails and rolls back the intake transaction. Division codes
+are never substituted for a missing source lookup.
+
+New nonblank-SKU lines start `unmatched`, rather than inheriting the historical
+`not_applicable` default. After the line writes, only this intake's exact line
+IDs reach the service-only `link_dam_order_lines_scoped` helper in batches of
+at most 500. The helper must already be deployed before this writer is released;
+the writer checks availability at startup. Exact SKU plus explicit catalog,
+one distinct item and consistent current workflow are required. Existing links,
+manual choices and explicit `not_applicable` records remain unchanged. Reimports
+merge source metadata so saved link receipts/manual evidence survive. A helper
+failure rolls back headers, lines, classification, source references and intake
+state together, including in rollback-only rehearsal.

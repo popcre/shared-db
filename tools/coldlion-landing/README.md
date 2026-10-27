@@ -267,3 +267,14 @@ credential, and the offline tests running before any write.
 No real ColdLion values appear in this directory. The fixtures are synthetic and
 the loaders print counts, scopes and window dates only — this repository is
 public.
+
+### Case-pack defaults across item variants (application issue PopDAM #527)
+
+The canonical writer resolves case pack within the exact company, division and
+component-or-master item number. Multiple item variants can supply a default
+when all rows have the same non-null `carton_qty`. A missing quantity or a
+conflict leaves the default NULL; the writer never selects an arbitrary variant
+or substitutes an assortment parent's quantity for a component's default.
+This does not change item linking, source identities, or line-level exceptions.
+Existing blanks require a separate exact-preimage, blank-only application repair;
+do not replay entire orders to fill case pack.

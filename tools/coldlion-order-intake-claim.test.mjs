@@ -337,17 +337,17 @@ test("customer resolution: company_source_ref FIRST then erp_customer (active), 
   assert.doesNotMatch(sql, /insert into core\.company_source_ref/);
 });
 
-test("case pack default: full item_detail predicate with the item_pkey uniqueness assertion before use", () => {
-  // Plan A2: item_detail's primary key is (company_code, division_code,
-  // item_no, item_pkey); the lookup names the full predicate and asserts one
-  // item_pkey per item_no BEFORE using carton_qty — ambiguous or missing
-  // lookups leave case_pack NULL, never a silent pick.
+test("case pack default: exact scope and unanimous non-null quantities across variants", () => {
+  // Several item variants can prove a quantity without selecting an identity.
+  // Disagreement or even one missing quantity must leave the default unknown.
   const casePack = sql.slice(sql.indexOf("case_pack as ("), sql.indexOf("customer_ref as ("));
   assert.match(casePack, /join coldlion\.item_detail d/);
   assert.match(casePack, /d\.company_code = l\.company_code/);
   assert.match(casePack, /d\.division_code = l\.division_code/);
   assert.match(casePack, /d\.item_no = coalesce\(nullif\(btrim\(c\.sub_item_no\), ''\), l\.master_item_no\)/);
-  assert.match(casePack, /having count\(distinct d\.item_pkey\) = 1/);
+  assert.match(casePack, /having count\(distinct d\.carton_qty\) = 1/);
+  assert.match(casePack, /and count\(d\.carton_qty\) = count\(\*\)/);
+  assert.doesNotMatch(casePack, /limit 1|distinct on|d\.carton_qty > 0/i);
   // order_depth_inches stays NULL: Albert's 2026-09-17 input-column list
   // omits col 18 and the writer must not "complete" it.
   assert.doesNotMatch(sql, /order_depth_inches/);

@@ -216,13 +216,11 @@ ordinalled as (
   from winning_components wc
 ),
 case_pack as (
-  -- Case Pack default ← coldlion.item_detail.carton_qty (§9 C2 step 2). The
-  -- lookup names the FULL primary-key predicate (company_code, division_code,
-  -- item_no — plan A2): item_detail is SKU-grained by item_pkey, so a lookup
-  -- yielding more than one item_pkey per item_no makes carton_qty ambiguous,
-  -- and the HAVING asserts uniqueness BEFORE the value is used. Ambiguous or
-  -- missing lookups leave case_pack NULL (the sheet's line-level exceptions
-  -- stay human); no value is ever picked silently.
+  -- Case Pack default ← coldlion.item_detail.carton_qty. Keep the exact
+  -- company/division/item scope, including component SKU resolution. Multiple
+  -- item_pkey variants may supply a default only when EVERY row has the same
+  -- non-null carton_qty; choosing a variant or ignoring NULL would hide a
+  -- real conflict. No item identity is selected by this quantity-only lookup.
   select l.id as line_id,
          coalesce(nullif(btrim(c.sub_item_no), ''), l.master_item_no) as sku,
          min(d.carton_qty) as carton_qty
@@ -233,7 +231,8 @@ case_pack as (
    and d.division_code = l.division_code
    and d.item_no = coalesce(nullif(btrim(c.sub_item_no), ''), l.master_item_no)
   group by l.id, coalesce(nullif(btrim(c.sub_item_no), ''), l.master_item_no)
-  having count(distinct d.item_pkey) = 1
+  having count(distinct d.carton_qty) = 1
+     and count(d.carton_qty) = count(*)
 ),
 customer_ref as (
   -- Customer resolution FIRST: core.company_source_ref (source_system

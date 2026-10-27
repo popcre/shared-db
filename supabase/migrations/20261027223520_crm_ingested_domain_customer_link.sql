@@ -103,25 +103,134 @@ create trigger customer_link_ingested_domains
   for each row
   execute function crm.customer_domain_link_ingested();
 
--- A canonical Customer merge must carry the loser's domain links to the survivor.
-do $$
+-- A canonical Customer merge must carry the loser's domain links to the
+-- survivor. Body is the live 20260723223100 definition plus one repoint.
+create or replace function core.merge_customer(p_loser uuid, p_survivor uuid, p_alias_loser_name boolean default true)
+returns void
+language plpgsql
+security definer
+set search_path to 'core', 'crm', 'pim', 'dam', 'plm', 'app', 'public'
+as $function$
 declare
-  v_definition text;
-  v_anchor text :=
-    '  update public.style_tracker_rows set customer_id = p_survivor where customer_id = p_loser;';
-  v_replacement text :=
-    '  update crm.ingested_domain set customer_id = p_survivor where customer_id = p_loser;' || E'\n' ||
-    v_anchor;
+  v_loser_name text;
+  v_loser_display text;
 begin
-  v_definition := pg_get_functiondef('core.merge_customer(uuid,uuid,boolean)'::regprocedure);
-  if position(v_anchor in v_definition) = 0 then
-    raise exception 'core.merge_customer changed: expected insertion anchor is absent';
+  if p_loser = p_survivor then
+    raise exception 'merge_customer: loser and survivor are the same (%).', p_loser;
   end if;
-  if position('update crm.ingested_domain set customer_id' in v_definition) = 0 then
-    execute replace(v_definition, v_anchor, v_replacement);
+  if not exists (select 1 from core.customer where id = p_survivor) then
+    raise exception 'merge_customer: survivor % does not exist.', p_survivor;
   end if;
-end
-$$;
+  select name, display_name into v_loser_name, v_loser_display
+  from core.customer where id = p_loser;
+  if not found then
+    raise exception 'merge_customer: loser % does not exist.', p_loser;
+  end if;
+
+  -- Serialize concurrent attempts for the same pair in a stable order.
+  perform pg_advisory_xact_lock(hashtextextended(least(p_loser::text, p_survivor::text), 0));
+  perform pg_advisory_xact_lock(hashtextextended(greatest(p_loser::text, p_survivor::text), 0));
+
+  -- Per-app 1:1 rows: move one-sided data, collapse identical rows, and stop
+  -- before data loss when business fields differ.
+  perform core.reconcile_merge_extension_row('crm.customer_ext', 'customer_id', p_loser, p_survivor);
+  perform core.reconcile_merge_extension_row('pim.customer_ext', 'customer_id', p_loser, p_survivor);
+  perform core.reconcile_merge_extension_row('dam.customer_ext', 'customer_id', p_loser, p_survivor);
+
+  -- Customer Channels are set membership. Preserve the survivor assignment on
+  -- duplicate membership and move every loser-only assignment.
+  delete from core.customer_channel lc
+  where lc.customer_id = p_loser
+    and exists (
+      select 1 from core.customer_channel sc
+      where sc.customer_id = p_survivor and sc.channel_id = lc.channel_id
+    );
+  update core.customer_channel set customer_id = p_survivor where customer_id = p_loser;
+
+  -- CRM department/company consistency must be resolved before ordinary FK
+  -- repoints because enforcement triggers validate both columns together.
+  update core.contact_company cc
+  set company_id = p_survivor, crm_department_id = s.id
+  from crm.department l
+  join crm.department s on s.company_id = p_survivor and s.name = l.name
+  where l.company_id = p_loser and cc.crm_department_id = l.id;
+
+  update crm.opportunity o
+  set company_id = p_survivor, department_id = s.id
+  from crm.department l
+  join crm.department s on s.company_id = p_survivor and s.name = l.name
+  where l.company_id = p_loser and o.department_id = l.id;
+
+  delete from crm.department l
+  where l.company_id = p_loser
+    and exists (
+      select 1 from crm.department s
+      where s.company_id = p_survivor and s.name = l.name
+    );
+  update crm.department set company_id = p_survivor where company_id = p_loser;
+
+  delete from core.contact_company lc
+  where lc.company_id = p_loser
+    and exists (
+      select 1 from core.contact_company sc
+      where sc.company_id = p_survivor and sc.contact_id = lc.contact_id
+    );
+  update core.contact_company set company_id = p_survivor where company_id = p_loser;
+  update crm.opportunity set company_id = p_survivor where company_id = p_loser;
+
+  delete from core.customer_alias la
+  where la.customer_id = p_loser
+    and exists (
+      select 1 from core.customer_alias sa
+      where sa.customer_id = p_survivor
+        and sa.normalized_alias = la.normalized_alias
+    );
+  update core.customer_alias set customer_id = p_survivor where customer_id = p_loser;
+
+  update core.company_source_ref set company_id = p_survivor where company_id = p_loser;
+
+  update core.factory set company_id = p_survivor where company_id = p_loser;
+  update crm.email_message set company_id = p_survivor where company_id = p_loser;
+  update crm.ingested_domain set customer_id = p_survivor where customer_id = p_loser;
+  update crm.licensor_approval_thread set company_id = p_survivor where company_id = p_loser;
+  update crm.meeting_note set company_id = p_survivor where company_id = p_loser;
+  update crm.note set company_id = p_survivor where company_id = p_loser;
+  update crm.task set company_id = p_survivor where company_id = p_loser;
+  update dam.asset set company_id = p_survivor where company_id = p_loser;
+  update dam.style_group set company_id = p_survivor where company_id = p_loser;
+  update dam.style_guide_file set company_id = p_survivor where company_id = p_loser;
+  update pim.customer_order set company_id = p_survivor where company_id = p_loser;
+  update pim.design_collection set company_id = p_survivor where company_id = p_loser;
+  update pim.product set company_id = p_survivor where company_id = p_loser;
+  update pim.project set company_id = p_survivor where company_id = p_loser;
+  update plm.customer_import set company_id = p_survivor where company_id = p_loser;
+  update plm.erp_customer set customer_id = p_survivor where customer_id = p_loser;
+  update plm.item set company_id = p_survivor where company_id = p_loser;
+  update plm.production_order set company_id = p_survivor where company_id = p_loser;
+  update plm.rfq_group set company_id = p_survivor where company_id = p_loser;
+  update plm.style_tracker_item_bridge set company_id = p_survivor where company_id = p_loser;
+  update public.assets set customer_id = p_survivor where customer_id = p_loser;
+  update public.style_groups set customer_id = p_survivor where customer_id = p_loser;
+  update public.style_tracker_rows set customer_id = p_survivor where customer_id = p_loser;
+
+  if p_alias_loser_name then
+    insert into core.customer_alias (customer_id, alias, alias_type, source_system, notes)
+    select p_survivor, v_loser_name, 'other', 'merge', 'from merged customer ' || p_loser
+    on conflict (customer_id, normalized_alias) do nothing;
+    if v_loser_display is not null and lower(v_loser_display) <> lower(v_loser_name) then
+      insert into core.customer_alias (customer_id, alias, alias_type, source_system, notes)
+      select p_survivor, v_loser_display, 'other', 'merge',
+        'display name from merged customer ' || p_loser
+      on conflict (customer_id, normalized_alias) do nothing;
+    end if;
+  end if;
+
+  delete from core.customer where id = p_loser;
+end;
+$function$;
+
+comment on function core.merge_customer(uuid,uuid,boolean) is
+  'Canonical Customer merge. Covers every inventoried Customer FK, including stable public.assets/style_groups/style_tracker_rows Customer UUIDs and crm.ingested_domain links, and fails closed on extension conflicts.';
 
 -- Backfill (status untouched).
 update crm.ingested_domain d

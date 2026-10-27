@@ -1,0 +1,65 @@
+{
+  "schema_version": 2,
+  "work_issue": 4858,
+  "work_type": "structural",
+  "route": "claim-first",
+  "goal": "Use ColdLion component.quantity for per-design assortment case packs per owner ruling; group source-only assortment cartons once in the two existing views. Preserve Google/manual exceptions and direct-item label/unanimity resolution.",
+  "base_sha": "38385768c364680361b140548dcae96c8a6f7b71",
+  "dispatcher": "Claude chat a1205515-2d23-4688-837d-79814b10d5b0 on hetz (successor of Codex chat 01a17ac7)",
+  "worker": "same session",
+  "branch": "codex/coldlion-case-pack",
+  "worktree": "/worksp/shared-db-case-pack",
+  "allowed_paths": [
+    "tools/coldlion-landing/lib/order-intake-write.mjs",
+    "tools/coldlion-order-intake-claim.test.mjs",
+    "tools/coldlion-landing/README.md",
+    "docs/business-rules/erp-orders-and-source-meaning.md",
+    "supabase/migrations/20261027185328_coldlion_component_case_packs.sql",
+    "supabase/tests/coldlion_component_case_packs.sql",
+    ".agent/work/4858/4/contract.json",
+    ".agent/work/4858/4/completion.json",
+    ".agent/work/4858/3/contract.json",
+    ".agent/work/4858/3/completion.json"
+  ],
+  "file_writes": [
+    "tools/coldlion-landing/lib/order-intake-write.mjs",
+    "tools/coldlion-order-intake-claim.test.mjs",
+    "tools/coldlion-landing/README.md",
+    "docs/business-rules/erp-orders-and-source-meaning.md",
+    "supabase/migrations/20261027185328_coldlion_component_case_packs.sql",
+    "supabase/tests/coldlion_component_case_packs.sql",
+    ".agent/work/4858/4/contract.json",
+    ".agent/work/4858/4/completion.json",
+    ".agent/work/4858/3/contract.json",
+    ".agent/work/4858/3/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "view api.dam_order_list",
+    "view dam.dam_order_tracking"
+  ],
+  "prohibited_actions": [
+    "No manual production schema apply; use governed promotion.",
+    "No Google/manual row correction or source identity changes."
+  ],
+  "required_checks": [
+    "node --test tools/coldlion-order-intake-*.test.mjs",
+    "bash scripts/check-sql.sh",
+    "supabase/tests/coldlion_component_case_packs.sql on an ephemeral database",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "Owner answered \"Pieces of that design per carton\" on 2026-10-26.",
+    "Claim #4927 reserves migration 20261027185328 and the two written views; old claim #4860 and version 20261027010036 are retired, never reused.",
+    "View bodies re-derived against current origin/main: api.dam_order_list from 20261019113819, dam.dam_order_tracking from 20261009073649; no later migration redefines either view."
+  ],
+  "stop_conditions": [
+    "Stop on claim collision, failing source identity, or failed governed promotion."
+  ],
+  "generation": 4,
+  "evidence_parent": {
+    "work_issue": 4858,
+    "generation": 3,
+    "contract_sha256": "8b67c767f53e52461ea76780c9e1b3910cf15b1e34fd9fa2c9a2541704780007"
+  }
+}

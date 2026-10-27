@@ -464,8 +464,11 @@ do $equivalence$
 declare v_phase text; v_context text; v_role text; v_subject text;
  v_case record; v_policy record; v_clause text; v_result jsonb; v_admin boolean;
  v_before jsonb; v_after jsonb; v_count bigint;
+ v_diag_started timestamptz := clock_timestamp();
+ v_diag_phase_start timestamptz;
 begin
  foreach v_phase in array array['original','candidate'] loop
+  v_diag_phase_start := clock_timestamp();
   -- ALTER preserves every policy OID, role, command, permissive flag and null check.
   for v_policy in select m.*, c.polrelid,c.polname,c.qual_text,c.check_text
     from rls4427_manifest m join rls4427_candidate_policies c
@@ -545,8 +548,11 @@ begin
   execute 'execute rls4427_prepared' into v_admin;
   execute 'execute rls4427_prepared_policy' into v_count;
   execute 'reset role';
-  if v_admin is distinct from true or v_count is distinct from 1::bigint then
+   if v_admin is distinct from true or v_count is distinct from 1::bigint then
    raise exception '4427 prepared actual policy did not observe role regrant'; end if;
+  raise notice '4427DIAG phase % completed in % ms, results so far %', v_phase,
+   (extract(epoch from clock_timestamp()-v_diag_phase_start)*1000)::int,
+   (select count(*) from rls4427_results where phase=v_phase);
  end loop;
  -- Compare exact results and exact SQLSTATE, including malformed subject behavior.
  if (select count(*) from rls4427_results)<>12*((select count(*) from rls4427_cases)+2) then raise exception '4427 probe coverage incomplete'; end if;

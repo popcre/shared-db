@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/4893/2",
   "contract_sha256": "b207dff2c0b72100e6f54d8ca7dfee528d9c7969f8349dbbfd391aed08d7d5e2",
-  "head_sha": "8607dd599e98eb3f10ff43d6418fbc1ca13659e4",
+  "head_sha": "d2aa44c4204dd030aed19e3d54446bff001c9a78",
   "base_sha": "38a37cdbfb07115120815aa080e378d0f412a679",
   "files_changed": [
     "tools/coldlion-landing/README.md",
@@ -19,7 +19,7 @@
     {
       "command": "node --test tools/coldlion-order-intake-*.test.mjs",
       "exit_code": 0,
-      "evidence": "Executed with COLDLION_INTAKE_TEST_PG_CONTAINER=orderlist4886pg; 88 passed,0 failed,0 skipped, including all81 original tests and6 actual PostgreSQL full writer/helper scenarios: changed SKU exact replacement and honest unmatched; same SKU wrong automatic link; manual/not-applicable/valid preservation; ambiguous/conflicting/absent unchanged preservation; append-only second-refresh and byte-identical repeat; real bridge drift inside actual helper and post-clear fault both roll back header,line,classification,old link,metadata,refs,intake and injected bridge mutation. Isolated postgres17 container network none, no published ports, generated synthetic fixtures only. Output SHA256 94b076678bd6208c301d16cb29c7db479f656d8fa9bdb6c225d4e2b15065ff7d"
+      "evidence": "Executed with COLDLION_INTAKE_TEST_PG_CONTAINER=orderlist4886pg, generated synthetic fixtures only in network-none/no-published-ports isolated PostgreSQL17. 90 passed,0failed,0skipped, all81 original tests plus actual writer/helper regressions. Changed SKU exact replacement and honest unmatched; unchanged SKU wrong automatic target; manual/not-applicable/valid preservation; same unique item via new SKU alias remains unchanged even with ambiguous workflow; post-CTE source-system/rekey/SKU/header drift aborts with full rollback and other cohort unchanged; append-only old/source receipt history; byte-identical repeats; post-clear helper fault and actual bridge-candidate drift rollback. Output SHA256 164db6a6b9dac45cefbab40fd1ac04004036b3b353a83e75708a17f16bc28c04"
     },
     {
       "command": "actual PostgreSQL buildWriterObjectAssertionSql preflight",
@@ -34,7 +34,7 @@
     {
       "command": "isolated PostgreSQL actual writer/helper integration: stale automatic refresh, protected preservation, candidate drift/failure rollback, second-run identity",
       "exit_code": 0,
-      "evidence": "88 passed,0 failed,0 skipped, including all81 original tests and6 actual PostgreSQL full writer/helper scenarios: changed SKU exact replacement and honest unmatched; same SKU wrong automatic link; manual/not-applicable/valid preservation; ambiguous/conflicting/absent unchanged preservation; append-only second-refresh and byte-identical repeat; real bridge drift inside actual helper and post-clear fault both roll back header,line,classification,old link,metadata,refs,intake and injected bridge mutation. Isolated postgres17 container network none, no published ports, generated synthetic fixtures only. Output SHA256 94b076678bd6208c301d16cb29c7db479f656d8fa9bdb6c225d4e2b15065ff7d"
+      "evidence": "Executed with COLDLION_INTAKE_TEST_PG_CONTAINER=orderlist4886pg, generated synthetic fixtures only in network-none/no-published-ports isolated PostgreSQL17. 90 passed,0failed,0skipped, all81 original tests plus actual writer/helper regressions. Changed SKU exact replacement and honest unmatched; unchanged SKU wrong automatic target; manual/not-applicable/valid preservation; same unique item via new SKU alias remains unchanged even with ambiguous workflow; post-CTE source-system/rekey/SKU/header drift aborts with full rollback and other cohort unchanged; append-only old/source receipt history; byte-identical repeats; post-clear helper fault and actual bridge-candidate drift rollback. Output SHA256 164db6a6b9dac45cefbab40fd1ac04004036b3b353a83e75708a17f16bc28c04"
     }
   ],
   "assumptions_resolved": [
@@ -44,6 +44,7 @@
   ],
   "stop_conditions_hit": [],
   "notes": [
-    "Application526 stays open for live ordinary-run and signed-in acceptance; existing classification/link repair is separate exact input decision. Parent retains merge/production/data correction decisions. No production application-data writes."
+    "Application526 stays open for live ordinary-run and signed-in acceptance; existing classification/link repair is separate exact input decision. Parent retains merge/production/data correction decisions. No production application-data writes.",
+    "Superseded generation1 pair retained in immutable contract ref, prior commits and protected private copy; removed from final tree to satisfy native exactly-one evidence pair rule. Original prelaunch allocator refused without drawing/spending capacity."
   ]
 }

@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "work_issue": 4890,
+  "outcome": "ready-for-merge",
+  "pr": 4895,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4890/8",
+  "contract_sha256": "42b8fa686feb0872dd544cc7746c4a049a3e0ee9de674330d59b3eaa900729c7",
+  "head_sha": "ce2ac4f17b90771b744c2cd0a9d02edc08bd01cb",
+  "base_sha": "ff01fb4d0041ead2b38d43620f17d2711f560732",
+  "files_changed": [
+    "docs/verification/rls-initplan/4427/actual-table-qualification.md",
+    "scripts/qualify_rls4427_actual_tables.py",
+    "scripts/test_qualify_rls4427_actual_tables.py",
+    "supabase/tests/rls_public_admin_actual_table_performance.sql",
+    "docs/verification/throughput-dispositions/scripts~qualify_rls4427_actual_tables.py.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python3 -m unittest scripts.test_qualify_rls4427_actual_tables",
+      "exit_code": 0,
+      "evidence": "17 no-resource tests PASS: existing matrix/policy/source guards plus foreigncontainer/mount/network/ports/labels, replacement/image mismatch, remoteenvironment/untrustedsocket, matchingversions/sameinstance, exact two full snapshotoperations/privatearchive, dump/restorefailure boundaries, boundedstderr/originalexit, postdropabsence"
+    },
+    {
+      "command": "node --test scripts/rls-public-admin-initplan.test.mjs",
+      "exit_code": 0,
+      "evidence": "9 existing retained-source/provenance tests pass; original fixture bytehash166a1d7cae922b27c229c31162b612ccb1957a27440806681a15677151354667 unchanged"
+    },
+    {
+      "command": "node --test scripts/agent-work-contract-git-evidence.test.mjs",
+      "exit_code": 0,
+      "evidence": "26 existing native Git/evidence-tail tests pass; implementation SHA plus exact keyed two-file tail supported"
+    },
+    {
+      "command": "python3 -m py_compile scripts/qualify_rls4427_actual_tables.py",
+      "exit_code": 0,
+      "evidence": "Python compiles without runtime resource execution"
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "SQL/static guards pass; no migration change"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors"
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "16 tests pass including current_repository_catalogues_follow_current_discovery"
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=373 sources=108 derived_digest=04681fc4dc32"
+    }
+  ],
+  "assumptions_resolved": [
+    "Root-authored scope expands ONLY fixed existingnativeCLI DBcontainer readonlycustody/versions/sameinstance and exact two snapshotoperations; gen8 prospectivelypublished before sourceedits",
+    "Preservedfirsttrial40525276354 FAILartifact12744381975 SHAa5aa2b4685e284c55c10dc472d419f1909696d09c291dac77e97975f20a4e331 and sixminuteactualjobcost; zero374samples, originalcauseunproven becausehiddenstderr",
+    "Newsource preserves fullpg_dump customarchive/pg_restoreclean snapshot; hostpsql/matrix/fullschema/policyunion/negativeequivalence/thresholds unchanged. Actualnativecontaineridentity/client/readiness stillUNKNOWN until separatelyapprovedruntimepreflight",
+    "Dump completes toprivateexclusive0600filebeforeseedcreation; boundedactualstderr andversions emitted; noinstallation/newcontainer/remotecontext/fallback/versionignore",
+    "Everycontainerexec revalidatesimmutablecontainer/image/name/project/volume/network/port/healthy/nonprivilegedcustody; readonlyPGsystemidentifier binds hostloopback/container sameinstance; dump/restore majors equalactualserver",
+    "SuccessfulownedDROP requiresabsence readback+receipt; ambiguousCREATEbeforeownershiprecord remains disclosed ephemeralrunnerteardownresidual",
+    "Normalmergeff01 currentupstream preservespublished ef67468 and cd06history; ff01 driftonlyColdLionwording/evidence. Ownpriorgen7workingpair removedafterexactprivatebackup; everyoriginalcommit/ref/artifact preserved",
+    "Native ready-for-merge authorship enum ONLY; NOsecondtrial/sourcepush/review/resource/adoption/mergeauthorized. Freshassignedusableengine source+ONEsecondtrialreview/rootadoption/nativeinfra+ship required",
+    "Alloriginalproductionflags/actualappread-write-restoration obligations stay4427; syntheticperformance neverproductionacceptance"
+  ],
+  "stop_conditions_hit": []
+}

@@ -75,7 +75,8 @@
     "Migration version re-reserved from 20261026162917 to 20261027012301 through the claim-version supersession (durable evidence d492a8c17d8634d8b869e2891d7ae01374d11932) after main advanced to migrations sorting past the old reservation; the SQL bytes are identical except the version identity line.",
     "The prior governed APPROVE (muse, at head b28c505f5) does not carry to the renamed head; a fresh review is drawn at the new head.",
     "The pin test and the preview-ledger orphan reconciliation follow the re-reserved version.",
-    "Generation 15 fixes the generation-14 report's file list (a duplicated live-proof path and the missing preview-ledger orphan-reconciliation config, which the re-reservation follow-up commit changed)."
+    "Generation 15 fixes the generation-14 report's file list (a duplicated live-proof path and the missing preview-ledger orphan-reconciliation config, which the re-reservation follow-up commit changed).",
+    "Generation 16 adds the preview-ledger orphan-reconciliation config to the contract's allowed paths (the re-reservation follow-up commit changed it)."
   ],
   "stop_conditions_hit": []
 }

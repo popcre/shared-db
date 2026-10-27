@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
-  "generation": 15,
+  "generation": 16,
   "evidence_parent": {
     "work_issue": 4437,
-    "generation": 14,
-    "contract_sha256": "baa64bdf86627b95e251d4d81eef0630265d39df7d83cd9af195081e8d63b83b"
+    "generation": 15,
+    "contract_sha256": "3da8ed3162e62fdf9f8ee0eb205bdc74c75e7c67bc48a69dff1d75e69f285a0d"
   },
   "work_issue": 4437,
   "work_type": "structural",
@@ -16,12 +16,13 @@
   "branch": "zcode/popsg-4437-semantic-search",
   "worktree": "/worksp/shared-db/.claude/worktrees/popsg-4437-semantic-search",
   "allowed_paths": [
-    ".agent/work/4437/15/completion.json",
-    ".agent/work/4437/15/contract.json",
+    ".agent/work/4437/16/completion.json",
+    ".agent/work/4437/16/contract.json",
     ".agent/work/4437/7/completion.json",
     ".agent/work/4437/7/contract.json",
     ".github/live-proofs/3023.sql",
     ".github/live-proofs/3458.sql",
+    "config/preview-ledger-orphan-reconciliations.json",
     "docs/verification/throughput-guard-truth-baseline-20260828.json",
     "scripts/production_catalog_verification.py",
     "scripts/test_production_catalog_verification.py",
@@ -31,12 +32,13 @@
     "supabase/tests/popsg_semantic_search_foundation_contracts.sql"
   ],
   "file_writes": [
-    ".agent/work/4437/15/completion.json",
-    ".agent/work/4437/15/contract.json",
+    ".agent/work/4437/16/completion.json",
+    ".agent/work/4437/16/contract.json",
     ".agent/work/4437/7/completion.json",
     ".agent/work/4437/7/contract.json",
     ".github/live-proofs/3023.sql",
     ".github/live-proofs/3458.sql",
+    "config/preview-ledger-orphan-reconciliations.json",
     "docs/verification/throughput-guard-truth-baseline-20260828.json",
     "scripts/production_catalog_verification.py",
     "scripts/test_production_catalog_verification.py",

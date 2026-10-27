@@ -177,7 +177,8 @@ jobs:
           # Owner request (Albert Hazan, 2026-10-09, verbatim): "both the database
           # for the test sandbox and for production should get the nightly factory
           # order and sales order updates." Same invocation as the sandbox nightly.
-          ARGS=(--windows "$WINDOWS" --forward)
+          # --prod-open: the open /prodHistory week, unsealed (also hourly in Order Intake).
+          ARGS=(--windows "$WINDOWS" --forward --prod-open)
           MASTER_ARGS=()
           PREPACK_ARGS=()
           PROD_DETAIL_ARGS=(--mode refresh --limit "$PROD_DETAIL_LIMIT")

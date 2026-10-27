@@ -4,8 +4,6 @@
   "contract_ref": "refs/db-contracts/4855/2",
   "base_sha": "438f8b175b839348fba9eea7079ad35047a9a825",
   "files_changed": [
-    ".agent/work/4855/2/completion.json",
-    ".agent/work/4855/2/contract.json",
     "scripts/test_orderlist_assortment_quantities.py",
     "supabase/migrations/20261027114857_orderlist_assortment_quantities.sql"
   ],

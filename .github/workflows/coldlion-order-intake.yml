@@ -132,6 +132,16 @@ jobs:
       # failure can never block staging above. It is SKIPPED on dry_run (a dry
       # run writes nothing anywhere) and on claim_only (the B0 dispatch
       # vocabulary), and only runs when the decode step above succeeded.
+      # Committed one-time data repairs (tools/coldlion-landing/repairs/*.sql),
+      # each applied exactly once — the repair records its own sync_run step in
+      # its transaction. Before the writer, so the writer sees repaired refs.
+      - name: Apply one-time ColdLion data repairs
+        if: github.event.inputs.dry_run != 'true' && github.event.inputs.claim_only != 'true'
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+        run: node tools/coldlion-landing/apply-repairs.mjs | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Write canonical placeholder orders
         if: github.event.inputs.dry_run != 'true' && github.event.inputs.claim_only != 'true'
         env:

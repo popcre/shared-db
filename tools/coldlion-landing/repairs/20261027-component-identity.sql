@@ -40,8 +40,10 @@ grouped as (
 select unnest(ph) as line_id from grouped where n = 2 and moved = 1 and cardinality(ph) = 1;
 
 do $$ begin
-  if (select count(*) from dup_lines) <> 98 then
-    raise exception 'expected 98 duplicate placeholder lines, found %', (select count(*) from dup_lines);
+  -- 98 measured 2026-10-27; the still-running positional writer may add a few
+  -- before this lands, never hundreds.
+  if (select count(*) from dup_lines) not between 98 and 200 then
+    raise exception 'expected ~98 duplicate placeholder lines, found %', (select count(*) from dup_lines);
   end if;
 end $$;
 
@@ -66,7 +68,7 @@ end $$;
 
 insert into coldlion.sync_run (id, endpoint, company_code, request_params, status, requested_by, started_at, finished_at, notes)
 select gen_random_uuid(), '/orderHistory', 'POP',
-       jsonb_build_object('step', 'component-identity-repair-20261027', 'preimage', jsonb_build_object(
+       jsonb_build_object('step', '20261027-component-identity', 'preimage', jsonb_build_object(
          'lines', (select jsonb_agg(to_jsonb(pl)) from plm.production_order_line pl
                     where pl.id in (select line_id from dup_lines)
                        or pl.id in (select placeholder_line from merge_7128092)

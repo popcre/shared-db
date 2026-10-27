@@ -294,8 +294,10 @@ begin
                   where item->>'filename' = 'alpha.jpg') then
     raise exception 'contract 12: a semantic-only document was not surfaced by the query embedding';
   end if;
+  -- File 11 (alpha.pdf) is a pure keyword hit with no stored embedding;
+  -- enabling semantic search must not lose it.
   if not exists (select 1 from jsonb_array_elements(v_result->'results') item
-                  where item->>'filename' = 'other.ai') then
+                  where item->>'style_guide_file_id' = '25060000-0000-4000-8000-000000000011') then
     raise exception 'contract 12: a keyword hit was lost when semantic search was enabled';
   end if;
   -- Floor 1.0 is unreachable for cosine similarity: semantic candidates drop,
@@ -312,7 +314,7 @@ begin
     raise exception 'contract 12: an unreachable semantic floor did not exclude the semantic-only document';
   end if;
   if not exists (select 1 from jsonb_array_elements(v_result->'results') item
-                  where item->>'filename' = 'other.ai') then
+                  where item->>'style_guide_file_id' = '25060000-0000-4000-8000-000000000011') then
     raise exception 'contract 12: the semantic floor wrongly removed a keyword hit';
   end if;
 

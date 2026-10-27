@@ -478,7 +478,7 @@ line_inserts as (
     select 1 from plm.production_order_line_source_ref r
     where r.source_system = 'coldlion'
       and r.source_id = cl.line_source_id)
-  returning id, source_id, source_style_type
+  returning id, source_id, source_style_type, sku, production_order_id
 ),
 line_refs as (
   -- is_primary = true on exactly one ref per line — the single coldlion ref
@@ -590,7 +590,8 @@ link_scope as (
   -- Never scan or relink an unrelated order, or a line moved to another header.
   insert into pg_temp.coldlion_orderlist_link_scope
     (line_id, expected_type, incoming_sku, prior_sku, prior_item_id, prior_status, prior_source_proof)
-  select li.id, li.source_style_type, null, null, null, null, null from line_inserts li
+  select li.id, li.source_style_type, li.sku, null, null, null,
+    jsonb_build_object('source_id', li.source_id, 'production_order_id', li.production_order_id) from line_inserts li
   union all
   select pl.id, cl.source_style_type, cl.sku, pl.sku, pl.item_id, pl.master_data_match_status,
     jsonb_build_object('source_id', pl.source_id, 'production_order_id', pl.production_order_id,
@@ -684,6 +685,10 @@ declare
   batch uuid[];
   receipt jsonb;
 begin
+  -- Lock the exact source-owned cohort before inspecting or invalidating links.
+  perform l.id from plm.production_order_line l
+    join pg_temp.coldlion_orderlist_link_scope s on s.line_id = l.id
+    order by l.id for update of l;
   if exists (select 1 from pg_temp.coldlion_orderlist_link_scope s
              left join plm.production_order_line l on l.id = s.line_id
              where s.expected_type is null
@@ -696,10 +701,19 @@ begin
         and jsonb_typeof(l.metadata->'coldlion_intake_link_refreshes') <> 'array') then
     raise exception 'ColdLion intake link history is not an array; no changes committed';
   end if;
-  -- Lock the exact source-owned cohort before inspecting or invalidating links.
-  perform l.id from plm.production_order_line l
-    join pg_temp.coldlion_orderlist_link_scope s on s.line_id = l.id
-    order by l.id for update of l;
+
+  -- CTE snapshots can precede another actor's move/rekey of an unchanged row.
+  -- Re-prove all mutable authority AFTER locks, before helper or invalidation.
+  if exists (select 1 from pg_temp.coldlion_orderlist_link_scope s
+      left join plm.production_order_line l on l.id = s.line_id
+      where l.id is null or l.source_system is distinct from 'coldlion'
+        or l.source_id is distinct from s.prior_source_proof->>'source_id'
+        or l.production_order_id is distinct from (s.prior_source_proof->>'production_order_id')::uuid
+        or l.sku_normalized is distinct from nullif(btrim(lower(s.incoming_sku)), '')
+        or l.source_style_type is distinct from s.expected_type) then
+    raise exception 'ColdLion intake source authority changed under lock; no changes committed';
+  end if;
+
 
   -- Both paths preserve manual/not-applicable and valid links. A changed
   -- nonblank SKU invalidates the old automatic link even without a new match;
@@ -731,7 +745,8 @@ begin
       set expected_replacement_id = p.expected_item
     from proved p
     where s.line_id = p.line_id
-      and (p.sku_changed or (p.expected_item is not null and p.expected_item <> s.prior_item_id))
+      and ((p.sku_changed and not (p.candidate_count = 1 and p.candidate_item = s.prior_item_id))
+           or (p.expected_item is not null and p.expected_item <> s.prior_item_id))
     returning s.*, p.candidate_count, p.sku_changed
   )
   update plm.production_order_line l

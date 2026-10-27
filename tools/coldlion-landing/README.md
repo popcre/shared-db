@@ -285,12 +285,14 @@ at most 500. The helper must already be deployed before this writer is released;
 the writer checks availability at startup. Exact SKU plus explicit catalog,
 one distinct item and consistent current workflow are required. Manual choices,
 explicit `not_applicable` records and valid existing links remain unchanged. A
-changed nonblank source SKU invalidates only the old `matched` automatic link;
-without an eligible new match the line remains honestly `unmatched`. An unchanged
+changed nonblank source SKU invalidates the old `matched` automatic link unless
+the new SKU still uniquely identifies that same item. Without an eligible new
+match the line remains honestly `unmatched`. An unchanged
 SKU replaces a stale automatic item only with a proved unique exact catalog
 candidate. Both paths append the prior item/status/SKU and current source proof
 to `coldlion_intake_link_refreshes`; prevalidated replacements must reach that
-exact item or the entire intake rolls back. Reimports
+exact item or the entire intake rolls back. Source identity, header ownership,
+SKU and classification are revalidated under row locks before linking. Reimports
 merge source metadata so saved link receipts/manual evidence survive. A helper
 failure rolls back headers, lines, classification, source references and intake
 state together, including in rollback-only rehearsal.

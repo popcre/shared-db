@@ -554,7 +554,7 @@ test("ordinary reimport preserves source and manual-link metadata and passes onl
   const updates = cteBlock(sql, "line_updates");
   assert.equal((updates.match(/coalesce\(pl\.metadata, '\{\}'::jsonb\) \|\| jsonb_build_object/g) || []).length, 2);
   const scope = cteBlock(sql, "link_scope");
-  assert.match(scope, /select li\.id, li\.source_style_type, null, null, null, null, null from line_inserts li/);
+  assert.match(scope, /select li\.id, li\.source_style_type, li\.sku, null, null, null/);
   assert.match(scope, /ref\.source_system = 'coldlion' and ref\.source_id = cl\.line_source_id/);
   assert.match(scope, /pl\.production_order_id = cl\.production_order_id/);
   assert.doesNotMatch(sql, /relink_dam_order_lines_bulk/);
@@ -646,6 +646,28 @@ insert into coldlion.intake_order_component(line_id,order_qty,component_source_h
       const f = fixture(); q(`update plm.production_order_line set master_data_match_status='${status}',metadata=metadata||'{"manual_evidence":"retain"}' where ${f.where}`);
       const before = snapshot(f); write(f.order); assert.equal(snapshot(f), before);
       if (status !== "matched") { changeSku(f); write(f.order); assert.equal(state(f).item, ids.oldItem); assert.equal(state(f).status, status); }
+    }
+  });
+  await t.test("new SKU alias to same unique item preserves link receipts even with conflicting workflow", () => {
+    const f = fixture(), row = randomUUID(), alias = `ALIAS-${tag}`;
+    q(`insert into public.style_tracker_rows(id,source_workbook_id,source_sheet,source_row_number,tracker_type,sku,row_data) values('${row}','integration-${tag}','License.Style',999,'licensed','${alias}','{"test_report":true,"professional_photos":true}'); insert into plm.style_tracker_item_bridge(style_tracker_row_id,source_workbook_id,source_sheet,tracker_type,plm_item_id) values('${row}','integration-${tag}','License.Style','licensed','${ids.oldItem}');`);
+    const before = state(f); changeSku(f, alias); write(f.order);
+    const after = state(f); assert.equal(after.item, before.item); assert.equal(after.status, before.status);
+    assert.equal(after.metadata.last_relinked_at, before.metadata.last_relinked_at);
+    assert.equal(after.metadata.coldlion_intake_link_refreshes, undefined);
+    q(`delete from plm.style_tracker_item_bridge where style_tracker_row_id='${row}';delete from public.style_tracker_rows where id='${row}';`);
+  });
+  await t.test("post-CTE moved/rekeyed/source-SKU drift aborts and rolls back the exact cohort", () => {
+    const destination = fixture();
+    const destinationId = q(`select production_order_id from plm.production_order_line where ${destination.where}`);
+    const destinationBefore = snapshot(destination);
+    for (const drift of ["source_system='other-source'", "source_id=source_id||':moved'", "sku='CONCURRENT-SKU'", `production_order_id='${destinationId}'`]) {
+      const f = fixture(); changeSku(f); const before = snapshot(f);
+      const injected = buildWriteSql({runId: randomUUID(),write: true,order:f.order}).replace('do $link_intake$',`update plm.production_order_line set ${drift} where ${f.where};\ndo $link_intake$`);
+      const result = run(injected, false); assert.notEqual(result.status,0);
+      assert.match(result.stderr,/source authority changed under lock/);
+      assert.equal(snapshot(f),before);
+      assert.equal(snapshot(destination),destinationBefore);
     }
   });
   await t.test("changed SKU with no match clears obsolete automatic facts honestly", () => {

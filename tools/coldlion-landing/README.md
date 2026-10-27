@@ -283,8 +283,19 @@ New nonblank-SKU lines start `unmatched`, rather than inheriting the historical
 IDs reach the service-only `link_dam_order_lines_scoped` helper in batches of
 at most 500. The helper must already be deployed before this writer is released;
 the writer checks availability at startup. Exact SKU plus explicit catalog,
-one distinct item and consistent current workflow are required. Existing links,
-manual choices and explicit `not_applicable` records remain unchanged. Reimports
+one distinct item and consistent current workflow are required. Manual choices,
+explicit `not_applicable` records and valid existing links remain unchanged. A
+changed nonblank source SKU invalidates only the old `matched` automatic link;
+without an eligible new match the line remains honestly `unmatched`. An unchanged
+SKU replaces a stale automatic item only with a proved unique exact catalog
+candidate. Both paths append the prior item/status/SKU and current source proof
+to `coldlion_intake_link_refreshes`; prevalidated replacements must reach that
+exact item or the entire intake rolls back. Reimports
 merge source metadata so saved link receipts/manual evidence survive. A helper
 failure rolls back headers, lines, classification, source references and intake
 state together, including in rollback-only rehearsal.
+
+The opt-in real PostgreSQL writer regression runs with
+`COLDLION_INTAKE_TEST_PG_CONTAINER=orderlist4886pg node --test tools/coldlion-order-intake-*.test.mjs`.
+It refuses any container other than that disposable fixture, requires no network
+or published ports, and uses generated synthetic records only.

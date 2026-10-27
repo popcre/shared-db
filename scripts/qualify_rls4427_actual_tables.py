@@ -217,6 +217,23 @@ class NativeCI:
         self.sql('postgres', f'DROP DATABASE {db};')
         self.owned.remove(db)
 
+    def prepare_baseline(self, template):
+        # These reads can dirty hint bits. NEVER use their pre-checkpoint file hashes.
+        for table in ('assets', 'style_groups'):
+            self.sql(template, snapshot_sql(table))
+        self.sql('postgres', f'ALTER DATABASE {template} ALLOW_CONNECTIONS false;')
+        if self.sql('postgres', f"select count(*) from pg_stat_activity where datname='{template}';").strip() != '0':
+            raise RuntimeError('4427 template still has a session; no forced termination allowed')
+        baseline = self.prefix + '_baseline'
+        # FILE_COPY establishes the checkpointed, physically copied baseline.
+        # The immutable template is never read/scanned after sealing.
+        self.create(baseline, template)
+        try:
+            return {t: json.loads(self.sql(baseline, snapshot_sql(t)))
+                    for t in ('assets', 'style_groups')}
+        finally:
+            self.drop(baseline)
+
     def run(self):
         # Source/context guards supplement independently reviewed native workflow custody.
         # Environment values alone cannot cryptographically prove an actual GitHub runner.
@@ -269,13 +286,7 @@ end $g$;""")
             original = FIXTURE.read_text()
             original_result = self.sql(template, original)
             self.sql(template, fixture_sql(original) + seed_sql())
-            # Prime hint bits before sealing; never assume a rollback repaired physical pages.
-            for table in ('assets', 'style_groups'):
-                self.sql(template, snapshot_sql(table))
-            base_metadata = {t: json.loads(self.sql(template, snapshot_sql(t))) for t in ('assets', 'style_groups')}
-            self.sql('postgres', f'ALTER DATABASE {template} ALLOW_CONNECTIONS false;')
-            if self.sql('postgres', f"select count(*) from pg_stat_activity where datname='{template}';").strip() != '0':
-                raise RuntimeError('4427 template still has a session; no forced termination allowed')
+            base_metadata = self.prepare_baseline(template)
             pair_fingerprints = {}
             negative_pairs = {}
             for index, (table, cmd, size, sample, variant) in enumerate(jobs()):
@@ -356,7 +367,8 @@ end $g$;""")
                 raise RuntimeError('4427 incomplete 330-DML/44-SELECT matrix')
             summary = summarize(samples)
             return dict(schema_version=1, source_sha=os.environ['GITHUB_SHA'],
-                executed_source_sha256=source_hashes, tool_versions=tool_versions, psql_shell_failure_signal_proven=True, qualification='ISOLATED_ACTUAL_TABLES_ONLY', production_acceptance='NOT_EVALUATED',
+                executed_source_sha256=source_hashes, tool_versions=tool_versions,
+                calibration_clone_unmeasured=True, psql_shell_failure_signal_proven=True, qualification='ISOLATED_ACTUAL_TABLES_ONLY', production_acceptance='NOT_EVALUATED',
                 historical_flags='PRESERVED_UNATTRIBUTED', source_sql_sha256=hashlib.sha256(original.encode()).hexdigest(),
                 original_contract_output_sha256=hashlib.sha256(original_result.encode()).hexdigest(),
                 template_snapshots=base_metadata, samples=samples, summary=summary,

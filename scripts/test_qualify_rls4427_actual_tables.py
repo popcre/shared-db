@@ -98,6 +98,40 @@ class Actual4427StaticTests(unittest.TestCase):
         self.assertIn("'HEAD:' + relative",source)
         self.assertIn('actual != committed',source)
 
+    def test_baseline_requires_file_copy_before_hashing_and_never_reopens_sealed_template(self):
+        with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
+        events=[]
+        def sql(db,query):
+            events.append(('sql',db,query))
+            if 'pg_stat_activity' in query:return '0'
+            return '{"heap_md5":"post-flush"}'
+        def create(db,template):events.append(('copy',db,template))
+        def drop(db):events.append(('drop',db))
+        with patch.object(c,'sql',side_effect=sql),patch.object(c,'create',side_effect=create),patch.object(c,'drop',side_effect=drop):
+            base=c.prepare_baseline(c.prefix+'_seed')
+        self.assertEqual(base['assets']['heap_md5'],'post-flush')
+        copy_index=next(i for i,e in enumerate(events) if e[0]=='copy')
+        seal_index=next(i for i,e in enumerate(events) if e[0]=='sql' and 'ALLOW_CONNECTIONS false' in e[2])
+        self.assertLess(seal_index,copy_index)
+        reads=[i for i,e in enumerate(events) if e[0]=='sql' and e[1].endswith('_baseline')]
+        self.assertEqual(len(reads),2)
+        self.assertTrue(all(i>copy_index for i in reads))
+        self.assertFalse(any(e[0]=='sql' and e[1].endswith('_seed') for e in events[seal_index+1:]))
+        self.assertEqual(events[-1][0],'drop')
+
+    def test_baseline_session_or_snapshot_failure_refuses_and_cleans_owned_clone(self):
+        with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
+        def live_session(db,query):return '1' if 'pg_stat_activity' in query else '{}'
+        with patch.object(c,'sql',side_effect=live_session),patch.object(c,'create') as create:
+            with self.assertRaisesRegex(RuntimeError,'still has a session'):c.prepare_baseline(c.prefix+'_seed')
+            create.assert_not_called()
+        def broken_snapshot(db,query):
+            if db.endswith('_baseline'):raise RuntimeError('snapshot failed')
+            return '0' if 'pg_stat_activity' in query else '{}'
+        with patch.object(c,'sql',side_effect=broken_snapshot),patch.object(c,'create'),patch.object(c,'drop') as drop:
+            with self.assertRaisesRegex(RuntimeError,'snapshot failed'):c.prepare_baseline(c.prefix+'_seed')
+            drop.assert_called_once_with(c.prefix+'_baseline')
+
     def test_unowned_drop_and_create_refuse_without_subprocess(self):
         with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
         with patch.object(c,'sql') as run:

@@ -34,7 +34,7 @@ as $$
     select c.id
     from core.customer c
     cross join lateral (
-      select lower(trim(both '.' from regexp_replace(btrim(c.domain), '^(https?://)?(www\.)?', '', 'i'))) as cd
+      select lower(trim(both '.' from regexp_replace(btrim(c.domain), '^(https?://)?(www\.)?([^/:?#]*).*$', '\3', 'i'))) as cd
     ) n
     where nullif(n.cd, '') is not null
       and (lower(btrim(p_domain)) = n.cd or lower(btrim(p_domain)) like '%.' || n.cd)
@@ -76,7 +76,7 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_cd text := lower(trim(both '.' from regexp_replace(btrim(coalesce(new.domain, '')), '^(https?://)?(www\.)?', '', 'i')));
+  v_cd text := lower(trim(both '.' from regexp_replace(btrim(coalesce(new.domain, '')), '^(https?://)?(www\.)?([^/:?#]*).*$', '\3', 'i')));
 begin
   if tg_op = 'UPDATE' then
     update crm.ingested_domain d
@@ -102,6 +102,26 @@ create trigger customer_link_ingested_domains
   after insert or update of domain on core.customer
   for each row
   execute function crm.customer_domain_link_ingested();
+
+-- A canonical Customer merge must carry the loser's domain links to the survivor.
+do $$
+declare
+  v_definition text;
+  v_anchor text :=
+    '  update public.style_tracker_rows set customer_id = p_survivor where customer_id = p_loser;';
+  v_replacement text :=
+    '  update crm.ingested_domain set customer_id = p_survivor where customer_id = p_loser;' || E'\n' ||
+    v_anchor;
+begin
+  v_definition := pg_get_functiondef('core.merge_customer(uuid,uuid,boolean)'::regprocedure);
+  if position(v_anchor in v_definition) = 0 then
+    raise exception 'core.merge_customer changed: expected insertion anchor is absent';
+  end if;
+  if position('update crm.ingested_domain set customer_id' in v_definition) = 0 then
+    execute replace(v_definition, v_anchor, v_replacement);
+  end if;
+end
+$$;
 
 -- Backfill (status untouched).
 update crm.ingested_domain d

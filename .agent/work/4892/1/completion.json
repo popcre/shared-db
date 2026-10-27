@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "work_issue": 4892,
-  "outcome": "blocked",
-  "reason": "Finished local source awaits assigned exact-head independent review before source publication; no merge/deployment authorized by worker.",
+  "outcome": "returned",
+  "reason": "Finished local source returned to parent for assigned exact-head independent review before publication; no merge/deployment performed.",
   "contract_ref": "refs/db-contracts/4892/1",
   "contract_sha256": "a179dce7b039f43b798ff1001a2517696fea864ea0448efcc3335ea2961691c7",
   "base_sha": "9c24d1ffe393db6c8e756b00ca1ef0c3432d9bb6",

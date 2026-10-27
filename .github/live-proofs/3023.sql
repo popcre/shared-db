@@ -1,8 +1,10 @@
 -- Live proof for #3023 (migration 20260917005221). Read-only.
 -- Proves on production:
 --   1. the migration is in production's ledger, and the queue table (RLS on,
---      hidden from API roles), its trigger, and the refresh function body
---      byte-identical to the migration are live;
+--      hidden from API roles), its trigger, and the scheduled refresh function
+--      body byte-identical to the pinned scheduled body are live. #4437 review
+--      round 2 (B1) re-derived that body into a delegation of the stepping
+--      overload; the pin below follows the live body (md5 044a4024...);
 --   2. the most recent nightly PopSG crawl started after the change and finished
 --      completed, with its aggregate refresh recorded.
 with fixed as (select timestamptz '2026-09-17 00:00:00+00' as since)
@@ -16,7 +18,7 @@ select (
               and t.tgname = 'trg_style_guide_files_queue_search_sync' and t.tgenabled = 'O')
   and exists (select 1 from pg_proc p
               where p.oid = to_regprocedure('public.refresh_style_guide_matviews(uuid,integer)')
-                and md5(p.prosrc) = '52b676f90e4500dc323c2f9e6e6f3c97')
+                and md5(p.prosrc) = '044a40244377bb9b64dc65efbc7ccf6a')
   and exists (select 1
                 from (select r.* from public.style_guide_crawl_runs r
                        order by r.started_at desc limit 1) latest, fixed

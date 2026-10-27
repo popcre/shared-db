@@ -1039,7 +1039,89 @@ def designflow_fk_contract(expected: tuple[tuple[str, str, str, str, str], ...])
     """
 
 
+# Issue4867: exact installed4427 snapshot, composed only with the three
+# overlapping USING changes from merged4674 when its ledger version is present.
+# Retain the historical live-proof file unchanged. This fixed verifier-owned SQL
+# is a catalog-only assertion, never live consumer acceptance or apply authority.
+RLS_PUBLIC_ADMIN_INSTALL_CONTRACT = r"""
+WITH original_expected_policies AS (
+ select * from jsonb_to_recordset('[{"cmd":"ALL","qual":"has_role(auth.uid(), ''admin''::app_role)","roles":["authenticated"],"tablename":"erp_items_current","permissive":"PERMISSIVE","policyname":"Admin manage erp_items_current","schemaname":"archive","with_check":null,"oid":18366},{"cmd":"ALL","qual":"has_role(auth.uid(), ''admin''::app_role)","roles":["authenticated"],"tablename":"erp_items_raw","permissive":"PERMISSIVE","policyname":"Admin manage erp_items_raw","schemaname":"archive","with_check":null,"oid":18342},{"cmd":"SELECT","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"legacy_erp_item_identity","permissive":"PERMISSIVE","policyname":"legacy_erp_item_identity_admin_read","schemaname":"plm","with_check":null,"oid":12880564},{"cmd":"DELETE","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"admin_config","permissive":"PERMISSIVE","policyname":"Admin delete admin_config","schemaname":"public","with_check":null,"oid":18014},{"cmd":"SELECT","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"admin_config","permissive":"PERMISSIVE","policyname":"Admin read all admin_config","schemaname":"public","with_check":null,"oid":3112162},{"cmd":"UPDATE","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"admin_config","permissive":"PERMISSIVE","policyname":"Admin update admin_config","schemaname":"public","with_check":null,"oid":18013},{"cmd":"INSERT","qual":null,"roles":["authenticated"],"tablename":"admin_config","permissive":"PERMISSIVE","policyname":"Admin write admin_config","schemaname":"public","with_check":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","oid":18012},{"cmd":"SELECT","qual":"(key !~* ''(pass|secret|token|key|cred|pwd)''::text)","roles":["authenticated"],"tablename":"admin_config","permissive":"PERMISSIVE","policyname":"Authenticated read non-secret admin_config","schemaname":"public","with_check":null,"oid":3112161},{"cmd":"SELECT","qual":"(key = ''SCAN_REQUEST''::text)","roles":["anon"],"tablename":"admin_config","permissive":"PERMISSIVE","policyname":"anon can read SCAN_REQUEST for Realtime watcher","schemaname":"public","with_check":null,"oid":18486},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["public"],"tablename":"agent_pairings","permissive":"PERMISSIVE","policyname":"Admin manage agent_pairings","schemaname":"public","with_check":null,"oid":18181},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"agent_registrations","permissive":"PERMISSIVE","policyname":"Admin manage agent_registrations","schemaname":"public","with_check":null,"oid":18005},{"cmd":"SELECT","qual":"true","roles":["authenticated"],"tablename":"agent_registrations","permissive":"PERMISSIVE","policyname":"authenticated users can read agent_registrations","schemaname":"public","with_check":null,"oid":18524},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["public"],"tablename":"ai_tag_bakeoff_results","permissive":"PERMISSIVE","policyname":"Admin manage ai tag bakeoff results","schemaname":"public","with_check":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","oid":314605},{"cmd":"SELECT","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["public"],"tablename":"ai_tag_bakeoff_results","permissive":"PERMISSIVE","policyname":"Admin read ai tag bakeoff results","schemaname":"public","with_check":null,"oid":314604},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["public"],"tablename":"ai_tag_bakeoff_reviews","permissive":"PERMISSIVE","policyname":"Admin manage ai tag bakeoff reviews","schemaname":"public","with_check":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","oid":314607},{"cmd":"SELECT","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["public"],"tablename":"ai_tag_bakeoff_reviews","permissive":"PERMISSIVE","policyname":"Admin read ai tag bakeoff reviews","schemaname":"public","with_check":null,"oid":314606},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["public"],"tablename":"ai_tag_bakeoff_runs","permissive":"PERMISSIVE","policyname":"Admin manage ai tag bakeoff runs","schemaname":"public","with_check":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","oid":314603},{"cmd":"SELECT","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["public"],"tablename":"ai_tag_bakeoff_runs","permissive":"PERMISSIVE","policyname":"Admin read ai tag bakeoff runs","schemaname":"public","with_check":null,"oid":314602},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"app_access","permissive":"PERMISSIVE","policyname":"Admins manage app_access","schemaname":"public","with_check":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","oid":18626},{"cmd":"SELECT","qual":"(user_id = auth.uid())","roles":["authenticated"],"tablename":"app_access","permissive":"PERMISSIVE","policyname":"Users read own app_access","schemaname":"public","with_check":null,"oid":18625},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"asset_characters","permissive":"PERMISSIVE","policyname":"Admin write asset_characters","schemaname":"public","with_check":null,"oid":18001},{"cmd":"SELECT","qual":"true","roles":["authenticated"],"tablename":"asset_characters","permissive":"PERMISSIVE","policyname":"Authenticated read asset_characters","schemaname":"public","with_check":null,"oid":18000},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"asset_tags","permissive":"PERMISSIVE","policyname":"Admin manage asset_tags","schemaname":"public","with_check":null,"oid":18425},{"cmd":"SELECT","qual":"true","roles":["authenticated"],"tablename":"asset_tags","permissive":"PERMISSIVE","policyname":"Authenticated read asset_tags","schemaname":"public","with_check":null,"oid":18424},{"cmd":"INSERT","qual":null,"roles":["authenticated"],"tablename":"assets","permissive":"PERMISSIVE","policyname":"Admins can insert assets","schemaname":"public","with_check":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","oid":17986},{"cmd":"UPDATE","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"assets","permissive":"PERMISSIVE","policyname":"Admins can update assets","schemaname":"public","with_check":null,"oid":17987},{"cmd":"SELECT","qual":"(is_deleted = false)","roles":["authenticated"],"tablename":"assets","permissive":"PERMISSIVE","policyname":"Authenticated users can read visible assets","schemaname":"public","with_check":null,"oid":17985},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"characters","permissive":"PERMISSIVE","policyname":"Admin write characters","schemaname":"public","with_check":null,"oid":17993},{"cmd":"SELECT","qual":"true","roles":["authenticated"],"tablename":"characters","permissive":"PERMISSIVE","policyname":"Authenticated read characters","schemaname":"public","with_check":null,"oid":17992},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"erp_enrichment_log","permissive":"PERMISSIVE","policyname":"Admin manage erp_enrichment_log","schemaname":"public","with_check":null,"oid":18397},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"erp_sync_runs","permissive":"PERMISSIVE","policyname":"Admin manage erp_sync_runs","schemaname":"public","with_check":null,"oid":18325},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"hygiene_findings","permissive":"PERMISSIVE","policyname":"Admin manage hygiene_findings","schemaname":"public","with_check":null,"oid":18460},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"invitations","permissive":"PERMISSIVE","policyname":"Admin manage invitations","schemaname":"public","with_check":null,"oid":18010},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"licensors","permissive":"PERMISSIVE","policyname":"Admin write licensors","schemaname":"public","with_check":null,"oid":17989},{"cmd":"SELECT","qual":"true","roles":["authenticated"],"tablename":"licensors","permissive":"PERMISSIVE","policyname":"Authenticated read licensors","schemaname":"public","with_check":null,"oid":17988},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"pdf_text_samples","permissive":"PERMISSIVE","policyname":"admin full access pdf_text_samples","schemaname":"public","with_check":null,"oid":18545},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"processing_queue","permissive":"PERMISSIVE","policyname":"Admin manage processing_queue","schemaname":"public","with_check":null,"oid":18003},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["public"],"tablename":"prod_order_headers_current","permissive":"PERMISSIVE","policyname":"Admins manage prod_order_headers_current","schemaname":"public","with_check":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","oid":18917},{"cmd":"SELECT","qual":"true","roles":["authenticated"],"tablename":"prod_order_headers_current","permissive":"PERMISSIVE","policyname":"Authenticated users can read prod_order_headers_current","schemaname":"public","with_check":null,"oid":18916},{"cmd":"ALL","qual":"true","roles":["service_role"],"tablename":"prod_order_headers_current","permissive":"PERMISSIVE","policyname":"Service role manages prod_order_headers_current","schemaname":"public","with_check":"true","oid":18918},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["public"],"tablename":"prod_order_headers_raw","permissive":"PERMISSIVE","policyname":"Admins manage prod_order_headers_raw","schemaname":"public","with_check":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","oid":18892},{"cmd":"ALL","qual":"true","roles":["service_role"],"tablename":"prod_order_headers_raw","permissive":"PERMISSIVE","policyname":"Service role manages prod_order_headers_raw","schemaname":"public","with_check":"true","oid":18893},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["public"],"tablename":"prod_order_sync_runs","permissive":"PERMISSIVE","policyname":"Admins manage prod_order_sync_runs","schemaname":"public","with_check":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","oid":18874},{"cmd":"ALL","qual":"true","roles":["service_role"],"tablename":"prod_order_sync_runs","permissive":"PERMISSIVE","policyname":"Service role manages prod_order_sync_runs","schemaname":"public","with_check":"true","oid":18875},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"product_categories","permissive":"PERMISSIVE","policyname":"Admin write product_categories","schemaname":"public","with_check":null,"oid":17995},{"cmd":"SELECT","qual":"true","roles":["authenticated"],"tablename":"product_categories","permissive":"PERMISSIVE","policyname":"Authenticated read product_categories","schemaname":"public","with_check":null,"oid":17994},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"product_category_predictions","permissive":"PERMISSIVE","policyname":"Admin manage product_category_predictions","schemaname":"public","with_check":null,"oid":18385},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"product_subtypes","permissive":"PERMISSIVE","policyname":"Admin write product_subtypes","schemaname":"public","with_check":null,"oid":17999},{"cmd":"SELECT","qual":"true","roles":["authenticated"],"tablename":"product_subtypes","permissive":"PERMISSIVE","policyname":"Authenticated read product_subtypes","schemaname":"public","with_check":null,"oid":17998},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"product_types","permissive":"PERMISSIVE","policyname":"Admin write product_types","schemaname":"public","with_check":null,"oid":17997},{"cmd":"SELECT","qual":"true","roles":["authenticated"],"tablename":"product_types","permissive":"PERMISSIVE","policyname":"Authenticated read product_types","schemaname":"public","with_check":null,"oid":17996},{"cmd":"SELECT","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"profiles","permissive":"PERMISSIVE","policyname":"Admins read all profiles","schemaname":"public","with_check":null,"oid":18008},{"cmd":"SELECT","qual":"(user_id = auth.uid())","roles":["authenticated"],"tablename":"profiles","permissive":"PERMISSIVE","policyname":"Users read own profile","schemaname":"public","with_check":null,"oid":18006},{"cmd":"UPDATE","qual":"(user_id = auth.uid())","roles":["authenticated"],"tablename":"profiles","permissive":"PERMISSIVE","policyname":"Users update own profile","schemaname":"public","with_check":null,"oid":18007},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"properties","permissive":"PERMISSIVE","policyname":"Admin write properties","schemaname":"public","with_check":null,"oid":17991},{"cmd":"SELECT","qual":"true","roles":["authenticated"],"tablename":"properties","permissive":"PERMISSIVE","policyname":"Authenticated read properties","schemaname":"public","with_check":null,"oid":17990},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"render_queue","permissive":"PERMISSIVE","policyname":"Admin manage render_queue","schemaname":"public","with_check":null,"oid":18004},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"style_group_tags","permissive":"PERMISSIVE","policyname":"Admin manage style_group_tags","schemaname":"public","with_check":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","oid":9154718},{"cmd":"SELECT","qual":"true","roles":["authenticated"],"tablename":"style_group_tags","permissive":"PERMISSIVE","policyname":"Authenticated read style_group_tags","schemaname":"public","with_check":null,"oid":9154717},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["public"],"tablename":"style_groups","permissive":"PERMISSIVE","policyname":"Admins can manage style_groups","schemaname":"public","with_check":null,"oid":18134},{"cmd":"SELECT","qual":"true","roles":["authenticated"],"tablename":"style_groups","permissive":"PERMISSIVE","policyname":"Authenticated users can read style_groups","schemaname":"public","with_check":null,"oid":4516031},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"style_guide_crawl_runs","permissive":"PERMISSIVE","policyname":"admin full access style_guide_crawl_runs","schemaname":"public","with_check":null,"oid":18520},{"cmd":"SELECT","qual":"true","roles":["authenticated"],"tablename":"style_guide_crawl_runs","permissive":"PERMISSIVE","policyname":"authenticated read style_guide_crawl_runs","schemaname":"public","with_check":null,"oid":18523},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"style_guide_files","permissive":"PERMISSIVE","policyname":"admin full access style_guide_files","schemaname":"public","with_check":null,"oid":18521},{"cmd":"SELECT","qual":"true","roles":["authenticated"],"tablename":"style_guide_files","permissive":"PERMISSIVE","policyname":"authenticated read style_guide_files","schemaname":"public","with_check":null,"oid":18522},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"style_guide_render_queue","permissive":"PERMISSIVE","policyname":"Admin manage style_guide_render_queue","schemaname":"public","with_check":null,"oid":18647},{"cmd":"DELETE","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"style_tracker_rows","permissive":"PERMISSIVE","policyname":"Admins delete style tracker rows","schemaname":"public","with_check":null,"oid":136194},{"cmd":"INSERT","qual":null,"roles":["authenticated"],"tablename":"style_tracker_rows","permissive":"PERMISSIVE","policyname":"Authenticated users insert style tracker rows","schemaname":"public","with_check":"true","oid":3856430},{"cmd":"SELECT","qual":"true","roles":["authenticated"],"tablename":"style_tracker_rows","permissive":"PERMISSIVE","policyname":"Authenticated users read style tracker rows","schemaname":"public","with_check":null,"oid":136191},{"cmd":"UPDATE","qual":"true","roles":["authenticated"],"tablename":"style_tracker_rows","permissive":"PERMISSIVE","policyname":"Authenticated users update style tracker rows","schemaname":"public","with_check":"true","oid":3856431},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["public"],"tablename":"tiff_optimization_queue","permissive":"PERMISSIVE","policyname":"Admin manage tiff_optimization_queue","schemaname":"public","with_check":null,"oid":18204},{"cmd":"ALL","qual":"( SELECT has_role(auth.uid(), ''admin''::app_role) AS has_role)","roles":["authenticated"],"tablename":"user_roles","permissive":"PERMISSIVE","policyname":"Admins manage user_roles","schemaname":"public","with_check":null,"oid":18009}]'::jsonb) as e(
+ schemaname text,tablename text,policyname text,permissive text,roles jsonb,
+ cmd text,qual text,with_check text,oid bigint)
+), expected_policies AS (
+ select e.schemaname,e.tablename,e.policyname,e.permissive,e.roles,e.cmd,
+ case when exists(select 1 from supabase_migrations.schema_migrations where version='20261023122936')
+ and (e.schemaname,e.tablename,e.policyname) in (
+ ('public','app_access','Users read own app_access'),
+ ('public','profiles','Users read own profile'),
+ ('public','profiles','Users update own profile'))
+ then '(user_id = ( SELECT auth.uid() AS uid))' else e.qual end as qual,
+ e.with_check,e.oid from original_expected_policies e
+), expected_tables AS (
+ select * from jsonb_to_recordset('[{"schema_name":"archive","table_name":"erp_items_current","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"archive","table_name":"erp_items_raw","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"plm","table_name":"legacy_erp_item_identity","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,service_role=arwd/postgres,authenticated=r/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"admin_config","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=rxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"agent_pairings","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"agent_registrations","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"ai_tag_bakeoff_results","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"ai_tag_bakeoff_reviews","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"ai_tag_bakeoff_runs","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"app_access","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"asset_characters","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"asset_tags","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"assets","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"characters","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"erp_enrichment_log","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"erp_sync_runs","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"hygiene_findings","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"invitations","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"licensors","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"pdf_text_samples","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"processing_queue","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"prod_order_headers_current","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"prod_order_headers_raw","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"prod_order_sync_runs","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"product_categories","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"product_category_predictions","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"product_subtypes","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"product_types","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"profiles","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"properties","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"render_queue","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"style_group_tags","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"style_groups","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"style_guide_crawl_runs","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"style_guide_files","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"style_guide_render_queue","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"style_tracker_rows","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"tiff_optimization_queue","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]},{"schema_name":"public","table_name":"user_roles","owner":"postgres","acl":"{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}","rls":true,"force_rls":false,"column_acl":[]}]'::jsonb) as e(
+ schema_name text,table_name text,owner text,acl text,rls boolean,
+ force_rls boolean,column_acl jsonb)
+), expected_helpers AS (
+ select * from jsonb_to_recordset('[{"oid":16542,"signature":"auth.uid()","definition_md5":"ea3b41bf29e2ad573067939329aa088e","provolatile":"s","prosecdef":false,"proconfig":null,"owner":"supabase_auth_admin","acl":"{=X/supabase_auth_admin,supabase_auth_admin=X/supabase_auth_admin,dashboard_user=X/supabase_auth_admin}"},{"oid":17973,"signature":"public.has_role(uuid,public.app_role)","definition_md5":"187a79a40c4f51499677e49b6aa4e456","provolatile":"s","prosecdef":true,"proconfig":["search_path=public"],"owner":"postgres","acl":"{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}"}]'::jsonb) as e(
+ oid bigint,signature text,definition_md5 text,provolatile text,prosecdef boolean,
+ proconfig text[],owner text,acl text)
+), live_policies AS (
+ select p.*,c.oid::bigint as oid
+ from pg_policies p join pg_namespace n on n.nspname=p.schemaname
+ join pg_class t on t.relnamespace=n.oid and t.relname=p.tablename
+ join pg_policy c on c.polrelid=t.oid and c.polname=p.policyname
+ join expected_tables e on e.schema_name=p.schemaname and e.table_name=p.tablename
+), policy_proof AS (
+ select (select count(*) from live_policies)=72 and
+ (select count(*) from expected_policies)=72 and not exists(
+ select 1 from expected_policies e full join live_policies a
+ using(schemaname,tablename,policyname)
+ where a.oid is distinct from e.oid or a.permissive is distinct from e.permissive
+ or to_jsonb(a.roles) is distinct from e.roles or a.cmd is distinct from e.cmd
+ or regexp_replace(a.qual,'[[:space:]]+',' ','g') is distinct from regexp_replace(e.qual,'[[:space:]]+',' ','g')
+ or regexp_replace(a.with_check,'[[:space:]]+',' ','g') is distinct from regexp_replace(e.with_check,'[[:space:]]+',' ','g')
+ ) as passed
+), table_proof AS (
+ select (select count(*) from expected_tables)=39 and not exists(
+ select 1 from expected_tables e left join pg_namespace n on n.nspname=e.schema_name
+ left join pg_class c on c.relnamespace=n.oid and c.relname=e.table_name
+ where c.oid is null or pg_get_userbyid(c.relowner) is distinct from e.owner
+ or c.relacl::text is distinct from e.acl or c.relrowsecurity is distinct from e.rls
+ or c.relforcerowsecurity is distinct from e.force_rls
+ or coalesce((select jsonb_agg(jsonb_build_object('column',a.attname,'acl',a.attacl::text)
+ order by a.attnum) from pg_attribute a where a.attrelid=c.oid and a.attnum>0
+ and not a.attisdropped and a.attacl is not null),'[]'::jsonb) is distinct from e.column_acl
+ ) as passed
+), helper_proof AS (
+ select (select count(*) from expected_helpers)=2 and not exists(
+ select 1 from expected_helpers e left join pg_proc p on p.oid=e.oid
+ where p.oid is null or p.oid is distinct from to_regprocedure(e.signature)
+ or md5(pg_get_functiondef(p.oid)) is distinct from e.definition_md5
+ or p.provolatile::text is distinct from e.provolatile or p.prosecdef is distinct from e.prosecdef
+ or p.proconfig is distinct from e.proconfig or pg_get_userbyid(p.proowner) is distinct from e.owner
+ or p.proacl::text is distinct from e.acl
+ ) as passed
+), archive_proof AS (
+ select count(*)=2 and bool_and(
+ not has_table_privilege('authenticated',c.oid,'SELECT,INSERT,UPDATE,DELETE')
+ and not has_table_privilege('anon',c.oid,'SELECT,INSERT,UPDATE,DELETE')
+ and not exists(select 1 from pg_roles r where not r.rolsuper and not r.rolbypassrls
+ and (r.oid<>c.relowner or c.relforcerowsecurity)
+ and pg_has_role(r.oid,'authenticated','MEMBER')
+ and has_schema_privilege(r.oid,n.oid,'USAGE')
+ and has_table_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,DELETE'))
+ ) as passed
+ from pg_class c join pg_namespace n on n.oid=c.relnamespace
+ where n.nspname='archive' and c.relname in('erp_items_current','erp_items_raw')
+)
+SELECT coalesce(
+ exists(select 1 from supabase_migrations.schema_migrations where version='20261021190604')
+ and (select passed from policy_proof) and (select passed from table_proof)
+ and (select passed from helper_proof) and (select passed from archive_proof),false) AS passed
+"""
+
 CATALOG_CONTRACTS = {
+    "rls_public_admin_install_v1": RLS_PUBLIC_ADMIN_INSTALL_CONTRACT,
     # Issue2336: selected current/history lifecycle and private physical engine.
     "licensing_support_forward_v2": r"""
 select exists (
@@ -5117,13 +5199,13 @@ POPSG_REFRESH_SEARCH_SYNC_QUEUE_CONTRACT = (
     " and not has_table_privilege('authenticated',c.oid,'SELECT')"
     " and has_table_privilege('service_role',c.oid,'SELECT'))"
     " and exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.style_guide_files_queue_search_sync()')"
-    " and p.prosecdef and md5(p.prosrc)='2b082d5e84238234f3d20669b2931f0c'"
+    " and p.prosecdef and md5(p.prosrc)='abddc252ee3f9c30c35e13eba7020402'"
     " and not has_function_privilege('authenticated',p.oid,'EXECUTE'))"
     " and exists (select 1 from pg_trigger t where t.tgrelid=to_regclass('public.style_guide_files')"
     " and t.tgname='trg_style_guide_files_queue_search_sync' and not t.tgisinternal and t.tgenabled='O'"
     " and t.tgfoid=to_regprocedure('public.style_guide_files_queue_search_sync()'))"
     " and exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.refresh_style_guide_matviews(uuid,integer)')"
-    " and p.prosecdef and md5(p.prosrc)='52b676f90e4500dc323c2f9e6e6f3c97'"
+    " and p.prosecdef and md5(p.prosrc)='044a40244377bb9b64dc65efbc7ccf6a'"
     " and not has_function_privilege('authenticated',p.oid,'EXECUTE')"
     " and has_function_privilege('service_role',p.oid,'EXECUTE'))"
 )
@@ -5537,6 +5619,133 @@ select coalesce((
   and (not pg_has_role('designflow_prod_backend_runtime','designflow_prod_tracking_grants','member') or has_table_privilege('designflow_prod_backend_runtime','dflow_prod.v_prod_order_sales_order_link','SELECT'))
 ),false) as passed
 """
+
+
+# Issue #4878: current semantic postconditions of the applied #2599 curated load.
+# All labels stay inside the database. Its immutable key-manifest and each
+# exact-label SHA256 bind the eight source keys not enumerated in the code map.
+# source_licensor_id is derived by core.guard_taxonomy_source_ref_identity()
+# (20260911152203), not invented by this recovery. No generated UUID/status or
+# unrelated-row historical continuity is claimed. This definition is inert until
+# a separately reviewed, migration-hash-bound sidecar activates it.
+CATALOG_CONTRACTS["vm_submission_properties_current_v1"] = """(
+WITH expected AS (
+  SELECT '5f951f5e-aaee-4add-bb51-fea888951405'::uuid AS vm,
+    '36fb2b6d-a728-4bf4-bb4c-d04b03125a2b'::uuid AS capture_id,
+    'paramount-trackerplus-2026-10-25-4bb087a7bb2514a0'::text AS capture_key,
+    '263eccc71645bf9c63e658d8521cba1706f965dd256f47360b6cb63db1c97b6b'::text AS manifest,
+    '32917567f1f57c78346922361faf0792e4a1fc3142c1bb82747141f4278ee724'::text AS workbook
+), reviewed_map(code, source_key) AS (VALUES
+    ('90','d77c37fd1c1d426a1dc3b24ec73faba375bebb856e911963ca46e665b140b4d6'),
+    ('AM1','efe401285997afdcc59ae945b1581da3ba72299448eeeb293bc327975aa64c8a'),
+    ('AM2','75f1ce3fc920d016c2b6f35187096ff1adbc1a6f9020a30d65a62016e99137e4'),
+    ('AT','bd03eb784c85de3be8d7179166656d6ef01452f3965852af2cd457ba6a1aae24'),
+    ('BB','4f7cecae689ed321865bcbca217cb1d3671628780bd17b9499760230341e5e46'),
+    ('BH','bd94353f3769002c7f71d65736160fc363de6d86b4660849d2035b3ed38270a3'),
+    ('CU','fde22786c4e5e5358901028b53133622758a06f22e1e0354631dfc42440815be'),
+    ('DN','b0e25444e346e2a0d69c32cf74bd9745f8848fc29164a87bf7dda03fb58b7147'),
+    ('EN','b0e25444e346e2a0d69c32cf74bd9745f8848fc29164a87bf7dda03fb58b7147'),
+    ('EP','2ba82e8fe6da526d195cf411c3c1d1f6ab03feb293b312571e6b4b4113f892bb'),
+    ('FB','db96ab45578f557826803ab1958f66208a514cd85f0cae30e68f966a3ca9f2ef'),
+    ('FE','6ae08a70bc7eacef76689c0732d631a9bbca37a690640f674b8d99ec51ec94af'),
+    ('FG','f7d2485466399e902ddadecc23fb123fc3850bb635d58f6efd4ba068dd41bc02'),
+    ('GE','53a9e30a298862ec5ca6203d0bb00a9eb1941de66049798ec2fd3736cf2b629c'),
+    ('GE1','7eb07dab6bae24395858f445f9d02ce0d789167f9e57cc3e57dac3dbdd22d873'),
+    ('GH','5810d66ac44b8f2380962269fdc1829466753186aa086fec7482e012396babb9'),
+    ('GRE','d9607a5345f7bc7e70b94aa837ef7a0966bec2a57d2f92ef41e2d3478bac87f3'),
+    ('HDS','0ac2efd260724f5aac4bf0bd3a78564d721191478a20145bddcc451db97c367f'),
+    ('MA','b0e25444e346e2a0d69c32cf74bd9745f8848fc29164a87bf7dda03fb58b7147'),
+    ('MG1','c668c436a414113ffbb2df349ce0f27a21bb931ad83fd8c4a3e251b49f9850f4'),
+    ('MG2','f984a50a4a0993225fcc59512d8ff9a179fb4ea2b416c2b256e2492559921e84'),
+    ('MGM','b16f62f4728e0ef7aecc6db4686bac8e1e7c815d8610703ef5216d4182309694'),
+    ('NT','b0e25444e346e2a0d69c32cf74bd9745f8848fc29164a87bf7dda03fb58b7147'),
+    ('RA','b0e25444e346e2a0d69c32cf74bd9745f8848fc29164a87bf7dda03fb58b7147'),
+    ('SB','bb6d2425b630031d0904b2a9b76e344aa1f101c0b7d6c1085f92818deabe5eb2'),
+    ('SCM','0072bff034316806df9812e10594ffdf4b632c963af3f42357fdbb9801aebc45'),
+    ('SM1','0072bff034316806df9812e10594ffdf4b632c963af3f42357fdbb9801aebc45'),
+    ('SM6','1abf201aa851cb819c3a5965f721229f91d7473c39fc561b975ca6c7905eec75'),
+    ('SM7','88f663890fa7325dfd47ca40385b209d44082ef2feb414c96f312161e8a2a577'),
+    ('TNT','e78009d31a69904d8b34dffffe303a1f61a86d365f27440354e57b8121fbeb32'),
+    ('TU','5dbe1eb9778bad2f0c9bb0632e07292287d9e4d0e51047f0fb961154f5070900'),
+    ('TZ1','78bfa4a8d018abaffa4846ad5c3077e877d56172a26d730299c8b4d035833f73'),
+    ('TZ2','b7a9af80772100eb17c0f3017675d3459d3a4d0ac43d56720f46b9e969e997ea'),
+    ('TZ3','c0b5473ac392ea78d127e834bc378e574cf43db535b86cd0720639850752b180'),
+    ('WND','90b05904cfb9749a36d25ac6393b3774957a52e97c593453e269424ebfd2684d'),
+    ('YS','314a356c641835f1c9a19554d3c0b6178dd026c853d7881283b76bacdd33fa4c'),
+    ('ZM','5744915091dbd41a9ea5f61b01dc5d8a1d775c0a44c79d13d3145b571447dd5a')
+), capture AS (
+  SELECT c.* FROM plm.pmt_trackerplus_submission_capture c, expected e
+  WHERE c.capture_key=e.capture_key
+), source AS (
+  SELECT s.* FROM plm.pmt_trackerplus_submission_property s, expected e
+  WHERE s.capture_id=e.capture_id
+), refs AS (
+  SELECT r.* FROM core.taxonomy_source_ref r
+  WHERE r.source_system='paramount_trackerplus'
+    AND r.source_table='plm.pmt_trackerplus_submission_property'
+), mappings AS (
+  SELECT r.* FROM core.taxonomy_source_ref r
+  WHERE r.source_system='licensing_mg06_submission_mapping'
+    AND r.source_table='mg06-to-submissions-mapping-20261015'
+    AND r.source_id LIKE 'VM/%'
+), capture_proof AS (
+  SELECT count(*)=1 AND bool_and((c.id=e.capture_id AND c.status='complete'
+    AND c.expected_property_count=40 AND c.observed_property_count=40
+    AND c.expected_property_manifest_sha256=e.manifest
+    AND c.observed_property_manifest_sha256=e.manifest
+    AND c.load_completed_at IS NOT NULL AND c.errors='[]'::jsonb) IS TRUE) AS passed
+  FROM capture c CROSS JOIN expected e
+), source_proof AS (
+  SELECT count(*)=40 AND count(DISTINCT s.property_local_key)=40
+    AND count(DISTINCT s.ordinal)=40
+    AND bool_and((s.identity_method='exact-label-sha256' AND s.ordinal>=0
+      AND btrim(s.exact_label)<>''
+      AND s.property_local_key=encode(sha256(convert_to(s.exact_label,'UTF8')),'hex')) IS TRUE)
+    AND encode(sha256(convert_to(string_agg(s.property_local_key,E'\n'
+      ORDER BY s.property_local_key),'UTF8')),'hex')=(SELECT manifest FROM expected) AS passed
+  FROM source s
+), refs_proof AS (
+  SELECT count(*)=40 AND count(DISTINCT s.property_local_key)=40
+    AND count(DISTINCT r.entity_id)=40
+    AND bool_and((r.entity_schema='core' AND r.entity_table='property'
+      AND r.source_licensor_id=e.vm AND p.licensor_id=e.vm
+      AND r.confidence='verified' AND r.source_code IS NULL
+      AND convert_to(r.source_name,'UTF8')=convert_to(s.exact_label,'UTF8')
+      AND convert_to(p.name,'UTF8')=convert_to(s.exact_label,'UTF8')
+      AND r.raw @> jsonb_build_object('authorising_issue',2599,
+        'capture_id',e.capture_id,'identity_method','exact_label_sha256')) IS TRUE) AS passed
+  FROM source s JOIN refs r ON r.source_id=s.property_local_key
+    JOIN core.property p ON p.id=r.entity_id CROSS JOIN expected e
+), mappings_proof AS (
+  SELECT count(*)=37 AND count(DISTINCT m.code)=37
+    AND bool_and((r.entity_schema='core' AND r.entity_table='property'
+      AND r.source_licensor_id=e.vm AND r.entity_id=t.entity_id
+      AND r.confidence='verified' AND r.source_name IS NULL
+      AND r.source_code=m.code
+      AND r.raw @> jsonb_build_object('authorising_issue',2599,'related_issue',2541,
+        'workbook_sha256',e.workbook,'property_local_key',m.source_key)) IS TRUE) AS passed
+  FROM reviewed_map m JOIN mappings r ON r.source_id='VM/'||m.code
+    JOIN refs t ON t.source_id=m.source_key CROSS JOIN expected e
+)
+SELECT coalesce(
+  (SELECT passed FROM capture_proof) AND (SELECT passed FROM source_proof)
+  AND (SELECT passed FROM refs_proof) AND (SELECT passed FROM mappings_proof)
+  AND (SELECT count(*)=40 FROM refs) AND (SELECT count(*)=37 FROM mappings)
+  AND (SELECT count(*)=37 AND count(DISTINCT code)=37 FROM reviewed_map)
+  AND NOT EXISTS (SELECT 1 FROM reviewed_map m
+    WHERE NOT EXISTS (SELECT 1 FROM source s WHERE s.property_local_key=m.source_key))
+  AND NOT EXISTS (SELECT 1 FROM refs r
+    WHERE NOT EXISTS (SELECT 1 FROM source s WHERE s.property_local_key=r.source_id))
+  AND NOT EXISTS (SELECT 1 FROM mappings r
+    WHERE NOT EXISTS (SELECT 1 FROM reviewed_map m WHERE r.source_id='VM/'||m.code))
+  AND NOT EXISTS (SELECT 1 FROM source s CROSS JOIN expected e
+    WHERE (SELECT count(*) FROM core.property p
+      WHERE p.licensor_id=e.vm AND lower(p.name)=lower(s.exact_label))<>1)
+  AND (SELECT count(*)=1 FROM core.licensor l CROSS JOIN expected e
+    WHERE l.id=e.vm AND l.code='VM' AND l.name='VIACOM MULTI')
+  AND EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations
+    WHERE version='20261026150931'),false)
+)"""
 
 if __name__ == "__main__":
     raise SystemExit(main())

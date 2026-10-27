@@ -188,7 +188,7 @@ def validate_policy_delta(before, after, variant):
 class NativeCI:
     def __init__(self):
         assert_ci(os.environ)
-        self.env = {k: v for k, v in os.environ.items() if not k.startswith('PG')}
+        self.env = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'}
         self.env['PGPASSWORD'] = 'postgres'  # public, invented native CI password only
         self.prefix = 'rls4427_' + uuid.uuid4().hex[:12]
         self.owned = []

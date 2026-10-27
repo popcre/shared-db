@@ -35,7 +35,7 @@ BEGIN
   END IF;
 END
 $before$;
-\ir ../migrations/20261026193803_dflow_prod_role_rename_update_grant.sql
+\ir ../migrations/20261027022851_dflow_prod_role_rename_update_grant.sql
 DO $contract$
 DECLARE col text; actual text[];
 BEGIN

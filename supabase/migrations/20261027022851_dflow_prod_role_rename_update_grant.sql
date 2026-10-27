@@ -1,4 +1,4 @@
--- Issue #4832; claim #4842. Restore the existing admin role editor's save.
+-- Issue #4832; claim #4872. Restore the existing admin role editor's save.
 -- derived-from: none
 -- The service always updates these three columns, including for a name-only edit.
 -- Keep INSERT, DELETE, kind, Id, app_role_id and sequence access unchanged.

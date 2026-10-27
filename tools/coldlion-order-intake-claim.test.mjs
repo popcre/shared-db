@@ -337,7 +337,7 @@ test("customer resolution: company_source_ref FIRST then erp_customer (active), 
   assert.doesNotMatch(sql, /insert into core\.company_source_ref/);
 });
 
-test("case pack default: exact scope and unanimous non-null quantities across variants", () => {
+test("case pack default: exact source label before unanimous non-null variant defaults", () => {
   // Several item variants can prove a quantity without selecting an identity.
   // Disagreement or even one missing quantity must leave the default unknown.
   const casePack = sql.slice(sql.indexOf("case_pack as ("), sql.indexOf("customer_ref as ("));
@@ -345,6 +345,10 @@ test("case pack default: exact scope and unanimous non-null quantities across va
   assert.match(casePack, /d\.company_code = l\.company_code/);
   assert.match(casePack, /d\.division_code = l\.division_code/);
   assert.match(casePack, /d\.item_no = coalesce\(nullif\(btrim\(c\.sub_item_no\), ''\), l\.master_item_no\)/);
+  assert.match(casePack, /d\.label_code = case when nullif\(btrim\(c\.sub_item_no\)/);
+  assert.match(casePack, /then nullif\(btrim\(l\.label_code\)/);
+  assert.match(casePack, /else nullif\(btrim\(c\.sub_label_code\)/);
+  assert.match(casePack, /not exists \([\s\S]*exact_label\.company_code = l\.company_code[\s\S]*exact_label\.division_code = l\.division_code/);
   assert.match(casePack, /having count\(distinct d\.carton_qty\) = 1/);
   assert.match(casePack, /and count\(d\.carton_qty\) = count\(\*\)/);
   assert.doesNotMatch(casePack, /limit 1|distinct on|d\.carton_qty > 0/i);

@@ -161,7 +161,7 @@ line_version_winners as (
   -- run id carries no time order — with the run id as the total tiebreak.
   select l.id, l.sales_order_no, l.sales_order_line_no, l.master_item_no,
     l.last_seen_run,
-    l.company_code, l.division_code, l.customer_code, l.po_number,
+    l.company_code, l.division_code, l.label_code, l.customer_code, l.po_number,
     l.sales_person_code1, l.start_date, l.cancel_date, l.line_qty,
     l.warehouse_code, l.line_source_hash,
     rank() over (partition by l.sales_order_no, l.sales_order_line_no
@@ -216,11 +216,11 @@ ordinalled as (
   from winning_components wc
 ),
 case_pack as (
-  -- Case Pack default ← coldlion.item_detail.carton_qty. Keep the exact
-  -- company/division/item scope, including component SKU resolution. Multiple
-  -- item_pkey variants may supply a default only when EVERY row has the same
-  -- non-null carton_qty; choosing a variant or ignoring NULL would hide a
-  -- real conflict. No item identity is selected by this quantity-only lookup.
+  -- Resolve the order's exact item label first, using the COMPONENT label
+  -- for a component and the parent label only for a direct item line. If no
+  -- matching label exists, every variant in the exact company/division/item
+  -- scope must agree. Missing quantities and conflicts remain unknown; this
+  -- quantity-only lookup never selects an arbitrary item identity.
   select l.id as line_id,
          coalesce(nullif(btrim(c.sub_item_no), ''), l.master_item_no) as sku,
          min(d.carton_qty) as carton_qty
@@ -230,6 +230,13 @@ case_pack as (
     on d.company_code = l.company_code
    and d.division_code = l.division_code
    and d.item_no = coalesce(nullif(btrim(c.sub_item_no), ''), l.master_item_no)
+   and (d.label_code = case when nullif(btrim(c.sub_item_no), '') is null then nullif(btrim(l.label_code), '') else nullif(btrim(c.sub_label_code), '') end
+        or not exists (
+          select 1 from coldlion.item_detail exact_label
+          where exact_label.company_code = l.company_code
+            and exact_label.division_code = l.division_code
+            and exact_label.item_no = coalesce(nullif(btrim(c.sub_item_no), ''), l.master_item_no)
+            and exact_label.label_code = case when nullif(btrim(c.sub_item_no), '') is null then nullif(btrim(l.label_code), '') else nullif(btrim(c.sub_label_code), '') end))
   group by l.id, coalesce(nullif(btrim(c.sub_item_no), ''), l.master_item_no)
   having count(distinct d.carton_qty) = 1
      and count(d.carton_qty) = count(*)

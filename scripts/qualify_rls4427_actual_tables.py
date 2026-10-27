@@ -211,10 +211,9 @@ class NativeCI:
             return subprocess.run(argv, env=self.env, timeout=120, check=True, **options)
         except subprocess.CalledProcessError as error:
             detail = error.stderr or ''
-            if isinstance(detail, bytes):
-                detail = detail.decode('utf-8', errors='replace')
+            raw = detail if isinstance(detail, bytes) else detail.encode('utf-8', errors='replace')
             self.diagnostic('command-failure', tool=Path(argv[0]).name,
-                            exit_code=error.returncode, stderr=detail[:4096], truncated=len(detail) > 4096)
+                            exit_code=error.returncode, stderr=raw[:4096].decode('utf-8', errors='replace'), truncated=len(raw) > 4096)
             raise
 
     def docker_read(self, *args):
@@ -231,8 +230,8 @@ class NativeCI:
         image = row.get('Config', {}).get('Image', '')
         if not re.fullmatch(r'[0-9a-f]{64}', cid) or (expected_id and cid != expected_id):
             raise RuntimeError('4427 native container identity changed or invalid')
-        if row.get('Name') != '/supabase_db_shared-db' or labels != {
-                'com.supabase.cli.project': 'shared-db', 'com.docker.compose.project': 'shared-db'}:
+        if row.get('Name') != '/supabase_db_shared-db' or any(labels.get(k) != 'shared-db'
+                for k in ('com.supabase.cli.project', 'com.docker.compose.project')):
             raise RuntimeError('4427 native container name/project custody refused')
         if not state.get('Running') or state.get('Status') != 'running' or state.get('Health', {}).get('Status') != 'healthy':
             raise RuntimeError('4427 native container not healthy and running')
@@ -268,14 +267,22 @@ class NativeCI:
         images = json.loads(self.docker_read('image', 'inspect', identity[1]))
         if len(images) != 1 or images[0].get('Id') != identity[1] or identity[2] not in (images[0].get('RepoTags') or []):
             raise RuntimeError('4427 native image metadata binding refused')
+        inherited = images[0].get('Config', {}).get('Labels') or {}
+        ownership = {'com.supabase.cli.project': 'shared-db', 'com.docker.compose.project': 'shared-db'}
+        if any(k in inherited and inherited[k] != value for k, value in ownership.items()):
+            raise RuntimeError('4427 native image ownership label conflicts')
+        if rows[0]['Config']['Labels'] != {**inherited, **ownership}:
+            raise RuntimeError('4427 container metadata differs from exact immutable image and ownership labels')
         return identity
 
     def container_exec(self, args, input_file=None, output_file=None):
         # No caller-controlled shell, target or arbitrary database executor: fixed callers below only.
+        if (input_file is not None) != (args[0] == 'pg_restore'):
+            raise RuntimeError('4427 only fixed restore may receive archive stdin')
         self.custody()
         argv = ['/usr/bin/docker', '--host', 'unix:///var/run/docker.sock', '--config', self.docker_config,
-                'exec', '-i', '--env', 'PGPASSWORD=postgres', self.container_id, *args]
-        return self.checked(argv, stdin=input_file, stdout=output_file or subprocess.PIPE,
+                'exec', *(['-i'] if input_file is not None else []), '--env', 'PGPASSWORD=postgres', self.container_id, *args]
+        return self.checked(argv, stdin=input_file if input_file is not None else subprocess.DEVNULL, stdout=output_file or subprocess.PIPE,
                             stderr=subprocess.PIPE).stdout
 
     def snapshot(self, template):
@@ -295,11 +302,11 @@ class NativeCI:
             versions = {}
             for tool in ('psql', 'pg_dump', 'pg_restore'):
                 versions['host_' + tool] = self.checked(['/usr/bin/' + tool, '--version'], capture_output=True, text=True).stdout.strip()
-            query = "select json_build_object('system_identifier',(select system_identifier::text from pg_control_system()),'server_version_num',current_setting('server_version_num')::int)::text;"
+            query = "select json_build_object('system_identifier',(select system_identifier::text from pg_control_system()),'server_version_num',current_setting('server_version_num')::int,'postmaster_start',pg_postmaster_start_time()::text,'database',current_database())::text;"
             host = json.loads(self.sql('postgres', query))
             self.diagnostic('host-snapshot-context', versions=versions, server_version_num=host.get('server_version_num'))
             container = json.loads(self.container_exec(['psql', '-XqAtw', '-h', '127.0.0.1', '-p', '5432', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', query]))
-            if host != container or not re.fullmatch(r'[0-9]+', host.get('system_identifier', '')):
+            if host != container or host.get('database') != 'postgres' or not host.get('postmaster_start') or not re.fullmatch(r'[0-9]+', host.get('system_identifier', '')):
                 raise RuntimeError('4427 host/container PostgreSQL instance proof differs')
             major = int(host['server_version_num']) // 10000
             if not image_ref.split(':')[-1].startswith(str(major) + '.'):
@@ -313,10 +320,9 @@ class NativeCI:
                     raise RuntimeError('4427 existing container snapshot client major differs from server')
             self.diagnostic('snapshot-preflight', versions=versions, server_major=major,
                             container_id=self.container_id, image_id=image_id, image_ref=image_ref,
-                            system_identifier=host['system_identifier'])
+                            postgres_context=host)
             archive = Path(temp) / 'fixture.dump'
-            with archive.open('xb') as out:
-                os.chmod(archive, 0o600)
+            with os.fdopen(os.open(archive, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as out:
                 self.container_exec(['pg_dump', '-h', '127.0.0.1', '-p', '5432', '-U', 'postgres', '-d', 'postgres', '-Fc'], output_file=out)
             # No seed is created until custody, same-instance/version checks and full dump succeed.
             self.create(template, 'template0')
@@ -325,7 +331,7 @@ class NativeCI:
                                      '--clean', '--if-exists', '--exit-on-error'], input_file=data)
             with archive.open('rb') as data:
                 archive_sha256 = hashlib.file_digest(data, 'sha256').hexdigest()
-            return dict(versions=versions, server_major=major, container_id=self.container_id,
+            return dict(versions=versions, postgres_context=host, server_major=major, container_id=self.container_id,
                         image_id=image_id, archive_sha256=archive_sha256)
 
     def sql(self, db, query):

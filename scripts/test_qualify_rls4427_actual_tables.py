@@ -183,6 +183,8 @@ class Actual4427StaticTests(unittest.TestCase):
             argv=run.call_args.args[0]
             self.assertEqual(argv[:3],['/usr/bin/docker','--host','unix:///var/run/docker.sock'])
             self.assertIn('a'*64,argv)
+            self.assertNotIn('-i',argv)
+            self.assertEqual(run.call_args.kwargs['stdin'],m.subprocess.DEVNULL)
             row['Id']='c'*64
             with self.assertRaises(RuntimeError):c.container_exec(['pg_dump','--version'])
             self.assertEqual(run.call_count,1)
@@ -190,6 +192,49 @@ class Actual4427StaticTests(unittest.TestCase):
             row['Id']='a'*64
             c.container_image=('sha256:'+'d'*64,c.container_image[1])
             with self.assertRaises(RuntimeError):c.custody()
+
+    def test_image_inherited_metadata_is_exact_and_ownership_may_not_conflict(self):
+        with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
+        row=self.container_row(); image=dict(Id=row['Image'],RepoTags=[row['Config']['Image']],Config=dict(Labels={'org.opencontainers.image.version':'17.6'}))
+        def inspect(*args):return m.json.dumps([image if args[0]=='image' else row])
+        row['Config']['Labels']['org.opencontainers.image.version']='17.6'
+        with patch.object(c,'docker_read',side_effect=inspect):
+            c.custody()
+            row['Config']['Labels']['unexpected']='foreign'
+            with self.assertRaises(RuntimeError):c.custody()
+            del row['Config']['Labels']['unexpected']
+            image['Config']['Labels']['com.supabase.cli.project']='foreign'
+            with self.assertRaises(RuntimeError):c.custody()
+
+    def test_only_restore_receives_stdin_and_interactive_option(self):
+        import io
+        with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
+        c.docker_config='/private';c.container_id='a'*64
+        with patch.object(c,'custody'),patch.object(c,'checked') as run:
+            data=io.BytesIO(b'archive');c.container_exec(['pg_restore','--exit-on-error'],input_file=data)
+            self.assertIn('-i',run.call_args.args[0]);self.assertIs(run.call_args.kwargs['stdin'],data)
+            with self.assertRaises(RuntimeError):c.container_exec(['pg_dump'],input_file=data)
+            with self.assertRaises(RuntimeError):c.container_exec(['pg_restore'])
+            self.assertEqual(run.call_count,1)
+
+    def test_restore_failure_run_finally_drops_owned_seed(self):
+        with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
+        def git(argv,**kw):
+            value=('a'*40) if argv[1]=='rev-parse' else (m.ROOT/argv[2].removeprefix('HEAD:')).read_bytes()
+            return m.subprocess.CompletedProcess(argv,0,stdout=value)
+        def sql(db,query):
+            if '\\! false' in query:raise m.subprocess.CalledProcessError(3,[],stderr='22012')
+            return ''
+        def snapshot(seed):
+            c.owned.append(seed)
+            raise m.subprocess.CalledProcessError(1,['pg_restore'],stderr=b'actual restore failure')
+        def drop(db):c.owned.remove(db);c.cleanup.append(db)
+        with patch.dict(os.environ,self.valid_env(),clear=True),patch.object(m.subprocess,'run',side_effect=git),patch.object(c,'sql',side_effect=sql),patch.object(c,'snapshot',side_effect=snapshot),patch.object(c,'drop',side_effect=drop) as cleanup:
+            with self.assertRaises(m.subprocess.CalledProcessError):c.run()
+            cleanup.assert_called_once_with(c.prefix+'_seed');self.assertEqual(c.owned,[])
+            # Report aliases this exact list and main serializes only after run/finally returns.
+            report={'owned_drop_receipts':c.cleanup}
+            self.assertIn(c.prefix+'_seed',m.json.loads(m.json.dumps(report))['owned_drop_receipts'])
 
     def test_snapshot_rejects_remote_environment_before_any_command(self):
         with patch.dict(os.environ,{**self.valid_env(),'DOCKER_HOST':'tcp://foreign:2375'},clear=True), patch.object(m.subprocess,'run') as run:
@@ -205,14 +250,14 @@ class Actual4427StaticTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError,'Unix Docker endpoint refused'):c.snapshot(c.prefix+'_seed')
                 run.assert_not_called()
 
-    def snapshot_harness(self, major=17, dump_failure=False, restore_failure=False, wrong_instance=False):
+    def snapshot_harness(self, major=17, dump_failure=False, restore_failure=False, wrong_instance=False, wrong_start=False):
         with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
         events=[];identity=('a'*64,'sha256:'+'b'*64,'public.ecr.aws/supabase/postgres:17.6.1.063')
-        context=dict(system_identifier='12345',server_version_num=170006)
+        context=dict(system_identifier='12345',server_version_num=170006,postmaster_start='2026-10-27 10:00:00+00',database='postgres')
         def sql(db,query):return m.json.dumps(context)
         def execute(args,input_file=None,output_file=None):
             events.append(args)
-            if args[0]=='psql':return m.json.dumps({**context,'system_identifier':'999' if wrong_instance else '12345'}).encode()
+            if args[0]=='psql':return m.json.dumps({**context,'system_identifier':'999' if wrong_instance else '12345','postmaster_start':'different-postmaster' if wrong_start else context['postmaster_start']}).encode()
             if args[-1]=='--version':return f'{args[0]} (PostgreSQL) {major}.6\n'.encode()
             if args[0]=='pg_dump':
                 if dump_failure:raise m.subprocess.CalledProcessError(1,args,stderr=b'actual dump failure')
@@ -254,7 +299,7 @@ class Actual4427StaticTests(unittest.TestCase):
         self.assertEqual(result['archive_sha256'],m.hashlib.sha256(b'PGDMP synthetic archive').hexdigest())
 
     def test_wrong_instance_versions_and_dump_fail_before_seed_creation_restore_fails_loudly(self):
-        for options in [dict(major=16),dict(wrong_instance=True),dict(dump_failure=True),dict(restore_failure=True)]:
+        for options in [dict(major=16),dict(wrong_instance=True),dict(wrong_start=True),dict(dump_failure=True),dict(restore_failure=True)]:
             with self.subTest(options=options):
                 c,events,creates,error=self.exercise_snapshot(**options)
                 self.assertIsInstance(error,Exception)

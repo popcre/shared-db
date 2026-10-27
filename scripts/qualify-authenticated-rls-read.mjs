@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import { PRODUCTION_PROJECT_REF } from './lib/designflow-db-catalog.mjs';
 
-const contractPath = new URL('../config/rls-4427-read-qualification.json', import.meta.url);
+const contractPath = new URL('./proofs/4874-read-resource.json', import.meta.url);
 export const RESOURCE = Object.freeze(JSON.parse(fs.readFileSync(contractPath, 'utf8')));
 const EXPECTED_WORKLOADS = [ ['profiles', 200], ['admin_config', 200], ['assets', 1000], ['style_groups', 1000] ];
 export function requireCondition(ok, code) { if (!ok) { const error = new Error(code); error.safeCode = code; throw error; } }

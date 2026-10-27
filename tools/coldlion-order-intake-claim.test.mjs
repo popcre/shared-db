@@ -210,9 +210,9 @@ test("version fan-out resolves by winner selection, never quarantines, and the r
   // The bounded enablement vocabulary (plan B0): --limit bounds the pending
   // orders this run may claim, deterministically by ascending sales order.
   const scope = sql.slice(sql.indexOf("scope as ("), sql.indexOf("winning_lines as ("));
-  assert.match(scope, /where n\.state in \('pending'\)/);
+  assert.match(scope, /where \(n\.state in \('pending'\)\s*or \(n\.state = 'created' and exists/);
   // An explicit --order may re-process a created order (in-place correction).
-  assert.match(singleSql, /where n\.state in \('pending', 'created'\)/);
+  assert.match(singleSql, /where \(n\.state in \('pending', 'created'\)/);
   assert.match(limitedSql, /order by n\.sales_order_no\s*\n\s*limit 5/);
   assert.doesNotMatch(sql, /\n\s*limit 5/);
   // --order targets exactly one sales order (the preview-gate shape).

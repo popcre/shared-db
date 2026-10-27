@@ -142,13 +142,16 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
           COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
-        run: node tools/coldlion-landing/apply-repairs.mjs | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          set -euo pipefail
+          node tools/coldlion-landing/apply-repairs.mjs | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Write canonical placeholder orders
-        # A refused one-time repair turns the run red but never stops intake
-        # (the identity-keyed writer quarantines what it cannot place safely);
-        # the writer still requires a successful stage/decode step.
-        if: ${{ !cancelled() && steps.stage.outcome == 'success' && (success() || steps.repairs.outcome == 'failure') && github.event.inputs.dry_run != 'true' && github.event.inputs.claim_only != 'true' }}
+        # Runs only after a successful repair step (implicit success()): with
+        # unrepaired refs the identity-keyed writer would park every created
+        # order as component-identity-conflict, so a refused repair holds the
+        # writer — red and visible — rather than quarantining the backlog.
+        if: github.event.inputs.dry_run != 'true' && github.event.inputs.claim_only != 'true'
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
           COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai

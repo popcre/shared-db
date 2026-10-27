@@ -61,7 +61,9 @@ do $$ begin
         join plm.production_order_line pl on pl.id = m.placeholder_line and pl.sku = m.sku
         join plm.production_order p on p.id = pl.production_order_id and p.production_order_number = 'COLDLION-SO-7128092') <> 2
   or exists (select 1 from plm.production_order_line_source_ref
-              where source_system = 'coldlion' and source_id = 'coldlion:so:7128092:line:1:component:5') then
+              where source_system = 'coldlion' and source_id = 'coldlion:so:7128092:line:1:component:5')
+  or exists (select 1 from plm.production_order_line_source_ref r join merge_7128092 m on r.production_order_line_id = m.google_line
+              where r.source_system = 'coldlion') then
     raise exception 'SO 7128092 rows are not in the verified shape; nothing written';
   end if;
 end $$;

@@ -137,7 +137,11 @@ async function main() {
     runSql(`select pg_notify('coldlion_sync_alert', 'ColdLion intake: ${Number(identityQuarantined)} order(s) quarantined as component-identity-conflict');`, {});
   }
   if (guard === undefined || [missing, duplicate, skuMismatch, withoutIdentity].some((v) => v !== "0")) {
-    throw new Error(`component identity guard failed: ${sample || "no summary row"}`);
+    const error = new Error(`component identity guard failed: ${sample || "no summary row"}`);
+    // Durable like every other failure: the run's sync_run row gains the
+    // failure note and the coldlion_sync_alert fires.
+    if (options.write) runSql(buildWriteFailureSql({ runId, error, startedAt }), {});
+    throw error;
   }
 }
 

@@ -118,6 +118,30 @@ export function buildWriteSql({ runId, write = false, limit = null, order = null
   // writer fix can correct its existing lines in place (every UPDATE stays
   // IS DISTINCT FROM guarded; the state transitions stay pending-only).
   const scopeStates = order !== null ? "('pending', 'created')" : "('pending')";
+  // A created order also re-enters scope, explicitly or not, whenever its
+  // latest staged components are not all carried by an identity-matching
+  // ref — a component ColdLion added after creation (SO 7128092, 2026-10-26)
+  // is minted on the next hourly run instead of waiting for a manual --order.
+  const incompleteCreated = `
+    or (n.state = 'created' and exists (
+      select 1
+      from (select l.id, l.sales_order_line_no, l.master_item_no,
+                   rank() over (partition by l.sales_order_line_no
+                                order by r.started_at desc nulls last, l.last_seen_run desc) as run_rank
+            from coldlion.intake_order_line l
+            left join coldlion.sync_run r on r.id = l.last_seen_run
+            where l.sales_order_no = n.sales_order_no
+              and l.division_code is distinct from 'EP001') lv
+      join coldlion.intake_order_component c on c.line_id = lv.id
+      where lv.run_rank = 1
+        and not exists (
+          select 1 from plm.production_order_line_source_ref r
+          where r.source_system = 'coldlion'
+            and r.source_id like 'coldlion:so:' || n.sales_order_no::text || ':line:'
+                                 || lv.sales_order_line_no::text || ':component:%'
+            and r.metadata ->> 'master_item_no' = lv.master_item_no
+            and r.metadata ->> 'sub_item_no' is not distinct from nullif(c.sub_item_no, '')
+            and r.metadata ->> 'sub_label_code' is not distinct from nullif(c.sub_label_code, ''))))`;
   const scopeLimit = limit !== null ? `\n  limit ${sqlNumber(limit)}` : "";
   return `begin;
 
@@ -134,7 +158,7 @@ on conflict (id) do nothing;
 with scope as (
   select n.sales_order_no, n.warehouse_code
   from coldlion.intake_new_order n
-  where n.state in ${scopeStates}
+  where (n.state in ${scopeStates}${incompleteCreated})
     -- The table check refuses sales_order_no = 0 outright; this predicate is
     -- defence in depth so a relaxed future constraint can never mint
     -- COLDLION-SO-0, whose header ref would collapse every zero-SO row onto
@@ -763,6 +787,8 @@ refs as (
   join plm.production_order_line pl on pl.id = r.production_order_line_id
   where r.source_system = 'coldlion'
     and r.source_id ~ '^coldlion:so:[0-9]+:line:[0-9]+:component:[0-9]+$'
+    and split_part(r.source_id, ':', 3)::bigint in
+        (select sales_order_no from coldlion.intake_new_order where state = 'created')
 ),
 checked as (
   select s.*, count(f.source_id) as refs,

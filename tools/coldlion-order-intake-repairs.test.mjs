@@ -33,14 +33,15 @@ test("the component-identity repair never stores a null identity", () => {
   assert.match(sql, /metadata ->> 'master_item_no' is null\) then\s*raise exception/);
 });
 
-test("the workflow applies repairs before the writer, skips them on dry-run/claim-only, and never lets them stop intake", () => {
+test("the workflow applies repairs before the writer, skips them on dry-run/claim-only, and holds the writer when a repair fails", () => {
   const yml = readFileSync(new URL("../.github/workflows/coldlion-order-intake.yml", import.meta.url), "utf8");
   const repairs = yml.indexOf("name: Apply one-time ColdLion data repairs");
   const writer = yml.indexOf("name: Write canonical placeholder orders");
   assert.ok(repairs > 0 && writer > repairs);
   assert.match(yml.slice(repairs, writer), /dry_run != 'true' && github\.event\.inputs\.claim_only != 'true'/);
-  assert.match(yml.slice(repairs, writer), /node tools\/coldlion-landing\/apply-repairs\.mjs/);
-  assert.match(yml.slice(writer), /steps\.stage\.outcome == 'success' && \(success\(\) \|\| steps\.repairs\.outcome == 'failure'\)/);
+  assert.match(yml.slice(repairs, writer), /set -euo pipefail\s*node tools\/coldlion-landing\/apply-repairs\.mjs/);
+  const writerIf = yml.slice(writer).match(/\n\s+if: (.*)/)[1];
+  assert.doesNotMatch(writerIf, /always\(\)|cancelled\(\)|failure\(\)/);
 });
 
 test("the PostgreSQL 17 behavioural test is registered in CI", () => {

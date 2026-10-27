@@ -54,6 +54,7 @@ create table plm.production_order_line (id uuid primary key default gen_random_u
   updated_at timestamptz default now(), unique (source_system, source_id));
 create table plm.production_order_line_source_ref (production_order_line_id uuid, source_system text,
   source_id text, is_primary boolean, metadata jsonb, unique (source_system, source_id));
+create unique index production_order_line_source_ref_primary_uidx on plm.production_order_line_source_ref (production_order_line_id, source_system) where is_primary;
 insert into coldlion.routing_code_map values ('W1', 'Import', 'Ross DC');
 insert into plm.erp_customer values ('ROSS', '00000000-0000-0000-0000-0000000000aa', true);
 `;
@@ -155,4 +156,18 @@ test("a ref whose recorded identity is null counts as no identity, never as a ma
          where source_id like '%:component:1';`);
   const guard = psql(buildIdentityGuardSql()).split("|");
   assert.equal(guard[3], "1");
+});
+
+test("an hourly run (no --order) mints a component ColdLion added to an already-created order", { skip: !container }, () => {
+  psql(`update plm.production_order_line_source_ref set metadata = metadata || '{"master_item_no": "AA06301"}'::jsonb
+         where source_id like '%:component:1';
+update coldlion.intake_new_order set state = 'created';
+insert into coldlion.intake_order_component (line_id, sub_item_no, order_qty, component_source_hash, last_seen_run)
+select l.id, 'AA0631P1P03', 24, 'hash-new', l.last_seen_run from coldlion.intake_order_line l
+ where l.sales_order_no = ${SO} order by (select started_at from coldlion.sync_run where id = l.last_seen_run) desc limit 1;`);
+  write();
+  assert.ok(linesBySku().some((l) => l.startsWith(`AA0631P1P03@COLDLION-SO-${SO}#coldlion:so:${SO}:line:1:component:`)));
+  const guard = psql(buildIdentityGuardSql()).split("|");
+  assert.deepEqual(guard.slice(0, 4), ["0", "0", "0", "0"]);
+  assert.equal(psql(`select state from coldlion.intake_new_order where sales_order_no = ${SO}`), "created");
 });

@@ -39,13 +39,18 @@ begin
     join coldlion.intake_order_component c on c.line_id = h.id
       and c.sub_item_no = l.sku and c.component_source_hash = l.component_hash
     group by l.order_line_id
+  ), catalog_items as materialized (
+    -- The source index orders division before item number. Scan the company
+    -- once instead of repeating a partial-index scan for every requested SKU.
+    select i.item_no, i.company_code, i.division_code, i.pre_pack_code
+    from coldlion.item_detail i
+    where i.company_code = 'EDGEHOME' and nullif(btrim(i.pre_pack_code), '') is not null
   ), heads as materialized (
     -- Resolve the whole manifest first. Multiple pack codes or divisions abstain,
     -- even when just one of those recipes happens to contain the requested SKU.
     select distinct i.item_no, i.company_code, i.division_code, i.pre_pack_code
-    from coldlion.item_detail i
-    where i.company_code = 'EDGEHOME' and nullif(btrim(i.pre_pack_code), '') is not null
-      and i.item_no in (select l.assortment_id from lines l where l.coldlion_source_id is null)
+    from catalog_items i
+    where i.item_no in (select l.assortment_id from lines l where l.coldlion_source_id is null)
   ), unique_heads as materialized (
     select h.item_no, min(h.company_code) as company_code,
       min(h.division_code) as division_code, min(h.pre_pack_code) as pre_pack_code

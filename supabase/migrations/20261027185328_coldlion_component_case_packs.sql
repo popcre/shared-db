@@ -1,4 +1,4 @@
--- ColdLion component pack meaning and once-per-carton tracking, #4858 / claim #4860.
+-- ColdLion component pack meaning and once-per-carton tracking, #4858 / claim #4927 (supersedes retired claim #4860 and version 20261027010036).
 -- derived-from: 20261019113819
 -- The tracking view body is re-derived from 20261009073649, already required by
 -- 20261019113819. No columns, grants or security modes change.
@@ -186,4 +186,3 @@ left join dam.dam_order_list_customer_directory cust on cust.customer_id=po.comp
 left join dam.dam_order_list_vendor_directory fact on fact.vendor_id=po.factory_id
 left join dam.order_tracking_ext ext on ext.order_id=po.id
 where not (coalesce(po.source_system='coldlion',false) and coalesce(po.production_order_number like 'coldlion/%',false));
-

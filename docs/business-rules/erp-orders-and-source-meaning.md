@@ -203,11 +203,14 @@ defect):
   `cartonPackType` and carton dimensions/weight, with real varying values (1, 4, 7 observed).
   Auto-fill as the item default; the sheet's line-level exceptions (380 text/multiline cells in
   the historical profile) stay human.
-  **Settled — Albert Hazan, 2026-10-26:** for an assortment component, Case Pack
-  means "Pieces of that design per carton" (verbatim answer in the owner chat).
-  Use the component's manifest quantity, not the whole assortment's carton size
-  or its standalone item default. Physical cartons are counted once across the
-  designs packed together. Existing explicit line-level exceptions remain inputs.
+  **Settled — Albert Hazan, 2026-10-27 (relaying Yuchen), superseding the
+  2026-10-26 per-design reading:** "It Should show the total total pieces in the
+  whole carton." For every component of an assortment, Case Pack is the whole
+  physical carton's piece count (the parent line's ColdLion `prepackQty`), the
+  same value on every member. Cartons are the parent line quantity divided by
+  that total, counted once per physical parent. Missing or conflicting totals
+  stay unknown; fully cancelled lines keep their saved history. Existing
+  explicit line-level exceptions remain inputs.
 
 - **FOB point is a production-order detail (Albert, 2026-09-17), and `/prodtracking` is where
   the ERP keeps it — but the specific port is not populated today.** `/prodtracking` is the

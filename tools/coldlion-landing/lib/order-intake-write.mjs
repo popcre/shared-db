@@ -163,6 +163,7 @@ line_version_winners as (
     l.last_seen_run,
     l.company_code, l.division_code, l.label_code, l.customer_code, l.po_number,
     l.sales_person_code1, l.start_date, l.cancel_date, l.line_qty,
+    l.prepack_qty, l.pre_pack_code, l.line_cancelled_qty,
     l.warehouse_code, l.line_source_hash,
     rank() over (partition by l.sales_order_no, l.sales_order_line_no
                  order by r.started_at desc nulls last, l.last_seen_run desc) as run_rank
@@ -179,9 +180,9 @@ winning_lines as (
   -- share one (sales_order_no, sales_order_line_no) — prepack siblings or
   -- several master items — and each keeps its own component slot below.
   select w.id, w.sales_order_no, w.sales_order_line_no, w.master_item_no,
-    w.company_code, w.division_code, w.customer_code, w.po_number,
+    w.company_code, w.division_code, w.label_code, w.customer_code, w.po_number,
     w.sales_person_code1, w.start_date, w.cancel_date, w.line_qty,
-    w.warehouse_code, w.line_source_hash
+    w.prepack_qty, w.pre_pack_code, w.line_cancelled_qty, w.warehouse_code, w.line_source_hash
   from line_version_winners w
   where w.run_rank = 1
 ),
@@ -242,18 +243,28 @@ case_pack as (
   having count(distinct d.carton_qty) = 1
      and count(d.carton_qty) = count(*)
   union all
-  -- Owner ruling 2026-10-26: Case Pack means pieces of THIS design per
-  -- carton. ColdLion component.quantity is that per-carton manifest value;
-  -- carton_qty on the standalone item and the parent prepackQty are different.
+  -- Owner ruling 2026-10-27 (relaying Yuchen): "It Should show the total
+  -- total pieces in the whole carton." Every component of an assortment
+  -- carries the WHOLE physical carton's piece count: the parent line's
+  -- ColdLion prepackQty. When the assortment master item's exact prepack
+  -- variant also records carton_qty, every such value must agree; missing,
+  -- nonpositive or conflicting totals stay unknown (never guessed/divided).
   select l.id as line_id, nullif(btrim(c.sub_item_no), '') as sku,
-         min(c.quantity) as carton_qty
+         min(l.prepack_qty) as carton_qty
   from winning_lines l
   join ordinalled c on c.line_id = l.id
   where nullif(btrim(c.sub_item_no), '') is not null
+    and l.prepack_qty > 0
+    and not (l.line_qty > 0 and coalesce(l.line_cancelled_qty, 0) >= l.line_qty)
+    and not exists (
+      select 1 from coldlion.item_detail m
+      where m.company_code = l.company_code
+        and m.division_code = l.division_code
+        and m.item_no = l.master_item_no
+        and m.pre_pack_code is not distinct from nullif(btrim(l.pre_pack_code), '')
+        and m.carton_qty is not null
+        and m.carton_qty is distinct from l.prepack_qty)
   group by l.id, nullif(btrim(c.sub_item_no), '')
-  having count(distinct c.quantity) = 1
-     and count(c.quantity) = count(*)
-     and min(c.quantity) > 0
 ),
 customer_ref as (
   -- Customer resolution FIRST: core.company_source_ref (source_system
@@ -443,6 +454,9 @@ canonical_lines as (
          o.component_ordinal, o.component_source_hash,
          nullif(ltrim(regexp_replace(wl.po_number, '^[[:space:]]+|[[:space:]]+$', '', 'g'), '0'), '') as po_number_normalized,
          m.order_type, m.ship_to, cp.carton_qty as case_pack,
+         -- A fully cancelled line is history: its saved Case Pack is never
+         -- rewritten by a later item-master or prepack change.
+         (wl.line_qty > 0 and coalesce(wl.line_cancelled_qty, 0) >= wl.line_qty) as line_fully_cancelled,
          ah.production_order_id,
          'coldlion:so:' || wl.sales_order_no::text || ':line:'
            || wl.sales_order_line_no::text || ':component:'
@@ -555,7 +569,7 @@ line_updates as (
          customer_po_number = cl.po_number,
          assortment_id = cl.assortment_id,
          assortment_component_ordinal = cl.assortment_component_ordinal,
-         case_pack = cl.case_pack,
+         case_pack = case when cl.line_fully_cancelled then pl.case_pack else cl.case_pack end,
          ship_to = cl.ship_to,
          start_ship_date = cl.start_date,
          cancel_date = cl.cancel_date,
@@ -578,7 +592,8 @@ line_updates as (
          (cl.production_order_id, cl.sales_order_line_no::text, cl.sku,
           cl.quantity_ordered, cl.sales_person_code1, cl.order_type,
           cl.po_number, cl.assortment_id, cl.assortment_component_ordinal,
-          cl.case_pack, cl.ship_to, cl.start_date, cl.cancel_date,
+          case when cl.line_fully_cancelled then pl.case_pack else cl.case_pack end,
+          cl.ship_to, cl.start_date, cl.cancel_date,
           jsonb_build_object(
             'line_qty', cl.line_qty,
             'po_number_normalized', cl.po_number_normalized,
@@ -880,6 +895,8 @@ export const WRITE_REQUIRED_COLUMNS = Object.freeze([
   { schema: "coldlion", table: "item_detail", column: "item_no" },
   { schema: "coldlion", table: "item_detail", column: "item_pkey" },
   { schema: "coldlion", table: "item_detail", column: "carton_qty" },
+  { schema: "coldlion", table: "item_detail", column: "pre_pack_code" },
+  { schema: "coldlion", table: "item_detail", column: "label_code" },
   // Every staging column the winner selection reads (Phase B specs).
   ...INTAKE_READ_COLUMNS,
 ]);

@@ -276,15 +276,16 @@ parent label for a direct item line), when that exact label exists. Otherwise
 all variants in the exact item scope must agree. Multiple item variants can supply a default
 when all rows have the same non-null `carton_qty`. A missing quantity or a
 conflict leaves the default NULL; the writer never selects an arbitrary variant
-or substitutes an assortment parent's quantity for a component's default.
+for a direct item line.
 This does not change item linking, source identities, or line-level exceptions.
 Existing blanks require a separate exact-preimage, blank-only application repair;
 do not replay entire orders to fill case pack.
 
-For assortment components, the owner's 2026-10-26 ruling uses ColdLion
-`quantity` (pieces of that design per carton). `order_qty` is the ordered
-quantity of that design, and `prepackQty` is the whole assortment pack; neither
-is a substitute. Nonpositive, missing or conflicting component manifest values
-remain unknown. Source-only ColdLion components share a physical-parent key in
-OrderList and PO tracking, so equal per-component carton counts are counted once.
+For assortment components, the owner's 2026-10-27 ruling ("total pieces in the
+whole carton") uses the parent line's ColdLion `prepackQty` on every component.
+When the master item's exact prepack variant records `carton_qty`, it must
+agree. Missing, nonpositive or conflicting totals remain unknown, and a fully
+cancelled line's saved Case Pack is never rewritten. Source-only ColdLion
+components share a physical-parent key in OrderList and PO tracking, so the
+parent's cartons (line quantity / whole-carton pack) are counted once.
 Google/manual assortment exceptions retain their existing source rules.

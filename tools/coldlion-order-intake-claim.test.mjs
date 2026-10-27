@@ -353,10 +353,14 @@ test("case pack default: exact source label before unanimous non-null variant de
   assert.match(casePack, /and count\(d\.carton_qty\) = count\(\*\)/);
   assert.doesNotMatch(casePack, /limit 1|distinct on|d\.carton_qty > 0/i);
   assert.match(casePack, /where nullif\(btrim\(c\.sub_item_no\), ''\) is null[\s\S]*union all/);
-  assert.match(casePack, /min\(c\.quantity\) as carton_qty/);
-  assert.match(casePack, /having count\(distinct c\.quantity\) = 1/);
-  assert.match(casePack, /and count\(c\.quantity\) = count\(\*\)/);
-  assert.match(casePack, /and min\(c\.quantity\) > 0/);
+  // Owner 2026-10-27: an assortment component's Case Pack is the WHOLE
+  // carton's piece count (parent prepackQty), never the per-design quantity.
+  assert.match(casePack, /min\(l\.prepack_qty\) as carton_qty/);
+  assert.match(casePack, /and l\.prepack_qty > 0/);
+  assert.doesNotMatch(casePack, /c\.quantity/);
+  assert.match(casePack, /m\.item_no = l\.master_item_no[\s\S]*m\.pre_pack_code is not distinct from[\s\S]*m\.carton_qty is distinct from l\.prepack_qty/);
+  assert.match(casePack, /coalesce\(l\.line_cancelled_qty, 0\) >= l\.line_qty/);
+  assert.match(sql, /case_pack = case when cl\.line_fully_cancelled then pl\.case_pack else cl\.case_pack end/);
   // order_depth_inches stays NULL: Albert's 2026-09-17 input-column list
   // omits col 18 and the writer must not "complete" it.
   assert.doesNotMatch(sql, /order_depth_inches/);

@@ -1,4 +1,5 @@
 -- #4936: link CRM ingested email domains to the customer they belong to.
+-- derived-from: 20260629034600
 --
 -- Owner (Albert Hazan, 2026-10-27): "they need to be linked" (CRM email
 -- domains and customers). This supersedes the "no customer association"

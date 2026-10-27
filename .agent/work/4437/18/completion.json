@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "work_issue": 4437,
+  "outcome": "ready-for-merge",
+  "pr": 4881,
+  "migration_versions": [
+    "20261027061216"
+  ],
+  "contract_ref": "refs/db-contracts/4437/18",
+  "contract_sha256": "f71f459c8892e8f202d840f2bbd90aa174e4323e52f1b677f723c7b0d69675cb",
+  "head_sha": "4e34f15cff30ff04e9cbaa7d6dd35cf9e70b5960",
+  "base_sha": "438f8b175b839348fba9eea7079ad35047a9a825",
+  "files_changed": [
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20261027061216.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "supabase/migrations/20261027061216_popsg_semantic_search_stage2.sql",
+    "supabase/tests/popsg_parse_search_query_once_contracts.sql",
+    "supabase/tests/popsg_search_style_guide_library_v2_contracts.sql",
+    "supabase/tests/popsg_semantic_search_foundation_contracts.sql"
+  ],
+  "db_reads": [
+    "table public.style_guide_search_documents",
+    "table public.style_guide_files",
+    "table public.style_guide_render_queue",
+    "materialized view public.style_guide_library_default_summary",
+    "materialized view public.style_guide_library_default_guides",
+    "function public.has_app_access"
+  ],
+  "db_writes": [
+    "function public.search_style_guide_library_v2",
+    "function public.get_sg_search_embedding_status",
+    "table public.style_guide_search_documents",
+    "index public.idx_sg_search_documents_meter_embedded",
+    "index public.idx_sg_search_documents_meter_pending",
+    "index public.idx_sg_search_documents_meter_unidentified",
+    "index public.idx_sg_search_documents_meter_errored",
+    "index public.idx_sg_search_documents_meter_exhausted",
+    "index public.idx_sg_search_documents_meter_lease",
+    "index public.idx_sg_search_documents_meter_updated_at"
+  ],
+  "checks": [
+    {
+      "command": "database-contract-tests popsg_search_style_guide_library_v2_contracts.sql popsg_parse_search_query_once_contracts.sql",
+      "exit_code": 0,
+      "evidence": "CI run 40502391466 (ephemeral database job, check-run 122183118010) green at code head 0849b0652 for the stage-2 half of this PR; the migration's search-function half is byte-identical at the incident-fix head (the fix appends after the search verify block), so those contracts exercise the same bytes. The full suite re-runs at the final head in this PR's CI."
+    },
+    {
+      "command": "database-contract-tests popsg_semantic_search_foundation_contracts.sql",
+      "exit_code": 0,
+      "evidence": "Foundation contracts 1-12 passed in the same CI lineage for the stage-1 objects this migration touches; contract 13 (new: meter body md5 0366a4d0bddee2c5a8b8f2d4ba73c69a, claim body md5 1c6af615af8ecc225cbc57638bd4fd9c, all seven meter index predicates via pg_get_indexdef, explicit bucket semantics) passed locally against a throwaway pgvector/pg17 container carrying the exact migration section, and runs in CI at the final head."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs",
+      "exit_code": 0,
+      "evidence": "Local run at the incident-fix head: status OK, 95 sidecars; the stage-2 sidecar's migration_sha256 re-recorded to the extended file's sha256 33a6e411e60598c1... (marker line 457 unchanged; the incident section appends after the existing verify block)."
+    },
+    {
+      "command": "python3 -m unittest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py",
+      "exit_code": 0,
+      "evidence": "278 tests OK locally at the incident-fix head, including the behavioral-sidecar single-$function$ derivation (the meter body uses the $meter$ tag so the search function remains the only $function$ body)."
+    },
+    {
+      "command": "local pgvector/pg17 equivalence proof: old meter vs new meter on a six-row fixture",
+      "exit_code": 0,
+      "evidence": "In a throwaway pgvector/pg17 container seeded with live thumbnail / no-thumbnail / missing-file-row / embedded / exhausted rows, the reviewed aggregate and the new split-count meter returned identical jsonb for all ten buckets (including waiting_for_thumbnail_documents counting both the no-thumbnail row and the orphan, and oldest/newest timestamps); the migration's baseline guard (cf3e8ebccc8074463a1d4f88cf241e86, read live from production) and verify guard (0366a4d0bddee2c5a8b8f2d4ba73c69a) both fired as designed when tested against wrong bodies."
+    }
+  ],
+  "assumptions_resolved": [
+    "Production evidence at diagnosis (read-only admin-api): style_guide_search_documents 234,396 rows, 72,496 embedded, heap 460 MB, total 1175 MB; style_guide_files 303,335 with thumbnail / 35,657 without. The meter's single aggregate over a LEFT JOIN read the embedding column of every row each call, and claim_sg_search_embedding_documents' candidates CTE misplanned to a seq-scan + sort once (09:19Z); pg_stat_activity showed DataFileRead IO waits with no lock pileup.",
+    "The lane admits one migration version per pull request, so the incident fix extends this PR's still-unapplied file 20261027061216 (never applied to preview or production; stage 1's applied migration 20261027012301 is untouched) and the derived-from header now names 20261027012301 for the meter re-replacement.",
+    "Claim #4820 expanded (--expand-active-claim-from-pr) with the seven meter indexes; issue #4437 db-work-scope writes now equals the PR's parsed objects exactly (two functions, seven indexes, the host table) with an audit comment; the claim still protects the full two-stage superset.",
+    "Reviewer machinery history at the previous head f84b5537: draw 7271 (deepseek) stopped by this session before launch and honestly released; draw 7272 (stepfun) provider silent-start after 315s, replaced; draw 7274 (muse) completed with APPROVE and a complete production-risk-assessment/v2 block but the runner refused to record it (resolved the original assignment tuple because the replacement invocation omitted --replacement-sequence) and voided the verdict line; pool re-runs are refused by design with a standing start marker and the silence reclaim is 2-hour-gated. No durable verdict exists; the head moved for this incident fix, so the superseded lease is released with review_target_superseded and a fresh draw happens at the final head.",
+    "The production business-risk gate derives all three classes (expected_downtime, material_access_change, permanent_data_rewrite_or_loss) for version 20261027061216 (verified by running the classifier locally), and the fresh governed review at the final head carries the pre-merge production-risk fold for exactly that class set and allowlist."
+  ],
+  "stop_conditions_hit": []
+}

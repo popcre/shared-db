@@ -1816,7 +1816,7 @@ class BehavioralSidecarTests(unittest.TestCase):
         # hourly cron path carries the content-identity invariant). The newest
         # body wins for each pin: trigger = rederived body 1, 2-arg refresh =
         # rederived body 3 (the delegating wrapper).
-        rederived = Path(__file__).resolve().parents[1] / "supabase/migrations/20261026162917_popsg_semantic_search_foundation.sql"
+        rederived = Path(__file__).resolve().parents[1] / "supabase/migrations/20261027012301_popsg_semantic_search_foundation.sql"
         rederived_body = rederived.read_bytes().replace(b"\r\n", b"\n").decode().split("$function$")
         self.assertEqual(len(rederived_body), 9, "#4437 migration must define exactly four $function$ bodies (trigger, 3-arg, scheduled 2-arg, await re-pin)")
         self.assertIn("md5(p.prosrc)='" + hashlib.md5(rederived_body[1].encode()).hexdigest() + "'", sql)

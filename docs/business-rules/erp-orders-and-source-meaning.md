@@ -515,10 +515,19 @@ The reported five-piece version uses Dim Code 5; the other reported version is
 nine pieces. This is authority for those variants, not a rule that all Dim Codes
 are numbers equal to the case pack.
 
+**Correction — JamieLynn, relayed by Albert Hazan, 2026-10-27; supersedes
+interpreting the earlier two versions as two active order lines.** JamieLynn
+clarified that the original three-piece line was fully cancelled and replaced
+by the five-piece variant; a different, similarly numbered style is the
+nine-piece active line. She reports an EDI 860 dated 2026-07-31 corrected that
+style. The supplied line-level explanation is the business authority; an EDI
+multiplier remains a tentative explanation from the earlier, confused account.
+
 **Verified implementation evidence, not additional business authority —
 2026-10-27, direct API recheck at 12:11 PM EDT.** The live item-details response
-shows the five-piece record with Dim Code 5 and the corrected nine-piece record
-with blank Dim Code. Both report an inner-pack quantity of one. The production
+shows the five-piece record with Dim Code 5 and a currently nine-piece record
+with blank Dim Code. Those current item-master values do not establish the
+historical pack on an order or whether that line is still active. Both report an inner-pack quantity of one. The production
 details response links the checked production line to the five-piece record and
 Dim Code 5. A saved landing snapshot still showed the earlier value of three.
 Keep transaction identifiers and raw responses in approved private evidence;
@@ -543,7 +552,13 @@ alongside pack variant and source freshness. Do not automatically multiply or
 divide case packs, inner packs, or ordered units, or infer three inners from
 nine divided by three. The reported three inners are not confirmed by the API's
 inner-pack quantity of one. A vendor defect, a universal Dim Code convention,
-and the mapping of both sales-order lines remain unproven.
+remain unproven. The saved order intake pulled on 2026-10-23 already shows
+the obsolete line fully cancelled and no pick/invoice reference for it, while
+the active lines have matching shipped/invoiced quantities and references.
+Those references are carried by order history; they are not an independent
+pick-ticket payload comparison. Check cancellation and replacement before
+matching variants or counting an unresolved case pack. A current item-master
+change must not rewrite a cancelled historical line by inference.
 
 
 **Status: Settled where marked; the two Unknowns are named explicitly.** Built from ColdLion's own

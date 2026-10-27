@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """4427-only actual-table qualification inside the existing ephemeral DB CI.
 
-No connection options, Docker, downloaded code or live data. Each timed statement
+No connection options, downloaded code or live data. Only two fixed snapshot operations
+use matching tools in the strictly verified existing native CI database container. Each timed statement
 gets a new physical TEMPLATE clone; rollback is never treated as heap restoration.
 """
 import hashlib
@@ -10,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import statistics
+import stat
 import subprocess
 import sys
 import tempfile
@@ -195,11 +197,136 @@ class NativeCI:
         self.prefix = 'rls4427_' + uuid.uuid4().hex[:12]
         self.owned = []
         self.started = time.monotonic()
+        self.cleanup = []
 
     def command(self, tool, db, *args, input_text=None, binary=False):
         cmd = [tool, '-h', '127.0.0.1', '-p', '54322', '-U', 'postgres', '-d', db, *args]
-        return subprocess.run(cmd, input=input_text, capture_output=True, text=not binary,
-                              env=self.env, timeout=120, check=True).stdout
+        return self.checked(cmd, input=input_text, capture_output=True, text=not binary).stdout
+
+    def diagnostic(self, kind, **facts):
+        print(json.dumps(dict(qualification_diagnostic=kind, **facts), sort_keys=True), file=sys.stderr)
+
+    def checked(self, argv, **options):
+        try:
+            return subprocess.run(argv, env=self.env, timeout=120, check=True, **options)
+        except subprocess.CalledProcessError as error:
+            detail = error.stderr or ''
+            if isinstance(detail, bytes):
+                detail = detail.decode('utf-8', errors='replace')
+            self.diagnostic('command-failure', tool=Path(argv[0]).name,
+                            exit_code=error.returncode, stderr=detail[:4096], truncated=len(detail) > 4096)
+            raise
+
+    def docker_read(self, *args):
+        return self.checked(['/usr/bin/docker', '--host', 'unix:///var/run/docker.sock',
+            '--config', self.docker_config, *args], capture_output=True, text=True).stdout
+
+    @staticmethod
+    def validate_container(row, expected_id=None):
+        cid = row.get('Id', '')
+        labels = row.get('Config', {}).get('Labels', {})
+        state = row.get('State', {})
+        host = row.get('HostConfig', {})
+        network = row.get('NetworkSettings', {})
+        image = row.get('Config', {}).get('Image', '')
+        if not re.fullmatch(r'[0-9a-f]{64}', cid) or (expected_id and cid != expected_id):
+            raise RuntimeError('4427 native container identity changed or invalid')
+        if row.get('Name') != '/supabase_db_shared-db' or labels != {
+                'com.supabase.cli.project': 'shared-db', 'com.docker.compose.project': 'shared-db'}:
+            raise RuntimeError('4427 native container name/project custody refused')
+        if not state.get('Running') or state.get('Status') != 'running' or state.get('Health', {}).get('Status') != 'healthy':
+            raise RuntimeError('4427 native container not healthy and running')
+        if host.get('Privileged') is not False or host.get('PidMode', '') or host.get('Devices') or host.get('CapAdd') or host.get('NetworkMode') != 'supabase_network_shared-db' or host.get('IpcMode', '') not in ('', 'private') or host.get('UTSMode', '') or host.get('SecurityOpt'):
+            raise RuntimeError('4427 native container elevated host access refused')
+        if host.get('Binds') != ['supabase_db_shared-db:/var/lib/postgresql/data'] or host.get('Mounts') or host.get('VolumesFrom'):
+            raise RuntimeError('4427 native container unexpected host mount refused')
+        mounts = row.get('Mounts', [])
+        if len(mounts) != 1 or any(mounts[0].get(k) != v for k, v in
+                dict(Type='volume', Name='supabase_db_shared-db', Destination='/var/lib/postgresql/data', RW=True).items()):
+            raise RuntimeError('4427 native container volume custody refused')
+        if set(network.get('Networks', {})) != {'supabase_network_shared-db'}:
+            raise RuntimeError('4427 native container network custody refused')
+        expected_ports = {'5432/tcp'}
+        for mapping in (host.get('PortBindings', {}), network.get('Ports', {})):
+            ports = mapping.get('5432/tcp') or []
+            if set(mapping) != expected_ports or not ports or any(p.get('HostPort') != '54322' or
+                    p.get('HostIp', '') not in ('', '0.0.0.0', '::', '127.0.0.1', '::1') for p in ports):
+                raise RuntimeError('4427 native container loopback target port mapping refused')
+        if not re.fullmatch(r'public\.ecr\.aws/supabase/postgres:[A-Za-z0-9_.-]+', image):
+            raise RuntimeError('4427 native CLI postgres image family refused')
+        if not re.fullmatch(r'sha256:[0-9a-f]{64}', row.get('Image', '')):
+            raise RuntimeError('4427 native container immutable image identity refused')
+        return cid, row['Image'], image
+
+    def custody(self):
+        rows = json.loads(self.docker_read('inspect', '--type', 'container', 'supabase_db_shared-db'))
+        if not isinstance(rows, list) or len(rows) != 1:
+            raise RuntimeError('4427 native container cardinality refused')
+        identity = self.validate_container(rows[0], getattr(self, 'container_id', None))
+        if hasattr(self, 'container_image') and identity[1:] != self.container_image:
+            raise RuntimeError('4427 native container image changed')
+        images = json.loads(self.docker_read('image', 'inspect', identity[1]))
+        if len(images) != 1 or images[0].get('Id') != identity[1] or identity[2] not in (images[0].get('RepoTags') or []):
+            raise RuntimeError('4427 native image metadata binding refused')
+        return identity
+
+    def container_exec(self, args, input_file=None, output_file=None):
+        # No caller-controlled shell, target or arbitrary database executor: fixed callers below only.
+        self.custody()
+        argv = ['/usr/bin/docker', '--host', 'unix:///var/run/docker.sock', '--config', self.docker_config,
+                'exec', '-i', '--env', 'PGPASSWORD=postgres', self.container_id, *args]
+        return self.checked(argv, stdin=input_file, stdout=output_file or subprocess.PIPE,
+                            stderr=subprocess.PIPE).stdout
+
+    def snapshot(self, template):
+        if any(k.startswith('DOCKER_') and v for k, v in os.environ.items()):
+            raise RuntimeError('4427 Docker environment/context override refused')
+        endpoint = Path('/var/run/docker.sock')
+        info = endpoint.stat()
+        if str(endpoint.resolve()) not in ('/run/docker.sock', '/var/run/docker.sock') or not stat.S_ISSOCK(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o007:
+            raise RuntimeError('4427 local root-owned Unix Docker endpoint refused')
+        with tempfile.TemporaryDirectory(prefix='rls4427-dump-') as temp:
+            os.chmod(temp, 0o700)
+            self.docker_config = str(Path(temp) / 'docker-config')
+            Path(self.docker_config).mkdir(mode=0o700)
+            identity = self.custody()
+            self.container_id, image_id, image_ref = identity
+            self.container_image = (image_id, image_ref)
+            versions = {}
+            for tool in ('psql', 'pg_dump', 'pg_restore'):
+                versions['host_' + tool] = self.checked(['/usr/bin/' + tool, '--version'], capture_output=True, text=True).stdout.strip()
+            query = "select json_build_object('system_identifier',(select system_identifier::text from pg_control_system()),'server_version_num',current_setting('server_version_num')::int)::text;"
+            host = json.loads(self.sql('postgres', query))
+            self.diagnostic('host-snapshot-context', versions=versions, server_version_num=host.get('server_version_num'))
+            container = json.loads(self.container_exec(['psql', '-XqAtw', '-h', '127.0.0.1', '-p', '5432', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', query]))
+            if host != container or not re.fullmatch(r'[0-9]+', host.get('system_identifier', '')):
+                raise RuntimeError('4427 host/container PostgreSQL instance proof differs')
+            major = int(host['server_version_num']) // 10000
+            if not image_ref.split(':')[-1].startswith(str(major) + '.'):
+                raise RuntimeError('4427 native postgres image tag/server major differs')
+            for tool in ('pg_dump', 'pg_restore'):
+                version = self.container_exec([tool, '--version']).decode().strip()
+                versions['container_' + tool] = version
+                match = re.fullmatch(r'pg_(?:dump|restore) \(PostgreSQL\) ([0-9]+)\.[^\n]+', version)
+                if not match or int(match[1]) != major:
+                    self.diagnostic('preflight-versions', versions=versions, server_major=major)
+                    raise RuntimeError('4427 existing container snapshot client major differs from server')
+            self.diagnostic('snapshot-preflight', versions=versions, server_major=major,
+                            container_id=self.container_id, image_id=image_id, image_ref=image_ref,
+                            system_identifier=host['system_identifier'])
+            archive = Path(temp) / 'fixture.dump'
+            with archive.open('xb') as out:
+                os.chmod(archive, 0o600)
+                self.container_exec(['pg_dump', '-h', '127.0.0.1', '-p', '5432', '-U', 'postgres', '-d', 'postgres', '-Fc'], output_file=out)
+            # No seed is created until custody, same-instance/version checks and full dump succeed.
+            self.create(template, 'template0')
+            with archive.open('rb') as data:
+                self.container_exec(['pg_restore', '-h', '127.0.0.1', '-p', '5432', '-U', 'postgres', '-d', template,
+                                     '--clean', '--if-exists', '--exit-on-error'], input_file=data)
+            with archive.open('rb') as data:
+                archive_sha256 = hashlib.file_digest(data, 'sha256').hexdigest()
+            return dict(versions=versions, server_major=major, container_id=self.container_id,
+                        image_id=image_id, archive_sha256=archive_sha256)
 
     def sql(self, db, query):
         return self.command('psql', db, '-XqAt', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=sqlstate', input_text=query)
@@ -215,7 +342,11 @@ class NativeCI:
             raise RuntimeError('4427 refuses dropping unowned database')
         # Never terminate connections or FORCE another process out; unexpected custody fails closed.
         self.sql('postgres', f'DROP DATABASE {db};')
+        if self.sql('postgres', f"select count(*) from pg_database where datname='{db}';").strip() != '0':
+            raise RuntimeError('4427 owned database drop readback differs')
         self.owned.remove(db)
+        self.cleanup.append(db)
+        self.diagnostic('owned-drop-confirmed', database=db)
 
     def prepare_baseline(self, template):
         # These reads can dirty hint bits. NEVER use their pre-checkpoint file hashes.
@@ -264,24 +395,14 @@ class NativeCI:
                     raise RuntimeError('4427 native psql failure signal was not exact') from error
             else:
                 raise RuntimeError('4427 native psql shell failure did not fail closed')
-            # Source is the standard runner's credential-free, synthetic CI database.
-            # Host client/server incompatibility must fail closed, never silently change executor.
-            tool_versions = {}
-            for tool in ('psql','pg_dump','pg_restore'):
-                tool_versions[tool] = subprocess.run(['/usr/bin/' + tool, '--version'],
-                    env=self.env, capture_output=True, text=True, timeout=10, check=True).stdout.strip()
             self.sql('postgres', """do $g$ begin
 if (select count(*) from auth.users where email in
 ('zz-fixture-user-1@fixture.invalid','zz-fixture-user-2@fixture.invalid',
  'zz-fixture-user-3@fixture.invalid','zz-fixture-user-4@fixture.invalid'))<>4
 then raise exception '4427 native synthetic users missing'; end if;
 end $g$;""")
-            self.create(template, 'template0')
-            with tempfile.TemporaryDirectory(prefix='rls4427-dump-') as temp:
-                dump = Path(temp) / 'fixture.dump'
-                dump.write_bytes(self.command('pg_dump', 'postgres', '-Fc', binary=True))
-                dump.chmod(0o600)
-                self.command('pg_restore', template, '--clean', '--if-exists', '--exit-on-error', str(dump))
+            snapshot = self.snapshot(template)
+            tool_versions = snapshot['versions']
             # Preserve and execute the existing 2124-equivalence/198-plan capability as-is.
             original = FIXTURE.read_text()
             original_result = self.sql(template, original)
@@ -367,7 +488,7 @@ end $g$;""")
                 raise RuntimeError('4427 incomplete 330-DML/44-SELECT matrix')
             summary = summarize(samples)
             return dict(schema_version=1, source_sha=os.environ['GITHUB_SHA'],
-                executed_source_sha256=source_hashes, tool_versions=tool_versions,
+                executed_source_sha256=source_hashes, tool_versions=tool_versions, snapshot=snapshot, owned_drop_receipts=self.cleanup,
                 calibration_clone_unmeasured=True, psql_shell_failure_signal_proven=True, qualification='ISOLATED_ACTUAL_TABLES_ONLY', production_acceptance='NOT_EVALUATED',
                 historical_flags='PRESERVED_UNATTRIBUTED', source_sql_sha256=hashlib.sha256(original.encode()).hexdigest(),
                 original_contract_output_sha256=hashlib.sha256(original_result.encode()).hexdigest(),

@@ -139,5 +139,148 @@ class Actual4427StaticTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):c.create('postgres','template0')
             run.assert_not_called()
 
+    def container_row(self):
+        return dict(Id='a'*64, Name='/supabase_db_shared-db', Image='sha256:'+'b'*64,
+            Config=dict(Image='public.ecr.aws/supabase/postgres:17.6.1.063', Labels={
+                'com.supabase.cli.project':'shared-db','com.docker.compose.project':'shared-db'}),
+            State=dict(Running=True,Status='running',Health=dict(Status='healthy')),
+            HostConfig=dict(Privileged=False,NetworkMode='supabase_network_shared-db',
+                Binds=['supabase_db_shared-db:/var/lib/postgresql/data'],
+                PortBindings={'5432/tcp':[dict(HostPort='54322',HostIp='0.0.0.0')]}),
+            Mounts=[dict(Type='volume',Name='supabase_db_shared-db',Destination='/var/lib/postgresql/data',RW=True)],
+            NetworkSettings=dict(Networks={'supabase_network_shared-db':{}},
+                Ports={'5432/tcp':[dict(HostPort='54322',HostIp='0.0.0.0')]}))
+
+    def test_container_custody_rejects_each_foreign_resource_dimension(self):
+        original=self.container_row()
+        self.assertEqual(m.NativeCI.validate_container(original)[0],'a'*64)
+        mutations=[('Name','/foreign'),('Id','c'*64),('Image','mutable'),
+            ('Config.Labels.com.supabase.cli.project','foreign'),('State.Health.Status','unhealthy'),
+            ('HostConfig.Privileged',True),('HostConfig.Binds',['/tmp:/var/lib/postgresql/data']),
+            ('HostConfig.NetworkMode','host'),('Mounts',[]),('NetworkSettings.Networks',{'foreign':{}}),
+            ('NetworkSettings.Ports',{'5432/tcp':[dict(HostPort='5432')]}),
+            ('Config.Image','example.invalid/postgres:17')]
+        for field,value in mutations:
+            row=copy.deepcopy(original)
+            if field=='Config.Labels.com.supabase.cli.project':row['Config']['Labels']['com.supabase.cli.project']=value
+            else:
+                parent=row
+                parts=field.split('.')
+                for k in parts[:-1]:parent=parent[k]
+                parent[parts[-1]]=value
+            with self.subTest(field=field),self.assertRaises(RuntimeError):
+                m.NativeCI.validate_container(row,expected_id='a'*64)
+
+    def test_every_container_exec_revalidates_identity_and_uses_fixed_local_endpoint(self):
+        with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
+        c.docker_config='/private/config';c.container_id='a'*64;c.container_image=('sha256:'+'b'*64,'public.ecr.aws/supabase/postgres:17.6.1.063')
+        row=self.container_row()
+        def inspect(*args):
+            if args[0]=='image':return m.json.dumps([dict(Id=c.container_image[0],RepoTags=[c.container_image[1]])])
+            return m.json.dumps([row])
+        with patch.object(c,'docker_read',side_effect=inspect),patch.object(c,'checked') as run:
+            c.container_exec(['pg_dump','--version'])
+            argv=run.call_args.args[0]
+            self.assertEqual(argv[:3],['/usr/bin/docker','--host','unix:///var/run/docker.sock'])
+            self.assertIn('a'*64,argv)
+            row['Id']='c'*64
+            with self.assertRaises(RuntimeError):c.container_exec(['pg_dump','--version'])
+            self.assertEqual(run.call_count,1)
+        with patch.object(c,'docker_read',side_effect=inspect):
+            row['Id']='a'*64
+            c.container_image=('sha256:'+'d'*64,c.container_image[1])
+            with self.assertRaises(RuntimeError):c.custody()
+
+    def test_snapshot_rejects_remote_environment_before_any_command(self):
+        with patch.dict(os.environ,{**self.valid_env(),'DOCKER_HOST':'tcp://foreign:2375'},clear=True), patch.object(m.subprocess,'run') as run:
+            c=m.NativeCI()
+            with self.assertRaisesRegex(RuntimeError,'override refused'):c.snapshot(c.prefix+'_seed')
+            run.assert_not_called()
+
+    def test_untrusted_socket_refuses_before_docker_command(self):
+        from types import SimpleNamespace
+        for mode,uid in [(m.stat.S_IFREG|0o600,0),(m.stat.S_IFSOCK|0o666,0),(m.stat.S_IFSOCK|0o600,1000)]:
+            with patch.dict(os.environ,self.valid_env(),clear=True),patch.object(m.Path,'stat',return_value=SimpleNamespace(st_mode=mode,st_uid=uid)),patch.object(m.Path,'resolve',return_value=m.Path('/run/docker.sock')),patch.object(m.subprocess,'run') as run:
+                c=m.NativeCI()
+                with self.assertRaisesRegex(RuntimeError,'Unix Docker endpoint refused'):c.snapshot(c.prefix+'_seed')
+                run.assert_not_called()
+
+    def snapshot_harness(self, major=17, dump_failure=False, restore_failure=False, wrong_instance=False):
+        with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
+        events=[];identity=('a'*64,'sha256:'+'b'*64,'public.ecr.aws/supabase/postgres:17.6.1.063')
+        context=dict(system_identifier='12345',server_version_num=170006)
+        def sql(db,query):return m.json.dumps(context)
+        def execute(args,input_file=None,output_file=None):
+            events.append(args)
+            if args[0]=='psql':return m.json.dumps({**context,'system_identifier':'999' if wrong_instance else '12345'}).encode()
+            if args[-1]=='--version':return f'{args[0]} (PostgreSQL) {major}.6\n'.encode()
+            if args[0]=='pg_dump':
+                if dump_failure:raise m.subprocess.CalledProcessError(1,args,stderr=b'actual dump failure')
+                self.assertEqual(m.stat.S_IMODE(os.fstat(output_file.fileno()).st_mode),0o600)
+                output_file.write(b'PGDMP synthetic archive');return None
+            if args[0]=='pg_restore':
+                self.assertEqual(input_file.read(),b'PGDMP synthetic archive')
+                if restore_failure:raise m.subprocess.CalledProcessError(1,args,stderr=b'actual restore failure')
+                return b''
+            self.fail('unexpected fixed operation')
+        socket=m.stat.S_IFSOCK|0o660
+        fake=m.subprocess.CompletedProcess([],0,stdout='host (PostgreSQL) 16.15\n')
+        return c,events,identity,sql,execute,socket,fake
+
+    def exercise_snapshot(self, **options):
+        c,events,identity,sql,execute,socket,fake=self.snapshot_harness(**options)
+        from types import SimpleNamespace
+        # Path.stat is mocked only for the fixed socket; temporary files retain real metadata.
+        real_stat=m.Path.stat
+        def path_stat(path,*a,**kw):
+            if str(path)=='/var/run/docker.sock':return SimpleNamespace(st_mode=socket,st_uid=0)
+            return real_stat(path,*a,**kw)
+        with patch.dict(os.environ,self.valid_env(),clear=True),patch.object(m.Path,'stat',path_stat), \
+             patch.object(m.Path,'resolve',lambda p,*a,**kw:p),patch.object(c,'custody',return_value=identity), \
+             patch.object(c,'sql',side_effect=sql),patch.object(c,'container_exec',side_effect=execute), \
+             patch.object(c,'checked',return_value=fake),patch.object(c,'create') as create:
+            try:result=c.snapshot(c.prefix+'_seed')
+            except Exception as error:return c,events,create.call_count,error
+            return c,events,create.call_count,result
+
+    def test_matching_container_snapshot_preserves_full_archive_and_exact_two_operations(self):
+        c,events,creates,result=self.exercise_snapshot()
+        self.assertEqual(creates,1)
+        self.assertIsInstance(result,dict)
+        operations=[x for x in events if x[-1]!='--version' and x[0]!='psql']
+        self.assertEqual(len(operations),2)
+        self.assertEqual(operations[0],['pg_dump','-h','127.0.0.1','-p','5432','-U','postgres','-d','postgres','-Fc'])
+        self.assertEqual(operations[1][-3:],['--clean','--if-exists','--exit-on-error'])
+        self.assertEqual(result['archive_sha256'],m.hashlib.sha256(b'PGDMP synthetic archive').hexdigest())
+
+    def test_wrong_instance_versions_and_dump_fail_before_seed_creation_restore_fails_loudly(self):
+        for options in [dict(major=16),dict(wrong_instance=True),dict(dump_failure=True),dict(restore_failure=True)]:
+            with self.subTest(options=options):
+                c,events,creates,error=self.exercise_snapshot(**options)
+                self.assertIsInstance(error,Exception)
+                self.assertEqual(creates,1 if options.get('restore_failure') else 0)
+                self.assertEqual(sum(x[0]=='pg_dump' and x[-1]!='--version' for x in events),
+                                 1 if options.get('dump_failure') or options.get('restore_failure') else 0)
+
+    def test_failure_preserves_exit_with_bounded_binary_stderr_and_no_archive_output(self):
+        with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
+        failure=m.subprocess.CalledProcessError(7,['/usr/bin/docker'],output=b'not-for-logs',stderr=b'e'*5000)
+        with patch.object(m.subprocess,'run',side_effect=failure),patch.object(c,'diagnostic') as diagnostic:
+            with self.assertRaises(m.subprocess.CalledProcessError) as caught:c.checked(['/usr/bin/docker'])
+            self.assertEqual(caught.exception.returncode,7)
+            self.assertEqual(len(diagnostic.call_args.kwargs['stderr']),4096)
+            self.assertTrue(diagnostic.call_args.kwargs['truncated'])
+            self.assertNotIn('not-for-logs',str(diagnostic.call_args))
+
+    def test_drop_receipt_requires_actual_absence(self):
+        with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
+        db=c.prefix+'_seed';c.owned=[db]
+        with patch.object(c,'sql',side_effect=['','0']),patch.object(c,'diagnostic') as record:
+            c.drop(db);self.assertEqual(c.owned,[]);self.assertEqual(c.cleanup,[db]);record.assert_called_once()
+        c.owned=[db]
+        with patch.object(c,'sql',side_effect=['','1']):
+            with self.assertRaises(RuntimeError):c.drop(db)
+            self.assertEqual(c.owned,[db])
+
 
 if __name__ == '__main__':unittest.main()

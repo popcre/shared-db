@@ -214,7 +214,7 @@ existing_component_refs as (
          split_part(r.source_id, ':', 3)::bigint as sales_order_no,
          split_part(r.source_id, ':', 5)::integer as sales_order_line_no,
          split_part(r.source_id, ':', 7)::integer as component_ordinal,
-         r.metadata ? 'master_item_no' as has_identity,
+         r.metadata ->> 'master_item_no' is not null as has_identity,
          r.metadata ->> 'master_item_no' as master_item_no,
          nullif(r.metadata ->> 'sub_item_no', '') as sub_item_no,
          nullif(r.metadata ->> 'sub_label_code', '') as sub_label_code,
@@ -259,7 +259,7 @@ identity_problems as (
   select er.sales_order_no, 'ref-without-identity' as problem, er.source_id as detail
   from existing_component_refs er where not er.has_identity
   union all
-  select er.sales_order_no, 'duplicate-identity-ref', min(er.source_id) || ' ' || max(er.source_id)
+  select er.sales_order_no, 'duplicate-identity-ref', string_agg(er.source_id, ' ' order by er.source_id)
   from existing_component_refs er where er.has_identity
   group by er.sales_order_no, er.sales_order_line_no, er.master_item_no, er.sub_item_no, er.sub_label_code
   having count(*) > 1
@@ -700,6 +700,7 @@ run_counts as (
          rows_unchanged = 0,
          notes = 'step=canonical-write created=' || (select count(*) from created)
               || ' quarantined=' || (select count(*) from quarantined)
+              || ' identityConflicts=' || (select count(*) from identity_conflict)
               || ' headers+' || (select count(*) from new_headers)
               || '~' || (select count(*) from header_updates)
               || ' lines+' || (select count(*) from line_inserts)
@@ -753,7 +754,7 @@ staged as (
 refs as (
   select split_part(r.source_id, ':', 3)::bigint as sales_order_no,
          split_part(r.source_id, ':', 5)::integer as sales_order_line_no,
-         r.metadata ? 'master_item_no' as has_identity,
+         r.metadata ->> 'master_item_no' is not null as has_identity,
          r.metadata ->> 'master_item_no' as master_item_no,
          nullif(r.metadata ->> 'sub_item_no', '') as sub_item_no,
          nullif(r.metadata ->> 'sub_label_code', '') as sub_label_code,

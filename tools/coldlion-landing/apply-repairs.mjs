@@ -17,7 +17,11 @@ const REPAIRS = join(dirname(fileURLToPath(import.meta.url)), "repairs");
 /** The step name a repair file must record; refuses a file that does not. */
 export function repairStep(file, sql) {
   const step = file.replace(/\.sql$/, "");
+  if (!/^\d{8}-[a-z0-9-]+\.sql$/.test(file)) throw new Error(`${file} is not named <yyyymmdd>-<slug>.sql`);
   if (!sql.includes(`'${step}'`)) throw new Error(`${file} never records step '${step}'`);
+  if (!/^begin;$/m.test(sql) || !/^commit;\s*$/m.test(sql.trimEnd().split("\n").at(-1) + "\n")) {
+    throw new Error(`${file} must be one transaction (a begin; line and a final commit; line)`);
+  }
   return step;
 }
 

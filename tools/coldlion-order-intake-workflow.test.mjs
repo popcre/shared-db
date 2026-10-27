@@ -27,7 +27,7 @@ test("the writer step is skipped on dry-run and claim-only dispatches, and write
   const writer = step("Write canonical placeholder orders", "Sync production history (closed weeks + open week)");
   assert.match(
     writer,
-    /if: github\.event\.inputs\.dry_run != 'true' && github\.event\.inputs\.claim_only != 'true'/,
+    /if: \$\{\{ !cancelled\(\) && steps\.stage\.outcome == 'success' && \(success\(\) \|\| steps\.repairs\.outcome == 'failure'\) && github\.event\.inputs\.dry_run != 'true' && github\.event\.inputs\.claim_only != 'true' \}\}/,
   );
   assert.match(writer, /order-intake-write\.mjs/);
   assert.match(writer, /ARGS=\(--write\)/);

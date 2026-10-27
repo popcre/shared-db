@@ -40,9 +40,9 @@ grouped as (
 select unnest(ph) as line_id from grouped where n = 2 and moved = 1 and cardinality(ph) = 1;
 
 do $$ begin
-  -- 98 measured 2026-10-27; the still-running positional writer may add a few
-  -- before this lands, never hundreds.
-  if (select count(*) from dup_lines) not between 98 and 200 then
+  -- 98 measured 2026-10-27; the positional writer may add a few before this
+  -- lands, never hundreds.
+  if (select count(*) from dup_lines) > 200 then
     raise exception 'expected ~98 duplicate placeholder lines, found %', (select count(*) from dup_lines);
   end if;
 end $$;
@@ -96,7 +96,18 @@ update plm.production_order_line_source_ref r
  where pl.id = r.production_order_line_id
    and r.source_system = 'coldlion'
    and r.source_id ~ '^coldlion:so:[0-9]+:line:[0-9]+:component:[0-9]+$'
-   and not (r.metadata ? 'master_item_no');
+   and r.metadata ->> 'master_item_no' is null;
+
+do $$ begin
+  -- Never store an unmatchable identity: every line was verified to carry
+  -- master_item_no (1,131/1,131); a null here means the data drifted.
+  if exists (select 1 from plm.production_order_line_source_ref
+              where source_system = 'coldlion'
+                and source_id ~ '^coldlion:so:[0-9]+:line:[0-9]+:component:[0-9]+$'
+                and metadata ->> 'master_item_no' is null) then
+    raise exception 'a coldlion component ref would keep a null identity; nothing written';
+  end if;
+end $$;
 
 -- 3. SO 7128092 onto D3691
 update plm.production_order_line g

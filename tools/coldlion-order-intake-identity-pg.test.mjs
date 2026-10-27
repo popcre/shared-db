@@ -149,3 +149,10 @@ update coldlion.intake_new_order set state = 'created', claim_evidence = '{}';`)
   assert.equal(bad[0], "1");
   assert.match(bad[6], /7128092\/1\/AA0631P1P01:missing/);
 });
+
+test("a ref whose recorded identity is null counts as no identity, never as a match", { skip: !container }, () => {
+  psql(`update plm.production_order_line_source_ref set metadata = metadata || '{"master_item_no": null}'::jsonb
+         where source_id like '%:component:1';`);
+  const guard = psql(buildIdentityGuardSql()).split("|");
+  assert.equal(guard[3], "1");
+});

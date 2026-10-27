@@ -130,7 +130,13 @@ async function main() {
     `component identity guard: expected=${expected} missing=${missing} duplicate=${duplicate} ` +
       `skuMismatch=${skuMismatch} withoutIdentity=${withoutIdentity} identityQuarantined=${identityQuarantined}`,
   );
-  if (guard === undefined || [missing, duplicate, skuMismatch, withoutIdentity, identityQuarantined].some((v) => v !== "0")) {
+  // Orders parked as component-identity-conflict stay visible and alert every
+  // run, but do not fail it: they are already quarantined (written nowhere),
+  // and failing would keep the whole intake red until a human clears them.
+  if (identityQuarantined !== undefined && identityQuarantined !== "0" && options.write) {
+    runSql(`select pg_notify('coldlion_sync_alert', 'ColdLion intake: ${Number(identityQuarantined)} order(s) quarantined as component-identity-conflict');`, {});
+  }
+  if (guard === undefined || [missing, duplicate, skuMismatch, withoutIdentity].some((v) => v !== "0")) {
     throw new Error(`component identity guard failed: ${sample || "no summary row"}`);
   }
 }

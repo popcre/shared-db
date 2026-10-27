@@ -106,6 +106,7 @@ jobs:
           [ -n "${COLDLION_API_KEY:-}" ] || { echo "::error::COLDLION_API_KEY is not set."; exit 1; }
 
       - name: Stage, detect, and decode
+        id: stage
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
           COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
@@ -136,6 +137,7 @@ jobs:
       # each applied exactly once — the repair records its own sync_run step in
       # its transaction. Before the writer, so the writer sees repaired refs.
       - name: Apply one-time ColdLion data repairs
+        id: repairs
         if: github.event.inputs.dry_run != 'true' && github.event.inputs.claim_only != 'true'
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
@@ -143,7 +145,10 @@ jobs:
         run: node tools/coldlion-landing/apply-repairs.mjs | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Write canonical placeholder orders
-        if: github.event.inputs.dry_run != 'true' && github.event.inputs.claim_only != 'true'
+        # A refused one-time repair turns the run red but never stops intake
+        # (the identity-keyed writer quarantines what it cannot place safely);
+        # the writer still requires a successful stage/decode step.
+        if: ${{ !cancelled() && steps.stage.outcome == 'success' && (success() || steps.repairs.outcome == 'failure') && github.event.inputs.dry_run != 'true' && github.event.inputs.claim_only != 'true' }}
         env:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
           COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai

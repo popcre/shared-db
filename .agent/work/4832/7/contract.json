@@ -1,0 +1,51 @@
+{
+  "schema_version": 2,
+  "generation": 7,
+  "evidence_parent": {
+    "work_issue": 4832,
+    "generation": 6,
+    "contract_sha256": "9b762c868d8e5df90343ef24ebfc9e08203a98e79c25894b9f6503a266a43198"
+  },
+  "work_issue": 4832,
+  "work_type": "structural",
+  "route": "claim-first",
+  "goal": "Recover PR4834 with original paid-review source on first-parent history, fresh active claim4872/version20261027022851, exact minimum role grant and fresh protected review.",
+  "base_sha": "91d4ff65fb600e20aa62cfc00fa22a3c94bc4a11",
+  "dispatcher": "Codex chat 01a17a03-63b6-7081-ab54-29fa144bf678 on edge-dev3",
+  "worker": "codex",
+  "branch": "codex/role-rename-permission-20261026",
+  "worktree": "/tmp/role4832-author-01a17a03",
+  "allowed_paths": [
+    "supabase/migrations/20261027022851_dflow_prod_role_rename_update_grant.sql",
+    "supabase/tests/dflow_prod_role_rename_update_grant_contracts.sql"
+  ],
+  "file_writes": [
+    "supabase/migrations/20261027022851_dflow_prod_role_rename_update_grant.sql",
+    "supabase/tests/dflow_prod_role_rename_update_grant_contracts.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "table dflow_prod.\"Roles\"",
+    "view dflow_prod.\"Roles\""
+  ],
+  "prohibited_actions": [
+    "No manual structural production SQL, broader grants, role assignment, role creation or deletion.",
+    "Never reopen/reuse released claims4833/4842 or spent versions20261026174936/20261026193803.",
+    "Do not edit foreign worktrees, claims, source, or gates."
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "PostgreSQL 16 non-superuser fixture and exact grant migration contract"
+  ],
+  "assumptions": [
+    "The preserved old source remains immutable in history; final net source diff carries only the newly reserved migration, retargeted contract test, and one current evidence pair.",
+    "Production backend inherits designflow_prod_backend_grants; refresh exact target and least-privilege catalogue before delivery and acceptance.",
+    "Old review does not authorize newly reserved source; fresh exact-head review and ordinary protected preview/automatic production are required.",
+    "Generation6 unreviewed head0bfd3608ca6b92dc80cfb167bb6150953d4b0071 will be preserved in its own local/remote recovery branch and worktree. Native reviewer-budget first-parent refusal is repaired by a clean ordinary merge of currentmain into preserved original source BEFORE fresh authored changes; no review/budget/claim gate or record is changed.",
+    "The original feature branch may be updated only with exact force-with-lease of owned unreviewed head0bfd3608ca6b92dc80cfb167bb6150953d4b0071 after preservation, full validation, and a preview showing only the new reserved migration/test and current pair. No foreign branch/worktree or protectedmain changes."
+  ],
+  "stop_conditions": [
+    "Unresolved material review or protected delivery refusal.",
+    "Unexpected object collision, privilege broadening, target mismatch or fixture/membership change."
+  ]
+}

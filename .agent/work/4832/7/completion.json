@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "work_issue": 4832,
+  "outcome": "ready-for-merge",
+  "pr": 4834,
+  "migration_versions": [
+    "20261027022851"
+  ],
+  "contract_ref": "refs/db-contracts/4832/7",
+  "contract_sha256": "72f66e0e267746b1793cb61eb136f2ad0e1d6eceb4d03462dbb52bdb3c97d6b2",
+  "head_sha": "3bc77d8af8a52af4bfdeda5359cbfd9b59a07c4a",
+  "base_sha": "91d4ff65fb600e20aa62cfc00fa22a3c94bc4a11",
+  "files_changed": [
+    "supabase/migrations/20261027022851_dflow_prod_role_rename_update_grant.sql",
+    "supabase/tests/dflow_prod_role_rename_update_grant_contracts.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "table dflow_prod.\"Roles\"",
+    "view dflow_prod.\"Roles\""
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL guards passed. Protected scratch log SHA256 1b255b76a2eae686764dec4ea1a163c38923e6092ea3df9d27c43224de57a626."
+    },
+    {
+      "command": "PostgreSQL 16 non-superuser fixture and exact grant migration contract",
+      "exit_code": 0,
+      "evidence": "Fresh exact migration executed in synthetic PostgreSQL16 fixture under ci_fixture non-superuser with ADMIN TRUE / INHERIT FALSE / SET FALSE. Missing UPDATE reproduced; exact three-column ACL, runtime rename/readback, denied kind/DELETE, and full transaction rollback passed. Independent sentinel/table/grant/membership restoration assertion passed. Synthetic baseline includes existing runtime schema USAGE. Log SHA256 bd93803dd57a79b7788bc82ccf8eae621851a67e040171f9cad049ce35f1a90e."
+    }
+  ],
+  "assumptions_resolved": [
+    "Handoff PR4844 normally merged at91d4ff65fb600e20aa62cfc00fa22a3c94bc4a11 before fresh ownership/claim.",
+    "Native fresh claim4872 is OPEN/active for actual successor identity, exact table/view keys and permanent new version20261027022851. Both spent versions remain absent from final source.",
+    "The unreviewed generation6 head0bfd3608ca6b92dc80cfb167bb6150953d4b0071 is preserved remotely at codex/role-unreviewed-preserve-01a17a03 and in an untouched own worktree. No reviewer started or verdict was issued for that head.",
+    "Native review-budget first-parent refusal repaired by ordinary clean currentmain merge INTO original source d8738ff484c22cec1a50578e41b2b1824d3a59dd, followed by fresh authored changes. Every original reviewed source remains on first-parent history; no budget/gate/record changed.",
+    "Restricted-owner PostgreSQL16 exact migration and independent restoration assertions rerun after rebuilding; restoration assertion log SHA256 c14aee5b62ffd744902b84a24398e930998597dda300e71334862f0ef148e50a."
+  ],
+  "stop_conditions_hit": []
+}

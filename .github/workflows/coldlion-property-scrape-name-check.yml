@@ -1,0 +1,60 @@
+# Nightly READ-ONLY check: active ColdLion MG06 Property names vs the scraped licensor
+# Submissions vocabularies, with loose name matching (tools/property-name-match.mjs).
+# Runs after the production ColdLion snapshot (06:00 UTC). One SELECT, no writes.
+# This repository is public: the job prints counts and ColdLion mg codes only, never
+# Property names. Fails when an active ColdLion Property has a blank name.
+
+name: ColdLion Property Name Check (read-only, production)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 8 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coldlion-property-scrape-name-check
+  cancel-in-progress: false
+
+env:
+  PRODUCTION_PROJECT_REF: qsllyeztdwjgirsysgai
+
+jobs:
+  check:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Unit tests (offline)
+        run: node --test tools/property-name-match.test.mjs tools/check-coldlion-property-scrape-names.test.mjs
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link the production project only, and prove it
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_PRODUCTION }}
+        run: |
+          set -euo pipefail
+          supabase login --token "$SUPABASE_ACCESS_TOKEN"
+          supabase link --project-ref "$PRODUCTION_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+          LINKED=$(cat supabase/.temp/project-ref)
+          if [ "$LINKED" != "$PRODUCTION_PROJECT_REF" ]; then
+            echo "::error::Refusing: linked project $LINKED is not production ${PRODUCTION_PROJECT_REF}." >&2
+            exit 1
+          fi
+
+      - name: Prove ALL Supabase link files agree on production
+        run: node tools/check-supabase-link-state.mjs --expect-ref="$PRODUCTION_PROJECT_REF"
+
+      - name: Compare names (read-only)
+        run: node tools/check-coldlion-property-scrape-names.mjs --linked --summary "$GITHUB_STEP_SUMMARY"

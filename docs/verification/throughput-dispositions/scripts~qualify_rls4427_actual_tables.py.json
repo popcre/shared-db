@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "source": "scripts/qualify_rls4427_actual_tables.py",
+  "sites": [
+    {
+      "site": "scripts/qualify_rls4427_actual_tables.py:320",
+      "semantic_key": "scripts/qualify_rls4427_actual_tables.py:1b02999fe74abfb88e5bfc3f9525e123b008acb045295d701874408a249a32a0:context-a12000c6adac1c45f3e122886a80af9960c425e74fdda053c1ecdb2849a806d9",
+      "legacy_semantic_key": "scripts/qualify_rls4427_actual_tables.py:1b02999fe74abfb88e5bfc3f9525e123b008acb045295d701874408a249a32a0:1",
+      "line_sha256": "1b02999fe74abfb88e5bfc3f9525e123b008acb045295d701874408a249a32a0",
+      "disposition": "excluded",
+      "reason": "Excluded from delivery-absence claims: this SQL exception refuses a timed command unless its authenticated synthetic fixture user actually has the admin role; no policy capability is bypassed."
+    },
+    {
+      "site": "scripts/qualify_rls4427_actual_tables.py:277",
+      "semantic_key": "scripts/qualify_rls4427_actual_tables.py:6f1c04a023e67f2d62a99e2f3af76352fbea895d125f7491f2e8e8c4da078de2:context-2d7bd6d4765a2eaa79904a5f340f7c289cd2841ca6c22b47273bf45429ff0034",
+      "legacy_semantic_key": "scripts/qualify_rls4427_actual_tables.py:6f1c04a023e67f2d62a99e2f3af76352fbea895d125f7491f2e8e8c4da078de2:1",
+      "line_sha256": "6f1c04a023e67f2d62a99e2f3af76352fbea895d125f7491f2e8e8c4da078de2",
+      "disposition": "excluded",
+      "reason": "Excluded from delivery-absence claims: this SQL exception refuses before clone preparation unless all four invented native CI users exist; it never infers missing business or production rows."
+    },
+    {
+      "site": "scripts/qualify_rls4427_actual_tables.py:331",
+      "semantic_key": "scripts/qualify_rls4427_actual_tables.py:7252c58a09de47d13ff968ba9b82109bef02b3b1ed39ba6a3b2b2b6b591169ff:context-a4c1a7ae3fe2e649f0e5b3b3bdada82ebbe92d0b1c14750fcfb0546e9f03172c",
+      "legacy_semantic_key": "scripts/qualify_rls4427_actual_tables.py:7252c58a09de47d13ff968ba9b82109bef02b3b1ed39ba6a3b2b2b6b591169ff:1",
+      "line_sha256": "7252c58a09de47d13ff968ba9b82109bef02b3b1ed39ba6a3b2b2b6b591169ff",
+      "disposition": "excluded",
+      "reason": "Excluded from delivery-absence claims: this exception refuses a SELECT control whose aggregate result is absent; it prevents incomplete control evidence from being treated as a successful sample."
+    },
+    {
+      "site": "scripts/qualify_rls4427_actual_tables.py:52",
+      "semantic_key": "scripts/qualify_rls4427_actual_tables.py:ac89926434418dafbc43c39822602bb8e4a791f0d5623c97a876530f3d4e4993:context-5e21d8f3a97a5a944677f39e6a25a90c5a89c8e1fca8f44d2da33bd2749a8033",
+      "legacy_semantic_key": "scripts/qualify_rls4427_actual_tables.py:ac89926434418dafbc43c39822602bb8e4a791f0d5623c97a876530f3d4e4993:1",
+      "line_sha256": "ac89926434418dafbc43c39822602bb8e4a791f0d5623c97a876530f3d4e4993",
+      "disposition": "excluded",
+      "reason": "Excluded from delivery-absence claims: this exception refuses qualification when the hash-bound retained fixture or its required extraction boundary is absent; it never reports successful runtime proof."
+    }
+  ]
+}

@@ -339,7 +339,8 @@ test('zero-byte added file supplies no surviving source byte witness',t=>{
  assert.throws(()=>derivePaidContentProof(f.before,after,f.base,f.git),/surviving author source edit unavailable/)
 })
 
-import {contractHash} from '../../agent-work-contract.mjs'
+import {contractHash,validateCompletionReport} from '../../agent-work-contract.mjs'
+import {validateCompletionRecord} from '../work-dependencies.mjs'
 import {verifiedEvidencePaths,prContentDigest} from '../pr-content-equivalence.mjs'
 function generationsFixture(t,{repair=true,revert=false,bad=null,publishedOnly=false,ordinaryRetirement=false,checkPrefix=false,prefixFailure=null,startAdvance=false}={}){
  const f=realGitFixture(t),sha=()=>f.git(['rev-parse','HEAD']).trim()
@@ -1049,7 +1050,8 @@ function preEvidenceRetirementFixture(t,{bad=null}={}){
  const pair=(c,implementation,variant)=>{
   const g=c.generation??1,d=dir(g);mkdirSync(d,{recursive:true})
   const r={schema_version:1,work_issue:issue,outcome:'ready-for-merge',pr,migration_versions:[],contract_ref:`refs/db-contracts/${issue}/${g}`,contract_sha256:contractHash(c),head_sha:implementation,base_sha:f.base,files_changed:f.git(['diff','--name-only',f.base,implementation]).trim().split('\n').filter(Boolean),db_reads:[],db_writes:[],checks:[{command:'fixture',exit_code:0,evidence:'Controlled fixture; not review approval'}],assumptions_resolved:[],stop_conditions_hit:[]}
-  if(g===2&&bad?.startsWith('outcome-'))r.outcome=bad.slice('outcome-'.length)
+  if(g===2&&bad?.startsWith('outcome-')){r.outcome=bad.slice('outcome-'.length);r.reason='Controlled unsuccessful endpoint outcome'}
+  if(g===2&&bad?.startsWith('outcome-'))assert.doesNotThrow(()=>validateCompletionReport(r,{validateCompletionRecord}))
   if(variant==='foreign-pr')r.pr++
   if(variant==='foreign-issue')r.work_issue++
   if(variant==='hash')r.contract_sha256='f'.repeat(64)

@@ -139,6 +139,21 @@ class Actual4427StaticTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):c.create('postgres','template0')
             run.assert_not_called()
 
+    def fresh_facts(self, database):
+        return dict(database=database,owner='postgres',extra_schemas=0,relations=0,routines=0,types=0,policies=0,default_acls=0,
+            extensions=['plpgsql'],public_owner='pg_database_owner',public_acl=['PUBLIC:USAGE:false','pg_database_owner:CREATE:false','pg_database_owner:USAGE:false'])
+
+    def test_fresh_target_requires_owned_identity_and_every_catalog_boundary(self):
+        with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
+        seed=c.prefix+'_seed';facts=self.fresh_facts(seed)
+        self.assertEqual(m.validate_fresh_seed(facts,seed),facts)
+        for key,value in [('database','postgres'),('owner','foreign'),('extra_schemas',1),('relations',1),('routines',1),('types',1),('policies',1),('default_acls',1),('extensions',['plpgsql','other']),('public_owner','foreign'),('public_acl',[])]:
+            with self.subTest(key=key),self.assertRaises(RuntimeError):m.validate_fresh_seed({**facts,key:value},seed)
+        with patch.object(c,'sql',return_value=m.json.dumps(facts)) as sql:
+            with self.assertRaises(RuntimeError):c.qualify_fresh_seed(seed)
+            sql.assert_not_called();c.owned.append(seed)
+            c.qualify_fresh_seed(seed);self.assertEqual(c.fresh_restore_seed,seed)
+
     def container_row(self):
         return dict(Id='a'*64, Name='/supabase_db_shared-db', Image='sha256:'+'b'*64,
             Config=dict(Image='public.ecr.aws/supabase/postgres:17.6.1.063', Labels={
@@ -211,7 +226,7 @@ class Actual4427StaticTests(unittest.TestCase):
         with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
         c.docker_config='/private';c.container_id='a'*64
         connection=['-h','127.0.0.1','-p','5432','-U','postgres','-d']
-        seed=c.prefix+'_seed';restore=['pg_restore',*connection,seed,'--clean','--if-exists','--exit-on-error']
+        seed=c.prefix+'_seed';restore=['pg_restore',*connection,seed,'--exit-on-error']
         read_commands=[['pg_restore','--version'],['pg_dump','--version'],
             ['psql','-XqAtw',*connection,'postgres','-v','ON_ERROR_STOP=1','-c',m.POSTGRES_CONTEXT_QUERY]]
         completed=m.subprocess.CompletedProcess([],0,stdout=b'actual version probe result')
@@ -223,6 +238,8 @@ class Actual4427StaticTests(unittest.TestCase):
             data=io.BytesIO(b'archive')
             with self.assertRaises(RuntimeError):c.container_exec(restore,input_file=data)
             c.owned.append(seed)
+            with self.assertRaises(RuntimeError):c.container_exec(restore,input_file=data)
+            c.fresh_restore_seed=seed
             with self.assertRaises(RuntimeError):c.container_exec(restore)
             c.container_exec(restore,input_file=data)
             self.assertIn('-i',run.call_args.args[0]);self.assertIs(run.call_args.kwargs['stdin'],data)
@@ -273,7 +290,7 @@ class Actual4427StaticTests(unittest.TestCase):
         with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
         events=[];identity=('a'*64,'sha256:'+'b'*64,'public.ecr.aws/supabase/postgres:17.6.1.063')
         context=dict(system_identifier='12345',server_version_num=170006,postmaster_start='2026-10-27 10:00:00+00',database='postgres')
-        def sql(db,query):return m.json.dumps(context)
+        def sql(db,query):return m.json.dumps(self.fresh_facts(db) if query==m.FRESH_SEED_QUERY else context)
         def execute(args,input_file=None,output_file=None):
             events.append(args)
             if args[0]=='psql':return m.json.dumps({**context,'system_identifier':'999' if wrong_instance else '12345','postmaster_start':'different-postmaster' if wrong_start else context['postmaster_start']}).encode()
@@ -296,13 +313,14 @@ class Actual4427StaticTests(unittest.TestCase):
         from types import SimpleNamespace
         # Path.stat is mocked only for the fixed socket; temporary files retain real metadata.
         real_stat=m.Path.stat
+        def create_owned(db,template):c.owned.append(db)
         def path_stat(path,*a,**kw):
             if str(path)=='/var/run/docker.sock':return SimpleNamespace(st_mode=socket,st_uid=0)
             return real_stat(path,*a,**kw)
         with patch.dict(os.environ,self.valid_env(),clear=True),patch.object(m.Path,'stat',path_stat), \
              patch.object(m.Path,'resolve',lambda p,*a,**kw:p),patch.object(c,'custody',return_value=identity), \
              patch.object(c,'sql',side_effect=sql),patch.object(c,'container_exec',side_effect=execute), \
-             patch.object(c,'checked',return_value=fake),patch.object(c,'create') as create:
+             patch.object(c,'checked',return_value=fake),patch.object(c,'create',side_effect=create_owned) as create:
             try:result=c.snapshot(c.prefix+'_seed')
             except Exception as error:return c,events,create.call_count,error
             return c,events,create.call_count,result
@@ -314,7 +332,7 @@ class Actual4427StaticTests(unittest.TestCase):
         operations=[x for x in events if x[-1]!='--version' and x[0]!='psql']
         self.assertEqual(len(operations),2)
         self.assertEqual(operations[0],['pg_dump','-h','127.0.0.1','-p','5432','-U','postgres','-d','postgres','-Fc'])
-        self.assertEqual(operations[1][-3:],['--clean','--if-exists','--exit-on-error'])
+        self.assertEqual(operations[1][-1:],['--exit-on-error']);self.assertNotIn('--clean',operations[1]);self.assertNotIn('--if-exists',operations[1])
         self.assertEqual(result['archive_sha256'],m.hashlib.sha256(b'PGDMP synthetic archive').hexdigest())
 
     def test_wrong_instance_versions_and_dump_fail_before_seed_creation_restore_fails_loudly(self):

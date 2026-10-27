@@ -190,6 +190,32 @@ def validate_policy_delta(before, after, variant):
         raise RuntimeError('4427 intended original policy delta incomplete')
 
 
+FRESH_SEED_QUERY = """select json_build_object(
+'database',current_database(),
+'owner',(select pg_get_userbyid(datdba) from pg_database where datname=current_database()),
+'extra_schemas',(select count(*) from pg_namespace where nspname !~ '^pg_' and nspname not in ('public','information_schema')),
+'relations',(select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname !~ '^pg_' and n.nspname<>'information_schema'),
+'routines',(select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname !~ '^pg_' and n.nspname<>'information_schema'),
+'types',(select count(*) from pg_type t join pg_namespace n on n.oid=t.typnamespace where n.nspname !~ '^pg_' and n.nspname<>'information_schema'),
+'policies',(select count(*) from pg_policy),
+'default_acls',(select count(*) from pg_default_acl),
+'extensions',(select json_agg(extname order by extname) from pg_extension),
+'public_owner',(select pg_get_userbyid(nspowner) from pg_namespace where nspname='public'),
+'public_acl',(select json_agg(privilege order by privilege collate "C") from (
+ select case when a.grantee=0 then 'PUBLIC' else pg_get_userbyid(a.grantee) end||':'||a.privilege_type||':'||a.is_grantable::text privilege
+ from pg_namespace n cross join lateral aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) a where n.nspname='public') p))::text;"""
+
+
+def validate_fresh_seed(facts, database):
+    expected = dict(database=database, owner='postgres', extra_schemas=0, relations=0,
+                    routines=0, types=0, policies=0, default_acls=0, extensions=['plpgsql'],
+                    public_owner='pg_database_owner', public_acl=[
+                        'PUBLIC:USAGE:false','pg_database_owner:CREATE:false','pg_database_owner:USAGE:false'])
+    if facts != expected:
+        raise RuntimeError('4427 owned fresh template0 target catalog differs; restore refused')
+    return facts
+
+
 class NativeCI:
     def __init__(self):
         assert_ci(os.environ)
@@ -281,12 +307,12 @@ class NativeCI:
         args = list(args)
         connection = ['-h', '127.0.0.1', '-p', '5432', '-U', 'postgres', '-d']
         seed = self.prefix + '_seed'
-        restore = ['pg_restore', *connection, seed, '--clean', '--if-exists', '--exit-on-error']
+        restore = ['pg_restore', *connection, seed, '--exit-on-error']
         readonly = [['pg_dump', '--version'], ['pg_restore', '--version'],
                     ['psql', '-XqAtw', *connection, 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', POSTGRES_CONTEXT_QUERY]]
         dump = ['pg_dump', *connection, 'postgres', '-Fc']
         if args == restore:
-            if seed not in self.owned or input_file is None or output_file is not None:
+            if seed not in self.owned or getattr(self, 'fresh_restore_seed', None) != seed or input_file is None or output_file is not None:
                 raise RuntimeError('4427 exact owned seed restore requires archive stdin only')
         elif args in readonly:
             if input_file is not None or output_file is not None:
@@ -343,13 +369,22 @@ class NativeCI:
                 self.container_exec(['pg_dump', '-h', '127.0.0.1', '-p', '5432', '-U', 'postgres', '-d', 'postgres', '-Fc'], output_file=out)
             # No seed is created until custody, same-instance/version checks and full dump succeed.
             self.create(template, 'template0')
+            self.qualify_fresh_seed(template)
             with archive.open('rb') as data:
                 self.container_exec(['pg_restore', '-h', '127.0.0.1', '-p', '5432', '-U', 'postgres', '-d', template,
-                                     '--clean', '--if-exists', '--exit-on-error'], input_file=data)
+                                     '--exit-on-error'], input_file=data)
             with archive.open('rb') as data:
                 archive_sha256 = hashlib.file_digest(data, 'sha256').hexdigest()
             return dict(versions=versions, postgres_context=host, server_major=major, container_id=self.container_id,
                         image_id=image_id, archive_sha256=archive_sha256)
+
+    def qualify_fresh_seed(self, database):
+        if database != self.prefix + '_seed' or database not in self.owned:
+            raise RuntimeError('4427 fresh restore qualification requires newly owned seed')
+        facts = validate_fresh_seed(json.loads(self.sql(database, FRESH_SEED_QUERY)), database)
+        self.fresh_restore_seed = database
+        self.diagnostic('fresh-target-qualified', **facts)
+        return facts
 
     def sql(self, db, query):
         return self.command('psql', db, '-XqAt', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=sqlstate', input_text=query)

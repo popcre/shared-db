@@ -146,7 +146,7 @@ function verifiedIntermediatePairs(before,after,rows,git,expectedPr,readContract
     }
     published(endpoint.contract.generation??1)
     validateCompletionReport(endpoint.report,{validateCompletionRecord})
-    if(!reconcileReportWithContract(endpoint.report,endpoint.contract).satisfied)refuse()
+    if(endpoint.report.outcome!=='ready-for-merge'||!reconcileReportWithContract(endpoint.report,endpoint.contract).satisfied)refuse()
     verifyGitEvidence({contract:endpoint.contract,report:endpoint.report,prBaseSha:endpoint.report.base_sha??endpoint.contract.base_sha,prHeadSha:after},{
       isAncestor:ancestor,mergeBase:(a,b)=>run(['merge-base',a,b]),
       changedFiles:(a,b)=>run(['diff','--name-only',a,b]).split('\n').filter(Boolean),
@@ -159,6 +159,7 @@ function verifiedIntermediatePairs(before,after,rows,git,expectedPr,readContract
       if(run(['ls-tree','-z',before,'--',file])||run(['ls-tree','-z',after,'--',file]))refuse()
       generations.add(Number(m[2]))
     }
+    if(generations.size*boundary>1000)refuse()
     const seen=new Set()
     for(const commit of rows.slice(0,boundary))for(const generation of generations){
       const paths=pairPaths(issue,generation)

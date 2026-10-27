@@ -1049,6 +1049,7 @@ function preEvidenceRetirementFixture(t,{bad=null}={}){
  const pair=(c,implementation,variant)=>{
   const g=c.generation??1,d=dir(g);mkdirSync(d,{recursive:true})
   const r={schema_version:1,work_issue:issue,outcome:'ready-for-merge',pr,migration_versions:[],contract_ref:`refs/db-contracts/${issue}/${g}`,contract_sha256:contractHash(c),head_sha:implementation,base_sha:f.base,files_changed:f.git(['diff','--name-only',f.base,implementation]).trim().split('\n').filter(Boolean),db_reads:[],db_writes:[],checks:[{command:'fixture',exit_code:0,evidence:'Controlled fixture; not review approval'}],assumptions_resolved:[],stop_conditions_hit:[]}
+  if(g===2&&bad?.startsWith('outcome-'))r.outcome=bad.slice('outcome-'.length)
   if(variant==='foreign-pr')r.pr++
   if(variant==='foreign-issue')r.work_issue++
   if(variant==='hash')r.contract_sha256='f'.repeat(64)
@@ -1082,7 +1083,7 @@ test('#4889 pre-evidence transient retirement recovers conservatively without ap
  const result=assertPaidReviewCapacity({...request,headSha:f.after},{...io(starts),reviewContentComparison:()=>({before:digest,after:'d'.repeat(64),budgetProof:proof})})
  assert.equal(result.paidAttempts,2);assert.equal(result.reinstated??0,0)
 })
-for(const bad of ['foreign-pr','foreign-issue','hash','contract','partial','json','mode','present','unreadable-published','unreadable-source','foreign-merge'])test(`#4889 pre-evidence transient retirement refuses ${bad}`,t=>{
+for(const bad of ['foreign-pr','foreign-issue','hash','contract','partial','json','mode','present','unreadable-published','unreadable-source','foreign-merge','outcome-failed','outcome-cancelled','outcome-returned'])test(`#4889 pre-evidence transient retirement refuses ${bad}`,t=>{
  const f=preEvidenceRetirementFixture(t,{bad})
  assert.throws(()=>f.proof())
 })

@@ -1,0 +1,76 @@
+{
+  "schema_version": 2,
+  "work_issue": 4890,
+  "generation": 4,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Refresh corrected actual-table qualification against current protected main and serialize one current native evidence pair; preserve all rejected/predecessor records in Git/private custody/immutable refs",
+  "base_sha": "1d0305f1a707401672efc4c99993d6493fbbcd88",
+  "dispatcher": "Codex parent01a17a03-63b6-7081-ab54-29fa144bf678 authorized current semantic postcondition boundary; no historical identity claim",
+  "worker": "Codex subagent01a17b07-1191-7fa2-ac52-734ad1b02932",
+  "branch": "codex/4427-actual-table-qualification-01a17b07",
+  "worktree": "/tmp/shared-db-4427-qualification-01a17b07",
+  "allowed_paths": [
+    "supabase/tests/rls_public_admin_initplan_contracts.sql",
+    "supabase/tests/rls_public_admin_actual_table_performance.sql",
+    "scripts/qualify_rls4427_actual_tables.py",
+    "scripts/test_qualify_rls4427_actual_tables.py",
+    "docs/verification/rls-initplan/4427/actual-table-qualification.md",
+    ".agent/work/4890/1/contract.json",
+    ".agent/work/4890/1/completion.json",
+    ".agent/work/4890/3/contract.json",
+    ".agent/work/4890/3/completion.json"
+  ],
+  "file_writes": [
+    "supabase/tests/rls_public_admin_initplan_contracts.sql",
+    "supabase/tests/rls_public_admin_actual_table_performance.sql",
+    "scripts/qualify_rls4427_actual_tables.py",
+    "scripts/test_qualify_rls4427_actual_tables.py",
+    "docs/verification/rls-initplan/4427/actual-table-qualification.md",
+    ".agent/work/4890/1/contract.json",
+    ".agent/work/4890/1/completion.json",
+    ".agent/work/4890/3/contract.json",
+    ".agent/work/4890/3/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No production/preview calls or data, credentials, advisor calls, claims or merge by worker",
+    "No Docker/database/resource action until independently assigned exact source+action review APPROVE and native gates/adoption",
+    "No policy/helper/grant/RLSflag/index capability change outside disposable actualCI trial clones",
+    "No VACUUM/statsreset/threshold weakening or erased historicalflags",
+    "No generic executor/framework/toolkit/gate/workflow changes"
+  ],
+  "required_checks": [
+    "python3 -m unittest scripts.test_qualify_rls4427_actual_tables",
+    "node --test scripts/rls-public-admin-initplan.test.mjs",
+    "node --test scripts/agent-work-contract-git-evidence.test.mjs",
+    "python3 -m py_compile scripts/qualify_rls4427_actual_tables.py",
+    "bash scripts/check-sql.sh",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "Technicalmaintenanceartifact only; allbusiness/liveproof remains4427",
+    "Existing native fullDBCI bootstraps actualschema and fourgenuineinvalidsyntheticusers; noexistingownedphysicalclonefacility",
+    "Existing198adminconfigmatrix and fullpolicyunion checks preserved unchanged;330DML+44SELECTcontrols separate source-specific driver",
+    "Per-variant clones derive from same closed ownedtemplate, avoiding rollbackphysicalreset assumption; no syntheticresult can prove historicalproductionregression absent",
+    "Parent retains resourceapprovaladoption/PRlaunch/protectedmerge/acceptance; independentlyreview exactfinalsource+ONE nativeephemeralCI action beforelaunch",
+    "Inherited qualification source authored under4890generation1; initialsecurityreview28d295REJECT preserved; thisgen2 precedes correctiveedits and does not backdate originalimplementation",
+    "Generation1 pair already committed under prior contract is preserved byte-for-byte as inherited Git changes, not edited; final generation3 pair only follows implementation head",
+    "Generation2 corrective edits preceded this generation3 evidence-closure/scope import, explicitly disclosed; no backdating; published predecessor2 remains immutable",
+    "Main drift9c\u21921d changes only4664generation9 evidence and20261027114004 search_dam_documents function; no4427fixture/policy/helper/index/grant change; normalmerge preserveshistory",
+    "Nativecurrent-pair gate explicitly rejects multiple same-issue pairs in one PRdiff; remove only owned superseded1/3 working-head copies AFTER exact private backups, keep all commits/published refs/evidencebytes; solecurrentpair4 follows implementationhead",
+    "Generation3 publication/source/evidence chronology preserved; this4 contract precedes current-head pair serialization and fresh exactsource/action review; no resource approval reuse"
+  ],
+  "stop_conditions": [
+    "Any route/scope/nativegate refusal",
+    "Any nonlocal/shared target or unverified CI identity/source",
+    "Any inability to preserve actualschema/policyunion/physicalpairing/cleanup",
+    "Any request to weaken originalflags or claim syntheticproductionacceptance"
+  ],
+  "evidence_parent": {
+    "work_issue": 4890,
+    "generation": 3,
+    "contract_sha256": "57f5680f7539f4d04ba9037897a626acac06f63502e9d31b008aa34c186a7a4a"
+  }
+}

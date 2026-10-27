@@ -18,15 +18,16 @@ begin
   end if;
   return query
   with lines as materialized (
-    select o.order_line_id, o.assortment_id, o.sku, o.coldlion_source_id,
+    select l.id as order_line_id, l.assortment_id, l.sku, r.source_id as coldlion_source_id,
       l.metadata ->> 'component_source_hash' as component_hash,
-      case when o.coldlion_source_id ~ '^coldlion:so:[1-9][0-9]{0,17}:line:[0-9]{1,9}:component:[1-9][0-9]{0,9}$'
-        then split_part(o.coldlion_source_id, ':', 3)::bigint end as so_number,
-      case when o.coldlion_source_id ~ '^coldlion:so:[1-9][0-9]{0,17}:line:[0-9]{1,9}:component:[1-9][0-9]{0,9}$'
-        then split_part(o.coldlion_source_id, ':', 5)::integer end as so_line
-    from api.dam_order_list o
-    join plm.production_order_line l on l.id = o.order_line_id
-    where o.order_line_id = any(p_line_ids)
+      case when r.source_id ~ '^coldlion:so:[1-9][0-9]{0,17}:line:[0-9]{1,9}:component:[1-9][0-9]{0,9}$'
+        then split_part(r.source_id, ':', 3)::bigint end as so_number,
+      case when r.source_id ~ '^coldlion:so:[1-9][0-9]{0,17}:line:[0-9]{1,9}:component:[1-9][0-9]{0,9}$'
+        then split_part(r.source_id, ':', 5)::integer end as so_line
+    from plm.production_order_line l
+    left join plm.production_order_line_source_ref r on r.production_order_line_id = l.id
+      and r.source_system = 'coldlion' and r.is_primary
+    where l.id = any(p_line_ids)
   ), order_recipe as materialized (
     select l.order_line_id,
       case when count(*) = count(c.quantity) and count(distinct c.quantity) = 1

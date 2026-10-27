@@ -32,7 +32,8 @@ def main():
 create schema auth; create schema api; create schema plm; create schema coldlion;
 create function auth.uid() returns uuid language sql stable as
  'select nullif(current_setting(''request.jwt.claim.sub'',true),'''')::uuid';
-create table plm.production_order_line(id uuid primary key, metadata jsonb);
+create table plm.production_order_line(id uuid primary key, assortment_id text, sku text, metadata jsonb);
+create table plm.production_order_line_source_ref(production_order_line_id uuid, source_system text, source_id text, is_primary boolean);
 create table public.order_fixture(order_line_id uuid primary key, assortment_id text, sku text, coldlion_source_id text);
 create view api.dam_order_list as select * from public.order_fixture;
 create table coldlion.intake_order_line(id uuid, company_code text, sales_order_no bigint, sales_order_line_no integer, master_item_no text);
@@ -44,9 +45,12 @@ select ('00000000-0000-4000-8000-'||lpad(i::text,12,'0'))::uuid,
  case when i=8 then null else 'PACK-'||i end,'SKU-'||i,
  case when i<=3 then 'coldlion:so:500:line:'||i||':component:1' end
 from generate_series(1,9) i;
-insert into plm.production_order_line select order_line_id,
+insert into plm.production_order_line select order_line_id,assortment_id,sku,
  case when coldlion_source_id is not null then jsonb_build_object('component_source_hash','exact-'||right(sku,1)) else '{}'::jsonb end
 from public.order_fixture;
+insert into plm.production_order_line_source_ref select order_line_id,'coldlion',coldlion_source_id,true from public.order_fixture where coldlion_source_id is not null;
+-- Non-primary references must not duplicate or displace the authoritative source.
+insert into plm.production_order_line_source_ref select order_line_id,'coldlion','coldlion:so:999:line:1:component:1',false from public.order_fixture where sku='SKU-1';
 insert into coldlion.intake_order_line
 select order_line_id,'EDGEHOME',500,i,assortment_id
 from public.order_fixture cross join lateral (select right(sku,1)::integer i) v where i<=3;

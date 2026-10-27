@@ -1,5 +1,5 @@
 -- Version: 20261027061216
--- derived-from: 20261022155012, 20261025121119
+-- derived-from: 20261022155012, 20261025121119, 20261027012301
 -- Issue: popcre/shared-db#4437 (app u2giants/popdam3#107), claim #4820 stage 2.
 -- Semantic-plus-keyword search: thread p_query_embedding (SigLIP2/768, the one
 -- embedding mechanism per #4664) and a semantic score floor into
@@ -774,5 +774,151 @@ begin
   end if;
 end
 $verify$;
+
+
+-- ---------------------------------------------------------------------------
+-- INCIDENT FIX 2026-10-27 (#4437, claim #4820): the stage-1 coverage meter
+-- get_sg_search_embedding_status timed out on production (SQLSTATE 57014,
+-- 09:19Z and intermittently after) as the embedding backfill filled
+-- vector(768) payloads: its single aggregate seq-scanned every heap page of
+-- style_guide_search_documents (460 MB heap at 72,496/234,396 embedded),
+-- because count(*) filter (embedding is not null) reads the embedding column
+-- of every row. claim_sg_search_embedding_documents misplanned the same
+-- table into a seq-scan + sort once (09:19Z). The backfill is stopped at
+-- embedded=72,496 / pending=146,384 / errored=0 pending a fresh dispatch.
+--
+-- Fix: the meter is rewritten as split scalar counts whose document side is
+-- served index-only by the partial indexes below (never touching the
+-- embedding heap pages); the files side is a primary-key probe into a
+-- narrow, vector-free heap. Bucket semantics are preserved exactly,
+-- including the left-join behavior the stage-1 fixture pins: a document
+-- whose file row is missing OR has no live thumbnail counts in
+-- waiting_for_thumbnail_documents, and pending_documents counts only
+-- claimable work (active, identified, thumbnail present, retries left,
+-- error category not permanent). claim_sg_search_embedding_documents keeps
+-- its reviewed body byte-for-byte: idx_sg_search_documents_meter_pending
+-- bakes the attempt/category predicate into a document_updated_at-ordered
+-- partial index, giving the planner the tight ordered path it misplanned
+-- around (the remaining retry/lease/freshness filters are heap checks on
+-- pending rows only, which carry no vector payload).
+
+do $meter_baseline$
+begin
+  if not exists (
+    select 1 from pg_proc p
+     where p.oid = to_regprocedure('public.get_sg_search_embedding_status()')
+       and md5(p.prosrc) = 'cf3e8ebccc8074463a1d4f88cf241e86'
+  ) then
+    raise exception 'stage-1 coverage meter baseline differs; reconcile before applying';
+  end if;
+end
+$meter_baseline$;
+
+create index if not exists idx_sg_search_documents_meter_embedded
+  on public.style_guide_search_documents using btree (style_guide_file_id)
+  where embedding is not null;
+
+create index if not exists idx_sg_search_documents_meter_pending
+  on public.style_guide_search_documents using btree (document_updated_at, style_guide_file_id)
+  where is_active and content_sha256 is not null and embedding is null
+    and embedding_attempts < embedding_max_attempts
+    and embedding_error_category is distinct from 'permanent';
+
+create index if not exists idx_sg_search_documents_meter_unidentified
+  on public.style_guide_search_documents using btree (style_guide_file_id)
+  where content_sha256 is null;
+
+create index if not exists idx_sg_search_documents_meter_errored
+  on public.style_guide_search_documents using btree (style_guide_file_id)
+  where embedding_error is not null;
+
+create index if not exists idx_sg_search_documents_meter_exhausted
+  on public.style_guide_search_documents using btree (style_guide_file_id)
+  where embedding is null
+    and (embedding_attempts >= embedding_max_attempts
+         or embedding_error_category = 'permanent');
+
+create index if not exists idx_sg_search_documents_meter_lease
+  on public.style_guide_search_documents using btree (embedding_lease_expires_at);
+
+create index if not exists idx_sg_search_documents_meter_updated_at
+  on public.style_guide_search_documents using btree (document_updated_at);
+
+create or replace function public.get_sg_search_embedding_status()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = 'public'
+as $meter$
+select jsonb_build_object(
+  'total_documents', (select count(*) from public.style_guide_search_documents),
+  'embedded_documents', (select count(*) from public.style_guide_search_documents where embedding is not null),
+  'pending_documents', (
+    select count(*) from public.style_guide_search_documents d
+     where d.is_active and d.content_sha256 is not null and d.embedding is null
+       and d.embedding_attempts < d.embedding_max_attempts
+       and d.embedding_error_category is distinct from 'permanent'
+       and exists (select 1 from public.style_guide_files f
+                    where f.id = d.style_guide_file_id
+                      and f.thumbnail_url is not null)),
+  'waiting_for_thumbnail_documents', (
+    select count(*) from public.style_guide_search_documents d
+     where d.is_active and d.content_sha256 is not null and d.embedding is null
+       and not exists (select 1 from public.style_guide_files f
+                        where f.id = d.style_guide_file_id
+                          and f.thumbnail_url is not null)),
+  'unidentified_documents', (select count(*) from public.style_guide_search_documents where content_sha256 is null),
+  'leased_documents', (select count(*) from public.style_guide_search_documents where embedding_lease_expires_at > now()),
+  'errored_documents', (select count(*) from public.style_guide_search_documents where embedding_error is not null),
+  'exhausted_documents', (
+    select count(*) from public.style_guide_search_documents
+     where embedding is null
+       and (embedding_attempts >= embedding_max_attempts
+            or embedding_error_category = 'permanent')),
+  'oldest_pending_updated_at', (
+    select d.document_updated_at from public.style_guide_search_documents d
+     where d.is_active and d.content_sha256 is not null and d.embedding is null
+       and exists (select 1 from public.style_guide_files f
+                    where f.id = d.style_guide_file_id
+                      and f.thumbnail_url is not null)
+     order by d.document_updated_at
+     limit 1),
+  'newest_updated_at', (select max(document_updated_at) from public.style_guide_search_documents)
+)
+$meter$;
+
+revoke all on function public.get_sg_search_embedding_status() from public, anon;
+grant execute on function public.get_sg_search_embedding_status() to service_role;
+
+do $meter_verify$
+begin
+  if not exists (
+    select 1 from pg_proc p
+     where p.oid = to_regprocedure('public.get_sg_search_embedding_status()')
+       and md5(p.prosrc) = '0366a4d0bddee2c5a8b8f2d4ba73c69a'
+       and p.prosecdef and p.provolatile = 's'
+       and (select coalesce(array_agg(s.setting order by s.setting), '{}'::text[])
+              from unnest(coalesce(p.proconfig, '{}'::text[])) s(setting))
+           = array['search_path=public']
+  ) or not has_function_privilege('service_role', 'public.get_sg_search_embedding_status()', 'execute')
+    or has_function_privilege('anon', 'public.get_sg_search_embedding_status()', 'execute')
+    or has_function_privilege('authenticated', 'public.get_sg_search_embedding_status()', 'execute')
+    or exists (select 1 from (values
+      ('idx_sg_search_documents_meter_embedded'),
+      ('idx_sg_search_documents_meter_pending'),
+      ('idx_sg_search_documents_meter_unidentified'),
+      ('idx_sg_search_documents_meter_errored'),
+      ('idx_sg_search_documents_meter_exhausted'),
+      ('idx_sg_search_documents_meter_lease'),
+      ('idx_sg_search_documents_meter_updated_at')
+    ) wanted(name) where not exists (
+      select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+       where c.relname = wanted.name and n.nspname = 'public' and c.relkind = 'i'))
+  then
+    raise exception 'stage-2 incident fix did not install the expected meter contract';
+  end if;
+end
+$meter_verify$;
 
 notify pgrst, 'reload config';

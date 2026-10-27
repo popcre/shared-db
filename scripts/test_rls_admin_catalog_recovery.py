@@ -23,8 +23,6 @@ class AdminCatalogRecoveryTests(unittest.TestCase):
         baseline = historical[historical.index('WITH expected_policies AS'):].rstrip().removesuffix(';')
         # Remove ONLY the narrowly inserted composition CTE; everything else
         # must equal the original immutable installed-catalog probe byte for byte.
-        start = CONTRACT.index('), expected_policies AS (')
-        end = CONTRACT.index('), expected_tables AS (', start)
         normalized = re.sub(r"'((?:''|[^'])*)'::jsonb", lambda m: '$baseline$' + m[1].replace("''", "'") + '$baseline$::jsonb' if m[1].startswith('[{') else m[0], CONTRACT)
         start = normalized.index('), expected_policies AS (')
         end = normalized.index('), expected_tables AS (', start)
@@ -53,29 +51,44 @@ class AdminCatalogRecoveryTests(unittest.TestCase):
             self.assertIn('ALTER POLICY "' + policy + '" ON "public"."' + table + '"\n  USING (' + expression + ');', successor)
         self.assertIn('e.with_check,e.oid from original_expected_policies e', composition)
 
-    def test_sidecar_adds_meaningful_boolean_assertion_in_existing_verifier(self):
-        checks = load_behavior_sidecars(ROOT, {VERSION: MIGRATION}, [VERSION])
-        self.assertEqual(len(checks), 1)
-        self.assertEqual(checks[0]['migration_sha256'], hashlib.sha256(MIGRATION.read_bytes()).hexdigest())
-        self.assertEqual(checks[0]['contract'], 'rls_public_admin_install_v1')
-        query = build_behavior_sql(checks)
-        self.assertIn('case when (' + CONTRACT + ') then 1 else 0 end', query)
-        self.assertIn('1::bigint as expected_count', query)
+    def synthetic_sidecar(self, root):
+        folder = root / 'scripts/production-verification-sidecars'
+        folder.mkdir(parents=True)
+        value = dict(schema_version=1, migration_version=VERSION,
+            migration_sha256=hashlib.sha256(MIGRATION.read_bytes()).hexdigest(),
+            checks=[dict(id='rls_public_admin_install', kind='catalog_contract',
+                contract='rls_public_admin_install_v1', expected_count=1)])
+        (folder / (VERSION + '.json')).write_text(json.dumps(value))
+        return value
 
-    def test_changed_migration_cannot_reuse_sidecar(self):
+    def test_synthetic_sidecar_exercises_existing_boolean_assertion_without_activation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            folder = root / 'scripts/production-verification-sidecars'
-            folder.mkdir(parents=True)
-            (folder / (VERSION + '.json')).write_bytes((ROOT / 'scripts/production-verification-sidecars' / (VERSION + '.json')).read_bytes())
+            self.synthetic_sidecar(root)
+            checks = load_behavior_sidecars(root, {VERSION: MIGRATION}, [VERSION])
+            self.assertEqual(len(checks), 1)
+            self.assertEqual(checks[0]['migration_sha256'], hashlib.sha256(MIGRATION.read_bytes()).hexdigest())
+            self.assertEqual(checks[0]['contract'], 'rls_public_admin_install_v1')
+            query = build_behavior_sql(checks)
+            self.assertIn('case when (' + CONTRACT + ') then 1 else 0 end', query)
+            self.assertIn('1::bigint as expected_count', query)
+
+    def test_changed_migration_cannot_reuse_synthetic_sidecar(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.synthetic_sidecar(root)
             altered = root / MIGRATION.name
             altered.write_bytes(MIGRATION.read_bytes() + b'\n-- mutation\n')
             with self.assertRaisesRegex(GuardError, 'migration hash mismatch'):
                 load_behavior_sidecars(root, {VERSION: altered}, [VERSION])
 
+    def test_bootstrap_has_no_active_sidecar_or_registry_declaration(self):
+        self.assertFalse((ROOT / 'scripts/production-verification-sidecars' / (VERSION + '.json')).exists())
+        registry = json.loads((ROOT / 'config/production-verification-sidecar-registry.json').read_text())
+        self.assertNotIn(VERSION, [item['version'] for item in registry['sidecars']])
+
     def test_old_proof_and_applied_migration_are_not_rewritten(self):
-        sidecar = json.loads((ROOT / 'scripts/production-verification-sidecars' / (VERSION + '.json')).read_text())
-        self.assertEqual(sidecar['migration_sha256'], '436f304ae74922d3543f7da2f9b1127abf5e4050ab267314636bb5bdd9220300')
+        self.assertEqual(hashlib.sha256(MIGRATION.read_bytes()).hexdigest(), '436f304ae74922d3543f7da2f9b1127abf5e4050ab267314636bb5bdd9220300')
         historical = (ROOT / '.github/live-proofs/4427.sql').read_text()
         self.assertNotIn("version='20261023122936'", historical)
         self.assertIn('Passing does not close4427', historical)

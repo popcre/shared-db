@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "work_issue": 4890,
+  "outcome": "ready-for-merge",
+  "pr": 4895,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4890/11",
+  "contract_sha256": "bfb6fe11d1917b116683faab7c9516a24dcbb6ddff625c4a2a4daa509cc03ab1",
+  "head_sha": "5d97b44acf6b97bdce34dbe53563c626eaff3dee",
+  "base_sha": "ea0bc41ae8eda22f046a4ab2d845ada6e658e10f",
+  "files_changed": [
+    "docs/verification/rls-initplan/4427/actual-table-qualification.md",
+    "scripts/qualify_rls4427_actual_tables.py",
+    "scripts/test_qualify_rls4427_actual_tables.py",
+    "supabase/tests/rls_public_admin_actual_table_performance.sql",
+    "docs/verification/throughput-dispositions/scripts~qualify_rls4427_actual_tables.py.json",
+    "scripts/rls4427_native_restore_regression.py",
+    "scripts/test_rls4427_native_restore_regression.py",
+    "supabase/tests/fixtures/rls4427_native_restore_fixture.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python3 -m unittest scripts.test_qualify_rls4427_actual_tables",
+      "exit_code": 0,
+      "evidence": "21 OFFLINE core tests PASS, including every positive-empty-catalog/owned-identity boundary, exact full fatal restore/no overwrite flags, preserved330DML44SELECT/physical/controlmatrix"
+    },
+    {
+      "command": "node --test scripts/rls-public-admin-initplan.test.mjs",
+      "exit_code": 0,
+      "evidence": "9 existing retained-source/provenance tests pass; original fixture bytehash166a1d7cae922b27c229c31162b612ccb1957a27440806681a15677151354667 unchanged"
+    },
+    {
+      "command": "node --test scripts/agent-work-contract-git-evidence.test.mjs",
+      "exit_code": 0,
+      "evidence": "26 existing native Git/evidence-tail tests pass; implementation SHA plus exact keyed two-file tail supported"
+    },
+    {
+      "command": "python3 -m py_compile scripts/qualify_rls4427_actual_tables.py",
+      "exit_code": 0,
+      "evidence": "Python compiles without runtime resource execution"
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "SQL/static guards pass; no migration change"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors"
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "16 tests pass including current_repository_catalogues_follow_current_discovery"
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=373 sources=108 derived_digest=04681fc4dc32"
+    },
+    {
+      "command": "python3 -m unittest scripts.test_rls4427_native_restore_regression",
+      "exit_code": 0,
+      "evidence": "9 OFFLINE resource/restore/fixture/control tests PASS: import-noresources, source drift refusal, fixed fullrestoreargs, nonemptytarget beforeoperation, foreign/excessDBrefusal, exactownedcontainer authorityboundaries, nointeractiveread, actualexternalnonzerofatal, requiredfullmetadata/sequence/ACL fixture coverage; REAL test NOTRUN"
+    }
+  ],
+  "assumptions_resolved": [
+    "Root-authored scope expands ONLY fixed existingnativeCLI DBcontainer readonlycustody/versions/sameinstance and exact two snapshotoperations; gen8 prospectivelypublished before sourceedits",
+    "Preservedfirsttrial40525276354 FAILartifact12744381975 SHAa5aa2b4685e284c55c10dc472d419f1909696d09c291dac77e97975f20a4e331 and sixminuteactualjobcost; zero374samples, originalcauseunproven becausehiddenstderr",
+    "Newsource preserves fullpg_dump customarchive/pg_restoreclean snapshot; hostpsql/matrix/fullschema/policyunion/negativeequivalence/thresholds unchanged. Actualnativecontaineridentity/client/readiness stillUNKNOWN until separatelyapprovedruntimepreflight",
+    "Dump completes toprivateexclusive0600filebeforeseedcreation; boundedactualstderr andversions emitted; noinstallation/newcontainer/remotecontext/fallback/versionignore",
+    "Everycontainerexec revalidatesimmutablecontainer/image/name/project/volume/network/port/healthy/nonprivilegedcustody; readonlyPGsystemidentifier binds hostloopback/container sameinstance; dump/restore majors equalactualserver",
+    "SuccessfulownedDROP requiresabsence readback+receipt; ambiguousCREATEbeforeownershiprecord remains disclosed ephemeralrunnerteardownresidual",
+    "Normalmergeff01 currentupstream preservespublished ef67468 and cd06history; ff01 driftonlyColdLionwording/evidence. Ownpriorgen7workingpair removedafterexactprivatebackup; everyoriginalcommit/ref/artifact preserved",
+    "Native ready-for-merge authorship enum ONLY; NOsecondtrial/sourcepush/review/resource/adoption/mergeauthorized. Freshassignedusableengine source+ONEsecondtrialreview/rootadoption/nativeinfra+ship required",
+    "Alloriginalproductionflags/actualappread-write-restoration obligations stay4427; syntheticperformance neverproductionacceptance",
+    "Root adopted finalsamegen8 hardening beforepaidreview: allcontainerlabels exactimmutableimagelabels+twoownershipkeys(conflictsrefuse), nonrestoreDEVNULL/no-i, exclusive0600archiveatcreation, PGsystemidentifier+postmastertime+serverversion+currentdatabase sameinstance; no runtimeexecution",
+    "Generation9onlynativecurrentpairclosure prospectivelypublishedaftergen8source; previous8pairprivatebackup/history/ref preserved beforeworkingpairremoval; no backdating/resource/action",
+    "Generation10 prospectivelypublished beforeexactcommandguardrepair; infrastructureintentdeclared innewWT beforeedits, no omission/reclassifypass",
+    "Secondtrial40530597247 actual469secFAIL preserved withartifact12745958206 digestee6658d3c7e8ee46dcee775caa5ff5f3685e7521f03f02b758f2d5c8965daf57; nodeducedfirsttrialcause/no dataoperation/seed/374sampleclaim",
+    "No paidreview/push/thirdtrial/resource authorized; currentready-for-merge nativeenum authorshiponly, parentsecurity/resource/mergeholds retained",
+    "Prospective11/refe1ae8bc beforeedits; infrastructurephase declared first; fullarchive/ownerACL/policy/exitonerror preserved with BOTHclean/ifexists omittedONLYafterpositiveemptyownedtemplate0 certificate",
+    "Exactfreshpredicate includesstandardPG17publicschemaownerACL/extensions/defaultACL/userobjectinventory; no deletingpublic/filters/ignoreerrors",
+    "Preparedsource-specific REALPG17 regression with cachedimmutableimage2d2b8998... source+one sequentialtarget, ownednoport/network/bind/pull/read-onlyrootfs/512MiB1CPU128PID/3tmpfs; REALresource UNEXECUTED, no futureactionauthority",
+    "AllthreepriorFAILreceipts/costs360/469/407 retained, no374samples; actualthirdmatchingPG17customdump succeeded/restorecleanfailed/seedabsence proved",
+    "No paidreview/push/localDockerSQL/fourthCI/merge/prod. Currentready-for-merge isONLYnativeauthorshipenum; rootretains source/security/resource/acceptance/merge holds",
+    "Originalfixture/SQLentry/workflow unchanged; newnestedSQLfixture notexecuted bynative top-levelglob; no actualruntimepass claimed"
+  ],
+  "stop_conditions_hit": []
+}

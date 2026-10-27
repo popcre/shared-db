@@ -6,7 +6,7 @@
   "migration_versions": [],
   "contract_ref": "refs/db-contracts/4890/8",
   "contract_sha256": "42b8fa686feb0872dd544cc7746c4a049a3e0ee9de674330d59b3eaa900729c7",
-  "head_sha": "ce2ac4f17b90771b744c2cd0a9d02edc08bd01cb",
+  "head_sha": "b19b3a4af3b84e753ee8473f918c415d825303b8",
   "base_sha": "ff01fb4d0041ead2b38d43620f17d2711f560732",
   "files_changed": [
     "docs/verification/rls-initplan/4427/actual-table-qualification.md",
@@ -21,7 +21,7 @@
     {
       "command": "python3 -m unittest scripts.test_qualify_rls4427_actual_tables",
       "exit_code": 0,
-      "evidence": "17 no-resource tests PASS: existing matrix/policy/source guards plus foreigncontainer/mount/network/ports/labels, replacement/image mismatch, remoteenvironment/untrustedsocket, matchingversions/sameinstance, exact two full snapshotoperations/privatearchive, dump/restorefailure boundaries, boundedstderr/originalexit, postdropabsence"
+      "evidence": "20 no-resource tests PASS: existing matrix/policy/source guards plus foreigncontainer/mount/network/ports/labels, replacement/image mismatch, remoteenvironment/untrustedsocket, matchingversions/sameinstance, exact two full snapshotoperations/privatearchive, dump/restorefailure boundaries, boundedstderr/originalexit, postdropabsence; inherited image metadata exactunion/ownership conflict, restoreonlystdin/DEVNULL, postmasterdifference, restore-failure run-finally ownedseedcleanup"
     },
     {
       "command": "node --test scripts/rls-public-admin-initplan.test.mjs",
@@ -68,7 +68,8 @@
     "SuccessfulownedDROP requiresabsence readback+receipt; ambiguousCREATEbeforeownershiprecord remains disclosed ephemeralrunnerteardownresidual",
     "Normalmergeff01 currentupstream preservespublished ef67468 and cd06history; ff01 driftonlyColdLionwording/evidence. Ownpriorgen7workingpair removedafterexactprivatebackup; everyoriginalcommit/ref/artifact preserved",
     "Native ready-for-merge authorship enum ONLY; NOsecondtrial/sourcepush/review/resource/adoption/mergeauthorized. Freshassignedusableengine source+ONEsecondtrialreview/rootadoption/nativeinfra+ship required",
-    "Alloriginalproductionflags/actualappread-write-restoration obligations stay4427; syntheticperformance neverproductionacceptance"
+    "Alloriginalproductionflags/actualappread-write-restoration obligations stay4427; syntheticperformance neverproductionacceptance",
+    "Root adopted finalsamegen8 hardening beforepaidreview: allcontainerlabels exactimmutableimagelabels+twoownershipkeys(conflictsrefuse), nonrestoreDEVNULL/no-i, exclusive0600archiveatcreation, PGsystemidentifier+postmastertime+serverversion+currentdatabase sameinstance; no runtimeexecution"
   ],
   "stop_conditions_hit": []
 }

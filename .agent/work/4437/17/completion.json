@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "work_issue": 4437,
+  "outcome": "ready-for-merge",
+  "pr": 4881,
+  "migration_versions": [
+    "20261027061216"
+  ],
+  "contract_ref": "refs/db-contracts/4437/17",
+  "contract_sha256": "7852439aab53d92a234c6680eb0a171a5b5abee3f2afb8ad3238715243aa3130",
+  "head_sha": "0849b06520f0a1d0e95654f02b80f13450de8c3f",
+  "base_sha": "438f8b175b839348fba9eea7079ad35047a9a825",
+  "files_changed": [
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20261027061216.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/test_production_catalog_verification.py",
+    "supabase/migrations/20261027061216_popsg_semantic_search_stage2.sql",
+    "supabase/tests/popsg_parse_search_query_once_contracts.sql",
+    "supabase/tests/popsg_search_style_guide_library_v2_contracts.sql"
+  ],
+  "db_reads": [
+    "table public.style_guide_search_documents",
+    "table public.style_guide_files",
+    "table public.style_guide_render_queue",
+    "materialized view public.style_guide_library_default_summary",
+    "materialized view public.style_guide_library_default_guides",
+    "function public.has_app_access"
+  ],
+  "db_writes": [
+    "function public.search_style_guide_library_v2"
+  ],
+  "checks": [
+    {
+      "command": "database-contract-tests popsg_search_style_guide_library_v2_contracts.sql popsg_parse_search_query_once_contracts.sql",
+      "exit_code": 0,
+      "evidence": "CI run 40502391466 (check-run 122183118010, ephemeral database job) at code head 0849b06520f0a1d0e95654f02b80f13450de8c3f: full migration replay plus the whole contract-test suite green; both files pass, including the re-bound parse-search serving-identity contract (17-arg to_regprocedure/has_function_privilege resolution, body md5 1dfc9194a2288feb3a0feace89487f78, sorted proconfig search_path=pg_catalog, auth / statement_timeout=30s / work_mem=64MB, authenticated granted and anon refused)."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs",
+      "exit_code": 0,
+      "evidence": "Local run at the code head after the catalog-pin repair: status OK, 95 sidecars, version 20261027061216 present with marker line 457; the detector baseline docs/verification/throughput-guard-truth-baseline-20260828.json re-recorded to sha256 2035aafdd170a1517958ae23d58a152bdf8ac5f11cbda242757983e67f645260 after the paren repair in production_catalog_verification.py."
+    },
+    {
+      "command": "python3 -m unittest scripts/test_production_catalog_verification.py scripts/test_check_production_verification_sidecars.py",
+      "exit_code": 0,
+      "evidence": "278 tests OK locally at the code head, including the behavioral-sidecar md5 derivation from this migration's single $function$ body and the four popsg_search_v2 catalog pins re-bound to md5 1dfc9194a2288feb3a0feace89487f78 with parseable 17-arg signatures."
+    },
+    {
+      "command": "gh api /repos/popcre/shared-db/commits/0849b06520f0a1d0e95654f02b80f13450de8c3f/check-runs",
+      "exit_code": 0,
+      "evidence": "30/30 check-runs completed at the code head, zero failures (SQL migration guards, Migration author lease after --renew-claim + --check-in-author at this exact head, Cross-PR object collision, Workflow YAML guard, Tools offline tests, Promotion contract tests offline, Queue-sensitive aggregate, Merge queue gate all success; only queue-scoped jobs skipped)."
+    }
+  ],
+  "assumptions_resolved": [
+    "Predecessor session died after pushing head 5bdf8a92f from an infrastructure quota error; everything it left was verified, not re-authored. The ephemeral-database failure on that head was diagnosed against a local throwaway pgvector/pg17 container: to_regprocedure/has_function_privilege strings placed the closing parenthesis before the trailing extensions.vector(768)/real arguments (unparseable, resolved NULL) and the parse-search contract pinned the retired 15-arg body md5 4cdde9e8fed849a203374f7e93139afd; the same malformed signature sat in all four popsg_search_v2 production catalog pins. All repaired on head 0849b0652 with the detector baseline re-recorded.",
+    "The 17-arg function body installed by migration 20261027061216 hashes to md5 1dfc9194a2288feb3a0feace89487f78 (verified against the live pg_proc prosrc in the throwaway container), matching the recipe pin; proconfig sorted equals [search_path=pg_catalog, auth, statement_timeout=30s, work_mem=64MB]; prosecdef, stable, owner postgres, returns jsonb.",
+    "Issue #4437 db-work-scope writes moved to the stage-2 object set (function public.search_style_guide_library_v2) with an audit comment, so contract db_writes == issue scope writes == the PR's parsed objects (PR #4881 parses to exactly that one object, version 20261027061216); reads corrected to the serving read set. Claim #4820 still protects the full two-stage object set as an intentional superset.",
+    "Claim #4820 lease renewed from expiry (--renew-claim) and author check-in recorded at the exact head 0849b0652 (refs/db-author-checkins/4820-20261027061216-8c5cf32b46c572fb025566c8), so the Migration author lease CI job passes at this head.",
+    "main did not move past the branch merge base 438f8b175 (verified origin/main == 438f8b175), so no merge was needed and no rebase occurred."
+  ],
+  "stop_conditions_hit": []
+}

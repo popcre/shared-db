@@ -39,12 +39,12 @@ begin
   insert into crm.opportunity (name) values (v_tag) returning id into v_opportunity;
 
   -- One message per stage, newest of all so stage page 1 must contain each.
-  insert into crm.email_message (subject, received_at, routing_status, company_id, department_id, opportunity_id) values
-    (v_tag || ' needs_company',    now() + interval '1 day', 'UNROUTED',     null,        null,         null),
-    (v_tag || ' needs_department', now() + interval '1 day', 'COMPANY_ONLY', v_customer,  null,         null),
-    (v_tag || ' needs_program',    now() + interval '1 day', 'COMPANY_DEPT', v_customer,  v_department, null),
-    (v_tag || ' routed',           now() + interval '1 day', 'SKIPPED',      v_customer,  v_department, v_opportunity),
-    (v_tag || ' skipped',          now() + interval '1 day', 'SKIPPED',      null,        null,         null);
+  insert into crm.email_message (external_source, external_id, subject, received_at, routing_status, company_id, department_id, opportunity_id) values
+    ('zztest-4920', v_tag || ' needs_company', v_tag || ' needs_company',    now() + interval '1 day', 'UNROUTED',     null,        null,         null),
+    ('zztest-4920', v_tag || ' needs_department', v_tag || ' needs_department', now() + interval '1 day', 'COMPANY_ONLY', v_customer,  null,         null),
+    ('zztest-4920', v_tag || ' needs_program', v_tag || ' needs_program',    now() + interval '1 day', 'COMPANY_DEPT', v_customer,  v_department, null),
+    ('zztest-4920', v_tag || ' routed', v_tag || ' routed',           now() + interval '1 day', 'SKIPPED',      v_customer,  v_department, v_opportunity),
+    ('zztest-4920', v_tag || ' skipped', v_tag || ' skipped',          now() + interval '1 day', 'SKIPPED',      null,        null,         null);
 
   -- Owner baseline, before any role switch.
   select

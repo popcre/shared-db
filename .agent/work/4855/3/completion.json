@@ -22,7 +22,7 @@
   ],
   "checks": [
     {
-      "command": "bash scripts/check-sql.sh",
+      "command": "scripts/check-sql.sh",
       "exit_code": 0,
       "evidence": "Static SQL guards passed on newly reserved20261027150048; SQL body unchanged."
     },

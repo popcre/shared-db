@@ -151,13 +151,14 @@ AS $function$
     limit 2000
   ), semantic_candidates as materialized (
     -- M1: threshold applied after the legs so it never extends the HNSW walk.
-    select s.* from (
+    select s.document_type,s.entity_id,s.asset_id,s.style_group_id,s.semantic_rank from (
       select * from semantic_ann
       union all
       select * from semantic_exact
     ) s
-    where (select min_semantic_score from params) is null
-       or s.semantic_rank >= (select min_semantic_score from params)
+    cross join params p
+    where p.min_semantic_score is null
+       or s.semantic_rank >= p.min_semantic_score
   ), candidate_ranks as materialized (
     select c.document_type,c.entity_id,c.asset_id,c.style_group_id,max(c.keyword_rank)::real keyword_rank,
       max(c.semantic_rank)::real semantic_rank,

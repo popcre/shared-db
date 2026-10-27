@@ -21,6 +21,7 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / 'supabase/tests/rls_public_admin_initplan_contracts.sql'
 SOURCE_SQL_SHA256 = '166a1d7cae922b27c229c31162b612ccb1957a27440806681a15677151354667'
+POSTGRES_CONTEXT_QUERY = "select json_build_object('system_identifier',(select system_identifier::text from pg_control_system()),'server_version_num',current_setting('server_version_num')::int,'postmaster_start',pg_postmaster_start_time()::text,'database',current_database())::text;"
 END = '-- Invoker-only probing, with each write reverted by a private subtransaction.'
 ADMIN = '00000000-7541-4000-8000-000000000001'
 MEMBER = '00000000-7541-4000-8000-000000000002'
@@ -276,9 +277,25 @@ class NativeCI:
         return identity
 
     def container_exec(self, args, input_file=None, output_file=None):
-        # No caller-controlled shell, target or arbitrary database executor: fixed callers below only.
-        if (input_file is not None) != (args[0] == 'pg_restore'):
-            raise RuntimeError('4427 only fixed restore may receive archive stdin')
+        # Admit only exact read-only probes and the TWO fixed snapshot data commands.
+        args = list(args)
+        connection = ['-h', '127.0.0.1', '-p', '5432', '-U', 'postgres', '-d']
+        seed = self.prefix + '_seed'
+        restore = ['pg_restore', *connection, seed, '--clean', '--if-exists', '--exit-on-error']
+        readonly = [['pg_dump', '--version'], ['pg_restore', '--version'],
+                    ['psql', '-XqAtw', *connection, 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', POSTGRES_CONTEXT_QUERY]]
+        dump = ['pg_dump', *connection, 'postgres', '-Fc']
+        if args == restore:
+            if seed not in self.owned or input_file is None or output_file is not None:
+                raise RuntimeError('4427 exact owned seed restore requires archive stdin only')
+        elif args in readonly:
+            if input_file is not None or output_file is not None:
+                raise RuntimeError('4427 exact readonly probe refuses stdin or file output')
+        elif args == dump:
+            if input_file is not None or output_file is None:
+                raise RuntimeError('4427 exact full dump requires private output only')
+        else:
+            raise RuntimeError('4427 unsupported container command or mixed snapshot options')
         self.custody()
         argv = ['/usr/bin/docker', '--host', 'unix:///var/run/docker.sock', '--config', self.docker_config,
                 'exec', *(['-i'] if input_file is not None else []), '--env', 'PGPASSWORD=postgres', self.container_id, *args]
@@ -302,7 +319,7 @@ class NativeCI:
             versions = {}
             for tool in ('psql', 'pg_dump', 'pg_restore'):
                 versions['host_' + tool] = self.checked(['/usr/bin/' + tool, '--version'], capture_output=True, text=True).stdout.strip()
-            query = "select json_build_object('system_identifier',(select system_identifier::text from pg_control_system()),'server_version_num',current_setting('server_version_num')::int,'postmaster_start',pg_postmaster_start_time()::text,'database',current_database())::text;"
+            query = POSTGRES_CONTEXT_QUERY
             host = json.loads(self.sql('postgres', query))
             self.diagnostic('host-snapshot-context', versions=versions, server_version_num=host.get('server_version_num'))
             container = json.loads(self.container_exec(['psql', '-XqAtw', '-h', '127.0.0.1', '-p', '5432', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', query]))

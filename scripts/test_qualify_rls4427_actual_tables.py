@@ -206,16 +206,35 @@ class Actual4427StaticTests(unittest.TestCase):
             image['Config']['Labels']['com.supabase.cli.project']='foreign'
             with self.assertRaises(RuntimeError):c.custody()
 
-    def test_only_restore_receives_stdin_and_interactive_option(self):
+    def test_actual_wrapper_distinguishes_exact_restore_version_and_owned_data_restore(self):
         import io
         with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
         c.docker_config='/private';c.container_id='a'*64
-        with patch.object(c,'custody'),patch.object(c,'checked') as run:
-            data=io.BytesIO(b'archive');c.container_exec(['pg_restore','--exit-on-error'],input_file=data)
+        connection=['-h','127.0.0.1','-p','5432','-U','postgres','-d']
+        seed=c.prefix+'_seed';restore=['pg_restore',*connection,seed,'--clean','--if-exists','--exit-on-error']
+        read_commands=[['pg_restore','--version'],['pg_dump','--version'],
+            ['psql','-XqAtw',*connection,'postgres','-v','ON_ERROR_STOP=1','-c',m.POSTGRES_CONTEXT_QUERY]]
+        completed=m.subprocess.CompletedProcess([],0,stdout=b'actual version probe result')
+        with patch.object(c,'custody') as custody,patch.object(m.subprocess,'run',return_value=completed) as run:
+            for command in read_commands:
+                self.assertEqual(c.container_exec(command),b'actual version probe result')
+                self.assertNotIn('-i',run.call_args.args[0]);self.assertEqual(run.call_args.kwargs['stdin'],m.subprocess.DEVNULL)
+                with self.assertRaises(RuntimeError):c.container_exec(command,input_file=io.BytesIO(b'archive'))
+            data=io.BytesIO(b'archive')
+            with self.assertRaises(RuntimeError):c.container_exec(restore,input_file=data)
+            c.owned.append(seed)
+            with self.assertRaises(RuntimeError):c.container_exec(restore)
+            c.container_exec(restore,input_file=data)
             self.assertIn('-i',run.call_args.args[0]);self.assertIs(run.call_args.kwargs['stdin'],data)
-            with self.assertRaises(RuntimeError):c.container_exec(['pg_dump'],input_file=data)
-            with self.assertRaises(RuntimeError):c.container_exec(['pg_restore'])
-            self.assertEqual(run.call_count,1)
+            bad=[['pg_restore'],['pg_restore','--version','--clean'],['pg_restore','--version','--exit-on-error'],
+                 ['pg_restore',*connection,'postgres','--clean','--if-exists','--exit-on-error'],
+                 ['pg_restore',*connection,seed,'--clean','--if-exists'],['psql','-c','select 1'],
+                 ['pg_dump','--version','-Fc'],['pg_dump',*connection,'postgres','-Fc','--ignore-version']]
+            count=run.call_count
+            for command in bad:
+                with self.subTest(command=command),self.assertRaises(RuntimeError):c.container_exec(command)
+            self.assertEqual(run.call_count,count)
+            self.assertEqual(custody.call_count,count)
 
     def test_restore_failure_run_finally_drops_owned_seed(self):
         with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()

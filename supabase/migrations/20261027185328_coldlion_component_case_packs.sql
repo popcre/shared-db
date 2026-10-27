@@ -7,7 +7,9 @@
 -- the existing once-per-parent tracking total (20261009073649) already apply.
 -- This change only gives source-only ColdLion components their physical parent
 -- (sales order, line, master item) and its line quantity. dam.dam_order_tracking
--- is unchanged. No columns, grants or security modes change.
+-- is re-created below with its current body from 20261009073649, byte-for-byte,
+-- so it binds to the replaced OrderList view. No columns, grants or security
+-- modes change.
 -- Data correction remains application-owned, exact-preimage and recoverable.
 
 create or replace view api.dam_order_list with (security_invoker=true) as
@@ -126,3 +128,67 @@ SELECT pol.id AS order_line_id,
      LEFT JOIN plm.production_order_line_source_ref google_ref ON google_ref.production_order_line_id = pol.id AND google_ref.source_system = 'google_order_list'::text AND google_ref.is_primary
      LEFT JOIN plm.production_order_line_source_ref coldlion_ref ON coldlion_ref.production_order_line_id = pol.id AND coldlion_ref.source_system = 'coldlion'::text AND coldlion_ref.is_primary
      LEFT JOIN LATERAL (select dam.orderlist_sales_order_received_date(coldlion_ref.source_id) AS sales_order_received_date) so_date ON true;
+
+create or replace view dam.dam_order_tracking with (security_invoker=true) as
+select po.id as order_id,po.production_order_number,po.order_date,po.voided_at as order_voided_at,
+  coalesce(cust.customer_name,nullif(po.metadata->>'customer_name','')) as customer_name,coalesce(fact.vendor_name,nullif(po.metadata->>'order_vendor_name','')) as vendor_name,po.factory_id,po.company_id,
+  lines.line_count,lines.total_cases,lines.invalid_case_lines,lines.missing_test_reports,lines.missing_photos,
+  lines.unresolved_product_lines,lines.order_type,lines.start_ship_date,lines.cancel_date,lines.cargo_forecast_date,
+  lines.customer_po_number,lines.customer_suffix,lines.components,
+  po.sent_po_date,case when ext.crd_override_set then po.vendor_delivery_date else coalesce(po.vendor_delivery_date,po.seal_container_date) end as vendor_delivery_date,
+  case when case when ext.crd_override_set then po.vendor_delivery_date else coalesce(po.vendor_delivery_date,po.seal_container_date) end is not null then (case when ext.crd_override_set then po.vendor_delivery_date else coalesce(po.vendor_delivery_date,po.seal_container_date) end) +
+    case lines.order_type when 'FOB' then 5 when 'POE' then 21 when 'C Stock' then 27 end end as seal_container_forecast,
+  po.booking_state,po.etd,po.eta,case when ext.eta_override_set then po.eta+5 else coalesce(po.eta+5,po.warehouse_date) end as warehouse_date,
+  case when lines.order_type='FOB' then null
+    when lines.order_type='POE' then po.eta-lines.cancel_date
+    else (case when ext.eta_override_set then po.eta+5 else coalesce(po.eta+5,po.warehouse_date) end)-lines.cancel_date end as days_delay,
+  case when lines.order_type='POE' and coalesce(cust.customer_name,nullif(po.metadata->>'customer_name',''))='Burlington' and ext.worksheet_done is not true
+    then po.eta-current_date-5 end as worksheet_days_remaining,
+  po.container_booking_group,po.mbl,po.close_tracking,
+  ext.agent,ext.cbm,ext.comment,ext.vessel,ext.sent_to_coldlion,ext.worksheet_done,ext.inspection_passed,ext.inspection_note,
+  ext.document_invoice,ext.document_packing_list,ext.document_bill_of_lading,ext.document_tsca,ext.document_lacey_act,
+  ext.document_telex,ext.request_wire,ext.payment_note,ext.updated_at as tracking_updated_at,
+  case when ext.inspection_passed is not null then 'S'||(ext.inspection_passed-date '1899-12-30')::text||'-'||substring(po.production_order_number from 2) end as svn_number,
+  case when left(po.container_booking_group,2)='BN' then po.container_booking_group||','||po.production_order_number end as booking_string,
+  case when lines.order_type='FOB' then 'FOB' when lines.order_type='POE' and po.eta is null then 'no ETA'
+    when lines.order_type is not null and lines.cancel_date is null then 'no cancel date'
+    when lines.order_type is not null and po.eta is null then 'no WHS Date' end as days_delay_status,
+  case when lines.line_count=0 then 'No order lines' when lines.order_type is null then 'Mixed or sample order types' when case when ext.crd_override_set then po.vendor_delivery_date else coalesce(po.vendor_delivery_date,po.seal_container_date) end is null then 'No date' when lines.order_type not in ('FOB','POE','C Stock') then 'N/A' end as seal_container_forecast_status,lines.unknown_case_groups
+from plm.production_order po
+left join lateral (
+  with scoped as materialized (
+    select * from api.dam_order_list l where l.order_id=po.id and l.order_voided_at is null and l.line_voided_at is null
+  ), physical as materialized (
+    select case when count(distinct case_pack)=1 and count(case_pack)=count(*)
+        and count(distinct assortment_parent_quantity)=1 and count(assortment_parent_quantity)=count(*)
+        and min(case_pack)>0 and min(assortment_parent_quantity)>=min(case_pack)
+      then min(assortment_parent_quantity)/min(case_pack) end as cases
+    from scoped where assortment_parent_key is not null
+      and order_type is distinct from 'Contractual Sample' and order_type is distinct from 'David Sample'
+    group by assortment_parent_key
+    union all
+    select cases_reported from scoped where assortment_parent_key is null
+      and order_type is distinct from 'Contractual Sample' and order_type is distinct from 'David Sample'
+  )
+  select count(*) as line_count,
+    (select case when count(cases)=count(*) then coalesce(sum(cases),0) end from physical) as total_cases,
+    (select count(*) from physical where cases is null) as unknown_case_groups,
+    count(*) filter(where cases_error is not null) as invalid_case_lines,
+    count(*) filter(where dam.orderlist_parse_boolean(test_report) is not true) as missing_test_reports,
+    count(*) filter(where dam.orderlist_parse_boolean(professional_photos) is not true) as missing_photos,
+    count(*) filter(where product_workflow_source is distinct from 'master_data') as unresolved_product_lines,
+    case when count(distinct order_type) filter(where order_type not in('Contractual Sample','David Sample'))=1
+      then min(order_type) filter(where order_type not in('Contractual Sample','David Sample')) end as order_type,
+    min(start_ship_date) as start_ship_date,min(cancel_date) as cancel_date,min(cargo_forecast_date) as cargo_forecast_date,
+    string_agg(distinct customer_po_number,E'\n' order by customer_po_number) as customer_po_number,
+    string_agg(distinct customer_suffix,E'\n' order by customer_suffix) as customer_suffix,
+    jsonb_agg(jsonb_build_object('line_id',order_line_id,'sku',sku,'assortment',assortment_id,'quantity',quantity_ordered,
+      'case_pack',case_pack,'cases',cases_reported,'order_depth_inches',order_depth_inches,'ship_to',ship_to,'start_ship_date',start_ship_date,'cancel_date',cancel_date,'customer_po_number',customer_po_number,'cases_error',cases_error,'description',item_description,'license_status',master_data_license_status,'workflow_source',product_workflow_source,'test_report',test_report,
+      'professional_photos',professional_photos,'parent_cases',assortment_parent_cases,'parent_quantity',assortment_parent_quantity,'sample_depth_raw',sample_depth_raw,'sample_depth_source_row',sample_depth_source_row,'contractual_sample_reorder',contractual_sample_reorder,'snapshot_test_report',snapshot_test_report,'snapshot_professional_photos',snapshot_professional_photos,'snapshot_contractual_sample_reorder',snapshot_contractual_sample_reorder,'sample_depth_inches',sample_depth_inches,'default_vendor',master_data_default_vendor,'sample_vendor',master_data_sample_vendor)
+      order by assortment_id nulls last,assortment_component_ordinal nulls last,line_number,order_line_id) as components
+  from scoped
+) lines on true
+left join dam.dam_order_list_customer_directory cust on cust.customer_id=po.company_id
+left join dam.dam_order_list_vendor_directory fact on fact.vendor_id=po.factory_id
+left join dam.order_tracking_ext ext on ext.order_id=po.id
+where not (coalesce(po.source_system='coldlion',false) and coalesce(po.production_order_number like 'coldlion/%',false));

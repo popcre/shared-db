@@ -124,7 +124,15 @@ async function main() {
   // run re-proves that each staged component of every created order has
   // exactly one coldlion line ref, carrying its identity and its SKU. A
   // violation fails the run loudly instead of drifting silently.
-  const [guard] = queryRows(buildIdentityGuardSql(), {});
+  let guard;
+  try {
+    [guard] = queryRows(buildIdentityGuardSql(), {});
+  } catch (error) {
+    if (options.write && !isClientSpawnFault(error) && !isClientUriFault(error)) {
+      runSql(buildWriteFailureSql({ runId, error, startedAt }), {});
+    }
+    throw error;
+  }
   const [missing, duplicate, skuMismatch, withoutIdentity, expected, identityQuarantined, sample = ""] = guard ?? [];
   console.log(
     `component identity guard: expected=${expected} missing=${missing} duplicate=${duplicate} ` +

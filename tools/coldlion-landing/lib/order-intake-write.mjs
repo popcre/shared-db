@@ -156,7 +156,7 @@ values
 on conflict (id) do nothing;
 
 with scope as (
-  select n.sales_order_no, n.warehouse_code
+  select n.sales_order_no, n.warehouse_code, n.state
   from coldlion.intake_new_order n
   where (n.state in ${scopeStates}${incompleteCreated})
     -- The table check refuses sales_order_no = 0 outright; this predicate is
@@ -238,7 +238,7 @@ existing_component_refs as (
          split_part(r.source_id, ':', 3)::bigint as sales_order_no,
          split_part(r.source_id, ':', 5)::integer as sales_order_line_no,
          split_part(r.source_id, ':', 7)::integer as component_ordinal,
-         r.metadata ->> 'master_item_no' is not null as has_identity,
+         nullif(r.metadata ->> 'master_item_no', '') is not null as has_identity,
          r.metadata ->> 'master_item_no' as master_item_no,
          nullif(r.metadata ->> 'sub_item_no', '') as sub_item_no,
          nullif(r.metadata ->> 'sub_label_code', '') as sub_label_code,
@@ -742,7 +742,7 @@ select
   -- Visible, never silent (§11): scoped pending orders that neither created
   -- nor quarantined — resolved but lineless, or skipped by a re-pend edge —
   -- stay pending and are counted here so the run summary says so.
-  (select count(*) from scope)
+  (select count(*) from scope where state = 'pending')
   - (select count(*) from created)
   - (select count(*) from quarantined) as orders_left_pending;
 ${write ? "commit;" : "rollback;"}
@@ -778,7 +778,7 @@ staged as (
 refs as (
   select split_part(r.source_id, ':', 3)::bigint as sales_order_no,
          split_part(r.source_id, ':', 5)::integer as sales_order_line_no,
-         r.metadata ->> 'master_item_no' is not null as has_identity,
+         nullif(r.metadata ->> 'master_item_no', '') is not null as has_identity,
          r.metadata ->> 'master_item_no' as master_item_no,
          nullif(r.metadata ->> 'sub_item_no', '') as sub_item_no,
          nullif(r.metadata ->> 'sub_label_code', '') as sub_label_code,

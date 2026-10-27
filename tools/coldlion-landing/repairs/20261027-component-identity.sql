@@ -22,7 +22,7 @@ begin;
 create temp table dup_lines on commit drop as
 with refs as (
   select r.source_id, pl.id as line_id, pl.metadata,
-         (p.metadata ->> 'production_order_number_origin') = 'coldlion_intake_placeholder' as on_placeholder,
+         (p.metadata ->> 'production_order_number_origin') is not distinct from 'coldlion_intake_placeholder' as on_placeholder,
          (select count(*) from plm.production_order_line_source_ref o where o.production_order_line_id = pl.id) as all_refs
   from plm.production_order_line_source_ref r
   join plm.production_order_line pl on pl.id = r.production_order_line_id
@@ -41,8 +41,8 @@ select unnest(ph) as line_id from grouped where n = 2 and moved = 1 and cardinal
 
 do $$ begin
   -- 98 measured 2026-10-27; the positional writer may add a few before this
-  -- lands, never hundreds.
-  if (select count(*) from dup_lines) > 200 then
+  -- lands, never hundreds, and nothing removes them — fewer means drift.
+  if (select count(*) from dup_lines) not between 98 and 200 then
     raise exception 'expected ~98 duplicate placeholder lines, found %', (select count(*) from dup_lines);
   end if;
 end $$;

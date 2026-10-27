@@ -35,7 +35,14 @@ function main() {
       console.log(`repair ${step}: already applied`);
       continue;
     }
-    runSql(sql, {});
+    try {
+      runSql(sql, {});
+    } catch (error) {
+      // The repair rolled back; say so where every intake failure is heard.
+      const note = `ColdLion repair ${step} refused: ${String(error.message).slice(0, 500)}`;
+      try { runSql(`select pg_notify('coldlion_sync_alert', ${sqlText(note)});`, {}); } catch { /* the red step still reports it */ }
+      throw error;
+    }
     console.log(`repair ${step}: applied`);
   }
 }

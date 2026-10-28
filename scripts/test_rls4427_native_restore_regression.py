@@ -227,20 +227,30 @@ class ImageArchiveControls(unittest.TestCase):
 
 
 class FakePhysical:
-    def __init__(self,drift=False,canary_fail=False,permission_diff=False):
-        self.running=True;self.starts=0;self.stops=0;self.variant='original';self.drift=drift;self.canary_fail=canary_fail;self.permission_diff=permission_diff
+    def __init__(self,drift=False,canary_fail=False,permission_diff=False,mode='PRESENT'):
+        self.crypto_mode=mode;self.events=[];self.running=True;self.starts=0;self.stops=0;self.variant='original';self.drift=drift;self.canary_fail=canary_fail;self.permission_diff=permission_diff
         self.metadata={key:[] for key in ['schemas','rows']};self.metadata['policies']=[['rls4427_fixture','objects','fixture_write','PERMISSIVE',['rls4427_writer'],'UPDATE','old','old'],['rls4427_fixture','objects','fixture_read','PERMISSIVE',['rls4427_reader'],'SELECT','fixed',None]]
         self.helper=types.SimpleNamespace(CANARY_CHECK_SQL='canary')
-    def seal(self):self.running=False;return {'sha256':'a'*64}
-    def begin_trial(self):self.running=True;self.starts+=1;self.variant='original';return {'baseline_sha256':'a'*64}
-    def end_trial(self):self.running=False;self.stops+=1
+    def crypto_receipt(self):return dict(source_mode=self.crypto_mode,sql_crypto_canary='PASSED' if self.crypto_mode=='PRESENT' else 'NOT_APPLICABLE_ABSENT_IN_SOURCE',root_key_config_bytes_equal=True)
+    def check_crypto_canary(self,phase):
+        if self.crypto_mode=='ABSENT':return 'NOT_APPLICABLE_ABSENT_IN_SOURCE'
+        if self.sql('canary','supabase_admin')!='t':raise RuntimeError('4427 local root-key canary failed')
+        return 'PASSED'
+    def seal(self):
+        self.running=False;self.events.append(dict(owned_server_stopped=True,restart=1,clean_shutdown=True,pid_absent=True,minute_window_qualified=True));return {'sha256':'a'*64}
+    def begin_trial(self):
+        self.running=True;self.starts+=1;self.variant='original';self.events.append(dict(owned_server_started=True,restart=self.starts+1));return {'baseline_sha256':'a'*64}
+    def end_trial(self):
+        self.running=False;self.stops+=1;self.events.append(dict(owned_server_stopped=True,restart=self.starts+1,clean_shutdown=True,pid_absent=True,minute_window_qualified=True))
     def sql(self,query,role):
         if query==m.METADATA:
             value=copy.deepcopy(self.metadata)
             if self.variant=='candidate':value['policies'][0][-2:]=['candidate','candidate']
             return json.dumps(value)
         if query==m.NATIVE_SQL:return json.dumps({'native':'unchanged'})
-        if query=='canary':return 'f'if self.canary_fail and self.starts else't'
+        if query=='canary':
+            if self.crypto_mode=='ABSENT':raise AssertionError('absent source must never call a crypto SQL canary')
+            return 'f'if self.canary_fail and self.starts else't'
         if query==m.FINGERPRINT_SQL:return json.dumps({'heap':'b'if self.drift and self.starts==2 else'a'})
         if query.startswith('alter policy'):
             self.variant='candidate'if 'SELECT'in query else'original';return''
@@ -285,12 +295,13 @@ class WholeRegressionSuccessControls(unittest.TestCase):
                 if query==m.METADATA:return json.dumps(physical.metadata)
                 if query==m.NATIVE_SQL:return json.dumps({'native':'unchanged'})
                 order.append('fixture');return ''
-            def close(self):order.append('source-close');self.events.append({'source_absent':True})
+            def close(self):
+                order.append('source-close');self.events.extend([dict(kind='owned-source-stopped',graceful_pg_stop=True,pid_absent=True),{'kind':'owned-source-removed','container_id':'a'*64,'absent':True}])
         class Cluster(FakePhysical):
             def __init__(self,source,budget_seconds):
-                super().__init__();self.events=[];self.helper=helper
-            def open(self):order.append('cluster-open');return self
-            def close(self):order.append('cluster-close');self.events.append({'physical_absent':True})
+                super().__init__(mode=source.expected_sql_crypto_mode);self.events=[];self.helper=helper
+            def open(self):order.append('cluster-open');self.events.append(dict(owned_server_started=True,restart=1));return self
+            def close(self):order.append('cluster-close');self.events.append({'owned_container_removed':'b'*64,'absent':True})
             def sql(self,query,role):
                 if query.startswith('begin;set local role') and query!=m.PAIR_SQL:
                     if "nextval(" in query or ("set local role rls4427_reader;" in query and 'update ' in query):
@@ -310,22 +321,65 @@ class WholeRegressionSuccessControls(unittest.TestCase):
         identity={'source_sha':'a'*40,'executed_source_sha256':{'fixed':'b'*64}}
         with patch.object(m,'load_helper',return_value=helper),patch.object(m,'source_identity',return_value=identity),patch.object(m,'LocalSource',source):
             result=m.Regression().run()
-        self.assertEqual(result['postgres_file_privileges'],privilege)
-        self.assertTrue(all(type(value)is bool for value in result['postgres_file_privileges'].values()))
-        self.assertEqual(result['source_sha'],identity['source_sha'])
-        self.assertEqual(result['executed_source_sha256'],identity['executed_source_sha256'])
-        self.assertGreaterEqual(result['elapsed_seconds'],0)
-        self.assertEqual(result['historical_logical_restore_failures'],'PRESERVED_NOT_RECLASSIFIED')
-        self.assertEqual(result['version_facts'],{'server_version_num':170006})
-        self.assertEqual(result['source_owner'],m.OWNER);self.assertEqual(result['target_owner'],helper.OWNER)
-        self.assertEqual(result['qualification'],'REAL_NATIVE_PG17_6_FULL_PHYSICAL_FOCUSED_PAIR_ONLY')
-        self.assertEqual(result['native374_acceptance'],'NOT_EVALUATED');self.assertEqual(result['production_acceptance'],'NOT_EVALUATED')
-        self.assertEqual([r['variant']for r in result['pair']['samples']],['original','candidate'])
-        self.assertTrue(result['pair']['physical_start_equal']);self.assertTrue(result['pair']['permissions_equal'])
-        self.assertTrue(result['pair']['root_key_decrypt_two_restarts']);self.assertTrue(result['cleanup_passed'])
-        self.assertEqual(result['source_events'],[{'source_absent':True}]);self.assertEqual(result['physical_events'],[{'physical_absent':True}])
-        self.assertLess(order.index('file-privileges'),order.index('cluster-open'))
+        self.assertEqual(result['source_sha'],identity['source_sha']);self.assertEqual(result['executed_source_sha256'],identity['executed_source_sha256'])
+        self.assertEqual(result['qualification'],'REAL_NATIVE_PG17_6_BOTH_SQL_CRYPTO_STATES');self.assertTrue(result['cleanup_passed'])
+        self.assertEqual([case['sql_crypto_capability_mode'] for case in result['cases']],['PRESENT','ABSENT'])
+        for case in result['cases']:
+            mode=case['sql_crypto_capability_mode']
+            self.assertEqual(case['postgres_file_privileges'],privilege);self.assertTrue(all(type(value)is bool for value in case['postgres_file_privileges'].values()))
+            self.assertEqual(case['historical_logical_restore_failures'],'PRESERVED_NOT_RECLASSIFIED')
+            self.assertEqual(case['version_facts'],{'server_version_num':170006})
+            self.assertEqual(case['source_owner'],m.OWNER);self.assertEqual(case['target_owner'],helper.OWNER)
+            self.assertEqual(case['native374_acceptance'],'NOT_EVALUATED');self.assertEqual(case['production_acceptance'],'NOT_EVALUATED')
+            self.assertEqual([r['variant']for r in case['pair']['samples']],['original','candidate'])
+            self.assertTrue(case['pair']['physical_start_equal']);self.assertTrue(case['pair']['permissions_equal']);self.assertTrue(m.case_cleanup_absence(case))
+            self.assertEqual(case['pair']['root_key_decrypt_two_restarts'],True if mode=='PRESENT' else None)
+            self.assertEqual(case['sql_crypto_capability']['sql_crypto_canary'],'PASSED' if mode=='PRESENT' else 'NOT_APPLICABLE_ABSENT_IN_SOURCE')
+        self.assertEqual(order.count('source-open'),2);self.assertEqual(order.count('cluster-open'),2)
+        self.assertLess(order.index('source-close'),order.index('source-open',1))
         self.assertEqual(order[-2:],['cluster-close','source-close'])
+
+    def test_two_fixed_modes_stop_on_first_failure_and_require_prior_absence(self):
+        for fail_absent in (False,True):
+            helper,source,order,privilege=self.orchestration();base=helper.PhysicalCluster
+            class Failing(base):
+                def open(self):
+                    if fail_absent and self.crypto_mode=='ABSENT':raise RuntimeError('4427 synthetic second-case capability mismatch')
+                    return super().open()
+                def close(self):
+                    super().close()
+                    if not fail_absent:self.events[-1]['absent']=False
+            helper.PhysicalCluster=Failing
+            with patch.object(m,'load_helper',return_value=helper),patch.object(m,'source_identity',return_value={}),patch.object(m,'LocalSource',source),self.assertRaises(m.LocalCalibrationFailure) as caught:m.Regression().run()
+            report=caught.exception.receipt;self.assertFalse(report['qualification_passed'])
+            self.assertEqual(order.count('source-open'),2 if fail_absent else 1)
+            if fail_absent:
+                self.assertEqual(report['case_mode'],'ABSENT');self.assertEqual(len(report['completed_cases']),1)
+                self.assertEqual(report['completed_cases'][0]['sql_crypto_capability_mode'],'PRESENT')
+            else:self.assertEqual(report['phase'],'between-fixed-cases')
+            self.assertEqual(order[-1],'source-close')
+
+    def test_shared_total_budget_prevents_second_case_and_no_mode_cli_override(self):
+        helper=fixture_helper();good=dict(cleanup_passed=True,source_events=[dict(kind='owned-source-removed',container_id='a'*64,absent=True)],physical_events=[dict(owned_container_removed='b'*64,absent=True)]+[dict(owned_server_started=True,restart=i) for i in (1,2,3)]+[dict(owned_server_stopped=True,restart=i,clean_shutdown=True,pid_absent=True,minute_window_qualified=True) for i in (1,2,3)])
+        good['source_events'].append(dict(kind='owned-source-stopped',graceful_pg_stop=True,pid_absent=True))
+        runner=m.Regression()
+        with patch.object(m,'load_helper',return_value=helper),patch.object(m,'source_identity',return_value={}),patch.object(runner,'run_case',return_value=good) as case,patch.object(m.time,'monotonic',side_effect=[0,1,601]),self.assertRaises(m.LocalCalibrationFailure):runner.run()
+        self.assertEqual(case.call_count,1)
+        self.assertTrue(m.case_cleanup_absence(good))
+        for mutation in ('source-crash','missing-stop'):
+            bad=copy.deepcopy(good)
+            if mutation=='source-crash':bad['source_events'][-1]['graceful_pg_stop']=False
+            else:bad['physical_events'].pop()
+            self.assertFalse(m.case_cleanup_absence(bad))
+        for key in ('PRESENT','ABSENT'):
+            query=m.local_fixture_for_mode(key)
+            self.assertIn('CREATE EXTENSION IF NOT EXISTS pg_cron',query)
+            self.assertNotIn('DROP EXTENSION',query)
+            self.assertEqual('CREATE EXTENSION IF NOT EXISTS pgsodium;' in query,key=='PRESENT')
+            if key=='ABSENT':self.assertIn('source SQL crypto is not completely absent',query)
+        with self.assertRaises(RuntimeError):m.local_fixture_for_mode('external')
+        code=P.read_text();self.assertIn("for mode in ('PRESENT','ABSENT'):",code)
+        self.assertNotIn('argparse',code);self.assertNotIn('RLS4427_CRYPTO_MODE',code)
 
     def test_actual_physical_docker_runtime_failure_keeps_private_receipt_after_cleanup(self):
         helper,source,order,privilege=self.orchestration();actual=m.load_helper();source.prefix='rls4427_unit'
@@ -350,7 +404,7 @@ class WholeRegressionSuccessControls(unittest.TestCase):
         private=Path(external['private_stderr_path']);self.assertEqual(private.read_bytes(),raw)
         self.assertEqual(stat.S_IMODE(private.stat().st_mode),0o600)
         self.assertEqual(report['cleanup_failures'],[]);self.assertTrue(report['events']['physical'][-1]['physical_absent'])
-        self.assertEqual(report['events']['source'][-1],{'source_absent':True})
+        self.assertEqual(report['events']['source'][-1],{'kind':'owned-source-removed','container_id':'a'*64,'absent':True})
         self.assertNotIn('UNIT_PRIVATE_ARCHIVE_ERROR',json.dumps(report));self.assertNotEqual(external['tool'],'cleanup-tool')
         private.unlink()
 
@@ -361,7 +415,7 @@ class WholeRegressionSuccessControls(unittest.TestCase):
         report=caught.exception.receipt
         self.assertFalse(report['qualification_passed']);self.assertEqual(report['primary_failure']['phase'],'source-file-privileges')
         self.assertEqual(report['primary_failure']['error_type'],'CalledProcessError')
-        self.assertEqual(report['cleanup_failures'],[]);self.assertEqual(report['events']['source'],[{'source_absent':True}])
+        self.assertEqual(report['cleanup_failures'],[]);self.assertEqual(report['events']['source'][-1],{'kind':'owned-source-removed','container_id':'a'*64,'absent':True})
         self.assertEqual(report['events']['physical'],[]);self.assertNotIn('cluster-open',order)
         self.assertEqual(order[-1],'source-close')
 
@@ -446,7 +500,7 @@ class DiagnosticReadinessControls(unittest.TestCase):
         fixture=(m.ROOT/'supabase/tests/fixtures/rls4427_native_restore_fixture.sql').read_text()
         self.assertEqual(fixture.count('CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;'),1)
         self.assertLess(fixture.index("current_user <> 'supabase_admin'"),fixture.index('CREATE EXTENSION IF NOT EXISTS pg_cron'))
-        run=P.read_text();self.assertLess(run.index("local.sql('postgres',(ROOT/'supabase/tests/fixtures/rls4427_native_restore_fixture.sql')"),run.index('self.cluster=helper.PhysicalCluster'))
+        run=P.read_text();self.assertLess(run.index("local.sql('postgres',local_fixture_for_mode(mode))"),run.index('self.cluster=helper.PhysicalCluster'))
 
     def test_new_local_source_initializes_cached_sodium_and_exact_bigint_api(self):
         fixture=(m.ROOT/'supabase/tests/fixtures/rls4427_native_restore_fixture.sql').read_text()

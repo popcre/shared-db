@@ -89,7 +89,7 @@ class Actual4427StaticTests(unittest.TestCase):
     def test_whole_native374_path_admits_after34_complete_warmups_and_cleans_on_refusal(self):
             import json,subprocess
             from types import SimpleNamespace
-            for refuse in (False,True):
+            for refuse,crypto_mode in __import__('itertools').product((False,True),('PRESENT','ABSENT')):
                 with self.subTest(refuse=refuse),patch.dict(os.environ,self.valid_env(),clear=True):
                     c=m.NativeCI();c.immutable_config_sha='bound';counts=dict(start=0,stop=0,negative=0,snapshot=0);variant=['candidate']
                     class Cluster:
@@ -97,6 +97,7 @@ class Actual4427StaticTests(unittest.TestCase):
                         full_capability_fingerprint={};events=[];window_wait_seconds=0;config_metadata_verified=True
                         def __init__(self,source):self.closed=False
                         def open(self):c.physical_versions={}
+                        def crypto_receipt(self):return dict(source_mode=crypto_mode,sql_crypto_canary='NOT_APPLICABLE_ABSENT_IN_SOURCE' if crypto_mode=='ABSENT' else 'PASSED',root_key_config_bytes_equal=True)
                         def seal(self):return {'sha256':'fixed'}
                         def begin_trial(self):counts['start']+=1;variant[0]='candidate'
                         def end_trial(self):counts['stop']+=1
@@ -134,7 +135,7 @@ class Actual4427StaticTests(unittest.TestCase):
                             with self.assertRaisesRegex(RuntimeError,'cost exceeds'):c.run()
                             self.assertEqual(counts['stop'],34)
                         else:
-                            result=c.run();self.assertEqual(len(result['samples']),374);self.assertEqual(len(result['summary']),17)
+                            result=c.run();self.assertEqual(result['sql_crypto_capability']['source_mode'],crypto_mode);self.assertEqual(result['sql_crypto_capability']['sql_crypto_canary'],'NOT_APPLICABLE_ABSENT_IN_SOURCE' if crypto_mode=='ABSENT' else 'PASSED');self.assertEqual(len(result['samples']),374);self.assertEqual(len(result['summary']),17)
                             self.assertEqual(len({(r['table'],r['command'],r['size']) for r in result['summary']}),17)
                             self.assertEqual(result['warmup_trials_in374'],34);self.assertEqual(len(result['warmup_active_seconds']),34)
                             self.assertEqual(counts['stop'],374);self.assertEqual(counts['negative'],374)

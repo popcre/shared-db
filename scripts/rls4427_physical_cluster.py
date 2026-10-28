@@ -253,6 +253,21 @@ select nonce,pgsodium.crypto_secretbox(convert_to('4427-physical-root-canary','U
 CANARY_CHECK_SQL="select count(*)=1 and bool_and(pgsodium.crypto_secretbox_open(cipher,nonce,4427::bigint,convert_to('4427snap','UTF8'))=convert_to('4427-physical-root-canary','UTF8')) from rls4427_physical.canary;"
 
 
+SQL_CRYPTO_FIELDS=('sodium_version','sodium_nonce_api','sodium_keyid_api','sodium_open_keyid_api')
+SQL_CRYPTO_CAPABILITY_SQL="""select json_build_object(
+'sodium_version',(select extversion from pg_extension where extname='pgsodium'),
+'sodium_nonce_api',to_regprocedure('pgsodium.crypto_secretbox_noncegen()') is not null,
+'sodium_keyid_api',to_regprocedure('pgsodium.crypto_secretbox(bytea,bytea,bigint,bytea)') is not null,
+'sodium_open_keyid_api',to_regprocedure('pgsodium.crypto_secretbox_open(bytea,bytea,bigint,bytea)') is not null)::text;"""
+
+
+def source_sql_crypto_mode(f):
+    if not all(key in f for key in SQL_CRYPTO_FIELDS):return None
+    if f['sodium_version']=='3.1.8' and all(f[key] is True for key in SQL_CRYPTO_FIELDS[1:]):return 'PRESENT'
+    if f['sodium_version'] is None and all(f[key] is False for key in SQL_CRYPTO_FIELDS[1:]):return 'ABSENT'
+    return None
+
+
 def source_fact_diagnostic(f):
     """Fixed predicate names and closed metadata only; never retain the raw facts."""
     checks=[
@@ -269,9 +284,9 @@ def source_fact_diagnostic(f):
         ('replication_hba_type',lambda:isinstance(f.get('replication_hba'),int)),
         ('cron_version',lambda:f.get('cron_version') in ('1.6','1.6.4')),
         ('cron_database',lambda:f.get('cron_database')=='postgres'),
-        ('sodium_version',lambda:f.get('sodium_version')=='3.1.8'),
+        ('sodium_version',lambda:'sodium_version' in f and f['sodium_version'] in ('3.1.8',None)),
     ]
-    checks += [(key,lambda key=key:f.get(key) is True) for key in ('sodium_nonce_api','sodium_keyid_api','sodium_open_keyid_api')]
+    checks += [(key,lambda key=key:(f.get('sodium_version')=='3.1.8' and f.get(key) is True) or ('sodium_version' in f and f['sodium_version'] is None and f.get(key) is False)) for key in SQL_CRYPTO_FIELDS[1:]]
     checks += [(key,lambda key=key,expected=expected:f.get(key)==expected) for key,expected in (
         ('config_file','/etc/postgresql/postgresql.conf'),('hba_file','/etc/postgresql/pg_hba.conf'),
         ('ident_file','/etc/postgresql/pg_ident.conf'),('data_directory',DATA))]
@@ -324,7 +339,7 @@ def source_fact_diagnostic(f):
         elif value is not None:
             info['sha256']=hashlib.sha256(json.dumps(value,sort_keys=True,ensure_ascii=True).encode()).hexdigest()
         actual[key]=info
-    return dict(schema_version=1,failed_predicates=failed,actual=actual)
+    return dict(schema_version=1,failed_predicates=failed,actual=actual,sql_crypto_capability_mode=source_sql_crypto_mode(f) or 'UNSUPPORTED')
 
 
 def validate_source_facts(f):
@@ -332,7 +347,7 @@ def validate_source_facts(f):
         or f.get('recovery') is not False or f.get('wal_level') not in ('replica','logical') or f.get('max_wal_senders',0)<1
         or any(f.get(k)!=0 for k in ('external_tablespaces','subscriptions','slots','prepared_transactions','hba_errors','other_backends'))
         or not isinstance(f.get('replication_hba'),int) or f.get('cron_version') not in ('1.6','1.6.4') or f.get('cron_database')!='postgres'
-        or f.get('sodium_version')!='3.1.8' or any(f.get(k) is not True for k in ('sodium_nonce_api','sodium_keyid_api','sodium_open_keyid_api'))
+        or source_sql_crypto_mode(f) is None
         or f.get('config_file')!='/etc/postgresql/postgresql.conf' or f.get('hba_file')!='/etc/postgresql/pg_hba.conf'
         or f.get('ident_file')!='/etc/postgresql/pg_ident.conf' or f.get('data_directory')!=DATA or f.get('data_directory_mode') not in ('0700','0750')
         or f.get('archive_mode')!='off' or f.get('archive_command') not in ('','(disabled)') or any(f.get(k) for k in ('restore_command','primary_conninfo'))
@@ -477,7 +492,7 @@ class PhysicalCluster:
         self.source=source;self.budget=min(budget_seconds,2100);self.started=time.monotonic();self.cid=None
         self.name=source.prefix+'-physical';self.labels={'shared-db.qualifier':'4427-physical','shared-db.owner':OWNER}
         self.running=False;self.sealed=False;self.events=[];self.env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'}
-        self.root=None;self.cleanup_mode=False;self.window_wait_seconds=0.0;self.phase='created';self.start_number=0;self.last_external_failure=None
+        self.root=None;self.cleanup_mode=False;self.window_wait_seconds=0.0;self.phase='created';self.start_number=0;self.last_external_failure=None;self.crypto_capability_checks=0;self.crypto_canary_checks=0;self.root_key_bytes_verified=False
 
     def __enter__(self):return self.open()
     def __exit__(self,*unused):self.close()
@@ -569,7 +584,7 @@ class PhysicalCluster:
             if getattr(self.source,'immutable_config_sha',None)!=IMMUTABLE_CONFIG_SHA:raise RuntimeError('4427 physical source immutable config digest differs')
             identity=self.source.custody();self.source.container_id=identity[0];self.image_id=identity[1]
             facts=validate_source_facts(json.loads(self._admin_source(SOURCE_FACTS_SQL).splitlines()[-1]))
-            self.source_mode=facts['data_directory_mode']
+            self.source_mode=facts['data_directory_mode'];self.crypto_mode=source_sql_crypto_mode(facts)
             self.source.source_backup_window=self.admit_window()
             source_cron=validate_cron(json.loads(self._admin_source(CRON_SQL)))
             binary=self.source.container_exec(BINARY_ARGS).decode().split()[0]
@@ -607,6 +622,7 @@ class PhysicalCluster:
             with tarfile.open(self.root/'source-config.tar','r:') as archive:
                 original_key=archive.extractfile('etc/postgresql-custom/pgsodium_root.key').read()
             if self.target(['sha256sum','/etc/postgresql-custom/pgsodium_root.key']).stdout.decode().split()[0]!=hashlib.sha256(original_key).hexdigest():raise RuntimeError('4427 physical original root-key copy differs')
+            self.root_key_bytes_verified=True
             del original_key
             self.target(['pg_verifybackup','--exit-on-error',DATA])
             self.original_backup_verified=True
@@ -617,8 +633,7 @@ class PhysicalCluster:
             self.full_capability_fingerprint=target_health
             if cron_fingerprint(validate_cron(json.loads(self.sql(CRON_SQL,'supabase_admin'))))!=self.source_cron:
                 raise RuntimeError('4427 physical restored cron capability/data differs')
-            self.sql(CANARY_CREATE_SQL,'supabase_admin')
-            if self.sql(CANARY_CHECK_SQL,'supabase_admin').strip()!='t':raise RuntimeError('4427 physical key-derived canary failed')
+            self.initialize_sql_crypto_probe()
             return self
         except Exception as original:
             try:self.close()
@@ -636,6 +651,35 @@ class PhysicalCluster:
             before=time.monotonic();time.sleep(wait);self.window_wait_seconds+=time.monotonic()-before
         if not earliest<=time.time()%60<=latest:raise RuntimeError('4427 physical safe startup admission missed')
         return time.time(),time.monotonic()
+
+    def crypto_receipt(self):
+        return dict(source_mode=self.crypto_mode,sql_crypto_canary=('NOT_APPLICABLE_ABSENT_IN_SOURCE' if self.crypto_mode=='ABSENT' else 'PASSED' if self.crypto_canary_checks else 'NOT_YET_PROVEN'),
+            capability_checks=self.crypto_capability_checks,canary_checks=self.crypto_canary_checks,root_key_config_bytes_equal=self.root_key_bytes_verified)
+
+    def verify_sql_crypto_capability(self,phase):
+        if getattr(self,'crypto_mode',None) not in ('PRESENT','ABSENT'):
+            raise RuntimeError('4427 physical source SQL crypto mode not qualified')
+        actual=json.loads(self.sql(SQL_CRYPTO_CAPABILITY_SQL,'supabase_admin'))
+        if set(actual)!=set(SQL_CRYPTO_FIELDS) or source_sql_crypto_mode(actual)!=self.crypto_mode:
+            raise RuntimeError('4427 physical target SQL crypto capability differs from source')
+        self.crypto_capability_checks+=1
+        emit(self.events,dict(sql_crypto_capability_verified=True,source_mode=self.crypto_mode,phase=phase))
+
+    def check_crypto_canary(self,phase):
+        self.verify_sql_crypto_capability(phase)
+        if self.crypto_mode=='ABSENT':
+            emit(self.events,dict(sql_crypto_canary='NOT_APPLICABLE_ABSENT_IN_SOURCE',phase=phase))
+            return 'NOT_APPLICABLE_ABSENT_IN_SOURCE'
+        if self.sql(CANARY_CHECK_SQL,'supabase_admin').strip()!='t':
+            raise RuntimeError('4427 physical key-derived canary failed')
+        self.crypto_canary_checks+=1
+        emit(self.events,dict(sql_crypto_canary='PASSED',phase=phase))
+        return 'PASSED'
+
+    def initialize_sql_crypto_probe(self):
+        self.verify_sql_crypto_capability('initial-target')
+        if self.crypto_mode=='PRESENT':self.sql(CANARY_CREATE_SQL,'supabase_admin')
+        return self.check_crypto_canary('initial-target')
 
     def data_root_identity(self):
         if getattr(self,'source_mode',None) not in ('0700','0750'):
@@ -662,6 +706,7 @@ class PhysicalCluster:
         server_mode=self.sql("select current_setting('data_directory_mode');",'supabase_admin').strip()
         if server_mode!=self.source_mode:raise RuntimeError('4427 physical target startup data-directory mode differs')
         emit(self.events,dict(data_directory_mode_verified=True,source_mode=self.source_mode,server_mode=server_mode,**root_identity))
+        self.verify_sql_crypto_capability('normal-start')
         if self.sql('select pg_is_in_recovery();','supabase_admin').strip()!='f':raise RuntimeError('4427 physical target not normal primary')
         self.cron_at_start=validate_cron(json.loads(self.sql(CRON_SQL,'supabase_admin')))
         scheduler_start=datetime.datetime.fromisoformat(self.cron_at_start['schedulers'][0][1]).timestamp()
@@ -697,7 +742,7 @@ class PhysicalCluster:
         if error:raise error
 
     def seal(self):
-        if self.sql(CANARY_CHECK_SQL,'supabase_admin').strip()!='t':raise RuntimeError('4427 physical canary failed before seal')
+        self.check_crypto_canary('before-seal')
         self.stop()
         self.data_root_identity()
         archive=self.root/'sealed-canonical.tar'
@@ -716,7 +761,7 @@ class PhysicalCluster:
         if digest!=self.baseline['sha256']:raise RuntimeError('4427 physical immutable baseline drift')
         with archive.open('rb') as data:self.target(DATA_RESTORE_ARGS,input_file=data)
         self.start()
-        if self.sql(CANARY_CHECK_SQL,'supabase_admin').strip()!='t':raise RuntimeError('4427 physical copied root-key decrypt failed after reset')
+        self.check_crypto_canary('after-reset')
         return {'baseline_sha256':self.baseline['sha256'],'start_wall':self.start_wall}
 
     def end_trial(self):self.stop()

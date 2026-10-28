@@ -48,7 +48,7 @@ class PhysicalControls(unittest.TestCase):
     def test_source_fact_query_and_original_guard_condition_remain_byte_pinned(self):
         import ast
         tree=ast.parse(P.read_text());validator=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='validate_source_facts')
-        self.assertEqual(m.hashlib.sha256(ast.get_source_segment(P.read_text(),validator.body[0].test).encode()).hexdigest(),'824d80a8ab0ffc233fd641ea448222a9fdbbfc310ad5e1ed429e74db9c181ccc')
+        self.assertEqual(m.hashlib.sha256(ast.get_source_segment(P.read_text(),validator.body[0].test).encode()).hexdigest(),'35986fc7f5b2ecd655598aadad7c9be29c4a138492a12fb53ff2dd160d21c9c1')
         self.assertEqual(m.hashlib.sha256(m.SOURCE_FACTS_SQL.encode()).hexdigest(),'fc9c6386304ae2706ba24fb6080de66bf8fd880ded367195017d2efc454fce11')
         facts=self.facts();self.assertIs(m.validate_source_facts(facts),facts)
         self.assertEqual(m.source_fact_diagnostic(facts)['failed_predicates'],[])
@@ -67,7 +67,7 @@ class PhysicalControls(unittest.TestCase):
             for key,value,predicate in changes:
                 with self.subTest(predicate=predicate),self.assertRaisesRegex(RuntimeError,'facts refused') as caught:m.validate_source_facts({**self.facts(),key:value})
                 receipt=m.failure_receipt(caught.exception,'source-qualification',[])
-                self.assertEqual(receipt['source_diagnostic']['failed_predicates'],[predicate])
+                self.assertEqual(receipt['source_diagnostic']['failed_predicates'],[predicate] if predicate!='sodium_version' else ['sodium_version','sodium_nonce_api','sodium_keyid_api','sodium_open_keyid_api'])
                 self.assertNotIn('UNIT_SECRET',json.dumps(receipt))
             subprocess_run.assert_not_called()
         secret='UNIT_SOURCE_DIAGNOSTIC_SECRET'
@@ -116,6 +116,70 @@ class PhysicalControls(unittest.TestCase):
         self.assertIn("to_regprocedure('pgsodium.crypto_secretbox_open(bytea,bytea,bigint,bytea)')",m.SOURCE_FACTS_SQL)
         source=P.read_text()
         self.assertLess(source.index('facts=validate_source_facts'),source.index('with permission:'))
+
+    def test_exact_present_or_absent_source_sql_crypto_states_and_all_mixed_states(self):
+        import itertools
+        for version in ('3.1.8',None,'3.1.7'):
+            for apis in itertools.product((False,True),repeat=3):
+                facts={**self.facts(),'sodium_version':version,**dict(zip(m.SQL_CRYPTO_FIELDS[1:],apis))}
+                mode='PRESENT' if version=='3.1.8' and all(apis) else 'ABSENT' if version is None and not any(apis) else None
+                self.assertEqual(m.source_sql_crypto_mode(facts),mode)
+                if mode:
+                    self.assertIs(m.validate_source_facts(facts),facts);self.assertEqual(m.source_fact_diagnostic(facts)['failed_predicates'],[])
+                else:
+                    with self.assertRaisesRegex(RuntimeError,'facts refused'):m.validate_source_facts(facts)
+        absent=dict(sodium_version=None,sodium_nonce_api=False,sodium_keyid_api=False,sodium_open_keyid_api=False)
+        for key in m.SQL_CRYPTO_FIELDS:
+            bad={**self.facts(),**absent};del bad[key]
+            with self.assertRaises(RuntimeError):m.validate_source_facts(bad)
+        self.assertEqual(m.hashlib.sha256(m.SOURCE_FACTS_SQL.encode()).hexdigest(),'fc9c6386304ae2706ba24fb6080de66bf8fd880ded367195017d2efc454fce11')
+        self.assertNotIn('CREATE',m.SQL_CRYPTO_CAPABILITY_SQL.upper());self.assertNotIn('ALTER',m.SQL_CRYPTO_CAPABILITY_SQL.upper())
+
+    def test_actual_crypto_lifecycle_preserves_present_and_absent_modes_through_seal_resets(self):
+        from types import SimpleNamespace
+        for mode in ('PRESENT','ABSENT'):
+            capability={key:self.facts()[key] for key in m.SQL_CRYPTO_FIELDS} if mode=='PRESENT' else dict(sodium_version=None,sodium_nonce_api=False,sodium_keyid_api=False,sodium_open_keyid_api=False)
+            with tempfile.TemporaryDirectory() as d:
+                p=m.PhysicalCluster(self.source());p.root=Path(d);p.source_mode='0700';p.crypto_mode=mode;p.root_key_bytes_verified=True
+                queries=[];stops=[]
+                def sql(q,role):
+                    self.assertEqual(role,'supabase_admin');queries.append(q)
+                    if q==m.SQL_CRYPTO_CAPABILITY_SQL:return json.dumps(capability)
+                    if q in (m.CANARY_CREATE_SQL,m.CANARY_CHECK_SQL):
+                        self.assertEqual(mode,'PRESENT','Absent source must NEVERexecute SQLcrypto CREATE/CHECK')
+                        return 't'
+                    if 'data_directory_mode' in q:return '0700'
+                    if 'pg_is_in_recovery' in q:return 'f'
+                    if q==m.CRON_SQL:return json.dumps(dict(jobs=0,job_hash='j',schedules=[],runs=0,run_hash='r',pending=0,workers=0,schedulers=[[1,'1970-01-01T00:02:05+00:00']]))
+                    if 'clock_timestamp' in q:return '125'
+                    self.fail(q)
+                def target(args,**kw):
+                    if kw.get('output_file'):
+                        with tarfile.open(fileobj=kw['output_file'],mode='w') as out:
+                            for name in ('PG_VERSION','global/pg_control'):
+                                e=tarfile.TarInfo(name);e.uid=100;e.gid=101;e.size=1;out.addfile(e,io.BytesIO(b'x'))
+                    return SimpleNamespace(returncode=0,stdout=b'')
+                def stop(*a,**kw):p.running=False;stops.append(True)
+                with patch.object(p,'sql',side_effect=sql),patch.object(p,'target',side_effect=target),patch.object(p,'stop',side_effect=stop),patch.object(p,'data_root_identity',return_value=dict(uid=100,gid=101,mode=0o700)),patch.object(p,'admit_window',return_value=(125,10)),patch.object(p,'guard'),patch.object(m.time,'time',return_value=125):
+                    p.start();p.initialize_sql_crypto_probe();p.seal()
+                    for _ in range(2):p.begin_trial();p.end_trial()
+                self.assertEqual(p.start_number,3);self.assertEqual(len(stops),3);self.assertGreaterEqual(p.crypto_capability_checks,8)
+                receipt=p.crypto_receipt();self.assertTrue(receipt['root_key_config_bytes_equal'])
+                if mode=='PRESENT':
+                    self.assertEqual(queries.count(m.CANARY_CREATE_SQL),1);self.assertEqual(queries.count(m.CANARY_CHECK_SQL),4);self.assertEqual(receipt['sql_crypto_canary'],'PASSED')
+                else:
+                    self.assertEqual(receipt['sql_crypto_canary'],'NOT_APPLICABLE_ABSENT_IN_SOURCE');self.assertEqual(receipt['canary_checks'],0)
+                    self.assertNotIn(m.CANARY_CREATE_SQL,queries);self.assertNotIn(m.CANARY_CHECK_SQL,queries)
+
+    def test_target_sql_crypto_drift_partial_or_wrong_mode_fails_before_any_canary(self):
+        for mode in ('PRESENT','ABSENT'):
+            p=m.PhysicalCluster(self.source());p.crypto_mode=mode
+            present={key:self.facts()[key] for key in m.SQL_CRYPTO_FIELDS};absent=dict(sodium_version=None,sodium_nonce_api=False,sodium_keyid_api=False,sodium_open_keyid_api=False)
+            for bad in [absent if mode=='PRESENT' else present,{**absent,'sodium_nonce_api':True},{**present,'sodium_version':'3.1.7'},{k:v for k,v in absent.items()if k!='sodium_version'}]:
+                calls=[]
+                def sql(q,role):calls.append(q);return json.dumps(bad)
+                with patch.object(p,'sql',side_effect=sql),self.assertRaisesRegex(RuntimeError,'capability differs'):p.initialize_sql_crypto_probe()
+                self.assertEqual(calls,[m.SQL_CRYPTO_CAPABILITY_SQL]);self.assertEqual(p.crypto_canary_checks,0)
 
     def test_inactive_archive_display_is_qualified_without_configuration_change(self):
         facts=self.facts()
@@ -332,14 +396,15 @@ class PhysicalControls(unittest.TestCase):
 
     def test_owned_root_mode_preparation_and_every_normal_start_require_source_identity(self):
         from types import SimpleNamespace
-        for mode in ('0700','0750'):
-            p=m.PhysicalCluster(self.source());p.source_mode=mode
+        for mode,crypto_mode in __import__('itertools').product(('0700','0750'),('PRESENT','ABSENT')):
+            p=m.PhysicalCluster(self.source());p.source_mode=mode;p.crypto_mode=crypto_mode
             calls=[]
             def target(args,**kw):
                 calls.append(args)
                 return SimpleNamespace(stdout=('100:101:'+mode[1:]+'\n').encode() if args[0]=='stat' else b'',returncode=0)
             def sql(q,role):
                 self.assertEqual(role,'supabase_admin')
+                if q==m.SQL_CRYPTO_CAPABILITY_SQL:return json.dumps({key:self.facts()[key] for key in m.SQL_CRYPTO_FIELDS} if crypto_mode=='PRESENT' else dict(sodium_version=None,sodium_nonce_api=False,sodium_keyid_api=False,sodium_open_keyid_api=False))
                 if 'data_directory_mode' in q:return mode
                 if 'pg_is_in_recovery' in q:return 'f'
                 if q==m.CRON_SQL:return json.dumps(dict(jobs=0,job_hash='j',schedules=[],runs=0,run_hash='r',pending=0,workers=0,schedulers=[[1,'1970-01-01T00:02:05+00:00']]))
@@ -371,7 +436,7 @@ class PhysicalControls(unittest.TestCase):
                         if directory:e.type=tarfile.DIRTYPE
                         else:e.size=len(content)
                         out.addfile(e,io.BytesIO(content) if not directory else None)
-                p=m.PhysicalCluster(self.source());p.root=private;p.source_mode=mode;p.sealed=True;p.running=False;p.baseline=m.validate_tar(archive,'sealed')
+                p=m.PhysicalCluster(self.source());p.root=private;p.source_mode=mode;p.crypto_mode='PRESENT';p.sealed=True;p.running=False;p.baseline=m.validate_tar(archive,'sealed')
                 def target(args,input_file=None,**kw):
                     # Real HOST BusyBox executes the exact fixed wrapper with only its test-root path remapped.
                     if args==m.DATA_RESTORE_ARGS:
@@ -382,7 +447,7 @@ class PhysicalControls(unittest.TestCase):
                     p.start_wall=125
                     self.assertEqual(stat.S_IMODE(data.stat().st_mode),int(mode,8))
                     self.assertEqual(stat.S_IMODE((data/'PG_VERSION').stat().st_mode),0o640 if mode=='0750' else 0o600)
-                with patch.object(m,'DATA',str(data)),patch.object(p,'target',side_effect=target),patch.object(p,'start',side_effect=start) as started,patch.object(p,'sql',return_value='t'):
+                with patch.object(m,'DATA',str(data)),patch.object(p,'target',side_effect=target),patch.object(p,'start',side_effect=start) as started,patch.object(p,'check_crypto_canary',return_value='PASSED'):
                     p.begin_trial();p.begin_trial();self.assertEqual(started.call_count,2)
         source=P.read_text()
         self.assertEqual(source.count('self.target(DATA_RESTORE_ARGS,input_file=data)'),2)

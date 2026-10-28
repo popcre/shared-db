@@ -12,6 +12,7 @@ BEGIN
   END IF;
 END $$;
 CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;
+-- 4427 PRESENT SQL crypto initialization BEGIN
 CREATE EXTENSION IF NOT EXISTS pgsodium;
 DO $sodium$
 BEGIN
@@ -22,6 +23,7 @@ BEGIN
     RAISE EXCEPTION '4427 local cached pgsodium version/root-derived bigint API differs';
   END IF;
 END $sodium$;
+-- 4427 PRESENT SQL crypto initialization END
 CREATE ROLE rls4427_owner NOLOGIN;
 CREATE ROLE rls4427_reader NOLOGIN;
 CREATE ROLE rls4427_writer NOLOGIN;

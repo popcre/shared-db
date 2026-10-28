@@ -402,7 +402,7 @@ end $g$;""")
             self.phase='owned-target-original-contract-and-fixture-staging'
             template='postgres'
             tool_versions=self.physical_versions
-            snapshot={'kind':'FULL_PHYSICAL_CLUSTER','source_facts':cluster.source_facts,'source_image_config_sha':cluster.source.immutable_config_sha,'basebackup':cluster.original_backup_receipt,'original_config':cluster.original_config_receipt,'original_backup_verified':cluster.original_backup_verified,'full_capability_fingerprint':cluster.full_capability_fingerprint}
+            snapshot={'sql_crypto_capability':cluster.crypto_receipt(),'kind':'FULL_PHYSICAL_CLUSTER','source_facts':cluster.source_facts,'source_image_config_sha':cluster.source.immutable_config_sha,'basebackup':cluster.original_backup_receipt,'original_config':cluster.original_config_receipt,'original_backup_verified':cluster.original_backup_verified,'full_capability_fingerprint':cluster.full_capability_fingerprint}
             # Existing fixture remains executable unchanged, only in the new owned target.
             original=FIXTURE.read_text()
             original_result=self.sql('postgres',original)
@@ -504,7 +504,7 @@ end $g$;""")
             summary = summarize(samples)
             return dict(schema_version=1, source_sha=os.environ['GITHUB_SHA'],
                 executed_source_sha256=source_hashes, tool_versions=tool_versions, snapshot=snapshot, canonical=canonical, analyze_facts=analyze_facts, warmup_active_seconds=warmup_active, actual_admission_wait_seconds=cluster.window_wait_seconds, projected_matrix_seconds=projected, owned_physical_receipts=cluster.events,
-                warmup_trials_in374=34, remaining_measured_trials=340, config_metadata_verified=cluster.config_metadata_verified, metadata_fingerprint_role='supabase_admin', psql_shell_failure_signal_proven=True, qualification='ISOLATED_ACTUAL_TABLES_ONLY', production_acceptance='NOT_EVALUATED',
+                sql_crypto_capability=cluster.crypto_receipt(), warmup_trials_in374=34, remaining_measured_trials=340, config_metadata_verified=cluster.config_metadata_verified, metadata_fingerprint_role='supabase_admin', psql_shell_failure_signal_proven=True, qualification='ISOLATED_ACTUAL_TABLES_ONLY', production_acceptance='NOT_EVALUATED',
                 historical_flags='PRESERVED_UNATTRIBUTED', source_sql_sha256=hashlib.sha256(original.encode()).hexdigest(),
                 original_contract_output_sha256=hashlib.sha256(original_result.encode()).hexdigest(),
                 template_snapshots=base_metadata, samples=samples, summary=summary,

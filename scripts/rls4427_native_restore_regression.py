@@ -413,18 +413,48 @@ def validate_pair_sample(variant,raw):
     return dict(variant=variant,affected_rows=2,execution_ms=timing,initplan_loops=[n.get('Actual Loops') for n in init],plan=raw)
 
 
+def local_fixture_for_mode(mode):
+    source=(ROOT/'supabase/tests/fixtures/rls4427_native_restore_fixture.sql').read_text()
+    begin='-- 4427 PRESENT SQL crypto initialization BEGIN'
+    end='-- 4427 PRESENT SQL crypto initialization END'
+    if mode not in ('PRESENT','ABSENT') or source.count(begin)!=1 or source.count(end)!=1:
+        raise RuntimeError('4427 fixed local SQL crypto fixture mode differs')
+    if mode=='PRESENT':return source
+    absent="""-- 4427 ABSENT SQL crypto source proof (no installation or removal).
+DO $absent$
+BEGIN
+  IF EXISTS(SELECT 1 FROM pg_extension WHERE extname='pgsodium')
+     OR to_regprocedure('pgsodium.crypto_secretbox_noncegen()') IS NOT NULL
+     OR to_regprocedure('pgsodium.crypto_secretbox(bytea,bytea,bigint,bytea)') IS NOT NULL
+     OR to_regprocedure('pgsodium.crypto_secretbox_open(bytea,bytea,bigint,bytea)') IS NOT NULL THEN
+    RAISE EXCEPTION '4427 local source SQL crypto is not completely absent';
+  END IF;
+END $absent$;
+"""
+    return source[:source.index(begin)]+absent+source[source.index(end)+len(end):]
+
+
+def case_cleanup_absence(case):
+    source=any(e.get('kind')=='owned-source-removed' and e.get('absent') is True and isinstance(e.get('container_id'),str) and re.fullmatch('[a-f0-9]{64}',e['container_id']) for e in case.get('source_events',[]))
+    target=any(e.get('absent') is True and isinstance(e.get('owned_container_removed'),str) and re.fullmatch('[a-f0-9]{64}',e['owned_container_removed']) for e in case.get('physical_events',[]))
+    clean_source=any(e.get('kind')=='owned-source-stopped' and e.get('graceful_pg_stop') is True and e.get('pid_absent') is True for e in case.get('source_events',[]))
+    starts={e.get('restart') for e in case.get('physical_events',[]) if e.get('owned_server_started') is True}
+    stops={e.get('restart') for e in case.get('physical_events',[]) if e.get('owned_server_stopped') is True and e.get('clean_shutdown') is True and e.get('pid_absent') is True and e.get('minute_window_qualified') is True}
+    return case.get('cleanup_passed') is True and source and target and clean_source and starts==stops=={1,2,3}
+
+
 def calibrate_pair(cluster,helper):
     """Two starts of one stopped sealed physical baseline; one sample per variant."""
     baseline_metadata=json.loads(cluster.sql(METADATA,'supabase_admin'))
     baseline_native=json.loads(cluster.sql(NATIVE_SQL,'supabase_admin'))
-    if cluster.sql(helper.CANARY_CHECK_SQL,'supabase_admin').strip()!='t':raise RuntimeError('4427 local root-derived canary failed before seal')
+    cluster.check_crypto_canary('local-before-seal')
     sealed=cluster.seal();records=[];same_bytes=None;same_permissions=None
     for variant,expression in [('original',ORIGINAL_POLICY),('candidate',CANDIDATE_POLICY)]:
         trial=cluster.begin_trial()
         try:
             if json.loads(cluster.sql(METADATA,'supabase_admin'))!=baseline_metadata or json.loads(cluster.sql(NATIVE_SQL,'supabase_admin'))!=baseline_native:
                 raise RuntimeError('4427 local physical restart lost native/fixture metadata')
-            if cluster.sql(helper.CANARY_CHECK_SQL,'supabase_admin').strip()!='t':raise RuntimeError('4427 local copied root-key canary failed after restart')
+            crypto_status=cluster.check_crypto_canary('local-after-reset')
             before=json.loads(cluster.sql(FINGERPRINT_SQL,'supabase_admin'))
             if same_bytes is not None and before!=same_bytes:raise RuntimeError('4427 local paired physical starting bytes differ')
             same_bytes=before
@@ -444,11 +474,11 @@ def calibrate_pair(cluster,helper):
             if [p for p in policy_before if p[2]!='fixture_write']!=[p for p in policy_after if p[2]!='fixture_write']:
                 raise RuntimeError('4427 local pair changed overlapping policy')
             records.append(dict(**sample,baseline_sha256=trial['baseline_sha256'],before_sha256=digest_object(before),permissions=permissions,
-                                root_key_canary=True,physical_after_not_claimed_restored=True))
+                                root_key_canary=True if cluster.crypto_mode=='PRESENT' else None,sql_crypto_canary=crypto_status,physical_after_not_claimed_restored=True))
         finally:cluster.end_trial()
     if any(r['baseline_sha256']!=sealed['sha256'] for r in records):raise RuntimeError('4427 local pair baseline receipt differs')
     return dict(sealed_baseline=sealed,samples=records,metadata_sha256=digest_object(baseline_metadata),native_capability_sha256=digest_object(baseline_native),
-                physical_start_equal=True,permissions_equal=True,root_key_decrypt_two_restarts=True)
+                physical_start_equal=True,permissions_equal=True,root_key_decrypt_two_restarts=True if cluster.crypto_mode=='PRESENT' else None,sql_crypto_capability=cluster.crypto_receipt())
 
 
 class LocalCalibrationFailure(RuntimeError):
@@ -467,20 +497,21 @@ class Regression:
         if physical is not None:receipt['physical_external']=dict(physical)
         return receipt
 
-    def run(self):
-        helper=load_helper();local=None;primary=None;cleanup=[];result=None;started=time.monotonic()
+    def run_case(self,helper,source,mode,started):
+        local=None;primary=None;cleanup=[];result=None;self.source=None;self.cluster=None;case_started=time.monotonic()
         try:
-            source=source_identity();local=LocalSource(helper);self.source=local
+            local=LocalSource(helper);local.started=started;local.expected_sql_crypto_mode=mode;self.source=local
             self.phase='source-open';local.open()
             self.phase='source-file-privileges';local.phase=self.phase
             postgres_file_privileges=json.loads(local.sql('postgres',FILE_FUNCTION_PRIVILEGES_SQL))
             if set(postgres_file_privileges)!={'postgres_superuser','pg_read_server_files_member','pg_read_binary_file_execute','pg_stat_file_execute'} or any(type(value)is not bool for value in postgres_file_privileges.values()):raise RuntimeError('4427 local file privilege observation is not exact booleans')
             self.phase='source-fixture';local.phase=self.phase
-            local.sql('postgres',(ROOT/'supabase/tests/fixtures/rls4427_native_restore_fixture.sql').read_text())
+            local.sql('postgres',local_fixture_for_mode(mode))
             original_metadata=json.loads(local.sql('postgres',METADATA));original_native=json.loads(local.sql('postgres',NATIVE_SQL))
             self.phase='physical-open';local.phase=self.phase
             self.cluster=helper.PhysicalCluster(local,budget_seconds=max(1,600-(time.monotonic()-started)))
             cluster=self.cluster.open()
+            if cluster.crypto_mode!=mode:raise RuntimeError('4427 local actual source SQL crypto mode differs from fixed case')
             if json.loads(cluster.sql(METADATA,'supabase_admin'))!=original_metadata or json.loads(cluster.sql(NATIVE_SQL,'supabase_admin'))!=original_native:
                 raise RuntimeError('4427 local full physical source/target metadata differs')
             self.phase='calibration';local.phase=self.phase
@@ -488,8 +519,8 @@ class Regression:
             elapsed=time.monotonic()-started
             if elapsed>600:raise RuntimeError('4427 local ten-minute calibrated action exceeded')
             result=dict(**source,qualification='REAL_NATIVE_PG17_6_FULL_PHYSICAL_FOCUSED_PAIR_ONLY',production_acceptance='NOT_EVALUATED',native374_acceptance='NOT_EVALUATED',
-                        historical_logical_restore_failures='PRESERVED_NOT_RECLASSIFIED',postgres_file_privileges=postgres_file_privileges,version_facts=local.version_facts,pair=pair,elapsed_seconds=elapsed,
-                        source_owner=OWNER,target_owner=helper.OWNER)
+                        historical_logical_restore_failures='PRESERVED_NOT_RECLASSIFIED',postgres_file_privileges=postgres_file_privileges,version_facts=local.version_facts,pair=pair,action_elapsed_seconds=elapsed,
+                        source_owner=OWNER,target_owner=helper.OWNER,sql_crypto_capability_mode=mode,sql_crypto_capability=cluster.crypto_receipt())
         except Exception as error:
             phase=local.phase if self.phase=='source-open' and local is not None else self.phase
             primary=self.failure(helper,error,phase,local.events if local is not None else [],local)
@@ -506,8 +537,23 @@ class Regression:
         events=dict(source=local.events if local is not None else [],physical=getattr(self.cluster,'events',[]))
         if primary is not None or cleanup:
             raise LocalCalibrationFailure(dict(qualification_passed=False,primary_failure=primary,cleanup_failures=cleanup,events=events))
-        result.update(source_events=events['source'],physical_events=events['physical'],cleanup_passed=True)
+        result.update(source_events=events['source'],physical_events=events['physical'],cleanup_passed=True,case_elapsed_seconds=time.monotonic()-case_started)
         return result
+
+    def run(self):
+        started=time.monotonic();helper=load_helper();source=source_identity();cases=[]
+        for mode in ('PRESENT','ABSENT'):
+            if time.monotonic()-started>=600:
+                raise LocalCalibrationFailure(dict(qualification_passed=False,phase='between-fixed-cases',completed_cases=cases,invariant='4427 shared local ten-minute bound exhausted'))
+            try:case=self.run_case(helper,source,mode,started)
+            except LocalCalibrationFailure as error:
+                error.receipt.update(case_mode=mode,completed_cases=cases,elapsed_seconds=time.monotonic()-started)
+                raise
+            cases.append(case)
+            if not case_cleanup_absence(case) or time.monotonic()-started>600:
+                raise LocalCalibrationFailure(dict(qualification_passed=False,phase='between-fixed-cases',completed_cases=cases,invariant='4427 prior fixed case cleanup/absence or shared budget not qualified'))
+        return dict(**source,qualification='REAL_NATIVE_PG17_6_BOTH_SQL_CRYPTO_STATES',cases=cases,elapsed_seconds=time.monotonic()-started,
+            cleanup_passed=True,native374_acceptance='NOT_EVALUATED',production_acceptance='NOT_EVALUATED')
 
 
 if __name__=='__main__':

@@ -462,7 +462,9 @@ class Regression:
 
     def failure(self,helper,error,phase,events,source=None):
         receipt=helper.failure_receipt(error,phase,events)
-        if source is not None and source.last_external_failure is not None:receipt['last_external']=source.last_external_failure
+        if source is not None and source.last_external_failure is not None:receipt['last_external']=dict(source.last_external_failure)
+        physical=getattr(error,'physical_external',None) or getattr(self.cluster,'last_external_failure',None)
+        if physical is not None:receipt['physical_external']=dict(physical)
         return receipt
 
     def run(self):

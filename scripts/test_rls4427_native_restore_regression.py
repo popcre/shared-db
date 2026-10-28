@@ -327,6 +327,33 @@ class WholeRegressionSuccessControls(unittest.TestCase):
         self.assertLess(order.index('file-privileges'),order.index('cluster-open'))
         self.assertEqual(order[-2:],['cluster-close','source-close'])
 
+    def test_actual_physical_docker_runtime_failure_keeps_private_receipt_after_cleanup(self):
+        helper,source,order,privilege=self.orchestration();actual=m.load_helper();source.prefix='rls4427_unit'
+        raw=b'tar: unrecognized option: same-owner\nUNIT_PRIVATE_ARCHIVE_ERROR'
+        class Cluster(actual.PhysicalCluster):
+            def open(self):
+                self.root=Path('/tmp/4427-unit-private');self.phase='target-create'
+                try:self.docker('exec','--user','0:0','owned-unit-target','tar')
+                except Exception:
+                    self.close();raise
+            def close(self):
+                self.events.append({'physical_absent':True})
+                self.last_external_failure={'tool':'cleanup-tool','private_stderr_path':'/private/later-cleanup','private_stderr_sha256':'b'*64}
+        actual.PhysicalCluster=Cluster
+        result=types.SimpleNamespace(returncode=2,stdout=b'',stderr=raw)
+        with patch.object(m,'load_helper',return_value=actual),patch.object(m,'source_identity',return_value={}),patch.object(m,'LocalSource',source),patch.object(actual.subprocess,'run',return_value=result),self.assertRaises(m.LocalCalibrationFailure)as caught:
+            m.Regression().run()
+        report=caught.exception.receipt;failure=report['primary_failure'];external=failure['physical_external']
+        self.assertFalse(report['qualification_passed']);self.assertEqual(failure['phase'],'physical-open')
+        self.assertEqual(failure['error_type'],'RuntimeError');self.assertEqual(external['tool'],'exec');self.assertEqual(external['exit_code'],2)
+        self.assertEqual(external['phase'],'target-create');self.assertEqual(external['private_stderr_sha256'],hashlib.sha256(raw).hexdigest())
+        private=Path(external['private_stderr_path']);self.assertEqual(private.read_bytes(),raw)
+        self.assertEqual(stat.S_IMODE(private.stat().st_mode),0o600)
+        self.assertEqual(report['cleanup_failures'],[]);self.assertTrue(report['events']['physical'][-1]['physical_absent'])
+        self.assertEqual(report['events']['source'][-1],{'source_absent':True})
+        self.assertNotIn('UNIT_PRIVATE_ARCHIVE_ERROR',json.dumps(report));self.assertNotEqual(external['tool'],'cleanup-tool')
+        private.unlink()
+
     def test_privilege_query_failure_closes_source_before_any_cluster_creation(self):
         helper,source,order,privilege=self.orchestration(query_failure=True)
         with patch.object(m,'load_helper',return_value=helper),patch.object(m,'source_identity',return_value={}),patch.object(m,'LocalSource',source),self.assertRaises(m.LocalCalibrationFailure)as caught:

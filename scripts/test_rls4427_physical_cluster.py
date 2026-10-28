@@ -299,7 +299,8 @@ class PhysicalControls(unittest.TestCase):
         from types import SimpleNamespace
         for mode in ('0700','0750'):
             with tempfile.TemporaryDirectory() as d:
-                root=Path(d);data=root/'data';data.mkdir(mode=0o700);private=root/'private';private.mkdir()
+                root=Path(d);data=root/'data';data.mkdir(mode=0o700);data.chmod(int(mode,8));private=root/'private';private.mkdir()
+                binary=root/'bin';binary.mkdir();(binary/'tar').symlink_to('/usr/bin/busybox')
                 archive=private/'sealed-canonical.tar'
                 with tarfile.open(archive,'w') as out:
                     for name,content,directory in [('.',b'',True),('global',b'',True),('PG_VERSION',b'17',False),('global/pg_control',b'invented',False)]:
@@ -309,8 +310,11 @@ class PhysicalControls(unittest.TestCase):
                         out.addfile(e,io.BytesIO(content) if not directory else None)
                 p=m.PhysicalCluster(self.source());p.root=private;p.source_mode=mode;p.sealed=True;p.running=False;p.baseline=m.validate_tar(archive,'sealed')
                 def target(args,input_file=None,**kw):
-                    # Real child tools operate ONLY this test's disposable directory; no Docker/SQL.
-                    return subprocess.run(args,stdin=input_file or subprocess.DEVNULL,capture_output=True,check=True,umask=0o077)
+                    # Real HOST BusyBox executes the exact fixed wrapper with only its test-root path remapped.
+                    if args==m.DATA_RESTORE_ARGS:
+                        command=['/usr/bin/busybox','sh','-c',args[2].replace('/var/lib/postgresql/data',str(data))]
+                    else:command=['/usr/bin/'+args[0],*args[1:]]
+                    return subprocess.run(command,stdin=input_file or subprocess.DEVNULL,capture_output=True,check=True,umask=0o077,env={'PATH':str(binary)})
                 def start():
                     p.start_wall=125
                     self.assertEqual(stat.S_IMODE(data.stat().st_mode),int(mode,8))
@@ -318,9 +322,34 @@ class PhysicalControls(unittest.TestCase):
                 with patch.object(m,'DATA',str(data)),patch.object(p,'target',side_effect=target),patch.object(p,'start',side_effect=start) as started,patch.object(p,'sql',return_value='t'):
                     p.begin_trial();p.begin_trial();self.assertEqual(started.call_count,2)
         source=P.read_text()
-        self.assertEqual(source.count("['tar','-C',DATA,'-xf','-','--no-same-owner','--same-permissions']"),2)
+        self.assertEqual(source.count('self.target(DATA_RESTORE_ARGS,input_file=data)'),2)
+        self.assertEqual(m.DATA_RESTORE_ARGS,['sh','-c','umask 000; exec tar -C /var/lib/postgresql/data -xf - --no-same-owner --numeric-owner'])
+        self.assertEqual(m.CONFIG_RESTORE_ARGS,['tar','-C','/','-xf','-','--numeric-owner'])
         self.assertLess(source.index('self.prepare_data_root()'),source.index('self.start(preparation=True)'))
         self.assertIn('self.data_root_identity()\n        archive=self.root',source)
+
+    def test_actual_busybox_nonroot_default_and_p_flags_lose_group_permissions(self):
+        import subprocess,os,stat
+        self.assertNotEqual(os.getuid(),0,'This negative control requires the actual unprivileged host user')
+        version=subprocess.run(['/usr/bin/busybox'],capture_output=True,text=True,check=True).stdout.splitlines()[0]
+        self.assertIn('v1.37.0',version)
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);archive=root/'owned.tar'
+            with tarfile.open(archive,'w') as out:
+                for name,directory in [('nested',True),('nested/file',False)]:
+                    e=tarfile.TarInfo(name);e.uid=100;e.gid=101;e.mode=0o750 if directory else 0o640
+                    if directory:e.type=tarfile.DIRTYPE;out.addfile(e)
+                    else:e.size=1;out.addfile(e,io.BytesIO(b'x'))
+            for i,flags in enumerate([[],['--no-same-owner'],['--no-same-owner','--same-permissions'],['--no-same-owner','-p']]):
+                target=root/str(i);target.mkdir()
+                with archive.open('rb') as stream:
+                    result=subprocess.run(['/usr/bin/busybox','tar','-C',str(target),'-xf','-',*flags],stdin=stream,capture_output=True,check=True,umask=0o077)
+                self.assertEqual(result.stderr,b'');self.assertEqual(stat.S_IMODE((target/'nested').stat().st_mode),0o700)
+                self.assertEqual(stat.S_IMODE((target/'nested/file').stat().st_mode),0o600)
+                self.assertEqual((target/'nested/file').stat().st_uid,os.getuid())
+            # The failed flag is really unsupported by the same existing BusyBox version.
+            result=subprocess.run(['/usr/bin/busybox','tar','--same-owner'],capture_output=True,text=True)
+            self.assertNotEqual(result.returncode,0);self.assertIn('unrecognized option',result.stderr)
 
     def test_minute_deadline_and_wall_monotonic_continuity_are_real_guards(self):
         m.minute_guard(125,10,140,25)

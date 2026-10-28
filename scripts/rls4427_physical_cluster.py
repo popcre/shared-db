@@ -28,7 +28,8 @@ OWNER='01a1834a-813e-7b12-b17a-3e8c3aaedfb8'
 IMMUTABLE_CONFIG_SHA='e1939b94b1fd12b8a446404ff49455d7cf2a6a275a77f010abb56a247bfd5377'
 CRON_BINARY_SHA='55a7bdcf1b966d51d83d248797507348de19d16f1c968948c1854bc799751108'
 BACKUP_ARGS=['pg_basebackup','-h','/var/run/postgresql','-p','5432','-U','supabase_admin','-D','-','-Ft','-X','fetch','-c','fast','--manifest-checksums=SHA256','--no-password']
-CONFIG_RESTORE_ARGS=['tar','-C','/','-xf','-','--same-owner','--same-permissions']
+CONFIG_RESTORE_ARGS=['tar','-C','/','-xf','-','--numeric-owner']
+DATA_RESTORE_ARGS=['sh','-c','umask 000; exec tar -C /var/lib/postgresql/data -xf - --no-same-owner --numeric-owner']
 CONFIG_ARGS=['tar','--numeric-owner','-C','/','-cf','-','etc/postgresql','etc/postgresql-custom']
 BINARY_ARGS=['sha256sum','/nix/store/qpz7hxz26yk04v1f0cxfhgicy360zf9n-pg_cron-1.6.4/lib/pg_cron-1.6.4.so']
 HBA_PATH='/etc/postgresql/pg_hba.conf'
@@ -76,6 +77,7 @@ def failure_receipt(error,phase,events):
     reason=str(error) if isinstance(error,RuntimeError) and str(error).startswith('4427 ') else '4427 external or unclassified failure'
     result=dict(qualification_passed=False,error_type=type(error).__name__,phase=phase,invariant=reason,events=list(events))
     if getattr(error,'archive_diagnostic',None):result['archive_validation']=error.archive_diagnostic
+    if getattr(error,'physical_external',None):result['physical_external']=dict(error.physical_external)
     if isinstance(error,subprocess.CalledProcessError):
         tool=Path(error.cmd[0]).name if isinstance(error.cmd,list) and error.cmd else 'external'
         result['external']=capture_external(error.stderr,tool,error.returncode,phase)
@@ -412,7 +414,9 @@ class PhysicalCluster:
             env=self.env,**process_input(input_file),stdout=output_file or subprocess.PIPE,stderr=subprocess.PIPE,timeout=20 if self.cleanup_mode else 120)
         if r.returncode and not allowed_failure:
             self.last_external_failure=capture_external(r.stderr,args[0],r.returncode,self.phase)
-            raise RuntimeError('4427 owned physical operation failed: '+args[0])
+            error=RuntimeError('4427 owned physical operation failed: '+args[0])
+            error.physical_external=dict(self.last_external_failure)
+            raise error
         return r
 
     def custody(self,allow_stopped=False):
@@ -520,7 +524,7 @@ class PhysicalCluster:
             self.cid=self.docker(*args,self.image_id,'infinity').stdout.decode().strip()
             if not re.fullmatch('[a-f0-9]{64}',self.cid):raise RuntimeError('4427 physical target ID invalid')
             self.restore_config()
-            with (self.root/'source-basebackup.tar').open('rb') as data:self.target(['tar','-C',DATA,'-xf','-','--no-same-owner','--same-permissions'],input_file=data)
+            with (self.root/'source-basebackup.tar').open('rb') as data:self.target(DATA_RESTORE_ARGS,input_file=data)
             self.prepare_data_root()
             self.target(['test','-s','/etc/postgresql-custom/pgsodium_root.key'])
             with tarfile.open(self.root/'source-config.tar','r:') as archive:
@@ -633,7 +637,7 @@ class PhysicalCluster:
         archive=self.root/'sealed-canonical.tar'
         with archive.open('rb') as stream:digest=hashlib.file_digest(stream,'sha256').hexdigest()
         if digest!=self.baseline['sha256']:raise RuntimeError('4427 physical immutable baseline drift')
-        with archive.open('rb') as data:self.target(['tar','-C',DATA,'-xf','-','--no-same-owner','--same-permissions'],input_file=data)
+        with archive.open('rb') as data:self.target(DATA_RESTORE_ARGS,input_file=data)
         self.start()
         if self.sql(CANARY_CHECK_SQL,'supabase_admin').strip()!='t':raise RuntimeError('4427 physical copied root-key decrypt failed after reset')
         return {'baseline_sha256':self.baseline['sha256'],'start_wall':self.start_wall}

@@ -11,6 +11,13 @@ import {
   sqlDollarQuote, isClientSpawnFault, isClientUriFault
 } from "./coldlion-sync-common.mjs";
 import { assertExpectedTarget } from "./coldlion-landing/lib/db.mjs";
+import {
+  DELTA_REQUESTED_BY,
+  MAX_DELTA_ITEMS,
+  buildItemDetailDeltaSql,
+  fetchItemDetails,
+  newItemsFromPayload,
+} from "./coldlion-landing/lib/item-detail-delta.mjs";
 
 // The /items sweep is offset-paged, so a row that moves between pages mid-sweep is
 // returned twice (the 2026-10-25 and 2026-10-26 nightlies failed on
@@ -122,6 +129,52 @@ export async function collectItems(apiKey, fetchImpl = fetch) {
   return fetchPaged(url, apiKey, fetchImpl);
 }
 
+// psql box output between the --- separator and the "(N rows)" footer.
+export function parseExistingItemNumbers(stdout) {
+  const lines = String(stdout ?? "").split("\n");
+  const start = lines.findIndex((line) => line.match(/^-[-+]+$/));
+  if (start === -1) return [];
+  const rows = [];
+  for (const line of lines.slice(start + 1)) {
+    if (/^\(\d+ rows?\)$/.test(line.trim())) break;
+    const value = line.trim();
+    if (value) rows.push(value);
+  }
+  return rows;
+}
+
+// #4974: before the import SQL runs, land the /itemDetails rows of NEW items so
+// the Master Data auto-flow decides them on fresh evidence in THIS cycle (a new
+// assortment is skipped instantly instead of after the nightly masters run).
+// Failures are per-item and non-fatal: the affected item keeps the nightly
+// backstop. A pathological "everything is new" feed lands nothing.
+export async function landNewItemDetails(apiKey, payloadItems, { runSqlImpl = runSql, fetchImpl = fetch } = {}) {
+  const existing = parseExistingItemNumbers(runSqlImpl("select btrim(item_number) from plm.item;", { linked: false }));
+  const newItems = newItemsFromPayload(payloadItems, existing);
+  if (!newItems.length) return { newItems: 0, detailsLanded: 0, failures: [] };
+  if (newItems.length > MAX_DELTA_ITEMS) {
+    return { newItems: newItems.length, detailsLanded: 0, failures: [], refused: `new-item count ${newItems.length} exceeds the ${MAX_DELTA_ITEMS}-item delta cap; nightly masters covers these items` };
+  }
+  const detailRows = [];
+  const failures = [];
+  for (const row of newItems) {
+    try {
+      detailRows.push(...await fetchItemDetails(apiKey, { companyCode: row.companyCode, divisionCode: row.divisionCode, itemNo: row.itemNo }, fetchImpl));
+    } catch (error) {
+      failures.push({ itemNo: row.itemNo, message: error?.message ?? String(error) });
+    }
+  }
+  const run = {
+    id: randomUUID(),
+    companyCode: "EDGEHOME",
+    requestParams: { items: newItems.map((row) => row.itemNo) },
+    requestedBy: DELTA_REQUESTED_BY,
+    fetchedAt: new Date().toISOString(),
+  };
+  runSqlImpl(buildItemDetailDeltaSql({ run, headerRows: newItems, detailRows }), { linked: false });
+  return { newItems: newItems.length, detailsLanded: detailRows.length, failures };
+}
+
 async function main() {
   const { apply } = parseLoaderArgs(process.argv.slice(2));
   const linked = false; // the Supabase-CLI path is not supported for applies (#3903)
@@ -136,8 +189,15 @@ async function main() {
       counts[row.divisionCode ?? "(missing)"] = (counts[row.divisionCode ?? "(missing)"] ?? 0) + 1;
       return counts;
     }, {});
+    let delta = { newItems: 0, detailsLanded: 0, failures: [] };
+    if (apply) {
+      stage = "item-details-delta";
+      delta = await landNewItemDetails(readColdlionApiKey(), sweep.rows);
+    }
     process.stdout.write(`${JSON.stringify({ items: sweep.rows.length, pagesFetched: sweep.pagesFetched,
       terminalReached: sweep.terminalReached, duplicateKeysFolded: folded, divisions, apply,
+      newItemDetailDelta: { newItems: delta.newItems, detailsLanded: delta.detailsLanded,
+        refused: delta.refused ?? null, failures: delta.failures },
       resolutionGuard: process.env.ITEM_MASTER_ALLOW_RESOLUTION_DROP === "true" ? "BYPASSED" : "enforced" }, null, 2)}\n`);
     if (apply) {
       stage = "apply";

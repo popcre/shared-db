@@ -1,6 +1,9 @@
 name: ColdLion Item Sweep
 
 # #4941 live item flow: ONLY the Item Master step (tools/sync-coldlion-items.mjs,
+# #4974: the same step now also lands the /itemDetails rows of NEW items (per-item
+# filtered pulls, bounded) BEFORE the import, so the Master Data auto-flow sees
+# the assortment marker in this cycle instead of after the nightly masters run.
 # whole step measured 80 s live on 2026-10-02 inside the nightly), every 30
 # minutes at 05/35 past, off the hour. The heavy landing pipeline (masters,
 # prepack ~43 min, prod-detail ~63 min, ~118 min worst case) stays on its daily
@@ -45,7 +48,7 @@ jobs:
         run: psql --version
 
       - name: Run the item loader's offline tests before touching anything
-        run: node --test tools/item-taxonomy-phase2.test.mjs tools/coldlion-sync-common-runsql.test.mjs
+        run: node --test tools/item-taxonomy-phase2.test.mjs tools/coldlion-sync-common-runsql.test.mjs tools/coldlion-item-detail-delta.test.mjs
 
       - name: Refuse to run without an explicit target
         env:

@@ -137,6 +137,7 @@ end $guard$;
 
 
 def snapshot_sql(table):
+    if table not in ('assets','style_groups'):raise ValueError('4427 unknown fingerprint table')
     # Actual relation bytes, rowset, indexes and visible union, not row-count-only pairing.
     return f"""select jsonb_build_object(
 'heap_md5',md5(pg_read_binary_file(pg_relation_filepath('public.{table}'::regclass))),
@@ -224,7 +225,8 @@ class NativeCI:
     def command(self, tool, db, *args, input_text=None, binary=False):
         if self.physical is not None:
             if tool!='psql' or db!='postgres' or binary or input_text is None:raise RuntimeError('4427 physical target command refused')
-            return self.physical.sql(input_text)
+            role='supabase_admin' if input_text in (snapshot_sql('assets'),snapshot_sql('style_groups')) else 'postgres'
+            return self.physical.sql(input_text,role=role)
         cmd = [tool, '-h', '127.0.0.1', '-p', '54322', '-U', 'postgres', '-d', db, *args]
         return self.checked(cmd, input=input_text, capture_output=True, text=not binary).stdout
 
@@ -512,7 +514,7 @@ end $g$;""")
             summary = summarize(samples)
             return dict(schema_version=1, source_sha=os.environ['GITHUB_SHA'],
                 executed_source_sha256=source_hashes, tool_versions=tool_versions, snapshot=snapshot, canonical=canonical, analyze_facts=analyze_facts, calibration_pair=calibration, calibration_active_seconds=calibration_active, actual_admission_wait_seconds=cluster.window_wait_seconds, projected_matrix_seconds=projected, owned_physical_receipts=cluster.events,
-                calibration_pair_not_part_of374=True, psql_shell_failure_signal_proven=True, qualification='ISOLATED_ACTUAL_TABLES_ONLY', production_acceptance='NOT_EVALUATED',
+                calibration_pair_not_part_of374=True, metadata_fingerprint_role='supabase_admin', psql_shell_failure_signal_proven=True, qualification='ISOLATED_ACTUAL_TABLES_ONLY', production_acceptance='NOT_EVALUATED',
                 historical_flags='PRESERVED_UNATTRIBUTED', source_sql_sha256=hashlib.sha256(original.encode()).hexdigest(),
                 original_contract_output_sha256=hashlib.sha256(original_result.encode()).hexdigest(),
                 template_snapshots=base_metadata, samples=samples, summary=summary,

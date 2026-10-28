@@ -41,6 +41,10 @@ BOOTSTRAP_READY=['sh','-c',"for i in $(seq 1 30); do grep -Fq 'PostgreSQL init p
 LABELS={'shared-db.regression':'4427-local-physical','shared-db.owner':OWNER}
 CONTEXT_SQL="select json_build_object('system_identifier',(select system_identifier::text from pg_control_system()),'server_version_num',current_setting('server_version_num')::int,'postmaster_start',pg_postmaster_start_time()::text,'database',current_database())::text;"
 AUTHORITY_SQL="select json_build_object('system_identifier',(select system_identifier::text from pg_control_system()),'server_version_num',current_setting('server_version_num')::int,'postmaster_start',pg_postmaster_start_time()::text,'database',current_database(),'current_user',current_user,'session_user',session_user,'rolsuper',r.rolsuper,'rolcanlogin',r.rolcanlogin,'is_superuser',current_setting('is_superuser'))::text from pg_roles r where r.rolname=current_user;"
+FILE_FUNCTION_PRIVILEGES_SQL="""select json_build_object('postgres_superuser',(select rolsuper from pg_roles where rolname='postgres'),
+'pg_read_server_files_member',pg_has_role('postgres','pg_read_server_files','MEMBER'),
+'pg_read_binary_file_execute',has_function_privilege('postgres','pg_catalog.pg_read_binary_file(text)','EXECUTE'),
+'pg_stat_file_execute',has_function_privilege('postgres','pg_catalog.pg_stat_file(text,boolean)','EXECUTE'))::text;"""
 NATIVE_SQL="""select json_build_object(
 'extensions',(select json_agg(json_build_array(extname,extversion,pg_get_userbyid(extowner),extnamespace,extrelocatable,extconfig::text,extcondition::text) order by extname) from pg_extension),
 'roles',(select json_agg(json_build_array(rolname,rolsuper,rolinherit,rolcreaterole,rolcreatedb,rolcanlogin,rolreplication,rolbypassrls,rolconfig) order by rolname) from pg_roles),
@@ -479,7 +483,7 @@ class Regression:
             elapsed=time.monotonic()-started
             if elapsed>600:raise RuntimeError('4427 local ten-minute calibrated action exceeded')
             result=dict(**source,qualification='REAL_NATIVE_PG17_6_FULL_PHYSICAL_FOCUSED_PAIR_ONLY',production_acceptance='NOT_EVALUATED',native374_acceptance='NOT_EVALUATED',
-                        historical_logical_restore_failures='PRESERVED_NOT_RECLASSIFIED',version_facts=local.version_facts,pair=pair,elapsed_seconds=elapsed,
+                        historical_logical_restore_failures='PRESERVED_NOT_RECLASSIFIED',postgres_file_privileges=postgres_file_privileges,version_facts=local.version_facts,pair=pair,elapsed_seconds=elapsed,
                         source_owner=OWNER,target_owner=helper.OWNER)
         except Exception as error:
             phase=local.phase if self.phase=='source-open' and local is not None else self.phase

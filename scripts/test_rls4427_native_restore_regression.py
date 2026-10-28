@@ -57,6 +57,13 @@ class LocalPhysicalControls(unittest.TestCase):
         with patch.object(m.subprocess,'run',side_effect=git)as run,self.assertRaisesRegex(RuntimeError,'committed bytes'):m.source_identity()
         self.assertTrue(all(c.args[0][0]=='/usr/bin/git'for c in run.call_args_list))
 
+    def test_existing_file_function_privileges_are_observed_without_grant_or_read(self):
+        query=m.FILE_FUNCTION_PRIVILEGES_SQL
+        self.assertIn("has_function_privilege('postgres','pg_catalog.pg_read_binary_file(text)','EXECUTE')",query)
+        self.assertIn("has_function_privilege('postgres','pg_catalog.pg_stat_file(text,boolean)','EXECUTE')",query)
+        self.assertNotIn('GRANT',query.upper());self.assertNotIn('ALTER',query.upper())
+        self.assertNotIn('pg_read_binary_file(',query.replace("'pg_catalog.pg_read_binary_file(text)'",''))
+
     def test_exact_native_versions_not_host_pg1711(self):
         versions=[x+' (PostgreSQL) 17.6'for x in ('psql','pg_basebackup','pg_ctl')]
         self.assertEqual(m.validate_versions(versions,170006)['server_version_num'],170006)

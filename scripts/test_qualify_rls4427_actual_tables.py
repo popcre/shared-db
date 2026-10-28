@@ -262,12 +262,24 @@ class Actual4427StaticTests(unittest.TestCase):
         for key,value in [('current_user','postgres'),('session_user','postgres'),('rolsuper',False),('rolcanlogin',False),('is_superuser','off'),('system_identifier','foreign'),('postmaster_start','other'),('server_version_num',170011),('database','foreign')]:
             with self.subTest(key=key),self.assertRaises(RuntimeError):m.validate_restore_authority({**facts,key:value},context)
 
+    def test_only_two_byte_exact_metadata_queries_use_existing_target_admin(self):
+        with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
+        c.physical=unittest.mock.Mock()
+        for table in ('assets','style_groups'):
+            query=m.snapshot_sql(table);c.sql('postgres',query)
+            c.physical.sql.assert_called_with(query,role='supabase_admin')
+            for altered in (query+' ',query+'select 1;',query.replace('public.'+table,'public.profiles')):
+                c.sql('postgres',altered);c.physical.sql.assert_called_with(altered,role='postgres')
+        with self.assertRaises(ValueError):m.snapshot_sql('profiles')
+        for query in (m.fixture_sql(m.FIXTURE.read_text()),m.seed_sql(),m.role_sql(m.ADMIN)+m.statement('assets','UPDATE',10000),m.role_sql(m.MEMBER)+m.statement('style_groups','DELETE',100)):
+            c.sql('postgres',query);c.physical.sql.assert_called_with(query,role='postgres')
+
     def test_target_sql_cannot_be_redirected_to_another_database(self):
         with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
         c.physical=unittest.mock.Mock()
         with self.assertRaises(RuntimeError):c.sql('foreign','select 1;')
         c.physical.sql.assert_not_called()
-        c.sql('postgres','select 1;');c.physical.sql.assert_called_once_with('select 1;')
+        c.sql('postgres','select 1;');c.physical.sql.assert_called_once_with('select 1;',role='postgres')
 
 
 if __name__=='__main__':unittest.main()

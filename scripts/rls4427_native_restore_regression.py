@@ -43,6 +43,15 @@ METADATA = """select json_build_object(
 'public_rows',(select json_agg(o order by id) from public.restore_fixture o))::text;"""
 
 
+def validate_exact_versions(versions, server_version):
+    tools = ('psql','pg_dump','pg_restore')
+    if server_version != 170011 or len(versions) != len(tools) or any(
+        re.fullmatch(re.escape(tool)+r' \(PostgreSQL\) 17\.11(?: \([^\r\n]+\))?', version) is None
+        for tool,version in zip(tools,versions)):
+        raise RuntimeError('4427 local regression requires exact server170011 and matching PG17.11 tools')
+    return dict(server_version_num=server_version,versions=dict(zip(tools,versions)))
+
+
 def source_identity():
     env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'}
     head=subprocess.run(['/usr/bin/git','rev-parse','HEAD'],cwd=ROOT,env=env,check=True,capture_output=True,text=True,timeout=10).stdout.strip()
@@ -69,6 +78,7 @@ class Regression:
         self.events = []
         self.started = time.monotonic()
         self.cleanup_mode = False
+        self.version_bound = False
         self.env = {'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'}
 
     def docker(self, *args, input_data=None, output=None, allowed_failure=False):
@@ -131,7 +141,7 @@ class Regression:
         return self.execute(restore_args(db),input_data=archive)
 
     def clean_negative(self, db, archive):
-        if db != DATABASES[1] or db not in self.owned:
+        if db != DATABASES[1] or db not in self.owned or not self.version_bound:
             raise RuntimeError('4427 regression clean negative requires exact owned target')
         command = ['pg_restore','-U','postgres','-d',db,'--clean','--if-exists','--exit-on-error']
         failure = self.execute(command,input_data=archive,allowed_failure=True)
@@ -139,8 +149,8 @@ class Regression:
                           stderr=failure.stderr[:4096].decode(errors='replace'),stderr_truncated=len(failure.stderr)>4096)
         self.events.append(diagnostic)
         print(json.dumps(diagnostic,sort_keys=True),file=sys.stderr)
-        if not failure.returncode or b'schema "storage" does not exist' not in failure.stderr:
-            raise RuntimeError('4427 regression did not reproduce actual clean failure')
+        if failure.returncode != 0 or failure.stderr != b'':
+            raise RuntimeError('4427 PG17.11 old-clean control returned unexpected status or stderr')
         return failure
 
     def permissions(self, db):
@@ -192,7 +202,10 @@ class Regression:
                 ready="for i in $(seq 1 30); do test \"$(cat /proc/1/comm)\" = postgres && pg_isready -U postgres >/dev/null 2>&1 && exit 0; sleep 1; done; exit 1"
                 self.execute(['sh','-c',ready])
                 versions=[self.execute([tool,'--version']).stdout.decode().strip() for tool in ('psql','pg_dump','pg_restore')]
-                if any('(PostgreSQL) 17.' not in v for v in versions):raise RuntimeError('4427 regression requires real matching PG17 tools')
+                server_version=int(self.sql('postgres',"select current_setting('server_version_num');").stdout.strip())
+                version_facts=validate_exact_versions(versions,server_version)
+                self.version_bound=True
+                print(json.dumps(dict(phase='exact-local-version',**version_facts),sort_keys=True),file=sys.stderr)
                 self.create(DATABASES[0]);self.sql(DATABASES[0],(ROOT/'supabase/tests/fixtures/rls4427_native_restore_fixture.sql').read_text())
                 archive_path=Path(temp)/'full.dump'
                 with os.fdopen(os.open(archive_path,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600),'wb') as out:
@@ -200,7 +213,12 @@ class Regression:
                 archive=archive_path.read_bytes();source=json.loads(self.sql(DATABASES[0],METADATA).stdout)
                 self.create(DATABASES[1])
                 failure=self.clean_negative(DATABASES[1],archive)
-                negative=failure.stderr.decode();self.drop(DATABASES[1])
+                negative=failure.stderr.decode()
+                old_restored=json.loads(self.sql(DATABASES[1],METADATA).stdout)
+                if source!=old_restored:raise RuntimeError('4427 PG17.11 successful old-clean metadata differs')
+                old_control=dict(disposition='NOT_REPRODUCED_PG17_11',metadata_equal=True,exit_code=failure.returncode,stderr=negative)
+                print(json.dumps(dict(phase='old-clean-equivalence',**old_control),sort_keys=True),file=sys.stderr)
+                self.drop(DATABASES[1])
                 self.create(DATABASES[2]);self.restore(DATABASES[2],archive)
                 restored=json.loads(self.sql(DATABASES[2],METADATA).stdout)
                 if source!=restored:raise RuntimeError('4427 regression full metadata/data/owner/ACL/policy equivalence differs')
@@ -223,7 +241,7 @@ class Regression:
                 truncated=self.execute(restore_args(DATABASES[4]),input_data=archive[:32],allowed_failure=True)
                 if not truncated.returncode:raise RuntimeError('4427 regression accepted truncated archive')
                 self.drop(DATABASES[4]);self.drop(DATABASES[0])
-                return dict(**source_facts,qualification='REAL_PG17_FRESH_RESTORE_ONLY',production_acceptance='NOT_EVALUATED',versions=versions,
+                return dict(**source_facts,qualification='REAL_PG17_11_FRESH_RESTORE_ONLY',production_acceptance='NOT_EVALUATED',historical_native_17_6_failure='PRESERVED_NOT_REPRODUCED',native374_acceptance='NOT_EVALUATED',old_clean_control=old_control,version_facts=version_facts,versions=versions,
                     archive_sha256=hashlib.sha256(archive).hexdigest(),metadata_sha256=hashlib.sha256(json.dumps(source,sort_keys=True).encode()).hexdigest(),
                     clean_negative_exit=failure.returncode,clean_negative_stderr=negative,nonempty_refusals=nonempty_refusals,truncated_exit=truncated.returncode,permissions=actual,events=self.events,elapsed_seconds=time.monotonic()-self.started)
             finally:

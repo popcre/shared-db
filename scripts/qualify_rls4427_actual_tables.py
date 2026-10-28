@@ -103,7 +103,7 @@ def statement(table, command, n):
     if table not in ('assets', 'style_groups') or command not in ('SELECT', 'INSERT', 'UPDATE', 'DELETE'):
         raise ValueError('4427 unknown workload')
     if command == 'SELECT':
-        return f'SELECT count(*) FROM (SELECT id FROM public.{table} LIMIT 1000) bounded'
+        return f'SELECT count(*)::integer AS bounded_count FROM (SELECT 1 FROM public.{table} LIMIT 1000) AS bounded'
     identity = "'4427-actual-asset-'" if table == 'assets' else "'4427-actual-style-'"
     where = f"id IN (SELECT md5({identity}||i)::uuid FROM generate_series(1,{n}) i)"
     if command == 'UPDATE':

@@ -29,7 +29,7 @@ IMMUTABLE_CONFIG_SHA='e1939b94b1fd12b8a446404ff49455d7cf2a6a275a77f010abb56a247b
 CRON_BINARY_SHA='55a7bdcf1b966d51d83d248797507348de19d16f1c968948c1854bc799751108'
 BACKUP_ARGS=['pg_basebackup','-h','/var/run/postgresql','-p','5432','-U','supabase_admin','-D','-','-Ft','-X','fetch','-c','fast','--manifest-checksums=SHA256','--no-password']
 CONFIG_ARGS=['tar','--numeric-owner','-C','/','-cf','-','etc/postgresql','etc/postgresql-custom']
-BINARY_ARGS=['sha256sum','/usr/lib/postgresql/lib/pg_cron.so']
+BINARY_ARGS=['sha256sum','/nix/store/qpz7hxz26yk04v1f0cxfhgicy360zf9n-pg_cron-1.6.4/lib/pg_cron-1.6.4.so']
 HBA_PATH='/etc/postgresql/pg_hba.conf'
 HBA_READ_ARGS=['cat',HBA_PATH]
 HBA_STAT_ARGS=['stat','-c','%F:%u:%g:%a:%h',HBA_PATH]

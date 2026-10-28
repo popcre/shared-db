@@ -73,6 +73,13 @@ class PhysicalControls(unittest.TestCase):
             self.assertEqual(seen[-1]['input'],query.encode())
         with self.assertRaises(RuntimeError):m.process_input(io.StringIO('unsupported'))
 
+    def test_existing_nix_cron_binary_is_closed_without_alias_or_hash_fallback(self):
+        self.assertEqual(m.BINARY_ARGS,['sha256sum','/nix/store/qpz7hxz26yk04v1f0cxfhgicy360zf9n-pg_cron-1.6.4/lib/pg_cron-1.6.4.so'])
+        self.assertEqual(m.CRON_BINARY_SHA,'55a7bdcf1b966d51d83d248797507348de19d16f1c968948c1854bc799751108')
+        self.assertEqual(m.source_command_kind(m.BINARY_ARGS),'read')
+        self.assertIsNone(m.source_command_kind(['sha256sum','/usr/lib/postgresql/lib/pg_cron.so']))
+        self.assertIsNone(m.source_command_kind(m.BINARY_ARGS+['another-library']))
+
     def test_cron_preserves_normal_minute_jobs_but_no_startup_or_interval_jobs(self):
         facts=dict(jobs=2,job_hash='j',schedules=['* * * * *','0 1 * * 1-5'],runs=3,run_hash='r',pending=0,workers=0,schedulers=[[10,'fixed']])
         self.assertEqual(m.validate_cron(facts),facts)

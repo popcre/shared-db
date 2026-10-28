@@ -94,6 +94,16 @@ class Actual4427StaticTests(unittest.TestCase):
             with self.assertRaises(ValueError):m.statement('assets','DELETE',1)
             with self.assertRaises(ValueError):m.statement('other','INSERT',1)
 
+    def test_measured_select_is_byte_exact_accepted_historical_read_workload(self):
+        # Import the actual old pure workload builder; do not duplicate its SQL.
+        code="import {workloadSQL} from './scripts/qualify-authenticated-rls-read.mjs';process.stdout.write(JSON.stringify(['assets','style_groups'].map(t=>[t,workloadSQL(t,1000)])));"
+        result=m.subprocess.run(['node','--input-type=module','-e',code],cwd=m.ROOT,capture_output=True,text=True,check=True,timeout=10)
+        for table,query in m.json.loads(result.stdout):
+            self.assertEqual(m.statement(table,'SELECT',1000).encode(),query.encode())
+        jobs=m.jobs()
+        self.assertEqual(sum(command=='SELECT'for _,command,_,_,_ in jobs),44)
+        self.assertEqual(sum(command!='SELECT'for _,command,_,_,_ in jobs),330)
+
     def test_policy_delta_guard_preserves_metadata_helpers_and_full_union(self):
             rows=[]
             for table,name,clause in m.POLICIES:

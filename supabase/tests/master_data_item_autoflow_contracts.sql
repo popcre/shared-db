@@ -63,7 +63,7 @@ begin
   values (v_run_id, '/itemDetails', 'ZZ', 'ZZ', 'zztest4956');
 
   insert into coldlion.item_header (company_code, division_code, item_no, run_id, fetched_at, source_hash, first_seen_at, last_seen_at)
-  values ('ZZ', 'ZZ', x.item_no, v_run_id, v_land, repeat('0', 64), v_land, v_land)
+  select 'ZZ', 'ZZ', x.item_no, v_run_id, v_land, repeat('0', 64), v_land, v_land
   from (values (v_sku_new), (v_sku_asst), ('ZZ4956DIR-CLOCK'), (v_sku_imp_asst)) as x(item_no);
 
   insert into coldlion.item_detail (company_code, division_code, item_no, item_pkey, pre_pack_code, run_id, fetched_at, source_hash, first_seen_at, last_seen_at)

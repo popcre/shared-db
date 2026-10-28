@@ -26,6 +26,12 @@
 # shows all-checks-passed. The tests read across the whole of supabase/migrations,
 # so no honest filter exists.
 #
+# THE TRUSTED PURE-PROSE ROUTE COVERS EVERY EVENT (#3383, extended in #4960). The
+# `classify` job decides applicability on pull_request, merge_group AND push: a
+# path filter would be a guess, but a proven pure-prose inventory from trusted
+# code is the sanctioned skip, and it must not evaporate the moment a prose change
+# leaves the pull-request event. Fail closed: an undecidable event runs this suite.
+#
 # THE FILE LIST IS A GLOB, NOT A LIST. That is the specific defect #731 is about --
 # `shared-supabase-migrations.yml` names its Python test files explicitly and a new
 # one merged without anybody remembering to add it. A new supabase/tests/*.sql file
@@ -80,7 +86,11 @@ concurrency:
 
 jobs:
   classify:
-    if: github.event_name == 'pull_request'
+    # Decides on EVERY event this workflow runs on (#4960): pull_request asks the
+    # trusted base policy about the PR; merge_group resolves its one queued PR and
+    # asks the same policy; push proves its own before..sha range with the trusted
+    # pure-prose inventory classifier; a manual dispatch fails closed to the full
+    # suite. An undecidable event runs the tests -- it never skips them.
     name: Database contract applicability
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -89,51 +99,102 @@ jobs:
     steps:
       # The PR may not supply the executable policy that decides whether its own
       # database test can be skipped. This is the protected base revision named
-      # by GitHub's PR event, checked out separately from the proposed change.
+      # by GitHub's event, checked out separately from the proposed change.
+      # On merge_group it is the group base (current main); on push it is the
+      # pushed main itself, which already passed the merge queue.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
           fetch-depth: 1
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Classify the complete pull request file list from trusted policy
+      - name: Resolve the pull request this event proves, if any
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          MERGE_GROUP_REF: ${{ github.event.merge_group.head_ref }}
+        run: |
+          set -euo pipefail
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          if [ "$EVENT_NAME" = 'merge_group' ]; then
+            # The merge_group payload carries no pull_request object. The one
+            # queued PR is resolved from the queue ref exactly as pr-guards.yml
+            # resolves it (#2530). Fail closed: an unresolvable group proves
+            # nothing, and the full suite runs below.
+            if facts="$(node scripts/merge-queue-contract.mjs --resolve-queue-pr)"; then
+              resolved="$(echo "$facts" | jq -r '.number')"
+              case "$resolved" in ''|*[!0-9]*) ;; *) PR_NUMBER="$resolved" ;; esac
+            else
+              echo '::warning::Could not resolve the queued pull request; the full database contract test will run.' >&2
+            fi
+          fi
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+      - name: Classify the change from trusted policy
         id: readiness
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           POLICY_SHA="$(git rev-parse HEAD)"
-          # This workflow and its richer readiness helper can arrive in the same
-          # PR. During that one bootstrap PR, protected main legitimately has
-          # only the already-merged documents-only classifier. Use it instead;
-          # the workflow change itself is code-bearing, so that fallback can only
-          # select the full test path. Later PRs use the structured helper.
-          set +e
-          if [ -f scripts/check-closeout-readiness.mjs ]; then
-            node scripts/check-closeout-readiness.mjs "$GITHUB_REPOSITORY" "$PR_NUMBER" "$POLICY_SHA" > readiness.json
-            status=$?
-          else
-            node scripts/check-documents-only-pull-request.mjs "$GITHUB_REPOSITORY" "$PR_NUMBER"
-            status=$?
-            printf '{"gates":{"database_contract_tests":"%s"}}\n' "$([ "$status" -eq 0 ] && echo inapplicable || echo applicable)" > readiness.json
-          fi
-          set -e
-          # POLICY: only a positive, well-formed "inapplicable" answer skips the
-          # test. Exit 1 means applicable. Any other outcome -- an unreadable file
-          # list, a malformed identity, unparseable output -- never skips and never
-          # fails this job: it selects the FULL database test run instead.
-          applicability="$(jq -r '.gates.database_contract_tests' readiness.json 2>/dev/null || true)"
-          if [ "$status" -eq 0 ] && [ "$applicability" = inapplicable ]; then
-            applicability=inapplicable
-          else
-            if [ "$status" -gt 1 ]; then echo "::warning::The trusted classifier could not decide (exit $status); running the full database contract test." >&2; fi
-            applicability=applicable
+          applicability=applicable
+          reason='no pull request and no provable push range; the full suite runs'
+          if [ -n "${PR_NUMBER:-}" ]; then
+            # This workflow and its richer readiness helper can arrive in the same
+            # PR. During that one bootstrap PR, protected main legitimately has
+            # only the already-merged documents-only classifier. Use it instead;
+            # the workflow change itself is code-bearing, so that fallback can only
+            # select the full test path. Later PRs use the structured helper.
+            set +e
+            if [ -f scripts/check-closeout-readiness.mjs ]; then
+              node scripts/check-closeout-readiness.mjs "$GITHUB_REPOSITORY" "$PR_NUMBER" "$POLICY_SHA" > readiness.json
+              status=$?
+            else
+              node scripts/check-documents-only-pull-request.mjs "$GITHUB_REPOSITORY" "$PR_NUMBER"
+              status=$?
+              printf '{"gates":{"database_contract_tests":"%s"}}\n' "$([ "$status" -eq 0 ] && echo inapplicable || echo applicable)" > readiness.json
+            fi
+            set -e
+            # POLICY: only a positive, well-formed "inapplicable" answer skips the
+            # test. Exit 1 means applicable. Any other outcome -- an unreadable file
+            # list, a malformed identity, unparseable output -- never skips and never
+            # fails this job: it selects the FULL database test run instead.
+            applicability="$(jq -r '.gates.database_contract_tests' readiness.json 2>/dev/null || true)"
+            if [ "$status" -eq 0 ] && [ "$applicability" = inapplicable ]; then
+              reason='the trusted base policy classified this pull request as prose-only'
+            else
+              applicability=applicable
+              reason='the change is not proven pure prose for the database contract tests'
+              if [ "$status" -gt 1 ]; then
+                echo "::warning::The trusted classifier could not decide (exit $status); running the full database contract test." >&2
+                reason="the trusted classifier could not decide (exit $status); running the full database contract test"
+              fi
+            fi
+          elif [ "$EVENT_NAME" = 'push' ] && [ -n "${BEFORE_SHA:-}" ] && [ "$BEFORE_SHA" != '0000000000000000000000000000000000000000' ]; then
+            # A push to main has no pull request to ask, but it has an exact
+            # before..sha range. Prove that range pure prose with the same
+            # trusted inventory classifier the fast CI route uses (#3383). The
+            # checked-out tree is the pushed main itself -- it already passed
+            # the merge queue -- so the classifier runs from this checkout.
+            # Fail closed: an unfetchable range or a non-prose inventory keeps
+            # the full suite.
+            if git fetch --no-tags --depth=1 origin "$BEFORE_SHA" "$HEAD_SHA" 2>/dev/null \
+               && node scripts/check-documents-ci-route.mjs "$BEFORE_SHA" "$HEAD_SHA"; then
+              applicability=inapplicable
+              reason='the push range is proven pure prose by an exact git inventory'
+            else
+              reason='the push range is not proven pure prose'
+            fi
           fi
           echo "database_contract_tests=$applicability" >> "$GITHUB_OUTPUT"
           echo "trusted_policy_sha=$POLICY_SHA" >> "$GITHUB_STEP_SUMMARY"
-          cat readiness.json >> "$GITHUB_STEP_SUMMARY"
+          echo "decision: $applicability -- $reason" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f readiness.json ]; then cat readiness.json >> "$GITHUB_STEP_SUMMARY"; fi
 
   contract-tests:
     name: supabase/tests against an ephemeral database
@@ -143,21 +204,21 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Refuse an unreadable applicability decision
-        if: github.event_name == 'pull_request' && needs.classify.result != 'success'
+        if: needs.classify.result != 'success'
         run: |
           echo "::error::The trusted applicability classifier did not complete. Refusing to skip the disposable database test." >&2
           exit 1
-      - name: Report a truthful inapplicable result for a prose-only pull request
-        if: github.event_name == 'pull_request' && needs.classify.result == 'success' && needs.classify.outputs.database_contract_tests == 'inapplicable'
+      - name: Report a truthful inapplicable result for a prose-only change
+        if: needs.classify.result == 'success' && needs.classify.outputs.database_contract_tests == 'inapplicable'
         run: |
           {
             echo "## Database Contract Tests"
             echo ""
-            echo "Not run: the trusted base policy classified this pull request as prose-only."
+            echo "Not run: the trusted policy classified this change as prose-only."
             echo "This is an inapplicable result, not a claim that SQL tests passed."
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@v4
-        if: github.event_name != 'pull_request' || (needs.classify.result == 'success' && needs.classify.outputs.database_contract_tests == 'applicable')
+        if: needs.classify.result == 'success' && needs.classify.outputs.database_contract_tests == 'applicable'
 
       # This is a STATIC self-check of this workflow file, not a runtime read of the
       # environment. The first version of this step mapped the three secrets into `env:`
@@ -165,7 +226,7 @@ jobs:
       # into a job's scope, so it failed itself on the first run. The lesson generalises:
       # you cannot prove a credential is absent by asking for it. Read the file instead.
       - name: Refuse to run if this workflow can reach a shared database
-        if: github.event_name != 'pull_request' || needs.classify.outputs.database_contract_tests == 'applicable'
+        if: needs.classify.outputs.database_contract_tests == 'applicable'
         run: |
           set -euo pipefail
           SELF=.github/workflows/database-contract-tests.yml
@@ -194,12 +255,12 @@ jobs:
           echo "Confined to a local ephemeral database: no secrets, no shared project ref, no link."
 
       - uses: supabase/setup-cli@v1
-        if: github.event_name != 'pull_request' || needs.classify.outputs.database_contract_tests == 'applicable'
+        if: needs.classify.outputs.database_contract_tests == 'applicable'
         with:
           version: 2.105.0
 
       - name: Ensure a working PostgreSQL client (psql)
-        if: github.event_name != 'pull_request' || needs.classify.outputs.database_contract_tests == 'applicable'
+        if: needs.classify.outputs.database_contract_tests == 'applicable'
         run: |
           set -euo pipefail
 
@@ -273,7 +334,7 @@ jobs:
       # "toomanyrequests ... allowed: 44000/minute", anonymous and authenticated
       # alike (issue #3451). The CLI publishes the same pinned tags to both.
       - name: Start an empty ephemeral database
-        if: github.event_name != 'pull_request' || needs.classify.outputs.database_contract_tests == 'applicable'
+        if: needs.classify.outputs.database_contract_tests == 'applicable'
         env:
           SUPABASE_INTERNAL_IMAGE_REGISTRY: public.ecr.aws
         run: |
@@ -283,7 +344,7 @@ jobs:
           supabase db start 2>&1 | tee "$RUNNER_TEMP/db-start.log"
 
       - name: Prove atomic migration DDL and ledger commit or roll back together
-        if: github.event_name != 'pull_request' || needs.classify.outputs.database_contract_tests == 'applicable'
+        if: needs.classify.outputs.database_contract_tests == 'applicable'
         env:
           PGHOST: 127.0.0.1
           PGPORT: 54322
@@ -294,7 +355,7 @@ jobs:
         run: python scripts/test_atomic_migration_apply_postgres.py
 
       - name: Prove preview ledger reconciliation rolls back an in-lock failure
-        if: github.event_name != 'pull_request' || needs.classify.outputs.database_contract_tests == 'applicable'
+        if: needs.classify.outputs.database_contract_tests == 'applicable'
         env:
           PGHOST: 127.0.0.1
           PGPORT: 54322
@@ -305,7 +366,7 @@ jobs:
         run: python scripts/test_preview_ledger_orphan_reconcile_postgres.py
 
       - name: Replay every migration, recording failures (pass 1)
-        if: github.event_name != 'pull_request' || needs.classify.outputs.database_contract_tests == 'applicable'
+        if: needs.classify.outputs.database_contract_tests == 'applicable'
         id: replay
         env:
           PGHOST: 127.0.0.1
@@ -432,7 +493,7 @@ jobs:
       # check exists to stop. The only consumer is a from-empty replay, which only ever
       # happens in this runner.
       - name: Apply the captured pre-adoption baseline
-        if: github.event_name != 'pull_request' || needs.classify.outputs.database_contract_tests == 'applicable'
+        if: needs.classify.outputs.database_contract_tests == 'applicable'
         env:
           PGHOST: 127.0.0.1
           PGPORT: 54322
@@ -485,7 +546,7 @@ jobs:
       # does not hold that data -- and the tests downstream of them stay quarantined with
       # that reason written down.
       - name: Re-run the migrations that failed, now on the baseline (pass 2)
-        if: github.event_name != 'pull_request' || needs.classify.outputs.database_contract_tests == 'applicable'
+        if: needs.classify.outputs.database_contract_tests == 'applicable'
         env:
           PGHOST: 127.0.0.1
           PGPORT: 54322
@@ -619,7 +680,7 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Prove pass-2 routine restoration against live PostgreSQL
-        if: github.event_name != 'pull_request' || needs.classify.outputs.database_contract_tests == 'applicable'
+        if: needs.classify.outputs.database_contract_tests == 'applicable'
         env:
           PGHOST: 127.0.0.1
           PGPORT: 54322
@@ -636,7 +697,7 @@ jobs:
       # row, no real person, customer, vendor, licensor or property is copied into it, and
       # none may ever be.
       - name: Apply the synthetic test-fixture seed
-        if: github.event_name != 'pull_request' || needs.classify.outputs.database_contract_tests == 'applicable'
+        if: needs.classify.outputs.database_contract_tests == 'applicable'
         env:
           PGHOST: 127.0.0.1
           PGPORT: 54322
@@ -659,7 +720,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 --no-psqlrc -f "$SEED" 2>&1 | tee "$RUNNER_TEMP/fixture-seed.log"
 
       - name: Run every supabase/tests/*.sql
-        if: github.event_name != 'pull_request' || needs.classify.outputs.database_contract_tests == 'applicable'
+        if: needs.classify.outputs.database_contract_tests == 'applicable'
         id: run
         env:
           # The local stack's fixed superuser connection. This is the Supabase CLI's
@@ -794,7 +855,7 @@ jobs:
           fi
 
       - name: Prove source-resolution concurrent first-writer conflict
-        if: github.event_name != 'pull_request' || needs.classify.outputs.database_contract_tests == 'applicable'
+        if: needs.classify.outputs.database_contract_tests == 'applicable'
         env:
           PGHOST: 127.0.0.1
           PGPORT: 54322
@@ -804,7 +865,7 @@ jobs:
         run: bash supabase/tests/source_resolution_first_writer_race.sh
 
       - name: Prove Flow 4 concurrent replay serialization
-        if: github.event_name != 'pull_request' || needs.classify.outputs.database_contract_tests == 'applicable'
+        if: needs.classify.outputs.database_contract_tests == 'applicable'
         env:
           PGHOST: 127.0.0.1
           PGPORT: 54322
@@ -814,7 +875,7 @@ jobs:
         run: bash supabase/tests/sample_tracking_flow4_remote_requests_concurrency.sh
 
       - name: Upload every test's output
-        if: always() && (github.event_name != 'pull_request' || needs.classify.outputs.database_contract_tests == 'applicable')
+        if: always() && (needs.classify.outputs.database_contract_tests == 'applicable')
         uses: actions/upload-artifact@v4
         with:
           name: supabase-contract-test-logs
@@ -834,5 +895,5 @@ jobs:
           retention-days: 30
 
       - name: Stop the ephemeral database
-        if: always() && (github.event_name != 'pull_request' || needs.classify.outputs.database_contract_tests == 'applicable')
+        if: always() && (needs.classify.outputs.database_contract_tests == 'applicable')
         run: supabase stop --no-backup || true

@@ -1,0 +1,75 @@
+name: ColdLion Item Sweep
+
+# #4941 live item flow: ONLY the Item Master step (tools/sync-coldlion-items.mjs,
+# whole step measured 80 s live on 2026-10-02 inside the nightly), every 30
+# minutes at 05/35 past, off the hour. The heavy landing pipeline (masters,
+# prepack ~43 min, prod-detail ~63 min, ~118 min worst case) stays on its daily
+# 05:20 UTC schedule in coldlion-landing-sync.yml — this workflow must never
+# grow those steps. With the Master Data live auto-flow (#4941 in the same PR),
+# an item born in the vendor feed reaches the Licensed Master Data tab within
+# one sweep cycle.
+on:
+  schedule:
+    - cron: '5,35 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Fetch and report only (no --apply)"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+# Same policy as the nightly: a queued run is the honest outcome, never cancel.
+concurrency:
+  group: coldlion-item-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Refresh Item Master (plm.item) from ColdLion /items
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    # Whole step measured 80 s; 15 min is a real stall-killing ceiling (#1266)
+    # with margin for a slow vendor day.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prove psql is present
+        run: psql --version
+
+      - name: Run the item loader's offline tests before touching anything
+        run: node --test tools/item-taxonomy-phase2.test.mjs tools/coldlion-sync-common-runsql.test.mjs
+
+      - name: Refuse to run without an explicit target
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+        run: |
+          set -euo pipefail
+          # Named, not defaulted. A loader that guesses its own target is a loader
+          # that can write to the wrong database while reporting success.
+          [ -n "${DATABASE_URL:-}" ] || { echo "::error::SUPABASE_DB_URL_PRODUCTION is not set."; exit 1; }
+          [ -n "${COLDLION_API_KEY:-}" ] || { echo "::error::COLDLION_API_KEY is not set."; exit 1; }
+
+      - name: Refresh Item Master (plm.item) from ColdLion /items
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+          COLDLION_EXPECTED_PROJECT_REF: qsllyeztdwjgirsysgai
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          # Without --apply the loader only fetches and reports.
+          if [ "${DRY_RUN:-false}" = "true" ]; then
+            node tools/sync-coldlion-items.mjs
+          else
+            node tools/sync-coldlion-items.mjs --apply
+          fi

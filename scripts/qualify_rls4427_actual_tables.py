@@ -35,6 +35,7 @@ POLICIES = [('assets', 'Admins can insert assets', 'WITH CHECK'),
 
 def assert_ci(env):
     required = {'GITHUB_ACTIONS': 'true', 'CI': 'true', 'GITHUB_REPOSITORY': 'popcre/shared-db', 'GITHUB_WORKFLOW': 'Database Contract Tests',
+                'GITHUB_EVENT_NAME': 'workflow_dispatch', 'RLS4427_QUALIFICATION': '1',
                 'PGHOST': '127.0.0.1', 'PGPORT': '54322', 'PGUSER': 'postgres', 'PGDATABASE': 'postgres'}
     if any(env.get(k) != v for k, v in required.items()):
         raise RuntimeError('4427 refuses mismatched declared native CI context; parent must independently prove resource custody')

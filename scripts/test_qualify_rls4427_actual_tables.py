@@ -16,6 +16,7 @@ class Actual4427StaticTests(unittest.TestCase):
     def valid_env(self):
         return dict(GITHUB_ACTIONS='true', CI='true', GITHUB_REPOSITORY='popcre/shared-db',
                     GITHUB_WORKFLOW='Database Contract Tests', GITHUB_SHA='a'*40,
+                    GITHUB_EVENT_NAME='workflow_dispatch',RLS4427_QUALIFICATION='1',
                     PGHOST='127.0.0.1', PGPORT='54322', PGUSER='postgres', PGDATABASE='postgres')
 
     def test_fails_closed_before_any_command_outside_exact_ci_or_with_live_credentials(self):
@@ -28,6 +29,34 @@ class Actual4427StaticTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     m.NativeCI()
                 run.assert_not_called()
+
+    def test_only_exact_manual_optin_can_reach_any_subprocess(self):
+        for event in ('pull_request','merge_group','push','workflow_dispatch'):
+            for flag in (None,'','0','true','yes','2','1'):
+                env=self.valid_env();env['GITHUB_EVENT_NAME']=event
+                if flag is None:env.pop('RLS4427_QUALIFICATION',None)
+                else:env['RLS4427_QUALIFICATION']=flag
+                with self.subTest(event=event,flag=flag),patch.dict(os.environ,env,clear=True),patch.object(m.subprocess,'run') as run:
+                    if event=='workflow_dispatch' and flag=='1':
+                        self.assertIsInstance(m.NativeCI(),m.NativeCI)
+                    else:
+                        with self.assertRaises(RuntimeError):m.NativeCI()
+                    run.assert_not_called()
+
+    def test_existing_workflow_and_sql_keep_fixed_default_off_boundary(self):
+        workflow=(m.ROOT/'.github/workflows/database-contract-tests.yml').read_text()
+        self.assertIn("qualify_rls4427:\n        description: 'Run the fixed #4427 synthetic actual-table qualification once'\n        type: boolean\n        required: false\n        default: false",workflow)
+        flag="RLS4427_QUALIFICATION: ${{ github.event_name == 'workflow_dispatch' && inputs.qualify_rls4427 == true && '1' || '0' }}"
+        self.assertEqual(workflow.count(flag),1)
+        self.assertGreater(workflow.index(flag),workflow.index('      - name: Run every supabase/tests/*.sql'))
+        entry=(m.ROOT/'supabase/tests/rls_public_admin_actual_table_performance.sql').read_text()
+        self.assertIn("\\set rls4427_qualification 0",entry)
+        self.assertIn("\\getenv rls4427_qualification RLS4427_QUALIFICATION",entry)
+        self.assertIn("in ('0','1')",entry)
+        self.assertIn("flag must be exactly 0 or 1",entry)
+        gate=entry.index('\\if :rls4427_run');execute=entry.index('\\! python3')
+        self.assertLess(entry.index('\\if :rls4427_flag_valid'),gate);self.assertLess(gate,execute)
+        self.assertIn('SKIPPED: no explicit manual opt-in; not evaluated',entry)
 
     def test_complete_330_dml_44_select_matrix_and_balanced_order(self):
         jobs = m.jobs()

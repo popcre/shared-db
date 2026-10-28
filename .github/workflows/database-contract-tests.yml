@@ -66,6 +66,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      qualify_rls4427:
+        description: 'Run the fixed #4427 synthetic actual-table qualification once'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -662,6 +668,8 @@ jobs:
         if: github.event_name != 'pull_request' || needs.classify.outputs.database_contract_tests == 'applicable'
         id: run
         env:
+          # Heavy #4427 qualification is a separately reviewed manual opt-in only.
+          RLS4427_QUALIFICATION: ${{ github.event_name == 'workflow_dispatch' && inputs.qualify_rls4427 == true && '1' || '0' }}
           # The local stack's fixed superuser connection. This is the Supabase CLI's
           # documented default for a throwaway local database; it is not a secret and
           # it reaches nothing outside this runner.

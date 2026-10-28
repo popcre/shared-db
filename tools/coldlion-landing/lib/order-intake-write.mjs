@@ -224,7 +224,7 @@ winning_components as (
   select distinct on (wl.sales_order_no, wl.sales_order_line_no,
                       wl.master_item_no, c.sub_item_no, c.sub_label_code)
     c.line_id, wl.sales_order_no, wl.sales_order_line_no, wl.master_item_no,
-    c.sub_item_no, c.sub_label_code, c.quantity, c.order_qty,
+    c.sub_item_no, c.sub_label_code, c.order_qty,
     c.component_source_hash
   from coldlion.intake_order_component c
   join winning_lines wl on wl.id = c.line_id

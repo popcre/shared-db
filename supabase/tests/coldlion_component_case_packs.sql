@@ -29,7 +29,8 @@ begin
   if n<>1 then raise exception 'Four component designs must share one physical carton group'; end if;
   select count(*) into n from api.dam_order_list
    where order_id='48580000-0000-4000-8000-000000000001' and assortment_component_ordinal is not null
-     and case_pack=4 and assortment_parent_quantity=4000 and assortment_parent_cases=1000;
+     and case_pack=4 and assortment_parent_quantity=4000 and assortment_parent_cases=1000
+     and cases_reported is null and cases_error is null;
   if n<>4 then raise exception 'Every design must carry the whole-carton pack and the same 1000 physical cartons'; end if;
   select * into strict t from dam.dam_order_tracking where order_id='48580000-0000-4000-8000-000000000001';
   if t.total_cases is distinct from 1003::numeric or t.unknown_case_groups<>0 then

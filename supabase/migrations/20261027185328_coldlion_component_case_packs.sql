@@ -10,13 +10,43 @@
 -- is re-created below with its current body from 20261009073649, byte-for-byte,
 -- so it binds to the replaced OrderList view. No columns, grants or security
 -- modes change.
+-- For those components the per-design cases column is left NULL (the parent's
+-- cartons are assortment_parent_cases, counted once), Wrong QTY compares the
+-- whole-carton pack with the parent quantity, and order status never borrows the
+-- parent quantity for a design whose own quantity is missing.
 -- Data correction remains application-owned, exact-preimage and recoverable.
+
+begin;
+
+do $dependencies$
+begin
+  if not exists (
+    select 1 from pg_catalog.pg_class c
+    where c.oid = to_regclass('api.dam_order_list') and c.relkind = 'v'
+      and c.reloptions @> array['security_invoker=true']
+  ) or not exists (
+    select 1 from pg_catalog.pg_class c
+    where c.oid = to_regclass('dam.dam_order_tracking') and c.relkind = 'v'
+      and c.reloptions @> array['security_invoker=true']
+  ) then
+    raise exception '#4858 requires the security-invoker OrderList and tracking views';
+  end if;
+  if (select count(*) from pg_catalog.pg_attribute a
+      where a.attrelid = 'api.dam_order_list'::regclass and a.attnum > 0 and not a.attisdropped) <> 92
+     or (select a.attname from pg_catalog.pg_attribute a
+         where a.attrelid = 'api.dam_order_list'::regclass and a.attnum = 92) <> 'order_window_date'
+     or not exists (select 1 from pg_catalog.pg_attribute a
+         where a.attrelid = 'api.dam_order_list'::regclass and a.attname = 'assortment_parent_key' and not a.attisdropped) then
+    raise exception '#4858 OrderList view drifted from 20261019113819 (expected 92 columns)';
+  end if;
+end;
+$dependencies$;
 
 create or replace view api.dam_order_list with (security_invoker=true) as
 SELECT pol.id AS order_line_id,
     po.id AS order_id,
     po.production_order_number,
-    case when po.source_system='coldlion' and po.production_order_number like 'coldlion/%' then po.status else dam.orderlist_po_status(pol.order_type,pol.sku,pol.assortment_id,coalesce(pol.quantity_ordered,parent.quantity),pol.case_pack,po.close_tracking,po.booking_state,po.etd,case when ext.crd_override_set then po.vendor_delivery_date else coalesce(po.vendor_delivery_date,po.seal_container_date) end,po.sent_po_date,po.production_order_number) end AS order_status,
+    case when po.source_system='coldlion' and po.production_order_number like 'coldlion/%' then po.status else dam.orderlist_po_status(pol.order_type,pol.sku,pol.assortment_id,coalesce(pol.quantity_ordered,case when (pol.source_system='coldlion' and pol.assortment_component_ordinal is not null and not (pol.metadata ? 'order_list_source') and pol.source_id ~ '^coldlion:so:[1-9][0-9]*:line:[0-9]+:component:[1-9][0-9]*$') then null else parent.quantity end),pol.case_pack,po.close_tracking,po.booking_state,po.etd,case when ext.crd_override_set then po.vendor_delivery_date else coalesce(po.vendor_delivery_date,po.seal_container_date) end,po.sent_po_date,po.production_order_number) end AS order_status,
     po.company_id,
     coalesce(cust.customer_name,nullif(po.metadata->>'customer_name','')) AS customer_name,
     po.factory_id,
@@ -51,7 +81,7 @@ SELECT pol.id AS order_line_id,
     pol.unit_cost,
     pol.order_depth_inches,
     pol.case_pack,
-    case when pol.case_pack>0 and pol.quantity_ordered is not null and pol.quantity_ordered>=pol.case_pack then pol.quantity_ordered/pol.case_pack end AS cases_reported,
+    case when (pol.source_system='coldlion' and pol.assortment_component_ordinal is not null and not (pol.metadata ? 'order_list_source') and pol.source_id ~ '^coldlion:so:[1-9][0-9]*:line:[0-9]+:component:[1-9][0-9]*$') then null else case when pol.case_pack>0 and pol.quantity_ordered is not null and pol.quantity_ordered>=pol.case_pack then pol.quantity_ordered/pol.case_pack end end AS cases_reported,
     pol.ship_to,
     pol.start_ship_date,
     pol.start_ship_raw,
@@ -96,7 +126,7 @@ SELECT pol.id AS order_line_id,
     case when pol.item_id is null then 'at_import' else product.facts->>'source' end AS product_workflow_source,
     product.facts->>'sample_vendor' AS master_data_sample_vendor,
     sample.depth_inches AS sample_depth_inches,
-    case when pol.case_pack=0 then 'Wrong Input' when pol.case_pack<0 then 'Wrong Input' when coalesce(pol.quantity_ordered,parent.quantity) is not null and pol.case_pack>coalesce(pol.quantity_ordered,parent.quantity) then 'Wrong QTY' end AS cases_error,
+    case when pol.case_pack=0 then 'Wrong Input' when pol.case_pack<0 then 'Wrong Input' when (pol.source_system='coldlion' and pol.assortment_component_ordinal is not null and not (pol.metadata ? 'order_list_source') and pol.source_id ~ '^coldlion:so:[1-9][0-9]*:line:[0-9]+:component:[1-9][0-9]*$') then case when parent.quantity is not null and pol.case_pack>parent.quantity then 'Wrong QTY' end when coalesce(pol.quantity_ordered,parent.quantity) is not null and pol.case_pack>coalesce(pol.quantity_ordered,parent.quantity) then 'Wrong QTY' end AS cases_error,
     parent.quantity AS assortment_parent_quantity,
     case when parent.physical_key is not null and parent.quantity>=pol.case_pack and pol.case_pack>0 then parent.quantity/pol.case_pack end AS assortment_parent_cases,
     parent.physical_key AS assortment_parent_key,
@@ -192,3 +222,5 @@ left join dam.dam_order_list_customer_directory cust on cust.customer_id=po.comp
 left join dam.dam_order_list_vendor_directory fact on fact.vendor_id=po.factory_id
 left join dam.order_tracking_ext ext on ext.order_id=po.id
 where not (coalesce(po.source_system='coldlion',false) and coalesce(po.production_order_number like 'coldlion/%',false));
+
+commit;

@@ -275,7 +275,7 @@ component-or-master item number. It first uses the matching component label (or
 parent label for a direct item line), when that exact label exists. Otherwise
 all variants in the exact item scope must agree. Multiple item variants can supply a default
 when all rows have the same non-null `carton_qty`. A missing quantity or a
-conflict leaves the default NULL; the writer never selects an arbitrary variant
+conflict leaves the default NULL; the writer never selects an ambiguous variant
 for a direct item line.
 This does not change item linking, source identities, or line-level exceptions.
 Existing blanks require a separate exact-preimage, blank-only application repair;

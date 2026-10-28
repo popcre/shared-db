@@ -1,7 +1,12 @@
 name: ColdLion Item Sweep
 
 # #4941 live item flow: ONLY the Item Master step (tools/sync-coldlion-items.mjs,
-# whole step measured 80 s live on 2026-10-02 inside the nightly), every 30
+# #4974: the same step now also lands the /itemDetails rows of NEW items (per-item
+# filtered pulls, bounded) BEFORE the import, so the Master Data auto-flow sees
+# the assortment marker in this cycle instead of after the nightly masters run.
+# whole step measured 80 s live on 2026-10-02 inside the nightly; #4974 adds a
+# bounded new-item detail delta — at most 20 per-item /itemDetails GETs of 10 s
+# each inside a 4-minute deadline, so the step stays minutes below its ceiling), every 30
 # minutes at 05/35 past, off the hour. The heavy landing pipeline (masters,
 # prepack ~43 min, prod-detail ~63 min, ~118 min worst case) stays on its daily
 # 05:20 UTC schedule in coldlion-landing-sync.yml — this workflow must never
@@ -31,7 +36,9 @@ jobs:
   sweep:
     name: Refresh Item Master (plm.item) from ColdLion /items
     runs-on: blacksmith-2vcpu-ubuntu-2404
-    # Whole step measured 80 s; 15 min is a real stall-killing ceiling (#1266)
+    # Measured 80 s before #4974; the new-item detail delta adds at most
+    # ~3.5 min worst case (20 GETs × 10 s inside a 4-min deadline). 15 min stays
+    # a real stall-killing ceiling (#1266).
     # with margin for a slow vendor day.
     timeout-minutes: 15
     steps:
@@ -45,7 +52,7 @@ jobs:
         run: psql --version
 
       - name: Run the item loader's offline tests before touching anything
-        run: node --test tools/item-taxonomy-phase2.test.mjs tools/coldlion-sync-common-runsql.test.mjs
+        run: node --test tools/item-taxonomy-phase2.test.mjs tools/coldlion-sync-common-runsql.test.mjs tools/coldlion-item-detail-delta.test.mjs
 
       - name: Refuse to run without an explicit target
         env:

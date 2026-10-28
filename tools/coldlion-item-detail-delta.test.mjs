@@ -57,6 +57,9 @@ test("delta SQL inserts sync_run first, lands insert-only, finishes with counts 
   assert.ok(!sql.includes("do update"), "the delta must never update rows the nightly masters owns");
   assert.match(sql, /'running'/);
   assert.match(sql, /update coldlion\.sync_run set status = 'succeeded'/);
+  // sync_run.notes is TEXT: a ::jsonb cast there fails every batch (round 2, C1).
+  assert.doesNotMatch(sql, /notes\s*=\s*'[^']*'::jsonb/);
+  assert.match(sql, /notes\s*=\s*'\{/);
   assert.match(sql, /insert into coldlion\.change_log[^;]*'item_header'/s);
   assert.match(sql, /insert into coldlion\.change_log[^;]*'item_detail'/s);
   assert.match(sql, /'PPK-X'/);

@@ -140,7 +140,7 @@ export function buildItemDetailDeltaSql({ run, headerRows, detailRows }) {
       : "create temp table _delta_item_detail_inserted on commit drop as select null::text as company_code, null::text as division_code, null::text as item_no, null::text as item_pkey where false;",
     `update coldlion.sync_run set status = 'succeeded', finished_at = ${sqlTimestamp(run.fetchedAt)},`,
     `  rows_inserted = coalesce((select count(*) from _delta_item_detail_inserted), 0),`,
-    `  notes = ${sqlText(JSON.stringify(run.notes ?? {}))}::jsonb`,
+    `  notes = ${sqlText(JSON.stringify(run.notes ?? {}))}`,
     ` where id = ${sqlUuid(run.id)};`,
     "commit;",
     "",

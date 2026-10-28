@@ -91,12 +91,14 @@ class Actual4427StaticTests(unittest.TestCase):
             from types import SimpleNamespace
             for refuse,crypto_mode in __import__('itertools').product((False,True),('PRESENT','ABSENT')):
                 with self.subTest(refuse=refuse),patch.dict(os.environ,self.valid_env(),clear=True):
-                    c=m.NativeCI();c.immutable_config_sha='bound';counts=dict(start=0,stop=0,negative=0,snapshot=0);variant=['candidate']
+                    c=m.NativeCI();c.immutable_config_sha='bound';counts=dict(start=0,stop=0,negative=0,snapshot=0);variant=['candidate'];order=[];git_calls=[];contexts=[]
                     class Cluster:
                         source=c;source_facts={};original_backup_receipt={};original_config_receipt={};original_backup_verified=True
                         full_capability_fingerprint={};events=[];window_wait_seconds=0;config_metadata_verified=True
-                        def __init__(self,source):self.closed=False
-                        def open(self):c.physical_versions={}
+                        def __init__(self,source,budget_seconds):
+                            self_admit.assertGreater(budget_seconds,0);self_admit.assertLessEqual(budget_seconds,2100);self.closed=False
+                        def open(self):
+                            self_admit.assertIn('source-original',order);order.append('copy');c.physical_versions={}
                         def crypto_receipt(self):return dict(source_mode=crypto_mode,sql_crypto_canary='NOT_APPLICABLE_ABSENT_IN_SOURCE' if crypto_mode=='ABSENT' else 'PASSED',root_key_config_bytes_equal=True)
                         def seal(self):return {'sha256':'fixed'}
                         def begin_trial(self):counts['start']+=1;variant[0]='candidate'
@@ -108,10 +110,16 @@ class Actual4427StaticTests(unittest.TestCase):
                             return 1000
                         def close(self):self.closed=True
                     self_admit=self
+                    def qualify():
+                        config=Path(c.docker_config);self.assertTrue(config.is_dir());self.assertEqual(config.stat().st_mode&0o777,0o700);contexts.append(config);order.append('qualified');c.physical_versions={}
                     def git(args,**kw):
+                        git_calls.append(args)
                         if args[1]=='rev-parse':return SimpleNamespace(stdout='a'*40)
                         return SimpleNamespace(stdout=(m.ROOT/args[2].removeprefix('HEAD:')).read_bytes())
                     def sql(db,q):
+                        if q==m.FIXTURE.read_text():
+                            self.assertEqual(db,'postgres');self.assertIsNone(c.physical);self.assertEqual(c.phase,'source-original-contract');self.assertEqual(len(git_calls),5);self.assertIn('user-fixture',order);self.assertIn('qualified',order);order.append('source-original');return 'original-2124-198-source-output'
+                        if 'native synthetic users missing' in q:order.append('user-fixture')
                         if q.startswith('\\! false'):raise subprocess.CalledProcessError(3,['psql'],stderr='22012')
                         if 'pg_read_binary_file' in q:
                             counts['snapshot']+=1
@@ -130,7 +138,7 @@ class Actual4427StaticTests(unittest.TestCase):
                             _,cmd,size,_,_=m.jobs()[counts['start']-1]
                             return json.dumps([{'Plan':{'Actual Rows':1 if cmd=='SELECT' else size},'Execution Time':1}],indent=2)
                         return ''
-                    with patch.object(m.subprocess,'run',side_effect=git),patch.object(m.physical4427,'PhysicalCluster',Cluster),patch.object(c,'sql',side_effect=sql):
+                    with patch.object(m.subprocess,'run',side_effect=git),patch.object(m.physical4427,'PhysicalCluster',Cluster),patch.object(c,'sql',side_effect=sql),patch.object(c,'qualify_physical_source',side_effect=qualify),patch.object(c,'diagnostic') as diagnostic:
                         if refuse:
                             with self.assertRaisesRegex(RuntimeError,'cost exceeds'):c.run()
                             self.assertEqual(counts['stop'],34)
@@ -139,8 +147,47 @@ class Actual4427StaticTests(unittest.TestCase):
                             self.assertEqual(len({(r['table'],r['command'],r['size']) for r in result['summary']}),17)
                             self.assertEqual(result['warmup_trials_in374'],34);self.assertEqual(len(result['warmup_active_seconds']),34)
                             self.assertEqual(counts['stop'],374);self.assertEqual(counts['negative'],374)
-                            self.assertEqual(counts['snapshot'],1124)
-                        self.assertTrue(c.cluster_attempt.closed)
+                            self.assertEqual(counts['snapshot'],1124);self.assertEqual(result['original_contract_execution'],'QUALIFIED_NATIVE_SOURCE_ONLY');self.assertEqual(result['original_contract_output_sha256'],m.hashlib.sha256(b'original-2124-198-source-output').hexdigest())
+                        self.assertTrue(any(call.args[0]=='source-original-contract-completed' and call.kwargs['execution']=='QUALIFIED_NATIVE_SOURCE_ONLY' and call.kwargs['output_sha256']==m.hashlib.sha256(b'original-2124-198-source-output').hexdigest() for call in diagnostic.call_args_list));self.assertTrue(c.cluster_attempt.closed);self.assertEqual(order.count('source-original'),1);self.assertLess(order.index('qualified'),order.index('source-original'));self.assertLess(order.index('source-original'),order.index('copy'));self.assertTrue(all(not path.exists() for path in contexts))
+
+    def test_source_authority_or_original_failure_stops_before_any_physical_copy(self):
+        from types import SimpleNamespace
+        import subprocess
+        for fail_qualification in (False,True):
+            with self.subTest(qualification=fail_qualification),patch.dict(os.environ,self.valid_env(),clear=True):
+                c=m.NativeCI();order=[];contexts=[]
+                def git(args,**kw):return SimpleNamespace(stdout='a'*40 if args[1]=='rev-parse' else (m.ROOT/args[2].removeprefix('HEAD:')).read_bytes())
+                def qualify():
+                    order.append('qualified');contexts.append(Path(c.docker_config))
+                    self.assertTrue(contexts[-1].is_dir())
+                    if fail_qualification:raise RuntimeError('4427 source authority unit refusal')
+                def sql(db,q):
+                    self.assertIsNone(c.physical)
+                    if q.startswith('\\! false'):raise subprocess.CalledProcessError(3,['psql'],stderr='22012')
+                    if 'native synthetic users missing' in q:order.append('user-fixture')
+                    if q==m.FIXTURE.read_text():
+                        self.assertEqual(order,['user-fixture','qualified']);order.append('source-original')
+                        raise subprocess.CalledProcessError(3,['psql'],stderr='ERROR: 42501 unit source suite refusal')
+                    return ''
+                with patch.object(m.subprocess,'run',side_effect=git),patch.object(c,'sql',side_effect=sql),patch.object(c,'qualify_physical_source',side_effect=qualify),patch.object(c,'diagnostic') as diagnostic,patch.object(m.physical4427,'PhysicalCluster') as create:
+                    with self.assertRaises(RuntimeError if fail_qualification else subprocess.CalledProcessError):c.run()
+                create.assert_not_called();self.assertIsNone(c.physical);self.assertIsNone(c.cluster_attempt)
+                self.assertEqual(order,['user-fixture','qualified'] if fail_qualification else ['user-fixture','qualified','source-original'])
+                self.assertTrue(contexts);self.assertTrue(all(not path.exists() for path in contexts))
+                self.assertEqual(c.phase,'source-identity-and-authority-qualification' if fail_qualification else 'source-original-contract')
+                self.assertTrue(any(call.args[0]=='phase-begin' and call.kwargs['phase']==c.phase for call in diagnostic.call_args_list))
+
+    def test_phase_boundaries_emit_only_fixed_phase_and_numeric_elapsed(self):
+        with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
+        with patch.object(c,'diagnostic') as diagnostic:
+            c.begin_phase('owned-target-analyze');c.end_phase()
+        self.assertEqual([call.args[0] for call in diagnostic.call_args_list],['phase-begin','phase-end'])
+        for call in diagnostic.call_args_list:
+            self.assertEqual(call.kwargs['phase'],'owned-target-analyze')
+            self.assertTrue(all(isinstance(value,(int,float)) for key,value in call.kwargs.items() if key!='phase'))
+        code=Path(m.__file__).read_text()
+        for phase in ('source-original-contract','physical-source-backup-and-target-recovery','owned-target-fixture-derived-sql','owned-target-analyze','owned-target-warm-snapshot','owned-target-seal'):
+            self.assertIn('self.begin_phase('+repr(phase)+')',code)
 
     def test_reuses_actual_full_fixture_and_preserves_198_plan_matrix(self):
             source=m.FIXTURE.read_text()
@@ -284,8 +331,8 @@ class Actual4427StaticTests(unittest.TestCase):
             with patch.object(m.subprocess,'run',side_effect=failure),patch.object(c,'diagnostic') as diagnostic:
                 with self.assertRaises(m.subprocess.CalledProcessError) as caught:c.checked(['/usr/bin/docker'])
                 self.assertEqual(caught.exception.returncode,7)
-                self.assertEqual(len(diagnostic.call_args.kwargs['stderr']),4096)
-                self.assertTrue(diagnostic.call_args.kwargs['truncated'])
+                receipt=c.last_external_failure;self.assertEqual(receipt['exit_code'],7);self.assertEqual(receipt['private_stderr_sha256'],m.hashlib.sha256(b'e'*5000).hexdigest());self.assertEqual(Path(receipt['private_stderr_path']).read_bytes(),b'e'*5000);self.assertNotIn('stderr',diagnostic.call_args.kwargs);Path(receipt['private_stderr_path']).unlink()
+                self.assertNotIn('not-for-logs',str(diagnostic.call_args))
                 self.assertNotIn('not-for-logs',str(diagnostic.call_args))
 
     def test_only_current_physical_source_commands_are_admitted(self):

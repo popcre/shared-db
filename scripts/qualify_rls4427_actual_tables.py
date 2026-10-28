@@ -233,14 +233,20 @@ class NativeCI:
     def diagnostic(self, kind, **facts):
         print(json.dumps(dict(qualification_diagnostic=kind, **facts), sort_keys=True), file=sys.stderr)
 
+    def begin_phase(self,name):
+        self.phase=name;self.phase_started=time.monotonic()
+        if self.physical is not None:self.physical.phase=name
+        self.diagnostic('phase-begin',phase=name,elapsed_action_seconds=self.phase_started-self.started)
+
+    def end_phase(self):
+        self.diagnostic('phase-end',phase=self.phase,elapsed_phase_seconds=time.monotonic()-self.phase_started,elapsed_action_seconds=time.monotonic()-self.started)
+
     def checked(self, argv, **options):
         try:
             return subprocess.run(argv, env=self.env, timeout=120, check=True, **options)
         except subprocess.CalledProcessError as error:
-            detail = error.stderr or ''
-            raw = detail if isinstance(detail, bytes) else detail.encode('utf-8', errors='replace')
-            self.diagnostic('command-failure', tool=Path(argv[0]).name,
-                            exit_code=error.returncode, stderr=raw[:4096].decode('utf-8', errors='replace'), truncated=len(raw) > 4096)
+            self.last_external_failure=physical4427.capture_external(error.stderr,Path(argv[0]).name,error.returncode,self.phase)
+            self.diagnostic('command-failure',**self.last_external_failure)
             raise
 
     def docker_read(self, *args):
@@ -395,29 +401,50 @@ if (select count(*) from auth.users where email in
  'zz-fixture-user-3@fixture.invalid','zz-fixture-user-4@fixture.invalid'))<>4
 then raise exception '4427 native synthetic users missing'; end if;
 end $g$;""")
-            self.phase='physical-source-backup-and-target-recovery'
-            cluster=physical4427.PhysicalCluster(self);self.cluster_attempt=cluster
+            original=FIXTURE.read_text();owned_fixture=fixture_sql(original)
+            # This empty private CLI context permits existing source custody proof
+            # BEFORE the original transactional source suite performs any DML.
+            with tempfile.TemporaryDirectory(prefix='rls4427-source-suite-') as context:
+                os.chmod(context,0o700)
+                config=Path(context)/'docker-config';config.mkdir(mode=0o700)
+                self.docker_config=str(config)
+                self.begin_phase('source-identity-and-authority-qualification')
+                self.qualify_physical_source()
+                self.end_phase()
+                self.begin_phase('source-original-contract')
+                original_result=self.sql('postgres',original)
+                self.diagnostic('source-original-contract-completed',execution='QUALIFIED_NATIVE_SOURCE_ONLY',output_sha256=hashlib.sha256(original_result.encode()).hexdigest(),source_sql_sha256=SOURCE_SQL_SHA256)
+                self.end_phase()
+            self.begin_phase('physical-source-backup-and-target-recovery')
+            remaining=2100-(time.monotonic()-self.started)
+            if remaining<=0:raise RuntimeError('4427 thirty-five-minute qualification budget exhausted before copy')
+            cluster=physical4427.PhysicalCluster(self,budget_seconds=remaining);self.cluster_attempt=cluster
             cluster.open()
             self.physical=cluster
-            self.phase='owned-target-original-contract-and-fixture-staging'
+            self.end_phase()
             template='postgres'
             tool_versions=self.physical_versions
             snapshot={'sql_crypto_capability':cluster.crypto_receipt(),'kind':'FULL_PHYSICAL_CLUSTER','source_facts':cluster.source_facts,'source_image_config_sha':cluster.source.immutable_config_sha,'basebackup':cluster.original_backup_receipt,'original_config':cluster.original_config_receipt,'original_backup_verified':cluster.original_backup_verified,'full_capability_fingerprint':cluster.full_capability_fingerprint}
-            # Existing fixture remains executable unchanged, only in the new owned target.
-            original=FIXTURE.read_text()
-            original_result=self.sql('postgres',original)
-            self.sql('postgres',fixture_sql(original)+seed_sql())
+            self.begin_phase('owned-target-fixture-derived-sql')
+            self.sql('postgres',owned_fixture+seed_sql())
+            self.end_phase()
+            self.begin_phase('owned-target-analyze')
             self.sql('postgres','ANALYZE public.assets; ANALYZE public.style_groups;')
             analyze_facts=json.loads(self.sql('postgres',"select json_agg(json_build_array(relname,n_tup_ins,n_mod_since_analyze,last_analyze::text) order by relname) from pg_stat_user_tables where schemaname='public' and relname in ('assets','style_groups');"))
+            self.end_phase()
+            self.begin_phase('owned-target-warm-snapshot')
             # Warm both tables before clean shutdown flushes their hint bits.
             for table in ('assets','style_groups'):self.sql('postgres',snapshot_sql(table))
+            self.end_phase()
+            self.begin_phase('owned-target-seal')
             canonical=cluster.seal()
+            self.end_phase()
             warmup_active=[];projected=None;base_metadata={}
             pair_fingerprints = {}
             negative_pairs = {}
             def execute_trial(index,job):
                 table,cmd,size,sample,variant=job
-                self.phase=f'physical-matrix-{index}-{table}-{cmd}-{variant}'
+                self.phase=f'physical-matrix-{index}-{table}-{cmd}-{variant}';self.phase_started=time.monotonic()
                 if time.monotonic() - self.started > 2100:
                     raise RuntimeError('4427 thirty-five-minute qualification budget exhausted')
                 db='postgres'
@@ -506,7 +533,7 @@ end $g$;""")
                 executed_source_sha256=source_hashes, tool_versions=tool_versions, snapshot=snapshot, canonical=canonical, analyze_facts=analyze_facts, warmup_active_seconds=warmup_active, actual_admission_wait_seconds=cluster.window_wait_seconds, projected_matrix_seconds=projected, owned_physical_receipts=cluster.events,
                 sql_crypto_capability=cluster.crypto_receipt(), warmup_trials_in374=34, remaining_measured_trials=340, config_metadata_verified=cluster.config_metadata_verified, metadata_fingerprint_role='supabase_admin', psql_shell_failure_signal_proven=True, qualification='ISOLATED_ACTUAL_TABLES_ONLY', production_acceptance='NOT_EVALUATED',
                 historical_flags='PRESERVED_UNATTRIBUTED', source_sql_sha256=hashlib.sha256(original.encode()).hexdigest(),
-                original_contract_output_sha256=hashlib.sha256(original_result.encode()).hexdigest(),
+                original_contract_execution='QUALIFIED_NATIVE_SOURCE_ONLY', original_contract_output_sha256=hashlib.sha256(original_result.encode()).hexdigest(),
                 template_snapshots=base_metadata, samples=samples, summary=summary,
                 synthetic_performance_disposition='FLAGGED' if any(r['median_regression_over_10_percent'] for r in summary) else 'NO_FLAG_IN_THIS_SYNTHETIC_BATCH')
         except Exception as error:
@@ -530,6 +557,8 @@ def main():
     except Exception as exc:
         cluster=getattr(driver,'cluster_attempt',None)
         failure=physical4427.failure_receipt(exc,getattr(driver,'phase','admission'),getattr(cluster,'events',[]))
+        failure['elapsed_action_seconds']=time.monotonic()-driver.started if driver is not None else None
+        failure['elapsed_phase_seconds']=time.monotonic()-driver.phase_started if getattr(driver,'phase_started',None) is not None else None
         failure['source_external']=getattr(driver,'last_external_failure',None)
         failure['target_external']=getattr(cluster,'last_external_failure',None)
         if getattr(driver,'cleanup_error',None) is not None:

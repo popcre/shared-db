@@ -4,6 +4,7 @@ Import is offline. Resource execution requires a separate exact action approval.
 """
 import datetime
 import hashlib
+import io
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -47,6 +48,17 @@ SOURCE_HEALTH_SQL="""select json_build_object('recovery',pg_is_in_recovery(),'su
 
 
 UNIX_HEALTH_ARGS=['psql','-XqAtw','-h','/var/run/postgresql','-p','5432','-U','supabase_admin','-d','postgres','-v','ON_ERROR_STOP=1','-c',SOURCE_HEALTH_SQL]
+
+
+def process_input(stream):
+    """BytesIO has no OS descriptor; archives keep their real streaming descriptor."""
+    if stream is None:return {'stdin':subprocess.DEVNULL}
+    if isinstance(stream,io.BytesIO):return {'input':stream.read()}
+    try:descriptor=stream.fileno()
+    except (AttributeError,io.UnsupportedOperation,OSError,ValueError):
+        raise RuntimeError('4427 unsupported subprocess input stream') from None
+    if not isinstance(descriptor,int) or descriptor<0:raise RuntimeError('4427 invalid subprocess input descriptor')
+    return {'stdin':stream}
 
 
 def capture_external(stderr,tool,code,phase):
@@ -239,7 +251,7 @@ def validate_source_facts(f):
         or not isinstance(f.get('replication_hba'),int) or f.get('cron_version') not in ('1.6','1.6.4') or f.get('cron_database')!='postgres'
         or f.get('config_file')!='/etc/postgresql/postgresql.conf' or f.get('hba_file')!='/etc/postgresql/pg_hba.conf'
         or f.get('ident_file')!='/etc/postgresql/pg_ident.conf' or f.get('data_directory')!=DATA
-        or f.get('archive_mode')!='off' or any(f.get(k) for k in ('archive_command','restore_command','primary_conninfo'))
+        or f.get('archive_mode')!='off' or f.get('archive_command') not in ('','(disabled)') or any(f.get(k) for k in ('restore_command','primary_conninfo'))
         or f.get('ssl')!='off' or f.get('log_directory') not in ('log','/var/log/postgresql') or f.get('socket')!='/var/run/postgresql'
         or any(x not in [item.strip() for item in f.get('preload','').split(',')] for x in ('pg_cron','pgsodium'))):
         raise RuntimeError('4427 physical source startup/replication/dependency facts refused')
@@ -335,7 +347,7 @@ class PhysicalCluster:
     def docker(self,*args,input_file=None,output_file=None,allowed_failure=False):
         self.budget_check()
         r=subprocess.run(['/usr/bin/docker','--host','unix:///var/run/docker.sock','--config',str(self.root/'docker-config'),*args],
-            env=self.env,stdin=input_file or subprocess.DEVNULL,stdout=output_file or subprocess.PIPE,stderr=subprocess.PIPE,timeout=20 if self.cleanup_mode else 120)
+            env=self.env,**process_input(input_file),stdout=output_file or subprocess.PIPE,stderr=subprocess.PIPE,timeout=20 if self.cleanup_mode else 120)
         if r.returncode and not allowed_failure:
             self.last_external_failure=capture_external(r.stderr,args[0],r.returncode,self.phase)
             raise RuntimeError('4427 owned physical operation failed: '+args[0])

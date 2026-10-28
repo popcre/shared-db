@@ -29,6 +29,7 @@ def fixture_helper():
         if args==['metadata']:return 'hba-metadata'
         return None
     h.source_command_kind=kind
+    h.process_input=m.load_helper().process_input
     h.validated_payloads=[]
     h.validate_hba_payload=lambda source,args,stream:h.validated_payloads.append(list(args))
     h.capture_external=lambda stderr,tool,code,phase:dict(tool=tool,exit_code=code,phase=phase,private_stderr_path='/private/test-receipt',private_stderr_sha256=hashlib.sha256(stderr).hexdigest())
@@ -77,6 +78,23 @@ class LocalPhysicalControls(unittest.TestCase):
             with self.assertRaises(RuntimeError):s.source_checked(['write'])
             self.assertEqual(execute.call_args.args[0],['read'])
             self.assertEqual(h.validated_payloads,[['write'],['metadata']])
+
+    def test_real_child_local_sql_hba_and_file_archive_channels(self):
+        helper=m.load_helper();source=m.LocalSource(helper);source.container_id='a'*64;source.source_docker_config='/private/offline-test-config'
+        real_run=m.subprocess.run;seen=[]
+        reader=['/usr/bin/python3','-c','import sys;sys.stdout.buffer.write(sys.stdin.buffer.read())']
+        def child(argv,**kwargs):
+            self.assertEqual(argv[0],'/usr/bin/docker');seen.append(dict(kwargs))
+            return real_run(reader,**kwargs)
+        with patch.object(source,'custody'),patch.object(m.subprocess,'run',side_effect=child):
+            query="select 'owned local SQL';"
+            self.assertEqual(source.sql('postgres',query),query)
+            self.assertEqual(seen[-1]['input'],query.encode());self.assertNotIn('stdin',seen[-1])
+            self.assertEqual(source.execute(['fixed-test-reader'],input_file=io.BytesIO(helper.HBA_LINE)).stdout,helper.HBA_LINE)
+            with tempfile.TemporaryFile() as archive:
+                payload=b'PGDMP-invented-archive\x00'*4096;archive.write(payload);archive.seek(0)
+                self.assertEqual(source.execute(['fixed-test-reader'],input_file=archive).stdout,payload)
+                self.assertIs(seen[-1]['stdin'],archive);self.assertNotIn('input',seen[-1])
 
     def test_expected_probe_denial_retains_process_exit_stderr(self):
         s=m.LocalSource(fixture_helper());failure=subprocess.CompletedProcess([],2,stdout=b'',stderr=b'expected fixture denial')

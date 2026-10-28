@@ -176,7 +176,7 @@ class LocalSource:
     def docker(self,*args,input_file=None,output_file=None,allowed_failure=False):
         self.budget_check()
         result=subprocess.run(['/usr/bin/docker','--host','unix:///var/run/docker.sock','--config',self.source_docker_config,*args],env=self.env,
-            stdin=input_file or subprocess.DEVNULL,stdout=output_file or subprocess.PIPE,stderr=subprocess.PIPE,timeout=20 if self.cleanup else 120)
+            **self.helper.process_input(input_file),stdout=output_file or subprocess.PIPE,stderr=subprocess.PIPE,timeout=20 if self.cleanup else 120)
         tool=args[0]
         if args[0]=='exec' and self.container_id in args:
             position=args.index(self.container_id);tool=args[position+1]

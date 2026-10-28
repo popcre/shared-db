@@ -322,7 +322,7 @@ class NativeCI:
         self.custody()
         argv=['/usr/bin/docker','--host','unix:///var/run/docker.sock','--config',self.docker_config,
               'exec',*(['-i'] if input_file is not None else []),'--env','PGPASSWORD=postgres',self.container_id,*args]
-        result=subprocess.run(argv,env=self.env,stdin=input_file if input_file is not None else subprocess.DEVNULL,
+        result=subprocess.run(argv,env=self.env,**physical4427.process_input(input_file),
             stdout=output_file or subprocess.PIPE,stderr=subprocess.PIPE,timeout=120)
         if result.returncode and not allowed_failure:
             self.last_external_failure=physical4427.capture_external(result.stderr,args[0],result.returncode,self.phase)

@@ -45,6 +45,34 @@ class PhysicalControls(unittest.TestCase):
         self.assertIn("nonempty unlogged relation",m.SOURCE_FACTS_SQL)
         self.assertNotIn('reltuples',m.SOURCE_FACTS_SQL)
 
+    def test_inactive_archive_display_is_qualified_without_configuration_change(self):
+        facts=self.facts()
+        self.assertEqual(m.validate_source_facts({**facts,'archive_command':'(disabled)'} )['archive_mode'],'off')
+        for changes in [dict(archive_mode='on',archive_command='(disabled)'),dict(archive_mode='always',archive_command=''),dict(archive_command='external'),dict(restore_command='external'),dict(primary_conninfo='external')]:
+            with self.subTest(changes=changes),self.assertRaises(RuntimeError):m.validate_source_facts({**facts,**changes})
+
+    def test_real_child_physical_sql_hba_and_file_archive_channels(self):
+        import subprocess
+        real_run=subprocess.run;seen=[]
+        reader=['/usr/bin/python3','-c','import sys;sys.stdout.buffer.write(sys.stdin.buffer.read())']
+        def child(argv,**kwargs):
+            self.assertEqual(argv[0],'/usr/bin/docker')
+            seen.append(dict(kwargs))
+            return real_run(reader,**kwargs)
+        p=m.PhysicalCluster(self.source());p.root=Path('/private/offline-test-config');p.cid='a'*64
+        with patch.object(p,'custody'),patch.object(m.subprocess,'run',side_effect=child):
+            for payload in (b"select 'owned4427';\n",m.HBA_LINE):
+                self.assertEqual(p.target(['fixed-test-stdin-reader'],input_file=io.BytesIO(payload)).stdout,payload)
+                self.assertEqual(seen[-1]['input'],payload);self.assertNotIn('stdin',seen[-1])
+            with tempfile.TemporaryFile() as archive:
+                payload=b'PGDMP-invented-archive\x00'*4096;archive.write(payload);archive.seek(0)
+                self.assertEqual(p.target(['fixed-test-archive-reader'],input_file=archive).stdout,payload)
+                self.assertIs(seen[-1]['stdin'],archive);self.assertNotIn('input',seen[-1])
+            query="select 'small fixed SQL';"
+            self.assertEqual(p.sql(query),query)
+            self.assertEqual(seen[-1]['input'],query.encode())
+        with self.assertRaises(RuntimeError):m.process_input(io.StringIO('unsupported'))
+
     def test_cron_preserves_normal_minute_jobs_but_no_startup_or_interval_jobs(self):
         facts=dict(jobs=2,job_hash='j',schedules=['* * * * *','0 1 * * 1-5'],runs=3,run_hash='r',pending=0,workers=0,schedulers=[[10,'fixed']])
         self.assertEqual(m.validate_cron(facts),facts)

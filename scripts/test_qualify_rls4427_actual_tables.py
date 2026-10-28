@@ -225,6 +225,26 @@ class Actual4427StaticTests(unittest.TestCase):
             c.source_checked(m.physical4427.BACKUP_ARGS,output_file=io.BytesIO())
             self.assertNotIn('-i',run.call_args.args[0])
 
+    def test_real_child_native_hba_bytes_and_file_backed_restore_channels(self):
+        import io
+        import tempfile
+        real_run=m.subprocess.run;seen=[]
+        reader=['/usr/bin/python3','-c','import sys;sys.stdout.buffer.write(sys.stdin.buffer.read())']
+        def child(argv,**kwargs):
+            self.assertEqual(argv[0],'/usr/bin/docker');seen.append(dict(kwargs))
+            return real_run(reader,**kwargs)
+        with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
+        c.container_id='a'*64;c.docker_config='/private/offline-test-config';c.restore_authority_qualified=True;c.hba_window_active=True
+        with patch.object(c,'custody'),patch.object(m.subprocess,'run',side_effect=child):
+            payload=m.physical4427.HBA_LINE
+            self.assertEqual(c.source_checked(m.physical4427.HBA_APPEND_ARGS,input_file=io.BytesIO(payload)).stdout,payload)
+            self.assertEqual(seen[-1]['input'],payload);self.assertNotIn('stdin',seen[-1])
+            c.hba_original_bytes=b'local all supabase_admin trust\n'
+            with tempfile.TemporaryFile() as file:
+                file.write(c.hba_original_bytes);file.seek(0)
+                self.assertEqual(c.source_checked(m.physical4427.HBA_RESTORE_ARGS,input_file=file).stdout,c.hba_original_bytes)
+                self.assertIs(seen[-1]['stdin'],file);self.assertNotIn('input',seen[-1])
+
     def test_existing_source_authority_remains_exact_same_instance(self):
         context=dict(system_identifier='12345',server_version_num=170006,postmaster_start='fixed',database='postgres')
         facts={**context,'current_user':'supabase_admin','session_user':'supabase_admin','rolsuper':True,'rolcanlogin':True,'is_superuser':'on'}

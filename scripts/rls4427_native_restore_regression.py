@@ -130,6 +130,19 @@ class Regression:
         self.qualify(db)
         return self.execute(restore_args(db),input_data=archive)
 
+    def clean_negative(self, db, archive):
+        if db != DATABASES[1] or db not in self.owned:
+            raise RuntimeError('4427 regression clean negative requires exact owned target')
+        command = ['pg_restore','-U','postgres','-d',db,'--clean','--if-exists','--exit-on-error']
+        failure = self.execute(command,input_data=archive,allowed_failure=True)
+        diagnostic = dict(phase='old-clean-negative',command=command,exit_code=failure.returncode,
+                          stderr=failure.stderr[:4096].decode(errors='replace'),stderr_truncated=len(failure.stderr)>4096)
+        self.events.append(diagnostic)
+        print(json.dumps(diagnostic,sort_keys=True),file=sys.stderr)
+        if not failure.returncode or b'schema "storage" does not exist' not in failure.stderr:
+            raise RuntimeError('4427 regression did not reproduce actual clean failure')
+        return failure
+
     def permissions(self, db):
         outcomes=[]
         for role,sql,expected,value in [
@@ -186,9 +199,7 @@ class Regression:
                     self.execute(['pg_dump','-U','postgres','-d',DATABASES[0],'-Fc'],output=out)
                 archive=archive_path.read_bytes();source=json.loads(self.sql(DATABASES[0],METADATA).stdout)
                 self.create(DATABASES[1])
-                failure=self.execute(['pg_restore','-U','postgres','-d',DATABASES[1],'--clean','--if-exists','--exit-on-error'],input_data=archive,allowed_failure=True)
-                if not failure.returncode or b'schema "storage" does not exist' not in failure.stderr:
-                    raise RuntimeError('4427 regression did not reproduce actual clean failure')
+                failure=self.clean_negative(DATABASES[1],archive)
                 negative=failure.stderr.decode();self.drop(DATABASES[1])
                 self.create(DATABASES[2]);self.restore(DATABASES[2],archive)
                 restored=json.loads(self.sql(DATABASES[2],METADATA).stdout)

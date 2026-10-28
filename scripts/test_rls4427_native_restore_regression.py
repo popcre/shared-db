@@ -70,6 +70,24 @@ class NativeRestoreControls(unittest.TestCase):
             self.assertIn('-i',docker.call_args.args)
             self.assertEqual(docker.call_args.kwargs['input_data'],b'archive')
 
+    def test_clean_negative_mismatch_preserves_real_diagnostic_before_refusal(self):
+        import io
+        c=m.Regression();db=m.DATABASES[1];c.owned=[db]
+        for code,stderr in [(0,b''),(1,b'different restore failure'),(3,b'x'*5000)]:
+            result=subprocess.CompletedProcess([],code,stdout=b'',stderr=stderr)
+            capture=io.StringIO()
+            with self.subTest(code=code),patch.object(c,'execute',return_value=result) as execute,patch.object(m.sys,'stderr',capture):
+                with self.assertRaisesRegex(RuntimeError,'did not reproduce actual clean failure'):
+                    c.clean_negative(db,b'archive')
+                execute.assert_called_once_with(['pg_restore','-U','postgres','-d',db,'--clean','--if-exists','--exit-on-error'],input_data=b'archive',allowed_failure=True)
+                receipt=json.loads(capture.getvalue())
+                self.assertEqual(receipt,dict(phase='old-clean-negative',command=execute.call_args.args[0],exit_code=code,
+                    stderr=stderr[:4096].decode(),stderr_truncated=len(stderr)>4096))
+                self.assertEqual(c.events[-1],receipt)
+        with patch.object(c,'execute') as execute:
+            with self.assertRaisesRegex(RuntimeError,'exact owned target'):c.clean_negative('foreign',b'archive')
+            execute.assert_not_called()
+
     def test_real_external_failure_is_never_turned_into_success(self):
         c=m.Regression();c.config='/private'
         result=subprocess.CompletedProcess([],1,stdout=b'',stderr=b'real restore failure')

@@ -10,7 +10,7 @@ declare
   v_tag text := replace(gen_random_uuid()::text, '-', '');
   v_root text;
   v_a uuid; v_b uuid; v_c uuid; v_late uuid;
-  v_exact uuid; v_sub uuid; v_amb uuid; v_kept uuid; v_wait uuid;
+  v_exact uuid; v_sub uuid; v_amb uuid; v_kept uuid; v_wait uuid; v_moved uuid; v_bad uuid;
   v_n int;
 begin
   v_root := 'zz' || v_tag || '.test';
@@ -49,6 +49,19 @@ begin
   select count(*) into v_n from core.contact_company where contact_id = v_kept;
   if v_n <> 1 or not exists (select 1 from core.contact_company where contact_id = v_kept and company_id = v_b) then
     raise exception 'existing attachment was changed';
+  end if;
+
+  -- An unattached contact whose email changes to a matching domain attaches.
+  insert into core.contact (email) values ('m@elsewhere-' || v_tag || '.test') returning id into v_moved;
+  update core.contact set email = 'm@' || v_root where id = v_moved;
+  if not exists (select 1 from core.contact_company where contact_id = v_moved and company_id = v_a) then
+    raise exception 'email change to a matching domain did not attach';
+  end if;
+
+  -- An email without @ never attaches.
+  insert into core.contact (email) values (v_root) returning id into v_bad;
+  if exists (select 1 from core.contact_company where contact_id = v_bad) then
+    raise exception 'malformed email attached';
   end if;
 
   -- A contact waiting with no match attaches when a customer gains its domain.

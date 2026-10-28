@@ -46,16 +46,26 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  v_cd text;
 begin
-  if nullif(btrim(new.domain), '') is null then
+  -- Same normalisation as crm.match_ingested_domain_customer.
+  v_cd := lower(trim(both '.' from regexp_replace(btrim(coalesce(new.domain, '')), '^(https?://)?(www\.)?([^/:?#]*).*$', '\3', 'i')));
+  if nullif(v_cd, '') is null then
     return null;
   end if;
+  -- Prefilter to contacts whose email domain is this domain or a subdomain of
+  -- it, so the matcher (uniqueness check) runs only on real candidates.
   insert into core.contact_company (contact_id, company_id, metadata)
-  select ct.id, new.id, jsonb_build_object('source', 'email_domain_auto')
-  from core.contact ct
-  where position('@' in coalesce(ct.email, '')) > 0
-    and not exists (select 1 from core.contact_company cc where cc.contact_id = ct.id)
-    and crm.match_ingested_domain_customer(split_part(lower(btrim(ct.email)), '@', 2)) = new.id
+  select c.id, new.id, jsonb_build_object('source', 'email_domain_auto')
+  from (
+    select ct.id, split_part(lower(btrim(ct.email)), '@', 2) as d
+    from core.contact ct
+    where position('@' in coalesce(ct.email, '')) > 0
+      and not exists (select 1 from core.contact_company cc where cc.contact_id = ct.id)
+  ) c
+  where (c.d = v_cd or c.d like '%.' || v_cd)
+    and crm.match_ingested_domain_customer(c.d) = new.id
   on conflict do nothing;
   return null;
 end;

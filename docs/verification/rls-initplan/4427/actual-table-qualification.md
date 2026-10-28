@@ -119,3 +119,25 @@ PGDATA stays entirely OS100:101. Both initial and reset extraction use exactly `
 Offline controls now invoke the actual existing BusyBox tar through the same literal wrapper (only the disposable test-root path is remapped) under parent umask077 and prove complete0700/0750 roots plus0600/0640 files across two resets. The old-default negative controls remain. Runtime local proof must still establish actual exact image config metadata, root/member modes, canary, roles and paired physical state.
 
 The physical Docker wrapper now attaches its actual private error receipt to the original RuntimeError before cleanup; the local CLI copies that immutable primary receipt, including real phase/tool/exit/private path/SHA, with the source and cleanup receipts kept separately. A whole actual Regression.run failure control exercises that real wrapper, overwrites later cleanup state, and proves the original private error remains in the top primary failure without raw stderr disclosure. No resource, paid review, push, native run, merge or production action is performed by this source task.
+
+## Prospective40 host-test identity correction; runtime remains410b
+
+Root adopted actual410b local PASS in72.8604seconds: exact config metadata, source/server0750 at all three normal starts, matching paired physical bytes, seven role outcomes, root-derived canary, candidate InitPlan loops1, three clean minute-qualified stops, independent both-name absence and foreign health. Proof SHA `a8e44f84a344cad6bd7ac419b6c45f2bc0b942e0698fb6d5622791523b5955cc`, process SHA `ba8cb04e7d0b04cb0b7b8c23161fc00084cf4f9c01224c8f79a64ee20e23f452`. Parent then performed the separately reviewed ONE fast-forward push and started ONE manual native40775900646 at exact410b. Those authorities are spent; no new run/cancel or terminal native result is inferred here.
+
+The required ordinary SQL guard40775896809/job123124975611 ran1,692 tests with one failure and46 skips: its independent HOST BusyBox was1.36.1, while the newly authored test unnecessarily asserted1.37.0. The native TARGET cached image remains unchanged1.37.0. Replace only the host version pin with a genuine BusyBox banner/version-format check. Every actual negative/default/-p/perms test and positive fixed-umask two-reset test continues to run; no skip, removal, installation, functional threshold, image or runtime code changes. Local host1.37 behavior is actually tested. CI host1.36 functional success is not claimed before fresh CI.
+
+The following exact runtime bytes are independently equal to executed410b. Later test/docs/evidence heads may carry evidence ONLY by these hashes; the actual executed source SHA stays410b and must never be rewritten to a later head:
+
+- `scripts/qualify_rls4427_actual_tables.py` SHA256 `9ed888d0bc955c74a80bfbc7de44d0be286715c6e8a23cb83e0e1c1bb89253e2`.
+
+- `scripts/rls4427_physical_cluster.py` SHA256 `b31879680a9c7ebb660cee68e3755b830fc97603d1cae6175f0f3c44044e0806`.
+
+- `scripts/rls4427_native_restore_regression.py` SHA256 `2ec9ec7c15400a826b0fd05df8d410f83199a9fe285043980d35ce83da8a6718`.
+
+- `supabase/tests/fixtures/rls4427_native_restore_fixture.sql` SHA256 `3e69055fd2ef55cfc419cb06854ab14e912f7f2d0db6a914c0543249331bdba6`.
+
+- `supabase/tests/rls_public_admin_actual_table_performance.sql` SHA256 `19b5ca9a8ef2391d321348172da26c8f26ba5d754239d2a90d3cf232f38c69cd`.
+
+- `supabase/tests/rls_public_admin_initplan_contracts.sql` SHA256 `166a1d7cae922b27c229c31162b612ccb1957a27440806681a15677151354667`.
+
+- `.github/workflows/database-contract-tests.yml` SHA256 `786ec36b3ebcae7ed6a9bc7b04ca35550bbe0287c7c7027383b535fc05919295`.

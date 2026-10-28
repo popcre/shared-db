@@ -332,7 +332,7 @@ class PhysicalControls(unittest.TestCase):
         import subprocess,os,stat
         self.assertNotEqual(os.getuid(),0,'This negative control requires the actual unprivileged host user')
         version=subprocess.run(['/usr/bin/busybox'],capture_output=True,text=True,check=True).stdout.splitlines()[0]
-        self.assertIn('v1.37.0',version)
+        self.assertRegex(version,r'^BusyBox v[0-9]+\.[0-9]+\.[0-9]+(?: \([^\r\n]*\))? multi-call binary\.$')
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);archive=root/'owned.tar'
             with tarfile.open(archive,'w') as out:

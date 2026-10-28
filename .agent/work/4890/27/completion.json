@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "work_issue": 4890,
+  "outcome": "ready-for-merge",
+  "pr": 4971,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4890/27",
+  "contract_sha256": "06bb8f9da4ce4363249cd7195f0d2ccc880264d9e0698d8a6a719e040091b44a",
+  "head_sha": "f0d61681c38f37abc9b0dd4bb53aad72d6be1af7",
+  "base_sha": "a995e67912e3e0a815f11c96cf3543bfcd4d4a96",
+  "files_changed": [
+    ".github/workflows/database-contract-tests.yml",
+    "docs/verification/rls-initplan/4427/actual-table-qualification.md",
+    "docs/verification/throughput-dispositions/scripts~qualify_rls4427_actual_tables.py.json",
+    "docs/verification/throughput-dispositions/scripts~rls4427_native_restore_regression.py.json",
+    "docs/verification/throughput-dispositions/scripts~rls4427_physical_cluster.py.json",
+    "scripts/qualify_rls4427_actual_tables.py",
+    "scripts/rls4427_native_restore_regression.py",
+    "scripts/rls4427_physical_cluster.py",
+    "scripts/test_qualify_rls4427_actual_tables.py",
+    "scripts/test_rls4427_native_restore_regression.py",
+    "scripts/test_rls4427_physical_cluster.py",
+    "supabase/tests/fixtures/rls4427_native_restore_fixture.sql",
+    "supabase/tests/rls_public_admin_actual_table_performance.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python3 -m unittest scripts.test_qualify_rls4427_actual_tables scripts.test_rls4427_physical_cluster scripts.test_rls4427_native_restore_regression",
+      "exit_code": 0,
+      "evidence": "63 actual offline Python tests PASS. Nine actual harmless fixed Python-child roundtrips through physical/local/native wrapper kwargs verify SQL/HBA BytesIO input=bytes and file-backed archive streaming descriptors, not only mocked subprocess results. Closed OFF/disabled archive-display positives and ON/other-command negatives pass. No Docker/database invoked by transport tests."
+    },
+    {
+      "command": "node --test scripts/rls-public-admin-initplan.test.mjs scripts/agent-work-contract-git-evidence.test.mjs scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "Part of actual147-test combined Node suite, all PASS; original44policy/source/hash/2124/198 retained and native evidence/guardcatalog checks."
+    },
+    {
+      "command": "node --test scripts/check-workflow-yaml.test.mjs scripts/database-contract-authorization.test.mjs scripts/check-merge-queue-workflows.test.mjs",
+      "exit_code": 0,
+      "evidence": "Part of actual147-test combined Node suite, all PASS; existing workflow/auth/queue contracts."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL guards PASS; no ownmigration change or live database use."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites385 sources110 derived_digestefd579ed2fda; per-source hand-written guard dispositions match actual current semantic sites."
+    },
+    {
+      "command": "node scripts/check-workflow-yaml.mjs",
+      "exit_code": 0,
+      "evidence": "51 workflow YAML files parse clean, no conflict markers."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Whitespace check PASS."
+    },
+    {
+      "command": "python3 -m py_compile scripts/qualify_rls4427_actual_tables.py scripts/rls4427_physical_cluster.py scripts/rls4427_native_restore_regression.py",
+      "exit_code": 0,
+      "evidence": "All3 source-specific Python files compile."
+    }
+  ],
+  "assumptions_resolved": [
+    "Prospective26 preceded fixedstreamtransport correction, prospective27 preceded PG17inactive archive-display qualification; immutable25source/failedruntime and26refs/privatebytes retained. Current27 pair only.",
+    "Authentic approvedlocal1a721 failed16.907seconds UnsupportedOperation during sourcequalification beforebackup/target; finalsourcebootstrap, gracefulPGstop, PID/containerabsence passed and root independentlyverified bothfixednamesabsent. ProcessSHAa905344e441df76186d42638d108b8d3f95b7abb55329036af85f50b647baa4b andstderrSHAc565bec784184a8ba246c49be7130563969a3ab50ddcad06d0e9b3674ae8f45b preserved; approvalSPENT. Retainedactualerror contains type, not reconstructedtraceback; root offlinefileno reproduction separatelylabelled.",
+    "Sharedprocess_input corrects allthree in-memory wrappers via subprocess input=bytes; actual realarchive descriptors remain streaming stdin; no command/target/privilege/data weakening. Real harmless childprocess tests exercise actual subprocessAPI and channels, no Docker/resources.",
+    "PostgreSQL17 OFFarchivecommand display accepts ONLYemptyor(disabled), consistent officialshowhook; ON/othercommands/restore/primaryconnection remainrefused and allconfigbytes unchanged.",
+    "210actualoffline testsPASS(63Python147Node),51YAML/staticSQL/truth385sites110sources/compile/whitespace PASS. No resource/review/push/PRupdate/newCI/shared/production/newqualification attempt. Parent requiresfresh exactsource+ONEaction assignedreview/adoption/nativegates."
+  ],
+  "stop_conditions_hit": []
+}

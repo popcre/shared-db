@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "work_issue": 4890,
+  "outcome": "ready-for-merge",
+  "pr": 4971,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4890/42",
+  "contract_sha256": "d5d53ac35cb5e90e0957cf7485523c47173d7bbb3b57ae48ee1b8e4f9cfc8628",
+  "head_sha": "f1eebc247e1b499810000656bafa384ed7d0f566",
+  "base_sha": "4b70be6a458d308a24772b3bd48c74f4d3cfc6c6",
+  "files_changed": [
+    ".github/workflows/database-contract-tests.yml",
+    "docs/verification/rls-initplan/4427/actual-table-qualification.md",
+    "docs/verification/throughput-dispositions/scripts~qualify_rls4427_actual_tables.py.json",
+    "docs/verification/throughput-dispositions/scripts~rls4427_native_restore_regression.py.json",
+    "docs/verification/throughput-dispositions/scripts~rls4427_physical_cluster.py.json",
+    "scripts/qualify_rls4427_actual_tables.py",
+    "scripts/rls4427_native_restore_regression.py",
+    "scripts/rls4427_physical_cluster.py",
+    "scripts/test_qualify_rls4427_actual_tables.py",
+    "scripts/test_rls4427_native_restore_regression.py",
+    "scripts/test_rls4427_physical_cluster.py",
+    "supabase/tests/fixtures/rls4427_native_restore_fixture.sql",
+    "supabase/tests/rls_public_admin_actual_table_performance.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python3 -m unittest scripts.test_qualify_rls4427_actual_tables scripts.test_rls4427_physical_cluster scripts.test_rls4427_native_restore_regression",
+      "exit_code": 0,
+      "evidence": "84focusedPython controls PASS as subsetoffull1695offlineglob. OriginalsourceguardAST/querybytespinnedunchanged; wholevalidatornegative tests identifyeachpredicate, combinedsecretsneverreachserialized/public/errorattributes, knownpaths closedclass enums only. ActualPhysicalCluster.open controlledrealquery/refusalcleanup path retainspacket withnoresource/HBA/backup action. ExistingBusyBox/mode/374/cleanup controls retained."
+    },
+    {
+      "command": "node --test scripts/rls-public-admin-initplan.test.mjs scripts/agent-work-contract-git-evidence.test.mjs scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "Part of actual147 Node tests all PASS; originalpolicy/sourcehash/2124/198 retained, nativeevidence and guardcatalog checks."
+    },
+    {
+      "command": "node --test scripts/check-workflow-yaml.test.mjs scripts/database-contract-authorization.test.mjs scripts/check-merge-queue-workflows.test.mjs",
+      "exit_code": 0,
+      "evidence": "Part of actual147-test combined Node suite, all PASS; existing workflow/auth/queue contracts."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL guards PASS; no ownmigration change or live database use."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites388 sources110 derived_digest71bfaa23a9bd; sourcecatalogues match changedactualcontext."
+    },
+    {
+      "command": "node scripts/check-workflow-yaml.mjs",
+      "exit_code": 0,
+      "evidence": "51 workflow YAML files parse clean, no conflict markers."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Whitespace check PASS."
+    },
+    {
+      "command": "python3 -m py_compile scripts/qualify_rls4427_actual_tables.py scripts/rls4427_physical_cluster.py scripts/rls4427_native_restore_regression.py",
+      "exit_code": 0,
+      "evidence": "All3 source-specific Python files compile."
+    },
+    {
+      "command": "python3 -m unittest scripts/test_*.py (complete ordinary offline glob in isolated credential/resource-free child environment)",
+      "exit_code": 0,
+      "evidence": "All58ordinaryPythonfiles inallowlistedcredential/resource-free childenvironment: actual1695testsPASS46skips32.035s.84focusedsubset, no duplicatecount. Log/tmp/4427-gen42-python-full.log."
+    }
+  ],
+  "assumptions_resolved": [
+    "Prospective42publishedafterterminalpublicationreviewholdreleasedandbeforeedits; current42paironly, immutable41source/ref/privatepairretained. Currentbase4bunchanged.",
+    "ed81publicationreview20261028T221105-2455402-2875 terminalAPPROVE preservedUNUSED. ActualNative40775900646at410bFAILED beforebackup/HBA/target/any374samples; artifact12855540794ZIPsha2f5e440601df7c60e3c21bdea3f0ae99a42853e8982f916dc81c95731741d22d qualifierlogsha52e477d5a139e3b76b975eccbdb452546fa5c1b4bd70db1d3003534d1f36b8c6 original2124/198logsretained. Existingadmin/sameinstancePG170006qualificationpassed, exactsourcefactscriterionUNKNOWN. PriorauthoritySPENT; noPASS/mergeauthority/causeinferred.",
+    "PUREdiagnostic ONLY: SOURCE_FACTS_SQLSHAfc9c6386304ae2706ba24fb6080de66bf8fd880ded367195017d2efc454fce11 andguardASTSHAc66715e576b661bf5237f224c96f0dc7002227c3d7a417fcd95bc667f997f0f3 remainexact. Alladmission/crypto/query/config/roles/worker/schedule/capability/resourcebounds unchanged. Positivereadreturnsoriginalfacts unchanged; helperbyteschangeonlytoserializediagnostics.",
+    "ExistingRuntimeErrorrefusalattachesfixedfailedpredicate names andsanitizedtypedactualmetadata. Knownpaths onlyclosedclasslabels; OTHERpresence/type/shape/length/SHA, no unknownrawstrings/paths/commands/conninfo/config/key. Preloadknownlibrarypresence/unrecognizedcount/hashonly. No rawfactdictretainedinpacket/file. QueryafteractualruntimeSQLsource, failure_receipt carriespacketthroughcleanup.",
+    "FullPython1695testsPASS46skips(84focusedsubset),147NodePASS; staticSQL/YAML51/truth388sites110sources digest71bfaa23a9bd/compile/whitespacePASS. Childnoresource/review/push/cancel/native/merge/productionaction. ParentfreshreviewfutureONEFFpush+ONEmanualnative, noextralocalresourceforpurediagnostics; no374acceptanceuntilactualcompletevalidcollection."
+  ],
+  "stop_conditions_hit": []
+}

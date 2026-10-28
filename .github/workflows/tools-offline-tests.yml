@@ -322,6 +322,7 @@ jobs:
           DFLOW_UPC_TEST_CONTAINER="$container" node --test scripts/dflow-prod-item-upc-read-contract.test.mjs
           DFLOW_TRACKING_TEST_CONTAINER="$container" node --test scripts/dflow-prod-milestone-schedule.test.mjs
           DFLOW_TRACKING_ACCESS_TEST_CONTAINER="$container" node --test scripts/proofs/shared-db-2873-observation.test.mjs scripts/proofs/dflow-tracking-access-exception.test.mjs
+          COLDLION_WRITER_TEST_CONTAINER="$container" node --test tools/coldlion-order-intake-identity-pg.test.mjs
 
       - name: Test the exact Tracking catalogue against isolated PostgreSQL17
         if: steps.route.outputs.pure_prose != 'true'

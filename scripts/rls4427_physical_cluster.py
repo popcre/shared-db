@@ -488,6 +488,7 @@ class PhysicalCluster:
             if getattr(self.source,'immutable_config_sha',None)!=IMMUTABLE_CONFIG_SHA:raise RuntimeError('4427 physical source immutable config digest differs')
             identity=self.source.custody();self.source.container_id=identity[0];self.image_id=identity[1]
             facts=validate_source_facts(json.loads(self._admin_source(SOURCE_FACTS_SQL).splitlines()[-1]))
+            self.source_mode=facts['data_directory_mode']
             self.source.source_backup_window=self.admit_window()
             source_cron=validate_cron(json.loads(self._admin_source(CRON_SQL)))
             binary=self.source.container_exec(BINARY_ARGS).decode().split()[0]
@@ -519,7 +520,8 @@ class PhysicalCluster:
             self.cid=self.docker(*args,self.image_id,'infinity').stdout.decode().strip()
             if not re.fullmatch('[a-f0-9]{64}',self.cid):raise RuntimeError('4427 physical target ID invalid')
             self.restore_config()
-            with (self.root/'source-basebackup.tar').open('rb') as data:self.target(['tar','-C',DATA,'-xf','-','--no-same-owner'],input_file=data)
+            with (self.root/'source-basebackup.tar').open('rb') as data:self.target(['tar','-C',DATA,'-xf','-','--no-same-owner','--same-permissions'],input_file=data)
+            self.prepare_data_root()
             self.target(['test','-s','/etc/postgresql-custom/pgsodium_root.key'])
             with tarfile.open(self.root/'source-config.tar','r:') as archive:
                 original_key=archive.extractfile('etc/postgresql-custom/pgsodium_root.key').read()
@@ -554,13 +556,31 @@ class PhysicalCluster:
         if not earliest<=time.time()%60<=latest:raise RuntimeError('4427 physical safe startup admission missed')
         return time.time(),time.monotonic()
 
+    def data_root_identity(self):
+        if getattr(self,'source_mode',None) not in ('0700','0750'):
+            raise RuntimeError('4427 physical admitted source data-directory mode missing')
+        actual=self.target(['stat','-c','%u:%g:%a',DATA]).stdout.decode().strip()
+        if actual!='100:101:'+self.source_mode[1:]:
+            raise RuntimeError('4427 physical owned data-root owner/mode differs')
+        return dict(uid=100,gid=101,mode=int(self.source_mode,8))
+
+    def prepare_data_root(self):
+        if getattr(self,'source_mode',None) not in ('0700','0750'):
+            raise RuntimeError('4427 physical admitted source data-directory mode missing')
+        self.target(['chmod',self.source_mode,DATA])
+        self.data_root_identity()
+
     def start(self,preparation=False):
+        root_identity=self.data_root_identity()
         self.start_wall,self.start_mono=self.admit_window(preparation)
         self.running=True;self.start_number+=1
         self.phase='target-preparation' if preparation else 'target-trial'
         self.start_kind='preparation' if preparation else 'baseline-trial'
         self.target(['pg_ctl','-D','/etc/postgresql','-l','/var/log/postgresql/4427.log','-w','-t','10','start'])
         self.guard()
+        server_mode=self.sql("select current_setting('data_directory_mode');",'supabase_admin').strip()
+        if server_mode!=self.source_mode:raise RuntimeError('4427 physical target startup data-directory mode differs')
+        emit(self.events,dict(data_directory_mode_verified=True,source_mode=self.source_mode,server_mode=server_mode,**root_identity))
         if self.sql('select pg_is_in_recovery();','supabase_admin').strip()!='f':raise RuntimeError('4427 physical target not normal primary')
         self.cron_at_start=validate_cron(json.loads(self.sql(CRON_SQL,'supabase_admin')))
         scheduler_start=datetime.datetime.fromisoformat(self.cron_at_start['schedulers'][0][1]).timestamp()
@@ -598,6 +618,7 @@ class PhysicalCluster:
     def seal(self):
         if self.sql(CANARY_CHECK_SQL,'supabase_admin').strip()!='t':raise RuntimeError('4427 physical canary failed before seal')
         self.stop()
+        self.data_root_identity()
         archive=self.root/'sealed-canonical.tar'
         with os.fdopen(os.open(archive,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600),'wb') as out:self.target(['tar','--numeric-owner','-C',DATA,'-cf','-','.'],output_file=out)
         self.baseline=validate_tar(archive,'sealed');self.sealed=True
@@ -612,7 +633,7 @@ class PhysicalCluster:
         archive=self.root/'sealed-canonical.tar'
         with archive.open('rb') as stream:digest=hashlib.file_digest(stream,'sha256').hexdigest()
         if digest!=self.baseline['sha256']:raise RuntimeError('4427 physical immutable baseline drift')
-        with archive.open('rb') as data:self.target(['tar','-C',DATA,'-xf','-','--no-same-owner'],input_file=data)
+        with archive.open('rb') as data:self.target(['tar','-C',DATA,'-xf','-','--no-same-owner','--same-permissions'],input_file=data)
         self.start()
         if self.sql(CANARY_CHECK_SQL,'supabase_admin').strip()!='t':raise RuntimeError('4427 physical copied root-key decrypt failed after reset')
         return {'baseline_sha256':self.baseline['sha256'],'start_wall':self.start_wall}

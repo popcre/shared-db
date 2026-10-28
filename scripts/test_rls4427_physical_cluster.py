@@ -267,6 +267,61 @@ class PhysicalControls(unittest.TestCase):
             self.assertEqual(receipt['archive_validation']['escaped_name'],'"<private-config-member>"')
             Path(receipt['archive_validation']['private_metadata_path']).unlink()
 
+    def test_owned_root_mode_preparation_and_every_normal_start_require_source_identity(self):
+        from types import SimpleNamespace
+        for mode in ('0700','0750'):
+            p=m.PhysicalCluster(self.source());p.source_mode=mode
+            calls=[]
+            def target(args,**kw):
+                calls.append(args)
+                return SimpleNamespace(stdout=('100:101:'+mode[1:]+'\n').encode() if args[0]=='stat' else b'',returncode=0)
+            def sql(q,role):
+                self.assertEqual(role,'supabase_admin')
+                if 'data_directory_mode' in q:return mode
+                if 'pg_is_in_recovery' in q:return 'f'
+                if q==m.CRON_SQL:return json.dumps(dict(jobs=0,job_hash='j',schedules=[],runs=0,run_hash='r',pending=0,workers=0,schedulers=[[1,'1970-01-01T00:02:05+00:00']]))
+                if 'clock_timestamp' in q:return '125'
+                self.fail(q)
+            with patch.object(p,'target',side_effect=target),patch.object(p,'sql',side_effect=sql) as sqlmock,patch.object(p,'admit_window',return_value=(125,10)),patch.object(p,'guard'),patch.object(m.time,'time',return_value=125):
+                p.prepare_data_root();self.assertEqual(calls[0],['chmod',mode,m.DATA])
+                for _ in range(2):
+                    p.running=False;p.start()
+                self.assertEqual(sum('data_directory_mode' in call.args[0] for call in sqlmock.call_args_list),2)
+                self.assertEqual(sum(e.get('data_directory_mode_verified',False) for e in p.events),2)
+                self.assertTrue(all(e['mode']==int(mode,8) for e in p.events if e.get('data_directory_mode_verified')))
+            for badstat in ['0:101:'+mode[1:],'100:102:'+mode[1:],'100:101:'+('700' if mode=='0750' else '750')]:
+                with patch.object(p,'target',return_value=SimpleNamespace(stdout=badstat.encode())) as t,self.assertRaisesRegex(RuntimeError,'data-root owner/mode'):p.start()
+                self.assertEqual(t.call_count,1);self.assertEqual(t.call_args.args[0][0],'stat')
+            with patch.object(p,'target',side_effect=target),patch.object(p,'sql',return_value='0750' if mode=='0700' else '0700'),patch.object(p,'admit_window',return_value=(125,10)),patch.object(p,'guard'),self.assertRaisesRegex(RuntimeError,'startup data-directory mode'):p.start()
+
+    def test_actual_sealed_tar_reset_preserves_root_and_members_despite_restrictive_umask(self):
+        import subprocess,os,stat
+        from types import SimpleNamespace
+        for mode in ('0700','0750'):
+            with tempfile.TemporaryDirectory() as d:
+                root=Path(d);data=root/'data';data.mkdir(mode=0o700);private=root/'private';private.mkdir()
+                archive=private/'sealed-canonical.tar'
+                with tarfile.open(archive,'w') as out:
+                    for name,content,directory in [('.',b'',True),('global',b'',True),('PG_VERSION',b'17',False),('global/pg_control',b'invented',False)]:
+                        e=tarfile.TarInfo(name);e.uid=100;e.gid=101;e.mode=int(mode,8) if directory else (0o640 if mode=='0750' else 0o600)
+                        if directory:e.type=tarfile.DIRTYPE
+                        else:e.size=len(content)
+                        out.addfile(e,io.BytesIO(content) if not directory else None)
+                p=m.PhysicalCluster(self.source());p.root=private;p.source_mode=mode;p.sealed=True;p.running=False;p.baseline=m.validate_tar(archive,'sealed')
+                def target(args,input_file=None,**kw):
+                    # Real child tools operate ONLY this test's disposable directory; no Docker/SQL.
+                    return subprocess.run(args,stdin=input_file or subprocess.DEVNULL,capture_output=True,check=True,umask=0o077)
+                def start():
+                    p.start_wall=125
+                    self.assertEqual(stat.S_IMODE(data.stat().st_mode),int(mode,8))
+                    self.assertEqual(stat.S_IMODE((data/'PG_VERSION').stat().st_mode),0o640 if mode=='0750' else 0o600)
+                with patch.object(m,'DATA',str(data)),patch.object(p,'target',side_effect=target),patch.object(p,'start',side_effect=start) as started,patch.object(p,'sql',return_value='t'):
+                    p.begin_trial();p.begin_trial();self.assertEqual(started.call_count,2)
+        source=P.read_text()
+        self.assertEqual(source.count("['tar','-C',DATA,'-xf','-','--no-same-owner','--same-permissions']"),2)
+        self.assertLess(source.index('self.prepare_data_root()'),source.index('self.start(preparation=True)'))
+        self.assertIn('self.data_root_identity()\n        archive=self.root',source)
+
     def test_minute_deadline_and_wall_monotonic_continuity_are_real_guards(self):
         m.minute_guard(125,10,140,25)
         for endwall,endmono in [(170,55),(185,70),(124,9),(140,26)]:

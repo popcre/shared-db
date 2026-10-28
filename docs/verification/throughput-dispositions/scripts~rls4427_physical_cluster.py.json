@@ -58,6 +58,24 @@
     },
     {
       "source": "scripts/rls4427_physical_cluster.py",
+      "site": "scripts/rls4427_physical_cluster.py:561",
+      "semantic_key": "scripts/rls4427_physical_cluster.py:72cf13ff36ae648a5621489eaf26f244f25dd71c606afbaa30c6ec91a40a19c1:context-8289eb81e719890c02d44938a21c0cb9d374ccee4cc8ba8b931007b88db8c7b0",
+      "legacy_semantic_key": "scripts/rls4427_physical_cluster.py:72cf13ff36ae648a5621489eaf26f244f25dd71c606afbaa30c6ec91a40a19c1:1",
+      "line_sha256": "72cf13ff36ae648a5621489eaf26f244f25dd71c606afbaa30c6ec91a40a19c1",
+      "disposition": "excluded",
+      "reason": "Excluded from delivery-absence claims: this requires the positively admitted source data-directory mode before preserving owned physical fixture permissions; it asserts no business-data absence."
+    },
+    {
+      "source": "scripts/rls4427_physical_cluster.py",
+      "site": "scripts/rls4427_physical_cluster.py:569",
+      "semantic_key": "scripts/rls4427_physical_cluster.py:72cf13ff36ae648a5621489eaf26f244f25dd71c606afbaa30c6ec91a40a19c1:context-962de343982b2b953a3b9eda398169b214a433d4d008af11c8495ea3092cc4c1",
+      "legacy_semantic_key": "scripts/rls4427_physical_cluster.py:72cf13ff36ae648a5621489eaf26f244f25dd71c606afbaa30c6ec91a40a19c1:2",
+      "line_sha256": "72cf13ff36ae648a5621489eaf26f244f25dd71c606afbaa30c6ec91a40a19c1",
+      "disposition": "excluded",
+      "reason": "Excluded from delivery-absence claims: this requires the positively admitted source data-directory mode before preserving owned physical fixture permissions; it asserts no business-data absence."
+    },
+    {
+      "source": "scripts/rls4427_physical_cluster.py",
       "site": "scripts/rls4427_physical_cluster.py:276",
       "semantic_key": "scripts/rls4427_physical_cluster.py:7525deed1622aadef907edb085b364e22303b57fdd4c6bc2e44959c403146970:context-39f0fb8277657d1b0933123dd10835f3fc50ddeee2f3ad1d1dc92313e989fba6",
       "legacy_semantic_key": "scripts/rls4427_physical_cluster.py:7525deed1622aadef907edb085b364e22303b57fdd4c6bc2e44959c403146970:1",

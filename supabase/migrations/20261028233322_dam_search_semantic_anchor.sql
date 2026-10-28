@@ -25,7 +25,7 @@ begin
     select 1 from pg_attribute a
     where a.attrelid = 'public.dam_search_documents'::regclass
       and a.attname = 'embedding' and not a.attisdropped
-      and format_type(a.atttypid, a.atttypmod) = 'extensions.vector(768)'
+      and a.atttypid = 'extensions.vector'::regtype and a.atttypmod = 768
   ) then
     raise exception '#4999: public.dam_search_documents.embedding is not extensions.vector(768)';
   end if;

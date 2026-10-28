@@ -1,8 +1,8 @@
 -- #4999 contracts for public.dam_search_semantic_anchor.
 -- Asserts objects with to_regprocedure / has_function_privilege, never ledger rows alone.
--- Behaviour fixtures run inside a rolled-back transaction.
+-- Synthetic fixtures; the CI harness wraps the file in begin/rollback.
 
-begin;
+reset role;
 
 do $$
 declare v oid := to_regprocedure('public.dam_search_semantic_anchor(extensions.vector,text[])');
@@ -49,14 +49,13 @@ $$;
 
 do $$
 begin
-  set local role anon;
+  execute 'set local role anon';
   begin
     perform public.dam_search_semantic_anchor(null, null);
     raise exception '#4999 FAIL: anon call succeeded';
   exception when insufficient_privilege then null;
   end;
-  reset role;
+  execute 'reset role';
 end
 $$;
 
-rollback;

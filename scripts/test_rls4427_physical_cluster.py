@@ -48,7 +48,7 @@ class PhysicalControls(unittest.TestCase):
     def test_source_fact_query_and_original_guard_condition_remain_byte_pinned(self):
         import ast
         tree=ast.parse(P.read_text());validator=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='validate_source_facts')
-        self.assertEqual(m.hashlib.sha256(ast.dump(validator.body[0].test,include_attributes=False).encode()).hexdigest(),'c66715e576b661bf5237f224c96f0dc7002227c3d7a417fcd95bc667f997f0f3')
+        self.assertEqual(m.hashlib.sha256(ast.get_source_segment(P.read_text(),validator.body[0].test).encode()).hexdigest(),'824d80a8ab0ffc233fd641ea448222a9fdbbfc310ad5e1ed429e74db9c181ccc')
         self.assertEqual(m.hashlib.sha256(m.SOURCE_FACTS_SQL.encode()).hexdigest(),'fc9c6386304ae2706ba24fb6080de66bf8fd880ded367195017d2efc454fce11')
         facts=self.facts();self.assertIs(m.validate_source_facts(facts),facts)
         self.assertEqual(m.source_fact_diagnostic(facts)['failed_predicates'],[])

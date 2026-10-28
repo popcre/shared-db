@@ -35,7 +35,8 @@
     "Root cause verified from run logs: the queue wiring read merge_group.base.sha/head.sha, which are always empty, so the queue-side skip had never fired since #3383",
     "Governed review at 75eaa7ac6 returned APPROVE with two non-blocking hardening suggestions; the AGENTS.md dated note was then split out to a follow-up PR so the change ships as plain code during the reviewer observation week, and the implementation tree of this head is byte-identical to that approved round on all six changed files",
     "Superseded PR #4963 (closed): its history was rewritten to drop the AGENTS.md note so the change ships as plain code during the reviewer observation week, and the review circuit breaker correctly refused to carry that PR paid-start budget across the orphaning rewrite; this replacement PR pays for a fresh full governed review of the byte-identical implementation tree",
-    "Ship gate requires the exact-head approval to embed a passing local-tests run; a fresh governed round with --tests was dispatched from this evidence-tail head (implementation tree unchanged)"
+    "Ship gate requires the exact-head approval to embed a passing local-tests run; a fresh governed round with --tests was dispatched from this evidence-tail head (implementation tree unchanged)",
+    "The first tests-carrying round at 3970fd9b1 could not record its verdict (dispatch pinned a replacement sequence that did not exist); that start was released as review_target_superseded and the round re-ran at the current head"
   ],
   "stop_conditions_hit": []
 }

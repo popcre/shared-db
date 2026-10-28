@@ -137,15 +137,19 @@ export async function collectItems(apiKey, fetchImpl = fetch) {
 // One probe, unaligned tuples-only output: first line is the migration gate
 // (has 20261028183729 replaced the auto-flow function's signature?), the rest
 // are the existing (company, division, item_number) identities.
+// Tolerant of psql's own chatter: without --quiet, every \pset meta-command
+// echoes a confirmation line before the data ("Output format is unaligned.").
+// Scan for the gate row instead of assuming it is first.
 export function parseSweepProbe(stdout) {
   const lines = String(stdout ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
-  if (!lines.length || !/^[tf]$/.test(lines[0])) return { migrationApplied: null, identities: [] };
+  const gateIndex = lines.findIndex((line) => /^[tf]$/.test(line));
+  if (gateIndex === -1) return { migrationApplied: null, identities: [] };
   const identities = [];
-  for (const line of lines.slice(1)) {
+  for (const line of lines.slice(gateIndex + 1)) {
     const cells = line.split("\t");
     if (cells.length === 3 && cells.some((cell) => cell)) identities.push(cells);
   }
-  return { migrationApplied: lines[0] === "t", identities };
+  return { migrationApplied: lines[gateIndex] === "t", identities };
 }
 
 export const SWEEP_PROBE_SQL = [

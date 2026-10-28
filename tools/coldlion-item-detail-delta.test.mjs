@@ -84,8 +84,15 @@ test("empty batches keep runnable count tables", () => {
 test("parseDeltaCounts reads the last N\\tM line; parseSweepProbe reads the gate and identities", () => {
   assert.deepEqual(parseDeltaCounts("noise\n0\t1\nmore\n2\t3\n"), { detailsInserted: 2, headersInserted: 3 });
   assert.equal(parseDeltaCounts("nothing"), null);
-  const probe = parseSweepProbe("t\nEDGEHOME\tCW001\tA1\nEDGEHOME\tSP001\tA4\n");
+  // Real psql output without --quiet: \pset confirmations precede the data
+  // (reproduced live in round-6 review with the exact runSql argv).
+  const noisy = "Output format is unaligned.\nField separator is \"	\".\nTuples only is on.\nt\nEDGEHOME\tCW001\tA1\nEDGEHOME\tSP001\tA4\n";
+  const probe = parseSweepProbe(noisy);
   assert.equal(probe.migrationApplied, true);
+  assert.deepEqual(probe.identities, [["EDGEHOME", "CW001", "A1"], ["EDGEHOME", "SP001", "A4"]]);
+  const quiet = parseSweepProbe("t\nEDGEHOME\tCW001\tA1\n");
+  assert.equal(quiet.migrationApplied, true);
+  assert.deepEqual(quiet.identities, [["EDGEHOME", "CW001", "A1"]]);
   assert.deepEqual(probe.identities, [["EDGEHOME", "CW001", "A1"], ["EDGEHOME", "SP001", "A4"]]);
   assert.equal(parseSweepProbe("f\n").migrationApplied, false);
   assert.equal(parseSweepProbe("garbage").migrationApplied, null);

@@ -104,7 +104,7 @@ class PhysicalControls(unittest.TestCase):
     def archive(self,path,files,links=None):
         with tarfile.open(path,'w') as out:
             for name,value in files.items():
-                entry=tarfile.TarInfo(name);entry.size=len(value);out.addfile(entry,io.BytesIO(value))
+                entry=tarfile.TarInfo(name);entry.uid=100;entry.gid=101;entry.size=len(value);out.addfile(entry,io.BytesIO(value))
             for name,target in (links or {}).items():
                 entry=tarfile.TarInfo(name);entry.type=tarfile.SYMTYPE;entry.linkname=target;out.addfile(entry)
 
@@ -137,6 +137,71 @@ class PhysicalControls(unittest.TestCase):
             self.archive(path,{k:v for k,v in full.items() if k!='backup_manifest'})
             with self.assertRaises(RuntimeError):m.validate_tar(path,'backup')
             m.validate_tar(path,'sealed') # Explicitly different from original backup verification.
+
+    def test_mixed_configuration_metadata_is_preserved_and_every_mutation_refuses(self):
+        from types import SimpleNamespace
+        def config_archive(path,change=None):
+            with tarfile.open(path,'w') as out:
+                for name,owner in [('etc/postgresql',(0,0)),('etc/postgresql-custom',(100,101))]:
+                    e=tarfile.TarInfo(name);e.type=tarfile.DIRTYPE;e.uid,e.gid=owner;e.mode=0o755
+                    if change:change(e)
+                    out.addfile(e)
+                for i,(name,value) in enumerate(self.config().items()):
+                    e=tarfile.TarInfo(name);e.uid,e.gid=(0,0) if i%2 else (100,101);e.mode=0o600 if name.endswith('key') else 0o755;e.size=len(value)
+                    if change:change(e)
+                    out.addfile(e,io.BytesIO(value))
+        with tempfile.TemporaryDirectory() as d:
+            p=m.PhysicalCluster(self.source());p.root=Path(d);p.cid='a'*64
+            original=p.root/'source-config.tar';config_archive(original)
+            p.original_config_receipt=m.validate_tar(original,'config')
+            calls=[]
+            def docker(*args,**kw):
+                calls.append(args)
+                if kw.get('output_file'):
+                    kw['output_file'].write(original.read_bytes())
+                return SimpleNamespace(returncode=0,stdout=b'',stderr=b'')
+            with patch.object(p,'custody') as custody,patch.object(p,'docker',side_effect=docker):
+                p.restore_config();self.assertTrue(p.config_metadata_verified)
+                self.assertEqual(calls[0],('exec','-i','--user','0:0',p.cid,*m.CONFIG_RESTORE_ARGS))
+                self.assertEqual(calls[1],('exec','--user','0:0',p.cid,*m.CONFIG_ARGS));self.assertEqual(custody.call_count,2)
+                for args in [m.CONFIG_RESTORE_ARGS+['foreign'],['sh','-c','anything'],['tar','-C','/','-xf','-']]:
+                    with self.assertRaises(RuntimeError):p.config_target(args)
+                foreign=p.root/'foreign.tar';foreign.write_bytes(original.read_bytes())
+                with foreign.open('rb') as stream,self.assertRaises(RuntimeError):p.config_target(m.CONFIG_RESTORE_ARGS,input_file=stream)
+            for changes in [dict(uid=100,gid=101),dict(mode=0o644)]:
+                changed=p.root/'changed.tar';config_archive(changed,lambda e:[setattr(e,k,v) for k,v in changes.items()])
+                self.assertNotEqual(m.validate_tar(changed,'config')['metadata_sha256'],p.original_config_receipt['metadata_sha256'])
+                (p.root/'target-config.tar').unlink(missing_ok=True)
+                def altered_docker(*args,**kw):
+                    if kw.get('output_file'):kw['output_file'].write(changed.read_bytes())
+                    return SimpleNamespace(returncode=0,stdout=b'',stderr=b'')
+                with patch.object(p,'custody'),patch.object(p,'docker',side_effect=altered_docker),self.assertRaisesRegex(RuntimeError,'ownership/mode/content differs'):p.restore_config()
+            for changes in [dict(uid=99),dict(mode=0o777),dict(mode=0o4755)]:
+                changed=p.root/'bad.tar';config_archive(changed,lambda e:[setattr(e,k,v) for k,v in changes.items()])
+                with self.assertRaises(RuntimeError):m.validate_tar(changed,'config')
+            # A root-owned PGDATA entry must refuse before extraction, including archive root.
+            for name in ['PG_VERSION','.']:
+                with tarfile.open(p.root/'bad-pg.tar','w') as out:
+                    e=tarfile.TarInfo(name);e.type=tarfile.DIRTYPE if name=='.' else tarfile.REGTYPE;out.addfile(e)
+                with self.assertRaisesRegex(RuntimeError,'PGDATA ownership'):m.validate_tar(p.root/'bad-pg.tar','backup')
+
+    def test_only_backup_tool_manifest_has_exact_generated_header_exception(self):
+        full={'PG_VERSION':b'17','global/pg_control':b'invented','backup_label':b'owned','backup_manifest':b'{}'}
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d)/'backup.tar'
+            def archive(name='backup_manifest',uid=2048,gid=1024,mode=0o600,directory=False):
+                with tarfile.open(p,'w') as out:
+                    for n,data in full.items():
+                        e=tarfile.TarInfo(n if n!='backup_manifest' else name);e.uid=100;e.gid=101;e.mode=0o600;e.size=len(data)
+                        if n=='backup_manifest':
+                            e.uid=uid;e.gid=gid;e.mode=mode
+                            if directory:e.type=tarfile.DIRTYPE;e.size=0
+                        out.addfile(e,io.BytesIO(data) if e.isfile() else None)
+            archive();self.assertEqual(m.validate_tar(p,'backup')['files'],4)
+            with self.assertRaisesRegex(RuntimeError,'ownership'):m.validate_tar(p,'sealed')
+            for change in [dict(name='other'),dict(uid=2047),dict(gid=1025),dict(mode=0o644),dict(directory=True)]:
+                archive(**change)
+                with self.subTest(change=change),self.assertRaisesRegex(RuntimeError,'ownership'):m.validate_tar(p,'backup')
 
     def test_minute_deadline_and_wall_monotonic_continuity_are_real_guards(self):
         m.minute_guard(125,10,140,25)
@@ -214,8 +279,12 @@ class PhysicalControls(unittest.TestCase):
 
     def test_measured_cost_admission_refuses_unbounded_full_matrix(self):
         p=m.PhysicalCluster(self.source())
-        self.assertGreater(p.projected_matrix_check([1,1]),374)
-        with self.assertRaisesRegex(RuntimeError,'cost exceeds'):p.projected_matrix_check([10,10])
+        self.assertGreater(p.projected_matrix_check([1]*34),340)
+        with self.assertRaisesRegex(RuntimeError,'cost exceeds'):p.projected_matrix_check([10]*34)
+        for invalid in ([1]*33,[1]*35,[1]*33+[0],[1]*33+[True],[1]*33+[float('nan')]):
+            with self.assertRaisesRegex(RuntimeError,'cost invalid'):p.projected_matrix_check(invalid)
+        p.started-=2050
+        with self.assertRaisesRegex(RuntimeError,'remaining bound'):p.projected_matrix_check([1]*34)
 
     def test_cleanup_survives_action_budget_expiry(self):
         p=m.PhysicalCluster(self.source());p.started=time.monotonic()-2200

@@ -28,6 +28,7 @@ OWNER='01a1834a-813e-7b12-b17a-3e8c3aaedfb8'
 IMMUTABLE_CONFIG_SHA='e1939b94b1fd12b8a446404ff49455d7cf2a6a275a77f010abb56a247bfd5377'
 CRON_BINARY_SHA='55a7bdcf1b966d51d83d248797507348de19d16f1c968948c1854bc799751108'
 BACKUP_ARGS=['pg_basebackup','-h','/var/run/postgresql','-p','5432','-U','supabase_admin','-D','-','-Ft','-X','fetch','-c','fast','--manifest-checksums=SHA256','--no-password']
+CONFIG_RESTORE_ARGS=['tar','-C','/','-xf','-','--same-owner','--same-permissions']
 CONFIG_ARGS=['tar','--numeric-owner','-C','/','-cf','-','etc/postgresql','etc/postgresql-custom']
 BINARY_ARGS=['sha256sum','/nix/store/qpz7hxz26yk04v1f0cxfhgicy360zf9n-pg_cron-1.6.4/lib/pg_cron-1.6.4.so']
 HBA_PATH='/etc/postgresql/pg_hba.conf'
@@ -281,11 +282,14 @@ def cron_fingerprint(f):
 
 def validate_tar(path, kind):
     """Validate archive names/types/size before any extraction, never extract on host."""
-    names=set();total=0;members={}
+    names=set();total=0;members={};metadata={}
     with tarfile.open(path,'r:') as archive:
         for member in archive:
             raw=member.name.removeprefix('./').rstrip('/')
             pure=PurePosixPath(raw)
+            # PG17.6 bbstreamer_inject.c202-219 injects this canonical tool header.
+            manifest_header=(kind=='backup' and raw=='backup_manifest' and member.isfile() and (member.uid,member.gid,member.mode)==(2048,1024,0o600))
+            if kind!='config' and (member.uid,member.gid)!=(100,101) and not manifest_header:raise RuntimeError('4427 physical PGDATA ownership differs')
             if raw in ('','.') and member.isdir():continue
             if not raw or pure.is_absolute() or '..' in pure.parts or raw in names or not (member.isfile() or member.isdir()) or member.size<0:
                 raise RuntimeError('4427 physical archive path/type/cardinality refused')
@@ -293,6 +297,11 @@ def validate_tar(path, kind):
                 raise RuntimeError('4427 physical config archive escaped exact roots')
             if kind!='config' and (raw in ('standby.signal','recovery.signal','postmaster.pid') or raw.startswith('pg_tblspc/')):
                 raise RuntimeError('4427 physical archive has external/recovery dependency')
+            if kind=='config':
+                if (member.uid,member.gid) not in ((0,0),(100,101)) or member.mode & 0o7022 or member.mode & ~0o777:
+                    raise RuntimeError('4427 physical unsafe configuration ownership/mode')
+                if member.isfile() and member.size>1048576:raise RuntimeError('4427 physical configuration file too large')
+                metadata[raw]=dict(uid=member.uid,gid=member.gid,mode=member.mode,type='directory' if member.isdir() else 'file',sha256=hashlib.sha256(archive.extractfile(member).read()).hexdigest() if member.isfile() else None)
             names.add(raw);total+=member.size
             if len(names)>100000 or total>1073741824:
                 raise RuntimeError('4427 physical archive exceeds one-GiB bounded snapshot')
@@ -327,7 +336,7 @@ def validate_tar(path, kind):
         if not {'PG_VERSION','global/pg_control'}.issubset(names):raise RuntimeError('4427 physical full cluster archive incomplete')
         if kind=='backup' and not {'backup_label','backup_manifest'}.issubset(names):raise RuntimeError('4427 physical backup manifest missing')
     with Path(path).open('rb') as stream:digest=hashlib.file_digest(stream,'sha256').hexdigest()
-    return dict(files=len(names),bytes=total,sha256=digest)
+    return dict(files=len(names),bytes=total,sha256=digest,**({'metadata_sha256':hashlib.sha256(json.dumps(metadata,sort_keys=True).encode()).hexdigest()} if kind=='config' else {}))
 
 
 def minute_guard(start_wall,start_mono,now_wall,now_mono):
@@ -378,6 +387,29 @@ class PhysicalCluster:
     def target(self,args,input_file=None,output_file=None,allowed_failure=False):
         self.custody()
         return self.docker('exec',*(['-i'] if input_file else []),'--user','100:101',self.cid,*args,input_file=input_file,output_file=output_file,allowed_failure=allowed_failure)
+
+    def config_target(self,args,input_file=None,output_file=None):
+        # Only the validated original archive's two fixed operations may use OSroot.
+        if args not in (CONFIG_RESTORE_ARGS,CONFIG_ARGS) or not getattr(self,'original_config_receipt',None):
+            raise RuntimeError('4427 physical root configuration operation refused')
+        restoring=args==CONFIG_RESTORE_ARGS
+        if restoring:
+            if input_file is None or output_file is not None or Path(input_file.name)!=self.root/'source-config.tar':
+                raise RuntimeError('4427 physical root configuration archive differs')
+            if validate_tar(input_file.name,'config')!=self.original_config_receipt:
+                raise RuntimeError('4427 physical original configuration archive drift')
+        elif input_file is not None or output_file is None or not os.path.samestat(os.fstat(output_file.fileno()),(self.root/'target-config.tar').stat()):
+            raise RuntimeError('4427 physical root configuration verification channel refused')
+        self.custody()
+        return self.docker('exec',*(['-i'] if restoring else []),'--user','0:0',self.cid,*args,input_file=input_file,output_file=output_file)
+
+    def restore_config(self):
+        with (self.root/'source-config.tar').open('rb') as data:self.config_target(CONFIG_RESTORE_ARGS,input_file=data)
+        with os.fdopen(os.open(self.root/'target-config.tar',os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600),'wb') as out:self.config_target(CONFIG_ARGS,output_file=out)
+        copied_config=validate_tar(self.root/'target-config.tar','config')
+        if copied_config['metadata_sha256']!=self.original_config_receipt['metadata_sha256']:
+            raise RuntimeError('4427 physical copied configuration ownership/mode/content differs')
+        self.config_metadata_verified=True
 
     def sql(self,query,role='postgres'):
         if role not in ('postgres','supabase_admin'):raise RuntimeError('4427 physical SQL role refused')
@@ -436,7 +468,7 @@ class PhysicalCluster:
             self.phase='target-create'
             self.cid=self.docker(*args,self.image_id,'infinity').stdout.decode().strip()
             if not re.fullmatch('[a-f0-9]{64}',self.cid):raise RuntimeError('4427 physical target ID invalid')
-            with (self.root/'source-config.tar').open('rb') as data:self.target(['tar','-C','/','-xf','-','--no-same-owner'],input_file=data)
+            self.restore_config()
             with (self.root/'source-basebackup.tar').open('rb') as data:self.target(['tar','-C',DATA,'-xf','-','--no-same-owner'],input_file=data)
             self.target(['test','-s','/etc/postgresql-custom/pgsodium_root.key'])
             with tarfile.open(self.root/'source-config.tar','r:') as archive:
@@ -541,10 +573,10 @@ class PhysicalCluster:
         # Exclude ONLY observed explicit admission waits from measured per-restart
         # active cost. All actual wait remains consumed in the35-minute budget.
         import math
-        if not isinstance(active_seconds,list) or len(active_seconds)!=2 or any(isinstance(v,bool) or not isinstance(v,(float,int)) or not math.isfinite(v) or v<=0 for v in active_seconds):
+        if not isinstance(active_seconds,list) or len(active_seconds)!=34 or any(isinstance(v,bool) or not isinstance(v,(float,int)) or not math.isfinite(v) or v<=0 for v in active_seconds):
             raise RuntimeError('4427 physical measured active calibration cost invalid')
-        projected=374*max(active_seconds)*(60/35)+60
-        if projected>self.budget-(time.monotonic()-self.started):raise RuntimeError('4427 physical calibrated374-run cost exceeds remaining bound')
+        projected=340*max(active_seconds)*(60/35)+60
+        if projected>self.budget-(time.monotonic()-self.started):raise RuntimeError('4427 physical warmup-measured340-run cost exceeds remaining bound')
         return projected
 
     def close(self):

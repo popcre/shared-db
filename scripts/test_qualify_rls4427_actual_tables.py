@@ -61,12 +61,85 @@ class Actual4427StaticTests(unittest.TestCase):
     def test_complete_330_dml_44_select_matrix_and_balanced_order(self):
             jobs = m.jobs()
             self.assertEqual(len(jobs), 374)
+            self.assertTrue(all(j[3]==0 for j in jobs[:34]))
+            self.assertTrue(all(j[3]>0 for j in jobs[34:]))
+            self.assertEqual(len({j[:3] for j in jobs[:34]}),17)
             self.assertEqual(sum(cmd != 'SELECT' for _,cmd,_,_,_ in jobs), 330)
             for i in range(0, len(jobs), 2):
                 a,b = jobs[i:i+2]
                 self.assertEqual(a[:4], b[:4])
                 self.assertEqual({a[4],b[4]}, {'original','candidate'})
                 self.assertEqual(a[4], 'original' if a[3] % 2 == 0 else 'candidate')
+
+    def test_all_workloads_use_the_same_complete_trial_before_cost_admission(self):
+            import ast
+            tree=ast.parse(Path(m.__file__).read_text())
+            run=next(n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name=='run')
+            trial=next(n for n in ast.walk(run) if isinstance(n,ast.FunctionDef) and n.name=='execute_trial')
+            calls=[n for n in ast.walk(trial) if isinstance(n,ast.Call)]
+            snapshots=[n for n in calls if isinstance(n.func,ast.Name) and n.func.id=='snapshot_sql']
+            self.assertEqual(len(snapshots),3)
+            text=ast.get_source_segment(Path(m.__file__).read_text(),trial)
+            for required in ['selected','negative_sql','validate_policy_delta','EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)','cluster.end_trial()']:
+                self.assertIn(required,text)
+            code=Path(m.__file__).read_text()
+            self.assertLess(code.index('execute_trial(index,job)'),code.index('if index==33:'))
+            self.assertNotIn('physical-calibration-',code)
+
+    def test_whole_native374_path_admits_after34_complete_warmups_and_cleans_on_refusal(self):
+            import json,subprocess
+            from types import SimpleNamespace
+            for refuse in (False,True):
+                with self.subTest(refuse=refuse),patch.dict(os.environ,self.valid_env(),clear=True):
+                    c=m.NativeCI();c.immutable_config_sha='bound';counts=dict(start=0,stop=0,negative=0,snapshot=0);variant=['candidate']
+                    class Cluster:
+                        source=c;source_facts={};original_backup_receipt={};original_config_receipt={};original_backup_verified=True
+                        full_capability_fingerprint={};events=[];window_wait_seconds=0;config_metadata_verified=True
+                        def __init__(self,source):self.closed=False
+                        def open(self):c.physical_versions={}
+                        def seal(self):return {'sha256':'fixed'}
+                        def begin_trial(self):counts['start']+=1;variant[0]='candidate'
+                        def end_trial(self):counts['stop']+=1
+                        def projected_matrix_check(self,active):
+                            self_admit.assertEqual(len(active),34);self_admit.assertEqual(counts['start'],34)
+                            self_admit.assertEqual(counts['stop'],34);self_admit.assertEqual(counts['negative'],34)
+                            if refuse:raise RuntimeError('measured340-run cost exceeds remaining bound')
+                            return 1000
+                        def close(self):self.closed=True
+                    self_admit=self
+                    def git(args,**kw):
+                        if args[1]=='rev-parse':return SimpleNamespace(stdout='a'*40)
+                        return SimpleNamespace(stdout=(m.ROOT/args[2].removeprefix('HEAD:')).read_bytes())
+                    def sql(db,q):
+                        if q.startswith('\\! false'):raise subprocess.CalledProcessError(3,['psql'],stderr='22012')
+                        if 'pg_read_binary_file' in q:
+                            counts['snapshot']+=1
+                            policies=[]
+                            for table,name,clause in m.POLICIES:
+                                expr="has_role(auth.uid(), 'admin'::app_role)" if variant[0]=='original' else 'SELECT wrapped'
+                                policies.append(dict(table=table,name=name,command='ALL',roles=[0],permissive=True,qual=expr if clause=='USING' else None,check=expr if clause=='WITH CHECK' else None))
+                            return json.dumps(dict(heap_md5='h',visibility_md5='v',indexes_md5=[],heap_bytes=1,index_bytes=1,rows_md5='r',settings={},capability=[],helpers=[],policies=policies))
+                        if q.startswith('ALTER POLICY'):variant[0]='original';return ''
+                        if q.startswith('select json_agg'):return '[]'
+                        if 'rowset_md5' in q:return json.dumps(dict(count=1000,rowset_md5='same'))
+                        if counts['start']==0:return ''
+                        if 'EXPLAIN' in q:
+                            if m.MEMBER in q:
+                                counts['negative']+=1;raise subprocess.CalledProcessError(3,['psql'],stderr='ERROR: 42501: denied')
+                            _,cmd,size,_,_=m.jobs()[counts['start']-1]
+                            return json.dumps([{'Plan':{'Actual Rows':1 if cmd=='SELECT' else size},'Execution Time':1}],indent=2)
+                        return ''
+                    with patch.object(m.subprocess,'run',side_effect=git),patch.object(m.physical4427,'PhysicalCluster',Cluster),patch.object(c,'sql',side_effect=sql):
+                        if refuse:
+                            with self.assertRaisesRegex(RuntimeError,'cost exceeds'):c.run()
+                            self.assertEqual(counts['stop'],34)
+                        else:
+                            result=c.run();self.assertEqual(len(result['samples']),374);self.assertEqual(len(result['summary']),17)
+                            self.assertEqual(len({(r['table'],r['command'],r['size']) for r in result['summary']}),17)
+                            self.assertEqual(result['warmup_trials_in374'],34);self.assertEqual(len(result['warmup_active_seconds']),34)
+                            self.assertEqual(counts['stop'],374);self.assertEqual(counts['negative'],374)
+                            self.assertEqual(counts['snapshot'],1124)
+                        self.assertTrue(c.cluster_attempt.closed)
 
     def test_reuses_actual_full_fixture_and_preserves_198_plan_matrix(self):
             source=m.FIXTURE.read_text()

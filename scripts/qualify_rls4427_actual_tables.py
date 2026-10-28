@@ -84,7 +84,7 @@ def jobs():
         for sample in range(11):
             variants = ('original', 'candidate') if sample % 2 == 0 else ('candidate', 'original')
             result += [(table, 'SELECT', 1000, sample, v) for v in variants]
-    return result
+    return [j for j in result if j[3]==0]+[j for j in result if j[3]!=0]
 
 
 def seed_sql():
@@ -171,7 +171,7 @@ def compact_snapshot(snapshot):
 
 def summarize(samples):
     out = []
-    for table, command, size, _, _ in jobs()[::22]:
+    for table, command, size in dict.fromkeys(j[:3] for j in jobs()):
         rows = [r for r in samples if (r['table'], r['command'], r['size']) == (table, command, size)
                 and not r['warmup']]
         original = [r['plan'][0]['Execution Time'] for r in rows if r['variant'] == 'original']
@@ -412,29 +412,11 @@ end $g$;""")
             # Warm both tables before clean shutdown flushes their hint bits.
             for table in ('assets','style_groups'):self.sql('postgres',snapshot_sql(table))
             canonical=cluster.seal()
-            calibration=[];calibration_active=[]
-            base_metadata=None
-            for variant in ('original','candidate'):
-                self.phase='physical-calibration-'+variant
-                calibration_started=time.monotonic();wait_before=cluster.window_wait_seconds
-                cluster.begin_trial()
-                try:
-                    current={t:json.loads(self.sql('postgres',snapshot_sql(t))) for t in ('assets','style_groups')}
-                    if base_metadata is None:base_metadata=current
-                    elif current!=base_metadata:raise RuntimeError('4427 physical calibration pair starts with differing state')
-                    if variant=='original':
-                        self.sql('postgres','\n'.join(f'ALTER POLICY "{name}" ON public.{t} {clause} '
-                            "(public.has_role(auth.uid(), 'admin'::public.app_role));" for t,name,clause in POLICIES))
-                    result=self.sql('postgres','begin;'+role_sql(ADMIN)+'EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) '+statement('assets','UPDATE',10000)+';rollback;')
-                    plan=json.loads(result[result.index('[\n'):])
-                    if plan[0]['Plan']['Actual Rows']!=10000:raise RuntimeError('4427 physical calibration actual rows differ')
-                    calibration.append({'variant':variant,'rows':10000})
-                finally:cluster.end_trial()
-                calibration_active.append(time.monotonic()-calibration_started-(cluster.window_wait_seconds-wait_before))
-            projected=cluster.projected_matrix_check(calibration_active)
+            warmup_active=[];projected=None;base_metadata={}
             pair_fingerprints = {}
             negative_pairs = {}
-            for index, (table, cmd, size, sample, variant) in enumerate(jobs()):
+            def execute_trial(index,job):
+                table,cmd,size,sample,variant=job
                 self.phase=f'physical-matrix-{index}-{table}-{cmd}-{variant}'
                 if time.monotonic() - self.started > 2100:
                     raise RuntimeError('4427 thirty-five-minute qualification budget exhausted')
@@ -444,6 +426,7 @@ end $g$;""")
                     before = json.loads(self.sql(db, snapshot_sql(table)))
                     if before['heap_bytes'] >= 1073741824 or before['index_bytes'] >= 1073741824:
                         raise RuntimeError('4427 relation too large for bounded first-segment fingerprint')
+                    if table not in base_metadata:base_metadata[table]=before
                     if before != base_metadata[table]:
                         raise RuntimeError('4427 clone physical/rowset/index/policy/settings drift')
                     if variant == 'original':
@@ -509,12 +492,19 @@ end $g$;""")
                         warmup=sample == 0, variant=variant, before=compact_snapshot(before), after=compact_snapshot(after), selected=selected, negative=negative, plan=plan))
                 finally:
                     cluster.end_trial()
+            for index,job in enumerate(jobs()):
+                started=time.monotonic();wait_before=cluster.window_wait_seconds
+                execute_trial(index,job)
+                if job[3]==0:
+                    warmup_active.append(time.monotonic()-started-(cluster.window_wait_seconds-wait_before))
+                if index==33:
+                    projected=cluster.projected_matrix_check(warmup_active)
             if len(samples) != 374:
                 raise RuntimeError('4427 incomplete 330-DML/44-SELECT matrix')
             summary = summarize(samples)
             return dict(schema_version=1, source_sha=os.environ['GITHUB_SHA'],
-                executed_source_sha256=source_hashes, tool_versions=tool_versions, snapshot=snapshot, canonical=canonical, analyze_facts=analyze_facts, calibration_pair=calibration, calibration_active_seconds=calibration_active, actual_admission_wait_seconds=cluster.window_wait_seconds, projected_matrix_seconds=projected, owned_physical_receipts=cluster.events,
-                calibration_pair_not_part_of374=True, metadata_fingerprint_role='supabase_admin', psql_shell_failure_signal_proven=True, qualification='ISOLATED_ACTUAL_TABLES_ONLY', production_acceptance='NOT_EVALUATED',
+                executed_source_sha256=source_hashes, tool_versions=tool_versions, snapshot=snapshot, canonical=canonical, analyze_facts=analyze_facts, warmup_active_seconds=warmup_active, actual_admission_wait_seconds=cluster.window_wait_seconds, projected_matrix_seconds=projected, owned_physical_receipts=cluster.events,
+                warmup_trials_in374=34, remaining_measured_trials=340, config_metadata_verified=cluster.config_metadata_verified, metadata_fingerprint_role='supabase_admin', psql_shell_failure_signal_proven=True, qualification='ISOLATED_ACTUAL_TABLES_ONLY', production_acceptance='NOT_EVALUATED',
                 historical_flags='PRESERVED_UNATTRIBUTED', source_sql_sha256=hashlib.sha256(original.encode()).hexdigest(),
                 original_contract_output_sha256=hashlib.sha256(original_result.encode()).hexdigest(),
                 template_snapshots=base_metadata, samples=samples, summary=summary,

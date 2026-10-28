@@ -1005,7 +1005,8 @@ select (select count(*) from checked where refs = 0) as missing,
  * Google line keeps every value it has, a blank Google quantity takes the
  * ColdLion one, the coldlion refs and any snapshot move over, and the
  * placeholder line goes. Only an unambiguous pair merges: exactly one Google
- * line and exactly one placeholder line for the (PO, SKU). A pair that
+ * line and exactly one placeholder line for the (PO, SKU), the PO compared
+ * without surrounding spaces or leading zeros. A pair that
  * disagrees on quantity or Import PO still merges (owner ruling, 2026-10-28:
  * "One row, both values"): the Google values stay, and ColdLion's current
  * values ride metadata.coldlion_values for the screen to show beside them.
@@ -1021,7 +1022,7 @@ export function buildAutoMergeSql({ runId, write = false } = {}) {
 create temporary table coldlion_auto_merge (placeholder_line uuid primary key, google_line uuid unique not null) on commit drop;
 
 with ph as (
-  select pl.id, pl.sku, pl.customer_po_number as po, pl.quantity_ordered as q,
+  select pl.id, pl.sku, nullif(ltrim(btrim(pl.customer_po_number), '0'), '') as po_key, pl.quantity_ordered as q,
          substr(p.production_order_number, 13)::bigint as sales_order_no,
          (select min(substring(r.source_id from '^coldlion:so:[0-9]+:line:([0-9]+):')::integer)
             from plm.production_order_line_source_ref r
@@ -1036,7 +1037,7 @@ with ph as (
                     where r.production_order_line_id = pl.id and r.source_system <> 'coldlion')
 ),
 g as (
-  select gl.id, gl.sku, gl.customer_po_number as po, gl.quantity_ordered as q,
+  select gl.id, gl.sku, nullif(ltrim(btrim(gl.customer_po_number), '0'), '') as po_key, gl.quantity_ordered as q,
          gp.production_order_number as import_po
   from plm.production_order_line gl
   join plm.production_order gp on gp.id = gl.production_order_id
@@ -1050,7 +1051,9 @@ pairs as (
   select ph.id as placeholder_line, g.id as google_line, ph.q as pq, g.q as gq, ph.sales_order_no, ph.sales_order_line_no, g.import_po,
          count(*) over (partition by ph.id) as google_matches,
          count(*) over (partition by g.id) as placeholder_matches
-  from ph join g on g.po = ph.po and g.sku = ph.sku
+  -- ColdLion pads some customer POs with leading zeros (0001220303) that the
+  -- Google sheet does not (1220303): the PO compares trimmed and unpadded.
+  from ph join g on g.po_key = ph.po_key and g.sku = ph.sku
 )
 insert into pg_temp.coldlion_auto_merge (placeholder_line, google_line)
 select p.placeholder_line, p.google_line

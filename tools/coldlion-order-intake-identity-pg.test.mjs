@@ -246,12 +246,12 @@ test("automatic merge: unambiguous placeholder lines move onto the matching Goog
   psql(stage(run(), COMPONENTS));
   write();
   const G = "bbbbbbbb-0000-0000-0000-000000000001";
-  const gline = (id, sku, qty) => `('${id}', '${G}', '${sku}', ${qty}, '62004433')`;
+  const gline = (id, sku, qty, po = "62004433") => `('${id}', '${G}', '${sku}', ${qty}, '${po}')`;
   psql(`insert into plm.production_order (id, production_order_number) values ('${G}', 'D3691');
 insert into plm.production_order_line (id, production_order_id, sku, quantity_ordered, customer_po_number) values
   ${gline("bbbbbbbb-0000-0000-0000-000000000011", "AA0631P1P01", "null")},
   ${gline("bbbbbbbb-0000-0000-0000-000000000012", "AA0631P1P02", 24)},
-  ${gline("bbbbbbbb-0000-0000-0000-000000000013", "AA063PFPF01", 500)};
+  ${gline("bbbbbbbb-0000-0000-0000-000000000013", "AA063PFPF01", 500, " 0062004433")};
 insert into plm.production_order_line_source_ref (production_order_line_id, source_system, source_id, is_primary, metadata)
 select id, 'google_order_list', 'order:row:1:' || sku, true, '{}' from plm.production_order_line where production_order_id = '${G}';
 insert into dam.production_order_snapshot (production_order_line_id)
@@ -268,8 +268,9 @@ insert into coldlion.order_history_line (sales_order_no, sales_order_line_no, pr
   assert.equal(merge(false), "3");
   assert.equal(psql(`select count(*) from coldlion.sync_run where request_params ->> 'step' = 'auto-merge'`), "0");
   // Owner ruling 2026-10-28 ("One row, both values"): a one-to-one pair merges
-  // even when the quantity or the Import PO disagrees; only a SKU with no
-  // Google line stays a placeholder.
+  // even when the quantity or the Import PO disagrees, and a PO padded with
+  // leading zeros still matches; only a SKU with no Google line stays a
+  // placeholder.
   assert.equal(merge(), "3");
 
   assert.deepEqual(linesBySku(), [

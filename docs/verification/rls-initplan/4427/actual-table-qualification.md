@@ -141,3 +141,9 @@ The following exact runtime bytes are independently equal to executed410b. Later
 - `supabase/tests/rls_public_admin_initplan_contracts.sql` SHA256 `166a1d7cae922b27c229c31162b612ccb1957a27440806681a15677151354667`.
 
 - `.github/workflows/database-contract-tests.yml` SHA256 `786ec36b3ebcae7ed6a9bc7b04ca35550bbe0287c7c7027383b535fc05919295`.
+
+## Prospective41 latest-main integration
+
+Exact fresh main `4b70be6a458d308a24772b3bd48c74f4d3cfc6c6` was integrated by an ordinary merge, preserving its foreign reviewed ColdLion workflows/tools, three migrations/contracts, handoff and evidence. No parallel fetch, cherry-pick, rewrite, runtime edit or database action occurred. The native run40775900646 remains bound to its actual immutable410b source; no rerun/cancellation or terminal result is inferred by this source task.
+
+After integration, independently re-read and SHA256-compare all seven runtime/workflow/fixture files listed above to actual executed410b bytes: every digest is unchanged. This carries only the unchanged qualification-code/fixture/workflow byte identity; it does not rewrite that run's executed source or assert a newer-head execution. The host BusyBox format-only correction and all functional controls remain unchanged. Current completion evidence is regenerated against exact main4b70 and records the post-integration full ordinary offline checks. Publication, guarded merge and complete native374 acceptance remain root-owned and require their current review/CI/evidence gates; no new native run or production apply is authorized.

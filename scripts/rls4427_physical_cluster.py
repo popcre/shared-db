@@ -76,6 +76,7 @@ def capture_external(stderr,tool,code,phase):
 def failure_receipt(error,phase,events):
     reason=str(error) if isinstance(error,RuntimeError) and str(error).startswith('4427 ') else '4427 external or unclassified failure'
     result=dict(qualification_passed=False,error_type=type(error).__name__,phase=phase,invariant=reason,events=list(events))
+    if getattr(error,'source_diagnostic',None):result['source_diagnostic']=error.source_diagnostic
     if getattr(error,'archive_diagnostic',None):result['archive_validation']=error.archive_diagnostic
     if getattr(error,'physical_external',None):result['physical_external']=dict(error.physical_external)
     if isinstance(error,subprocess.CalledProcessError):
@@ -252,6 +253,80 @@ select nonce,pgsodium.crypto_secretbox(convert_to('4427-physical-root-canary','U
 CANARY_CHECK_SQL="select count(*)=1 and bool_and(pgsodium.crypto_secretbox_open(cipher,nonce,4427::bigint,convert_to('4427snap','UTF8'))=convert_to('4427-physical-root-canary','UTF8')) from rls4427_physical.canary;"
 
 
+def source_fact_diagnostic(f):
+    """Fixed predicate names and closed metadata only; never retain the raw facts."""
+    checks=[
+        ('database',lambda:f.get('database')=='postgres'),
+        ('current_user',lambda:f.get('current_user')=='supabase_admin'),
+        ('session_user',lambda:f.get('session_user')=='supabase_admin'),
+        ('superuser',lambda:f.get('superuser') is True),
+        ('recovery',lambda:f.get('recovery') is False),
+        ('wal_level',lambda:f.get('wal_level') in ('replica','logical')),
+        ('max_wal_senders',lambda:f.get('max_wal_senders',0)>=1),
+    ]
+    checks += [(key,lambda key=key:f.get(key)==0) for key in ('external_tablespaces','subscriptions','slots','prepared_transactions','hba_errors','other_backends')]
+    checks += [
+        ('replication_hba_type',lambda:isinstance(f.get('replication_hba'),int)),
+        ('cron_version',lambda:f.get('cron_version') in ('1.6','1.6.4')),
+        ('cron_database',lambda:f.get('cron_database')=='postgres'),
+        ('sodium_version',lambda:f.get('sodium_version')=='3.1.8'),
+    ]
+    checks += [(key,lambda key=key:f.get(key) is True) for key in ('sodium_nonce_api','sodium_keyid_api','sodium_open_keyid_api')]
+    checks += [(key,lambda key=key,expected=expected:f.get(key)==expected) for key,expected in (
+        ('config_file','/etc/postgresql/postgresql.conf'),('hba_file','/etc/postgresql/pg_hba.conf'),
+        ('ident_file','/etc/postgresql/pg_ident.conf'),('data_directory',DATA))]
+    checks += [
+        ('data_directory_mode',lambda:f.get('data_directory_mode') in ('0700','0750')),
+        ('archive_mode',lambda:f.get('archive_mode')=='off'),
+        ('archive_command',lambda:f.get('archive_command') in ('','(disabled)')),
+        ('restore_command',lambda:not f.get('restore_command')),
+        ('primary_conninfo',lambda:not f.get('primary_conninfo')),
+        ('ssl',lambda:f.get('ssl')=='off'),
+        ('log_directory',lambda:f.get('log_directory') in ('log','/var/log/postgresql')),
+        ('socket',lambda:f.get('socket')=='/var/run/postgresql'),
+    ]
+    checks += [('preload_'+library,lambda library=library:library in [item.strip() for item in f.get('preload','').split(',')]) for library in ('pg_cron','pgsodium')]
+    failed=[]
+    for name,check in checks:
+        try:passed=bool(check())
+        except (TypeError,AttributeError,ValueError):passed=False
+        if not passed:failed.append(name)
+    known_paths={'/tmp':'tmp','/var/run/postgresql':'var_run_postgresql','/run/postgresql':'run_postgresql',
+        '/etc/postgresql':'etc_postgresql','/etc/postgresql/postgresql.conf':'etc_postgresql_conf',
+        '/etc/postgresql/pg_hba.conf':'etc_postgresql_hba','/etc/postgresql/pg_ident.conf':'etc_postgresql_ident',
+        '/var/lib/postgresql/data':'pgdata','log':'relative_log','/var/log/postgresql':'var_log_postgresql',
+        '/var/lib/postgresql/data/log':'pgdata_log'}
+    path_fields=('config_file','hba_file','ident_file','data_directory','log_directory','socket')
+    enums={key:('postgres','supabase_admin') for key in ('database','current_user','session_user','cron_database')}
+    enums.update(wal_level=('minimal','replica','logical'),cron_version=('1.6','1.6.4'),sodium_version=('3.1.8',),
+        data_directory_mode=('0700','0750'),archive_mode=('off','on','always'),ssl=('off','on'))
+    fields=list(dict.fromkeys([name.removesuffix('_type') for name,_ in checks if not name.startswith('preload_')]+['replication','preload']))
+    scalar_fields=('superuser','recovery','replication','max_wal_senders','replication_hba','external_tablespaces','subscriptions','slots','prepared_transactions','hba_errors','other_backends','sodium_nonce_api','sodium_keyid_api','sodium_open_keyid_api')
+    actual={}
+    for key in fields:
+        value=f.get(key)
+        kind={type(None):'null',bool:'boolean',int:'integer',float:'number',str:'string',list:'array',dict:'object'}.get(type(value),'other')
+        info=dict(present=key in f,type=kind)
+        if key in scalar_fields and type(value) in (bool,int):info['value']=value
+        elif isinstance(value,str):
+            info.update(empty=value=='',length=len(value),sha256=hashlib.sha256(value.encode('utf-8',errors='surrogatepass')).hexdigest())
+            if key in path_fields:
+                parts=value.split(',') if key=='socket' else [value]
+                info.update(path_count=len(parts),path_classes=[known_paths.get(part.strip(),'OTHER') for part in parts[:8]],paths_truncated=len(parts)>8,has_outer_whitespace=any(part!=part.strip() for part in parts))
+            elif key=='preload':
+                parts=[part.strip() for part in value.split(',') if part.strip()]
+                known=('pg_cron','pgsodium','pg_stat_statements');unknown=[part for part in parts if part not in known]
+                info.update(known_library_presence={library:library in parts for library in known},unrecognized_count=len(unknown),
+                    unrecognized_sha256=hashlib.sha256(json.dumps(unknown,ensure_ascii=True).encode()).hexdigest())
+            elif key in ('archive_command','restore_command','primary_conninfo'):
+                info['representation']='empty' if value=='' else 'disabled_display' if key=='archive_command' and value=='(disabled)' else 'OTHER'
+            elif value in enums.get(key,()):info['value']=value
+        elif value is not None:
+            info['sha256']=hashlib.sha256(json.dumps(value,sort_keys=True,ensure_ascii=True).encode()).hexdigest()
+        actual[key]=info
+    return dict(schema_version=1,failed_predicates=failed,actual=actual)
+
+
 def validate_source_facts(f):
     if (f.get('database')!='postgres' or f.get('current_user')!='supabase_admin' or f.get('session_user')!='supabase_admin' or f.get('superuser') is not True
         or f.get('recovery') is not False or f.get('wal_level') not in ('replica','logical') or f.get('max_wal_senders',0)<1
@@ -263,7 +338,9 @@ def validate_source_facts(f):
         or f.get('archive_mode')!='off' or f.get('archive_command') not in ('','(disabled)') or any(f.get(k) for k in ('restore_command','primary_conninfo'))
         or f.get('ssl')!='off' or f.get('log_directory') not in ('log','/var/log/postgresql') or f.get('socket')!='/var/run/postgresql'
         or any(x not in [item.strip() for item in f.get('preload','').split(',')] for x in ('pg_cron','pgsodium'))):
-        raise RuntimeError('4427 physical source startup/replication/dependency facts refused')
+        error=RuntimeError('4427 physical source startup/replication/dependency facts refused')
+        error.source_diagnostic=source_fact_diagnostic(f)
+        raise error
     return f
 
 

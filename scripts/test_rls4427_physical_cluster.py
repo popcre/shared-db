@@ -45,6 +45,69 @@ class PhysicalControls(unittest.TestCase):
         self.assertIn("nonempty unlogged relation",m.SOURCE_FACTS_SQL)
         self.assertNotIn('reltuples',m.SOURCE_FACTS_SQL)
 
+    def test_source_fact_query_and_original_guard_condition_remain_byte_pinned(self):
+        import ast
+        tree=ast.parse(P.read_text());validator=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='validate_source_facts')
+        self.assertEqual(m.hashlib.sha256(ast.dump(validator.body[0].test,include_attributes=False).encode()).hexdigest(),'c66715e576b661bf5237f224c96f0dc7002227c3d7a417fcd95bc667f997f0f3')
+        self.assertEqual(m.hashlib.sha256(m.SOURCE_FACTS_SQL.encode()).hexdigest(),'fc9c6386304ae2706ba24fb6080de66bf8fd880ded367195017d2efc454fce11')
+        facts=self.facts();self.assertIs(m.validate_source_facts(facts),facts)
+        self.assertEqual(m.source_fact_diagnostic(facts)['failed_predicates'],[])
+
+    def test_every_original_refusal_predicate_has_distinct_sanitized_fact_diagnostics(self):
+        changes=[('database','UNIT_SECRET','database'),('current_user','postgres','current_user'),('session_user','postgres','session_user'),
+            ('superuser',False,'superuser'),('recovery',True,'recovery'),('wal_level','minimal','wal_level'),('max_wal_senders',0,'max_wal_senders')]
+        changes += [(key,1,key) for key in ('external_tablespaces','subscriptions','slots','prepared_transactions','hba_errors','other_backends')]
+        changes += [('replication_hba','UNIT_SECRET','replication_hba_type'),('cron_version','UNIT_SECRET','cron_version'),('cron_database','UNIT_SECRET','cron_database'),('sodium_version','UNIT_SECRET','sodium_version')]
+        changes += [(key,False,key) for key in ('sodium_nonce_api','sodium_keyid_api','sodium_open_keyid_api')]
+        changes += [(key,'/private/UNIT_SECRET',key) for key in ('config_file','hba_file','ident_file','data_directory')]
+        changes += [('data_directory_mode','0701','data_directory_mode'),('archive_mode','on','archive_mode'),('archive_command','UNIT_SECRET','archive_command'),
+            ('restore_command','UNIT_SECRET','restore_command'),('primary_conninfo','UNIT_SECRET','primary_conninfo'),('ssl','on','ssl'),
+            ('log_directory','/tmp','log_directory'),('socket','/run/postgresql','socket'),('preload','pg_cron','preload_pgsodium'),('preload','pgsodium','preload_pg_cron')]
+        with patch.object(m.subprocess,'run') as subprocess_run:
+            for key,value,predicate in changes:
+                with self.subTest(predicate=predicate),self.assertRaisesRegex(RuntimeError,'facts refused') as caught:m.validate_source_facts({**self.facts(),key:value})
+                receipt=m.failure_receipt(caught.exception,'source-qualification',[])
+                self.assertEqual(receipt['source_diagnostic']['failed_predicates'],[predicate])
+                self.assertNotIn('UNIT_SECRET',json.dumps(receipt))
+            subprocess_run.assert_not_called()
+        secret='UNIT_SOURCE_DIAGNOSTIC_SECRET'
+        facts={**self.facts(),**{key:secret for key in ('archive_command','restore_command','primary_conninfo','database','cron_version','config_file','socket')},
+            'preload':'pg_cron,pgsodium,'+secret,secret:secret}
+        with self.assertRaises(RuntimeError) as caught:m.validate_source_facts(facts)
+        receipt=m.failure_receipt(caught.exception,'source-qualification',[]);packet=json.dumps(receipt);actual=receipt['source_diagnostic']['actual']
+        self.assertNotIn(secret,packet);self.assertNotIn('raw',actual);self.assertNotIn(secret,actual)
+        from contextlib import redirect_stderr
+        public=io.StringIO()
+        with redirect_stderr(public):m.emit([],receipt)
+        self.assertNotIn(secret,public.getvalue());self.assertNotIn(secret,json.dumps(caught.exception.__dict__))
+        self.assertEqual(actual['preload']['unrecognized_count'],1)
+        self.assertTrue(actual['preload']['known_library_presence']['pg_cron']);self.assertTrue(actual['preload']['known_library_presence']['pgsodium'])
+        for key in ('archive_command','restore_command','primary_conninfo','database','cron_version','config_file','socket'):
+            self.assertEqual(actual[key]['sha256'],m.hashlib.sha256(secret.encode()).hexdigest());self.assertNotIn('value',actual[key])
+        for key in ('archive_command','restore_command','primary_conninfo'):
+            diagnostic=m.source_fact_diagnostic({**self.facts(),key:123456})
+            self.assertNotIn('value',diagnostic['actual'][key])
+        self.assertEqual(m.source_fact_diagnostic({**self.facts(),'socket':'/var/run/postgresql, /tmp'})['actual']['socket']['path_classes'],['var_run_postgresql','tmp'])
+
+    def test_actual_physical_open_preserves_queried_refusal_without_any_resource_operation(self):
+        facts={**self.facts(),'socket':'/tmp','log_directory':'/tmp'};queries=[]
+        class Source:
+            prefix='rls4427_diagnostic_unit';immutable_config_sha=m.IMMUTABLE_CONFIG_SHA
+            def qualify_physical_source(self):pass
+            def custody(self):return ('a'*64,'b'*64)
+            def container_exec(self,args):
+                queries.append(args);return json.dumps(facts).encode()
+        p=m.PhysicalCluster(Source())
+        with patch.object(m.subprocess,'run') as subprocess_run,self.assertRaisesRegex(RuntimeError,'facts refused') as caught:p.open()
+        subprocess_run.assert_not_called();self.assertIsNone(p.cid);self.assertIsNone(p.root)
+        self.assertEqual(len(queries),1);self.assertEqual(queries[0][-1],m.SOURCE_FACTS_SQL)
+        receipt=m.failure_receipt(caught.exception,'source-qualification',p.events)
+        self.assertEqual(receipt['source_diagnostic']['failed_predicates'],['log_directory','socket'])
+        self.assertEqual(receipt['source_diagnostic']['actual']['socket']['path_classes'],['tmp'])
+        self.assertEqual(receipt['source_diagnostic']['actual']['log_directory']['path_classes'],['tmp'])
+        self.assertEqual(receipt['source_diagnostic']['actual']['max_wal_senders']['value'],10)
+        self.assertEqual(receipt['source_diagnostic']['actual']['database']['value'],'postgres')
+
     def test_actual_cached_sodium_sql_api_is_required_before_any_backup(self):
         facts=self.facts();self.assertEqual(m.validate_source_facts(facts)['sodium_version'],'3.1.8')
         for key,value in [('sodium_version',None),('sodium_version','3.1.7'),('sodium_nonce_api',False),('sodium_keyid_api',False),('sodium_open_keyid_api',False)]:

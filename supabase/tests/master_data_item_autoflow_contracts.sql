@@ -45,7 +45,8 @@ begin
   end if;
 
   -- Recover the shipped cutoff from the sync function body so fixtures straddle it.
-  select (regexp_match(prosrc, 'p_cutoff timestamptz default ''([^'']+)''', 'i'))[1]::timestamptz
+  -- Parameter defaults live in proargdefaults/prosignature, not in prosrc.
+  select (regexp_match(pg_get_function_arguments(p.oid), 'p_cutoff[^,]*DEFAULT ''([^'']+)''', 'i'))[1]::timestamptz
     into v_cutoff from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'sync_new_items_into_style_tracker';
   if v_cutoff is null then

@@ -24,23 +24,24 @@ IMAGE = 'sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
 NAME = 'rls4427-restore-regression-01a1834a'
 OWNER = '01a1834a-813e-7b12-b17a-3e8c3aaedfb8'
 LABELS = {'shared-db.regression':'4427-fresh-restore','shared-db.owner':OWNER}
-DATABASES = ('rls4427_source','rls4427_clean_negative','rls4427_restore','rls4427_nonempty','rls4427_truncated')
+DATABASES = ('rls4427_source','rls4427_clean_negative','rls4427_restore','rls4427_nonempty','rls4427_truncated','rls4427_permission_negative')
 # All OID-independent fixture object metadata, including owners, ACLs and defaults.
 METADATA = """select json_build_object(
-'schemas',(select json_agg(json_build_array(nspname,pg_get_userbyid(nspowner),nspacl::text) order by nspname) from pg_namespace where nspname in ('public','storage')),
-'relations',(select json_agg(json_build_array(n.nspname,c.relname,c.relkind,pg_get_userbyid(c.relowner),c.relacl::text,c.relrowsecurity,c.relforcerowsecurity) order by n.nspname,c.relname) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','storage')),
-'columns',(select json_agg(json_build_array(n.nspname,c.relname,a.attname,format_type(a.atttypid,a.atttypmod),a.attnotnull,a.attidentity,a.attgenerated,a.attacl::text,pg_get_expr(d.adbin,d.adrelid)) order by n.nspname,c.relname,a.attnum) from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace left join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum where n.nspname in ('public','storage') and a.attnum>0 and not a.attisdropped),
-'policies',(select json_agg(json_build_array(schemaname,tablename,policyname,permissive,roles,cmd,qual,with_check) order by schemaname,tablename,policyname) from pg_policies where schemaname in ('public','storage')),
+'schemas',(select json_agg(json_build_array(nspname,pg_get_userbyid(nspowner),nspacl::text) order by nspname) from pg_namespace where nspname in ('public','storage','auth')),
+'relations',(select json_agg(json_build_array(n.nspname,c.relname,c.relkind,pg_get_userbyid(c.relowner),c.relacl::text,c.relrowsecurity,c.relforcerowsecurity) order by n.nspname,c.relname) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','storage','auth')),
+'columns',(select json_agg(json_build_array(n.nspname,c.relname,a.attname,format_type(a.atttypid,a.atttypmod),a.attnotnull,a.attidentity,a.attgenerated,a.attacl::text,pg_get_expr(d.adbin,d.adrelid)) order by n.nspname,c.relname,a.attnum) from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace left join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum where n.nspname in ('public','storage','auth') and a.attnum>0 and not a.attisdropped),
+'policies',(select json_agg(json_build_array(schemaname,tablename,policyname,permissive,roles,cmd,qual,with_check) order by schemaname,tablename,policyname) from pg_policies where schemaname in ('public','storage','auth')),
 'defaults',(select json_agg(json_build_array(pg_get_userbyid(a.defaclrole),n.nspname,a.defaclobjtype,a.defaclacl::text) order by n.nspname,a.defaclobjtype) from pg_default_acl a join pg_namespace n on n.oid=a.defaclnamespace),
-'constraints',(select json_agg(json_build_array(n.nspname,c.relname,k.conname,pg_get_constraintdef(k.oid)) order by n.nspname,c.relname,k.conname) from pg_constraint k join pg_class c on c.oid=k.conrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','storage')),
-'indexes',(select json_agg(json_build_array(schemaname,indexname,indexdef) order by schemaname,indexname) from pg_indexes where schemaname in ('public','storage')),
-'functions',(select json_agg(json_build_array(n.nspname,p.proname,pg_get_userbyid(p.proowner),p.proacl::text,pg_get_functiondef(p.oid)) order by n.nspname,p.proname) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','storage')),
-'triggers',(select json_agg(pg_get_triggerdef(t.oid) order by t.tgname) from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','storage') and not t.tgisinternal),
-'sequences',(select json_agg(json_build_array(s.schemaname,s.sequencename,s.sequenceowner,s.data_type,s.start_value,s.min_value,s.max_value,s.increment_by,s.cycle,s.cache_size,s.last_value) order by s.schemaname,s.sequencename) from pg_sequences s where s.schemaname in ('public','storage')),
-'sequence_ownership',(select json_agg(json_build_array(n.nspname,q.relname,t.relname,a.attname,d.deptype) order by n.nspname,q.relname) from pg_class q join pg_namespace n on n.oid=q.relnamespace join pg_depend d on d.classid='pg_class'::regclass and d.objid=q.oid and d.refclassid='pg_class'::regclass and d.deptype in ('a','i') join pg_class t on t.oid=d.refobjid join pg_attribute a on a.attrelid=t.oid and a.attnum=d.refobjsubid where q.relkind='S' and n.nspname in ('public','storage')),
+'constraints',(select json_agg(json_build_array(n.nspname,c.relname,k.conname,pg_get_constraintdef(k.oid)) order by n.nspname,c.relname,k.conname) from pg_constraint k join pg_class c on c.oid=k.conrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','storage','auth')),
+'indexes',(select json_agg(json_build_array(schemaname,indexname,indexdef) order by schemaname,indexname) from pg_indexes where schemaname in ('public','storage','auth')),
+'functions',(select json_agg(json_build_array(n.nspname,p.proname,pg_get_userbyid(p.proowner),p.proacl::text,pg_get_functiondef(p.oid)) order by n.nspname,p.proname) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','storage','auth')),
+'triggers',(select json_agg(pg_get_triggerdef(t.oid) order by t.tgname) from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','storage','auth') and not t.tgisinternal),
+'sequences',(select json_agg(json_build_array(s.schemaname,s.sequencename,s.sequenceowner,s.data_type,s.start_value,s.min_value,s.max_value,s.increment_by,s.cycle,s.cache_size,s.last_value) order by s.schemaname,s.sequencename) from pg_sequences s where s.schemaname in ('public','storage','auth')),
+'sequence_ownership',(select json_agg(json_build_array(n.nspname,q.relname,t.relname,a.attname,d.deptype) order by n.nspname,q.relname) from pg_class q join pg_namespace n on n.oid=q.relnamespace join pg_depend d on d.classid='pg_class'::regclass and d.objid=q.oid and d.refclassid='pg_class'::regclass and d.deptype in ('a','i') join pg_class t on t.oid=d.refobjid join pg_attribute a on a.attrelid=t.oid and a.attnum=d.refobjsubid where q.relkind='S' and n.nspname in ('public','storage','auth')),
 'sequence_state',(select json_build_array(last_value,is_called) from public.restore_fixture_id_seq),
 'rows',(select json_agg(o order by id) from storage.objects o),
-'public_rows',(select json_agg(o order by id) from public.restore_fixture o))::text;"""
+'public_rows',(select json_agg(o order by id) from public.restore_fixture o),
+'auth_rows',(select json_agg(o order by id) from auth.restore_authority_fixture o))::text;"""
 
 
 def validate_exact_versions(versions, server_version):
@@ -65,10 +66,10 @@ def source_identity():
     return dict(source_sha=head,executed_source_sha256=hashes)
 
 
-def restore_args(database):
-    if database not in DATABASES[1:]:
+def restore_args(database, role='supabase_admin'):
+    if database not in DATABASES[1:] or role not in ('supabase_admin','rls4427_restore_operator') or (role=='rls4427_restore_operator' and database!=DATABASES[5]):
         raise RuntimeError('4427 regression refuses foreign restore database')
-    return ['pg_restore','-U','postgres','-d',database,'--exit-on-error']
+    return ['pg_restore','-U',role,'-d',database,'--exit-on-error']
 
 
 class Regression:
@@ -79,6 +80,7 @@ class Regression:
         self.started = time.monotonic()
         self.cleanup_mode = False
         self.version_bound = False
+        self.admin_qualified = False
         self.env = {'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'}
 
     def docker(self, *args, input_data=None, output=None, allowed_failure=False):
@@ -115,10 +117,10 @@ class Regression:
         return self.execute(['psql','-XqAt','-U','postgres','-d',db,'-v','ON_ERROR_STOP=1','-v','VERBOSITY=sqlstate'],
                             input_data=query.encode(),allowed_failure=allowed_failure)
 
-    def create(self, db):
-        if db not in DATABASES or db in self.owned or len(self.owned)>=2:
+    def create(self, db, owner='postgres'):
+        if db not in DATABASES or db in self.owned or len(self.owned)>=2 or owner not in ('postgres','rls4427_restore_operator') or (owner=='rls4427_restore_operator' and db!=DATABASES[5]):
             raise RuntimeError('4427 regression refuses nonowned creation')
-        self.sql('postgres',f'create database {db} template template0;')
+        self.sql('postgres',f'create database {db} template template0 owner {owner};')
         self.owned.append(db)
 
     def drop(self, db):
@@ -136,9 +138,42 @@ class Regression:
             raise RuntimeError('4427 regression fresh qualification requires owned target')
         return CORE.validate_fresh_seed(json.loads(self.sql(db,CORE.FRESH_SEED_QUERY).stdout),db)
 
+    def admin_restore(self, db, archive, allowed_failure=False):
+        if not self.admin_qualified or db not in self.owned or db==DATABASES[5]:
+            raise RuntimeError('4427 regression admin restore is not qualified')
+        return self.execute(restore_args(db),input_data=archive,allowed_failure=allowed_failure)
+
     def restore(self, db, archive):
+        if not self.admin_qualified:raise RuntimeError('4427 regression admin restore is not qualified')
         self.qualify(db)
-        return self.execute(restore_args(db),input_data=archive)
+        return self.admin_restore(db,archive)
+
+    def qualify_admin(self):
+        context=json.loads(self.sql('postgres',CORE.POSTGRES_CONTEXT_QUERY).stdout)
+        command=['psql','-XqAtw','-U','supabase_admin','-d','postgres','-v','ON_ERROR_STOP=1','-c',CORE.RESTORE_AUTHORITY_QUERY]
+        authority=CORE.validate_restore_authority(json.loads(self.execute(command).stdout),context)
+        self.admin_qualified=True
+        print(json.dumps(dict(phase='local-existing-fixture-admin-qualified',**authority),sort_keys=True),file=sys.stderr)
+        return authority
+
+    def permission_negative(self, db, archive):
+        if db!=DATABASES[5] or db not in self.owned or not self.version_bound or not self.admin_qualified:
+            raise RuntimeError('4427 permission negative requires exact owned qualified target')
+        facts=json.loads(self.sql(db,CORE.FRESH_SEED_QUERY).stdout)
+        expected=dict(database=db,owner='rls4427_restore_operator',extra_schemas=0,relations=0,routines=0,types=0,policies=0,default_acls=0,
+            extensions=['plpgsql'],public_owner='pg_database_owner',public_acl=['PUBLIC:USAGE:false','pg_database_owner:CREATE:false','pg_database_owner:USAGE:false'])
+        if facts!=expected:raise RuntimeError('4427 permission negative fresh limited-owned target differs')
+        operator=json.loads(self.sql('postgres',"select json_build_object('rolsuper',rolsuper,'rolcanlogin',rolcanlogin,'rolbypassrls',rolbypassrls,'rolcreatedb',rolcreatedb,'admin_member',pg_has_role('rls4427_restore_operator','supabase_admin','MEMBER'))::text from pg_roles where rolname='rls4427_restore_operator';").stdout)
+        if operator!=dict(rolsuper=False,rolcanlogin=True,rolbypassrls=False,rolcreatedb=True,admin_member=False):
+            raise RuntimeError('4427 permission negative operator capability differs')
+        command=restore_args(db,'rls4427_restore_operator')
+        failure=self.execute(command,input_data=archive,allowed_failure=True)
+        receipt=dict(phase='limited-owner-restore-negative',command=command,exit_code=failure.returncode,
+            stderr=failure.stderr[:4096].decode(errors='replace'),stderr_truncated=len(failure.stderr)>4096)
+        self.events.append(receipt);print(json.dumps(receipt,sort_keys=True),file=sys.stderr)
+        if not failure.returncode or b'must be able to SET ROLE "supabase_admin"' not in failure.stderr or b'ALTER SCHEMA auth OWNER TO supabase_admin;' not in failure.stderr:
+            raise RuntimeError('4427 permission negative did not reproduce exact owner authorization failure')
+        return receipt
 
     def clean_negative(self, db, archive):
         if db != DATABASES[1] or db not in self.owned or not self.version_bound:
@@ -211,6 +246,7 @@ class Regression:
                 with os.fdopen(os.open(archive_path,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600),'wb') as out:
                     self.execute(['pg_dump','-U','postgres','-d',DATABASES[0],'-Fc'],output=out)
                 archive=archive_path.read_bytes();source=json.loads(self.sql(DATABASES[0],METADATA).stdout)
+                admin_authority=self.qualify_admin()
                 self.create(DATABASES[1])
                 failure=self.clean_negative(DATABASES[1],archive)
                 negative=failure.stderr.decode()
@@ -219,6 +255,9 @@ class Regression:
                 old_control=dict(disposition='NOT_REPRODUCED_PG17_11',metadata_equal=True,exit_code=failure.returncode,stderr=negative)
                 print(json.dumps(dict(phase='old-clean-equivalence',**old_control),sort_keys=True),file=sys.stderr)
                 self.drop(DATABASES[1])
+                self.create(DATABASES[5],owner='rls4427_restore_operator')
+                permission_negative=self.permission_negative(DATABASES[5],archive)
+                self.drop(DATABASES[5])
                 self.create(DATABASES[2]);self.restore(DATABASES[2],archive)
                 restored=json.loads(self.sql(DATABASES[2],METADATA).stdout)
                 if source!=restored:raise RuntimeError('4427 regression full metadata/data/owner/ACL/policy equivalence differs')
@@ -238,10 +277,10 @@ class Regression:
                     else:raise RuntimeError('4427 regression accepted nonempty target')
                     self.drop(DATABASES[3])
                 self.create(DATABASES[4]);self.qualify(DATABASES[4])
-                truncated=self.execute(restore_args(DATABASES[4]),input_data=archive[:32],allowed_failure=True)
+                truncated=self.admin_restore(DATABASES[4],archive[:32],allowed_failure=True)
                 if not truncated.returncode:raise RuntimeError('4427 regression accepted truncated archive')
                 self.drop(DATABASES[4]);self.drop(DATABASES[0])
-                return dict(**source_facts,qualification='REAL_PG17_11_FRESH_RESTORE_ONLY',production_acceptance='NOT_EVALUATED',historical_native_17_6_failure='PRESERVED_NOT_REPRODUCED',native374_acceptance='NOT_EVALUATED',old_clean_control=old_control,version_facts=version_facts,versions=versions,
+                return dict(**source_facts,qualification='REAL_PG17_11_FRESH_RESTORE_ONLY',production_acceptance='NOT_EVALUATED',historical_native_17_6_failure='PRESERVED_NOT_REPRODUCED',native374_acceptance='NOT_EVALUATED',old_clean_control=old_control,permission_negative=permission_negative,qualified_admin=admin_authority,version_facts=version_facts,versions=versions,
                     archive_sha256=hashlib.sha256(archive).hexdigest(),metadata_sha256=hashlib.sha256(json.dumps(source,sort_keys=True).encode()).hexdigest(),
                     clean_negative_exit=failure.returncode,clean_negative_stderr=negative,nonempty_refusals=nonempty_refusals,truncated_exit=truncated.returncode,permissions=actual,events=self.events,elapsed_seconds=time.monotonic()-self.started)
             finally:

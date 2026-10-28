@@ -1,4 +1,12 @@
 -- Invented metadata/data only. Run ONLY in the independently reviewed owned PG17 fixture.
+-- These invented roles exist ONLY inside the reviewed no-network regression container.
+create role rls4427_restore_operator login nosuperuser nobypassrls createdb;
+create role supabase_admin login superuser;
+create schema auth authorization supabase_admin;
+set role supabase_admin;
+create table auth.restore_authority_fixture(id integer primary key, label text not null);
+insert into auth.restore_authority_fixture values(1,'invented-auth-owner');
+reset role;
 create role rls4427_owner nologin;
 create role rls4427_reader nologin;
 create role rls4427_writer nologin;

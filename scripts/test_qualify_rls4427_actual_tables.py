@@ -255,9 +255,11 @@ class Actual4427StaticTests(unittest.TestCase):
         with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
         c.docker_config='/private';c.container_id='a'*64
         connection=['-h','127.0.0.1','-p','5432','-U','postgres','-d']
-        seed=c.prefix+'_seed';restore=['pg_restore',*connection,seed,'--exit-on-error']
+        admin_connection=['-h','127.0.0.1','-p','5432','-U','supabase_admin','-d']
+        seed=c.prefix+'_seed';restore=['pg_restore',*admin_connection,seed,'--exit-on-error']
         read_commands=[['pg_restore','--version'],['pg_dump','--version'],
-            ['psql','-XqAtw',*connection,'postgres','-v','ON_ERROR_STOP=1','-c',m.POSTGRES_CONTEXT_QUERY]]
+            ['psql','-XqAtw',*connection,'postgres','-v','ON_ERROR_STOP=1','-c',m.POSTGRES_CONTEXT_QUERY],
+            ['psql','-XqAtw',*admin_connection,'postgres','-v','ON_ERROR_STOP=1','-c',m.RESTORE_AUTHORITY_QUERY]]
         completed=m.subprocess.CompletedProcess([],0,stdout=b'actual version probe result')
         with patch.object(c,'custody') as custody,patch.object(m.subprocess,'run',return_value=completed) as run:
             for command in read_commands:
@@ -270,6 +272,8 @@ class Actual4427StaticTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):c.container_exec(restore,input_file=data)
             c.fresh_restore_seed=seed
             with self.assertRaises(RuntimeError):c.container_exec(restore)
+            with self.assertRaises(RuntimeError):c.container_exec(restore,input_file=data)
+            c.restore_authority_qualified=True
             c.container_exec(restore,input_file=data)
             self.assertIn('-i',run.call_args.args[0]);self.assertIs(run.call_args.kwargs['stdin'],data)
             bad=[['pg_restore'],['pg_restore','--version','--clean'],['pg_restore','--version','--exit-on-error'],
@@ -315,14 +319,17 @@ class Actual4427StaticTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError,'Unix Docker endpoint refused'):c.snapshot(c.prefix+'_seed')
                 run.assert_not_called()
 
-    def snapshot_harness(self, major=17, dump_failure=False, restore_failure=False, wrong_instance=False, wrong_start=False):
+    def snapshot_harness(self, major=17, dump_failure=False, restore_failure=False, wrong_instance=False, wrong_start=False, wrong_authority=False):
         with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
         events=[];identity=('a'*64,'sha256:'+'b'*64,'public.ecr.aws/supabase/postgres:17.6.1.063')
         context=dict(system_identifier='12345',server_version_num=170006,postmaster_start='2026-10-27 10:00:00+00',database='postgres')
         def sql(db,query):return m.json.dumps(self.fresh_facts(db) if query==m.FRESH_SEED_QUERY else context)
         def execute(args,input_file=None,output_file=None):
             events.append(args)
-            if args[0]=='psql':return m.json.dumps({**context,'system_identifier':'999' if wrong_instance else '12345','postmaster_start':'different-postmaster' if wrong_start else context['postmaster_start']}).encode()
+            if args[0]=='psql':
+                if args[-1]==m.RESTORE_AUTHORITY_QUERY:
+                    return m.json.dumps({**context,'current_user':'postgres' if wrong_authority else 'supabase_admin','session_user':'supabase_admin','rolsuper':True,'rolcanlogin':True,'is_superuser':'on'}).encode()
+                return m.json.dumps({**context,'system_identifier':'999' if wrong_instance else '12345','postmaster_start':'different-postmaster' if wrong_start else context['postmaster_start']}).encode()
             if args[-1]=='--version':return f'{args[0]} (PostgreSQL) {major}.6\n'.encode()
             if args[0]=='pg_dump':
                 if dump_failure:raise m.subprocess.CalledProcessError(1,args,stderr=b'actual dump failure')
@@ -365,13 +372,29 @@ class Actual4427StaticTests(unittest.TestCase):
         self.assertEqual(result['archive_sha256'],m.hashlib.sha256(b'PGDMP synthetic archive').hexdigest())
 
     def test_wrong_instance_versions_and_dump_fail_before_seed_creation_restore_fails_loudly(self):
-        for options in [dict(major=16),dict(wrong_instance=True),dict(wrong_start=True),dict(dump_failure=True),dict(restore_failure=True)]:
+        for options in [dict(major=16),dict(wrong_instance=True),dict(wrong_start=True),dict(wrong_authority=True),dict(dump_failure=True),dict(restore_failure=True)]:
             with self.subTest(options=options):
                 c,events,creates,error=self.exercise_snapshot(**options)
                 self.assertIsInstance(error,Exception)
                 self.assertEqual(creates,1 if options.get('restore_failure') else 0)
                 self.assertEqual(sum(x[0]=='pg_dump' and x[-1]!='--version' for x in events),
                                  1 if options.get('dump_failure') or options.get('restore_failure') else 0)
+
+    def test_restore_authority_is_exact_existing_superuser_same_instance(self):
+        context=dict(system_identifier='12345',server_version_num=170006,postmaster_start='fixed',database='postgres')
+        facts={**context,'current_user':'supabase_admin','session_user':'supabase_admin','rolsuper':True,'rolcanlogin':True,'is_superuser':'on'}
+        self.assertEqual(m.validate_restore_authority(facts,context),facts)
+        for key,value in [('current_user','postgres'),('session_user','postgres'),('rolsuper',False),('rolcanlogin',False),('is_superuser','off'),('system_identifier','foreign'),('postmaster_start','other'),('server_version_num',170011),('database','foreign')]:
+            with self.subTest(key=key),self.assertRaisesRegex(RuntimeError,'authority or same-instance'):
+                m.validate_restore_authority({**facts,key:value},context)
+        c,events,creates,result=self.exercise_snapshot()
+        self.assertIsInstance(result,dict)
+        probe=next(i for i,x in enumerate(events) if x[-1]==m.RESTORE_AUTHORITY_QUERY)
+        dump=next(i for i,x in enumerate(events) if x[0]=='pg_dump' and x[-1]!='--version')
+        self.assertLess(probe,dump)
+        self.assertTrue(c.restore_authority_qualified)
+        restore=next(x for x in events if x[0]=='pg_restore' and x[-1]!='--version')
+        self.assertEqual(restore[restore.index('-U')+1],'supabase_admin')
 
     def test_failure_preserves_exit_with_bounded_binary_stderr_and_no_archive_output(self):
         with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()

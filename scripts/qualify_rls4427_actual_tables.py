@@ -22,6 +22,17 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / 'supabase/tests/rls_public_admin_initplan_contracts.sql'
 SOURCE_SQL_SHA256 = '166a1d7cae922b27c229c31162b612ccb1957a27440806681a15677151354667'
 POSTGRES_CONTEXT_QUERY = "select json_build_object('system_identifier',(select system_identifier::text from pg_control_system()),'server_version_num',current_setting('server_version_num')::int,'postmaster_start',pg_postmaster_start_time()::text,'database',current_database())::text;"
+RESTORE_AUTHORITY_QUERY = "select json_build_object('system_identifier',(select system_identifier::text from pg_control_system()),'server_version_num',current_setting('server_version_num')::int,'postmaster_start',pg_postmaster_start_time()::text,'database',current_database(),'current_user',current_user,'session_user',session_user,'rolsuper',r.rolsuper,'rolcanlogin',r.rolcanlogin,'is_superuser',current_setting('is_superuser'))::text from pg_roles r where r.rolname=current_user;"
+
+
+def validate_restore_authority(facts, context):
+    expected = {**context, 'current_user':'supabase_admin','session_user':'supabase_admin',
+                'rolsuper':True,'rolcanlogin':True,'is_superuser':'on'}
+    if facts != expected:
+        raise RuntimeError('4427 existing restore authority or same-instance identity differs')
+    return facts
+
+
 END = '-- Invoker-only probing, with each write reverted by a private subtransaction.'
 ADMIN = '00000000-7541-4000-8000-000000000001'
 MEMBER = '00000000-7541-4000-8000-000000000002'
@@ -308,12 +319,14 @@ class NativeCI:
         args = list(args)
         connection = ['-h', '127.0.0.1', '-p', '5432', '-U', 'postgres', '-d']
         seed = self.prefix + '_seed'
-        restore = ['pg_restore', *connection, seed, '--exit-on-error']
+        admin_connection = ['-h', '127.0.0.1', '-p', '5432', '-U', 'supabase_admin', '-d']
+        restore = ['pg_restore', *admin_connection, seed, '--exit-on-error']
         readonly = [['pg_dump', '--version'], ['pg_restore', '--version'],
-                    ['psql', '-XqAtw', *connection, 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', POSTGRES_CONTEXT_QUERY]]
+                    ['psql', '-XqAtw', *connection, 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', POSTGRES_CONTEXT_QUERY],
+                    ['psql', '-XqAtw', *admin_connection, 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', RESTORE_AUTHORITY_QUERY]]
         dump = ['pg_dump', *connection, 'postgres', '-Fc']
         if args == restore:
-            if seed not in self.owned or getattr(self, 'fresh_restore_seed', None) != seed or input_file is None or output_file is not None:
+            if not getattr(self, 'restore_authority_qualified', False) or seed not in self.owned or getattr(self, 'fresh_restore_seed', None) != seed or input_file is None or output_file is not None:
                 raise RuntimeError('4427 exact owned seed restore requires archive stdin only')
         elif args in readonly:
             if input_file is not None or output_file is not None:
@@ -365,6 +378,10 @@ class NativeCI:
             self.diagnostic('snapshot-preflight', versions=versions, server_major=major,
                             container_id=self.container_id, image_id=image_id, image_ref=image_ref,
                             postgres_context=host)
+            authority_args=['psql','-XqAtw','-h','127.0.0.1','-p','5432','-U','supabase_admin','-d','postgres','-v','ON_ERROR_STOP=1','-c',RESTORE_AUTHORITY_QUERY]
+            authority=validate_restore_authority(json.loads(self.container_exec(authority_args)),host)
+            self.restore_authority_qualified=True
+            self.diagnostic('existing-restore-authority-qualified', **authority)
             archive = Path(temp) / 'fixture.dump'
             with os.fdopen(os.open(archive, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as out:
                 self.container_exec(['pg_dump', '-h', '127.0.0.1', '-p', '5432', '-U', 'postgres', '-d', 'postgres', '-Fc'], output_file=out)
@@ -372,11 +389,11 @@ class NativeCI:
             self.create(template, 'template0')
             self.qualify_fresh_seed(template)
             with archive.open('rb') as data:
-                self.container_exec(['pg_restore', '-h', '127.0.0.1', '-p', '5432', '-U', 'postgres', '-d', template,
+                self.container_exec(['pg_restore', '-h', '127.0.0.1', '-p', '5432', '-U', 'supabase_admin', '-d', template,
                                      '--exit-on-error'], input_file=data)
             with archive.open('rb') as data:
                 archive_sha256 = hashlib.file_digest(data, 'sha256').hexdigest()
-            return dict(versions=versions, postgres_context=host, server_major=major, container_id=self.container_id,
+            return dict(versions=versions, postgres_context=host, restore_authority=authority, server_major=major, container_id=self.container_id,
                         image_id=image_id, archive_sha256=archive_sha256)
 
     def qualify_fresh_seed(self, database):

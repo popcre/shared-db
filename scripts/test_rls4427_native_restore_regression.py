@@ -25,13 +25,13 @@ class NativeRestoreControls(unittest.TestCase):
 
     def test_exact_full_fresh_restore_args_keep_fatal_errors_and_no_exclusions(self):
         for db in m.DATABASES[1:]:
-            self.assertEqual(m.restore_args(db),['pg_restore','-U','postgres','-d',db,'--exit-on-error'])
+            self.assertEqual(m.restore_args(db),['pg_restore','-U','supabase_admin','-d',db,'--exit-on-error'])
         for db in ('postgres','foreign',m.DATABASES[0]):
             with self.assertRaises(RuntimeError):m.restore_args(db)
         self.assertNotIn('--no-owner',P.read_text());self.assertNotIn('--no-acl',P.read_text())
 
     def test_nonempty_target_qualifier_refuses_before_restore(self):
-        c=m.Regression();db=m.DATABASES[3];c.owned=[db]
+        c=m.Regression();db=m.DATABASES[3];c.owned=[db];c.admin_qualified=True
         facts=dict(database=db,owner='postgres',extra_schemas=0,relations=1,routines=0,types=0,policies=0,default_acls=0,
             extensions=['plpgsql'],public_owner='pg_database_owner',public_acl=['PUBLIC:USAGE:false','pg_database_owner:CREATE:false','pg_database_owner:USAGE:false'])
         result=subprocess.CompletedProcess([],0,stdout=json.dumps(facts).encode())
@@ -106,6 +106,43 @@ class NativeRestoreControls(unittest.TestCase):
         self.assertIn("if source!=old_restored:raise RuntimeError",P.read_text())
         self.assertIn("NOT_REPRODUCED_PG17_11",P.read_text())
         self.assertIn("historical_native_17_6_failure='PRESERVED_NOT_REPRODUCED'",P.read_text())
+
+    def test_local_restore_roles_are_closed_and_admin_requires_qualification(self):
+        for role,db in [('postgres',m.DATABASES[2]),('foreign',m.DATABASES[2]),('rls4427_restore_operator',m.DATABASES[2])]:
+            with self.subTest(role=role),self.assertRaises(RuntimeError):m.restore_args(db,role)
+        self.assertEqual(m.restore_args(m.DATABASES[5],'rls4427_restore_operator')[2],'rls4427_restore_operator')
+        c=m.Regression()
+        with patch.object(c,'qualify') as qualify,patch.object(c,'execute') as execute:
+            with self.assertRaisesRegex(RuntimeError,'admin restore is not qualified'):c.restore(m.DATABASES[2],b'archive')
+            qualify.assert_not_called();execute.assert_not_called()
+            with self.assertRaisesRegex(RuntimeError,'admin restore is not qualified'):c.admin_restore(m.DATABASES[2],b'archive')
+            execute.assert_not_called()
+        fixture=(m.ROOT/'supabase/tests/fixtures/rls4427_native_restore_fixture.sql').read_text()
+        self.assertIn('create role rls4427_restore_operator login nosuperuser nobypassrls createdb',fixture)
+        self.assertIn('create role supabase_admin login superuser',fixture)
+        self.assertIn('create schema auth authorization supabase_admin',fixture)
+        self.assertIn("'auth_rows'",m.METADATA)
+
+    def test_local_permission_negative_keeps_exact_failure_and_preconditions(self):
+        import io
+        c=m.Regression();db=m.DATABASES[5];c.owned=[db];c.version_bound=True;c.admin_qualified=True
+        facts=dict(database=db,owner='rls4427_restore_operator',extra_schemas=0,relations=0,routines=0,types=0,policies=0,default_acls=0,
+            extensions=['plpgsql'],public_owner='pg_database_owner',public_acl=['PUBLIC:USAGE:false','pg_database_owner:CREATE:false','pg_database_owner:USAGE:false'])
+        operator=dict(rolsuper=False,rolcanlogin=True,rolbypassrls=False,rolcreatedb=True,admin_member=False)
+        def sql(db,query):return subprocess.CompletedProcess([],0,stdout=json.dumps(facts if query==m.CORE.FRESH_SEED_QUERY else operator).encode())
+        expected=b'ERROR: must be able to SET ROLE "supabase_admin"\nCommand was: ALTER SCHEMA auth OWNER TO supabase_admin;'
+        for code,stderr,accepted in [(1,expected,True),(0,b'',False),(1,b'other failure',False),(1,expected.replace(b'auth',b'foreign'),False)]:
+            result=subprocess.CompletedProcess([],code,stdout=b'',stderr=stderr);capture=io.StringIO()
+            with self.subTest(code=code,stderr=stderr),patch.object(c,'sql',side_effect=sql),patch.object(c,'execute',return_value=result) as execute,patch.object(m.sys,'stderr',capture):
+                if accepted:self.assertEqual(c.permission_negative(db,b'archive')['exit_code'],1)
+                else:
+                    with self.assertRaisesRegex(RuntimeError,'exact owner authorization failure'):c.permission_negative(db,b'archive')
+                self.assertEqual(execute.call_args.args[0],m.restore_args(db,'rls4427_restore_operator'))
+                self.assertEqual(json.loads(capture.getvalue())['stderr'],stderr.decode())
+        operator['admin_member']=True
+        with patch.object(c,'sql',side_effect=sql),patch.object(c,'execute') as execute:
+            with self.assertRaisesRegex(RuntimeError,'operator capability'):c.permission_negative(db,b'archive')
+            execute.assert_not_called()
 
     def test_real_external_failure_is_never_turned_into_success(self):
         c=m.Regression();c.config='/private'

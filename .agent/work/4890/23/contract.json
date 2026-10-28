@@ -1,0 +1,86 @@
+{
+  "schema_version": 2,
+  "work_issue": 4890,
+  "generation": 23,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Complete root-adopted physical calibration timing admission: five-to-forty second startup, hard stop by fifty, active-time cost model; scoped authority/capability unchanged",
+  "base_sha": "0246864376f5a3a1dc75c33b44cce8742a1810e0",
+  "dispatcher": "Codex parent01a18349-e4d0-7a42-8f52-2eacfdea5ba9 exact gen18 design in chat",
+  "worker": "Codex child01a1834a-813e-7b12-b17a-3e8c3aaedfb8",
+  "branch": "codex/4427-performance-qualification-child",
+  "worktree": "/tmp/shared-db-4427-performance-child",
+  "allowed_paths": [
+    "scripts/qualify_rls4427_actual_tables.py",
+    "scripts/test_qualify_rls4427_actual_tables.py",
+    "scripts/rls4427_physical_cluster.py",
+    "scripts/test_rls4427_physical_cluster.py",
+    "scripts/rls4427_native_restore_regression.py",
+    "scripts/test_rls4427_native_restore_regression.py",
+    "supabase/tests/fixtures/rls4427_native_restore_fixture.sql",
+    "supabase/tests/rls_public_admin_actual_table_performance.sql",
+    ".github/workflows/database-contract-tests.yml",
+    "docs/verification/rls-initplan/4427/actual-table-qualification.md",
+    "docs/verification/throughput-dispositions/scripts~qualify_rls4427_actual_tables.py.json",
+    ".agent/work/4890/17/contract.json",
+    ".agent/work/4890/17/completion.json",
+    "docs/verification/throughput-dispositions/scripts~rls4427_physical_cluster.py.json",
+    "docs/verification/throughput-dispositions/scripts~rls4427_native_restore_regression.py.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No paidreview/runtime/resource/push/PRupdate/CI/merge/production action in this authoring task",
+    "Never stop/pause native source or alter roles/jobs/worker capabilities; ONLY prospective exact ephemeral UnixHBA permission window below may change source configuration temporarily; no shared/production/foreign target or licensed rows",
+    "No logical exclusion/no-owner/no-acl/ignored errors; no scheduler disable or automatic trial retry",
+    "Proposed resources only after new exact review/rootadoption/gates: existing positivelyqualified native source for fullpg_basebackup/configcopy; one exactsameimage owned target networknone/noports/nobinds/2GiB1CPU256PID/4GiBPGDATA tmpfs, total<=35min; exactcachedSupabase local synthetic calibration first",
+    "Only own stopped target PGDATA reset, verified immutable backup+privateconfig/key; source/config/key bytes never logs/commits and rootkey never regenerated"
+  ],
+  "required_checks": [
+    "python3 -m unittest scripts.test_qualify_rls4427_actual_tables scripts.test_rls4427_physical_cluster scripts.test_rls4427_native_restore_regression",
+    "node --test scripts/rls-public-admin-initplan.test.mjs scripts/agent-work-contract-git-evidence.test.mjs scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+    "node --test scripts/check-workflow-yaml.test.mjs scripts/database-contract-authorization.test.mjs scripts/check-merge-queue-workflows.test.mjs",
+    "bash scripts/check-sql.sh",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "node scripts/check-workflow-yaml.mjs",
+    "git diff --check"
+  ],
+  "assumptions": [
+    "Parent authorizes SOURCE/OFFLINEIMPLEMENTATIONONLY; no review/runtime/push/CI/merge. Existing generation17/18/19 refs/evidence retained; only current20 pair at finalhead.",
+    "For positivelyqualified existing native ephemeral or newownedlocal source ONLY, existing localSQLtrusted/SU supabase_admin, and actualphysicalUnixroute absent with no explicitdeny/unsupportedHBA: save exact /etc/postgresql/pg_hba.conf bytes/owner/mode/hash private, capture ORIGINALfullconfig/keyarchive, append ONLY local replication supabase_admin trust. NoTCP/network/nonadmin/role/grant/RLSchange.",
+    "Signalreload AND actualfresh physical IDENTIFY_SYSTEM deniedbefore/successduring/deniedafter plus closedconnections/noslots prove loadedroute. Basebackup fixedUnixhost/var/run/postgresql existingadmin -Ft-D- -Xfetch -cfast matchingtools. Finally exactHBAbyte/owner/mode restoration+reload+freshdenial+normalSQL/SU/sourcehealth/catalogfingerprint beforetargetstart. Restoration failure fatal/retained, never masked.",
+    "All19resourcebounds/closedpaths inherited byexplicitrepetition: nativeexistingqualifiedsource+ONEsameimageownedtarget2GiB1CPU256PID4GiBPGDATA/config/socket/log/tmp tmpfs,networknone/noports/binds/pull,total<=35min; localTWOownedsamecachedimagecontainers samebounds,total<=10min and onceentrypointONLYnewemptysource. Actualprivateconfig/rootkey neverlogs/artifacts, targetoriginalHBAonly.",
+    "Sourceunloggedrows/slots/preparedxacts/unsupportedexternal/recoverydependencies fail. Normalcronv1.6.4 workers/jobs unchanged; fivefieldminute5\u201340 startup/stopby50 withclock/activity/job fingerprints; no schedulerdisable/retry. Recover/stagefixture/analyzeonceonlyownedtarget,sealcanonical,onepaircalibration+measuredcostadmission,all374samples/187pairs/17workloads/fullcapability/cleanup. Parent retains design/security/resource/merge decisions.",
+    "Generation21 prospectively adds only newphysicalhelper native hand-authored throughput-disposition path before writing it; all20 exactsource/HBA/resource/capability bounds retained. Explicitowner4890, necessity4427, manualonlyregression/evidence artifact; retire only with owned issueclosure/replacement carrying same capability, never automaticdefaultcost. Root adopted exactobservedoriginalHBA0755 fidelity, no permissionchange.",
+    "Generation22 precedes native hand-authored local-regression guard catalogue after finished delegated source imported; no lexical evasion or unrecorded guard. All20/21 action/authority limits unchanged; offline/source only.",
+    "Generation23 prospectively records root adopted wider startup5\u201340/hardstop50 before code change, because22 was already immutable when root said prospectively22. Initial preparation startsatsecond5 to leave fullboundedpreparationwindow; measuredtwo-start activeelapsed excludingONLYexplicitwindowwait drives conservative374costmodel, actualwait remains consumedbudget. No discarded/retriedsample, relaxeddeadline or increased35minbudget."
+  ],
+  "stop_conditions": [
+    "Any native scope/gate refusal",
+    "Unknown config/include/key/ownership/archive/dependency or source quiescence",
+    "Any cron/clock/worker/physical/capability/cleanup violation",
+    "Any need for source mutation, scheduler suppression, unowned resource or shared target"
+  ],
+  "evidence_parent": {
+    "work_issue": 4890,
+    "generation": 22,
+    "contract_sha256": "226ad92d4ad1786545f5787b99a1edb873008978a4077d2e32bc14ef3eb72422"
+  },
+  "file_writes": [
+    "scripts/qualify_rls4427_actual_tables.py",
+    "scripts/test_qualify_rls4427_actual_tables.py",
+    "scripts/rls4427_physical_cluster.py",
+    "scripts/test_rls4427_physical_cluster.py",
+    "scripts/rls4427_native_restore_regression.py",
+    "scripts/test_rls4427_native_restore_regression.py",
+    "supabase/tests/fixtures/rls4427_native_restore_fixture.sql",
+    "supabase/tests/rls_public_admin_actual_table_performance.sql",
+    ".github/workflows/database-contract-tests.yml",
+    "docs/verification/rls-initplan/4427/actual-table-qualification.md",
+    "docs/verification/throughput-dispositions/scripts~qualify_rls4427_actual_tables.py.json",
+    ".agent/work/4890/17/contract.json",
+    ".agent/work/4890/17/completion.json",
+    "docs/verification/throughput-dispositions/scripts~rls4427_physical_cluster.py.json",
+    "docs/verification/throughput-dispositions/scripts~rls4427_native_restore_regression.py.json"
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "work_issue": 4890,
+  "outcome": "ready-for-merge",
+  "pr": 4971,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4890/31",
+  "contract_sha256": "1331b4decf0df353240ee1d78cbb813565bb9d2434f91b4c4de9d8071f32d42c",
+  "head_sha": "5e7dbe54207dcec717aca379e9725a665b933b47",
+  "base_sha": "a995e67912e3e0a815f11c96cf3543bfcd4d4a96",
+  "files_changed": [
+    ".github/workflows/database-contract-tests.yml",
+    "docs/verification/rls-initplan/4427/actual-table-qualification.md",
+    "docs/verification/throughput-dispositions/scripts~qualify_rls4427_actual_tables.py.json",
+    "docs/verification/throughput-dispositions/scripts~rls4427_native_restore_regression.py.json",
+    "docs/verification/throughput-dispositions/scripts~rls4427_physical_cluster.py.json",
+    "scripts/qualify_rls4427_actual_tables.py",
+    "scripts/rls4427_native_restore_regression.py",
+    "scripts/rls4427_physical_cluster.py",
+    "scripts/test_qualify_rls4427_actual_tables.py",
+    "scripts/test_rls4427_native_restore_regression.py",
+    "scripts/test_rls4427_physical_cluster.py",
+    "supabase/tests/fixtures/rls4427_native_restore_fixture.sql",
+    "supabase/tests/rls_public_admin_actual_table_performance.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python3 -m unittest scripts.test_qualify_rls4427_actual_tables scripts.test_rls4427_physical_cluster scripts.test_rls4427_native_restore_regression",
+      "exit_code": 0,
+      "evidence": "71 actual offline Python tests PASS. New owned local fixture initialization order and exact cached pgsodium3.1.8/nonce/root-derivedBIGINT encrypt+open API presence tested; missing version/API refuses before backup/HBA. Whole success/failure orchestration, real input subprocess roundtrips, exact old SELECT, role/resource/clock/cleanup controls retained."
+    },
+    {
+      "command": "node --test scripts/rls-public-admin-initplan.test.mjs scripts/agent-work-contract-git-evidence.test.mjs scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "Part of actual147-test combined Node suite, all PASS; original44policy/source/hash/2124/198 retained and native evidence/guardcatalog checks."
+    },
+    {
+      "command": "node --test scripts/check-workflow-yaml.test.mjs scripts/database-contract-authorization.test.mjs scripts/check-merge-queue-workflows.test.mjs",
+      "exit_code": 0,
+      "evidence": "Part of actual147-test combined Node suite, all PASS; existing workflow/auth/queue contracts."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL guards PASS; no ownmigration change or live database use."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites385 sources110 derived_digestefd579ed2fda; per-source hand-written guard dispositions match actual current semantic sites."
+    },
+    {
+      "command": "node scripts/check-workflow-yaml.mjs",
+      "exit_code": 0,
+      "evidence": "51 workflow YAML files parse clean, no conflict markers."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Whitespace check PASS."
+    },
+    {
+      "command": "python3 -m py_compile scripts/qualify_rls4427_actual_tables.py scripts/rls4427_physical_cluster.py scripts/rls4427_native_restore_regression.py",
+      "exit_code": 0,
+      "evidence": "All3 source-specific Python files compile."
+    }
+  ],
+  "assumptions_resolved": [
+    "Prospective31 published before localcachedpgsodium SQL initialization/preflight. Immutable30source/SPENTactualaction/privateproof retained; current31 pair only.",
+    "Approveda27local actual35.655s failed3F000 atrealCANARY_CREATE afterexactNixhash/sourcefacts/config/key/fullphysicalbackup+pg_verifybackup/HBAdeny-allow-EXACTrestore-denial-health/targetnormalrecovery/fullcatalog+cron PASSED. Targetcleanstop0.718s, sourcecleanstop/removal, bothfixednamesindependentlyabsent, nocleanupfailures. ProcessSHA49b16e88a43e4154efae505d4b1e68ec80e5f06b77248c55c01f56d2adcdbc70/stderr6388397510b33844917e1bbad3b3345b20f586b77802dfae9777c28f72c00400/privateerror930f4b334d6dd9a04ed3a2c23bd8c3678827bcd94ccee453bd61f80e7b9b95e9 preserved; no passingcanary/pair inferred.",
+    "Only NEWownedlocalfixture CREATEEXTENSIONIFNOTEXISTSpgsodium usingcached3.1.8control/schema afterexistingadminadmission beforefixture roles/data/backup. Actualextversion and nonce/BIGINTsecretbox/open procedure presence qualifiedbeforebackup, notbinarypreload assumption. No binaryinstall/network/rotation/newtargetkey/fakecanary/filter/existingnative/shared/productionextensionchange.",
+    "218actualoffline testsPASS(71Python147Node),51YAML/staticSQL/truth385sites110sources/compile/whitespace PASS. No resource/review/push/PRupdate/retry/native/shared/production action. Rootfresh exactsource+ONEactionreview/adoption/nativegates required."
+  ],
+  "stop_conditions_hit": []
+}

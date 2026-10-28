@@ -17,6 +17,7 @@ import {
   buildItemDetailDeltaSql,
   fetchItemDetails,
   newItemsFromPayload,
+  validDetailRow,
 } from "./coldlion-landing/lib/item-detail-delta.mjs";
 
 // The /items sweep is offset-paged, so a row that moves between pages mid-sweep is
@@ -129,16 +130,17 @@ export async function collectItems(apiKey, fetchImpl = fetch) {
   return fetchPaged(url, apiKey, fetchImpl);
 }
 
-// psql box output between the --- separator and the "(N rows)" footer.
-export function parseExistingItemNumbers(stdout) {
+// psql box output between the --- separator and the "(N rows)" footer, as
+// (company, division, item_number) triples separated by |.
+export function parseExistingItemIdentities(stdout) {
   const lines = String(stdout ?? "").split("\n");
   const start = lines.findIndex((line) => line.match(/^-[-+]+$/));
   if (start === -1) return [];
   const rows = [];
   for (const line of lines.slice(start + 1)) {
     if (/^\(\d+ rows?\)$/.test(line.trim())) break;
-    const value = line.trim();
-    if (value) rows.push(value);
+    const cells = line.split("|").map((cell) => cell.trim());
+    if (cells.length === 3 && cells.some((cell) => cell)) rows.push(cells);
   }
   return rows;
 }
@@ -149,7 +151,8 @@ export function parseExistingItemNumbers(stdout) {
 // Failures are per-item and non-fatal: the affected item keeps the nightly
 // backstop. A pathological "everything is new" feed lands nothing.
 export async function landNewItemDetails(apiKey, payloadItems, { runSqlImpl = runSql, fetchImpl = fetch } = {}) {
-  const existing = parseExistingItemNumbers(runSqlImpl("select btrim(item_number) from plm.item;", { linked: false }));
+  const existing = parseExistingItemIdentities(runSqlImpl(
+    "select raw ->> 'companyCode', raw ->> 'divisionCode', btrim(item_number) from plm.item;", { linked: false }));
   const newItems = newItemsFromPayload(payloadItems, existing);
   if (!newItems.length) return { newItems: 0, detailsLanded: 0, failures: [] };
   if (newItems.length > MAX_DELTA_ITEMS) {
@@ -158,18 +161,26 @@ export async function landNewItemDetails(apiKey, payloadItems, { runSqlImpl = ru
   const detailRows = [];
   const failures = [];
   for (const row of newItems) {
+    const request = { companyCode: row.companyCode, divisionCode: row.divisionCode, itemNo: row.itemNo };
     try {
-      detailRows.push(...await fetchItemDetails(apiKey, { companyCode: row.companyCode, divisionCode: row.divisionCode, itemNo: row.itemNo }, fetchImpl));
+      for (const detail of await fetchItemDetails(apiKey, request, fetchImpl)) {
+        const invalid = validDetailRow(detail, request);
+        if (invalid) failures.push({ itemNo: row.itemNo, message: `detail row rejected: ${invalid}` });
+        else detailRows.push(detail);
+      }
     } catch (error) {
       failures.push({ itemNo: row.itemNo, message: error?.message ?? String(error) });
     }
   }
+  const startedAt = new Date().toISOString();
   const run = {
     id: randomUUID(),
     companyCode: "EDGEHOME",
-    requestParams: { items: newItems.map((row) => row.itemNo) },
+    requestParams: { items: newItems.map((row) => ({ companyCode: row.companyCode, divisionCode: row.divisionCode, itemNo: row.itemNo })) },
     requestedBy: DELTA_REQUESTED_BY,
-    fetchedAt: new Date().toISOString(),
+    startedAt,
+    fetchedAt: startedAt,
+    notes: failures.length ? { perItemFailures: failures } : {},
   };
   runSqlImpl(buildItemDetailDeltaSql({ run, headerRows: newItems, detailRows }), { linked: false });
   return { newItems: newItems.length, detailsLanded: detailRows.length, failures };

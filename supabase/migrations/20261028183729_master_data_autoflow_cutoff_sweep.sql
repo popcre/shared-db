@@ -16,12 +16,20 @@
 --   2. One-time sweep: the function runs once with p_cutoff 2026-10-23T00:00Z
 --      to backfill the pre-cutoff window (see the comment at the call).
 -- The evidence gate itself is deliberately KEPT as the failure backstop: if a
--- per-item detail pull fails, the item still defers to the nightly masters run
+-- per-item detail pull fails, the item still defers to the next FULL masters
+-- projection (the gate clock now reads only masters runs, never the delta's)
 -- rather than being wrongly cleared or wrongly skipped.
 
 -- derived-from: 20261028151632
 
 begin;
+
+-- The new parameter list is a NEW signature: CREATE OR REPLACE alone would leave
+-- the (boolean) original live next to it, making every 0/1-argument call
+-- ambiguous. Drop the old overload first (governed review round 1, H1); every
+-- caller — the cron command, plm.import_item_master_data's named p_dry_run call,
+-- and the contract tests — resolves to the single remaining signature.
+drop function if exists public.sync_new_items_into_style_tracker(boolean);
 
 create or replace function public.sync_new_items_into_style_tracker(p_dry_run boolean default false, p_cutoff timestamptz default '2026-10-28T00:00:00Z'::timestamptz)
 returns table(eligible_count integer, inserted_count integer, deferred_count integer)
@@ -40,10 +48,17 @@ declare
   v_next_row_number integer;
   v_masters_fetched_at timestamptz;
 begin
-  -- Assortment evidence clock (#4956): the masters landing is the only writer of
-  -- coldlion.item_detail and advances fetched_at on every row it touches, so this
-  -- is when the latest itemDetails projection completed.
-  select max(fetched_at) into v_masters_fetched_at from coldlion.item_detail;
+  -- Assortment evidence clock (#4956, hardened #4974 review round 1 H2): only a
+  -- FULL masters projection ('coldlion-landing sync-masters', which pulls every
+  -- item's details) may clear a rowless item. The item-sweep delta lands rows too
+  -- but is per-item and partial — its runs must not advance this clock, or a
+  -- transiently-failed assortment pull would be wrongly cleared by the next delta
+  -- landing some other item.
+  select max(finished_at) into v_masters_fetched_at
+    from coldlion.sync_run
+   where endpoint = '/itemDetails'
+     and requested_by = 'coldlion-landing sync-masters'
+     and status = 'succeeded';
 
   -- One candidate per normalized SKU: DISTINCT ON picks the oldest plm.item, so two new
   -- plm.item rows sharing upper(btrim(sku)) in one run cannot insert two tracker rows.
@@ -290,6 +305,10 @@ begin
     raise exception '#4956: coldlion.item_detail is missing the assortment-marker columns';
   end if;
 
+  if to_regprocedure('public.sync_new_items_into_style_tracker(boolean)') is not null then
+    raise exception '#4974: the shadowed (boolean) overload must not survive this migration';
+  end if;
+
   select prosecdef, proconfig, proacl, prosrc into v_fn from pg_proc
    where oid = 'public.sync_new_items_into_style_tracker(boolean, timestamptz)'::regprocedure;
   if not v_fn.prosecdef
@@ -334,7 +353,17 @@ $verify$;
 -- past its landing); the eight other rowless items are marked assortments and
 -- the skip excludes them at any cutoff. Idempotent: rows that already exist are
 -- skipped by the SKU guard, so re-applying on a database without the gap (any
--- rehearsal) inserts nothing.
-select * from public.sync_new_items_into_style_tracker(p_dry_run => false, p_cutoff => '2026-10-23T00:00:00Z'::timestamptz);
+-- rehearsal) inserts nothing. The counts are raised as a notice so the apply
+-- log carries the sweep's actual effect on every target database.
+do $sweep$
+declare
+  v_result record;
+begin
+  select * into v_result
+    from public.sync_new_items_into_style_tracker(p_dry_run => false, p_cutoff => '2026-10-23T00:00:00Z'::timestamptz);
+  raise notice '#4974 one-time pre-cutoff sweep: eligible %, inserted %, deferred %',
+    v_result.eligible_count, v_result.inserted_count, v_result.deferred_count;
+end
+$sweep$;
 
 commit;

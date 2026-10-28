@@ -204,6 +204,14 @@ defect):
   Auto-fill as the item default only after resolving the applicable variant
   (see [Dim Codes and pack variants](#dim-codes-pack-variants-and-possible-edi-multipliers)); the sheet's line-level exceptions (380 text/multiline cells in
   the historical profile) stay human.
+  **Settled — Albert Hazan, 2026-10-27 (relaying Yuchen), superseding the
+  2026-10-26 per-design reading:** "It Should show the total total pieces in the
+  whole carton." For every component of an assortment, Case Pack is the whole
+  physical carton's piece count (the parent line's ColdLion `prepackQty`), the
+  same value on every member. Cartons are the parent line quantity divided by
+  that total, counted once per physical parent. Missing or conflicting totals
+  stay unknown; fully cancelled lines keep their saved history. Existing
+  explicit line-level exceptions remain inputs.
 
 - **FOB point is a production-order detail (Albert, 2026-09-17), and `/prodtracking` is where
   the ERP keeps it — but the specific port is not populated today.** `/prodtracking` is the

@@ -267,3 +267,58 @@ credential, and the offline tests running before any write.
 No real ColdLion values appear in this directory. The fixtures are synthetic and
 the loaders print counts, scopes and window dates only — this repository is
 public.
+
+### Case-pack defaults across item variants (application issue PopDAM #527)
+
+The canonical writer resolves case pack within the exact company, division and
+component-or-master item number. It first uses the matching component label (or
+parent label for a direct item line), when that exact label exists. Otherwise
+all variants in the exact item scope must agree. Multiple item variants can supply a default
+when all rows have the same non-null `carton_qty`. A missing quantity or a
+conflict leaves the default NULL; the writer never selects an ambiguous variant
+for a direct item line.
+This does not change item linking, source identities, or line-level exceptions.
+Existing blanks require a separate exact-preimage, blank-only application repair;
+do not replay entire orders to fill case pack.
+
+For assortment components, the owner's 2026-10-27 ruling ("total pieces in the
+whole carton") uses the parent line's ColdLion `prepackQty` on every component.
+When the master item's exact prepack variant records `carton_qty`, it must
+agree. Missing, nonpositive or conflicting totals remain unknown, and a fully
+cancelled line's saved Case Pack is never rewritten. Source-only ColdLion
+components share a physical-parent key in OrderList and PO tracking, so the
+parent's cartons (line quantity / whole-carton pack) are counted once.
+Google/manual assortment exceptions retain their existing source rules.
+
+## OrderList intake Master Data links
+
+The canonical writer resolves the staged company/division against the landed
+`coldlion.division` identity before saving `source_style_type`. Classification
+follows the [settled division rule](../../docs/business-rules/merchandise-and-product-taxonomy.md#what-each-division-produces).
+An absent/unrecognized source division description, or a conflicting existing
+classification, fails and rolls back the intake transaction. Division codes
+are never substituted for a missing source lookup.
+
+New nonblank-SKU lines start `unmatched`, rather than inheriting the historical
+`not_applicable` default. After the line writes, only this intake's exact line
+IDs reach the service-only `link_dam_order_lines_scoped` helper in batches of
+at most 500. The helper must already be deployed before this writer is released;
+the writer checks availability at startup. Exact SKU plus explicit catalog,
+one distinct item and consistent current workflow are required. Manual choices,
+explicit `not_applicable` records and valid existing links remain unchanged. A
+changed nonblank source SKU invalidates the old `matched` automatic link unless
+the new SKU still uniquely identifies that same item. Without an eligible new
+match the line remains honestly `unmatched`. An unchanged
+SKU replaces a stale automatic item only with a proved unique exact catalog
+candidate. Both paths append the prior item/status/SKU and current source proof
+to `coldlion_intake_link_refreshes`; prevalidated replacements must reach that
+exact item or the entire intake rolls back. Source identity, header ownership,
+SKU and classification are revalidated under row locks before linking. Reimports
+merge source metadata so saved link receipts/manual evidence survive. A helper
+failure rolls back headers, lines, classification, source references and intake
+state together, including in rollback-only rehearsal.
+
+The opt-in real PostgreSQL writer regression runs with
+`COLDLION_INTAKE_TEST_PG_CONTAINER=orderlist4886pg node --test tools/coldlion-order-intake-*.test.mjs`.
+It refuses any container other than that disposable fixture, requires no network
+or published ports, and uses generated synthetic records only.

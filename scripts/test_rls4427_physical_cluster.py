@@ -24,7 +24,7 @@ class PhysicalControls(unittest.TestCase):
     def facts(self):
         return dict(database='postgres',current_user='supabase_admin',session_user='supabase_admin',superuser=True,replication=True,
             recovery=False,wal_level='logical',max_wal_senders=10,external_tablespaces=0,subscriptions=0,slots=0,prepared_transactions=0,
-            cron_version='1.6',config_file='/etc/postgresql/postgresql.conf',hba_file='/etc/postgresql/pg_hba.conf',
+            cron_version='1.6',sodium_version='3.1.8',sodium_nonce_api=True,sodium_keyid_api=True,sodium_open_keyid_api=True,config_file='/etc/postgresql/postgresql.conf',hba_file='/etc/postgresql/pg_hba.conf',
             ident_file='/etc/postgresql/pg_ident.conf',data_directory=m.DATA,archive_mode='off',archive_command='',restore_command='',
             primary_conninfo='',ssl='off',log_directory='/var/log/postgresql',socket='/var/run/postgresql',cron_database='postgres',
             preload='pg_stat_statements, pg_cron, pgsodium',hba_errors=0,replication_hba=1,other_backends=0)
@@ -44,6 +44,15 @@ class PhysicalControls(unittest.TestCase):
         self.assertIn("select exists(select 1",m.SOURCE_FACTS_SQL)
         self.assertIn("nonempty unlogged relation",m.SOURCE_FACTS_SQL)
         self.assertNotIn('reltuples',m.SOURCE_FACTS_SQL)
+
+    def test_actual_cached_sodium_sql_api_is_required_before_any_backup(self):
+        facts=self.facts();self.assertEqual(m.validate_source_facts(facts)['sodium_version'],'3.1.8')
+        for key,value in [('sodium_version',None),('sodium_version','3.1.7'),('sodium_nonce_api',False),('sodium_keyid_api',False),('sodium_open_keyid_api',False)]:
+            with self.subTest(key=key),self.assertRaises(RuntimeError):m.validate_source_facts({**facts,key:value})
+        self.assertIn("to_regprocedure('pgsodium.crypto_secretbox(bytea,bytea,bigint,bytea)')",m.SOURCE_FACTS_SQL)
+        self.assertIn("to_regprocedure('pgsodium.crypto_secretbox_open(bytea,bytea,bigint,bytea)')",m.SOURCE_FACTS_SQL)
+        source=P.read_text()
+        self.assertLess(source.index('facts=validate_source_facts'),source.index('with permission:'))
 
     def test_inactive_archive_display_is_qualified_without_configuration_change(self):
         facts=self.facts()

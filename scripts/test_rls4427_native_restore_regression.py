@@ -421,6 +421,16 @@ class DiagnosticReadinessControls(unittest.TestCase):
         self.assertLess(fixture.index("current_user <> 'supabase_admin'"),fixture.index('CREATE EXTENSION IF NOT EXISTS pg_cron'))
         run=P.read_text();self.assertLess(run.index("local.sql('postgres',(ROOT/'supabase/tests/fixtures/rls4427_native_restore_fixture.sql')"),run.index('self.cluster=helper.PhysicalCluster'))
 
+    def test_new_local_source_initializes_cached_sodium_and_exact_bigint_api(self):
+        fixture=(m.ROOT/'supabase/tests/fixtures/rls4427_native_restore_fixture.sql').read_text()
+        self.assertEqual(fixture.count('CREATE EXTENSION IF NOT EXISTS pgsodium;'),1)
+        self.assertLess(fixture.index("current_user <> 'supabase_admin'"),fixture.index('CREATE EXTENSION IF NOT EXISTS pgsodium;'))
+        self.assertLess(fixture.index('CREATE EXTENSION IF NOT EXISTS pgsodium;'),fixture.index('CREATE ROLE rls4427_owner'))
+        self.assertIn("extname='pgsodium') IS DISTINCT FROM '3.1.8'",fixture)
+        for api in ('pgsodium.crypto_secretbox_noncegen()','pgsodium.crypto_secretbox(bytea,bytea,bigint,bytea)','pgsodium.crypto_secretbox_open(bytea,bytea,bigint,bytea)'):
+            self.assertIn("to_regprocedure('"+api+"') IS NULL",fixture)
+        self.assertNotIn('derive_key',fixture)
+
     def test_permissions_run_under_each_actual_variant_after_timed_update(self):
         cluster=FakePhysical();order=[];original=cluster.sql
         def sql(query,role):

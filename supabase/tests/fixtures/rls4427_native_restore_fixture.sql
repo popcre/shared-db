@@ -1,6 +1,6 @@
 -- Invented objects ONLY in the separately reviewed, owned no-network PG17.6 source.
 -- Existing native roles, schema ownership, grants and worker settings stay intact.
--- Initialize the cached cron extension ONLY in this new invented local source.
+-- Initialize cached cron/sodium SQL extensions ONLY in this new invented local source.
 DO $$
 BEGIN
   IF current_user <> 'supabase_admin' OR NOT (SELECT rolsuper FROM pg_roles WHERE rolname=current_user) THEN
@@ -12,6 +12,16 @@ BEGIN
   END IF;
 END $$;
 CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;
+CREATE EXTENSION IF NOT EXISTS pgsodium;
+DO $sodium$
+BEGIN
+  IF (SELECT extversion FROM pg_extension WHERE extname='pgsodium') IS DISTINCT FROM '3.1.8'
+     OR to_regprocedure('pgsodium.crypto_secretbox_noncegen()') IS NULL
+     OR to_regprocedure('pgsodium.crypto_secretbox(bytea,bytea,bigint,bytea)') IS NULL
+     OR to_regprocedure('pgsodium.crypto_secretbox_open(bytea,bytea,bigint,bytea)') IS NULL THEN
+    RAISE EXCEPTION '4427 local cached pgsodium version/root-derived bigint API differs';
+  END IF;
+END $sodium$;
 CREATE ROLE rls4427_owner NOLOGIN;
 CREATE ROLE rls4427_reader NOLOGIN;
 CREATE ROLE rls4427_writer NOLOGIN;

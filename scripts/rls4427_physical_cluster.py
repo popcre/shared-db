@@ -229,6 +229,10 @@ select json_build_object('database',current_database(),'current_user',current_us
 'external_tablespaces',(select count(*) from pg_tablespace where spcname not in ('pg_default','pg_global')),
 'subscriptions',(select count(*) from pg_subscription),'slots',(select count(*) from pg_replication_slots),'prepared_transactions',(select count(*) from pg_prepared_xacts),
 'cron_version',(select extversion from pg_extension where extname='pg_cron'),
+'sodium_version',(select extversion from pg_extension where extname='pgsodium'),
+'sodium_nonce_api',to_regprocedure('pgsodium.crypto_secretbox_noncegen()') is not null,
+'sodium_keyid_api',to_regprocedure('pgsodium.crypto_secretbox(bytea,bytea,bigint,bytea)') is not null,
+'sodium_open_keyid_api',to_regprocedure('pgsodium.crypto_secretbox_open(bytea,bytea,bigint,bytea)') is not null,
 'config_file',current_setting('config_file'),'hba_file',current_setting('hba_file'),'ident_file',current_setting('ident_file'),
 'data_directory',current_setting('data_directory'),'archive_mode',current_setting('archive_mode'),'archive_command',current_setting('archive_command'),
 'restore_command',current_setting('restore_command'),'primary_conninfo',current_setting('primary_conninfo'),
@@ -249,6 +253,7 @@ def validate_source_facts(f):
         or f.get('recovery') is not False or f.get('wal_level') not in ('replica','logical') or f.get('max_wal_senders',0)<1
         or any(f.get(k)!=0 for k in ('external_tablespaces','subscriptions','slots','prepared_transactions','hba_errors','other_backends'))
         or not isinstance(f.get('replication_hba'),int) or f.get('cron_version') not in ('1.6','1.6.4') or f.get('cron_database')!='postgres'
+        or f.get('sodium_version')!='3.1.8' or any(f.get(k) is not True for k in ('sodium_nonce_api','sodium_keyid_api','sodium_open_keyid_api'))
         or f.get('config_file')!='/etc/postgresql/postgresql.conf' or f.get('hba_file')!='/etc/postgresql/pg_hba.conf'
         or f.get('ident_file')!='/etc/postgresql/pg_ident.conf' or f.get('data_directory')!=DATA
         or f.get('archive_mode')!='off' or f.get('archive_command') not in ('','(disabled)') or any(f.get(k) for k in ('restore_command','primary_conninfo'))

@@ -1,0 +1,87 @@
+{
+  "schema_version": 2,
+  "work_issue": 4890,
+  "generation": 43,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Pin exact unchanged source guard bytes independently of Python AST display version",
+  "base_sha": "5af9a6f51fb5d2151c038b156340f27350004679",
+  "dispatcher": "Codex parent01a18349-e4d0-7a42-8f52-2eacfdea5ba9 exact gen18 design in chat",
+  "worker": "Codex child01a1834a-813e-7b12-b17a-3e8c3aaedfb8",
+  "branch": "codex/4427-performance-qualification-child",
+  "worktree": "/tmp/shared-db-4427-performance-child",
+  "allowed_paths": [
+    "scripts/test_rls4427_physical_cluster.py",
+    ".agent/work/4890/42/contract.json",
+    ".agent/work/4890/42/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No paidreview/runtime/resource/push/PRupdate/CI/merge/production action in this authoring task",
+    "Never stop/pause native source or alter roles/jobs/worker capabilities; ONLY prospective exact ephemeral UnixHBA permission window below may change source configuration temporarily; no shared/production/foreign target or licensed rows",
+    "No logical exclusion/no-owner/no-acl/ignored errors; no scheduler disable or automatic trial retry",
+    "Proposed resources only after new exact review/rootadoption/gates: existing positivelyqualified native source for fullpg_basebackup/configcopy; one exactsameimage owned target networknone/noports/nobinds/2GiB1CPU256PID/4GiBPGDATA tmpfs, total<=35min; exactcachedSupabase local synthetic calibration first",
+    "Only own stopped target PGDATA reset, verified immutable backup+privateconfig/key; source/config/key bytes never logs/commits and rootkey never regenerated"
+  ],
+  "required_checks": [
+    "python3 -m unittest scripts.test_qualify_rls4427_actual_tables scripts.test_rls4427_physical_cluster scripts.test_rls4427_native_restore_regression",
+    "node --test scripts/rls-public-admin-initplan.test.mjs scripts/agent-work-contract-git-evidence.test.mjs scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+    "node --test scripts/check-workflow-yaml.test.mjs scripts/database-contract-authorization.test.mjs scripts/check-merge-queue-workflows.test.mjs",
+    "bash scripts/check-sql.sh",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "node scripts/check-workflow-yaml.mjs",
+    "git diff --check",
+    "python3 -m unittest scripts/test_*.py (complete ordinary offline glob in isolated credential/resource-free child environment)",
+    "cached Python3.12.14 full ordinary scripts/test_*.py offline glob",
+    "local Python3.14.4 full ordinary scripts/test_*.py offline glob"
+  ],
+  "assumptions": [
+    "Root authorizes ONLYprivatepatch one-testassertion correction afterprospective43; no runtime/query/guard/docs/workflow/fixture change, noresources/review/push/cancel/native/merge/production. Own42pair removal/current43new pair permitted; oldimmutable42source/ref/privateproof retained.",
+    "ActualrequiredCI40781512365 full1695tests46skips onefailure Python3.12ASTdisplayhash4a77ae0a0deb6997ea093194ea6360abd3c476835a75161a644c5aca79c474fd vs3.14dumpc66715...; actualguard/query unchanged. Cached3.12.14vs3.14.4 prototypeproved32emptykeywords5emptyifs1emptyargs omitted by3.14display. Replaceonlyast.dumpassertwithexact ast.get_source_segment source-byteSHA824d80a8ab0ffc233fd641ea448222a9fdbbfc310ad5e1ed429e74db9c181ccc. Retainqueryfc9c... andeverynegativecontrol.",
+    "Source42reviewterminalAPPROVE retained; rootnewholdreleasedforthistestonly. Actualnative40781531442stillimmutable5af9, nooutcomeinferred/cancel/retry. AllruntimeBYTES mustcompare5af9unchanged; nativeexecutedsourceSHAnotrelabelledfuture43head.",
+    "Currentevidencebase4b70; fullordinary58Python glob credential/resource-free onexistingcached3.12 andlocal3.14,147Node/staticSQL/truth/YAML/compile/whitespace/nativeGitevidence. Parentretainsnativefactadoption/anylaterseparateruntimefix/sourcepublicationreview."
+  ],
+  "stop_conditions": [
+    "Any native scope/gate refusal",
+    "Unknown config/include/key/ownership/archive/dependency or source quiescence",
+    "Any cron/clock/worker/physical/capability/cleanup violation",
+    "Any need for source mutation, scheduler suppression, unowned resource or shared target"
+  ],
+  "evidence_parent": {
+    "work_issue": 4890,
+    "generation": 30,
+    "contract_sha256": "a6e03551660582514b855100800d519a4bcfaa782745d4c804bacca668bed195"
+  },
+  "file_writes": [
+    "scripts/qualify_rls4427_actual_tables.py",
+    "scripts/test_qualify_rls4427_actual_tables.py",
+    "scripts/rls4427_physical_cluster.py",
+    "scripts/test_rls4427_physical_cluster.py",
+    "scripts/rls4427_native_restore_regression.py",
+    "scripts/test_rls4427_native_restore_regression.py",
+    "supabase/tests/fixtures/rls4427_native_restore_fixture.sql",
+    "supabase/tests/rls_public_admin_actual_table_performance.sql",
+    ".github/workflows/database-contract-tests.yml",
+    "docs/verification/rls-initplan/4427/actual-table-qualification.md",
+    "docs/verification/throughput-dispositions/scripts~qualify_rls4427_actual_tables.py.json",
+    ".agent/work/4890/17/contract.json",
+    ".agent/work/4890/17/completion.json",
+    "docs/verification/throughput-dispositions/scripts~rls4427_physical_cluster.py.json",
+    "docs/verification/throughput-dispositions/scripts~rls4427_native_restore_regression.py.json",
+    ".agent/work/4890/23/contract.json",
+    ".agent/work/4890/23/completion.json",
+    ".agent/work/4890/24/contract.json",
+    ".agent/work/4890/24/completion.json",
+    ".agent/work/4890/25/contract.json",
+    ".agent/work/4890/25/completion.json",
+    ".agent/work/4890/27/contract.json",
+    ".agent/work/4890/27/completion.json",
+    ".agent/work/4890/28/contract.json",
+    ".agent/work/4890/28/completion.json",
+    ".agent/work/4890/29/contract.json",
+    ".agent/work/4890/29/completion.json",
+    ".agent/work/4890/30/contract.json",
+    ".agent/work/4890/30/completion.json"
+  ]
+}

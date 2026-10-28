@@ -251,23 +251,11 @@ $fn$;
 revoke all on function public.sync_new_items_into_style_tracker(boolean) from public, anon, authenticated;
 grant execute on function public.sync_new_items_into_style_tracker(boolean) to service_role;
 
-do $cron$
-declare
-  v_job_id bigint;
-begin
-  for v_job_id in
-    select jobid from cron.job where jobname = 'nightly-style-tracker-item-autoflow'
-  loop
-    perform cron.unschedule(v_job_id);
-  end loop;
-
-  perform cron.schedule(
-    'nightly-style-tracker-item-autoflow',
-    '50 5 * * *',
-    $cron_body$ select public.sync_new_items_into_style_tracker() $cron_body$
-  );
-end
-$cron$;
+-- The cron backstop is deliberately NOT rewritten here: migration 20261027185232
+-- already registers nightly-style-tracker-item-autoflow (50 5 * * *) on production,
+-- preview and the CI replay, and this change alters neither its schedule nor its
+-- command — only the body of the function it calls. Re-declaring it would add a
+-- second written object (table cron.job) outside this change's admitted scope.
 
 -- One-time cleanup (#4956): remove the one assortment line the auto-flow created
 -- before the skip existed. Scoped to the auto origin so a team-entered BRG6206

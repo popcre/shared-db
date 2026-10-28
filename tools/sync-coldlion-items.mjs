@@ -12,13 +12,17 @@ import {
 } from "./coldlion-sync-common.mjs";
 import { assertExpectedTarget } from "./coldlion-landing/lib/db.mjs";
 import {
+  DELTA_DEADLINE_MS,
   DELTA_REQUESTED_BY,
   MAX_DELTA_ITEMS,
   buildItemDetailDeltaSql,
   fetchItemDetails,
   newItemsFromPayload,
+  parseDeltaCounts,
   validDetailRow,
 } from "./coldlion-landing/lib/item-detail-delta.mjs";
+import { ITEM_SPECS } from "./coldlion-landing/lib/master-specs.mjs";
+import { projectCurrentRows } from "./coldlion-landing/lib/project-masters.mjs";
 
 // The /items sweep is offset-paged, so a row that moves between pages mid-sweep is
 // returned twice (the 2026-10-25 and 2026-10-26 nightlies failed on
@@ -130,60 +134,95 @@ export async function collectItems(apiKey, fetchImpl = fetch) {
   return fetchPaged(url, apiKey, fetchImpl);
 }
 
-// psql box output between the --- separator and the "(N rows)" footer, as
-// (company, division, item_number) triples separated by |.
-export function parseExistingItemIdentities(stdout) {
-  const lines = String(stdout ?? "").split("\n");
-  const start = lines.findIndex((line) => line.match(/^-[-+]+$/));
-  if (start === -1) return [];
-  const rows = [];
-  for (const line of lines.slice(start + 1)) {
-    if (/^\(\d+ rows?\)$/.test(line.trim())) break;
-    const cells = line.split("|").map((cell) => cell.trim());
-    if (cells.length === 3 && cells.some((cell) => cell)) rows.push(cells);
+// One probe, unaligned tuples-only output: first line is the migration gate
+// (has 20261028183729 replaced the auto-flow function's signature?), the rest
+// are the existing (company, division, item_number) identities.
+export function parseSweepProbe(stdout) {
+  const lines = String(stdout ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
+  if (!lines.length || !/^[tf]$/.test(lines[0])) return { migrationApplied: null, identities: [] };
+  const identities = [];
+  for (const line of lines.slice(1)) {
+    const cells = line.split("\t");
+    if (cells.length === 3 && cells.some((cell) => cell)) identities.push(cells);
   }
-  return rows;
+  return { migrationApplied: lines[0] === "t", identities };
 }
+
+export const SWEEP_PROBE_SQL = [
+  "\\pset format unaligned",
+  "\\pset tuples_only on",
+  "\\pset fieldsep '\\t'",
+  "select to_regprocedure('public.sync_new_items_into_style_tracker(boolean)') is null",
+  "   and to_regprocedure('public.sync_new_items_into_style_tracker(boolean, timestamptz)') is not null as migration_applied;",
+  "select raw ->> 'companyCode', raw ->> 'divisionCode', btrim(item_number) from plm.item;",
+].join("\n");
 
 // #4974: before the import SQL runs, land the /itemDetails rows of NEW items so
 // the Master Data auto-flow decides them on fresh evidence in THIS cycle (a new
 // assortment is skipped instantly instead of after the nightly masters run).
-// Failures are per-item and non-fatal: the affected item keeps the nightly
-// backstop. A pathological "everything is new" feed lands nothing.
-export async function landNewItemDetails(apiKey, payloadItems, { runSqlImpl = runSql, fetchImpl = fetch } = {}) {
-  const existing = parseExistingItemIdentities(runSqlImpl(
-    "select raw ->> 'companyCode', raw ->> 'divisionCode', btrim(item_number) from plm.item;", { linked: false }));
-  const newItems = newItemsFromPayload(payloadItems, existing);
-  if (!newItems.length) return { newItems: 0, detailsLanded: 0, failures: [] };
-  if (newItems.length > MAX_DELTA_ITEMS) {
-    return { newItems: newItems.length, detailsLanded: 0, failures: [], refused: `new-item count ${newItems.length} exceeds the ${MAX_DELTA_ITEMS}-item delta cap; nightly masters covers these items` };
-  }
-  const detailRows = [];
-  const failures = [];
-  for (const row of newItems) {
-    const request = { companyCode: row.companyCode, divisionCode: row.divisionCode, itemNo: row.itemNo };
-    try {
-      for (const detail of await fetchItemDetails(apiKey, request, fetchImpl)) {
-        const invalid = validDetailRow(detail, request);
-        if (invalid) failures.push({ itemNo: row.itemNo, message: `detail row rejected: ${invalid}` });
-        else detailRows.push(detail);
-      }
-    } catch (error) {
-      failures.push({ itemNo: row.itemNo, message: error?.message ?? String(error) });
+// The whole step is best-effort by contract: the migration gate (M1) keeps it
+// off until 20261028183729 is applied on the target, and ANY fault — probe,
+// fetch, projection, or landing — is reported and skipped so the item-master
+// import itself always runs. Per-item failures (fetch, shape, deadline) are
+// recorded in the sync_run notes; the nightly masters run remains the backstop.
+export async function landNewItemDetails(apiKey, payloadItems, { runSqlImpl = runSql, fetchImpl = fetch, now = Date.now } = {}) {
+  try {
+    const probe = parseSweepProbe(runSqlImpl(SWEEP_PROBE_SQL, { linked: false }));
+    if (probe.migrationApplied !== true) {
+      return { newItems: 0, detailsLanded: 0, failures: [], gated: probe.migrationApplied === null ? "probe unreadable" : "migration 20261028183729 not applied yet" };
     }
+    const newItems = newItemsFromPayload(payloadItems, probe.identities);
+    if (!newItems.length) return { newItems: 0, detailsLanded: 0, failures: [] };
+    if (newItems.length > MAX_DELTA_ITEMS) {
+      return { newItems: newItems.length, detailsLanded: 0, failures: [], refused: `new-item count ${newItems.length} exceeds the ${MAX_DELTA_ITEMS}-item delta cap; nightly masters covers these items` };
+    }
+    const startedAt = new Date().toISOString();
+    const deadline = now() + DELTA_DEADLINE_MS;
+    const fetchedDetails = [];
+    const failures = [];
+    for (const row of newItems) {
+      if (now() >= deadline) {
+        failures.push({ itemNo: row.itemNo, message: "delta fetch deadline exceeded; nightly masters covers this item" });
+        continue;
+      }
+      const request = { companyCode: row.companyCode, divisionCode: row.divisionCode, itemNo: row.itemNo };
+      try {
+        const raw = await fetchItemDetails(apiKey, request, fetchImpl);
+        const inScope = [];
+        for (const detail of raw) {
+          const invalid = validDetailRow(detail, request);
+          if (invalid) failures.push({ itemNo: row.itemNo, message: `detail row rejected: ${invalid}` });
+          else inScope.push(detail);
+        }
+        // Per-item projection: a shape/blank-key/duplicate surprise drops only
+        // this item's rows (projectCurrentRows raises with the endpoint named).
+        fetchedDetails.push(projectCurrentRows(ITEM_SPECS.item_detail, inScope, { runId: "pending", fetchedAt: "pending" }).rows);
+      } catch (error) {
+        failures.push({ itemNo: row.itemNo, message: error?.message ?? String(error) });
+      }
+    }
+    const detailRows = fetchedDetails.flat();
+    const run = {
+      id: randomUUID(),
+      companyCode: "EDGEHOME",
+      requestParams: { items: newItems.map((row) => ({ companyCode: row.companyCode, divisionCode: row.divisionCode, itemNo: row.itemNo })) },
+      requestedBy: DELTA_REQUESTED_BY,
+      startedAt,
+      fetchedAt: new Date().toISOString(),
+      notes: failures.length ? { perItemFailures: failures } : {},
+    };
+    const headers = projectCurrentRows(ITEM_SPECS.item_header, newItems, { runId: run.id, fetchedAt: run.fetchedAt }).rows;
+    const details = detailRows.map((row) => ({ ...row, run_id: run.id, fetched_at: run.fetchedAt }));
+    const counts = parseDeltaCounts(runSqlImpl(buildItemDetailDeltaSql({ run, headerRows: headers, detailRows: details }), { linked: false }));
+    return {
+      newItems: newItems.length,
+      detailsLanded: counts?.detailsInserted ?? detailRows.length,
+      headersLanded: counts?.headersInserted ?? null,
+      failures,
+    };
+  } catch (error) {
+    return { newItems: 0, detailsLanded: 0, failures: [], error: `item-details delta skipped: ${error?.message ?? String(error)}` };
   }
-  const startedAt = new Date().toISOString();
-  const run = {
-    id: randomUUID(),
-    companyCode: "EDGEHOME",
-    requestParams: { items: newItems.map((row) => ({ companyCode: row.companyCode, divisionCode: row.divisionCode, itemNo: row.itemNo })) },
-    requestedBy: DELTA_REQUESTED_BY,
-    startedAt,
-    fetchedAt: startedAt,
-    notes: failures.length ? { perItemFailures: failures } : {},
-  };
-  runSqlImpl(buildItemDetailDeltaSql({ run, headerRows: newItems, detailRows }), { linked: false });
-  return { newItems: newItems.length, detailsLanded: detailRows.length, failures };
 }
 
 async function main() {
@@ -208,7 +247,8 @@ async function main() {
     process.stdout.write(`${JSON.stringify({ items: sweep.rows.length, pagesFetched: sweep.pagesFetched,
       terminalReached: sweep.terminalReached, duplicateKeysFolded: folded, divisions, apply,
       newItemDetailDelta: { newItems: delta.newItems, detailsLanded: delta.detailsLanded,
-        refused: delta.refused ?? null, failures: delta.failures },
+        headersLanded: delta.headersLanded ?? null, refused: delta.refused ?? null,
+        gated: delta.gated ?? null, error: delta.error ?? null, failures: delta.failures },
       resolutionGuard: process.env.ITEM_MASTER_ALLOW_RESOLUTION_DROP === "true" ? "BYPASSED" : "enforced" }, null, 2)}\n`);
     if (apply) {
       stage = "apply";

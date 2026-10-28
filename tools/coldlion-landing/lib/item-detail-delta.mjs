@@ -9,34 +9,35 @@
 // marker (pre_pack_code) is then already on the row the auto-flow reads, and a
 // new assortment is skipped instantly instead of after the nightly landing.
 //
-// Shapes follow the masters loader exactly (review round 1 of this change):
-//   - sync_run is inserted FIRST and finished last — item_header/item_detail/
-//     change_log carry immediate FKs to it;
-//   - source_hash is the sha256 of the canonical (sorted-keys) payload row and
-//     new_raw is the verbatim payload, like load-masters;
-//   - the delta never advances the auto-flow's evidence clock: that clock reads
-//     only 'coldlion-landing sync-masters' runs, so a failed per-item pull still
-//     defers to the next full masters projection instead of being wrongly
-//     cleared by this delta landing other rows;
-//   - INSERT-only with ON CONFLICT DO NOTHING — the nightly masters landing owns
-//     updates and deletes; this delta only bridges the hours before it runs;
-//   - vendor rows are validated against the requested scope before landing
-//     (wrong item, wrong company/division, EP001, blank keys are dropped, never
-//     fatal); EP001 detail rows do not exist by design (table CHECK).
-// Landing failures abort only the delta transaction; the item import still runs.
+// Row shape is the masters loader's own: ITEM_SPECS + projectCurrentRows project
+// the vendor payload into the FULL current-state column set (validated shape,
+// canonical source hashes, verbatim payload kept for change_log), so a delta
+// row is indistinguishable from a masters-landed row of the same vintage.
+//
+// Landing is INSERT-only with ON CONFLICT DO NOTHING — the nightly masters
+// landing owns updates and deletes. The delta never advances the auto-flow's
+// evidence clock: that clock (#4974 migration) reads only
+// 'coldlion-landing sync-masters' runs, never this delta's sync_run rows.
 
 import { COLDLION_BASE_URL } from "../../coldlion-sync-common.mjs";
-import { sourceHash } from "./values.mjs";
-import { sqlJson, sqlText, sqlTimestamp, sqlUuid } from "./values.mjs";
+import { ITEM_SPECS } from "./master-specs.mjs";
+import { projectCurrentRows } from "./project-masters.mjs";
+import { sqlDate, sqlNumber, sqlText, sqlTimestamp, sqlUuid } from "./values.mjs";
 
 // A run that would treat more than this many items as new is not a normal
 // delta (2-25/day is the measured nightly range) — it is a ColdLion-side
-// anomaly and must not fan out into thousands of per-item GETs. Land nothing;
-// the nightly masters run covers the items instead.
-export const MAX_DELTA_ITEMS = 60;
+// anomaly and must not fan out into per-item GETs. Land nothing; the nightly
+// masters run covers the items instead.
+export const MAX_DELTA_ITEMS = 20;
+
+// Bounded worst case: MAX_DELTA_ITEMS sequential GETs at this timeout, inside a
+// global deadline the loop checks before every fetch. The sweep job ceiling is
+// 15 minutes and the same tool runs first in the ~118-minute nightly landing
+// pipeline, whose later steps must not be starved.
+export const DETAIL_FETCH_TIMEOUT_MS = 10_000;
+export const DELTA_DEADLINE_MS = 240_000;
 
 export const DELTA_REQUESTED_BY = "coldlion-item-sweep";
-export const DETAIL_FETCH_TIMEOUT_MS = 30_000;
 
 const clean = (value) => String(value ?? "").trim();
 
@@ -54,7 +55,7 @@ export function newItemsFromPayload(payloadItems, existingIdentities) {
 
 // A detail row is landable only when it belongs to the item that was asked for
 // and carries a complete natural key; anything else is a vendor surprise and is
-// reported, never landed.
+// reported, never landed (projectCurrentRows checks shape, not scope).
 export function validDetailRow(detail, request) {
   if (!clean(detail?.itemPkey) || !clean(detail?.itemNo)) return "blank natural key";
   if (clean(detail.companyCode) !== clean(request.companyCode)
@@ -79,70 +80,67 @@ export async function fetchItemDetails(apiKey, { companyCode, divisionCode, item
   return payload;
 }
 
-// One transaction: sync_run first (FK parent), insert-only landing, then the
-// finishing update with honest counts and a DB-visible failure note. The
-// landing tables have no source_raw column — the verbatim payload lives in
-// change_log.new_raw, joined back per landed key.
-export function buildItemDetailDeltaSql({ run, headerRows, detailRows }) {
-  const headerValues = headerRows
-    .map((row) => `  (${sqlText(clean(row.companyCode))}, ${sqlText(clean(row.divisionCode))}, ${sqlText(clean(row.itemNo))}, ${sqlText(row.itemDesc)}, ${sqlUuid(run.id)}, ${sqlText(sourceHash(row))}, ${sqlTimestamp(run.fetchedAt)}, ${sqlTimestamp(run.fetchedAt)}, ${sqlTimestamp(run.fetchedAt)})`)
+const emitters = { text: sqlText, keytext: sqlText, num: sqlNumber, date: sqlDate, ts: sqlTimestamp };
+
+// Full-column insert for a projected spec row. projectCurrentRows has already
+// validated the shape, keys, and EP001 exclusion, so nothing here re-checks.
+function landingStatements(table, spec, projectedRows, run) {
+  if (!projectedRows.length) {
+    return [
+      `create temp table _delta_${table}_inserted on commit drop as select ${spec.key.map((column) => `null::text as ${column}`).join(", ")} where false;`,
+    ];
+  }
+  const columns = [...spec.fields.map((field) => field.column)];
+  const tuples = projectedRows
+    .map((row) => `  (${[...spec.fields.map((field) => emitters[field.type](row[field.column])), sqlText(row.source_hash), sqlUuid(run.id), sqlTimestamp(row.fetched_at), sqlTimestamp(row.fetched_at), sqlTimestamp(row.fetched_at)].join(", ")})`)
     .join(",\n");
-  const headerEvidence = headerRows
-    .map((row) => `  (${sqlText(clean(row.companyCode))}, ${sqlText(clean(row.divisionCode))}, ${sqlText(clean(row.itemNo))}, ${sqlText(sourceHash(row))}, ${sqlJson(row)})`)
-    .join(",\n");
-  const detailValues = detailRows
-    .map((row) => `  (${sqlText(clean(row.companyCode))}, ${sqlText(clean(row.divisionCode))}, ${sqlText(clean(row.itemNo))}, ${sqlText(clean(row.itemPkey))}, ${sqlText(row.prePackCode == null ? null : clean(row.prePackCode))}, ${sqlText(sourceHash(row))}, ${sqlUuid(run.id)}, ${sqlTimestamp(run.fetchedAt)}, ${sqlTimestamp(run.fetchedAt)}, ${sqlTimestamp(run.fetchedAt)})`)
-    .join(",\n");
-  const detailEvidence = detailRows
-    .map((row) => `  (${sqlText(clean(row.companyCode))}, ${sqlText(clean(row.divisionCode))}, ${sqlText(clean(row.itemNo))}, ${sqlText(clean(row.itemPkey))}, ${sqlText(sourceHash(row))}, ${sqlJson(row)})`)
+  const evidence = projectedRows
+    .map((row) => `  (${spec.key.map((column) => sqlText(row[column])).join(", ")}, ${sqlText(row.source_hash)}, ${sqlText(JSON.stringify(row.source_raw))}::jsonb)`)
     .join(",\n");
   return [
+    `insert into coldlion.${table} (${[...columns, "source_hash", "run_id", "fetched_at", "first_seen_at", "last_seen_at"].join(", ")})`,
+    "values",
+    tuples,
+    `on conflict (${spec.key.join(", ")}) do nothing;`,
+    `create temp table _delta_${table}_inserted on commit drop as`,
+    "select v.* from (values",
+    evidence,
+    `) as v(${[...spec.key, "source_hash", "raw"].join(", ")})`,
+    `where exists (select 1 from coldlion.${table} t where ${spec.key.map((column) => `t.${column} = v.${column}`).join(" and ")} and t.run_id = ${sqlUuid(run.id)});`,
+    `insert into coldlion.change_log (table_name, natural_key, change_kind, new_source_hash, new_raw, run_id)`,
+    `select '${table}', jsonb_build_object(${spec.key.flatMap((column) => [`'${column}'`, `h.${column}`]).join(", ")}), 'inserted', h.source_hash, h.raw, ${sqlUuid(run.id)}`,
+    `  from _delta_${table}_inserted h;`,
+  ];
+}
+
+// One transaction: sync_run first (its children carry immediate FKs to it),
+// insert-only landing through the masters projections, then the finishing
+// update with the true inserted counts and a DB-visible per-item failure note
+// (the notes column is text; the JSON string is deliberate so failures are
+// queryable with notes::jsonb).
+export function buildItemDetailDeltaSql({ run, headerRows, detailRows }) {
+  return [
     "begin;",
-    `insert into coldlion.sync_run (id, endpoint, company_code, division_code, request_params, status, requested_by, started_at, rows_fetched)`,
-    `values (${sqlUuid(run.id)}, '/itemDetails', ${sqlText(run.companyCode)}, ${sqlText(run.divisionCode)}, ${sqlText(JSON.stringify(run.requestParams))}::jsonb, 'running', ${sqlText(run.requestedBy)}, ${sqlTimestamp(run.startedAt)}, ${detailRows.length});`,
-    headerRows.length
-      ? [
-          "insert into coldlion.item_header (company_code, division_code, item_no, item_desc, run_id, source_hash, fetched_at, first_seen_at, last_seen_at)",
-          "values",
-          headerValues,
-          "on conflict (company_code, division_code, item_no) do nothing;",
-          "create temp table _delta_headers_inserted on commit drop as",
-          "with ins as (",
-          "  select v.company_code, v.division_code, v.item_no, v.source_hash, v.raw",
-          "  from (values",
-          headerEvidence,
-          `  ) as v(company_code, division_code, item_no, source_hash, raw)`,
-          "  join coldlion.item_header hd using (company_code, division_code, item_no)",
-          `  where hd.run_id = ${sqlUuid(run.id)}`,
-          ") select * from ins;",
-          "insert into coldlion.change_log (table_name, natural_key, change_kind, new_source_hash, new_raw, run_id)",
-          `select 'item_header', jsonb_build_object('company_code', h.company_code, 'division_code', h.division_code, 'item_no', h.item_no), 'inserted', h.source_hash, h.raw, ${sqlUuid(run.id)}`,
-          "  from _delta_headers_inserted h;",
-        ].join("\n")
-      : "select 'no new item headers to land' as note;",
-    detailRows.length
-      ? [
-          "create temp table _delta_item_detail_inserted on commit drop as",
-          "with ins as (",
-          "  insert into coldlion.item_detail (company_code, division_code, item_no, item_pkey, pre_pack_code, source_hash, run_id, fetched_at, first_seen_at, last_seen_at)",
-          "  values",
-          detailValues,
-          "  on conflict (company_code, division_code, item_no, item_pkey) do nothing",
-          "  returning company_code, division_code, item_no, item_pkey",
-          ") select * from ins;",
-          "insert into coldlion.change_log (table_name, natural_key, change_kind, new_source_hash, new_raw, run_id)",
-          "select 'item_detail', jsonb_build_object('company_code', v.company_code, 'division_code', v.division_code, 'item_no', v.item_no, 'item_pkey', v.item_pkey), 'inserted', v.source_hash, v.raw, " + sqlUuid(run.id),
-          "  from (values",
-          detailEvidence,
-          "  ) as v(company_code, division_code, item_no, item_pkey, source_hash, raw)",
-          "  join _delta_item_detail_inserted d using (company_code, division_code, item_no, item_pkey);",
-        ].join("\n")
-      : "create temp table _delta_item_detail_inserted on commit drop as select null::text as company_code, null::text as division_code, null::text as item_no, null::text as item_pkey where false;",
-    `update coldlion.sync_run set status = 'succeeded', finished_at = ${sqlTimestamp(run.fetchedAt)},`,
-    `  rows_inserted = coalesce((select count(*) from _delta_item_detail_inserted), 0),`,
+    `insert into coldlion.sync_run (id, endpoint, company_code, division_code, request_params, status, requested_by, started_at, finished_at, rows_fetched)`,
+    `values (${sqlUuid(run.id)}, '/itemDetails', ${sqlText(run.companyCode)}, ${sqlText(run.divisionCode)}, ${sqlText(JSON.stringify(run.requestParams))}::jsonb, 'running', ${sqlText(run.requestedBy)}, ${sqlTimestamp(run.startedAt)}, ${sqlTimestamp(run.fetchedAt)}, ${detailRows.length});`,
+    ...landingStatements("item_header", ITEM_SPECS.item_header, headerRows, run),
+    ...landingStatements("item_detail", ITEM_SPECS.item_detail, detailRows, run),
+    `update coldlion.sync_run set status = 'succeeded',`,
+    `  rows_inserted = (select count(*) from _delta_item_detail_inserted),`,
     `  notes = ${sqlText(JSON.stringify(run.notes ?? {}))}`,
     ` where id = ${sqlUuid(run.id)};`,
+    "select (select count(*) from _delta_item_detail_inserted) as details_inserted, (select count(*) from _delta_item_header_inserted) as headers_inserted;",
     "commit;",
     "",
   ].join("\n");
+}
+
+// The last "N\tM" line of the delta SQL's unaligned tuples-only output.
+export function parseDeltaCounts(stdout) {
+  const lines = String(stdout ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const match = /^(\d+)\t(\d+)$/.exec(lines[index]);
+    if (match) return { detailsInserted: Number(match[1]), headersInserted: Number(match[2]) };
+  }
+  return null;
 }

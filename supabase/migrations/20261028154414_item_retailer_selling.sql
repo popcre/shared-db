@@ -22,13 +22,7 @@ create index item_retailer_selling_retailer_id_idx
   on plm.item_retailer_selling (retailer_id);
 
 comment on table plm.item_retailer_selling is
-  'Rudimentary selling signal per item per retailer (issue #4964). A retailer is a core.customer row. selling_signal is an owner-entered traffic light (red/yellow/green), never computed from orders.';
-
-comment on column plm.item_retailer_selling.selling_signal is
-  'Traffic-light selling judgment: red (poor), yellow (middling), or green (strong).';
-
-comment on column plm.item_retailer_selling.retailer_id is
-  'The retailer this signal is for; a core.customer row.';
+  'Rudimentary selling signal per item per retailer (issue #4964). A retailer is a core.customer row (retailer_id). selling_signal is an owner-entered traffic light (red poor / yellow middling / green strong), never computed from orders.';
 
 -- Deny-by-default until consuming apps explicitly grant their roles,
 -- matching the other item-master tables.

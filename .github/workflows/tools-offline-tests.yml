@@ -110,8 +110,14 @@ jobs:
       - name: Decide the CI route from a trusted pure-prose inventory
         id: route
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head.sha }}
+          # #4960: merge_group carries base_sha/head_sha. The dotted spellings
+          # of those two fields are ALWAYS EMPTY, which silently forced every
+          # queue entry onto the full engineering path. And a push to main has
+          # no pull request, so its range is the previous main tip and the
+          # pushed commit; the classifier is extracted from that previous tip,
+          # trusted main. An unreadable pair still keeps the full suite below.
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
         run: |
           set -euo pipefail
           echo 'pure_prose=false' >> "$GITHUB_OUTPUT"

@@ -53,7 +53,12 @@ jobs:
       - name: Check out trusted base code only
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base.sha || github.sha }}
+          # #4960: merge_group carries base_sha/head_sha. The dotted spellings
+          # of those two fields are ALWAYS EMPTY, so on queue events this
+          # checkout silently fell through to github.sha -- the GROUP HEAD,
+          # untrusted -- and the routing decision was always "full". The
+          # underscored fields name the true protected base of the group.
+          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
@@ -71,8 +76,8 @@ jobs:
         id: route
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: |
           set -euo pipefail
           # Fail closed: no comparable base/head pair means the full path.
@@ -101,8 +106,8 @@ jobs:
       - name: Publish the routing decision
         env:
           ROUTE: ${{ steps.route.outputs.route }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: |
           set -euo pipefail
           {

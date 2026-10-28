@@ -268,6 +268,77 @@ class CalibrationOrchestrationControls(unittest.TestCase):
 
 
 
+class WholeRegressionSuccessControls(unittest.TestCase):
+    def orchestration(self,query_failure=False):
+        order=[];helper=fixture_helper();helper.CANARY_CHECK_SQL='canary'
+        privilege=dict(postgres_superuser=False,pg_read_server_files_member=False,pg_read_binary_file_execute=False,pg_stat_file_execute=False)
+        physical=FakePhysical();physical.events=[]
+        class Source:
+            def __init__(self,h):self.events=[];self.last_external_failure=None;self.phase='admission';self.version_facts={'server_version_num':170006}
+            def open(self):order.append('source-open');return self
+            def sql(self,database,query):
+                assert database=='postgres'
+                if query==m.FILE_FUNCTION_PRIVILEGES_SQL:
+                    order.append('file-privileges')
+                    if query_failure:raise subprocess.CalledProcessError(3,['psql'],stderr='ERROR: 42501')
+                    return json.dumps(privilege)
+                if query==m.METADATA:return json.dumps(physical.metadata)
+                if query==m.NATIVE_SQL:return json.dumps({'native':'unchanged'})
+                order.append('fixture');return ''
+            def close(self):order.append('source-close');self.events.append({'source_absent':True})
+        class Cluster(FakePhysical):
+            def __init__(self,source,budget_seconds):
+                super().__init__();self.events=[];self.helper=helper
+            def open(self):order.append('cluster-open');return self
+            def close(self):order.append('cluster-close');self.events.append({'physical_absent':True})
+            def sql(self,query,role):
+                if query.startswith('begin;set local role') and query!=m.PAIR_SQL:
+                    if "nextval(" in query or ("set local role rls4427_reader;" in query and 'update ' in query):
+                        raise subprocess.CalledProcessError(3,['psql'],stderr='ERROR: 42501')
+                    if 'default_acl_probe' in query:return '0'
+                    if 'select last_value' in query:return '1'
+                    if 'select count(*)' in query:return '2'
+                    if "fixture_reader" in query:return ''
+                    if "returning label" in query:return 'allowed'
+                    raise AssertionError('unexpected owned permission control')
+                return super().sql(query,role)
+        helper.PhysicalCluster=Cluster
+        return helper,Source,order,privilege
+
+    def test_actual_whole_success_return_executes_privileges_pair_and_cleanup(self):
+        helper,source,order,privilege=self.orchestration()
+        identity={'source_sha':'a'*40,'executed_source_sha256':{'fixed':'b'*64}}
+        with patch.object(m,'load_helper',return_value=helper),patch.object(m,'source_identity',return_value=identity),patch.object(m,'LocalSource',source):
+            result=m.Regression().run()
+        self.assertEqual(result['postgres_file_privileges'],privilege)
+        self.assertTrue(all(type(value)is bool for value in result['postgres_file_privileges'].values()))
+        self.assertEqual(result['source_sha'],identity['source_sha'])
+        self.assertEqual(result['executed_source_sha256'],identity['executed_source_sha256'])
+        self.assertGreaterEqual(result['elapsed_seconds'],0)
+        self.assertEqual(result['historical_logical_restore_failures'],'PRESERVED_NOT_RECLASSIFIED')
+        self.assertEqual(result['version_facts'],{'server_version_num':170006})
+        self.assertEqual(result['source_owner'],m.OWNER);self.assertEqual(result['target_owner'],helper.OWNER)
+        self.assertEqual(result['qualification'],'REAL_NATIVE_PG17_6_FULL_PHYSICAL_FOCUSED_PAIR_ONLY')
+        self.assertEqual(result['native374_acceptance'],'NOT_EVALUATED');self.assertEqual(result['production_acceptance'],'NOT_EVALUATED')
+        self.assertEqual([r['variant']for r in result['pair']['samples']],['original','candidate'])
+        self.assertTrue(result['pair']['physical_start_equal']);self.assertTrue(result['pair']['permissions_equal'])
+        self.assertTrue(result['pair']['root_key_decrypt_two_restarts']);self.assertTrue(result['cleanup_passed'])
+        self.assertEqual(result['source_events'],[{'source_absent':True}]);self.assertEqual(result['physical_events'],[{'physical_absent':True}])
+        self.assertLess(order.index('file-privileges'),order.index('cluster-open'))
+        self.assertEqual(order[-2:],['cluster-close','source-close'])
+
+    def test_privilege_query_failure_closes_source_before_any_cluster_creation(self):
+        helper,source,order,privilege=self.orchestration(query_failure=True)
+        with patch.object(m,'load_helper',return_value=helper),patch.object(m,'source_identity',return_value={}),patch.object(m,'LocalSource',source),self.assertRaises(m.LocalCalibrationFailure)as caught:
+            m.Regression().run()
+        report=caught.exception.receipt
+        self.assertFalse(report['qualification_passed']);self.assertEqual(report['primary_failure']['phase'],'source-file-privileges')
+        self.assertEqual(report['primary_failure']['error_type'],'CalledProcessError')
+        self.assertEqual(report['cleanup_failures'],[]);self.assertEqual(report['events']['source'],[{'source_absent':True}])
+        self.assertEqual(report['events']['physical'],[]);self.assertNotIn('cluster-open',order)
+        self.assertEqual(order[-1],'source-close')
+
+
 class DiagnosticReadinessControls(unittest.TestCase):
     def test_ready_requires_completed_init_marker_then_final_postmaster_and_sql(self):
         command=m.BOOTSTRAP_READY[2]

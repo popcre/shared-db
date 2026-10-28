@@ -470,6 +470,9 @@ class Regression:
         try:
             source=source_identity();local=LocalSource(helper);self.source=local
             self.phase='source-open';local.open()
+            self.phase='source-file-privileges';local.phase=self.phase
+            postgres_file_privileges=json.loads(local.sql('postgres',FILE_FUNCTION_PRIVILEGES_SQL))
+            if set(postgres_file_privileges)!={'postgres_superuser','pg_read_server_files_member','pg_read_binary_file_execute','pg_stat_file_execute'} or any(type(value)is not bool for value in postgres_file_privileges.values()):raise RuntimeError('4427 local file privilege observation is not exact booleans')
             self.phase='source-fixture';local.phase=self.phase
             local.sql('postgres',(ROOT/'supabase/tests/fixtures/rls4427_native_restore_fixture.sql').read_text())
             original_metadata=json.loads(local.sql('postgres',METADATA));original_native=json.loads(local.sql('postgres',NATIVE_SQL))

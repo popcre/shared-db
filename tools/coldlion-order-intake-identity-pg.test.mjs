@@ -65,6 +65,9 @@ create table core.customer (id uuid primary key);
 create table public.style_tracker_rows (id uuid primary key, sku text);
 create table plm.style_tracker_item_bridge (style_tracker_row_id uuid, tracker_type text, plm_item_id uuid);
 create schema if not exists dam;
+create table dam.production_order_snapshot (id uuid primary key default gen_random_uuid(), production_order_line_id uuid);
+create table coldlion.order_history_line (id uuid primary key default gen_random_uuid(), sales_order_no bigint not null,
+  sales_order_line_no integer not null, prod_reference_no text, fetched_at timestamptz not null, created_at timestamptz not null default now());
 create function dam.orderlist_product_facts(uuid, text) returns table (facts jsonb) language sql as $$select '{}'::jsonb$$;
 create function public.link_dam_order_lines_scoped(uuid[]) returns jsonb language sql as $$select '{}'::jsonb$$;
 insert into coldlion.division values ('POP', 'D1', 'POP Creations (Licensed Products)');
@@ -188,7 +191,7 @@ select l.id, 'AA0631P1P03', 24, 'hash-new', l.last_seen_run from coldlion.intake
 test("the committed repair restores SO 7128092 to exactly four merged D3691 lines, and the guard passes", { skip: !container }, () => {
   psql(`drop database if exists ${DB}`, "postgres");
   psql(`create database ${DB}`, "postgres");
-  psql(SCHEMA + `create table dam.production_order_snapshot (id uuid primary key default gen_random_uuid(), production_order_line_id uuid);`);
+  psql(SCHEMA);
   const PH = "aaaaaaaa-0000-0000-0000-000000000001";
   const D = "aaaaaaaa-0000-0000-0000-000000000002";
   const line = (id, header, sku, qty) => `('${id}', '${header}', '1', '${sku}', ${qty}, '62004433', 'licensed',
@@ -239,8 +242,7 @@ insert into plm.production_order_line_source_ref values
 test("automatic merge: unambiguous placeholder lines move onto the matching Google lines, everything else stays", { skip: !container }, () => {
   psql(`drop database if exists ${DB}`, "postgres");
   psql(`create database ${DB}`, "postgres");
-  psql(SCHEMA + `create table dam.production_order_snapshot (id uuid primary key default gen_random_uuid(), production_order_line_id uuid);
-create table coldlion.order_history_line (sales_order_no bigint, prod_reference_no text);`);
+  psql(SCHEMA);
   psql(stage(run(), COMPONENTS));
   write();
   const G = "bbbbbbbb-0000-0000-0000-000000000001";
@@ -255,12 +257,17 @@ select id, 'google_order_list', 'order:row:1:' || sku, true, '{}' from plm.produ
 insert into dam.production_order_snapshot (production_order_line_id)
 select pl.id from plm.production_order_line pl join plm.production_order p on p.id = pl.production_order_id
  where p.production_order_number = 'COLDLION-SO-${SO}' and pl.sku = 'AA0631P1P01';
-insert into coldlion.order_history_line values (${SO}, 'D9999');`);
+insert into coldlion.order_history_line (sales_order_no, sales_order_line_no, prod_reference_no, fetched_at) values
+  (${SO}, 1, 'D3691', now() - interval '2 days'),
+  (${SO}, 1, 'D9999', now() - interval '1 day'),
+  (${SO}, 2, 'D3691', now());`);
   const merge = (w = true) => psql(buildAutoMergeSql({ runId: run(), write: w }));
 
   // ColdLion names a different Import PO: nothing merges.
+  // The newest version of the placeholder's own line names a different Import
+  // PO: nothing merges, though an older version and a sibling line say D3691.
   assert.equal(merge(), "0");
-  psql(`update coldlion.order_history_line set prod_reference_no = ' d3691 '`);
+  psql(`update coldlion.order_history_line set prod_reference_no = ' d3691 ' where prod_reference_no = 'D9999'`);
   // A dry run reports the merge and writes nothing.
   assert.equal(merge(false), "2");
   assert.equal(psql(`select count(*) from coldlion.sync_run where request_params ->> 'step' = 'auto-merge'`), "0");
@@ -275,6 +282,7 @@ insert into coldlion.order_history_line values (${SO}, 'D9999');`);
   assert.equal(psql(`select quantity_ordered from plm.production_order_line where id = 'bbbbbbbb-0000-0000-0000-000000000011'`), "24");
   assert.equal(psql(`select count(*) from dam.production_order_snapshot where production_order_line_id = 'bbbbbbbb-0000-0000-0000-000000000011'`), "1");
   assert.equal(psql(`select jsonb_array_length(request_params -> 'preimage' -> 'lines') from coldlion.sync_run where request_params ->> 'step' = 'auto-merge'`), "4");
+  assert.equal(psql(`select jsonb_array_length(request_params -> 'preimage' -> 'coldlion_refs') from coldlion.sync_run where request_params ->> 'step' = 'auto-merge'`), "2");
 
   // Idempotent, and the hourly writer neither mints the lines back nor fails the guard.
   assert.equal(merge(), "0");
@@ -282,4 +290,36 @@ insert into coldlion.order_history_line values (${SO}, 'D9999');`);
   write();
   assert.equal(linesBySku().length, 4);
   assert.deepEqual(psql(buildIdentityGuardSql()).split("|").slice(0, 5), ["0", "0", "0", "0", "4"]);
+});
+
+test("automatic merge: an ambiguous (PO, SKU) never merges", { skip: !container }, () => {
+  psql(`drop database if exists ${DB}`, "postgres");
+  psql(`create database ${DB}`, "postgres");
+  psql(SCHEMA);
+  psql(stage(run(), COMPONENTS));
+  write();
+  const G = "cccccccc-0000-0000-0000-000000000001";
+  psql(`insert into plm.production_order (id, production_order_number) values ('${G}', 'D3691');
+insert into plm.production_order_line (id, production_order_id, sku, quantity_ordered, customer_po_number) values
+  ('cccccccc-0000-0000-0000-000000000011', '${G}', 'AA0631P1P01', null, '62004433'),
+  ('cccccccc-0000-0000-0000-000000000012', '${G}', 'AA0631P1P01', null, '62004433'),
+  ('cccccccc-0000-0000-0000-000000000013', '${G}', 'AA0631P1P02', 24, '62004433');
+insert into plm.production_order_line_source_ref (production_order_line_id, source_system, source_id, is_primary, metadata)
+select id, 'google_order_list', 'order:row:' || id, true, '{}' from plm.production_order_line where production_order_id = '${G}';
+insert into coldlion.order_history_line (sales_order_no, sales_order_line_no, prod_reference_no, fetched_at) values (${SO}, 1, 'D3691', now());`);
+  // Two Google lines share (PO, AA0631P1P01): only the unambiguous P02 merges.
+  assert.equal(psql(buildAutoMergeSql({ runId: run(), write: true })), "1");
+  assert.equal(psql(`select count(*) from plm.production_order_line pl join plm.production_order p on p.id = pl.production_order_id
+    where p.production_order_number = 'COLDLION-SO-${SO}' and pl.sku = 'AA0631P1P01'`), "1");
+
+  // Two placeholder lines for one Google line: the duplicate SKU never merges.
+  psql(`delete from plm.production_order_line where id = 'cccccccc-0000-0000-0000-000000000012';
+insert into plm.production_order_line (production_order_id, sku, customer_po_number)
+select production_order_id, sku, customer_po_number from plm.production_order_line pl
+ where pl.sku = 'AA0631P1P01' and pl.production_order_id <> '${G}';
+insert into plm.production_order_line_source_ref (production_order_line_id, source_system, source_id, is_primary, metadata)
+select pl.id, 'coldlion', 'coldlion:so:${SO}:line:1:component:9', true, '{}' from plm.production_order_line pl
+ where pl.sku = 'AA0631P1P01' and pl.production_order_id <> '${G}'
+   and not exists (select 1 from plm.production_order_line_source_ref r where r.production_order_line_id = pl.id);`);
+  assert.equal(psql(buildAutoMergeSql({ runId: run(), write: true })), "0");
 });

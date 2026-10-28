@@ -1006,9 +1006,11 @@ select (select count(*) from checked where refs = 0) as missing,
  * ColdLion one, the coldlion refs and any snapshot move over, and the
  * placeholder line goes. Only an unambiguous pair merges: exactly one Google
  * line and exactly one placeholder line for the (PO, SKU), quantities that
- * agree or are blank, and the Google header equal to ColdLion's own
- * prod_reference_no whenever ColdLion names one. Anything else stays a
- * placeholder, untouched. The full preimage rides the run's own sync_run row.
+ * agree or are blank, and the Google header equal to the prod_reference_no
+ * on the NEWEST retained version of the placeholder's own ColdLion line
+ * whenever that version names one (never a sibling line's or a superseded
+ * version's). Anything else stays a placeholder, untouched. The full preimage,
+ * including every moved coldlion ref row, rides the run's own sync_run row.
  */
 export function buildAutoMergeSql({ runId, write = false } = {}) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(runId ?? "")) {
@@ -1020,7 +1022,10 @@ create temporary table coldlion_auto_merge (placeholder_line uuid primary key, g
 
 with ph as (
   select pl.id, pl.sku, pl.customer_po_number as po, pl.quantity_ordered as q,
-         substr(p.production_order_number, 13)::bigint as sales_order_no
+         substr(p.production_order_number, 13)::bigint as sales_order_no,
+         (select min(substring(r.source_id from '^coldlion:so:[0-9]+:line:([0-9]+):')::integer)
+            from plm.production_order_line_source_ref r
+           where r.production_order_line_id = pl.id and r.source_system = 'coldlion') as sales_order_line_no
   from plm.production_order_line pl
   join plm.production_order p on p.id = pl.production_order_id
   where p.metadata ->> 'production_order_number_origin' = 'coldlion_intake_placeholder'
@@ -1042,23 +1047,24 @@ g as (
                     where r.production_order_line_id = gl.id and r.source_system = 'coldlion')
 ),
 pairs as (
-  select ph.id as placeholder_line, g.id as google_line, ph.q as pq, g.q as gq, ph.sales_order_no, g.import_po,
+  select ph.id as placeholder_line, g.id as google_line, ph.q as pq, g.q as gq, ph.sales_order_no, ph.sales_order_line_no, g.import_po,
          count(*) over (partition by ph.id) as google_matches,
          count(*) over (partition by g.id) as placeholder_matches
   from ph join g on g.po = ph.po and g.sku = ph.sku
 ),
 refs as (
-  select sales_order_no, array_agg(distinct lower(btrim(prod_reference_no))) as import_pos
+  select distinct on (sales_order_no, sales_order_line_no) sales_order_no, sales_order_line_no,
+         nullif(lower(btrim(prod_reference_no)), '') as import_po
   from coldlion.order_history_line
-  where btrim(coalesce(prod_reference_no, '')) <> ''
-  group by sales_order_no
+  order by sales_order_no, sales_order_line_no, fetched_at desc, created_at desc, id
 )
 insert into pg_temp.coldlion_auto_merge (placeholder_line, google_line)
 select p.placeholder_line, p.google_line
-from pairs p left join refs r on r.sales_order_no = p.sales_order_no
+from pairs p left join refs r on r.sales_order_no = p.sales_order_no and r.sales_order_line_no = p.sales_order_line_no
 where p.google_matches = 1 and p.placeholder_matches = 1
+  and p.sales_order_line_no is not null
   and (p.pq is null or p.gq is null or p.pq = p.gq)
-  and (r.import_pos is null or lower(btrim(p.import_po)) = any (r.import_pos));
+  and (r.import_po is null or lower(btrim(p.import_po)) = r.import_po);
 
 insert into coldlion.sync_run (id, endpoint, company_code, request_params, status, requested_by, started_at, finished_at, notes)
 select ${sqlUuid(runId)}, '/orderHistory', 'POP',
@@ -1067,6 +1073,9 @@ select ${sqlUuid(runId)}, '/orderHistory', 'POP',
          'lines', (select jsonb_agg(to_jsonb(pl)) from plm.production_order_line pl
                     where pl.id in (select placeholder_line from pg_temp.coldlion_auto_merge)
                        or pl.id in (select google_line from pg_temp.coldlion_auto_merge)),
+         'coldlion_refs', (select jsonb_agg(to_jsonb(r)) from plm.production_order_line_source_ref r
+                    where r.source_system = 'coldlion'
+                      and r.production_order_line_id in (select placeholder_line from pg_temp.coldlion_auto_merge)),
          'snapshots', (select coalesce(jsonb_agg(jsonb_build_object('id', s.id, 'production_order_line_id', s.production_order_line_id)), '[]')
                     from dam.production_order_snapshot s
                     where s.production_order_line_id in (select placeholder_line from pg_temp.coldlion_auto_merge)))),
@@ -1202,6 +1211,10 @@ export const WRITE_REQUIRED_TABLES = Object.freeze([
   "plm.erp_customer",
   "coldlion.item_detail",
   "coldlion.division",
+  // The automatic merge (buildAutoMergeSql) reads ColdLion's own Import PO
+  // reference and moves line snapshots onto the Google line.
+  "coldlion.order_history_line",
+  "dam.production_order_snapshot",
 ]);
 
 export const WRITE_REQUIRED_CONSTRAINTS = Object.freeze([
@@ -1328,6 +1341,15 @@ export const WRITE_REQUIRED_COLUMNS = Object.freeze([
   { schema: "coldlion", table: "division", column: "company_code" },
   { schema: "coldlion", table: "division", column: "division_code" },
   { schema: "coldlion", table: "division", column: "division_desc" },
+  // The automatic merge's reads and its snapshot move.
+  { schema: "coldlion", table: "order_history_line", column: "sales_order_no", type: "bigint" },
+  { schema: "coldlion", table: "order_history_line", column: "sales_order_line_no", type: "integer" },
+  { schema: "coldlion", table: "order_history_line", column: "prod_reference_no", type: "text" },
+  { schema: "coldlion", table: "order_history_line", column: "fetched_at" },
+  { schema: "coldlion", table: "order_history_line", column: "created_at" },
+  { schema: "coldlion", table: "order_history_line", column: "id", type: "uuid" },
+  { schema: "dam", table: "production_order_snapshot", column: "id", type: "uuid" },
+  { schema: "dam", table: "production_order_snapshot", column: "production_order_line_id", type: "uuid" },
   { schema: "plm", table: "production_order_line", column: "source_style_type" },
   // Every staging column the winner selection reads (Phase B specs).
   ...INTAKE_READ_COLUMNS,

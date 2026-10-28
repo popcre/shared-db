@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-import { buildWriteSql, buildIdentityGuardSql } from "./coldlion-landing/lib/order-intake-write.mjs";
+import { buildAutoMergeSql, buildWriteSql, buildIdentityGuardSql } from "./coldlion-landing/lib/order-intake-write.mjs";
 
 const container = process.env.COLDLION_WRITER_TEST_CONTAINER;
 const DB = "coldlion_identity_test";
@@ -234,4 +234,52 @@ insert into plm.production_order_line_source_ref values
   write();
   assert.equal(psql(`select count(*) from plm.production_order_line where production_order_id = '${PH}'`), "0", "the writer mints nothing back");
   assert.deepEqual(psql(buildIdentityGuardSql()).split("|").slice(0, 6), ["0", "0", "0", "0", "4", "0"]);
+});
+
+test("automatic merge: unambiguous placeholder lines move onto the matching Google lines, everything else stays", { skip: !container }, () => {
+  psql(`drop database if exists ${DB}`, "postgres");
+  psql(`create database ${DB}`, "postgres");
+  psql(SCHEMA + `create table dam.production_order_snapshot (id uuid primary key default gen_random_uuid(), production_order_line_id uuid);
+create table coldlion.order_history_line (sales_order_no bigint, prod_reference_no text);`);
+  psql(stage(run(), COMPONENTS));
+  write();
+  const G = "bbbbbbbb-0000-0000-0000-000000000001";
+  const gline = (id, sku, qty) => `('${id}', '${G}', '${sku}', ${qty}, '62004433')`;
+  psql(`insert into plm.production_order (id, production_order_number) values ('${G}', 'D3691');
+insert into plm.production_order_line (id, production_order_id, sku, quantity_ordered, customer_po_number) values
+  ${gline("bbbbbbbb-0000-0000-0000-000000000011", "AA0631P1P01", "null")},
+  ${gline("bbbbbbbb-0000-0000-0000-000000000012", "AA0631P1P02", 24)},
+  ${gline("bbbbbbbb-0000-0000-0000-000000000013", "AA063PFPF01", 500)};
+insert into plm.production_order_line_source_ref (production_order_line_id, source_system, source_id, is_primary, metadata)
+select id, 'google_order_list', 'order:row:1:' || sku, true, '{}' from plm.production_order_line where production_order_id = '${G}';
+insert into dam.production_order_snapshot (production_order_line_id)
+select pl.id from plm.production_order_line pl join plm.production_order p on p.id = pl.production_order_id
+ where p.production_order_number = 'COLDLION-SO-${SO}' and pl.sku = 'AA0631P1P01';
+insert into coldlion.order_history_line values (${SO}, 'D9999');`);
+  const merge = (w = true) => psql(buildAutoMergeSql({ runId: run(), write: w }));
+
+  // ColdLion names a different Import PO: nothing merges.
+  assert.equal(merge(), "0");
+  psql(`update coldlion.order_history_line set prod_reference_no = ' d3691 '`);
+  // A dry run reports the merge and writes nothing.
+  assert.equal(merge(false), "2");
+  assert.equal(psql(`select count(*) from coldlion.sync_run where request_params ->> 'step' = 'auto-merge'`), "0");
+  assert.equal(merge(), "2");
+
+  assert.deepEqual(linesBySku(), [
+    `AA0631P1P01@D3691#coldlion:so:${SO}:line:1:component:1`,
+    `AA0631P1P02@D3691#coldlion:so:${SO}:line:1:component:2`,
+    `AA063PFPF01@COLDLION-SO-${SO}#coldlion:so:${SO}:line:1:component:3`,
+    `AA063PFPF02@COLDLION-SO-${SO}#coldlion:so:${SO}:line:1:component:4`,
+  ], "a blank or equal quantity merges; a conflicting quantity or no Google row stays a placeholder");
+  assert.equal(psql(`select quantity_ordered from plm.production_order_line where id = 'bbbbbbbb-0000-0000-0000-000000000011'`), "24");
+  assert.equal(psql(`select count(*) from dam.production_order_snapshot where production_order_line_id = 'bbbbbbbb-0000-0000-0000-000000000011'`), "1");
+  assert.equal(psql(`select jsonb_array_length(request_params -> 'preimage' -> 'lines') from coldlion.sync_run where request_params ->> 'step' = 'auto-merge'`), "4");
+
+  // Idempotent, and the hourly writer neither mints the lines back nor fails the guard.
+  assert.equal(merge(), "0");
+  psql(`update coldlion.intake_new_order set state = 'pending'`);
+  write();
+  assert.equal(linesBySku().length, 4);
+  assert.deepEqual(psql(buildIdentityGuardSql()).split("|").slice(0, 5), ["0", "0", "0", "0", "4"]);
 });

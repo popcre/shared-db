@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "work_issue": 4890,
+  "outcome": "ready-for-merge",
+  "pr": 4895,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4890/14",
+  "contract_sha256": "f9d91dad0401070b9754934180aa3182b67bb39527d8177b116d6644196c6ee3",
+  "head_sha": "c931af7f4ebc18a0a8660e49b8ef6d1f7a457306",
+  "base_sha": "09c0bd888225368791089a0029deedc13430b0ae",
+  "files_changed": [
+    "docs/verification/rls-initplan/4427/actual-table-qualification.md",
+    "docs/verification/throughput-dispositions/scripts~qualify_rls4427_actual_tables.py.json",
+    "scripts/qualify_rls4427_actual_tables.py",
+    "scripts/rls4427_native_restore_regression.py",
+    "scripts/test_qualify_rls4427_actual_tables.py",
+    "scripts/test_rls4427_native_restore_regression.py",
+    "supabase/tests/fixtures/rls4427_native_restore_fixture.sql",
+    "supabase/tests/rls_public_admin_actual_table_performance.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python3 -m unittest scripts.test_qualify_rls4427_actual_tables",
+      "exit_code": 0,
+      "evidence": "Combined actual31-test Python suite PASS; added real-wrapper mismatch diagnostics/control test; runtime not executed."
+    },
+    {
+      "command": "node --test scripts/rls-public-admin-initplan.test.mjs",
+      "exit_code": 0,
+      "evidence": "Ran together as actual 51-test Node suite, PASS."
+    },
+    {
+      "command": "node --test scripts/agent-work-contract-git-evidence.test.mjs",
+      "exit_code": 0,
+      "evidence": "Ran together as actual 51-test Node suite, PASS."
+    },
+    {
+      "command": "python3 -m py_compile scripts/qualify_rls4427_actual_tables.py",
+      "exit_code": 0,
+      "evidence": "Python compiles without runtime resource execution"
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "SQL/static guards pass; no migration change"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors"
+    },
+    {
+      "command": "node --test scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "Ran together as actual 51-test Node suite, PASS."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=374 sources=108 derived_digest=800c53ea9cb0"
+    },
+    {
+      "command": "python3 -m unittest scripts.test_rls4427_native_restore_regression",
+      "exit_code": 0,
+      "evidence": "Combined actual31-test Python suite PASS; added real-wrapper mismatch diagnostics/control test; runtime not executed."
+    }
+  ],
+  "assumptions_resolved": [
+    "Prospective14 published before diagnostic edits. Original055a627 approved focused run failed with actual process/stdout/stderr retained and byte-paired copy in root private collection; cleanup independently absent. No inference of negative mismatch cause. Approval spent.",
+    "Actual fixed clean command now records phase/argv/exitcode/4096-byte stderr/truncation flag before unchanged negative predicate. Foreign/unowned target refused before resource. Offline31Python+51Node tests PASS; static SQL/truth/compile/whitespace PASS.",
+    "Fresh proposed ONE diagnostic local action only after new exact review/adoption/native gates. No resource operation, review, implementation push, CI, merge or production action in this correction task."
+  ],
+  "stop_conditions_hit": []
+}

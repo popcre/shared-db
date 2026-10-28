@@ -25,7 +25,7 @@ class PhysicalControls(unittest.TestCase):
         return dict(database='postgres',current_user='supabase_admin',session_user='supabase_admin',superuser=True,replication=True,
             recovery=False,wal_level='logical',max_wal_senders=10,external_tablespaces=0,subscriptions=0,slots=0,prepared_transactions=0,
             cron_version='1.6',sodium_version='3.1.8',sodium_nonce_api=True,sodium_keyid_api=True,sodium_open_keyid_api=True,config_file='/etc/postgresql/postgresql.conf',hba_file='/etc/postgresql/pg_hba.conf',
-            ident_file='/etc/postgresql/pg_ident.conf',data_directory=m.DATA,archive_mode='off',archive_command='',restore_command='',
+            ident_file='/etc/postgresql/pg_ident.conf',data_directory=m.DATA,data_directory_mode='0700',archive_mode='off',archive_command='',restore_command='',
             primary_conninfo='',ssl='off',log_directory='/var/log/postgresql',socket='/var/run/postgresql',cron_database='postgres',
             preload='pg_stat_statements, pg_cron, pgsodium',hba_errors=0,replication_hba=1,other_backends=0)
 
@@ -130,12 +130,12 @@ class PhysicalControls(unittest.TestCase):
     def test_archive_escape_recovery_external_dependency_and_manifest_refuse(self):
         full={'PG_VERSION':b'17','global/pg_control':b'invented','backup_label':b'owned','backup_manifest':b'{}'}
         with tempfile.TemporaryDirectory() as d:
-            path=Path(d)/'cluster.tar';self.archive(path,full);m.validate_tar(path,'backup')
+            path=Path(d)/'cluster.tar';self.archive(path,full);m.validate_tar(path,'backup','0700')
             for name in ('../escape','/absolute','standby.signal','recovery.signal','postmaster.pid','pg_tblspc/external'):
                 self.archive(path,{**full,name:b'bad'})
-                with self.assertRaises(RuntimeError):m.validate_tar(path,'backup')
+                with self.assertRaises(RuntimeError):m.validate_tar(path,'backup','0700')
             self.archive(path,{k:v for k,v in full.items() if k!='backup_manifest'})
-            with self.assertRaises(RuntimeError):m.validate_tar(path,'backup')
+            with self.assertRaises(RuntimeError):m.validate_tar(path,'backup','0700')
             m.validate_tar(path,'sealed') # Explicitly different from original backup verification.
 
     def test_mixed_configuration_metadata_is_preserved_and_every_mutation_refuses(self):
@@ -183,7 +183,7 @@ class PhysicalControls(unittest.TestCase):
             for name in ['PG_VERSION','.']:
                 with tarfile.open(p.root/'bad-pg.tar','w') as out:
                     e=tarfile.TarInfo(name);e.type=tarfile.DIRTYPE if name=='.' else tarfile.REGTYPE;out.addfile(e)
-                with self.assertRaisesRegex(RuntimeError,'PGDATA ownership'):m.validate_tar(p.root/'bad-pg.tar','backup')
+                with self.assertRaisesRegex(RuntimeError,'PGDATA ownership'):m.validate_tar(p.root/'bad-pg.tar','backup','0700')
 
     def test_only_backup_tool_manifest_has_exact_generated_header_exception(self):
         full={'PG_VERSION':b'17','global/pg_control':b'invented','backup_label':b'owned','backup_manifest':b'{}'}
@@ -197,11 +197,75 @@ class PhysicalControls(unittest.TestCase):
                             e.uid=uid;e.gid=gid;e.mode=mode
                             if directory:e.type=tarfile.DIRTYPE;e.size=0
                         out.addfile(e,io.BytesIO(data) if e.isfile() else None)
-            archive();self.assertEqual(m.validate_tar(p,'backup')['files'],4)
+            archive();self.assertEqual(m.validate_tar(p,'backup','0700')['files'],4)
             with self.assertRaisesRegex(RuntimeError,'ownership'):m.validate_tar(p,'sealed')
             for change in [dict(name='other'),dict(uid=2047),dict(gid=1025),dict(mode=0o644),dict(directory=True)]:
                 archive(**change)
-                with self.subTest(change=change),self.assertRaisesRegex(RuntimeError,'ownership'):m.validate_tar(p,'backup')
+                with self.subTest(change=change),self.assertRaisesRegex(RuntimeError,'ownership'):m.validate_tar(p,'backup','0700')
+
+    def test_verified_source_mode_binds_only_canonical_generated_manifest_permissions(self):
+        full={'PG_VERSION':b'17','global/pg_control':b'invented','backup_label':b'owned','backup_manifest':b'{}'}
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d)/'backup.tar'
+            def archive(mode):
+                with tarfile.open(p,'w') as out:
+                    for n,data in full.items():
+                        e=tarfile.TarInfo(n);e.uid=100;e.gid=101;e.mode=0o600;e.size=len(data)
+                        if n=='backup_manifest':e.uid=2048;e.gid=1024;e.mode=mode
+                        out.addfile(e,io.BytesIO(data))
+            for source,expected,wrong in [('0700',0o600,0o640),('0750',0o640,0o600)]:
+                archive(expected);r=m.validate_tar(p,'backup',source)
+                self.assertEqual(r['generated_manifest_header'],dict(uid=2048,gid=1024,mode=expected,source_data_directory_mode=source))
+                with self.assertRaisesRegex(RuntimeError,'ownership'):m.validate_tar(p,'sealed')
+                archive(wrong)
+                with self.assertRaisesRegex(RuntimeError,'ownership'):m.validate_tar(p,'backup',source)
+            for mode in (None,'700','0777','0640'):
+                with self.assertRaisesRegex(RuntimeError,'verified source'):m.validate_tar(p,'backup',mode)
+            facts=self.facts()
+            for mode in ('0700','0750'):self.assertEqual(m.validate_source_facts({**facts,'data_directory_mode':mode})['data_directory_mode'],mode)
+            for mode in (None,'700','0777',0o700):
+                with self.assertRaises(RuntimeError):m.validate_source_facts({**facts,'data_directory_mode':mode})
+
+    def test_real_owner_refusal_retains_complete_private_metadata_after_archive_cleanup(self):
+        from contextlib import redirect_stderr
+        import os,stat
+        public=io.StringIO();secret=b'never-copy-archive-file-contents-into-diagnostics'
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d)/'backup.tar'
+            with tarfile.open(p,'w') as out:
+                for n,uid in [('base/123/456',99),('PG_VERSION',100),('global/pg_control',100),('backup_label',100),('backup_manifest',100),('last-header',100)]:
+                    e=tarfile.TarInfo(n);e.uid=uid;e.gid=101;e.mode=0o640;e.size=len(secret);out.addfile(e,io.BytesIO(secret))
+            with self.assertRaisesRegex(RuntimeError,'PGDATA ownership differs') as caught:m.validate_tar(p,'backup','0750')
+            error=caught.exception
+            receipt=m.failure_receipt(error,'physical-open',[])
+            with redirect_stderr(public):m.emit([],receipt)
+            diagnostic=receipt['archive_validation'];index=Path(diagnostic['private_metadata_path'])
+            self.assertEqual(diagnostic['uid'],99);self.assertEqual(diagnostic['gid'],101)
+            self.assertEqual(diagnostic['mode'],0o640);self.assertEqual(diagnostic['type'],ord('0'))
+            self.assertEqual(diagnostic['escaped_name'],'"base/123/456"')
+            self.assertTrue(diagnostic['metadata_complete']);self.assertEqual(diagnostic['metadata_members'],6)
+            self.assertEqual(stat.S_IMODE(index.stat().st_mode),0o600)
+            packet=index.read_bytes();self.assertEqual(m.hashlib.sha256(packet).hexdigest(),diagnostic['private_metadata_sha256'])
+            self.assertNotIn(secret,packet);self.assertNotIn(secret.decode(),public.getvalue())
+            self.assertEqual(json.loads(packet)['members'][-1]['name'],'last-header')
+        self.assertTrue(index.exists());index.unlink()
+        # Invalid paths are refused before ownership/name diagnostics; their names stay only in private index.
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d)/'unsafe.tar';self.archive(p,{'/private-secret-path':b'invented'})
+            with self.assertRaisesRegex(RuntimeError,'path/type') as caught:m.validate_tar(p,'backup','0700')
+            receipt=m.failure_receipt(caught.exception,'physical-open',[])
+            self.assertNotIn('/private-secret-path',json.dumps(receipt));self.assertNotIn('escaped_name',receipt['archive_validation'])
+            Path(receipt['archive_validation']['private_metadata_path']).unlink()
+        # Even a valid config path must not print private arbitrary config names.
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d)/'config.tar'
+            with tarfile.open(p,'w') as out:
+                e=tarfile.TarInfo('etc/postgresql/private-secret-name.conf');e.uid=99;e.gid=101;out.addfile(e)
+            with self.assertRaises(RuntimeError) as caught:m.validate_tar(p,'config')
+            receipt=m.failure_receipt(caught.exception,'physical-open',[])
+            self.assertNotIn('private-secret-name',json.dumps(receipt))
+            self.assertEqual(receipt['archive_validation']['escaped_name'],'"<private-config-member>"')
+            Path(receipt['archive_validation']['private_metadata_path']).unlink()
 
     def test_minute_deadline_and_wall_monotonic_continuity_are_real_guards(self):
         m.minute_guard(125,10,140,25)

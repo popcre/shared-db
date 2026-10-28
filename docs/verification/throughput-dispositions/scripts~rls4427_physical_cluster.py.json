@@ -4,8 +4,8 @@
   "sites": [
     {
       "source": "scripts/rls4427_physical_cluster.py",
-      "site": "scripts/rls4427_physical_cluster.py:314",
-      "semantic_key": "scripts/rls4427_physical_cluster.py:18aaaa7a6194a96b76ae20d9b95747bbffcd9c1eca4af93077990d1d6b322470:context-273289a31e40188ad4c4bf41707bd29d7e1d16c30632f683d8787d168e720999",
+      "site": "scripts/rls4427_physical_cluster.py:362",
+      "semantic_key": "scripts/rls4427_physical_cluster.py:18aaaa7a6194a96b76ae20d9b95747bbffcd9c1eca4af93077990d1d6b322470:context-3611acad7d443494fa1cf076679b45f55dc2dd2cd49744f386b27882a57ce4cb",
       "legacy_semantic_key": "scripts/rls4427_physical_cluster.py:18aaaa7a6194a96b76ae20d9b95747bbffcd9c1eca4af93077990d1d6b322470:1",
       "line_sha256": "18aaaa7a6194a96b76ae20d9b95747bbffcd9c1eca4af93077990d1d6b322470",
       "disposition": "excluded",
@@ -13,8 +13,8 @@
     },
     {
       "source": "scripts/rls4427_physical_cluster.py",
-      "site": "scripts/rls4427_physical_cluster.py:316",
-      "semantic_key": "scripts/rls4427_physical_cluster.py:310fb876d1e4491eecde82af1de8f249516d0a268aea27480b0a8689a296bc17:context-26ef045232ed53e13446dba6832ce4172044cccbc43b26a77bb0b6ce9eb895bb",
+      "site": "scripts/rls4427_physical_cluster.py:364",
+      "semantic_key": "scripts/rls4427_physical_cluster.py:310fb876d1e4491eecde82af1de8f249516d0a268aea27480b0a8689a296bc17:context-4929dc758d7d1905339f7767064455aebfe24a43f50f80343c94061a599394cf",
       "legacy_semantic_key": "scripts/rls4427_physical_cluster.py:310fb876d1e4491eecde82af1de8f249516d0a268aea27480b0a8689a296bc17:1",
       "line_sha256": "310fb876d1e4491eecde82af1de8f249516d0a268aea27480b0a8689a296bc17",
       "disposition": "excluded",
@@ -22,7 +22,7 @@
     },
     {
       "source": "scripts/rls4427_physical_cluster.py",
-      "site": "scripts/rls4427_physical_cluster.py:178",
+      "site": "scripts/rls4427_physical_cluster.py:179",
       "semantic_key": "scripts/rls4427_physical_cluster.py:49ff9d5391896a4e5c1a9fc3c348f9c5721e1498975781785968eca25bf2be11:context-3b571a1a167bf66cd0ee6d8e1d41007378eb57eb1944a67ae474251d77a45c9e",
       "legacy_semantic_key": "scripts/rls4427_physical_cluster.py:49ff9d5391896a4e5c1a9fc3c348f9c5721e1498975781785968eca25bf2be11:1",
       "line_sha256": "49ff9d5391896a4e5c1a9fc3c348f9c5721e1498975781785968eca25bf2be11",
@@ -31,7 +31,7 @@
     },
     {
       "source": "scripts/rls4427_physical_cluster.py",
-      "site": "scripts/rls4427_physical_cluster.py:129",
+      "site": "scripts/rls4427_physical_cluster.py:130",
       "semantic_key": "scripts/rls4427_physical_cluster.py:4a83bf1e4a693e1960680c176804e0699a11294e63617cc0daa35f73f5830270:context-20f8fb8146fb42eeab65dd00054a91e0a809c93ba5b7f068da98129ac0fd2e1c",
       "legacy_semantic_key": "scripts/rls4427_physical_cluster.py:4a83bf1e4a693e1960680c176804e0699a11294e63617cc0daa35f73f5830270:1",
       "line_sha256": "4a83bf1e4a693e1960680c176804e0699a11294e63617cc0daa35f73f5830270",
@@ -40,8 +40,8 @@
     },
     {
       "source": "scripts/rls4427_physical_cluster.py",
-      "site": "scripts/rls4427_physical_cluster.py:332",
-      "semantic_key": "scripts/rls4427_physical_cluster.py:4e6dde9014087f3560cf013c54eaa9cab14f025004fc62f2cbc62bf28504cb2e:context-3a8389ba4af4160b02ab20e78f0d2629627acac721e2fda0c6870586d0d07d8e",
+      "site": "scripts/rls4427_physical_cluster.py:380",
+      "semantic_key": "scripts/rls4427_physical_cluster.py:4e6dde9014087f3560cf013c54eaa9cab14f025004fc62f2cbc62bf28504cb2e:context-c990276a34d48a74fa60493044086a90d381a45d44483c5cf4eb2efa659963dc",
       "legacy_semantic_key": "scripts/rls4427_physical_cluster.py:4e6dde9014087f3560cf013c54eaa9cab14f025004fc62f2cbc62bf28504cb2e:1",
       "line_sha256": "4e6dde9014087f3560cf013c54eaa9cab14f025004fc62f2cbc62bf28504cb2e",
       "disposition": "excluded",
@@ -49,8 +49,8 @@
     },
     {
       "source": "scripts/rls4427_physical_cluster.py",
-      "site": "scripts/rls4427_physical_cluster.py:334",
-      "semantic_key": "scripts/rls4427_physical_cluster.py:6febde1e27d47bac395db22b1ffcdee56cef3d504572a9ac83450803c270792d:context-45c0fa1b07a4636d2dd357963baefd53c79fa9c0e6550ec3a5e7733cc928b6e3",
+      "site": "scripts/rls4427_physical_cluster.py:382",
+      "semantic_key": "scripts/rls4427_physical_cluster.py:6febde1e27d47bac395db22b1ffcdee56cef3d504572a9ac83450803c270792d:context-79022dc82e9992dea9a23992f3b1f9d76ae1387bfd0ba87245b4d00e18cb6dc5",
       "legacy_semantic_key": "scripts/rls4427_physical_cluster.py:6febde1e27d47bac395db22b1ffcdee56cef3d504572a9ac83450803c270792d:1",
       "line_sha256": "6febde1e27d47bac395db22b1ffcdee56cef3d504572a9ac83450803c270792d",
       "disposition": "excluded",
@@ -58,7 +58,7 @@
     },
     {
       "source": "scripts/rls4427_physical_cluster.py",
-      "site": "scripts/rls4427_physical_cluster.py:275",
+      "site": "scripts/rls4427_physical_cluster.py:276",
       "semantic_key": "scripts/rls4427_physical_cluster.py:7525deed1622aadef907edb085b364e22303b57fdd4c6bc2e44959c403146970:context-39f0fb8277657d1b0933123dd10835f3fc50ddeee2f3ad1d1dc92313e989fba6",
       "legacy_semantic_key": "scripts/rls4427_physical_cluster.py:7525deed1622aadef907edb085b364e22303b57fdd4c6bc2e44959c403146970:1",
       "line_sha256": "7525deed1622aadef907edb085b364e22303b57fdd4c6bc2e44959c403146970",
@@ -67,8 +67,17 @@
     },
     {
       "source": "scripts/rls4427_physical_cluster.py",
-      "site": "scripts/rls4427_physical_cluster.py:337",
-      "semantic_key": "scripts/rls4427_physical_cluster.py:cc6d6df945e1ff932d4aaf92612d5fa271c63a9a957ced1225636b7d8efd532a:context-9aa8accf4584155c24a93e4cc89ca8edb2604a2850cf932024a7f21b4e263313",
+      "site": "scripts/rls4427_physical_cluster.py:327",
+      "semantic_key": "scripts/rls4427_physical_cluster.py:a8ed04865cc772b707cc5382480efba726e87cf4a778c3a7a69f90cbc6e920df:context-7b5cd4401de7bf4546c1ca807a331d62d6020a18f3a9480fda39b7b4d09aedd4",
+      "legacy_semantic_key": "scripts/rls4427_physical_cluster.py:a8ed04865cc772b707cc5382480efba726e87cf4a778c3a7a69f90cbc6e920df:1",
+      "line_sha256": "a8ed04865cc772b707cc5382480efba726e87cf4a778c3a7a69f90cbc6e920df",
+      "disposition": "excluded",
+      "reason": "Excluded from delivery-absence claims: this requires actual source-mode binding and preserves diagnostic refusal for unsupported synthetic physical archive metadata; it does not assert absent business records."
+    },
+    {
+      "source": "scripts/rls4427_physical_cluster.py",
+      "site": "scripts/rls4427_physical_cluster.py:385",
+      "semantic_key": "scripts/rls4427_physical_cluster.py:cc6d6df945e1ff932d4aaf92612d5fa271c63a9a957ced1225636b7d8efd532a:context-d19b14f803551bde437e792914a800928631413e74a916720b5f383a378ec64e",
       "legacy_semantic_key": "scripts/rls4427_physical_cluster.py:cc6d6df945e1ff932d4aaf92612d5fa271c63a9a957ced1225636b7d8efd532a:1",
       "line_sha256": "cc6d6df945e1ff932d4aaf92612d5fa271c63a9a957ced1225636b7d8efd532a",
       "disposition": "excluded",

@@ -75,6 +75,7 @@ def capture_external(stderr,tool,code,phase):
 def failure_receipt(error,phase,events):
     reason=str(error) if isinstance(error,RuntimeError) and str(error).startswith('4427 ') else '4427 external or unclassified failure'
     result=dict(qualification_passed=False,error_type=type(error).__name__,phase=phase,invariant=reason,events=list(events))
+    if getattr(error,'archive_diagnostic',None):result['archive_validation']=error.archive_diagnostic
     if isinstance(error,subprocess.CalledProcessError):
         tool=Path(error.cmd[0]).name if isinstance(error.cmd,list) and error.cmd else 'external'
         result['external']=capture_external(error.stderr,tool,error.returncode,phase)
@@ -235,7 +236,7 @@ select json_build_object('database',current_database(),'current_user',current_us
 'sodium_keyid_api',to_regprocedure('pgsodium.crypto_secretbox(bytea,bytea,bigint,bytea)') is not null,
 'sodium_open_keyid_api',to_regprocedure('pgsodium.crypto_secretbox_open(bytea,bytea,bigint,bytea)') is not null,
 'config_file',current_setting('config_file'),'hba_file',current_setting('hba_file'),'ident_file',current_setting('ident_file'),
-'data_directory',current_setting('data_directory'),'archive_mode',current_setting('archive_mode'),'archive_command',current_setting('archive_command'),
+'data_directory',current_setting('data_directory'),'data_directory_mode',current_setting('data_directory_mode'),'archive_mode',current_setting('archive_mode'),'archive_command',current_setting('archive_command'),
 'restore_command',current_setting('restore_command'),'primary_conninfo',current_setting('primary_conninfo'),
 'ssl',current_setting('ssl'),'log_directory',current_setting('log_directory'),'socket',current_setting('unix_socket_directories'),
 'cron_database',current_setting('cron.database_name'),'preload',current_setting('shared_preload_libraries'),
@@ -256,7 +257,7 @@ def validate_source_facts(f):
         or not isinstance(f.get('replication_hba'),int) or f.get('cron_version') not in ('1.6','1.6.4') or f.get('cron_database')!='postgres'
         or f.get('sodium_version')!='3.1.8' or any(f.get(k) is not True for k in ('sodium_nonce_api','sodium_keyid_api','sodium_open_keyid_api'))
         or f.get('config_file')!='/etc/postgresql/postgresql.conf' or f.get('hba_file')!='/etc/postgresql/pg_hba.conf'
-        or f.get('ident_file')!='/etc/postgresql/pg_ident.conf' or f.get('data_directory')!=DATA
+        or f.get('ident_file')!='/etc/postgresql/pg_ident.conf' or f.get('data_directory')!=DATA or f.get('data_directory_mode') not in ('0700','0750')
         or f.get('archive_mode')!='off' or f.get('archive_command') not in ('','(disabled)') or any(f.get(k) for k in ('restore_command','primary_conninfo'))
         or f.get('ssl')!='off' or f.get('log_directory') not in ('log','/var/log/postgresql') or f.get('socket')!='/var/run/postgresql'
         or any(x not in [item.strip() for item in f.get('preload','').split(',')] for x in ('pg_cron','pgsodium'))):
@@ -280,26 +281,73 @@ def cron_fingerprint(f):
     return {k:f[k] for k in ('jobs','job_hash','schedules','runs','run_hash','pending','workers')}
 
 
-def validate_tar(path, kind):
+def archive_member_refusal(message,kind,member,raw):
+    # Called only AFTER path/type/cardinality validation. Config names stay private.
+    name=raw if kind in ('backup','sealed') else '<private-config-member>'
+    escaped=json.dumps(name[:192],ensure_ascii=True)
+    error=RuntimeError(message)
+    error.offending_header=dict(kind=kind if kind in ('config','backup','sealed') else 'unknown',
+        type=member.type[0] if len(member.type)==1 else None,uid=member.uid,gid=member.gid,mode=member.mode,
+        escaped_name=escaped,name_sha256=hashlib.sha256(raw.encode('utf-8',errors='surrogatepass')).hexdigest(),name_truncated=len(name)>192)
+    raise error
+
+
+def archive_metadata_index(path,kind):
+    # A second metadata-only pass retains later headers even when validation fails early.
+    # No extractfile, link following, host extraction or file-content reads occur here.
+    rows=[];complete=False;parse_error=None
+    try:
+        with tarfile.open(path,'r:') as archive:
+            for member in archive:
+                if len(rows)>=100000:raise RuntimeError('metadata index header bound')
+                rows.append(dict(name=member.name,type=member.type.hex(),uid=member.uid,gid=member.gid,mode=member.mode,
+                    size=member.size,linkname=member.linkname,offset=member.offset))
+        complete=True
+    except Exception as error:parse_error=type(error).__name__
+    packet=json.dumps(dict(schema_version=1,kind=kind if kind in ('config','backup','sealed') else 'unknown',
+        complete=complete,parse_error=parse_error,members=rows),ensure_ascii=True,sort_keys=True).encode()
+    fd,index_path=tempfile.mkstemp(prefix='rls4427-private-archive-metadata-',suffix='.json')
+    with os.fdopen(fd,'wb') as out:out.write(packet)
+    return dict(private_metadata_path=index_path,private_metadata_sha256=hashlib.sha256(packet).hexdigest(),metadata_complete=complete,metadata_members=len(rows))
+
+
+def validate_tar(path,kind,source_mode=None):
+    try:return _validate_tar(path,kind,source_mode)
+    except Exception as error:
+        diagnostic=dict(getattr(error,'offending_header',{}))
+        try:diagnostic.update(archive_metadata_index(path,kind))
+        except Exception as capture_error:diagnostic['metadata_capture_error']=type(capture_error).__name__
+        error.archive_diagnostic=diagnostic
+        raise
+
+
+def _validate_tar(path,kind,source_mode):
     """Validate archive names/types/size before any extraction, never extract on host."""
+    if kind=='backup' and source_mode not in ('0700','0750'):
+        raise RuntimeError('4427 physical verified source data-directory mode missing')
+    generated_mode=0o600 if source_mode=='0700' else 0o640
+    manifest_receipt=None
     names=set();total=0;members={};metadata={}
     with tarfile.open(path,'r:') as archive:
         for member in archive:
             raw=member.name.removeprefix('./').rstrip('/')
             pure=PurePosixPath(raw)
-            # PG17.6 bbstreamer_inject.c202-219 injects this canonical tool header.
-            manifest_header=(kind=='backup' and raw=='backup_manifest' and member.isfile() and (member.uid,member.gid,member.mode)==(2048,1024,0o600))
-            if kind!='config' and (member.uid,member.gid)!=(100,101) and not manifest_header:raise RuntimeError('4427 physical PGDATA ownership differs')
-            if raw in ('','.') and member.isdir():continue
-            if not raw or pure.is_absolute() or '..' in pure.parts or raw in names or not (member.isfile() or member.isdir()) or member.size<0:
+            archive_root=raw in ('','.') and member.isdir()
+            if not archive_root and (not raw or pure.is_absolute() or '..' in pure.parts or raw in names or not (member.isfile() or member.isdir()) or member.size<0):
                 raise RuntimeError('4427 physical archive path/type/cardinality refused')
+            # PG17.6 manifest header mode is bound to actual SHOW data_directory_mode.
+            manifest_header=(kind=='backup' and raw=='backup_manifest' and member.isfile() and (member.uid,member.gid,member.mode)==(2048,1024,generated_mode))
+            if kind!='config' and (member.uid,member.gid)!=(100,101) and not manifest_header:
+                archive_member_refusal('4427 physical PGDATA ownership differs',kind,member,raw)
+            if manifest_header:manifest_receipt=dict(uid=member.uid,gid=member.gid,mode=member.mode,source_data_directory_mode=source_mode)
+            if archive_root:continue
             if kind=='config' and not any(raw==root or raw.startswith(root+'/') for root in CONFIG_ROOTS):
                 raise RuntimeError('4427 physical config archive escaped exact roots')
             if kind!='config' and (raw in ('standby.signal','recovery.signal','postmaster.pid') or raw.startswith('pg_tblspc/')):
                 raise RuntimeError('4427 physical archive has external/recovery dependency')
             if kind=='config':
                 if (member.uid,member.gid) not in ((0,0),(100,101)) or member.mode & 0o7022 or member.mode & ~0o777:
-                    raise RuntimeError('4427 physical unsafe configuration ownership/mode')
+                    archive_member_refusal('4427 physical unsafe configuration ownership/mode',kind,member,raw)
                 if member.isfile() and member.size>1048576:raise RuntimeError('4427 physical configuration file too large')
                 metadata[raw]=dict(uid=member.uid,gid=member.gid,mode=member.mode,type='directory' if member.isdir() else 'file',sha256=hashlib.sha256(archive.extractfile(member).read()).hexdigest() if member.isfile() else None)
             names.add(raw);total+=member.size
@@ -336,7 +384,7 @@ def validate_tar(path, kind):
         if not {'PG_VERSION','global/pg_control'}.issubset(names):raise RuntimeError('4427 physical full cluster archive incomplete')
         if kind=='backup' and not {'backup_label','backup_manifest'}.issubset(names):raise RuntimeError('4427 physical backup manifest missing')
     with Path(path).open('rb') as stream:digest=hashlib.file_digest(stream,'sha256').hexdigest()
-    return dict(files=len(names),bytes=total,sha256=digest,**({'metadata_sha256':hashlib.sha256(json.dumps(metadata,sort_keys=True).encode()).hexdigest()} if kind=='config' else {}))
+    return dict(files=len(names),bytes=total,sha256=digest,**({'generated_manifest_header':manifest_receipt} if kind=='backup' else {}),**({'metadata_sha256':hashlib.sha256(json.dumps(metadata,sort_keys=True).encode()).hexdigest()} if kind=='config' else {}))
 
 
 def minute_guard(start_wall,start_mono,now_wall,now_mono):
@@ -410,6 +458,7 @@ class PhysicalCluster:
         if copied_config['metadata_sha256']!=self.original_config_receipt['metadata_sha256']:
             raise RuntimeError('4427 physical copied configuration ownership/mode/content differs')
         self.config_metadata_verified=True
+        emit(self.events,dict(config_metadata_verified=True,metadata_sha256=copied_config['metadata_sha256']))
 
     def sql(self,query,role='postgres'):
         if role not in ('postgres','supabase_admin'):raise RuntimeError('4427 physical SQL role refused')
@@ -453,7 +502,8 @@ class PhysicalCluster:
                 with permission:
                     with os.fdopen(os.open(self.root/'source-basebackup.tar',os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600),'wb') as out:
                         self.source.container_exec(BACKUP_ARGS,output_file=out)
-                    self.original_backup_receipt=validate_tar(self.root/'source-basebackup.tar','backup')
+                    self.original_backup_receipt=validate_tar(self.root/'source-basebackup.tar','backup',facts['data_directory_mode'])
+                    emit(self.events,dict(original_backup_header_qualified=True,source_data_directory_mode=facts['data_directory_mode'],generated_manifest_header=self.original_backup_receipt['generated_manifest_header']))
             finally:self.events.extend(permission.events)
             minute_guard(*self.source.source_backup_window,time.time(),time.monotonic())
             after=validate_cron(json.loads(self._admin_source(CRON_SQL)))

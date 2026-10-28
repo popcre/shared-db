@@ -70,12 +70,11 @@ begin
   end if;
 
   insert into core.customer (
-    name, normalized_name, display_name, domain, status, is_potential,
+    name, display_name, domain, status, is_potential,
     customer_status, chain_type, routing_aliases, metadata
   )
   values (
     v_name,
-    lower(regexp_replace(v_name, '\s+', ' ', 'g')),
     nullif(btrim(coalesce(p_display_name, '')), ''),
     v_domain,
     case when v_status = 'ACTIVE_CUSTOMER' then 'active'::app.entity_status else 'potential'::app.entity_status end,

@@ -308,8 +308,14 @@ begin
   -- item upserts above, so the Licensed tracker row for every new item is created
   -- and linked before this sweep commits (owner direction 2026-10-27: live, not a
   -- scheduled copy). Idempotent per-SKU; a sweep with zero new items costs one
-  -- count query and skips the bridge refresh entirely.
-  perform * from public.sync_new_items_into_style_tracker(p_dry_run => false);
+  -- count query and skips the bridge refresh entirely. The nested block isolates
+  -- the flow: a sync fault must never fail the item landing itself; the row then
+  -- appears via the nightly 05:50 UTC backstop instead.
+  begin
+    perform * from public.sync_new_items_into_style_tracker(p_dry_run => false);
+  exception when others then
+    raise warning 'master data live auto-flow deferred to the nightly backstop: %', sqlerrm;
+  end;
 
   return query select sync_id,seen_count,inserted_count,updated_count,resolved_count,partial_count,ambiguous_count,unresolved_count;
 end;

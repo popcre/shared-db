@@ -49,14 +49,9 @@ name: ColdLion Landing Sync
 
 on:
   schedule:
-    # Every 30 minutes at 05/35 past, off the hour so it does not contend with
-    # everything else scheduled on the hour (#4941 live item flow). Items are
-    # born in the vendor feed throughout the business day (verified read-only
-    # 2026-10-27), so intraday pulls see them; the sweep is no-churn on repeats,
-    # a failed cycle alerts and the next cycle self-heals. The nightly 05:20 run
-    # is subsumed: 05:05/05:35 land on both sides of the vendor's overnight
-    # processing window.
-    - cron: '5,35 * * * *'
+    # 05:20 UTC daily — after the vendor's own overnight processing, and off the
+    # hour so it does not contend with everything else scheduled on the hour.
+    - cron: '20 5 * * *'
   workflow_dispatch:
     inputs:
       operation:

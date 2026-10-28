@@ -1,5 +1,6 @@
 -- Invented objects ONLY in the separately reviewed, owned no-network PG17.6 source.
--- Native roles, schema ownership, grants, extensions, cron and worker settings stay intact.
+-- Existing native roles, schema ownership, grants and worker settings stay intact.
+-- Initialize the cached cron extension ONLY in this new invented local source.
 DO $$
 BEGIN
   IF current_user <> 'supabase_admin' OR NOT (SELECT rolsuper FROM pg_roles WHERE rolname=current_user) THEN
@@ -10,6 +11,7 @@ BEGIN
     RAISE EXCEPTION '4427 local fixture name already occupied';
   END IF;
 END $$;
+CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;
 CREATE ROLE rls4427_owner NOLOGIN;
 CREATE ROLE rls4427_reader NOLOGIN;
 CREATE ROLE rls4427_writer NOLOGIN;

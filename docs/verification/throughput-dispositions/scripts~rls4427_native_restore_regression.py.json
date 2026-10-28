@@ -3,7 +3,7 @@
   "source": "scripts/rls4427_native_restore_regression.py",
   "sites": [
     {
-      "site": "scripts/rls4427_native_restore_regression.py:396",
+      "site": "scripts/rls4427_native_restore_regression.py:405",
       "semantic_key": "scripts/rls4427_native_restore_regression.py:634485f5009fca54d5eb1906d4c9499bdd1864d0e29a072823dee80fcf158c71:context-2b9cc0bd326c1008dd388bd074a535634839b77cc954b4d2d887856096477419",
       "legacy_semantic_key": "scripts/rls4427_native_restore_regression.py:634485f5009fca54d5eb1906d4c9499bdd1864d0e29a072823dee80fcf158c71:1",
       "line_sha256": "634485f5009fca54d5eb1906d4c9499bdd1864d0e29a072823dee80fcf158c71",

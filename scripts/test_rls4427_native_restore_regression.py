@@ -286,6 +286,45 @@ class DiagnosticReadinessControls(unittest.TestCase):
         self.assertTrue(any(r.get('kind')=='owned-source-stopped'for r in reports))
         self.assertTrue(any(r.get('kind')=='owned-source-removed'and r.get('absent')is True for r in reports))
 
+    def test_dead_owned_source_disposal_skips_exec_and_never_removes_foreign(self):
+        for foreign in (False,True):
+            source=m.LocalSource(fixture_helper());source.container_id='a'*64;source.image_id=m.IMAGE;source.expected_labels=dict(m.LABELS)
+            source.temporary=types.SimpleNamespace(cleanup=lambda:None)
+            row=source_row(source);row['State']=dict(Running=False,Status='dead',OOMKilled=True)
+            if foreign:row['Id']='b'*64
+            calls=[]
+            def docker(*args,**kwargs):
+                calls.append(args)
+                if args[0]=='inspect':return subprocess.CompletedProcess([],0,stdout=json.dumps([row]).encode(),stderr=b'')
+                if args[0]in('rm','ps'):return subprocess.CompletedProcess([],0,stdout=b'',stderr=b'')
+                self.fail('must not stop or exec inside already dead keeper')
+            with patch.object(source,'docker',side_effect=docker),patch.object(source,'execute') as execute:
+                if foreign:
+                    with self.assertRaises(RuntimeError):source.close()
+                    self.assertFalse(any(x[0]=='rm' for x in calls))
+                else:
+                    with self.assertRaises(RuntimeError):source.custody()
+                    source.close();self.assertIsNone(source.container_id)
+                    self.assertTrue(any(x.get('kind')=='owned-source-keeper-not-running'and x['graceful_pg_stop']is False for x in source.events))
+                    self.assertTrue(any(x.get('kind')=='owned-source-removed'and x['absent'] for x in source.events))
+                execute.assert_not_called()
+
+    def test_source_pg_stop_failure_still_removes_owned_resource_but_does_not_pass(self):
+        source=m.LocalSource(fixture_helper());source.container_id='a'*64;source.phase='cleanup-source'
+        source.temporary=types.SimpleNamespace(cleanup=lambda:None)
+        result=subprocess.CompletedProcess([],1,stdout=b'',stderr=b'actual owned stop failure')
+        good=subprocess.CompletedProcess([],0,stdout=b'',stderr=b'')
+        with patch.object(source,'custody'),patch.object(source,'execute',return_value=result),patch.object(source,'docker',return_value=good) as docker:
+            with self.assertRaisesRegex(RuntimeError,'graceful stop'):source.close()
+            self.assertIsNone(source.container_id);self.assertTrue(any(c.args[0]=='rm'for c in docker.call_args_list))
+            self.assertFalse(any(e.get('kind')=='owned-source-stopped'for e in source.events))
+
+    def test_local_fixture_initializes_cached_cron_only_after_admin_admission(self):
+        fixture=(m.ROOT/'supabase/tests/fixtures/rls4427_native_restore_fixture.sql').read_text()
+        self.assertEqual(fixture.count('CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;'),1)
+        self.assertLess(fixture.index("current_user <> 'supabase_admin'"),fixture.index('CREATE EXTENSION IF NOT EXISTS pg_cron'))
+        run=P.read_text();self.assertLess(run.index("local.sql('postgres',(ROOT/'supabase/tests/fixtures/rls4427_native_restore_fixture.sql')"),run.index('self.cluster=helper.PhysicalCluster'))
+
     def test_permissions_run_under_each_actual_variant_after_timed_update(self):
         cluster=FakePhysical();order=[];original=cluster.sql
         def sql(query,role):

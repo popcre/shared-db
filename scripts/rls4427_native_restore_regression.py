@@ -167,7 +167,7 @@ class LocalSource:
     def __init__(self,helper):
         self.helper=helper;self.prefix=PREFIX;self.container_id=None;self.container_image=None;self.immutable_config_sha=None
         self.env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','PGPASSWORD':'postgres'}
-        self.started=time.monotonic();self.cleanup=False;self.events=[];self.restore_authority_qualified=False
+        self.started=time.monotonic();self.cleanup=False;self.events=[];self.restore_authority_qualified=False;self.keeper_running=True;self.keeper_status='running'
         self.phase='not-started';self.last_external_failure=None;self.bootstrap_launched=False
 
     def budget_check(self):
@@ -186,18 +186,21 @@ class LocalSource:
             raise subprocess.CalledProcessError(result.returncode,[tool],stderr=result.stderr)
         return result
 
-    def custody(self):
+    def custody(self,allow_stopped=False):
         rows=json.loads(self.docker('inspect','--type','container',NAME).stdout)
         if len(rows)!=1:raise RuntimeError('4427 local source cardinality differs')
-        row=rows[0];h=row['HostConfig'];n=row['NetworkSettings']
+        row=rows[0];h=row['HostConfig'];n=row['NetworkSettings'];state=row['State']
+        running=state.get('Running') is True
+        stopped=allow_stopped and self.cleanup and state.get('Running') is False and state.get('Status') in ('created','exited','dead')
         if (row['Id']!=self.container_id or row['Image']!=self.image_id or row['Name']!='/'+NAME or row['Config'].get('Labels')!=self.expected_labels
             or row['Config'].get('User')!='100:101' or row['Config'].get('Entrypoint')!=['/bin/sleep'] or row['Config'].get('Cmd')!=['infinity']
-            or row['State'].get('Running') is not True or h.get('Privileged') is not False or h.get('ReadonlyRootfs') is not True
+            or not (running or stopped) or h.get('Privileged') is not False or h.get('ReadonlyRootfs') is not True
             or h.get('Memory')!=2147483648 or h.get('NanoCpus')!=1000000000 or h.get('PidsLimit')!=256
             or h.get('NetworkMode')!='none' or h.get('Binds') or h.get('PortBindings') or h.get('Devices') or h.get('CapAdd') or h.get('PidMode','')
             or h.get('Tmpfs',{})!=TMPFS or set(n.get('Networks',{}))!={'none'} or any(n.get('Ports',{}).values())
             or any(m.get('Type')!='tmpfs' or m.get('Destination') not in TMPFS for m in row.get('Mounts',[]))):
             raise RuntimeError('4427 local source custody/resource bounds differ')
+        self.keeper_running=running;self.keeper_status=state.get('Status','running' if running else 'unknown')
         return self.container_id,self.image_id,IMAGE_TAG
 
     def execute(self,args,input_file=None,output_file=None,allowed_failure=False,detach=False):
@@ -314,23 +317,29 @@ class LocalSource:
     def close(self):
         if self.container_id:
             self.cleanup=True
+            self.custody(allow_stopped=True)
             try:
-                self.custody()
-                # Only our existing source postmaster, only after all child clients
-                # have closed; no FORCE or signal to individual sessions/workers.
-                result=self.execute(['pg_ctl','-D','/etc/postgresql','-w','-t','10','-m','smart','stop'],allowed_failure=True)
-                if result.returncode:
-                    self.last_external_failure=self.helper.capture_external(result.stderr,'pg_ctl',result.returncode,self.phase)
-                absence=self.execute(['test','!','-e',DATA+'/postmaster.pid'],allowed_failure=True)
-                if absence.returncode:
-                    self.last_external_failure=self.helper.capture_external(absence.stderr,'test',absence.returncode,self.phase)
-                    raise RuntimeError('4427 local owned source graceful stop/absence failed')
-                self.diagnostic('owned-source-stopped',stop_exit_code=result.returncode,pid_absent=True)
-                self.custody();self.docker('stop','--time','10',self.container_id);self.docker('rm',self.container_id)
-                if self.docker('ps','-aq','--filter','name=^/'+NAME+'$').stdout.strip():raise RuntimeError('4427 local source removal absence failed')
-                self.diagnostic('owned-source-removed',container_id=self.container_id,absent=True);self.container_id=None
+                if self.keeper_running:
+                    result=self.execute(['pg_ctl','-D','/etc/postgresql','-w','-t','10','-m','smart','stop'],allowed_failure=True)
+                    if result.returncode:
+                        self.last_external_failure=self.helper.capture_external(result.stderr,'pg_ctl',result.returncode,self.phase)
+                    absence=self.execute(['test','!','-e',DATA+'/postmaster.pid'],allowed_failure=True)
+                    if result.returncode or absence.returncode:
+                        if absence.returncode:self.last_external_failure=self.helper.capture_external(absence.stderr,'test',absence.returncode,self.phase)
+                        raise RuntimeError('4427 local owned source graceful stop/absence failed')
+                    self.diagnostic('owned-source-stopped',stop_exit_code=0,pid_absent=True,graceful_pg_stop=True)
+                else:
+                    self.diagnostic('owned-source-keeper-not-running',status=self.keeper_status,graceful_pg_stop=False)
             finally:
-                if self.container_id is None:self.temporary.cleanup()
+                try:
+                    self.custody(allow_stopped=True)
+                    if self.keeper_running:self.docker('stop','--time','10',self.container_id)
+                    self.custody(allow_stopped=True)
+                    self.docker('rm',self.container_id)
+                    if self.docker('ps','-aq','--filter','name=^/'+NAME+'$').stdout.strip():raise RuntimeError('4427 local source removal absence failed')
+                    self.diagnostic('owned-source-removed',container_id=self.container_id,absent=True);self.container_id=None
+                finally:
+                    if self.container_id is None:self.temporary.cleanup()
         elif hasattr(self,'temporary'):self.temporary.cleanup()
 
 

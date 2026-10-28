@@ -114,6 +114,40 @@ class PhysicalControls(unittest.TestCase):
             wrong=copy.deepcopy(row);wrong[section][key]=value
             with self.subTest(key=key),patch.object(p,'docker',return_value=result(wrong)),self.assertRaises(RuntimeError):p.custody()
 
+    def test_stopped_owned_keeper_cleanup_skips_exec_and_foreign_identity_refuses(self):
+        import subprocess
+        for foreign in (False,True):
+            p=m.PhysicalCluster(self.source());p.cid='a'*64;p.running=True;p.image_id='sha256:'+'b'*64;p.target_labels=dict(p.labels)
+            row=dict(Id='b'*64 if foreign else p.cid,Name='/'+p.name,Image=p.image_id,Config=dict(Labels=p.target_labels,User='100:101',Entrypoint=['/bin/sleep'],Cmd=['infinity']),
+                State=dict(Running=False,Status='exited',OOMKilled=True),HostConfig=dict(NetworkMode='none',Privileged=False,ReadonlyRootfs=True,Memory=2147483648,NanoCpus=1000000000,PidsLimit=256,Tmpfs=dict(m.TMPFS)),
+                NetworkSettings=dict(Networks={'none':{}},Ports={}),Mounts=[])
+            operations=[]
+            def docker(*args,**kwargs):
+                operations.append(args)
+                if args[0]=='inspect':return subprocess.CompletedProcess([],0,stdout=json.dumps([row]).encode(),stderr=b'')
+                if args[0]in('rm','ps'):return subprocess.CompletedProcess([],0,stdout=b'',stderr=b'')
+                self.fail('no stop or exec into dead owned keeper')
+            with patch.object(p,'docker',side_effect=docker),patch.object(p,'stop') as stop:
+                if foreign:
+                    with self.assertRaises(RuntimeError):p.close()
+                    self.assertFalse(any(x[0]=='rm' for x in operations))
+                else:
+                    with self.assertRaises(RuntimeError):p.target(['pg_ctl','status'])
+                    p.close();self.assertIsNone(p.cid);self.assertFalse(p.running)
+                    self.assertEqual(sum(x[0]=='rm'for x in operations),1)
+                    self.assertTrue(p.events[-1]['absent']);self.assertFalse(p.events[0]['graceful_pg_stop'])
+                stop.assert_not_called()
+
+    def test_graceful_stop_failure_still_disposes_exact_owned_target_and_remains_failure(self):
+        import subprocess
+        p=m.PhysicalCluster(self.source());p.cid='a'*64;p.running=True
+        states=[dict(running=True,status='running',oom_killed=False),dict(running=True,status='running',oom_killed=False),dict(running=False,status='exited',oom_killed=False)]
+        result=subprocess.CompletedProcess([],0,stdout=b'',stderr=b'')
+        with patch.object(p,'custody',side_effect=states),patch.object(p,'stop',side_effect=RuntimeError('4427 actual graceful failure')),patch.object(p,'docker',return_value=result) as docker:
+            with self.assertRaisesRegex(RuntimeError,'actual graceful failure'):p.close()
+            self.assertTrue(any(x.args[0]=='rm' for x in docker.call_args_list));self.assertIsNone(p.cid)
+            self.assertTrue(p.events[-1]['absent'])
+
     def test_failure_diagnostics_are_private_and_never_inline_raw_stderr(self):
         import subprocess
         err=subprocess.CalledProcessError(3,['psql'],stderr='ERROR:  42501\nprivate external detail')

@@ -341,10 +341,12 @@ class PhysicalCluster:
             raise RuntimeError('4427 owned physical operation failed: '+args[0])
         return r
 
-    def custody(self):
+    def custody(self,allow_stopped=False):
         rows=json.loads(self.docker('inspect','--type','container',self.name).stdout)
         if len(rows)!=1:raise RuntimeError('4427 physical target cardinality differs')
-        row=rows[0];h=row['HostConfig'];n=row['NetworkSettings']
+        row=rows[0];h=row['HostConfig'];n=row['NetworkSettings'];state=row['State']
+        running=state.get('Running') is True
+        stopped=allow_stopped and self.cleanup_mode and state.get('Running') is False and state.get('Status') in ('created','exited','dead')
         expected_tmpfs={DATA,'/etc/postgresql','/etc/postgresql-custom','/var/run/postgresql','/var/log/postgresql','/tmp'}
         if (row['Id']!=self.cid or row['Name']!='/'+self.name or row['Image']!=self.image_id or row['Config'].get('Labels')!=self.target_labels
             or row['Config'].get('User')!='100:101' or row['Config'].get('Entrypoint')!=['/bin/sleep'] or row['Config'].get('Cmd')!=['infinity']
@@ -352,8 +354,9 @@ class PhysicalCluster:
             or h.get('Memory')!=2147483648 or h.get('NanoCpus')!=1000000000 or h.get('PidsLimit')!=256
             or h.get('Devices') or h.get('CapAdd') or h.get('PidMode','') or h.get('PortBindings')
             or h.get('Tmpfs',{})!=TMPFS or any(m.get('Type')!='tmpfs' or m.get('Destination') not in expected_tmpfs for m in row.get('Mounts',[]))
-            or set(n.get('Networks',{}))!={'none'} or any(n.get('Ports',{}).values()) or row['State'].get('Running') is not True):
+            or set(n.get('Networks',{}))!={'none'} or any(n.get('Ports',{}).values()) or not (running or stopped)):
             raise RuntimeError('4427 physical target custody/resource bounds differ')
+        return {'running':running,'status':state.get('Status','running' if running else 'unknown'),'oom_killed':state.get('OOMKilled',False)}
 
     def target(self,args,input_file=None,output_file=None,allowed_failure=False):
         self.custody()
@@ -530,12 +533,20 @@ class PhysicalCluster:
     def close(self):
         self.cleanup_mode=True
         if self.cid:
+            state=self.custody(allow_stopped=True)
             try:
-                if self.running:self.stop(check=False)
+                if state['running']:
+                    if self.running:self.stop(check=False)
+                else:
+                    self.running=False
+                    emit(self.events,{'owned_keeper_not_running':True,'status':state['status'],'oom_killed':state['oom_killed'],'graceful_pg_stop':False})
             finally:
-                self.custody();self.docker('stop','--time','10',self.cid);self.docker('rm',self.cid)
+                state=self.custody(allow_stopped=True)
+                if state['running']:self.docker('stop','--time','10',self.cid)
+                self.custody(allow_stopped=True)
+                self.docker('rm',self.cid)
                 if self.docker('ps','-aq','--filter','name=^/'+self.name+'$').stdout.strip():raise RuntimeError('4427 physical owned target removal absence failed')
-                emit(self.events,{'owned_container_removed':self.cid,'absent':True});self.cid=None
+                emit(self.events,{'owned_container_removed':self.cid,'absent':True});self.cid=None;self.running=False
         if self.root is not None:
             if getattr(self.source,'hba_restore_failed',False):
                 self.source.diagnostic('source-hba-restoration-failed',private_recovery_path=str(self.root))

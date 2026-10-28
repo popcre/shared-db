@@ -1,0 +1,25 @@
+-- Invented metadata/data only. Run ONLY in the independently reviewed owned PG17 fixture.
+create role rls4427_owner nologin;
+create role rls4427_reader nologin;
+create role rls4427_writer nologin;
+alter schema public owner to rls4427_owner;
+revoke all on schema public from public;
+grant usage on schema public to rls4427_reader, rls4427_writer;
+create schema storage authorization rls4427_owner;
+set role rls4427_owner;
+alter default privileges in schema public grant select on tables to rls4427_reader;
+create table public.restore_fixture(id serial primary key, label text not null check(length(label)>0));
+insert into public.restore_fixture values(1,'synthetic-public');
+grant usage,select on sequence public.restore_fixture_id_seq to rls4427_writer;
+create table storage.objects(id integer primary key, owner text not null, label text not null);
+create index restore_label_idx on storage.objects(label);
+insert into storage.objects values(1,'synthetic','one'),(2,'synthetic','two');
+create function storage.fixture_normalize() returns trigger language plpgsql as $$begin new.label=trim(new.label);return new;end$$;
+create trigger fixture_normalize before insert or update on storage.objects for each row execute function storage.fixture_normalize();
+alter table storage.objects enable row level security;
+create policy fixture_read on storage.objects for select to rls4427_reader,rls4427_writer using(owner='synthetic');
+create policy crm_customer_logos_update on storage.objects for update to rls4427_writer using(owner='synthetic') with check(owner='synthetic');
+grant usage on schema storage to rls4427_reader,rls4427_writer;
+grant select on storage.objects to rls4427_reader,rls4427_writer;
+grant update(label) on storage.objects to rls4427_writer;
+reset role;

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "work_issue": 4931,
+  "outcome": "ready-for-merge",
+  "pr": 4945,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4931/3",
+  "contract_sha256": "7ddce158366f0cb015b425b78b409bc678c4c7381d05473932c31a986f9886ca",
+  "head_sha": "87e22baac0317834743a8e32aa9c8f907996fde7",
+  "base_sha": "2eabc88a9074acf0a7a43b210405ad6e01de765c",
+  "files_changed": ["tools/coldlion-landing/lib/order-intake-write.mjs", "tools/coldlion-landing/order-intake-write.mjs", "tools/coldlion-order-intake-identity-pg.test.mjs"],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {"command": "node --test tools/coldlion-order-intake-*.test.mjs", "exit_code": 0, "evidence": "# pass 179 # fail 0 (with history suite); PostgreSQL 17 identity suite 8/8"},
+    {"command": "git diff --check", "exit_code": 0, "evidence": "No whitespace errors"}
+  ],
+  "assumptions_resolved": ["Merge refuses a different prod_reference_no, a quantity conflict and a missing Google row on the PostgreSQL 17 fixture"],
+  "stop_conditions_hit": []
+}

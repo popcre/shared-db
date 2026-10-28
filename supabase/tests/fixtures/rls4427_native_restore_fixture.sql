@@ -1,33 +1,43 @@
--- Invented metadata/data only. Run ONLY in the independently reviewed owned PG17 fixture.
--- These invented roles exist ONLY inside the reviewed no-network regression container.
-create role rls4427_restore_operator login nosuperuser nobypassrls createdb;
-create role supabase_admin login superuser;
-create schema auth authorization supabase_admin;
-set role supabase_admin;
-create table auth.restore_authority_fixture(id integer primary key, label text not null);
-insert into auth.restore_authority_fixture values(1,'invented-auth-owner');
-reset role;
-create role rls4427_owner nologin;
-create role rls4427_reader nologin;
-create role rls4427_writer nologin;
-alter schema public owner to rls4427_owner;
-revoke all on schema public from public;
-grant usage on schema public to rls4427_reader, rls4427_writer;
-create schema storage authorization rls4427_owner;
-set role rls4427_owner;
-alter default privileges in schema public grant select on tables to rls4427_reader;
-create table public.restore_fixture(id serial primary key, label text not null check(length(label)>0));
-insert into public.restore_fixture values(1,'synthetic-public');
-grant usage,select on sequence public.restore_fixture_id_seq to rls4427_writer;
-create table storage.objects(id integer primary key, owner text not null, label text not null);
-create index restore_label_idx on storage.objects(label);
-insert into storage.objects values(1,'synthetic','one'),(2,'synthetic','two');
-create function storage.fixture_normalize() returns trigger language plpgsql as $$begin new.label=trim(new.label);return new;end$$;
-create trigger fixture_normalize before insert or update on storage.objects for each row execute function storage.fixture_normalize();
-alter table storage.objects enable row level security;
-create policy fixture_read on storage.objects for select to rls4427_reader,rls4427_writer using(owner='synthetic');
-create policy crm_customer_logos_update on storage.objects for update to rls4427_writer using(owner='synthetic') with check(owner='synthetic');
-grant usage on schema storage to rls4427_reader,rls4427_writer;
-grant select on storage.objects to rls4427_reader,rls4427_writer;
-grant update(label) on storage.objects to rls4427_writer;
-reset role;
+-- Invented objects ONLY in the separately reviewed, owned no-network PG17.6 source.
+-- Native roles, schema ownership, grants, extensions, cron and worker settings stay intact.
+DO $$
+BEGIN
+  IF current_user <> 'supabase_admin' OR NOT (SELECT rolsuper FROM pg_roles WHERE rolname=current_user) THEN
+    RAISE EXCEPTION '4427 local fixture requires existing native Supabase administrator';
+  END IF;
+  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname IN ('rls4427_owner','rls4427_reader','rls4427_writer'))
+     OR to_regnamespace('rls4427_fixture') IS NOT NULL THEN
+    RAISE EXCEPTION '4427 local fixture name already occupied';
+  END IF;
+END $$;
+CREATE ROLE rls4427_owner NOLOGIN;
+CREATE ROLE rls4427_reader NOLOGIN;
+CREATE ROLE rls4427_writer NOLOGIN;
+CREATE SCHEMA rls4427_fixture AUTHORIZATION rls4427_owner;
+GRANT USAGE ON SCHEMA rls4427_fixture TO rls4427_reader,rls4427_writer;
+SET ROLE rls4427_owner;
+ALTER DEFAULT PRIVILEGES IN SCHEMA rls4427_fixture GRANT SELECT ON TABLES TO rls4427_reader;
+CREATE TABLE rls4427_fixture.authority_fixture(id integer PRIMARY KEY,label text NOT NULL);
+INSERT INTO rls4427_fixture.authority_fixture VALUES(1,'invented-owner');
+CREATE TABLE rls4427_fixture.restore_fixture(id serial PRIMARY KEY,label text NOT NULL CHECK(length(label)>0));
+INSERT INTO rls4427_fixture.restore_fixture VALUES(1,'synthetic-public');
+GRANT USAGE,SELECT ON SEQUENCE rls4427_fixture.restore_fixture_id_seq TO rls4427_writer;
+CREATE TABLE rls4427_fixture.objects(id integer PRIMARY KEY,owner text NOT NULL,label text NOT NULL);
+CREATE INDEX restore_label_idx ON rls4427_fixture.objects(label);
+INSERT INTO rls4427_fixture.objects VALUES(1,'synthetic','one'),(2,'synthetic','two');
+CREATE FUNCTION rls4427_fixture.fixture_normalize() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN NEW.label=trim(NEW.label); RETURN NEW; END $$;
+CREATE TRIGGER fixture_normalize BEFORE INSERT OR UPDATE ON rls4427_fixture.objects
+  FOR EACH ROW EXECUTE FUNCTION rls4427_fixture.fixture_normalize();
+CREATE FUNCTION rls4427_fixture.request_allowed() RETURNS boolean LANGUAGE plpgsql STABLE AS $$
+BEGIN RETURN current_setting('request.jwt.claim.role',true)='fixture_writer'; END $$;
+ALTER TABLE rls4427_fixture.objects ENABLE ROW LEVEL SECURITY;
+CREATE POLICY fixture_read ON rls4427_fixture.objects FOR SELECT TO rls4427_reader,rls4427_writer USING(owner='synthetic');
+CREATE POLICY fixture_write ON rls4427_fixture.objects FOR UPDATE TO rls4427_writer
+  USING(owner='synthetic' AND rls4427_fixture.request_allowed())
+  WITH CHECK(owner='synthetic' AND rls4427_fixture.request_allowed());
+GRANT SELECT ON rls4427_fixture.objects TO rls4427_reader,rls4427_writer;
+GRANT UPDATE(label) ON rls4427_fixture.objects TO rls4427_writer;
+-- The reader's permission on this table must come from the actual default ACL.
+CREATE TABLE rls4427_fixture.default_acl_probe(id integer);
+RESET ROLE;

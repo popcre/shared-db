@@ -1,302 +1,502 @@
 #!/usr/bin/env python3
-"""4427-specific REAL PG17 regression. Import is offline. Execution needs separate review/gates.
+"""One reviewed #4427 local physical calibration; import is offline.
 
-No connection/image/command options. One fixed owned cached-image container, no network,
-ports, host binds, pulls or external rows. This is NOT the production qualification driver.
+Synthetic native Supabase source only. No connection, image, command or target
+options; no production rows. The separate physical helper owns backup/reset/HBA
+window authority. This file supplies a bounded owned source and one paired check.
 """
 import hashlib
 import importlib.util
+import io
 import json
 import os
+from pathlib import Path, PurePosixPath
 import re
-from pathlib import Path
 import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
+import threading
 import time
 
-ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location('actual4427', ROOT/'scripts/qualify_rls4427_actual_tables.py')
-CORE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(CORE)
-IMAGE = 'sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3'
-NAME = 'rls4427-restore-regression-01a1834a'
-OWNER = '01a1834a-813e-7b12-b17a-3e8c3aaedfb8'
-LABELS = {'shared-db.regression':'4427-fresh-restore','shared-db.owner':OWNER}
-DATABASES = ('rls4427_source','rls4427_clean_negative','rls4427_restore','rls4427_nonempty','rls4427_truncated','rls4427_permission_negative')
-# All OID-independent fixture object metadata, including owners, ACLs and defaults.
-METADATA = """select json_build_object(
-'schemas',(select json_agg(json_build_array(nspname,pg_get_userbyid(nspowner),nspacl::text) order by nspname) from pg_namespace where nspname in ('public','storage','auth')),
-'relations',(select json_agg(json_build_array(n.nspname,c.relname,c.relkind,pg_get_userbyid(c.relowner),c.relacl::text,c.relrowsecurity,c.relforcerowsecurity) order by n.nspname,c.relname) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','storage','auth')),
-'columns',(select json_agg(json_build_array(n.nspname,c.relname,a.attname,format_type(a.atttypid,a.atttypmod),a.attnotnull,a.attidentity,a.attgenerated,a.attacl::text,pg_get_expr(d.adbin,d.adrelid)) order by n.nspname,c.relname,a.attnum) from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace left join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum where n.nspname in ('public','storage','auth') and a.attnum>0 and not a.attisdropped),
-'policies',(select json_agg(json_build_array(schemaname,tablename,policyname,permissive,roles,cmd,qual,with_check) order by schemaname,tablename,policyname) from pg_policies where schemaname in ('public','storage','auth')),
-'defaults',(select json_agg(json_build_array(pg_get_userbyid(a.defaclrole),n.nspname,a.defaclobjtype,a.defaclacl::text) order by n.nspname,a.defaclobjtype) from pg_default_acl a join pg_namespace n on n.oid=a.defaclnamespace),
-'constraints',(select json_agg(json_build_array(n.nspname,c.relname,k.conname,pg_get_constraintdef(k.oid)) order by n.nspname,c.relname,k.conname) from pg_constraint k join pg_class c on c.oid=k.conrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','storage','auth')),
-'indexes',(select json_agg(json_build_array(schemaname,indexname,indexdef) order by schemaname,indexname) from pg_indexes where schemaname in ('public','storage','auth')),
-'functions',(select json_agg(json_build_array(n.nspname,p.proname,pg_get_userbyid(p.proowner),p.proacl::text,pg_get_functiondef(p.oid)) order by n.nspname,p.proname) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','storage','auth')),
-'triggers',(select json_agg(pg_get_triggerdef(t.oid) order by t.tgname) from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','storage','auth') and not t.tgisinternal),
-'sequences',(select json_agg(json_build_array(s.schemaname,s.sequencename,s.sequenceowner,s.data_type,s.start_value,s.min_value,s.max_value,s.increment_by,s.cycle,s.cache_size,s.last_value) order by s.schemaname,s.sequencename) from pg_sequences s where s.schemaname in ('public','storage','auth')),
-'sequence_ownership',(select json_agg(json_build_array(n.nspname,q.relname,t.relname,a.attname,d.deptype) order by n.nspname,q.relname) from pg_class q join pg_namespace n on n.oid=q.relnamespace join pg_depend d on d.classid='pg_class'::regclass and d.objid=q.oid and d.refclassid='pg_class'::regclass and d.deptype in ('a','i') join pg_class t on t.oid=d.refobjid join pg_attribute a on a.attrelid=t.oid and a.attnum=d.refobjsubid where q.relkind='S' and n.nspname in ('public','storage','auth')),
-'sequence_state',(select json_build_array(last_value,is_called) from public.restore_fixture_id_seq),
-'rows',(select json_agg(o order by id) from storage.objects o),
-'public_rows',(select json_agg(o order by id) from public.restore_fixture o),
-'auth_rows',(select json_agg(o order by id) from auth.restore_authority_fixture o))::text;"""
+ROOT=Path(__file__).resolve().parents[1]
+IMAGE='sha256:e09e93a61ed1560caf4be79c9eb29401875bea74b12aec4657cb08bf34ea3a13'
+IMAGE_CONFIG='sha256:e1939b94b1fd12b8a446404ff49455d7cf2a6a275a77f010abb56a247bfd5377'
+IMAGE_TAG='public.ecr.aws/supabase/postgres:17.6.1.132'
+OWNER='01a1834a-a908-73d2-be1b-7225b92a7f8e'
+PREFIX='rls4427-local-01a1834a'
+NAME=PREFIX+'-source'
+DATA='/var/lib/postgresql/data'
+CONFIG_ROOTS=('etc/postgresql','etc/postgresql-custom')
+TMPFS={DATA:'rw,nosuid,nodev,uid=100,gid=101,mode=0700,size=4294967296',
+       '/etc/postgresql':'rw,nosuid,nodev,uid=100,gid=101,mode=0700,size=33554432',
+       '/etc/postgresql-custom':'rw,nosuid,nodev,uid=100,gid=101,mode=0700,size=33554432',
+       '/var/run/postgresql':'rw,nosuid,nodev,uid=100,gid=101,mode=0700,size=16777216',
+       '/var/log/postgresql':'rw,nosuid,nodev,uid=100,gid=101,mode=0700,size=33554432',
+       '/tmp':'rw,nosuid,nodev,uid=100,gid=101,mode=0700,size=134217728'}
+BOOTSTRAP_LOG='/var/log/postgresql/4427-bootstrap.log'
+BOOTSTRAP_START=['sh','-c','exec docker-entrypoint.sh postgres -D /etc/postgresql > /var/log/postgresql/4427-bootstrap.log 2>&1']
+BOOTSTRAP_READY=['sh','-c',"for i in $(seq 1 30); do grep -Fq 'PostgreSQL init process complete; ready for start up.' /var/log/postgresql/4427-bootstrap.log 2>/dev/null && pg_ctl -D /etc/postgresql status >/dev/null 2>&1 && pg_isready -h 127.0.0.1 -p 5432 -U supabase_admin >/dev/null 2>&1 && test \"$(psql -XqAtw -h 127.0.0.1 -p 5432 -U supabase_admin -d postgres -c 'select 1;' 2>/dev/null)\" = 1 && exit 0; sleep 1; done; exit 1"]
+LABELS={'shared-db.regression':'4427-local-physical','shared-db.owner':OWNER}
+CONTEXT_SQL="select json_build_object('system_identifier',(select system_identifier::text from pg_control_system()),'server_version_num',current_setting('server_version_num')::int,'postmaster_start',pg_postmaster_start_time()::text,'database',current_database())::text;"
+AUTHORITY_SQL="select json_build_object('system_identifier',(select system_identifier::text from pg_control_system()),'server_version_num',current_setting('server_version_num')::int,'postmaster_start',pg_postmaster_start_time()::text,'database',current_database(),'current_user',current_user,'session_user',session_user,'rolsuper',r.rolsuper,'rolcanlogin',r.rolcanlogin,'is_superuser',current_setting('is_superuser'))::text from pg_roles r where r.rolname=current_user;"
+NATIVE_SQL="""select json_build_object(
+'extensions',(select json_agg(json_build_array(extname,extversion,pg_get_userbyid(extowner),extnamespace,extrelocatable,extconfig::text,extcondition::text) order by extname) from pg_extension),
+'roles',(select json_agg(json_build_array(rolname,rolsuper,rolinherit,rolcreaterole,rolcreatedb,rolcanlogin,rolreplication,rolbypassrls,rolconfig) order by rolname) from pg_roles),
+'membership',(select json_agg(json_build_array(roleid,member,grantor,admin_option,inherit_option,set_option) order by roleid,member,grantor) from pg_auth_members),
+'databases',(select json_agg(json_build_array(oid,datname,datdba,datacl::text,datistemplate,datallowconn,datconnlimit) order by datname) from pg_database),
+'db_settings',(select json_agg(json_build_array(setdatabase,setrole,setconfig) order by setdatabase,setrole) from pg_db_role_setting),
+'native_schemas',(select json_agg(json_build_array(nspname,pg_get_userbyid(nspowner),nspacl::text) order by nspname) from pg_namespace where nspname in ('public','auth','storage')),
+'worker_settings',(select json_agg(json_build_array(name,setting,context) order by name) from pg_settings where name in ('shared_preload_libraries','cron.database_name','cron.launch_active_jobs','cron.use_background_workers','pgsodium.getkey_script','row_security','ssl','wal_level','full_page_writes'))
+)::text;"""
+ORIGINAL_POLICY="owner='synthetic' AND rls4427_fixture.request_allowed()"
+CANDIDATE_POLICY="owner='synthetic' AND (SELECT rls4427_fixture.request_allowed())"
+PAIR_SQL="begin;set local role rls4427_writer;set local request.jwt.claim.role='fixture_writer';explain(analyze,buffers,format json) update rls4427_fixture.objects set label=' paired ' where owner='synthetic' returning id;rollback;"
+FINGERPRINT_SQL="""select json_build_object(
+'heap_md5',md5(pg_read_binary_file(pg_relation_filepath('rls4427_fixture.objects'))),
+'indexes_md5',(select md5(string_agg(encode(pg_read_binary_file(pg_relation_filepath(indexrelid)),'hex'),'' order by indexrelid)) from pg_index where indrelid='rls4427_fixture.objects'::regclass),
+'heap_bytes',pg_relation_size('rls4427_fixture.objects'),
+'rows',(select json_agg(t order by id) from rls4427_fixture.objects t))::text;"""
 
 
-def validate_exact_versions(versions, server_version):
-    tools = ('psql','pg_dump','pg_restore')
-    if server_version != 170011 or len(versions) != len(tools) or any(
-        re.fullmatch(re.escape(tool)+r' \(PostgreSQL\) 17\.11(?: \([^\r\n]+\))?', version) is None
-        for tool,version in zip(tools,versions)):
-        raise RuntimeError('4427 local regression requires exact server170011 and matching PG17.11 tools')
-    return dict(server_version_num=server_version,versions=dict(zip(tools,versions)))
+def load_helper():
+    path=ROOT/'scripts/rls4427_physical_cluster.py'
+    spec=importlib.util.spec_from_file_location('local4427_physical',path)
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    return module
 
 
 def source_identity():
     env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'}
     head=subprocess.run(['/usr/bin/git','rev-parse','HEAD'],cwd=ROOT,env=env,check=True,capture_output=True,text=True,timeout=10).stdout.strip()
-    if not re.fullmatch(r'[0-9a-f]{40}',head):raise RuntimeError('4427 regression source commit invalid')
+    if not re.fullmatch('[0-9a-f]{40}',head):raise RuntimeError('4427 local source commit invalid')
     hashes={}
-    for relative in ('scripts/rls4427_native_restore_regression.py','scripts/qualify_rls4427_actual_tables.py','supabase/tests/fixtures/rls4427_native_restore_fixture.sql'):
-        committed=subprocess.run(['/usr/bin/git','show','HEAD:'+relative],cwd=ROOT,env=env,check=True,capture_output=True,timeout=10).stdout
+    for relative in ('scripts/rls4427_native_restore_regression.py','scripts/rls4427_physical_cluster.py','supabase/tests/fixtures/rls4427_native_restore_fixture.sql'):
+        expected=subprocess.run(['/usr/bin/git','show','HEAD:'+relative],cwd=ROOT,env=env,check=True,capture_output=True,timeout=10).stdout
         actual=(ROOT/relative).read_bytes()
-        if actual!=committed:raise RuntimeError('4427 regression executed source differs from committed bytes')
+        if expected!=actual:raise RuntimeError('4427 local executed source differs from committed bytes')
         hashes[relative]=hashlib.sha256(actual).hexdigest()
     return dict(source_sha=head,executed_source_sha256=hashes)
 
 
-def restore_args(database, role='supabase_admin'):
-    if database not in DATABASES[1:] or role not in ('supabase_admin','rls4427_restore_operator') or (role=='rls4427_restore_operator' and database!=DATABASES[5]):
-        raise RuntimeError('4427 regression refuses foreign restore database')
-    return ['pg_restore','-U',role,'-d',database,'--exit-on-error']
+def image_config_records(stream):
+    """Read cached Docker OCI export; no image code is executed or extracted on host."""
+    manifests=[];configs={};layers={};layer_digests={};total=0
+    class DigestReader:
+        def __init__(self,raw):self.raw=raw;self.digest=hashlib.sha256()
+        def read(self,size=-1):
+            nonlocal total
+            value=self.raw.read(size);total+=len(value)
+            if total>8589934592:raise RuntimeError('4427 cached image export exceeds eight-GiB read bound')
+            self.digest.update(value);return value
+    with tarfile.open(fileobj=stream,mode='r|*') as outer:
+        for part in outer:
+            if not part.isfile() or not part.name.startswith('blobs/sha256/'):continue
+            digest=part.name.rsplit('/',1)[-1]
+            if re.fullmatch('[a-f0-9]{64}',digest) is None:raise RuntimeError('4427 image blob identity invalid')
+            raw=outer.extractfile(part)
+            if part.size<200000:
+                data=raw.read()
+                if hashlib.sha256(data).hexdigest()!=digest:raise RuntimeError('4427 cached image metadata blob changed')
+                try:obj=json.loads(data)
+                except(ValueError,UnicodeDecodeError):obj=None
+                if isinstance(obj,dict) and 'layers' in obj and 'config' in obj:
+                    manifests.append(obj);continue
+                if 'sha256:'+digest==IMAGE_CONFIG:
+                    configs[digest]=data;continue
+                raw=io.BytesIO(data)
+            reader=DigestReader(raw);records=[]
+            try:
+                with tarfile.open(fileobj=reader,mode='r|*') as layer:
+                    for member in layer:
+                        name=member.name.removeprefix('./').rstrip('/')
+                        pure=PurePosixPath(name)
+                        leaf=pure.name;parent=str(pure.parent)
+                        removed=parent+'/'+leaf[4:] if leaf.startswith('.wh.') else None
+                        relevant_whiteout=(removed is not None and any(removed==r or r.startswith(removed+'/') for r in CONFIG_ROOTS)) or (leaf=='.wh..wh..opq' and any(r.startswith(parent+'/') for r in CONFIG_ROOTS))
+                        if not any(name==r or name.startswith(r+'/') for r in CONFIG_ROOTS) and not relevant_whiteout:continue
+                        if name!=str(pure) or pure.is_absolute() or '..' in pure.parts or not(member.isfile() or member.isdir()):
+                            raise RuntimeError('4427 baked config path/type refused')
+                        if member.size>1048576:raise RuntimeError('4427 baked configuration member too large')
+                        data=layer.extractfile(member).read() if member.isfile() else None
+                        records.append((name,member.mode,member.uid,member.gid,data))
+                        if len(records)>512 or sum(len(r[4] or b'') for r in records)>8388608:
+                            raise RuntimeError('4427 baked config tree exceeds bounded fixture')
+            except tarfile.ReadError:
+                records=[]
+            while reader.read(1048576):pass
+            if reader.digest.hexdigest()!=digest:raise RuntimeError('4427 cached layer blob changed')
+            layers[digest]=records;layer_digests[digest]=True
+    found=[m for m in manifests if m.get('config',{}).get('digest')==IMAGE_CONFIG]
+    if len(found)!=1 or IMAGE_CONFIG.split(':')[1] not in configs:raise RuntimeError('4427 cached image configuration binding missing')
+    manifest=found[0];tree={}
+    for layer in manifest['layers']:
+        digest=layer['digest'].split(':')[-1]
+        if digest not in layers or not layer_digests.get(digest):raise RuntimeError('4427 cached image ordered layer absent')
+        for record in layers[digest]:
+            name=record[0];leaf=PurePosixPath(name).name;parent=str(PurePosixPath(name).parent)
+            if leaf=='.wh..wh..opq':
+                tree={p:r for p,r in tree.items() if not p.startswith(parent+'/')}
+            elif leaf.startswith('.wh.'):
+                removed=parent+'/'+leaf[4:];tree={p:r for p,r in tree.items() if p!=removed and not p.startswith(removed+'/')}
+            else:tree[name]=record
+    required={'etc/postgresql/postgresql.conf','etc/postgresql/pg_hba.conf','etc/postgresql/pg_ident.conf'}
+    if not required.issubset(tree) or 'etc/postgresql-custom/pgsodium_root.key' in tree:
+        raise RuntimeError('4427 baked source closure missing or root key already materialized')
+    if any(row[2:4]!=(100,101) for row in tree.values()):raise RuntimeError('4427 baked config owner differs from native postgres')
+    return tree,configs[IMAGE_CONFIG.split(':')[1]],manifest
 
 
-class Regression:
-    def __init__(self):
-        self.cid = None
-        self.owned = []
-        self.events = []
-        self.started = time.monotonic()
-        self.cleanup_mode = False
-        self.version_bound = False
-        self.admin_qualified = False
-        self.env = {'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'}
+def write_config_tar(tree,output):
+    with tarfile.open(fileobj=output,mode='w') as archive:
+        for name,mode,uid,gid,data in sorted(tree.values()):
+            member=tarfile.TarInfo(name);member.mode=mode;member.uid=uid;member.gid=gid;member.mtime=0
+            if data is None:member.type=tarfile.DIRTYPE
+            else:member.size=len(data)
+            archive.addfile(member,io.BytesIO(data) if data is not None else None)
 
-    def docker(self, *args, input_data=None, output=None, allowed_failure=False):
-        if time.monotonic()-self.started > 600 and not self.cleanup_mode:
-            raise RuntimeError('4427 regression ten-minute action budget exhausted')
-        proc = subprocess.run(['/usr/bin/docker','--host','unix:///var/run/docker.sock','--config',self.config,*args],
-            env=self.env,stdout=output or subprocess.PIPE,stderr=subprocess.PIPE,timeout=20 if self.cleanup_mode else 120,
-            **({'input':input_data} if input_data is not None else {'stdin':subprocess.DEVNULL}))
-        self.events.append(dict(operation=args[0],exit_code=proc.returncode))
-        if proc.returncode and not allowed_failure:
-            print(json.dumps(dict(native_restore_failure=args[0],exit_code=proc.returncode,stderr=proc.stderr[:4096].decode(errors='replace'))),file=sys.stderr)
-            raise RuntimeError('4427 regression command failed: '+proc.stderr[:4096].decode(errors='replace'))
-        return proc
+
+def validate_versions(tools,server):
+    if server!=170006 or len(tools)!=3 or any(re.fullmatch(re.escape(tool)+r' \(PostgreSQL\) 17\.6(?: \([^\r\n]+\))?',version) is None for tool,version in zip(('psql','pg_basebackup','pg_ctl'),tools)):
+        raise RuntimeError('4427 local physical calibration requires exact native PG17.6')
+    return dict(server_version_num=server,tools=dict(zip(('psql','pg_basebackup','pg_ctl'),tools)))
+
+
+class LocalSource:
+    def __init__(self,helper):
+        self.helper=helper;self.prefix=PREFIX;self.container_id=None;self.container_image=None;self.immutable_config_sha=None
+        self.env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','PGPASSWORD':'postgres'}
+        self.started=time.monotonic();self.cleanup=False;self.events=[];self.restore_authority_qualified=False
+        self.phase='not-started';self.last_external_failure=None;self.bootstrap_launched=False
+
+    def budget_check(self):
+        if not self.cleanup and time.monotonic()-self.started>600:raise RuntimeError('4427 local ten-minute action bound exhausted')
+
+    def docker(self,*args,input_file=None,output_file=None,allowed_failure=False):
+        self.budget_check()
+        result=subprocess.run(['/usr/bin/docker','--host','unix:///var/run/docker.sock','--config',self.source_docker_config,*args],env=self.env,
+            stdin=input_file or subprocess.DEVNULL,stdout=output_file or subprocess.PIPE,stderr=subprocess.PIPE,timeout=20 if self.cleanup else 120)
+        tool=args[0]
+        if args[0]=='exec' and self.container_id in args:
+            position=args.index(self.container_id);tool=args[position+1]
+        event=dict(phase=self.phase,operation=args[0],tool=tool,exit_code=result.returncode);self.events.append(event)
+        if result.returncode and not allowed_failure:
+            self.last_external_failure=self.helper.capture_external(result.stderr,tool,result.returncode,self.phase)
+            raise subprocess.CalledProcessError(result.returncode,[tool],stderr=result.stderr)
+        return result
 
     def custody(self):
         rows=json.loads(self.docker('inspect','--type','container',NAME).stdout)
-        if len(rows)!=1:
-            raise RuntimeError('4427 regression container cardinality differs')
-        row=rows[0];host=row['HostConfig'];labels=row['Config'].get('Labels') or {}
-        if (row['Id']!=self.cid or row['Image']!=IMAGE or row['Name']!='/'+NAME or
-            labels!=self.expected_labels or row.get('State',{}).get('Running') is not True or host.get('Privileged') is not False or
-            host.get('Memory')!=536870912 or host.get('NanoCpus')!=1000000000 or host.get('PidsLimit')!=128 or host.get('PidMode','') or
-            host.get('NetworkMode')!='none' or host.get('Binds') or host.get('PortBindings') or
-            any(row['NetworkSettings'].get('Ports',{}).values()) or set(row['NetworkSettings'].get('Networks',{}))!={'none'} or host.get('ReadonlyRootfs') is not True or host.get('Devices') or host.get('CapAdd') or set(host.get('Tmpfs',{}))!={'/var/lib/postgresql/data','/var/run/postgresql','/tmp'} or any(m.get('Type')!='tmpfs' or m.get('Destination') not in host['Tmpfs'] for m in row.get('Mounts',[]))):
-            raise RuntimeError('4427 regression owned resource custody differs')
+        if len(rows)!=1:raise RuntimeError('4427 local source cardinality differs')
+        row=rows[0];h=row['HostConfig'];n=row['NetworkSettings']
+        if (row['Id']!=self.container_id or row['Image']!=self.image_id or row['Name']!='/'+NAME or row['Config'].get('Labels')!=self.expected_labels
+            or row['Config'].get('User')!='100:101' or row['Config'].get('Entrypoint')!=['/bin/sleep'] or row['Config'].get('Cmd')!=['infinity']
+            or row['State'].get('Running') is not True or h.get('Privileged') is not False or h.get('ReadonlyRootfs') is not True
+            or h.get('Memory')!=2147483648 or h.get('NanoCpus')!=1000000000 or h.get('PidsLimit')!=256
+            or h.get('NetworkMode')!='none' or h.get('Binds') or h.get('PortBindings') or h.get('Devices') or h.get('CapAdd') or h.get('PidMode','')
+            or h.get('Tmpfs',{})!=TMPFS or set(n.get('Networks',{}))!={'none'} or any(n.get('Ports',{}).values())
+            or any(m.get('Type')!='tmpfs' or m.get('Destination') not in TMPFS for m in row.get('Mounts',[]))):
+            raise RuntimeError('4427 local source custody/resource bounds differ')
+        return self.container_id,self.image_id,IMAGE_TAG
 
-    def execute(self, args, **kw):
+    def execute(self,args,input_file=None,output_file=None,allowed_failure=False,detach=False):
         self.custody()
-        return self.docker('exec',*(['-i'] if kw.get('input_data') is not None else []),self.cid,*args,**kw)
+        return self.docker('exec',*(['--detach'] if detach else []),*(['-i'] if input_file is not None else []),'--user','100:101',self.container_id,*args,
+                           input_file=input_file,output_file=output_file,allowed_failure=allowed_failure)
 
-    def sql(self, db, query, allowed_failure=False):
-        if db not in ('postgres',*DATABASES):
-            raise RuntimeError('4427 regression refuses foreign SQL database')
-        return self.execute(['psql','-XqAt','-U','postgres','-d',db,'-v','ON_ERROR_STOP=1','-v','VERBOSITY=sqlstate'],
-                            input_data=query.encode(),allowed_failure=allowed_failure)
+    def source_checked(self,args,input_file=None,output_file=None,allowed_failure=False):
+        args=list(args);kind=self.helper.source_command_kind(args)
+        if kind is None:raise RuntimeError('4427 local source transport refuses unlisted command')
+        if kind=='archive':
+            if not self.restore_authority_qualified or input_file is not None or output_file is None:
+                raise RuntimeError('4427 local archive requires qualified authority/private output')
+            if args==self.helper.BACKUP_ARGS and not getattr(self,'hba_temporary_verified',False):
+                raise RuntimeError('4427 local backup route not positively loaded')
+        elif kind=='hba-write':
+            if not self.restore_authority_qualified or not getattr(self,'hba_window_active',False) or input_file is None or output_file is not None:
+                raise RuntimeError('4427 local HBA write outside qualified permission window')
+        elif kind=='hba-metadata':
+            if not getattr(self,'hba_window_active',False) or input_file is not None or output_file is not None:
+                raise RuntimeError('4427 local HBA metadata outside restoration window')
+        elif input_file is not None or output_file is not None:
+            raise RuntimeError('4427 local readonly source probe refuses stream input/output')
+        if kind in ('hba-write','hba-metadata'):self.helper.validate_hba_payload(self,args,input_file)
+        return self.execute(args,input_file=input_file,output_file=output_file,allowed_failure=allowed_failure)
 
-    def create(self, db, owner='postgres'):
-        if db not in DATABASES or db in self.owned or len(self.owned)>=2 or owner not in ('postgres','rls4427_restore_operator') or (owner=='rls4427_restore_operator' and db!=DATABASES[5]):
-            raise RuntimeError('4427 regression refuses nonowned creation')
-        self.sql('postgres',f'create database {db} template template0 owner {owner};')
-        self.owned.append(db)
+    def container_exec(self,args,input_file=None,output_file=None):
+        return self.source_checked(args,input_file=input_file,output_file=output_file).stdout
 
-    def drop(self, db):
-        if db not in self.owned:
-            raise RuntimeError('4427 regression refuses nonowned drop')
-        self.sql('postgres',f'drop database {db};')
-        if self.sql('postgres',f"select count(*) from pg_database where datname='{db}';").stdout.strip()!=b'0':
-            raise RuntimeError('4427 regression owned drop absence differs')
-        self.owned.remove(db)
-        receipt=dict(owned_drop=db,absent=True)
-        self.events.append(receipt);print(json.dumps(receipt),file=sys.stderr)
+    def sql(self,database,query):
+        if database!='postgres':raise RuntimeError('4427 local source refuses another database')
+        result=self.execute(['psql','-XqAtw','-h','127.0.0.1','-p','5432','-U','supabase_admin','-d','postgres','-v','ON_ERROR_STOP=1','-v','VERBOSITY=sqlstate'],input_file=io.BytesIO(query.encode()),allowed_failure=True)
+        if result.returncode:raise subprocess.CalledProcessError(result.returncode,['psql'],output=result.stdout.decode(),stderr=result.stderr.decode())
+        return result.stdout.decode()
 
-    def qualify(self, db):
-        if db not in self.owned:
-            raise RuntimeError('4427 regression fresh qualification requires owned target')
-        return CORE.validate_fresh_seed(json.loads(self.sql(db,CORE.FRESH_SEED_QUERY).stdout),db)
+    def diagnostic(self,kind,**facts):
+        self.events.append(dict(kind=kind,**facts))
+        print(json.dumps(dict(kind=kind,**facts),sort_keys=True),file=sys.stderr)
 
-    def admin_restore(self, db, archive, allowed_failure=False):
-        if not self.admin_qualified or db not in self.owned or db==DATABASES[5]:
-            raise RuntimeError('4427 regression admin restore is not qualified')
-        return self.execute(restore_args(db),input_data=archive,allowed_failure=allowed_failure)
+    def qualify_physical_source(self):
+        self.custody();self.restore_authority_qualified=False
+        if self.immutable_config_sha!=IMAGE_CONFIG.removeprefix('sha256:'):raise RuntimeError('4427 local immutable configuration not qualified')
+        context=json.loads(self.sql('postgres',CONTEXT_SQL));authority=json.loads(self.sql('postgres',AUTHORITY_SQL))
+        expected={**context,'current_user':'supabase_admin','session_user':'supabase_admin','rolsuper':True,'rolcanlogin':True,'is_superuser':'on'}
+        if authority!=expected or context['database']!='postgres' or context['server_version_num']!=170006 or re.fullmatch('[0-9]+',context.get('system_identifier','')) is None:
+            raise RuntimeError('4427 local same-instance native administrator qualification differs')
+        self.restore_authority=authority;self.restore_authority_qualified=True
+        return dict(context=context,authority=authority,immutable_config_sha=self.immutable_config_sha)
 
-    def restore(self, db, archive):
-        if not self.admin_qualified:raise RuntimeError('4427 regression admin restore is not qualified')
-        self.qualify(db)
-        return self.admin_restore(db,archive)
-
-    def qualify_admin(self):
-        context=json.loads(self.sql('postgres',CORE.POSTGRES_CONTEXT_QUERY).stdout)
-        command=['psql','-XqAtw','-U','supabase_admin','-d','postgres','-v','ON_ERROR_STOP=1','-c',CORE.RESTORE_AUTHORITY_QUERY]
-        authority=CORE.validate_restore_authority(json.loads(self.execute(command).stdout),context)
-        self.admin_qualified=True
-        print(json.dumps(dict(phase='local-existing-fixture-admin-qualified',**authority),sort_keys=True),file=sys.stderr)
-        return authority
-
-    def permission_negative(self, db, archive):
-        if db!=DATABASES[5] or db not in self.owned or not self.version_bound or not self.admin_qualified:
-            raise RuntimeError('4427 permission negative requires exact owned qualified target')
-        facts=json.loads(self.sql(db,CORE.FRESH_SEED_QUERY).stdout)
-        expected=dict(database=db,owner='rls4427_restore_operator',extra_schemas=0,relations=0,routines=0,types=0,policies=0,default_acls=0,
-            extensions=['plpgsql'],public_owner='pg_database_owner',public_acl=['PUBLIC:USAGE:false','pg_database_owner:CREATE:false','pg_database_owner:USAGE:false'])
-        if facts!=expected:raise RuntimeError('4427 permission negative fresh limited-owned target differs')
-        operator=json.loads(self.sql('postgres',"select json_build_object('rolsuper',rolsuper,'rolcanlogin',rolcanlogin,'rolbypassrls',rolbypassrls,'rolcreatedb',rolcreatedb,'admin_member',pg_has_role('rls4427_restore_operator','supabase_admin','MEMBER'))::text from pg_roles where rolname='rls4427_restore_operator';").stdout)
-        if operator!=dict(rolsuper=False,rolcanlogin=True,rolbypassrls=False,rolcreatedb=True,admin_member=False):
-            raise RuntimeError('4427 permission negative operator capability differs')
-        command=restore_args(db,'rls4427_restore_operator')
-        failure=self.execute(command,input_data=archive,allowed_failure=True)
-        receipt=dict(phase='limited-owner-restore-negative',command=command,exit_code=failure.returncode,
-            stderr=failure.stderr[:4096].decode(errors='replace'),stderr_truncated=len(failure.stderr)>4096)
-        self.events.append(receipt);print(json.dumps(receipt,sort_keys=True),file=sys.stderr)
-        if not failure.returncode or b'must be able to SET ROLE "supabase_admin"' not in failure.stderr or b'ALTER SCHEMA auth OWNER TO supabase_admin;' not in failure.stderr:
-            raise RuntimeError('4427 permission negative did not reproduce exact owner authorization failure')
-        return receipt
-
-    def clean_negative(self, db, archive):
-        if db != DATABASES[1] or db not in self.owned or not self.version_bound:
-            raise RuntimeError('4427 regression clean negative requires exact owned target')
-        command = ['pg_restore','-U','postgres','-d',db,'--clean','--if-exists','--exit-on-error']
-        failure = self.execute(command,input_data=archive,allowed_failure=True)
-        diagnostic = dict(phase='old-clean-negative',command=command,exit_code=failure.returncode,
-                          stderr=failure.stderr[:4096].decode(errors='replace'),stderr_truncated=len(failure.stderr)>4096)
-        self.events.append(diagnostic)
-        print(json.dumps(diagnostic,sort_keys=True),file=sys.stderr)
-        if failure.returncode != 0 or failure.stderr != b'':
-            raise RuntimeError('4427 PG17.11 old-clean control returned unexpected status or stderr')
-        return failure
-
-    def permissions(self, db):
-        outcomes=[]
-        for role,sql,expected,value in [
-            ('rls4427_reader','select count(*) from storage.objects;',0,b'2'),
-            ('rls4427_reader',"update storage.objects set label='denied' where id=1;",3,None),
-            ('rls4427_writer',"update storage.objects set label=' allowed ' where id=1 returning label;",0,b'allowed'),
-            ('rls4427_reader',"select nextval('public.restore_fixture_id_seq');",3,None),
-            ('rls4427_writer',"select nextval('public.restore_fixture_id_seq');",0,b'1')]:
-            result=self.sql(db,f'begin;set local role {role};{sql}rollback;',allowed_failure=True)
-            if result.returncode!=expected or (expected and b'42501' not in result.stderr):
-                raise RuntimeError('4427 regression role permission differs')
-            if value is not None and result.stdout.strip()!=value:
-                raise RuntimeError('4427 regression affected row or sequence outcome differs')
-            outcomes.append([role,result.returncode,result.stdout.decode().strip(),result.stderr.decode().strip()])
-        self.sql(db,'set role rls4427_owner;create table public.default_acl_probe(id integer);reset role;')
-        result=self.sql(db,'begin;set local role rls4427_reader;select count(*) from public.default_acl_probe;rollback;')
-        if result.stdout.strip()!=b'0':raise RuntimeError('4427 regression default ACL readback differs')
-        outcomes.append(['default_acl',result.returncode,result.stdout.decode().strip()])
-        return outcomes
-
-    def run(self):
-        if any(k.startswith('DOCKER_') and v for k,v in os.environ.items()):
-            raise RuntimeError('4427 regression Docker environment override refused')
-        source_facts=source_identity()
+    def open(self):
+        if any(k.startswith('DOCKER_') and v for k,v in os.environ.items()):raise RuntimeError('4427 local Docker context override refused')
         sock=Path('/var/run/docker.sock');info=sock.stat()
         if not stat.S_ISSOCK(info.st_mode) or info.st_uid!=0 or info.st_mode&0o007 or str(sock.resolve()) not in ('/run/docker.sock','/var/run/docker.sock'):
-            raise RuntimeError('4427 regression local Docker endpoint refused')
-        with tempfile.TemporaryDirectory(prefix='rls4427-native-restore-') as temp:
-            os.chmod(temp,0o700);self.config=temp
-            if json.loads(self.docker('ps','-aq','--filter','name=^/'+NAME+'$','--format','{{json .ID}}').stdout or b'null'):
-                raise RuntimeError('4427 regression name already occupied; no takeover')
+            raise RuntimeError('4427 local Docker endpoint refused')
+        self.phase='image-export'
+        self.temporary=tempfile.TemporaryDirectory(prefix='rls4427-local-physical-');self.root=Path(self.temporary.name);os.chmod(self.root,0o700)
+        config=self.root/'docker-config';config.mkdir(mode=0o700);self.source_docker_config=str(config);self.docker_config=str(config)
+        try:
             image=json.loads(self.docker('image','inspect',IMAGE).stdout)
-            if len(image)!=1 or image[0]['Id']!=IMAGE:
-                raise RuntimeError('4427 regression cached immutable image differs')
-            inherited=image[0].get('Config',{}).get('Labels') or {}
-            if any(k in inherited and inherited[k]!=v for k,v in LABELS.items()):
-                raise RuntimeError('4427 regression cached image ownership conflicts')
-            self.expected_labels={**inherited,**LABELS}
+            if len(image)!=1 or image[0]['Id']!=IMAGE:raise RuntimeError('4427 local cached manifest identity differs')
+            self.image_id=IMAGE;self.expected_labels={**(image[0].get('Config',{}).get('Labels') or {}),**LABELS}
+            # Stream the cached export once. Only bounded public configuration bytes
+            # are retained; no key exists yet and no host filesystem extraction occurs.
+            process=subprocess.Popen(['/usr/bin/docker','--host','unix:///var/run/docker.sock','--config',self.source_docker_config,'image','save',IMAGE],env=self.env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,stdin=subprocess.DEVNULL)
+            timeout=threading.Timer(120,process.kill);timeout.start()
             try:
-                args=['run','--detach','--pull=never','--name',NAME,'--network','none','--read-only','--memory','512m','--cpus','1','--pids-limit','128',
-                      '--tmpfs','/var/lib/postgresql/data:rw,nosuid,nodev,noexec,size=268435456','--tmpfs','/var/run/postgresql:rw,nosuid,nodev,size=16777216',
-                      '--tmpfs','/tmp:rw,nosuid,nodev,noexec,size=16777216','--env','POSTGRES_HOST_AUTH_METHOD=trust']
-                for k,v in LABELS.items():args+=['--label',k+'='+v]
-                self.cid=self.docker(*args,IMAGE).stdout.decode().strip()
-                if not re.fullmatch(r'[0-9a-f]{64}',self.cid):raise RuntimeError('4427 regression immutable container ID invalid')
-                # A single bounded native readiness command, no service polling or external port.
-                ready="for i in $(seq 1 30); do test \"$(cat /proc/1/comm)\" = postgres && pg_isready -U postgres >/dev/null 2>&1 && exit 0; sleep 1; done; exit 1"
-                self.execute(['sh','-c',ready])
-                versions=[self.execute([tool,'--version']).stdout.decode().strip() for tool in ('psql','pg_dump','pg_restore')]
-                server_version=int(self.sql('postgres',"select current_setting('server_version_num');").stdout.strip())
-                version_facts=validate_exact_versions(versions,server_version)
-                self.version_bound=True
-                print(json.dumps(dict(phase='exact-local-version',**version_facts),sort_keys=True),file=sys.stderr)
-                self.create(DATABASES[0]);self.sql(DATABASES[0],(ROOT/'supabase/tests/fixtures/rls4427_native_restore_fixture.sql').read_text())
-                archive_path=Path(temp)/'full.dump'
-                with os.fdopen(os.open(archive_path,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600),'wb') as out:
-                    self.execute(['pg_dump','-U','postgres','-d',DATABASES[0],'-Fc'],output=out)
-                archive=archive_path.read_bytes();source=json.loads(self.sql(DATABASES[0],METADATA).stdout)
-                admin_authority=self.qualify_admin()
-                self.create(DATABASES[1])
-                failure=self.clean_negative(DATABASES[1],archive)
-                negative=failure.stderr.decode()
-                old_restored=json.loads(self.sql(DATABASES[1],METADATA).stdout)
-                if source!=old_restored:raise RuntimeError('4427 PG17.11 successful old-clean metadata differs')
-                old_control=dict(disposition='NOT_REPRODUCED_PG17_11',metadata_equal=True,exit_code=failure.returncode,stderr=negative)
-                print(json.dumps(dict(phase='old-clean-equivalence',**old_control),sort_keys=True),file=sys.stderr)
-                self.drop(DATABASES[1])
-                self.create(DATABASES[5],owner='rls4427_restore_operator')
-                permission_negative=self.permission_negative(DATABASES[5],archive)
-                self.drop(DATABASES[5])
-                self.create(DATABASES[2]);self.restore(DATABASES[2],archive)
-                restored=json.loads(self.sql(DATABASES[2],METADATA).stdout)
-                if source!=restored:raise RuntimeError('4427 regression full metadata/data/owner/ACL/policy equivalence differs')
-                expected=self.permissions(DATABASES[0]);actual=self.permissions(DATABASES[2])
-                if expected!=actual or json.loads(self.sql(DATABASES[0],METADATA).stdout)!=json.loads(self.sql(DATABASES[2],METADATA).stdout):
-                    raise RuntimeError('4427 regression effective permissions/default ACL or final metadata differs')
-                self.drop(DATABASES[2])
-                nonempty_refusals=[]
-                for kind,mutation in [('public_object','create table public.unexpected(id integer);'),
-                                      ('default_acl','alter default privileges grant select on tables to rls4427_reader;'),
-                                      ('extension','create extension pg_trgm;')]:
-                    self.create(DATABASES[3]);self.sql(DATABASES[3],mutation)
-                    try:self.restore(DATABASES[3],archive)
-                    except RuntimeError as error:
-                        if 'fresh template0 target catalog differs' not in str(error):raise
-                        nonempty_refusals.append(kind)
-                    else:raise RuntimeError('4427 regression accepted nonempty target')
-                    self.drop(DATABASES[3])
-                self.create(DATABASES[4]);self.qualify(DATABASES[4])
-                truncated=self.admin_restore(DATABASES[4],archive[:32],allowed_failure=True)
-                if not truncated.returncode:raise RuntimeError('4427 regression accepted truncated archive')
-                self.drop(DATABASES[4]);self.drop(DATABASES[0])
-                return dict(**source_facts,qualification='REAL_PG17_11_FRESH_RESTORE_ONLY',production_acceptance='NOT_EVALUATED',historical_native_17_6_failure='PRESERVED_NOT_REPRODUCED',native374_acceptance='NOT_EVALUATED',old_clean_control=old_control,permission_negative=permission_negative,qualified_admin=admin_authority,version_facts=version_facts,versions=versions,
-                    archive_sha256=hashlib.sha256(archive).hexdigest(),metadata_sha256=hashlib.sha256(json.dumps(source,sort_keys=True).encode()).hexdigest(),
-                    clean_negative_exit=failure.returncode,clean_negative_stderr=negative,nonempty_refusals=nonempty_refusals,truncated_exit=truncated.returncode,permissions=actual,events=self.events,elapsed_seconds=time.monotonic()-self.started)
+                tree,raw,manifest=image_config_records(process.stdout)
+                code=process.wait(timeout=120)
+                if code:
+                    stderr=process.stderr.read();self.last_external_failure=self.helper.capture_external(stderr,'docker-image-save',code,self.phase)
+                    raise subprocess.CalledProcessError(code,['docker-image-save'],stderr=stderr)
+            except BaseException:
+                if process.poll() is None:process.kill();process.wait(timeout=10)
+                if self.last_external_failure is None:
+                    stderr=process.stderr.read();self.last_external_failure=self.helper.capture_external(stderr,'docker-image-save',process.returncode,self.phase)
+                raise
+            finally:timeout.cancel();process.stdout.close();process.stderr.close()
+            metadata=json.loads(raw)
+            if metadata.get('rootfs',{}).get('diff_ids')!=image[0]['RootFS']['Layers']:raise RuntimeError('4427 local cached image rootfs/config binding differs')
+            self.immutable_config_sha=IMAGE_CONFIG.removeprefix('sha256:')
+            archive=self.root/'baked-config.tar'
+            with os.fdopen(os.open(archive,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600),'wb') as output:write_config_tar(tree,output)
+            if self.docker('ps','-aq','--filter','name=^/'+NAME+'$').stdout.strip():raise RuntimeError('4427 local source name occupied; no takeover')
+            args=['run','--detach','--pull=never','--name',NAME,'--network','none','--read-only','--user','100:101','--memory','2g','--cpus','1','--pids-limit','256','--entrypoint','/bin/sleep']
+            self.phase='source-create'
+            for target,options in TMPFS.items():args+=['--tmpfs',target+':'+options]
+            for k,v in LABELS.items():args+=['--label',k+'='+v]
+            args+=['--env','POSTGRES_PASSWORD=postgres',IMAGE,'infinity']
+            self.container_id=self.docker(*args).stdout.decode().strip()
+            if re.fullmatch('[a-f0-9]{64}',self.container_id) is None:raise RuntimeError('4427 local source immutable ID invalid')
+            self.custody();self.container_image=(self.image_id,IMAGE_TAG)
+            self.diagnostic('owned-source-created',container_id=self.container_id,source_owner=OWNER,target_owner=self.helper.OWNER)
+            self.phase='source-bootstrap'
+            with archive.open('rb') as data:self.execute(['tar','-C','/','-xf','-','--no-same-owner'],input_file=data)
+            self.execute(['test','!','-e',DATA+'/PG_VERSION']);self.execute(['test','!','-e','/etc/postgresql-custom/pgsodium_root.key'])
+            self.execute(BOOTSTRAP_START,detach=True);self.bootstrap_launched=True
+            try:self.execute(BOOTSTRAP_READY)
+            except BaseException:
+                log=self.execute(['head','-c','8388608',BOOTSTRAP_LOG],allowed_failure=True)
+                self.bootstrap_diagnostic=self.helper.capture_external(log.stdout if log.returncode==0 else log.stderr,'bootstrap-log',log.returncode,self.phase)
+                self.diagnostic('bootstrap-private-log',**self.bootstrap_diagnostic)
+                raise
+            self.diagnostic('owned-source-final-postmaster-ready',marker_required=True,normal_tcp_ready=True)
+            self.phase='source-qualification'
+            tools=[self.execute([tool,'--version']).stdout.decode().strip() for tool in ('psql','pg_basebackup','pg_ctl')]
+            self.version_facts=validate_versions(tools,int(self.sql('postgres',"select current_setting('server_version_num');").strip()))
+            self.qualify_physical_source()
+            return self
+        except BaseException:
+            # Regression.run owns cleanup, so a cleanup exception cannot replace
+            # the original preparation failure or its private diagnostics.
+            raise
+
+    def close(self):
+        if self.container_id:
+            self.cleanup=True
+            try:
+                self.custody()
+                # Only our existing source postmaster, only after all child clients
+                # have closed; no FORCE or signal to individual sessions/workers.
+                result=self.execute(['pg_ctl','-D','/etc/postgresql','-w','-t','10','-m','smart','stop'],allowed_failure=True)
+                if result.returncode:
+                    self.last_external_failure=self.helper.capture_external(result.stderr,'pg_ctl',result.returncode,self.phase)
+                absence=self.execute(['test','!','-e',DATA+'/postmaster.pid'],allowed_failure=True)
+                if absence.returncode:
+                    self.last_external_failure=self.helper.capture_external(absence.stderr,'test',absence.returncode,self.phase)
+                    raise RuntimeError('4427 local owned source graceful stop/absence failed')
+                self.diagnostic('owned-source-stopped',stop_exit_code=result.returncode,pid_absent=True)
+                self.custody();self.docker('stop','--time','10',self.container_id);self.docker('rm',self.container_id)
+                if self.docker('ps','-aq','--filter','name=^/'+NAME+'$').stdout.strip():raise RuntimeError('4427 local source removal absence failed')
+                self.diagnostic('owned-source-removed',container_id=self.container_id,absent=True);self.container_id=None
             finally:
-                if self.cid:
-                    self.cleanup_mode=True
-                    try:
-                        for db in list(reversed(self.owned)):self.drop(db)
-                    finally:
-                        self.custody();self.docker('stop','--time','10',self.cid);self.docker('rm',self.cid)
-                        if self.docker('ps','-aq','--filter','name=^/'+NAME+'$').stdout.strip():
-                            raise RuntimeError('4427 regression container removal absence differs')
-                        receipt=dict(container_removed=self.cid,absent=True)
-                        self.events.append(receipt);print(json.dumps(receipt),file=sys.stderr)
+                if self.container_id is None:self.temporary.cleanup()
+        elif hasattr(self,'temporary'):self.temporary.cleanup()
+
+
+# All OID-independent fixture object metadata, including owners, ACLs and defaults.
+METADATA = """select json_build_object(
+'schemas',(select json_agg(json_build_array(nspname,pg_get_userbyid(nspowner),nspacl::text) order by nspname) from pg_namespace where nspname in ('rls4427_fixture')),
+'relations',(select json_agg(json_build_array(n.nspname,c.relname,c.relkind,pg_get_userbyid(c.relowner),c.relacl::text,c.relrowsecurity,c.relforcerowsecurity) order by n.nspname,c.relname) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('rls4427_fixture')),
+'columns',(select json_agg(json_build_array(n.nspname,c.relname,a.attname,format_type(a.atttypid,a.atttypmod),a.attnotnull,a.attidentity,a.attgenerated,a.attacl::text,pg_get_expr(d.adbin,d.adrelid)) order by n.nspname,c.relname,a.attnum) from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace left join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum where n.nspname in ('rls4427_fixture') and a.attnum>0 and not a.attisdropped),
+'policies',(select json_agg(json_build_array(schemaname,tablename,policyname,permissive,roles,cmd,qual,with_check) order by schemaname,tablename,policyname) from pg_policies where schemaname in ('rls4427_fixture')),
+'defaults',(select json_agg(json_build_array(pg_get_userbyid(a.defaclrole),n.nspname,a.defaclobjtype,a.defaclacl::text) order by n.nspname,a.defaclobjtype) from pg_default_acl a join pg_namespace n on n.oid=a.defaclnamespace),
+'constraints',(select json_agg(json_build_array(n.nspname,c.relname,k.conname,pg_get_constraintdef(k.oid)) order by n.nspname,c.relname,k.conname) from pg_constraint k join pg_class c on c.oid=k.conrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('rls4427_fixture')),
+'indexes',(select json_agg(json_build_array(schemaname,indexname,indexdef) order by schemaname,indexname) from pg_indexes where schemaname in ('rls4427_fixture')),
+'functions',(select json_agg(json_build_array(n.nspname,p.proname,pg_get_userbyid(p.proowner),p.proacl::text,pg_get_functiondef(p.oid)) order by n.nspname,p.proname) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('rls4427_fixture')),
+'triggers',(select json_agg(pg_get_triggerdef(t.oid) order by t.tgname) from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('rls4427_fixture') and not t.tgisinternal),
+'sequences',(select json_agg(json_build_array(s.schemaname,s.sequencename,s.sequenceowner,s.data_type,s.start_value,s.min_value,s.max_value,s.increment_by,s.cycle,s.cache_size,s.last_value) order by s.schemaname,s.sequencename) from pg_sequences s where s.schemaname in ('rls4427_fixture')),
+'sequence_ownership',(select json_agg(json_build_array(n.nspname,q.relname,t.relname,a.attname,d.deptype) order by n.nspname,q.relname) from pg_class q join pg_namespace n on n.oid=q.relnamespace join pg_depend d on d.classid='pg_class'::regclass and d.objid=q.oid and d.refclassid='pg_class'::regclass and d.deptype in ('a','i') join pg_class t on t.oid=d.refobjid join pg_attribute a on a.attrelid=t.oid and a.attnum=d.refobjsubid where q.relkind='S' and n.nspname in ('rls4427_fixture')),
+'sequence_state',(select json_build_array(last_value,is_called) from rls4427_fixture.restore_fixture_id_seq),
+'rows',(select json_agg(o order by id) from rls4427_fixture.objects o),
+'public_rows',(select json_agg(o order by id) from rls4427_fixture.restore_fixture o),
+'authority_rows',(select json_agg(o order by id) from rls4427_fixture.authority_fixture o))::text;"""
+
+
+
+def digest_object(value):
+    return hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+
+
+def permission_outcomes(sql):
+    """Actual role operations on invented rows only; no sequence mutation fiction."""
+    cases=[('reader-select','rls4427_reader','', 'select count(*) from rls4427_fixture.objects;','2',None),
+           ('reader-update-denied','rls4427_reader','',"update rls4427_fixture.objects set label='denied' where id=1;",None,'42501'),
+           ('writer-update','rls4427_writer',"set local request.jwt.claim.role='fixture_writer';", "update rls4427_fixture.objects set label=' allowed ' where id=1 returning label;",'allowed',None),
+           ('writer-rls-denied','rls4427_writer',"set local request.jwt.claim.role='fixture_reader';", "update rls4427_fixture.objects set label='denied' where id=1 returning id;",'',None),
+           ('reader-sequence-denied','rls4427_reader','',"select nextval('rls4427_fixture.restore_fixture_id_seq');",None,'42501'),
+           ('writer-sequence-read','rls4427_writer','',"select last_value from rls4427_fixture.restore_fixture_id_seq;",'1',None),
+           ('default-acl-read','rls4427_reader','', 'select count(*) from rls4427_fixture.default_acl_probe;','0',None)]
+    results=[]
+    for name,role,setup,query,expected,error in cases:
+        try:actual=sql(f'begin;set local role {role};{setup}{query}rollback;').strip()
+        except subprocess.CalledProcessError as caught:
+            stderr=caught.stderr.decode() if isinstance(caught.stderr,bytes) else caught.stderr or ''
+            if error is None or re.search(r'(?<![A-Z0-9])'+re.escape(error)+r'(?![A-Z0-9])',stderr) is None:
+                raise RuntimeError('4427 local permission operation failed outside expected SQLSTATE') from None
+            results.append(dict(case=name,sqlstate=error,allowed=False));continue
+        if error is not None or actual!=expected:raise RuntimeError('4427 local effective role outcome differs')
+        results.append(dict(case=name,allowed=True,value=actual))
+    return results
+
+
+def plan_nodes(plan):
+    yield plan
+    for child in plan.get('Plans',[]):yield from plan_nodes(child)
+
+
+def validate_pair_sample(variant,raw):
+    if variant not in ('original','candidate'):raise RuntimeError('4427 local pair variant refused')
+    if not isinstance(raw,list) or len(raw)!=1 or not isinstance(raw[0],dict) or not isinstance(raw[0].get('Plan'),dict):
+        raise RuntimeError('4427 local EXPLAIN JSON shape differs')
+    report=raw[0];plan=report['Plan']
+    if plan.get('Node Type')!='ModifyTable' or plan.get('Operation')!='Update' or plan.get('Actual Rows')!=2 or plan.get('Actual Loops')!=1:
+        raise RuntimeError('4427 local paired update affected rows/loops differ')
+    timing=report.get('Execution Time')
+    if isinstance(timing,bool) or not isinstance(timing,(int,float)) or timing<0:raise RuntimeError('4427 local execution timing missing')
+    init=[n for n in plan_nodes(plan) if n.get('Parent Relationship')=='InitPlan']
+    if variant=='candidate' and (not init or any(n.get('Actual Loops')!=1 for n in init)):
+        raise RuntimeError('4427 local candidate request-constant InitPlan loops differ')
+    return dict(variant=variant,affected_rows=2,execution_ms=timing,initplan_loops=[n.get('Actual Loops') for n in init],plan=raw)
+
+
+def calibrate_pair(cluster,helper):
+    """Two starts of one stopped sealed physical baseline; one sample per variant."""
+    baseline_metadata=json.loads(cluster.sql(METADATA,'supabase_admin'))
+    baseline_native=json.loads(cluster.sql(NATIVE_SQL,'supabase_admin'))
+    if cluster.sql(helper.CANARY_CHECK_SQL,'supabase_admin').strip()!='t':raise RuntimeError('4427 local root-derived canary failed before seal')
+    sealed=cluster.seal();records=[];same_bytes=None;same_permissions=None
+    for variant,expression in [('original',ORIGINAL_POLICY),('candidate',CANDIDATE_POLICY)]:
+        trial=cluster.begin_trial()
+        try:
+            if json.loads(cluster.sql(METADATA,'supabase_admin'))!=baseline_metadata or json.loads(cluster.sql(NATIVE_SQL,'supabase_admin'))!=baseline_native:
+                raise RuntimeError('4427 local physical restart lost native/fixture metadata')
+            if cluster.sql(helper.CANARY_CHECK_SQL,'supabase_admin').strip()!='t':raise RuntimeError('4427 local copied root-key canary failed after restart')
+            before=json.loads(cluster.sql(FINGERPRINT_SQL,'supabase_admin'))
+            if same_bytes is not None and before!=same_bytes:raise RuntimeError('4427 local paired physical starting bytes differ')
+            same_bytes=before
+            # An owned fixture policy only; native grants/helpers/RLS remain unchanged.
+            cluster.sql(f'alter policy fixture_write on rls4427_fixture.objects using ({expression}) with check ({expression});','supabase_admin')
+            raw=json.loads(cluster.sql(PAIR_SQL,'supabase_admin'));sample=validate_pair_sample(variant,raw)
+            # Role DML follows timing and runs under this variant's installed policy.
+            permissions=permission_outcomes(lambda query:cluster.sql(query,'supabase_admin'))
+            if same_permissions is not None and permissions!=same_permissions:raise RuntimeError('4427 local paired role outcomes differ')
+            same_permissions=permissions
+            logical_after=json.loads(cluster.sql(METADATA,'supabase_admin'))
+            policy_before=baseline_metadata['policies'];policy_after=logical_after['policies']
+            expected_changed=[p for p in policy_after if p[2]=='fixture_write']
+            original_changed=[p for p in policy_before if p[2]=='fixture_write']
+            if len(expected_changed)!=1 or len(original_changed)!=1 or expected_changed[0][:6]!=original_changed[0][:6] or {k:v for k,v in logical_after.items()if k!='policies'}!={k:v for k,v in baseline_metadata.items()if k!='policies'}:
+                raise RuntimeError('4427 local pair changed non-policy metadata/data')
+            if [p for p in policy_before if p[2]!='fixture_write']!=[p for p in policy_after if p[2]!='fixture_write']:
+                raise RuntimeError('4427 local pair changed overlapping policy')
+            records.append(dict(**sample,baseline_sha256=trial['baseline_sha256'],before_sha256=digest_object(before),permissions=permissions,
+                                root_key_canary=True,physical_after_not_claimed_restored=True))
+        finally:cluster.end_trial()
+    if any(r['baseline_sha256']!=sealed['sha256'] for r in records):raise RuntimeError('4427 local pair baseline receipt differs')
+    return dict(sealed_baseline=sealed,samples=records,metadata_sha256=digest_object(baseline_metadata),native_capability_sha256=digest_object(baseline_native),
+                physical_start_equal=True,permissions_equal=True,root_key_decrypt_two_restarts=True)
+
+
+class LocalCalibrationFailure(RuntimeError):
+    def __init__(self,receipt):
+        super().__init__('4427 local physical calibration failed; private diagnostics preserved')
+        self.receipt=receipt
+
+
+class Regression:
+    def __init__(self):self.source=None;self.cluster=None;self.phase='source-binding'
+
+    def failure(self,helper,error,phase,events,source=None):
+        receipt=helper.failure_receipt(error,phase,events)
+        if source is not None and source.last_external_failure is not None:receipt['last_external']=source.last_external_failure
+        return receipt
+
+    def run(self):
+        helper=load_helper();local=None;primary=None;cleanup=[];result=None;started=time.monotonic()
+        try:
+            source=source_identity();local=LocalSource(helper);self.source=local
+            self.phase='source-open';local.open()
+            self.phase='source-fixture';local.phase=self.phase
+            local.sql('postgres',(ROOT/'supabase/tests/fixtures/rls4427_native_restore_fixture.sql').read_text())
+            original_metadata=json.loads(local.sql('postgres',METADATA));original_native=json.loads(local.sql('postgres',NATIVE_SQL))
+            self.phase='physical-open';local.phase=self.phase
+            self.cluster=helper.PhysicalCluster(local,budget_seconds=max(1,600-(time.monotonic()-started)))
+            cluster=self.cluster.open()
+            if json.loads(cluster.sql(METADATA,'supabase_admin'))!=original_metadata or json.loads(cluster.sql(NATIVE_SQL,'supabase_admin'))!=original_native:
+                raise RuntimeError('4427 local full physical source/target metadata differs')
+            self.phase='calibration';local.phase=self.phase
+            pair=calibrate_pair(cluster,helper)
+            elapsed=time.monotonic()-started
+            if elapsed>600:raise RuntimeError('4427 local ten-minute calibrated action exceeded')
+            result=dict(**source,qualification='REAL_NATIVE_PG17_6_FULL_PHYSICAL_FOCUSED_PAIR_ONLY',production_acceptance='NOT_EVALUATED',native374_acceptance='NOT_EVALUATED',
+                        historical_logical_restore_failures='PRESERVED_NOT_RECLASSIFIED',version_facts=local.version_facts,pair=pair,elapsed_seconds=elapsed,
+                        source_owner=OWNER,target_owner=helper.OWNER)
+        except Exception as error:
+            phase=local.phase if self.phase=='source-open' and local is not None else self.phase
+            primary=self.failure(helper,error,phase,local.events if local is not None else [],local)
+        finally:
+            self.phase='cleanup-physical'
+            if self.cluster is not None:
+                try:self.cluster.close()
+                except Exception as error:cleanup.append(self.failure(helper,error,self.phase,getattr(self.cluster,'events',[])))
+            self.phase='cleanup-source'
+            if local is not None:
+                local.phase=self.phase
+                try:local.close()
+                except Exception as error:cleanup.append(self.failure(helper,error,self.phase,local.events,local))
+        events=dict(source=local.events if local is not None else [],physical=getattr(self.cluster,'events',[]))
+        if primary is not None or cleanup:
+            raise LocalCalibrationFailure(dict(qualification_passed=False,primary_failure=primary,cleanup_failures=cleanup,events=events))
+        result.update(source_events=events['source'],physical_events=events['physical'],cleanup_passed=True)
+        return result
 
 
 if __name__=='__main__':
     try:print(json.dumps(Regression().run(),sort_keys=True))
+    except LocalCalibrationFailure as error:
+        print(json.dumps(error.receipt,sort_keys=True),file=sys.stderr);sys.exit(1)
     except Exception as error:
-        print('4427 native restore regression failed: '+str(error),file=sys.stderr);sys.exit(1)
+        # Helper/source-loading errors happen before any resource exists.
+        reason=str(error) if isinstance(error,RuntimeError) and str(error).startswith('4427 ') else '4427 source/helper loading failed'
+        print(json.dumps(dict(qualification_passed=False,phase='source-binding',error_type=type(error).__name__,invariant=reason)),file=sys.stderr);sys.exit(1)

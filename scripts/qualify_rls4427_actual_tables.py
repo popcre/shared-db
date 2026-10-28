@@ -18,6 +18,11 @@ import tempfile
 import time
 import uuid
 
+try:
+    import rls4427_physical_cluster as physical4427
+except ImportError:
+    from scripts import rls4427_physical_cluster as physical4427
+
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / 'supabase/tests/rls_public_admin_initplan_contracts.sql'
 SOURCE_SQL_SHA256 = '166a1d7cae922b27c229c31162b612ccb1957a27440806681a15677151354667'
@@ -202,30 +207,6 @@ def validate_policy_delta(before, after, variant):
         raise RuntimeError('4427 intended original policy delta incomplete')
 
 
-FRESH_SEED_QUERY = """select json_build_object(
-'database',current_database(),
-'owner',(select pg_get_userbyid(datdba) from pg_database where datname=current_database()),
-'extra_schemas',(select count(*) from pg_namespace where nspname !~ '^pg_' and nspname not in ('public','information_schema')),
-'relations',(select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname !~ '^pg_' and n.nspname<>'information_schema'),
-'routines',(select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname !~ '^pg_' and n.nspname<>'information_schema'),
-'types',(select count(*) from pg_type t join pg_namespace n on n.oid=t.typnamespace where n.nspname !~ '^pg_' and n.nspname<>'information_schema'),
-'policies',(select count(*) from pg_policy),
-'default_acls',(select count(*) from pg_default_acl),
-'extensions',(select json_agg(extname order by extname) from pg_extension),
-'public_owner',(select pg_get_userbyid(nspowner) from pg_namespace where nspname='public'),
-'public_acl',(select json_agg(privilege order by privilege collate "C") from (
- select case when a.grantee=0 then 'PUBLIC' else pg_get_userbyid(a.grantee) end||':'||a.privilege_type||':'||a.is_grantable::text privilege
- from pg_namespace n cross join lateral aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) a where n.nspname='public') p))::text;"""
-
-
-def validate_fresh_seed(facts, database):
-    expected = dict(database=database, owner='postgres', extra_schemas=0, relations=0,
-                    routines=0, types=0, policies=0, default_acls=0, extensions=['plpgsql'],
-                    public_owner='pg_database_owner', public_acl=[
-                        'PUBLIC:USAGE:false','pg_database_owner:CREATE:false','pg_database_owner:USAGE:false'])
-    if facts != expected:
-        raise RuntimeError('4427 owned fresh template0 target catalog differs; restore refused')
-    return facts
 
 
 class NativeCI:
@@ -237,8 +218,13 @@ class NativeCI:
         self.owned = []
         self.started = time.monotonic()
         self.cleanup = []
+        self.physical = None
+        self.phase='admission';self.primary_error=None;self.cleanup_error=None;self.cluster_attempt=None;self.last_external_failure=None
 
     def command(self, tool, db, *args, input_text=None, binary=False):
+        if self.physical is not None:
+            if tool!='psql' or db!='postgres' or binary or input_text is None:raise RuntimeError('4427 physical target command refused')
+            return self.physical.sql(input_text)
         cmd = [tool, '-h', '127.0.0.1', '-p', '54322', '-U', 'postgres', '-d', db, *args]
         return self.checked(cmd, input=input_text, capture_output=True, text=not binary).stdout
 
@@ -314,132 +300,61 @@ class NativeCI:
             raise RuntimeError('4427 container metadata differs from exact immutable image and ownership labels')
         return identity
 
-    def container_exec(self, args, input_file=None, output_file=None):
-        # Admit only exact read-only probes and the TWO fixed snapshot data commands.
-        args = list(args)
-        connection = ['-h', '127.0.0.1', '-p', '5432', '-U', 'postgres', '-d']
-        seed = self.prefix + '_seed'
-        admin_connection = ['-h', '127.0.0.1', '-p', '5432', '-U', 'supabase_admin', '-d']
-        restore = ['pg_restore', *admin_connection, seed, '--exit-on-error']
-        readonly = [['pg_dump', '--version'], ['pg_restore', '--version'],
-                    ['psql', '-XqAtw', *connection, 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', POSTGRES_CONTEXT_QUERY],
-                    ['psql', '-XqAtw', *admin_connection, 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', RESTORE_AUTHORITY_QUERY]]
-        dump = ['pg_dump', *connection, 'postgres', '-Fc']
-        if args == restore:
-            if not getattr(self, 'restore_authority_qualified', False) or seed not in self.owned or getattr(self, 'fresh_restore_seed', None) != seed or input_file is None or output_file is not None:
-                raise RuntimeError('4427 exact owned seed restore requires archive stdin only')
-        elif args in readonly:
-            if input_file is not None or output_file is not None:
-                raise RuntimeError('4427 exact readonly probe refuses stdin or file output')
-        elif args == dump:
-            if input_file is not None or output_file is None:
-                raise RuntimeError('4427 exact full dump requires private output only')
-        else:
-            raise RuntimeError('4427 unsupported container command or mixed snapshot options')
+    def source_checked(self,args,input_file=None,output_file=None,allowed_failure=False):
+        args=list(args);kind=physical4427.source_command_kind(args)
+        authority=['psql','-XqAtw','-h','127.0.0.1','-p','5432','-U','supabase_admin','-d','postgres','-v','ON_ERROR_STOP=1','-c',RESTORE_AUTHORITY_QUERY]
+        if args==authority:kind='read'
+        if kind is None:raise RuntimeError('4427 unsupported physical source command')
+        if kind=='archive':
+            if not getattr(self,'restore_authority_qualified',False) or input_file is not None or output_file is None:
+                raise RuntimeError('4427 physical archive requires qualified authority/private output')
+            if args==physical4427.BACKUP_ARGS and not getattr(self,'hba_temporary_verified',False):
+                raise RuntimeError('4427 physical backup route not positively loaded')
+        elif kind=='hba-write':
+            if not getattr(self,'restore_authority_qualified',False) or not getattr(self,'hba_window_active',False) or input_file is None or output_file is not None:
+                raise RuntimeError('4427 exact HBA write outside qualified permission window')
+        elif kind=='hba-metadata':
+            if not getattr(self,'hba_window_active',False) or input_file is not None or output_file is not None:
+                raise RuntimeError('4427 exact HBA metadata outside restoration window')
+        elif input_file is not None or output_file is not None:
+            raise RuntimeError('4427 physical readonly source probe refuses stdin/output file')
+        if kind in ('hba-write','hba-metadata'):physical4427.validate_hba_payload(self,args,input_file)
         self.custody()
-        argv = ['/usr/bin/docker', '--host', 'unix:///var/run/docker.sock', '--config', self.docker_config,
-                'exec', *(['-i'] if input_file is not None else []), '--env', 'PGPASSWORD=postgres', self.container_id, *args]
-        return self.checked(argv, stdin=input_file if input_file is not None else subprocess.DEVNULL, stdout=output_file or subprocess.PIPE,
-                            stderr=subprocess.PIPE).stdout
+        argv=['/usr/bin/docker','--host','unix:///var/run/docker.sock','--config',self.docker_config,
+              'exec',*(['-i'] if input_file is not None else []),'--env','PGPASSWORD=postgres',self.container_id,*args]
+        result=subprocess.run(argv,env=self.env,stdin=input_file if input_file is not None else subprocess.DEVNULL,
+            stdout=output_file or subprocess.PIPE,stderr=subprocess.PIPE,timeout=120)
+        if result.returncode and not allowed_failure:
+            self.last_external_failure=physical4427.capture_external(result.stderr,args[0],result.returncode,self.phase)
+            self.diagnostic('physical-source-command-failure',exit_code=result.returncode,tool=args[0])
+            raise subprocess.CalledProcessError(result.returncode,argv,output=result.stdout,stderr=result.stderr)
+        return result
 
-    def snapshot(self, template):
-        if any(k.startswith('DOCKER_') and v for k, v in os.environ.items()):
-            raise RuntimeError('4427 Docker environment/context override refused')
-        endpoint = Path('/var/run/docker.sock')
-        info = endpoint.stat()
-        if str(endpoint.resolve()) not in ('/run/docker.sock', '/var/run/docker.sock') or not stat.S_ISSOCK(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o007:
-            raise RuntimeError('4427 local root-owned Unix Docker endpoint refused')
-        with tempfile.TemporaryDirectory(prefix='rls4427-dump-') as temp:
-            os.chmod(temp, 0o700)
-            self.docker_config = str(Path(temp) / 'docker-config')
-            Path(self.docker_config).mkdir(mode=0o700)
-            identity = self.custody()
-            self.container_id, image_id, image_ref = identity
-            self.container_image = (image_id, image_ref)
-            versions = {}
-            for tool in ('psql', 'pg_dump', 'pg_restore'):
-                versions['host_' + tool] = self.checked(['/usr/bin/' + tool, '--version'], capture_output=True, text=True).stdout.strip()
-            query = POSTGRES_CONTEXT_QUERY
-            host = json.loads(self.sql('postgres', query))
-            self.diagnostic('host-snapshot-context', versions=versions, server_version_num=host.get('server_version_num'))
-            container = json.loads(self.container_exec(['psql', '-XqAtw', '-h', '127.0.0.1', '-p', '5432', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', query]))
-            if host != container or host.get('database') != 'postgres' or not host.get('postmaster_start') or not re.fullmatch(r'[0-9]+', host.get('system_identifier', '')):
-                raise RuntimeError('4427 host/container PostgreSQL instance proof differs')
-            major = int(host['server_version_num']) // 10000
-            if not image_ref.split(':')[-1].startswith(str(major) + '.'):
-                raise RuntimeError('4427 native postgres image tag/server major differs')
-            for tool in ('pg_dump', 'pg_restore'):
-                version = self.container_exec([tool, '--version']).decode().strip()
-                versions['container_' + tool] = version
-                match = re.fullmatch(r'pg_(?:dump|restore) \(PostgreSQL\) ([0-9]+)\.[^\n]+', version)
-                if not match or int(match[1]) != major:
-                    self.diagnostic('preflight-versions', versions=versions, server_major=major)
-                    raise RuntimeError('4427 existing container snapshot client major differs from server')
-            self.diagnostic('snapshot-preflight', versions=versions, server_major=major,
-                            container_id=self.container_id, image_id=image_id, image_ref=image_ref,
-                            postgres_context=host)
-            authority_args=['psql','-XqAtw','-h','127.0.0.1','-p','5432','-U','supabase_admin','-d','postgres','-v','ON_ERROR_STOP=1','-c',RESTORE_AUTHORITY_QUERY]
-            authority=validate_restore_authority(json.loads(self.container_exec(authority_args)),host)
-            self.restore_authority_qualified=True
-            self.diagnostic('existing-restore-authority-qualified', **authority)
-            archive = Path(temp) / 'fixture.dump'
-            with os.fdopen(os.open(archive, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as out:
-                self.container_exec(['pg_dump', '-h', '127.0.0.1', '-p', '5432', '-U', 'postgres', '-d', 'postgres', '-Fc'], output_file=out)
-            # No seed is created until custody, same-instance/version checks and full dump succeed.
-            self.create(template, 'template0')
-            self.qualify_fresh_seed(template)
-            with archive.open('rb') as data:
-                self.container_exec(['pg_restore', '-h', '127.0.0.1', '-p', '5432', '-U', 'supabase_admin', '-d', template,
-                                     '--exit-on-error'], input_file=data)
-            with archive.open('rb') as data:
-                archive_sha256 = hashlib.file_digest(data, 'sha256').hexdigest()
-            return dict(versions=versions, postgres_context=host, restore_authority=authority, server_major=major, container_id=self.container_id,
-                        image_id=image_id, archive_sha256=archive_sha256)
+    def container_exec(self,args,input_file=None,output_file=None):
+        return self.source_checked(args,input_file=input_file,output_file=output_file).stdout
 
-    def qualify_fresh_seed(self, database):
-        if database != self.prefix + '_seed' or database not in self.owned:
-            raise RuntimeError('4427 fresh restore qualification requires newly owned seed')
-        facts = validate_fresh_seed(json.loads(self.sql(database, FRESH_SEED_QUERY)), database)
-        self.fresh_restore_seed = database
-        self.diagnostic('fresh-target-qualified', **facts)
-        return facts
+    def qualify_physical_source(self):
+        if any(k.startswith('DOCKER_') and v for k,v in os.environ.items()):raise RuntimeError('4427 physical Docker override refused')
+        endpoint=Path('/var/run/docker.sock');info=endpoint.stat()
+        if not stat.S_ISSOCK(info.st_mode) or info.st_uid!=0 or info.st_mode&0o007 or str(endpoint.resolve()) not in ('/run/docker.sock','/var/run/docker.sock'):
+            raise RuntimeError('4427 physical source Unix endpoint refused')
+        identity=self.custody();self.container_id=identity[0];self.container_image=identity[1:]
+        if identity[1]!='sha256:'+physical4427.IMMUTABLE_CONFIG_SHA:raise RuntimeError('4427 native physical image config differs')
+        self.immutable_config_sha=physical4427.IMMUTABLE_CONFIG_SHA
+        host=json.loads(self.sql('postgres',POSTGRES_CONTEXT_QUERY))
+        args=['psql','-XqAtw','-h','127.0.0.1','-p','5432','-U','supabase_admin','-d','postgres','-v','ON_ERROR_STOP=1','-c',RESTORE_AUTHORITY_QUERY]
+        self.restore_authority=validate_restore_authority(json.loads(self.container_exec(args)),host)
+        self.restore_authority_qualified=True
+        self.physical_versions={}
+        for tool in ('pg_basebackup','pg_verifybackup'):
+            version=self.container_exec([tool,'--version']).decode().strip()
+            if re.fullmatch(re.escape(tool)+r' \(PostgreSQL\) 17\.6',version) is None:raise RuntimeError('4427 native physical tool version differs')
+            self.physical_versions[tool]=version
+        self.diagnostic('physical-source-authority-qualified',**self.restore_authority)
 
-    def sql(self, db, query):
-        return self.command('psql', db, '-XqAt', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=sqlstate', input_text=query)
-
-    def create(self, db, template):
-        if not re.fullmatch(self.prefix + r'_[a-z0-9_]+', db):
-            raise RuntimeError('4427 refuses unowned database name')
-        self.sql('postgres', f'CREATE DATABASE {db} TEMPLATE {template} STRATEGY FILE_COPY;')
-        self.owned.append(db)
-
-    def drop(self, db):
-        if db not in self.owned:
-            raise RuntimeError('4427 refuses dropping unowned database')
-        # Never terminate connections or FORCE another process out; unexpected custody fails closed.
-        self.sql('postgres', f'DROP DATABASE {db};')
-        if self.sql('postgres', f"select count(*) from pg_database where datname='{db}';").strip() != '0':
-            raise RuntimeError('4427 owned database drop readback differs')
-        self.owned.remove(db)
-        self.cleanup.append(db)
-        self.diagnostic('owned-drop-confirmed', database=db)
-
-    def prepare_baseline(self, template):
-        # These reads can dirty hint bits. NEVER use their pre-checkpoint file hashes.
-        for table in ('assets', 'style_groups'):
-            self.sql(template, snapshot_sql(table))
-        self.sql('postgres', f'ALTER DATABASE {template} ALLOW_CONNECTIONS false;')
-        if self.sql('postgres', f"select count(*) from pg_stat_activity where datname='{template}';").strip() != '0':
-            raise RuntimeError('4427 template still has a session; no forced termination allowed')
-        baseline = self.prefix + '_baseline'
-        # FILE_COPY establishes the checkpointed, physically copied baseline.
-        # The immutable template is never read/scanned after sealing.
-        self.create(baseline, template)
-        try:
-            return {t: json.loads(self.sql(baseline, snapshot_sql(t)))
-                    for t in ('assets', 'style_groups')}
-        finally:
-            self.drop(baseline)
+    def sql(self,db,query):
+        if db!='postgres':raise RuntimeError('4427 physical driver requires preserved database postgres')
+        return self.command('psql',db,'-XqAt','-v','ON_ERROR_STOP=1','-v','VERBOSITY=sqlstate',input_text=query)
 
     def run(self):
         # Source/context guards supplement independently reviewed native workflow custody.
@@ -451,6 +366,7 @@ class NativeCI:
             raise RuntimeError('4427 native CI SHA does not match actual checked-out source')
         source_hashes = {}
         for relative in ('scripts/qualify_rls4427_actual_tables.py',
+                         'scripts/rls4427_physical_cluster.py',
                          'supabase/tests/rls_public_admin_actual_table_performance.sql',
                          'supabase/tests/rls_public_admin_initplan_contracts.sql'):
             committed = subprocess.run(['/usr/bin/git', 'show', 'HEAD:' + relative], cwd=ROOT,
@@ -477,20 +393,51 @@ if (select count(*) from auth.users where email in
  'zz-fixture-user-3@fixture.invalid','zz-fixture-user-4@fixture.invalid'))<>4
 then raise exception '4427 native synthetic users missing'; end if;
 end $g$;""")
-            snapshot = self.snapshot(template)
-            tool_versions = snapshot['versions']
-            # Preserve and execute the existing 2124-equivalence/198-plan capability as-is.
-            original = FIXTURE.read_text()
-            original_result = self.sql(template, original)
-            self.sql(template, fixture_sql(original) + seed_sql())
-            base_metadata = self.prepare_baseline(template)
+            self.phase='physical-source-backup-and-target-recovery'
+            cluster=physical4427.PhysicalCluster(self);self.cluster_attempt=cluster
+            cluster.open()
+            self.physical=cluster
+            self.phase='owned-target-original-contract-and-fixture-staging'
+            template='postgres'
+            tool_versions=self.physical_versions
+            snapshot={'kind':'FULL_PHYSICAL_CLUSTER','source_facts':cluster.source_facts,'source_image_config_sha':cluster.source.immutable_config_sha,'basebackup':cluster.original_backup_receipt,'original_config':cluster.original_config_receipt,'original_backup_verified':cluster.original_backup_verified,'full_capability_fingerprint':cluster.full_capability_fingerprint}
+            # Existing fixture remains executable unchanged, only in the new owned target.
+            original=FIXTURE.read_text()
+            original_result=self.sql('postgres',original)
+            self.sql('postgres',fixture_sql(original)+seed_sql())
+            self.sql('postgres','ANALYZE public.assets; ANALYZE public.style_groups;')
+            analyze_facts=json.loads(self.sql('postgres',"select json_agg(json_build_array(relname,n_tup_ins,n_mod_since_analyze,last_analyze::text) order by relname) from pg_stat_user_tables where schemaname='public' and relname in ('assets','style_groups');"))
+            # Warm both tables before clean shutdown flushes their hint bits.
+            for table in ('assets','style_groups'):self.sql('postgres',snapshot_sql(table))
+            canonical=cluster.seal()
+            calibration=[];calibration_active=[]
+            base_metadata=None
+            for variant in ('original','candidate'):
+                self.phase='physical-calibration-'+variant
+                calibration_started=time.monotonic();wait_before=cluster.window_wait_seconds
+                cluster.begin_trial()
+                try:
+                    current={t:json.loads(self.sql('postgres',snapshot_sql(t))) for t in ('assets','style_groups')}
+                    if base_metadata is None:base_metadata=current
+                    elif current!=base_metadata:raise RuntimeError('4427 physical calibration pair starts with differing state')
+                    if variant=='original':
+                        self.sql('postgres','\n'.join(f'ALTER POLICY "{name}" ON public.{t} {clause} '
+                            "(public.has_role(auth.uid(), 'admin'::public.app_role));" for t,name,clause in POLICIES))
+                    result=self.sql('postgres','begin;'+role_sql(ADMIN)+'EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) '+statement('assets','UPDATE',10000)+';rollback;')
+                    plan=json.loads(result[result.index('[\n'):])
+                    if plan[0]['Plan']['Actual Rows']!=10000:raise RuntimeError('4427 physical calibration actual rows differ')
+                    calibration.append({'variant':variant,'rows':10000})
+                finally:cluster.end_trial()
+                calibration_active.append(time.monotonic()-calibration_started-(cluster.window_wait_seconds-wait_before))
+            projected=cluster.projected_matrix_check(calibration_active)
             pair_fingerprints = {}
             negative_pairs = {}
             for index, (table, cmd, size, sample, variant) in enumerate(jobs()):
-                if time.monotonic() - self.started > 900:
-                    raise RuntimeError('4427 fifteen-minute qualification budget exhausted')
-                db = self.prefix + '_trial_' + str(index)
-                self.create(db, template)
+                self.phase=f'physical-matrix-{index}-{table}-{cmd}-{variant}'
+                if time.monotonic() - self.started > 2100:
+                    raise RuntimeError('4427 thirty-five-minute qualification budget exhausted')
+                db='postgres'
+                cluster.begin_trial()
                 try:
                     before = json.loads(self.sql(db, snapshot_sql(table)))
                     if before['heap_bytes'] >= 1073741824 or before['index_bytes'] >= 1073741824:
@@ -559,29 +506,43 @@ end $g$;""")
                     samples.append(dict(table=table, command=cmd, size=size, sample=sample,
                         warmup=sample == 0, variant=variant, before=compact_snapshot(before), after=compact_snapshot(after), selected=selected, negative=negative, plan=plan))
                 finally:
-                    self.drop(db)
+                    cluster.end_trial()
             if len(samples) != 374:
                 raise RuntimeError('4427 incomplete 330-DML/44-SELECT matrix')
             summary = summarize(samples)
             return dict(schema_version=1, source_sha=os.environ['GITHUB_SHA'],
-                executed_source_sha256=source_hashes, tool_versions=tool_versions, snapshot=snapshot, owned_drop_receipts=self.cleanup,
-                calibration_clone_unmeasured=True, psql_shell_failure_signal_proven=True, qualification='ISOLATED_ACTUAL_TABLES_ONLY', production_acceptance='NOT_EVALUATED',
+                executed_source_sha256=source_hashes, tool_versions=tool_versions, snapshot=snapshot, canonical=canonical, analyze_facts=analyze_facts, calibration_pair=calibration, calibration_active_seconds=calibration_active, actual_admission_wait_seconds=cluster.window_wait_seconds, projected_matrix_seconds=projected, owned_physical_receipts=cluster.events,
+                calibration_pair_not_part_of374=True, psql_shell_failure_signal_proven=True, qualification='ISOLATED_ACTUAL_TABLES_ONLY', production_acceptance='NOT_EVALUATED',
                 historical_flags='PRESERVED_UNATTRIBUTED', source_sql_sha256=hashlib.sha256(original.encode()).hexdigest(),
                 original_contract_output_sha256=hashlib.sha256(original_result.encode()).hexdigest(),
                 template_snapshots=base_metadata, samples=samples, summary=summary,
                 synthetic_performance_disposition='FLAGGED' if any(r['median_regression_over_10_percent'] for r in summary) else 'NO_FLAG_IN_THIS_SYNTHETIC_BATCH')
+        except Exception as error:
+            self.primary_error=error
+            raise
         finally:
-            for db in list(reversed(self.owned)):
-                self.drop(db)
+            if self.physical is not None:
+                try:self.physical.close()
+                except Exception as cleanup:
+                    self.cleanup_error=cleanup
+                    if self.primary_error is None:raise
+                finally:self.physical=None
 
 
 def main():
+    driver=None
     try:
-        report = NativeCI().run()
-        print(json.dumps(report, sort_keys=True))
+        driver=NativeCI();report=driver.run()
+        print(json.dumps(report,sort_keys=True))
         return 0
     except Exception as exc:
-        print('4427 qualification refused: ' + str(exc), file=sys.stderr)
+        cluster=getattr(driver,'cluster_attempt',None)
+        failure=physical4427.failure_receipt(exc,getattr(driver,'phase','admission'),getattr(cluster,'events',[]))
+        failure['source_external']=getattr(driver,'last_external_failure',None)
+        failure['target_external']=getattr(cluster,'last_external_failure',None)
+        if getattr(driver,'cleanup_error',None) is not None:
+            failure['cleanup_failure']=physical4427.failure_receipt(driver.cleanup_error,'cleanup',getattr(cluster,'events',[]))
+        print(json.dumps(failure,sort_keys=True),file=sys.stderr)
         return 1
 
 

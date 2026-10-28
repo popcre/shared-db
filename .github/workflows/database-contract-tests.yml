@@ -682,6 +682,15 @@ jobs:
           set -uo pipefail
           shopt -s nullglob
           FILES=(supabase/tests/*.sql)
+          # Full-cluster qualification observes a quiescent source only after
+          # every ordinary contract. It remains explicitly manual/default-off.
+          QUALIFIER=supabase/tests/rls_public_admin_actual_table_performance.sql
+          ORDERED=()
+          for contract_file in "${FILES[@]}"; do
+            [ "$contract_file" = "$QUALIFIER" ] || ORDERED+=("$contract_file")
+          done
+          if [ -f "$QUALIFIER" ]; then ORDERED+=("$QUALIFIER"); fi
+          FILES=("${ORDERED[@]}")
           if [ "${#FILES[@]}" -eq 0 ]; then
             echo "::error::No supabase/tests/*.sql found -- the glob or the checkout is wrong." >&2
             exit 1

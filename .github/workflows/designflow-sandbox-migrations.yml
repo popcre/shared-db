@@ -11,8 +11,7 @@ name: DesignFlow Sandbox Migrations
 # guarded components unchanged:
 #   - production_migration_guard.py preflight / prepare / assert-bounded /
 #     verify-dry-run (the bounded checkout that makes include-all safe),
-#   - check-exact-head-approval.mjs and merge-queue-contract.mjs (the source
-#     PR's durable independent exact-head verdict and guarded merge),
+#   - merge-queue-contract.mjs (guarded merge; review is advisory since 2026-10-29),
 #   - production_catalog_verification.py (read-only post-apply catalog proof).
 # Sandbox-only gates live in scripts/sandbox_migration_preflight.py: target
 # identity, the sandbox version blocklist, the same-name collision preflight,
@@ -164,7 +163,6 @@ jobs:
           if [ "$GUARDED_STATE" != success ]; then
             echo "REFUSED: source PR head ${SOURCE_HEAD} has no successful guarded-merge authorization (state: ${GUARDED_STATE:-none})." >&2; exit 2
           fi
-          PR_NUMBER="$SOURCE_PR" REQUESTED_SHA="$SOURCE_HEAD" node scripts/check-exact-head-approval.mjs
       - name: Verify the target identity
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

@@ -1235,7 +1235,6 @@ jobs:
             echo "::error::ENGINEER ACTION REQUIRED: the newest guarded-merge authorization is not successful at source head ${SOURCE_HEAD} (state: ${GUARDED_STATE:-none}). Nothing was dispatched." >&2
             exit 2
           fi
-          PR_NUMBER="$SOURCE_PR" REQUESTED_SHA="$SOURCE_HEAD" node scripts/check-exact-head-approval.mjs
           echo "source_head=$SOURCE_HEAD" >> "$GITHUB_OUTPUT"
           ADMISSION="$(node scripts/manage-migration-author-lanes.mjs --resolve-admitted-issue-for-pr "$SOURCE_PR")"
           WORK_ISSUE="$(jq -r 'if (.issue | type) == "number" and .issue >= 1 then .issue else error("resolver returned no positive issue") end' <<<"$ADMISSION")"

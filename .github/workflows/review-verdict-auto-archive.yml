@@ -21,9 +21,9 @@
 
 name: Review Verdict Auto-Archive
 
+# DISABLED 2026-10-29 (owner ruling: review is advisory, never a gate).
+# Schedule removed; manual dispatch kept for one-off use.
 on:
-  schedule:
-    - cron: "41 * * * *"
   workflow_dispatch:
 
 permissions:

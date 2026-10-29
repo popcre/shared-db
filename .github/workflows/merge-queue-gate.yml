@@ -186,7 +186,6 @@ jobs:
           node scripts/check-live-proof-probe.mjs
           node scripts/check-pr-object-collisions.mjs
           node scripts/check-migration-pr-lease.mjs
-          node scripts/check-exact-head-approval.mjs
           node scripts/merge-queue-contract.mjs
 
       - name: Require the latest preceding migration merge to have completed preview rehearsal

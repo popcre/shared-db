@@ -379,7 +379,6 @@ jobs:
           node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-production-verification-sidecars.mjs" --base origin/main --data-root "$GITHUB_WORKSPACE" --head-sha "$REQUESTED_SHA" --source-sha '${{ steps.executable_source.outputs.sha }}'
           node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-migration-pr-lease.mjs"
           node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-live-proof-probe.mjs"
-          PR_NUMBER="${{ inputs.pull_request }}" REQUESTED_SHA="${{ inputs.head_sha }}" node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-exact-head-approval.mjs"
       # Queue admission must come from an app token: a merge-queue entry created with
       # GITHUB_TOKEN starts no merge_group workflows, so GitHub ejects it after 30
       # minutes (#4731). popcre-merge-queue-admission is installed on this repository
@@ -432,10 +431,6 @@ jobs:
           GITHUB_SHA="$REQUESTED_SHA" node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-pr-object-collisions.mjs"
           node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-migration-pr-lease.mjs"
           node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-live-proof-probe.mjs"
-          # Re-proven under the lock: a reviewer can withdraw, or a refusal can
-          # land, between the first pass and the merge itself. Protected main's
-          # copy, never the pull request's own, on BOTH passes.
-          node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-exact-head-approval.mjs"
           umask 077
           gh api "repos/${GITHUB_REPOSITORY}/statuses/$REQUESTED_SHA" -f state=success -f context='Migration guarded merge authorization' -f description='Exclusive merge lock held and exact head revalidated' > "$RUNNER_TEMP/self-authorization-receipt.json"
           # The status write above and the mergeability GitHub evaluates below are
@@ -486,7 +481,6 @@ jobs:
             GITHUB_SHA="$REQUESTED_SHA" node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-pr-object-collisions.mjs"
             node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-migration-pr-lease.mjs"
             node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-live-proof-probe.mjs"
-            node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-exact-head-approval.mjs"
             QUEUE_RETIREMENT_PHASE=14 PREFLIGHT_WAIT_SECONDS=0 \
               TRUSTED_POLICY_SHA='${{ steps.executable_source.outputs.sha }}' \
               SELF_AUTHORIZATION_RECEIPT="$RUNNER_TEMP/self-authorization-receipt.json" \

@@ -1,9 +1,9 @@
 {
   "detector_schema_version": 1,
-  "detector_source_sha256": "2035aafdd170a1517958ae23d58a152bdf8ac5f11cbda242757983e67f645260",
+  "detector_source_sha256": "e2969274bd58deeedc353198b2710f3964af418598b24f671d4ae2c178674857",
   "command": "node scripts/check-production-verification-sidecars.mjs",
-  "total_migration_files": 771,
-  "matched_count": 106,
+  "total_migration_files": 876,
+  "matched_count": 120,
   "matched_paths": [
     {
       "version": "20260621150815",
@@ -534,6 +534,76 @@
       "version": "20261009073649",
       "path": "supabase/migrations/20261009073649_popdam_orderlist_sheets_integration.sql",
       "marker_count": 2
+    },
+    {
+      "version": "20261009224453",
+      "path": "supabase/migrations/20261009224453_hash_pinned_licensing_consolidation.sql",
+      "marker_count": 11
+    },
+    {
+      "version": "20261010033616",
+      "path": "supabase/migrations/20261010033616_drop_frozen_designflow_schema.sql",
+      "marker_count": 1
+    },
+    {
+      "version": "20261011170134",
+      "path": "supabase/migrations/20261011170134_apply_erp_item_updates.sql",
+      "marker_count": 2
+    },
+    {
+      "version": "20261012005136",
+      "path": "supabase/migrations/20261012005136_popsg_parse_search_query_once.sql",
+      "marker_count": 1
+    },
+    {
+      "version": "20261013130102",
+      "path": "supabase/migrations/20261013130102_licensing_support_forward.sql",
+      "marker_count": 32
+    },
+    {
+      "version": "20261018134615",
+      "path": "supabase/migrations/20261018134615_licensing_recovery_timestamp.sql",
+      "marker_count": 1
+    },
+    {
+      "version": "20261018164004",
+      "path": "supabase/migrations/20261018164004_nbcu_candidate_evidence.sql",
+      "marker_count": 3
+    },
+    {
+      "version": "20261019183716",
+      "path": "supabase/migrations/20261019183716_orderlist_so_date_sort_find.sql",
+      "marker_count": 1
+    },
+    {
+      "version": "20261021134203",
+      "path": "supabase/migrations/20261021134203_reversible_canonical_licensing_merge.sql",
+      "marker_count": 15
+    },
+    {
+      "version": "20261022032116",
+      "path": "supabase/migrations/20261022032116_popsg_search_forward_delivery_recovery.sql",
+      "marker_count": 1
+    },
+    {
+      "version": "20261022043547",
+      "path": "supabase/migrations/20261022043547_popsg_guides_matched_set_via_search_index.sql",
+      "marker_count": 1
+    },
+    {
+      "version": "20261022155012",
+      "path": "supabase/migrations/20261022155012_popsg_search_compact_preview_state.sql",
+      "marker_count": 1
+    },
+    {
+      "version": "20261027183509",
+      "path": "supabase/migrations/20261027183509_popsg_semantic_search_stage2.sql",
+      "marker_count": 1
+    },
+    {
+      "version": "20261029054455",
+      "path": "supabase/migrations/20261029054455_dflow_product_description.sql",
+      "marker_count": 1
     }
   ],
   "enforced_versions": [

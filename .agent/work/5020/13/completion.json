@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "work_issue": 5020,
+  "outcome": "ready-for-merge",
+  "pr": 5029,
+  "migration_versions": [
+    "20261029161229"
+  ],
+  "contract_ref": "refs/db-contracts/5020/13",
+  "contract_sha256": "d0cf237ad9e4e973edf2d3b4f115cdea8bb350a71073244dfd0ba81d97073047",
+  "head_sha": "fc5f5a30b8d9b53ed3d4eb5f81545b2dc41b7e5a",
+  "base_sha": "67b23af69ab759031fe3b90fc93df5577d38c6b9",
+  "files_changed": [
+    "docs/verification/throughput-dispositions/scripts~production_catalog_verification.py.json",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20261029161229.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/production_migration_guard.py",
+    "supabase/migrations/20261029161229_dflow_product_description.sql",
+    "supabase/tests/dflow_product_description_contracts.sql"
+  ],
+  "db_reads": [
+    "table core.\"merchGroup\"",
+    "table dflow.\"itemHeader\""
+  ],
+  "db_writes": [
+    "table dflow.mg_combination_description",
+    "table dflow.mg_combination_description_history",
+    "table dflow.item_product_description",
+    "table dflow.item_product_description_history",
+    "function dflow.product_description_row_audit",
+    "function dflow.item_product_description_protect_human_override",
+    "index dflow.item_product_description_combination_idx",
+    "index dflow.item_product_description_review_idx",
+    "index dflow.item_product_description_run_idx",
+    "index dflow.mg_combination_description_run_idx",
+    "trigger product_description_audit on dflow.mg_combination_description",
+    "trigger product_description_audit on dflow.item_product_description",
+    "trigger item_product_description_write_guard on dflow.item_product_description"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed at implementation head fc5f5a30 after merging main 67b23af (library-entry PR #5022 included); migration 20261029161229 sorts after main's newest 20261029094242, so Guard B passes."
+    },
+    {
+      "command": "python -m unittest scripts.test_check_production_verification_sidecars",
+      "exit_code": 0,
+      "evidence": "16/16 tests OK at implementation head fc5f5a30. The sibling module scripts.test_production_catalog_verification runs in full on CI (ubuntu); on this Windows host it has one pre-existing fixture error (CRLF hashing), verified identical on pristine origin/main 67b23af."
+    },
+    {
+      "command": "python -I -B scripts/check_production_verification_sidecars.py --repo . --scan-version 20261029161229",
+      "exit_code": 0,
+      "evidence": "Status OK; sidecars=96; two generic exact_row_count checks load through the strict loader; sidecar hash c396e092 matches the renamed migration bytes."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "Baseline verified after regeneration: detector digest 223819eaac53da02 matches scripts/production_catalog_verification.py; totals unchanged (880 migration files, 120 marker-bearing) with the renamed path carried."
+    },
+    {
+      "command": "psql -h localhost -p 55432 -U postgres -d t_ct -v ON_ERROR_STOP=1 -f supabase/tests/dflow_product_description_contracts.sql",
+      "exit_code": 0,
+      "evidence": "Behavior contract test green on all three database shapes at implementation head fc5f5a30."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites=394 sources=112 derived_digest=aa395b017b7d at implementation head fc5f5a30."
+    }
+  ],
+  "assumptions_resolved": [
+    "Guard B refused 20261029054455 as backdated behind main's re-reserved 20261029093309/20261029093702/20261029094242 (CI 'SQL migration guards' failing at parked head 5487ef05), so the version was re-reserved twice: first to 20261029154720 (claim #5035), then to 20261029161229 (claim #5043) after claim #5035's owner label (non-UUID session id) proved unable to authenticate the author check-in. Both renames were pure; SQL bytes otherwise unchanged; sidecar re-hashed each time.",
+    "PR #5029 was closed for each re-claim per the park-resume flow (fresh claims collide with an open PR's objects) and reopened at this head; prior claims #5027/#5028 were released at the previous session's close (2026-10-29 10:45 AM EDT) and #5035 on release at 16:1x UTC.",
+    "stepfun's gen-11 open item (completion check-evidence naming impl head 9d864640 while head_sha was ce9ae720) is resolved structurally: every gen-13 check evidence line names the implementation head it actually ran at (fc5f5a30)."
+  ],
+  "stop_conditions_hit": []
+}

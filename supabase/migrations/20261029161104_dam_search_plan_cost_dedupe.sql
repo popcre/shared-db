@@ -1,4 +1,4 @@
--- Version: 20261029160545
+-- Version: 20261029161104
 -- derived-from: 20261027114004
 -- #4508: cut search_dam_documents planning cost by factoring the per-asset visibility
 --        predicate into one inlinable helper.
@@ -59,7 +59,7 @@ begin
      or position('hnsw.iterative_scan' in v_src) = 0
      or position('semantic_ann as materialized' in v_src) = 0
      or position('threshold applied after the legs' in v_src) = 0 then
-    raise exception '#4508/20261029160545: live search_dam_documents is not the 20261027114004 body; refusing to replace';
+    raise exception '#4508/20261029161104: live search_dam_documents is not the 20261027114004 body; refusing to replace';
   end if;
 end
 $guard$;

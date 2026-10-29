@@ -243,6 +243,26 @@ begin
     perform plm.refresh_style_tracker_item_bridge();
   end if;
 
+  -- #5058: a ColdLion-linked line's description is ColdLion's full description,
+  -- never a local edit. Re-assert it every run so ColdLion changes flow in; the
+  -- first overwritten local value is kept in row_data for recovery.
+  update public.style_tracker_rows r
+       set description = src.full_desc,
+           row_data = case
+             when r.description is null or r.row_data ? 'pre_coldlion_description' then r.row_data
+             else coalesce(r.row_data, '{}'::jsonb) || jsonb_build_object('pre_coldlion_description', r.description)
+           end
+      from (
+        select b.style_tracker_row_id,
+               coalesce(nullif(i.raw ->> 'itemDesc', ''), nullif(i.raw ->> 'itemDisplayDesc', ''), nullif(i.description, '')) as full_desc
+          from plm.style_tracker_item_bridge b
+          join plm.item i on i.id = b.plm_item_id
+         where i.source_system = 'coldlion'
+      ) src
+     where src.style_tracker_row_id = r.id
+       and src.full_desc is not null
+       and r.description is distinct from src.full_desc;
+
   eligible_count := v_eligible;
   deferred_count := v_deferred;
   return next;

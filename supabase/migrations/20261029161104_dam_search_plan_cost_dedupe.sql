@@ -14,6 +14,22 @@
 --   Keyword leg, semantic legs, ranking, output columns, total_count / has_more /
 --   facets semantics and grants are unchanged.
 
+
+do $guard$
+declare v_src text;
+begin
+  select p.prosrc into v_src from pg_proc p
+   where p.oid = to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)');
+  if v_src is null
+     or position('semantic_exact as materialized' in v_src) = 0
+     or position('hnsw.iterative_scan' in v_src) = 0
+     or position('semantic_ann as materialized' in v_src) = 0
+     or position('threshold applied after the legs' in v_src) = 0 then
+    raise exception '#4508/20261029161104: live search_dam_documents is not the 20261027114004 body; refusing to replace';
+  end if;
+end
+$guard$;
+
 CREATE OR REPLACE FUNCTION public.dam_asset_matches_filters(p_asset public.assets, p_style_group public.style_groups, p_filters jsonb, p_thumbnail_min_date timestamptz)
  RETURNS boolean
  LANGUAGE sql
@@ -49,20 +65,6 @@ $fn$;
 
 revoke all on function public.dam_asset_matches_filters(public.assets, public.style_groups, jsonb, timestamptz) from public;
 
-do $guard$
-declare v_src text;
-begin
-  select p.prosrc into v_src from pg_proc p
-   where p.oid = to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)');
-  if v_src is null
-     or position('semantic_exact as materialized' in v_src) = 0
-     or position('hnsw.iterative_scan' in v_src) = 0
-     or position('semantic_ann as materialized' in v_src) = 0
-     or position('threshold applied after the legs' in v_src) = 0 then
-    raise exception '#4508/20261029161104: live search_dam_documents is not the 20261027114004 body; refusing to replace';
-  end if;
-end
-$guard$;
 
 set statement_timeout = '15min';
 

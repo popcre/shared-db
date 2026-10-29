@@ -1,7 +1,7 @@
 begin;
 
 do $$
-declare v_filter text; v_search text; v_counts text; v_helper text;
+declare v_filter text; v_search text; v_counts text; v_helper text; v_scan_zone text;
 begin
   select pg_get_functiondef('public.filter_effective_assets(jsonb)'::regprocedure) into v_filter;
   select pg_get_functiondef('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)'::regprocedure) into v_search;
@@ -22,10 +22,21 @@ begin
      or position('3FZ' in v_filter)=0 then
     raise exception 'one or more PopDAM parity predicates are missing';
   end if;
-  if position('customerId' in v_helper)=0 or position('contentType' in v_helper)=0
-     or position('productMaterial' in v_helper)=0 or position('fileStatus' in v_helper)=0
+  -- every parity predicate key ever regressed must live in the helper
+  if position('licensorId' in v_helper)=0 or position('propertyId' in v_helper)=0
+     or position('customerId' in v_helper)=0 or position('tagFilter' in v_helper)=0
+     or position('fileType' in v_helper)=0 or position('contentType' in v_helper)=0
+     or position('productMaterial' in v_helper)=0 or position('status' in v_helper)=0
+     or position('workflowStatus' in v_helper)=0 or position('stage' in v_helper)=0
+     or position('isLicensed' in v_helper)=0 or position('assetType' in v_helper)=0
+     or position('artSource' in v_helper)=0 or position('fileStatus' in v_helper)=0
      or position('productCategory' in v_helper)=0
-     or position('a.modified_at >= p_thumbnail_min_date' in v_helper)=0
+     or position('no_preview_renderable' in v_helper)=0
+     or position('no_pdf_compat' in v_helper)=0
+     or position('no_preview_unsupported' in v_helper)=0
+     or position('WALL ART' in v_helper)=0 or position('3FZ' in v_helper)=0
+     or position('customer' in v_helper)=0 or position('program' in v_helper)=0
+     or position('p_asset.modified_at >= p_thumbnail_min_date' in v_helper)=0
      or position('not p_asset.is_deleted' in v_helper)=0 then
     raise exception 'ranked filters are missing from the shared per-asset predicate helper';
   end if;
@@ -33,11 +44,23 @@ begin
      or (length(v_search) - length(replace(v_search, 'dam_asset_matches_filters', '')))
         / length('dam_asset_matches_filters') <> 2
      or position('dam_asset_matches_filters' in v_search)
-        > position('page as materialized' in lower(v_search)) then
+        > position('page as materialized' in lower(v_search))
+     or position('dam_asset_matches_filters' in reverse(v_search))
+        > position('page as materialized' in reverse(lower(v_search))) then
     raise exception 'ranked search must filter through the shared predicate helper in both pre-pagination consumers';
   end if;
-  if position('customerId' in v_search) > 0
-     or position('productCategory' in v_search) > 0 then
+  -- per-asset predicate keys must NOT be inlined in the scan zone. The facet
+  -- builder in the summary CTE legitimately reuses names like 'fileType', so
+  -- the scan zone ends where 'summary as materialized' begins.
+  v_scan_zone := substring(v_search from 1 for position('summary as materialized' in v_search) - 1);
+  if position('licensorId' in v_scan_zone) > 0 or position('propertyId' in v_scan_zone) > 0
+     or position('customerId' in v_scan_zone) > 0 or position('tagFilter' in v_scan_zone) > 0
+     or position('fileType' in v_scan_zone) > 0 or position('contentType' in v_scan_zone) > 0
+     or position('productMaterial' in v_scan_zone) > 0 or position('workflowStatus' in v_scan_zone) > 0
+     or position('isLicensed' in v_scan_zone) > 0 or position('assetType' in v_scan_zone) > 0
+     or position('artSource' in v_scan_zone) > 0 or position('fileStatus' in v_scan_zone) > 0
+     or position('productCategory' in v_scan_zone) > 0
+     or position('WALL ART' in v_scan_zone) > 0 or position('3FZ' in v_scan_zone) > 0 then
     raise exception 'ranked search inlined per-asset filter predicates instead of delegating to the helper';
   end if;
   if position('get_effective_filter_counts_unchecked_1703' in v_counts)=0 or position('require_dam_access' in v_counts)=0 then

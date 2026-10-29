@@ -1,6 +1,6 @@
 -- =====================================================================================
 -- Core Product Type (product description tables) behavior contracts — migration
--- 20261029054534 (dflow_prod half), issue #5026. Mirrors the hardened sandbox
+-- 20261029175542 (dflow_prod half), issue #5026. Mirrors the hardened sandbox
 -- test (issue #5020, PR #5029): the governed deepseek review there proved the
 -- original human-override guard could be bypassed three ways and that no
 -- committed behavior test existed.
@@ -103,7 +103,7 @@ begin
 end
 $fixture$;
 
-\i supabase/migrations/20261029054534_dflow_prod_product_description.sql
+\i supabase/migrations/20261029175542_dflow_prod_product_description.sql
 
 -- A. Positive chain: a published combination and its per-item row insert cleanly.
 insert into dflow_prod.mg_combination_description
@@ -193,6 +193,6 @@ begin
 end $$;
 
 -- H. Idempotent re-apply.
-\i supabase/migrations/20261029054534_dflow_prod_product_description.sql
+\i supabase/migrations/20261029175542_dflow_prod_product_description.sql
 
 rollback;

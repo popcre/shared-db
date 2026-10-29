@@ -51,15 +51,15 @@ set statement_timeout = '2min';
 do $$
 begin
   if to_regnamespace('dflow_prod') is null then
-    raise exception '#5020/20261029054534 self-check: schema dflow_prod is missing — wrong database for the production half (the sandbox half 20261029043759 applies on the sandbox project)'
+    raise exception '#5020/20261029175542 self-check: schema dflow_prod is missing — wrong database for the production half (the sandbox half 20261029043759 applies on the sandbox project)'
       using errcode = 'feature_not_supported';
   end if;
   if to_regclass('core."merchGroup"') is null then
-    raise exception '#5020/20261029054534 self-check: core."merchGroup" is missing — cannot create the combination FKs'
+    raise exception '#5020/20261029175542 self-check: core."merchGroup" is missing — cannot create the combination FKs'
       using errcode = 'feature_not_supported';
   end if;
   if to_regclass('dflow_prod."itemHeader"') is null then
-    raise exception '#5020/20261029054534 self-check: dflow_prod."itemHeader" is missing — wrong database'
+    raise exception '#5020/20261029175542 self-check: dflow_prod."itemHeader" is missing — wrong database'
       using errcode = 'feature_not_supported';
   end if;
 end $$;

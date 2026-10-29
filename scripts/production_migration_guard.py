@@ -393,7 +393,7 @@ PREVIEW_ONLY_HISTORICAL_RESTORATIONS = {
 KNOWN_MIGRATION_TARGETS = frozenset({"production", "preview", "designflow-nonprod", "designflow-prod"})
 
 FOREIGN_TARGET_MIGRATIONS = {
-    "20261029054534": {
+    "20261029175542": {
         "target": "designflow-prod",
         "project": "DesignFlow production qsllyeztdwjgirsysgai (popdam)",
         "issue": "#5026",

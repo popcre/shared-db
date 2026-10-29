@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "work_issue": 5033,
+  "outcome": "ready-for-merge",
+  "pr": 5034,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/5033/3",
+  "contract_sha256": "8f706162ee34d7776e2e7203b00d851f9e9c0ee4506fd681387b401a6499b2a8",
+  "head_sha": "a0c36d13b4ed3cd19516a4b20b631f5ce2e4fb05",
+  "base_sha": "7497322493592557d888f10f2f0630fa710eb645",
+  "files_changed": [
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/merge-queue-gate.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "docs/development.md",
+    "docs/verification/testing-delivery/5033.md",
+    "docs/verification/throughput-dispositions/scripts~check-delivery-local.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~merge-queue-hold.mjs.json",
+    "scripts/check-delivery-local.mjs",
+    "scripts/check-delivery-local.test.mjs",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/merge-queue-hold.mjs",
+    "scripts/merge-queue-hold.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/check-delivery-local.test.mjs scripts/merge-queue-hold.test.mjs scripts/check-merge-queue-workflows.test.mjs",
+      "exit_code": 0,
+      "evidence": "70 integrated regressions PASS; includes native shared-transport502 retry for each fixed GraphQL query and guarded35minute job margin after900secondbusywait."
+    },
+    {
+      "command": "node scripts/check-delivery-local.mjs --base 7497322493592557d888f10f2f0630fa710eb645",
+      "exit_code": 0,
+      "evidence": "Actual integrated5guard run PASS: sidecars95, truth393sites112sources,72throughput+39RLS/parser+309Python; native source identity stable before/after."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base 7497322493592557d888f10f2f0630fa710eb645",
+      "exit_code": 0,
+      "evidence": "Sidecars and pinned detector baseline PASS; no baseline regeneration."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Whitespace PASS."
+    }
+  ],
+  "assumptions_resolved": [
+    "Prospective generation3 binds generation2 and addresses its terminal GLM review. Prior candidate pair preserved privately/published refs remain immutable; only generation3 pair appears in final PR diff.",
+    "Critical non-null cursor finding disproved: exact reviewed source already declared nullableString, and real native first-page read returned30contexts and detected historical requiredSQLfailure; currentPRidentity read passed. Nullable omission boundary has explicit regression.",
+    "Fixed query-only POSTs use existing transport idempotency proof for four transient attempts, no quota wait or mutation replay. Guarded35minute job retains original20minute execution margin after15minutebusywait. No new transport, adminsecret, reviewer code/install, DB/production action or weakened guard.",
+    "70integrated tests and actual5guard preflight PASS:72throughput+39RLS/parser+309Python;52workflowYAML/464filetransportconformance/sidecars95/truth393sites112sources/whitespace PASS. Real requiredCI/guardedmerge still not claimed locally.",
+    "ActualPR5034 and new implementationhead bound before final independent review; final source remains immutable through terminal adoption."
+  ],
+  "stop_conditions_hit": []
+}

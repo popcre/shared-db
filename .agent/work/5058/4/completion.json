@@ -6,13 +6,13 @@
   "migration_versions": [
     "20261029204605"
   ],
-  "contract_ref": "refs/db-contracts/5058/3",
-  "contract_sha256": "a50982a6478c5e71fbc87fe573043a1489f486a42318d3f98755eabf15958fa2",
-  "head_sha": "7ec3eb8949be3058ccf29cd49e7acd5f64ed9c79",
+  "contract_ref": "refs/db-contracts/5058/4",
+  "contract_sha256": "70c22169c67e42efcaf7cdb62a1e3d1657cac922680fc4d6f04514428eb63b33",
+  "head_sha": "dc06778c3e4dad7325d2d0fbc21a4036c2eb93c3",
   "base_sha": "69f81af9544c3ab7c010ec2d093aad3179e97ef1",
   "files_changed": [
-    ".agent/work/5058/2/completion.json",
-    ".agent/work/5058/2/contract.json",
+    ".agent/work/5058/3/completion.json",
+    ".agent/work/5058/3/contract.json",
     ".github/live-proofs/5058.sql",
     "supabase/migrations/20261029204605_master_data_coldlion_full_description.sql",
     "supabase/tests/master_data_autoflow_generic_division_contracts.sql",

@@ -1,0 +1,87 @@
+{
+  "schema_version": 2,
+  "generation": 10,
+  "evidence_parent": {
+    "work_issue": 5020,
+    "generation": 9,
+    "contract_sha256": "321b3604c31f8f9a16ae616773c3ec2b36e3f19c07bd49caaf329ef3792ace05"
+  },
+  "work_issue": 5020,
+  "work_type": "structural",
+  "route": "claim-first",
+  "goal": "Core Product Type storage, SANDBOX HALF (claim #5027, version 20261029054455; merged main; addresses every finding of the governed deepseek review): static migration creating the dflow.mg_combination_description and dflow.item_product_description table pairs with audit and a human-override guard that requires app.product_description.human exactly 'on' and covers insert, update, delete and attribution rewrites; foreign-target registration in production_migration_guard so the drift monitor does not alarm; a committed supabase/tests behavior contract test (self-contained fixtures, one transaction, ROLLBACK); arm-discriminated grants contract with a role-existence guard; hash-bound sidecar and regenerated throughput-guard baseline. Fail-loud self-checks keep it off the production project; the paired production half is issue #5026. Work issue popcre/designflow-item-master#150. CI follow-up: the behavior contract test is environment-aware (identity-aware fixtures, passes both on a bare database and on the CI ephemeral stack's real dflow/core shapes) and the truth-audit disposition catalogue carries the new contract call site. The contract test additionally drops dflow_prod inside its rolled-back transaction so the CI ephemeral stack (which carries both schemas) exercises the full sandbox-shape suite. Sidecar checks use the generic exact_row_count kind: the guarded merge validates sidecars against the protected main copy of the checker, which cannot know contract names introduced by this very PR; the three contract definitions still land with this merge so the paired production half can cite them.",
+  "base_sha": "da271bfa11e3681969ec37429f27d96a8c844b48",
+  "dispatcher": "claim-first (claim #5027, owner ZCode chat e75a842f-c460-27db-37e8-d1319a6f9d50 on EDGE-DEV)",
+  "worker": "ZCode chat e75a842f-c460-27db-37e8-d1319a6f9d50 on EDGE-DEV",
+  "branch": "zcode/5020a-dflow-pd",
+  "worktree": "D:/repos/shared-db-worktrees/5020a",
+  "allowed_paths": [
+    ".agent/work/5020/10/completion.json",
+    ".agent/work/5020/10/contract.json",
+    "docs/verification/throughput-dispositions/scripts~production_catalog_verification.py.json",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20261029054455.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/production_migration_guard.py",
+    "supabase/migrations/20261029054455_dflow_product_description.sql",
+    "supabase/tests/dflow_product_description_contracts.sql"
+  ],
+  "file_writes": [
+    ".agent/work/5020/10/completion.json",
+    ".agent/work/5020/10/contract.json",
+    "docs/verification/throughput-dispositions/scripts~production_catalog_verification.py.json",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20261029054455.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/production_migration_guard.py",
+    "supabase/migrations/20261029054455_dflow_product_description.sql",
+    "supabase/tests/dflow_product_description_contracts.sql"
+  ],
+  "db_reads": [
+    "table core.\"merchGroup\"",
+    "table dflow.\"itemHeader\""
+  ],
+  "db_writes": [
+    "table dflow.mg_combination_description",
+    "table dflow.mg_combination_description_history",
+    "table dflow.item_product_description",
+    "table dflow.item_product_description_history",
+    "function dflow.product_description_row_audit",
+    "function dflow.item_product_description_protect_human_override",
+    "index dflow.item_product_description_combination_idx",
+    "index dflow.item_product_description_review_idx",
+    "index dflow.item_product_description_run_idx",
+    "index dflow.mg_combination_description_run_idx",
+    "trigger product_description_audit on dflow.mg_combination_description",
+    "trigger product_description_audit on dflow.item_product_description",
+    "trigger item_product_description_write_guard on dflow.item_product_description"
+  ],
+  "prohibited_actions": [
+    "Do not modify any applied migration.",
+    "Do not add a second migration version to this pull request; the production half is a separate claim and pull request on issue #5026.",
+    "Do not write to any live database from this pull request; the sandbox apply goes through the DesignFlow Sandbox Migrations workflow with its own allowlist and proofs.",
+    "Do not touch any dflow_prod object.",
+    "Do not bypass, weaken or retry around exact-head review, guarded merge or apply gates.",
+    "Do not rebase; merge main instead."
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "python -m unittest scripts.test_check_production_verification_sidecars scripts.test_production_catalog_verification",
+    "python -I -B scripts/check_production_verification_sidecars.py --repo . --scan-version 20261029054455",
+    "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+    "psql -h localhost -p 55432 -U postgres -d t_ct -v ON_ERROR_STOP=1 -f supabase/tests/dflow_product_description_contracts.sql"
+  ],
+  "assumptions": [
+    "The sandbox project carries schema dflow and not dflow_prod, so the arm selector is dflow_prod absence (verified live 2026-10-29).",
+    "The sandbox item service runs as the postgres pooler admin with no grant roles, so no grants are created on this half.",
+    "The CI ephemeral stack carries neither dflow schema, so the behavior contract test creates its own fixtures inside one rolled-back transaction.",
+    "Editing the detector obligates regenerating the throughput-guard truth baseline; it is regenerated on the merged tree."
+  ],
+  "stop_conditions": [
+    "Stop if the governed review returns a substantive REJECT; fix on a new head and re-review.",
+    "Stop if any gate, workflow or lane tool refuses; never work around it.",
+    "Stop if main advances past the version; supersede through the lane tool."
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "work_issue": 5020,
+  "outcome": "ready-for-merge",
+  "pr": 5029,
+  "migration_versions": [
+    "20261029054455"
+  ],
+  "contract_ref": "refs/db-contracts/5020/10",
+  "contract_sha256": "5aa875eb1c4788c90cb24e73967387e777540dcc0f62822f7c867c606c6169bf",
+  "head_sha": "fc43c1e49d96d7867225acde7b07932aa348ad10",
+  "base_sha": "da271bfa11e3681969ec37429f27d96a8c844b48",
+  "files_changed": [
+    "docs/verification/throughput-dispositions/scripts~production_catalog_verification.py.json",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20261029054455.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/production_migration_guard.py",
+    "supabase/migrations/20261029054455_dflow_product_description.sql",
+    "supabase/tests/dflow_product_description_contracts.sql"
+  ],
+  "db_reads": [
+    "table core.\"merchGroup\"",
+    "table dflow.\"itemHeader\""
+  ],
+  "db_writes": [
+    "table dflow.mg_combination_description",
+    "table dflow.mg_combination_description_history",
+    "table dflow.item_product_description",
+    "table dflow.item_product_description_history",
+    "function dflow.product_description_row_audit",
+    "function dflow.item_product_description_protect_human_override",
+    "index dflow.item_product_description_combination_idx",
+    "index dflow.item_product_description_review_idx",
+    "index dflow.item_product_description_run_idx",
+    "index dflow.mg_combination_description_run_idx",
+    "trigger product_description_audit on dflow.mg_combination_description",
+    "trigger product_description_audit on dflow.item_product_description",
+    "trigger item_product_description_write_guard on dflow.item_product_description"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed at implementation head fc43c1e49d96."
+    },
+    {
+      "command": "python -m unittest scripts.test_check_production_verification_sidecars scripts.test_production_catalog_verification",
+      "exit_code": 0,
+      "evidence": "Both suites green locally."
+    },
+    {
+      "command": "python -I -B scripts/check_production_verification_sidecars.py --repo . --scan-version 20261029054455",
+      "exit_code": 0,
+      "evidence": "Status OK; the strict loader accepts the two generic exact_row_count checks and the sidecar hash still matches the migration bytes."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "Baseline guard green; detector unchanged since gen9 so the pinned baseline still matches."
+    },
+    {
+      "command": "psql -h localhost -p 55432 -U postgres -d t_ct -v ON_ERROR_STOP=1 -f supabase/tests/dflow_product_description_contracts.sql",
+      "exit_code": 0,
+      "evidence": "Behavior contract test green on all three database shapes (bare, identity-keyed stack-like, production-shape with in-transaction dflow_prod drop). The two exact_row_count probes are the kinds the guarded merge's protected-main checker supports generically, so the sidecar validates on both the current main policy and this tree."
+    }
+  ],
+  "assumptions_resolved": [
+    "guarded merge refused the sidecar's new catalog-contract names because its checker is the protected main copy; switched to generic exact_row_count kinds (both tables proven present and empty post-apply), keeping the contract definitions in the tree for the paired production half."
+  ],
+  "stop_conditions_hit": []
+}

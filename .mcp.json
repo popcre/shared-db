@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "supabase": {
-      "command": "node",
-      "args": ["scripts/mcp-supabase-launch.mjs"]
-    }
-  }
-}

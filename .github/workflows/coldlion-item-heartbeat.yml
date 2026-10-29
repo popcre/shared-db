@@ -11,7 +11,7 @@ name: ColdLion Item Heartbeat
 # modifiedFrom serves createdFrom semantics, so item edits land at the three
 # anchor sweeps plus the nightly masters run (trade-off recorded on #5011).
 #
-# Load: ~288 tiny single-row GETs/day + on-demand full sweeps (throttled to at
+# Load: ~288 tiny two-row GETs/day + on-demand full sweeps (throttled to at
 # most one per 10 minutes; measured 2-41 new items/day) + 3 anchor sweeps. The
 # old schedule pulled the full /items list every 30 minutes (~100 paged
 # requests × 48 ≈ 4,800 heavy requests/day); this is a large reduction at the
@@ -75,10 +75,13 @@ jobs:
           set -euo pipefail
           # One sweep per 10 minutes at most (review M1): a 6-minute probe window
           # over a 5-minute cadence could otherwise re-dispatch on the same item.
-          LAST_START=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow coldlion-item-sweep.yml \
-            --limit 1 --json createdAt --jq '.[0].createdAt // ""')
-          if [ -n "$LAST_START" ]; then
-            AGE_MIN=$(( ( $(date +%s) - $(date -u -d "$LAST_START" +%s) ) / 60 ))
+          # Throttle only on runs that did (or are doing) real work: a FAILED
+          # sweep must not block the retry (round-5 L4).
+          LAST=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow coldlion-item-sweep.yml \
+            --limit 1 --json createdAt,status,conclusion \
+            --jq '.[0] | select(.status == "in_progress" or .conclusion == "success") | .createdAt // ""')
+          if [ -n "$LAST" ]; then
+            AGE_MIN=$(( ( $(date +%s) - $(date -u -d "$LAST" +%s) ) / 60 ))
             if [ "$AGE_MIN" -lt 10 ]; then
               echo "A sweep already started ${AGE_MIN}m ago; skipping this dispatch."
               exit 0

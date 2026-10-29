@@ -1,19 +1,20 @@
 name: ColdLion Item Heartbeat
 
-# #5011: the new-item heartbeat. Every 5 minutes, ONE filtered GET asks
-# ColdLion "any items created since 15 minutes ago?" (~288 tiny requests/day).
-# Only when the answer is yes does it dispatch the existing ColdLion Item Sweep
-# (full /items pull + new-item detail delta + import + Master Data auto-flow).
-# This replaces the old 30-minute full sweep (~100 paged requests × 48 = ~4,800
-# requests/day) with three fixed anchor runs plus on-demand sweeps — a fraction
-# of the API load, and a new item reaches Master Data within ~10 minutes
-# instead of up to 30. Owner direction 2026-10-29: "i'd rather not wait 30
-# minutes if i don't have to."
+# #5011: the new-item heartbeat. Every 5 minutes, three tiny GETs (size=1) ask
+# ColdLion "any items created in the last 6 minutes?" plus two self-checks (a
+# future-dated filter must be empty, an old-dated one non-empty) that fail the
+# run LOUDLY if the vendor starts ignoring or silently rejecting the filter —
+# evidence for the format and semantics is recorded live on issue #5011
+# (2026-10-29; modifiedFrom provably serves createdFrom semantics, so it is
+# not used and item edits land at the anchors + nightly masters).
 #
-# The probe fails loudly (exit 1) if a time filter appears ignored — the
-# envelope's totalElements the size of the whole item master is never a real
-# 15-minute delta — or if the response shape changes, so a vendor-side defect
-# cannot silently hammer the API or silently blind the heartbeat.
+# Load: ~864 tiny probes/day + on-demand full sweeps (measured 2-25 new items
+# per day, throttled to at most one sweep per 10 minutes) + 3 anchor sweeps.
+# The old schedule pulled the full /items list every 30 minutes (~100 paged
+# requests × 48 ≈ 4,800 heavy requests/day); this is a large reduction at the
+# measured item rates, with new-item latency of ~6-10 minutes instead of up to
+# 30. Owner direction 2026-10-29: "i'd rather not wait 30 minutes if i don't
+# have to."
 on:
   schedule:
     - cron: '*/5 * * * *'
@@ -29,7 +30,7 @@ concurrency:
 
 jobs:
   probe:
-    name: Any new ColdLion items? (one filtered GET)
+    name: Any new ColdLion items? (three tiny GETs)
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     outputs:
@@ -51,16 +52,35 @@ jobs:
         run: |
           set -euo pipefail
           [ -n "${COLDLION_API_KEY:-}" ] || { echo "::error::COLDLION_API_KEY is not set."; exit 1; }
+          # Capture WITHOUT set -e so a failing probe's diagnostic still prints
+          # (review M2: command substitution under pipefail discarded it).
+          set +e
           OUT="$(node tools/coldlion-item-heartbeat.mjs)"
+          RC=$?
+          set -e
           echo "$OUT"
+          [ "$RC" -eq 0 ] || exit "$RC"
           if printf '%s' "$OUT" | jq -e '.trigger == true' >/dev/null; then
             echo "trigger=yes" >> "$GITHUB_OUTPUT"
           else
             echo "trigger=no" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Dispatch the item sweep on new items
+      - name: Dispatch the item sweep on new items (throttled)
         if: steps.probe.outputs.trigger == 'yes'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run coldlion-item-sweep.yml --ref main
+        run: |
+          set -euo pipefail
+          # One sweep per 10 minutes at most (review M1): a 6-minute probe window
+          # over a 5-minute cadence could otherwise re-dispatch on the same item.
+          LAST_START=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow coldlion-item-sweep.yml \
+            --limit 1 --json createdAt --jq '.[0].createdAt // ""')
+          if [ -n "$LAST_START" ]; then
+            AGE_MIN=$(( ( $(date +%s) - $(date -u -d "$LAST_START" +%s) ) / 60 ))
+            if [ "$AGE_MIN" -lt 10 ]; then
+              echo "A sweep already started ${AGE_MIN}m ago; skipping this dispatch."
+              exit 0
+            fi
+          fi
+          gh workflow run coldlion-item-sweep.yml --ref main

@@ -39,7 +39,7 @@ begin
     raise exception 'hts_rag_rulings column update grants differ';
   end if;
   if not exists (select 1 from pg_indexes where schemaname = 'hts_rag' and indexname = 'hts_rag_ruling_products_phrase_hnsw_idx'
-                  and indexdef like '%USING hnsw (phrase_embedding extensions.halfvec_cosine_ops) WHERE%') then
+                  and indexdef like '%USING hnsw (phrase_embedding %halfvec_cosine_ops) WHERE%') then
     raise exception 'phrase vector index missing';
   end if;
   if not has_function_privilege('designflow_hts_alsand_worker', 'hts_rag.hts_rag_refresh_type_heading_stats()', 'EXECUTE')

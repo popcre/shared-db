@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "work_issue": 5020,
+  "outcome": "ready-for-merge",
+  "pr": 5029,
+  "migration_versions": [
+    "20261029054455"
+  ],
+  "contract_ref": "refs/db-contracts/5020/7",
+  "contract_sha256": "729aa7f6f3ba7203e86ff32ae86ae81589ffe0c77273bbf86241e7d2b7120d60",
+  "head_sha": "37343564559fce056500ff5775486063f4eef448",
+  "base_sha": "da271bfa11e3681969ec37429f27d96a8c844b48",
+  "files_changed": [
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20261029054455.json",
+    "scripts/production_catalog_verification.py",
+    "scripts/production_migration_guard.py",
+    "supabase/migrations/20261029054455_dflow_product_description.sql",
+    "supabase/tests/dflow_product_description_contracts.sql"
+  ],
+  "db_reads": [
+    "table core.\"merchGroup\"",
+    "table dflow.\"itemHeader\""
+  ],
+  "db_writes": [
+    "table dflow.mg_combination_description",
+    "table dflow.mg_combination_description_history",
+    "table dflow.item_product_description",
+    "table dflow.item_product_description_history",
+    "function dflow.product_description_row_audit",
+    "function dflow.item_product_description_protect_human_override",
+    "index dflow.item_product_description_combination_idx",
+    "index dflow.item_product_description_review_idx",
+    "index dflow.item_product_description_run_idx",
+    "index dflow.mg_combination_description_run_idx",
+    "trigger product_description_audit on dflow.mg_combination_description",
+    "trigger product_description_audit on dflow.item_product_description",
+    "trigger item_product_description_write_guard on dflow.item_product_description"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed at implementation head 37343564559fce056500ff5775486063f4eef448."
+    },
+    {
+      "command": "python -m unittest scripts.test_check_production_verification_sidecars scripts.test_production_catalog_verification",
+      "exit_code": 0,
+      "evidence": "16 sidecar-checker tests OK; catalog-verification suite no hard failure, including the tightened grants contract."
+    },
+    {
+      "command": "python -I -B scripts/check_production_verification_sidecars.py --repo . --scan-version 20261029054455",
+      "exit_code": 0,
+      "evidence": "Status OK; sidecar migration_sha256 matches the fixed migration bytes; marker now at line 130 covered exactly once."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "Baseline regenerated for the changed detector (hash 34ce65976477...) on the merged tree, 877 files / 120 marker-bearing."
+    },
+    {
+      "command": "psql -h localhost -p 55432 -U postgres -d t_ct -v ON_ERROR_STOP=1 -f supabase/tests/dflow_product_description_contracts.sql",
+      "exit_code": 0,
+      "evidence": "The committed behavior contract test passes on a throwaway PostgreSQL 18: it creates fixtures, applies the migration twice (idempotency), proves the guard now refuses machine INSERT of an override, GUC value 'off' re-describe, machine DELETE and machine attribution rewrite while allowing the human-session path, stats-only updates on override rows, audit history rows, and the override-source check; whole file rolls back leaving no schema behind. Also classify_pending_version('20261029054455', ..., 'production') now returns foreign-target, so the drift monitor no longer alarms."
+    }
+  ],
+  "assumptions_resolved": [
+    "governed deepseek REJECT findings 1-7 all addressed: guard requires exactly 'on' and covers insert/update/delete plus attribution columns; foreign-target registration added; the committed supabase/tests behavior test replaces the previously cited non-existent BEGIN-ROLLBACK step; audit column list now from pg_attribute; grants contract arm-discriminated with role-existence guard; stale version comment fixed; index comment corrected."
+  ],
+  "stop_conditions_hit": []
+}

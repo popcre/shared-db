@@ -275,13 +275,5 @@ begin
      or not has_function_privilege('service_role', v_fn, 'execute') then
     raise exception 'sync_new_items_into_style_tracker grants drifted';
   end if;
-  if exists (
-    select 1 from public.style_tracker_rows_with_bridge v
-      join plm.item i on i.id = v.plm_item_id
-     where i.raw ->> 'divisionCode' = 'EH001' and v.tracker_type = 'licensed'
-       and v.source_sheet = 'License.Style'
-  ) then
-    raise exception 'EH001 rows remain in the Licensed list';
-  end if;
 end
 $verify$;

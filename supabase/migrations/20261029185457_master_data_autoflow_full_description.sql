@@ -6,10 +6,14 @@
 -- (short display text); fallback order is otherwise unchanged. Signature,
 -- security, grants and cron are unchanged.
 --
--- Also corrects existing auto-flow lines still carrying the untouched short
--- text (description exactly equals the item's itemDisplayDesc and the full
--- itemDesc differs): 39 rows on production at authoring time. A line a person
--- edited no longer equals itemDisplayDesc and is left alone.
+-- Owner follow-up (2026-10-29, verbatim): "no one should be able to change the
+-- description. that comes from coldlion, changing it here would give the user
+-- the false impression that that's actually changing the item's description
+-- everywhere." So every run (nightly and on import) also re-asserts the full
+-- ColdLion description on EVERY ColdLion-linked line, overwriting local edits,
+-- and this migration does it once now (~4.8k lines on production at authoring
+-- time). Prior values stay in the style tracker audit log. Unlinked lines are
+-- untouched. The PopDAM page locks the column for linked lines.
 
 -- derived-from: 20261028183729
 
@@ -217,6 +221,21 @@ begin
     perform plm.refresh_style_tracker_item_bridge();
   end if;
 
+  -- #5048: a ColdLion-linked line's description is ColdLion's full description,
+  -- never a local edit. Re-assert it every run so ColdLion changes flow in.
+  update public.style_tracker_rows r
+       set description = src.full_desc
+      from (
+        select b.style_tracker_row_id,
+               coalesce(nullif(i.raw ->> 'itemDesc', ''), nullif(i.raw ->> 'itemDisplayDesc', ''), nullif(i.description, '')) as full_desc
+          from plm.style_tracker_item_bridge b
+          join plm.item i on i.id = b.plm_item_id
+         where i.source_system = 'coldlion'
+      ) src
+     where src.style_tracker_row_id = r.id
+       and src.full_desc is not null
+       and r.description is distinct from src.full_desc;
+
   eligible_count := v_eligible;
   deferred_count := v_deferred;
   return next;
@@ -226,15 +245,19 @@ $fn$;
 revoke all on function public.sync_new_items_into_style_tracker(boolean, timestamptz) from public, anon, authenticated;
 grant execute on function public.sync_new_items_into_style_tracker(boolean, timestamptz) to service_role;
 
+-- One-time: bring every ColdLion-linked line to the full description now.
 update public.style_tracker_rows r
-   set description = i.raw ->> 'itemDesc'
-  from public.style_tracker_rows_with_bridge b
-  join plm.item i on i.id = b.plm_item_id
- where b.id = r.id
-   and r.row_data ->> 'origin' = 'plm_item_autoflow'
-   and r.description = i.raw ->> 'itemDisplayDesc'
-   and nullif(i.raw ->> 'itemDesc', '') is not null
-   and i.raw ->> 'itemDesc' <> i.raw ->> 'itemDisplayDesc';
+   set description = src.full_desc
+  from (
+    select b.style_tracker_row_id,
+           coalesce(nullif(i.raw ->> 'itemDesc', ''), nullif(i.raw ->> 'itemDisplayDesc', ''), nullif(i.description, '')) as full_desc
+      from plm.style_tracker_item_bridge b
+      join plm.item i on i.id = b.plm_item_id
+     where i.source_system = 'coldlion'
+  ) src
+ where src.style_tracker_row_id = r.id
+   and src.full_desc is not null
+   and r.description is distinct from src.full_desc;
 
 do $verify$
 declare

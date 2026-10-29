@@ -8,4 +8,5 @@ select
   and to_regprocedure('public.resolve_coldlion_triage(uuid,text,uuid)') is not null
   and has_function_privilege('authenticated', 'public.resolve_coldlion_triage(uuid,text,uuid)', 'execute')
   and not has_function_privilege('anon', 'public.resolve_coldlion_triage(uuid,text,uuid)', 'execute')
+  and pg_catalog.pg_get_functiondef('public.resolve_coldlion_triage(uuid,text,uuid)'::regprocedure) like '%v_target.customer_po_number%'
   as passed;

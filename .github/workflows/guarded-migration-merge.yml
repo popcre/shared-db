@@ -224,9 +224,10 @@ jobs:
     name: Protected merge
     needs: prepare
     runs-on: blacksmith-2vcpu-ubuntu-2404
-    # Short by construction: the quota wait and the bounded preflight wait already
-    # happened in `prepare`; under the lease every external wait is zero.
-    timeout-minutes: 20
+    # The busy-lane wait happens before acquisition (at most 15 minutes). Keep
+    # the original 20-minute execution budget after it; under-lease quota waits
+    # remain zero. This job must not time out just after it obtains the lane.
+    timeout-minutes: 35
     concurrency:
       group: shared-db-guarded-merge
       # Never cancel a merge that may hold the lease. A PENDING job replaced by a
@@ -326,7 +327,7 @@ jobs:
           # head and the live main tip: both commits must exist locally (#3669).
           # Fetching objects only; nothing from the head is checked out or run.
           git fetch --no-tags --quiet origin main "$HEAD_SHA"
-          node "$GITHUB_WORKSPACE/trusted-policy/scripts/manage-migration-author-lanes.mjs" --acquire-merge \
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/acquire-merge-lane-waiting.mjs" --wait-seconds 900 --poll-seconds 15 -- --acquire-merge \
             --owner "github-actions:${GITHUB_RUN_ID}" --pr "${{ inputs.pull_request }}" \
             --head-sha "${{ inputs.head_sha }}" > "$RUNNER_TEMP/merge-lock.json"
           echo "owner_sha=$(jq -r .ownerSha "$RUNNER_TEMP/merge-lock.json")" >> "$GITHUB_OUTPUT"

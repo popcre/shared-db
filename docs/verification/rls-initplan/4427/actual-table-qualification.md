@@ -229,3 +229,11 @@ Actual native48 failed psql exit128 with empty stderr after242 normal clean minu
 Owned target ONLY now uses Docker --init and requires HostConfig.Init true, preserving PID256/CPU1/memory2GiB, readonlyroot/networknone/noports/nobinds/tmpfs, normal PostgreSQL/crypto/cron/windows/time limits. Local source unchanged. Failed external stdout is retained privately0600 as bounded64KiB prefix plus full digest/length; no raw public stdout or archive upload.
 
 Proposed private fixed no-SQL reproducer compares old versus init owned keepers sequentially, <=300 orphan cycles each within180seconds, host-only numeric top/stats/inspect census, exact owned cleanup/absence before next. Old accumulation and resource-failure plus new300-cycle bounded reaping must actually pass, followed by existing full two-mode physical local action before any publication/native action. Previous local target-creation byteidentity is NOT claimed. All resource/review/publication actions remain parent-owned and separately gated.
+
+### Generation50 explicitly reviewed native time capacity
+
+Actual native49 refused COST ONLY after34 warmups/35 clean stops and owned removal: elapsed271.4008s, full34 active sum112.37897, projected1986.4966>remaining1828.8371. No process failure; controlled reaper and full two-mode local proofs passed. Partial warmups remain nonacceptance.
+
+Parent adopts a capacity revision requiring fresh exact independent review: native global2700s includes source suite and all wall waits; only workflow_dispatch qualify_rls4427=true gets60-minute job cap. Every ordinary PR/push/merge_group/manualfalse keeps45-minute job cap and heavydefaultOFF. Local600s/660s supervision unchanged; helper default2100 remains, explicit budgets strictlypositivefinite<=2700. All374 samples/375 starts, unchanged10sum*60/35+60 prediction, statement30s/cron5–40stop<50/CPU1/2GiB/PID256/permissions/physical/crypto/cleanup/no-retry unchanged.
+
+No reaper/local operation behavior changed: creation/custody/restore/start/reset/crypto/cleanup closure reused from actual49 proofs only after byte/source comparison. New native capacity requires reviewed actual full qualification; no new local resource action. Qualificationbasef6 remains; parent-known currentmainc67 is not silently integrated. No production apply.

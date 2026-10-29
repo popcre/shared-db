@@ -612,6 +612,19 @@ class PhysicalControls(unittest.TestCase):
             Path(external['private_stdout_path']).unlink()
             Path(external['private_stderr_path']).unlink()
 
+    def test_native_capacity_is_explicit_bounded_and_all_elapsed_counts(self):
+        self.assertEqual(m.PhysicalCluster(self.source()).budget,2100)
+        p=m.PhysicalCluster(self.source(),budget_seconds=2700)
+        self.assertEqual(p.budget,2700)
+        p.started-=1000
+        self.assertLess(p.projected_matrix_check([1]*34),1700)
+        self.assertLess(p.events[-1]['remaining_budget_seconds'],1700)
+        p.started-=1690
+        with self.assertRaisesRegex(RuntimeError,'remaining bound'):p.projected_matrix_check([1]*34)
+        for invalid in (0,-1,2701,True,float('inf'),float('nan'),'2700'):
+            with self.subTest(invalid=invalid),self.assertRaisesRegex(RuntimeError,'budget invalid'):
+                m.PhysicalCluster(self.source(),budget_seconds=invalid)
+
     def test_cleanup_survives_action_budget_expiry(self):
         p=m.PhysicalCluster(self.source());p.started=time.monotonic()-2200
         with self.assertRaises(RuntimeError):p.budget_check()

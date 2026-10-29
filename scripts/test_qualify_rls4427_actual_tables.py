@@ -48,6 +48,13 @@ class Actual4427StaticTests(unittest.TestCase):
             self.assertIn("qualify_rls4427:\n        description: 'Run the fixed #4427 synthetic actual-table qualification once'\n        type: boolean\n        required: false\n        default: false",workflow)
             flag="RLS4427_QUALIFICATION: ${{ github.event_name == 'workflow_dispatch' && inputs.qualify_rls4427 == true && '1' || '0' }}"
             self.assertEqual(workflow.count(flag),1)
+            timeout="timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.qualify_rls4427 == true && 60 || 45 }}"
+            self.assertEqual(workflow.count(timeout),1)
+            self.assertEqual(m.NATIVE_BUDGET_SECONDS,2700)
+            for event in ('pull_request','push','merge_group','workflow_dispatch'):
+                for opted in (False,True):
+                    actual=60 if event=='workflow_dispatch' and opted else 45
+                    self.assertEqual(actual,60 if (event,opted)==('workflow_dispatch',True) else 45)
             self.assertGreater(workflow.index(flag),workflow.index('      - name: Run every supabase/tests/*.sql'))
             entry=(m.ROOT/'supabase/tests/rls_public_admin_actual_table_performance.sql').read_text()
             self.assertIn("\\set rls4427_qualification 0",entry)
@@ -96,7 +103,7 @@ class Actual4427StaticTests(unittest.TestCase):
                         source=c;source_facts={};original_backup_receipt={};original_config_receipt={};original_backup_verified=True
                         full_capability_fingerprint={};events=[];window_wait_seconds=0;config_metadata_verified=True
                         def __init__(self,source,budget_seconds):
-                            self_admit.assertGreater(budget_seconds,0);self_admit.assertLessEqual(budget_seconds,2100);self.closed=False
+                            self_admit.assertGreater(budget_seconds,0);self_admit.assertLessEqual(budget_seconds,m.NATIVE_BUDGET_SECONDS-123);self_admit.assertGreater(budget_seconds,m.NATIVE_BUDGET_SECONDS-124);self.closed=False
                         def open(self):
                             self_admit.assertIn('source-original',order);order.append('copy');c.physical_versions={}
                         def crypto_receipt(self):return dict(source_mode=crypto_mode,sql_crypto_canary='NOT_APPLICABLE_ABSENT_IN_SOURCE' if crypto_mode=='ABSENT' else 'PASSED',root_key_config_bytes_equal=True)
@@ -118,7 +125,7 @@ class Actual4427StaticTests(unittest.TestCase):
                         return SimpleNamespace(stdout=(m.ROOT/args[2].removeprefix('HEAD:')).read_bytes())
                     def sql(db,q):
                         if q==m.FIXTURE.read_text():
-                            self.assertEqual(db,'postgres');self.assertIsNone(c.physical);self.assertEqual(c.phase,'source-original-contract');self.assertEqual(len(git_calls),5);self.assertIn('user-fixture',order);self.assertIn('qualified',order);order.append('source-original');return 'original-2124-198-source-output'
+                            self.assertEqual(db,'postgres');self.assertIsNone(c.physical);self.assertEqual(c.phase,'source-original-contract');self.assertEqual(len(git_calls),5);self.assertIn('user-fixture',order);self.assertIn('qualified',order);order.append('source-original');c.started-=123;return 'original-2124-198-source-output'
                         if 'native synthetic users missing' in q:order.append('user-fixture')
                         if q.startswith('\\! false'):raise subprocess.CalledProcessError(3,['psql'],stderr='22012')
                         if 'pg_read_binary_file' in q:

@@ -207,7 +207,7 @@ jobs:
     needs: classify
     if: ${{ always() }}
     runs-on: blacksmith-2vcpu-ubuntu-2404
-    timeout-minutes: 45
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.qualify_rls4427 == true && 60 || 45 }}
     steps:
       - name: Refuse an unreadable applicability decision
         if: needs.classify.result != 'success'

@@ -496,7 +496,10 @@ def minute_guard(start_wall,start_mono,now_wall,now_mono):
 
 class PhysicalCluster:
     def __init__(self, source, budget_seconds=2100):
-        self.source=source;self.budget=min(budget_seconds,2100);self.started=time.monotonic();self.cid=None
+        import math
+        if isinstance(budget_seconds,bool) or not isinstance(budget_seconds,(int,float)) or not math.isfinite(budget_seconds) or not 0<budget_seconds<=2700:
+            raise RuntimeError('4427 physical explicit budget invalid')
+        self.source=source;self.budget=budget_seconds;self.started=time.monotonic();self.cid=None
         self.name=source.prefix+'-physical';self.labels={'shared-db.qualifier':'4427-physical','shared-db.owner':OWNER}
         self.running=False;self.sealed=False;self.events=[];self.env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'}
         self.root=None;self.cleanup_mode=False;self.window_wait_seconds=0.0;self.phase='created';self.start_number=0;self.last_external_failure=None;self.crypto_capability_checks=0;self.crypto_canary_checks=0;self.root_key_bytes_verified=False
@@ -775,7 +778,7 @@ class PhysicalCluster:
 
     def projected_matrix_check(self,active_seconds):
         # Exclude ONLY observed explicit admission waits from measured per-restart
-        # active cost. All actual wait remains consumed in the35-minute budget.
+        # active cost. All actual wait remains consumed in the admitted global wall budget.
         import math
         if not isinstance(active_seconds,list) or len(active_seconds)!=34 or any(isinstance(v,bool) or not isinstance(v,(float,int)) or not math.isfinite(v) or v<=0 for v in active_seconds):
             raise RuntimeError('4427 physical measured active calibration cost invalid')

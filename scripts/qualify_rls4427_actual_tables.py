@@ -25,6 +25,7 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / 'supabase/tests/rls_public_admin_initplan_contracts.sql'
+NATIVE_BUDGET_SECONDS = 2700
 SOURCE_SQL_SHA256 = '166a1d7cae922b27c229c31162b612ccb1957a27440806681a15677151354667'
 POSTGRES_CONTEXT_QUERY = "select json_build_object('system_identifier',(select system_identifier::text from pg_control_system()),'server_version_num',current_setting('server_version_num')::int,'postmaster_start',pg_postmaster_start_time()::text,'database',current_database())::text;"
 RESTORE_AUTHORITY_QUERY = "select json_build_object('system_identifier',(select system_identifier::text from pg_control_system()),'server_version_num',current_setting('server_version_num')::int,'postmaster_start',pg_postmaster_start_time()::text,'database',current_database(),'current_user',current_user,'session_user',session_user,'rolsuper',r.rolsuper,'rolcanlogin',r.rolcanlogin,'is_superuser',current_setting('is_superuser'))::text from pg_roles r where r.rolname=current_user;"
@@ -438,8 +439,8 @@ end $g$;""")
                 self.diagnostic('source-original-contract-completed',execution='QUALIFIED_NATIVE_SOURCE_ONLY',output_sha256=hashlib.sha256(original_result.encode()).hexdigest(),source_sql_sha256=SOURCE_SQL_SHA256)
                 self.end_phase()
             self.begin_phase('physical-source-backup-and-target-recovery')
-            remaining=2100-(time.monotonic()-self.started)
-            if remaining<=0:raise RuntimeError('4427 thirty-five-minute qualification budget exhausted before copy')
+            remaining=NATIVE_BUDGET_SECONDS-(time.monotonic()-self.started)
+            if remaining<=0:raise RuntimeError('4427 forty-five-minute qualification budget exhausted before copy')
             cluster=physical4427.PhysicalCluster(self,budget_seconds=remaining);self.cluster_attempt=cluster
             cluster.open()
             self.physical=cluster
@@ -467,8 +468,8 @@ end $g$;""")
             def execute_trial(index,job):
                 table,cmd,size,sample,variant=job
                 self.phase=f'physical-matrix-{index}-{table}-{cmd}-{variant}';self.phase_started=time.monotonic()
-                if time.monotonic() - self.started > 2100:
-                    raise RuntimeError('4427 thirty-five-minute qualification budget exhausted')
+                if time.monotonic() - self.started > NATIVE_BUDGET_SECONDS:
+                    raise RuntimeError('4427 forty-five-minute qualification budget exhausted')
                 db='postgres'
                 cluster.begin_trial()
                 try:

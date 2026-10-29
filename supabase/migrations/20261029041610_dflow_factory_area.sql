@@ -84,7 +84,7 @@ comment on table core.factory_vendor_login is
 
 alter table core.product_category enable row level security;
 revoke all on core.product_category from anon;
-grant select, insert, update, delete on core.product_category to authenticated;
+grant select on core.product_category to authenticated;
 grant all on core.product_category to service_role;
 create policy admin_write on core.product_category for all to authenticated
   using (app.has_role('administrator'::app.app_role)) with check (app.has_role('administrator'::app.app_role));
@@ -94,7 +94,7 @@ create policy shared_read on core.product_category for select to authenticated
 
 alter table core.factory_product_category enable row level security;
 revoke all on core.factory_product_category from anon;
-grant select, insert, update, delete on core.factory_product_category to authenticated;
+grant select on core.factory_product_category to authenticated;
 grant all on core.factory_product_category to service_role;
 create policy admin_write on core.factory_product_category for all to authenticated
   using (app.has_role('administrator'::app.app_role)) with check (app.has_role('administrator'::app.app_role));
@@ -104,7 +104,7 @@ create policy shared_read on core.factory_product_category for select to authent
 
 alter table core.factory_representation enable row level security;
 revoke all on core.factory_representation from anon;
-grant select, insert, update, delete on core.factory_representation to authenticated;
+grant select on core.factory_representation to authenticated;
 grant all on core.factory_representation to service_role;
 create policy admin_write on core.factory_representation for all to authenticated
   using (app.has_role('administrator'::app.app_role)) with check (app.has_role('administrator'::app.app_role));
@@ -114,7 +114,7 @@ create policy shared_read on core.factory_representation for select to authentic
 
 alter table core.factory_rep enable row level security;
 revoke all on core.factory_rep from anon;
-grant select, insert, update, delete on core.factory_rep to authenticated;
+grant select on core.factory_rep to authenticated;
 grant all on core.factory_rep to service_role;
 create policy admin_write on core.factory_rep for all to authenticated
   using (app.has_role('administrator'::app.app_role)) with check (app.has_role('administrator'::app.app_role));
@@ -124,7 +124,7 @@ create policy shared_read on core.factory_rep for select to authenticated
 
 alter table core.factory_vendor_login enable row level security;
 revoke all on core.factory_vendor_login from anon;
-grant select, insert, update, delete on core.factory_vendor_login to authenticated;
+grant select on core.factory_vendor_login to authenticated;
 grant all on core.factory_vendor_login to service_role;
 create policy admin_write on core.factory_vendor_login for all to authenticated
   using (app.has_role('administrator'::app.app_role)) with check (app.has_role('administrator'::app.app_role));
@@ -139,5 +139,125 @@ create trigger set_updated_at before update on core.factory_rep
 drop trigger if exists set_updated_at on core.factory_vendor_login;
 create trigger set_updated_at before update on core.factory_vendor_login
   for each row execute function app.set_updated_at();
+
+-- Merging two factories (DB Data Admin) must carry the new link rows, or the
+-- loser's delete would cascade them away. Body is the live 20260727154500 one
+-- plus the block marked #4708 (verified against production 2026-10-29).
+create or replace function core.merge_factory(p_loser uuid, p_survivor uuid, p_alias_loser_name boolean default true)
+ returns void
+ language plpgsql
+ security definer
+ set search_path to 'core', 'crm', 'pim', 'dam', 'plm', 'app', 'public'
+as $function$
+declare
+  v_loser_name text;
+  v_loser_display text;
+  v_loser core.factory%rowtype;
+begin
+  if p_loser = p_survivor then
+    raise exception 'merge_factory: loser and survivor are the same (%).', p_loser;
+  end if;
+  if not exists (select 1 from core.factory where id = p_survivor) then
+    raise exception 'merge_factory: survivor % does not exist.', p_survivor;
+  end if;
+  select name, display_name into v_loser_name, v_loser_display
+  from core.factory where id = p_loser;
+  if not found then
+    raise exception 'merge_factory: loser % does not exist.', p_loser;
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(least(p_loser::text, p_survivor::text), 1));
+  perform pg_advisory_xact_lock(hashtextextended(greatest(p_loser::text, p_survivor::text), 1));
+
+  perform core.reconcile_merge_extension_row('crm.factory_ext', 'factory_id', p_loser, p_survivor);
+  perform core.reconcile_merge_extension_row('pim.factory_ext', 'factory_id', p_loser, p_survivor);
+  perform core.reconcile_merge_extension_row('dam.factory_ext', 'factory_id', p_loser, p_survivor);
+
+  delete from core.vendor_contact lc
+  where lc.factory_id = p_loser
+    and exists (
+      select 1 from core.vendor_contact sc
+      where sc.factory_id = p_survivor
+        and sc.contact_id is not distinct from lc.contact_id
+        and sc.role is not distinct from lc.role
+    );
+  update core.vendor_contact set factory_id = p_survivor where factory_id = p_loser;
+
+  delete from core.factory_alias la
+  where la.factory_id = p_loser
+    and exists (
+      select 1 from core.factory_alias sa
+      where sa.factory_id = p_survivor
+        and sa.normalized_alias = la.normalized_alias
+    );
+  update core.factory_alias set factory_id = p_survivor where factory_id = p_loser;
+
+  update core.factory_source_ref set factory_id = p_survivor where factory_id = p_loser;
+
+  update crm.opportunity set factory_id = p_survivor where factory_id = p_loser;
+  update pim.product set factory_id = p_survivor where factory_id = p_loser;
+  update pim.product_sample set factory_id = p_survivor where factory_id = p_loser;
+  update plm.erp_vendor set factory_id = p_survivor where factory_id = p_loser;
+  update plm.production_order set factory_id = p_survivor where factory_id = p_loser;
+  update plm.rfq_vendor set factory_id = p_survivor where factory_id = p_loser;
+  update plm.style_tracker_item_bridge set factory_id = p_survivor where factory_id = p_loser;
+
+  -- #4708: owner-reviewed fields fill survivor gaps; link rows move and dedupe.
+  select * into v_loser from core.factory where id = p_loser;
+  update core.factory set designflow_vendor_id = null where id = p_loser;
+  update core.factory s set
+    designflow_vendor_id = coalesce(s.designflow_vendor_id, v_loser.designflow_vendor_id),
+    party_type = coalesce(s.party_type, v_loser.party_type),
+    trade_name = coalesce(s.trade_name, v_loser.trade_name),
+    orders_completed = coalesce(s.orders_completed, v_loser.orders_completed),
+    orders_with_problem = coalesce(s.orders_with_problem, v_loser.orders_with_problem)
+  where s.id = p_survivor;
+
+  insert into core.factory_rep (factory_id, name)
+  select p_survivor, name from core.factory_rep where factory_id = p_loser
+  on conflict (factory_id, name) do nothing;
+  delete from core.factory_rep where factory_id = p_loser;
+
+  update core.factory_vendor_login set factory_id = p_survivor where factory_id = p_loser;
+
+  delete from core.factory_representation
+  where (trading_company_id = p_loser and factory_id = p_survivor)
+     or (trading_company_id = p_survivor and factory_id = p_loser);
+  insert into core.factory_representation (trading_company_id, factory_id)
+  select p_survivor, factory_id from core.factory_representation where trading_company_id = p_loser
+  on conflict do nothing;
+  insert into core.factory_representation (trading_company_id, factory_id)
+  select trading_company_id, p_survivor from core.factory_representation where factory_id = p_loser
+  on conflict do nothing;
+  delete from core.factory_representation where trading_company_id = p_loser or factory_id = p_loser;
+
+  -- Survivor's categories keep their ranks; the loser's extra ones follow, up to five.
+  insert into core.factory_product_category (factory_id, product_category_id, rank)
+  select p_survivor, l.product_category_id,
+         (select coalesce(max(rank), 0) from core.factory_product_category where factory_id = p_survivor)
+           + row_number() over (order by l.rank)
+  from core.factory_product_category l
+  where l.factory_id = p_loser
+    and not exists (select 1 from core.factory_product_category s
+                    where s.factory_id = p_survivor and s.product_category_id = l.product_category_id)
+  order by l.rank
+  limit greatest(0, 5 - (select count(*) from core.factory_product_category where factory_id = p_survivor));
+  delete from core.factory_product_category where factory_id = p_loser;
+
+  if p_alias_loser_name then
+    insert into core.factory_alias (factory_id, alias, alias_type, source_system, notes)
+    select p_survivor, v_loser_name, 'other', 'merge', 'from merged factory ' || p_loser
+    on conflict (factory_id, normalized_alias) do nothing;
+    if v_loser_display is not null and lower(v_loser_display) <> lower(v_loser_name) then
+      insert into core.factory_alias (factory_id, alias, alias_type, source_system, notes)
+      select p_survivor, v_loser_display, 'other', 'merge',
+        'display name from merged factory ' || p_loser
+      on conflict (factory_id, normalized_alias) do nothing;
+    end if;
+  end if;
+
+  delete from core.factory where id = p_loser;
+end;
+$function$;
 
 commit;

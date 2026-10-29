@@ -9,4 +9,10 @@ select
                         to_regclass('core.factory_vendor_login'))
           and c.relrowsecurity) = 5
   and not has_table_privilege('anon', 'core.factory_vendor_login', 'select')
+  and exists (select 1 from pg_catalog.pg_index i
+              where i.indexrelid = to_regclass('core.factory_designflow_vendor_id_key') and i.indisunique)
+  and (select count(*) from pg_catalog.pg_policies p where p.schemaname = 'core'
+        and p.tablename in ('product_category', 'factory_product_category', 'factory_representation',
+                            'factory_rep', 'factory_vendor_login')) = 9
+  and position('core.factory_vendor_login' in pg_get_functiondef('core.merge_factory(uuid,uuid,boolean)'::regprocedure)) > 0
   as passed;

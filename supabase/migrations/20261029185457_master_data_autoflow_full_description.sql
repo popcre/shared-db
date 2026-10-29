@@ -1,4 +1,4 @@
--- Issue #5048 (claim #5049): Master Data auto-flow lines take the FULL ColdLion
+-- Issue #5048 (claim #5051): Master Data auto-flow lines take the FULL ColdLion
 -- description. Owner direction (Albert Hazan, 2026-10-29, verbatim):
 -- "MasterData is using the shorter Display Description for its description.
 -- change the to full description". Re-derives the #4974 function with one

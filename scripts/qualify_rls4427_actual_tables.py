@@ -139,7 +139,9 @@ end $guard$;
 def snapshot_sql(table):
     if table not in ('assets','style_groups'):raise ValueError('4427 unknown fingerprint table')
     # Actual relation bytes, rowset, indexes and visible union, not row-count-only pairing.
-    return f"""select jsonb_build_object(
+    # Dedicated metadata psql session only; benchmark sessions keep their defaults.
+    return f"""set search_path=pg_catalog;
+select jsonb_build_object(
 'heap_md5',md5(pg_read_binary_file(pg_relation_filepath('public.{table}'::regclass))),
 'visibility_md5',case when (pg_stat_file(pg_relation_filepath('public.{table}'::regclass)||'_vm',true)).size is not null
  then md5(pg_read_binary_file(pg_relation_filepath('public.{table}'::regclass)||'_vm')) else null end,

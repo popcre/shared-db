@@ -352,6 +352,26 @@ class Actual4427StaticTests(unittest.TestCase):
             for row,(_,_,clause) in zip(after['policies'],m.POLICIES):row['check' if clause=='WITH CHECK' else 'qual']=expression
             with self.subTest(expression=expression),self.assertRaisesRegex(RuntimeError,'expression not exact'):m.validate_policy_delta(before,after,'original')
 
+    def test_metadata_catalog_path_is_fixed_without_accepting_rejected_uid_spelling(self):
+        rejected="has_role(uid(), 'admin'::app_role)"
+        self.assertEqual(len(rejected),34)
+        self.assertEqual(m.hashlib.sha256(rejected.encode()).hexdigest(),'c16c46f4e3dec29268d524c8d79f98439b83bff9cb3295ecc592df8ae575afb6')
+        self.assertNotIn(rejected,m.ORIGINAL_POLICY_SPELLINGS)
+        for table in ('assets','style_groups'):
+            query=m.snapshot_sql(table)
+            self.assertTrue(query.startswith('set search_path=pg_catalog;\nselect jsonb_build_object('))
+            self.assertEqual(query.count('set search_path='),1)
+            for explicit in ("'public."+table+"'::regclass",'from public.'+table,"'auth.uid()'::regprocedure","'public.has_role(uuid,public.app_role)'::regprocedure"):
+                self.assertIn(explicit,query)
+            self.assertNotIn('pg_catalog',m.role_sql(m.ADMIN)+m.role_sql(m.MEMBER))
+        for table,command,size,_,_ in m.jobs():self.assertNotIn('search_path',m.statement(table,command,size))
+        with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()
+        c.physical=unittest.mock.Mock()
+        for table in ('assets','style_groups'):
+            query=m.snapshot_sql(table);c.sql('postgres',query);c.physical.sql.assert_called_with(query,role='supabase_admin')
+            for changed in (query.replace('set search_path=pg_catalog','set search_path=public',1),query+'select 1;'):
+                c.sql('postgres',changed);c.physical.sql.assert_called_with(changed,role='postgres')
+
     def test_own_policy_failure_diagnostic_reaches_main_without_raw_unknown_sql(self):
         import io,json,time
         from types import SimpleNamespace

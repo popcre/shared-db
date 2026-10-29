@@ -87,9 +87,11 @@ alter table core.product_category enable row level security;
 revoke all on core.product_category from anon;
 grant select on core.product_category to authenticated;
 grant all on core.product_category to service_role;
+drop policy if exists admin_write on core.product_category;
 create policy admin_write on core.product_category for all to authenticated
   using (app.has_role('administrator'::app.app_role)) with check (app.has_role('administrator'::app.app_role));
 
+drop policy if exists shared_read on core.product_category;
 create policy shared_read on core.product_category for select to authenticated
   using (app.has_any_role(array['administrator','sales','licensing','designer','viewer','vendor']::app.app_role[]));
 
@@ -97,9 +99,11 @@ alter table core.factory_product_category enable row level security;
 revoke all on core.factory_product_category from anon;
 grant select on core.factory_product_category to authenticated;
 grant all on core.factory_product_category to service_role;
+drop policy if exists admin_write on core.factory_product_category;
 create policy admin_write on core.factory_product_category for all to authenticated
   using (app.has_role('administrator'::app.app_role)) with check (app.has_role('administrator'::app.app_role));
 
+drop policy if exists shared_read on core.factory_product_category;
 create policy shared_read on core.factory_product_category for select to authenticated
   using (app.has_any_role(array['administrator','sales','licensing','designer','viewer','vendor']::app.app_role[]));
 
@@ -107,9 +111,11 @@ alter table core.factory_representation enable row level security;
 revoke all on core.factory_representation from anon;
 grant select on core.factory_representation to authenticated;
 grant all on core.factory_representation to service_role;
+drop policy if exists admin_write on core.factory_representation;
 create policy admin_write on core.factory_representation for all to authenticated
   using (app.has_role('administrator'::app.app_role)) with check (app.has_role('administrator'::app.app_role));
 
+drop policy if exists shared_read on core.factory_representation;
 create policy shared_read on core.factory_representation for select to authenticated
   using (app.has_any_role(array['administrator','sales','licensing','designer','viewer','vendor']::app.app_role[]));
 
@@ -117,9 +123,11 @@ alter table core.factory_rep enable row level security;
 revoke all on core.factory_rep from anon;
 grant select on core.factory_rep to authenticated;
 grant all on core.factory_rep to service_role;
+drop policy if exists admin_write on core.factory_rep;
 create policy admin_write on core.factory_rep for all to authenticated
   using (app.has_role('administrator'::app.app_role)) with check (app.has_role('administrator'::app.app_role));
 
+drop policy if exists shared_read on core.factory_rep;
 create policy shared_read on core.factory_rep for select to authenticated
   using (app.has_any_role(array['administrator','sales','licensing','designer','viewer','vendor']::app.app_role[]));
 
@@ -127,6 +135,7 @@ alter table core.factory_vendor_login enable row level security;
 revoke all on core.factory_vendor_login from anon;
 grant select on core.factory_vendor_login to authenticated;
 grant all on core.factory_vendor_login to service_role;
+drop policy if exists admin_write on core.factory_vendor_login;
 create policy admin_write on core.factory_vendor_login for all to authenticated
   using (app.has_role('administrator'::app.app_role)) with check (app.has_role('administrator'::app.app_role));
 

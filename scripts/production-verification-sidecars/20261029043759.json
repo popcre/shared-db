@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "migration_version": "20261029043759",
-  "migration_sha256": "23f9d24fdda6ae8e4ac113400e6b37b7da4f2d69d6bb9749ee31d433042cbe94",
+  "migration_sha256": "35750a7f818e8ba9ee3fc94442c6acef575e52ea2dfd698662c741655df29506",
   "checks": [
     {
       "id": "dflow_pd_tables",
@@ -25,55 +25,10 @@
   "marker_schema_version": 1,
   "marker_reviews": [
     {
-      "line_start": 72,
-      "line_end": 121,
-      "disposition": "checks",
-      "check_ids": [
-        "dflow_pd_tables"
-      ],
-      "reason": "The cited verifier-owned contract asserts the durable catalog outcome of all four CREATE TABLE markers: exactly one arm's mg_combination_description, item_product_description and both history tables exist and the opposite schema's pair is absent."
-    },
-    {
-      "line_start": 130,
-      "line_end": 130,
-      "disposition": "checks",
-      "check_ids": [
-        "dflow_pd_triggers"
-      ],
-      "reason": "The cited contract proves the audit trigger function exists in the applied arm; the migration was rehearsed locally on all three database shapes with the audit path exercised."
-    },
-    {
-      "line_start": 140,
-      "line_end": 140,
+      "line_start": 125,
+      "line_end": 125,
       "disposition": "no_durable_target",
-      "reason": "Inner EXECUTE inside the audit function body: runtime history-row insertion performed by the trigger, not a catalog object; no post-apply catalog probe can or should assert it. Behavior is proven by the sandbox BEGIN-ROLLBACK trigger test at apply time."
-    },
-    {
-      "line_start": 147,
-      "line_end": 183,
-      "disposition": "checks",
-      "check_ids": [
-        "dflow_pd_triggers"
-      ],
-      "reason": "The cited contract asserts the final trigger state: the two named audit triggers and the write guard exist on exactly the applied arm's tables, which is the durable outcome of each idempotent drop-and-create pair."
-    },
-    {
-      "line_start": 189,
-      "line_end": 201,
-      "disposition": "checks",
-      "check_ids": [
-        "dflow_pd_tables"
-      ],
-      "reason": "The cited contract asserts all four named indexes of the applied arm exist (combination, review partial, and both run_id indexes), the durable outcome of these four CREATE INDEX markers."
-    },
-    {
-      "line_start": 206,
-      "line_end": 206,
-      "disposition": "checks",
-      "check_ids": [
-        "dflow_pd_grants"
-      ],
-      "reason": "The cited contract asserts the production arm grants the item-master grants role select, insert, update and delete on both live tables and insert on both history tables; the sandbox arm is owner-only by design."
+      "reason": "Inner EXECUTE inside the audit trigger function body: runtime history-row insertion performed by the trigger, not a catalog object; no post-apply catalog probe can or should assert it. Behavior is proven by the BEGIN-ROLLBACK trigger test on the target database at apply time, and the static DDL around it is asserted by the three cited contracts."
     }
   ]
 }

@@ -5,14 +5,15 @@ name: ColdLion Item Heartbeat
 # Only when the answer is yes does it dispatch the existing ColdLion Item Sweep
 # (full /items pull + new-item detail delta + import + Master Data auto-flow).
 # This replaces the old 30-minute full sweep (~100 paged requests × 48 = ~4,800
-# requests/day) with three fixed anchor runs plus on-demand sweeps — roughly a
-# quarter of the API load, and a new item reaches Master Data within ~10 minutes
+# requests/day) with three fixed anchor runs plus on-demand sweeps — a fraction
+# of the API load, and a new item reaches Master Data within ~10 minutes
 # instead of up to 30. Owner direction 2026-10-29: "i'd rather not wait 30
 # minutes if i don't have to."
 #
-# The probe fails loudly (exit 1) if createdFrom appears ignored — a response
-# the size of the whole item master is never a real 15-minute delta — so a
-# vendor-side filter defect cannot silently hammer the API.
+# The probe fails loudly (exit 1) if a time filter appears ignored — the
+# envelope's totalElements the size of the whole item master is never a real
+# 15-minute delta — or if the response shape changes, so a vendor-side defect
+# cannot silently hammer the API or silently blind the heartbeat.
 on:
   schedule:
     - cron: '*/5 * * * *'
@@ -52,7 +53,7 @@ jobs:
           [ -n "${COLDLION_API_KEY:-}" ] || { echo "::error::COLDLION_API_KEY is not set."; exit 1; }
           OUT="$(node tools/coldlion-item-heartbeat.mjs)"
           echo "$OUT"
-          if printf '%s' "$OUT" | jq -e '.outcome == "trigger"' >/dev/null; then
+          if printf '%s' "$OUT" | jq -e '.trigger == true' >/dev/null; then
             echo "trigger=yes" >> "$GITHUB_OUTPUT"
           else
             echo "trigger=no" >> "$GITHUB_OUTPUT"

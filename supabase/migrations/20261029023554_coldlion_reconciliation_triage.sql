@@ -175,8 +175,8 @@ SELECT pol.id AS order_line_id,
 --   use_coldlion_quantity   ColdLion is right: the line takes its quantity.
 --   use_coldlion_import_po  ColdLion is right: the line moves to the existing
 --       OrderList order carrying that Import PO, for the same customer.
---   link_google_line        p_target is the Google line this ColdLion
---       placeholder line is: the same move the automatic merge makes for one
+--   link_google_line        p_target is the same customer's Google line this
+--       ColdLion placeholder line is: the same move the automatic merge makes for one
 --       pair (ColdLion refs and snapshots move, the placeholder line goes; its
 --       full row is kept on the Google line under metadata.coldlion_linked_from).
 --   keep_separate           the ColdLion line has no Google line; it stays its
@@ -283,6 +283,9 @@ begin
        or exists (select 1 from plm.production_order_line_source_ref r where r.production_order_line_id = p_target and r.source_system = 'coldlion')
        or exists (select 1 from plm.production_order p where p.id = v_target.production_order_id and p.production_order_number ~ '^COLDLION-SO-') then
       raise exception 'That Google line cannot take a ColdLion line (it is gone, voided, or already linked). Pick another.' using errcode = '22023';
+    end if;
+    if (select company_id from plm.production_order where id = v_target.production_order_id) is distinct from v_order.company_id then
+      raise exception 'That Google line is for a different customer, so it was not linked. Pick another.' using errcode = '22023';
     end if;
     update plm.production_order_line g
        set quantity_ordered = coalesce(g.quantity_ordered, v_line.quantity_ordered),

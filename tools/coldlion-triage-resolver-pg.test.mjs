@@ -49,12 +49,14 @@ insert into plm.production_order_line (id, production_order_id, sku, quantity_or
   ('00000000-0000-0000-0000-000000000014', '00000000-0000-0000-0000-0000000000d1', 'PO2', 300, '{"coldlion_values":{"quantity_ordered":300,"import_po":"D2616"}}'),
   ('00000000-0000-0000-0000-000000000015', '00000000-0000-0000-0000-0000000000d1', 'PO3', 300, '{"coldlion_values":{"quantity_ordered":300,"import_po":"D9999"}}'),
   ('00000000-0000-0000-0000-000000000021', '00000000-0000-0000-0000-0000000000d2', 'LINKME', null, '{}'),
+  ('00000000-0000-0000-0000-000000000022', '00000000-0000-0000-0000-0000000000d3', 'LINKME', null, '{}'),
   ('00000000-0000-0000-0000-000000000031', '00000000-0000-0000-0000-0000000000f1', 'LINKME', 144, '{}'),
   ('00000000-0000-0000-0000-000000000032', '00000000-0000-0000-0000-0000000000f1', 'ALONE', 12, '{}');
 insert into plm.production_order_line_source_ref (production_order_line_id, source_system, source_id) values
   ('00000000-0000-0000-0000-000000000011', 'google_order_list', 'g11'),
   ('00000000-0000-0000-0000-000000000011', 'coldlion', 'coldlion:so:1:line:1:component:1'),
   ('00000000-0000-0000-0000-000000000021', 'google_order_list', 'g21'),
+  ('00000000-0000-0000-0000-000000000022', 'google_order_list', 'g22'),
   ('00000000-0000-0000-0000-000000000031', 'coldlion', 'coldlion:so:7000001:line:1:component:1'),
   ('00000000-0000-0000-0000-000000000032', 'coldlion', 'coldlion:so:7000001:line:2:component:1');
 insert into dam.production_order_snapshot (production_order_line_id) values ('00000000-0000-0000-0000-000000000031');
@@ -96,6 +98,7 @@ test("Import PO: take ColdLion moves the line to that order only for the same cu
 test("unmatched ColdLion line: link moves refs and snapshots onto the Google line; keep separate leaves it", { skip: !container }, () => {
   refused(31, "link_google_line", 11, /cannot take a ColdLion line/);
   refused(31, "link_google_line", 32, /cannot take a ColdLion line/);
+  refused(31, "link_google_line", 22, /different customer/);
   assert.equal(resolve(31, "link_google_line", 21), "Linked to the Google line.");
   assert.equal(psql(`select count(*) from plm.production_order_line where id='${L(31)}'`), "0");
   assert.equal(psql(`select string_agg(source_system, ',' order by source_system) from plm.production_order_line_source_ref where production_order_line_id='${L(21)}'`), "coldlion,google_order_list");

@@ -151,11 +151,14 @@ begin
     end if;
     -- A Google line imported without a customer link is still the same line
     -- when its customer PO (unpadded, as the automatic merge compares it) and
-    -- SKU match exactly; any other customer difference is refused.
+    -- SKU match exactly (a blank PO or SKU never matches); any other
+    -- customer difference is refused.
     if (select company_id from plm.production_order where id = v_target.production_order_id) is distinct from v_order.company_id
-       and not ((select company_id from plm.production_order where id = v_target.production_order_id) is null
+       and not coalesce((select company_id from plm.production_order where id = v_target.production_order_id) is null
+                and nullif(btrim(v_line.sku), '') is not null
                 and v_target.sku = v_line.sku
-                and nullif(ltrim(btrim(v_target.customer_po_number), '0'), '') = nullif(ltrim(btrim(v_line.customer_po_number), '0'), '')) then
+                and nullif(ltrim(btrim(v_line.customer_po_number), '0'), '') is not null
+                and nullif(ltrim(btrim(v_target.customer_po_number), '0'), '') = nullif(ltrim(btrim(v_line.customer_po_number), '0'), ''), false) then
       raise exception 'That Google line is for a different customer, so it was not linked. Pick another.' using errcode = '22023';
     end if;
     update plm.production_order_line g

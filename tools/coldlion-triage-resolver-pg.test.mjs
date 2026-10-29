@@ -59,6 +59,8 @@ insert into plm.production_order_line (id, production_order_id, sku, quantity_or
 insert into plm.production_order_line (id, production_order_id, sku, customer_po_number, quantity_ordered) values
   ('00000000-0000-0000-0000-000000000023', '00000000-0000-0000-0000-0000000000d5', 'NOCUST', '315063', null),
   ('00000000-0000-0000-0000-000000000024', '00000000-0000-0000-0000-0000000000d5', 'NOCUST', '999', null),
+  ('00000000-0000-0000-0000-000000000025', '00000000-0000-0000-0000-0000000000d5', 'NOCUST', null, null),
+  ('00000000-0000-0000-0000-000000000026', '00000000-0000-0000-0000-0000000000d5', null, '315063', null),
   ('00000000-0000-0000-0000-000000000033', '00000000-0000-0000-0000-0000000000f1', 'NOCUST', '0315063', 75);
 insert into plm.production_order_line_source_ref (production_order_line_id, source_system, source_id) values
   ('00000000-0000-0000-0000-000000000011', 'google_order_list', 'g11'),
@@ -73,6 +75,8 @@ insert into plm.production_order_line_source_ref (production_order_line_id, sour
   ('00000000-0000-0000-0000-000000000032', 'coldlion', 'coldlion:so:7000001:line:2:component:1'),
   ('00000000-0000-0000-0000-000000000023', 'google_order_list', 'g23'),
   ('00000000-0000-0000-0000-000000000024', 'google_order_list', 'g24'),
+  ('00000000-0000-0000-0000-000000000025', 'google_order_list', 'g25'),
+  ('00000000-0000-0000-0000-000000000026', 'google_order_list', 'g26'),
   ('00000000-0000-0000-0000-000000000033', 'coldlion', 'coldlion:so:7000001:line:3:component:1');
 insert into coldlion.order_history_line (sales_order_no, sales_order_line_no, prod_reference_no, fetched_at) values
   (1, 3, 'D3708', now() - interval '1 day'), (1, 3, 'D3526', now()), (1, 4, 'D2616', now()), (1, 5, 'D9999', now());
@@ -128,6 +132,8 @@ test("unmatched ColdLion line: link moves refs and snapshots onto the Google lin
 
 test("a Google line with no customer links only on the same customer PO and SKU", { skip: !container }, () => {
   refused(33, "link_google_line", 24, /different customer/);
+  refused(33, "link_google_line", 25, /different customer/);
+  refused(33, "link_google_line", 26, /different customer/);
   assert.equal(resolve(33, "link_google_line", 23), "Linked to the Google line.");
   assert.equal(psql(`select quantity_ordered from plm.production_order_line where id='${L(23)}'`), "75");
 });

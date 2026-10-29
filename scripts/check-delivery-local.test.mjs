@@ -70,6 +70,11 @@ test('throughput truth failure prevents every test suite', async () => {
   await assert.rejects(runLocal(h.options), /throughput-truth: exit 2/);
   assert.equal(h.calls.some(c => c.name.endsWith('tests') || c.command === 'python3'), false);
 });
+test('coordination regression stops before throughput, RLS and Python suites', async () => {
+  const h = harness({ fail: { name: 'merge-coordination-tests', result: { status: 73 } } });
+  await assert.rejects(runLocal(h.options), error => error.exitCode === 73 && /merge-coordination-tests/.test(error.message));
+  assert.deepEqual(h.calls.map(c => c.name), ['local-base', 'sidecars-and-baseline', 'throughput-truth', 'merge-coordination-tests']);
+});
 test('timeout, missing command, signal and unknown exit are explicit refusals', async () => {
   for (const [result, message, exitCode] of [
     [{ error: { code: 'ETIMEDOUT' }, status: null }, /ETIMEDOUT/, 124],

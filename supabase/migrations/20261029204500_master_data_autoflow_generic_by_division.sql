@@ -234,6 +234,8 @@ with wrong as (
          row_number() over (order by r.source_row_number, r.id) as rn
   from public.style_tracker_rows r
   where r.tracker_type = 'licensed'
+    and r.source_workbook_id = '1ZL6cEwydC0cWSGP2I92uILn1ixILr_qAeDfDfD6F214'
+    and r.source_sheet = 'License.Style'
     and (r.row_data ->> 'coldlion_division' = 'EH001'
          or exists (select 1
                       from plm.style_tracker_item_bridge b
@@ -252,3 +254,34 @@ update public.style_tracker_rows r
        source_row_number = base.n + wrong.rn
   from wrong, base
  where r.id = wrong.id;
+
+-- The bridge snapshots tracker_type; order linking reads it, so refresh now.
+select plm.refresh_style_tracker_item_bridge();
+
+do $verify$
+declare
+  v_fn regprocedure := 'public.sync_new_items_into_style_tracker(boolean, timestamptz)'::regprocedure;
+  v_src text;
+begin
+  select prosrc into v_src from pg_proc where oid = v_fn;
+  if position('Generic.Style' in v_src) = 0 or position('''EH001''' in v_src) = 0
+     or position('pre_pack_code' in v_src) = 0 then
+    raise exception 'division routing or assortment skip is absent from the function body';
+  end if;
+  if not (select prosecdef from pg_proc where oid = v_fn) then
+    raise exception 'sync_new_items_into_style_tracker must stay security definer';
+  end if;
+  if has_function_privilege('authenticated', v_fn, 'execute') or has_function_privilege('anon', v_fn, 'execute')
+     or not has_function_privilege('service_role', v_fn, 'execute') then
+    raise exception 'sync_new_items_into_style_tracker grants drifted';
+  end if;
+  if exists (
+    select 1 from public.style_tracker_rows_with_bridge v
+      join plm.item i on i.id = v.plm_item_id
+     where i.raw ->> 'divisionCode' = 'EH001' and v.tracker_type = 'licensed'
+       and v.source_sheet = 'License.Style'
+  ) then
+    raise exception 'EH001 rows remain in the Licensed list';
+  end if;
+end
+$verify$;

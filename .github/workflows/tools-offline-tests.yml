@@ -159,6 +159,10 @@ jobs:
           done
           node --test scripts/check-documents-ci-route.test.mjs scripts/documents-fast-ci-workflow.test.mjs
 
+      - name: Test early delivery checks and failed-hold release (#5033)
+        if: steps.route.outputs.pure_prose != 'true'
+        run: node --test scripts/check-delivery-local.test.mjs scripts/merge-queue-hold.test.mjs
+
       - name: Verify RLS admin source and retained runtime evidence (#4427)
         if: steps.route.outputs.pure_prose != 'true'
         run: |

@@ -225,15 +225,8 @@ AS $function$
     select c.document_type,c.entity_id,c.asset_id,c.style_group_id,c.keyword_rank,c.semantic_rank,c.rank,
       a.id, a.style_group_id asset_style_group_id, a.file_type, a.status,
       a.workflow_status, a.stage, a.is_licensed, c.rn
-    from (select * from ordered_candidates order by rn) c
-    join lateral (
-      select c.asset_id id where c.document_type='asset' and c.asset_id is not null
-      union all
-      select m.id from public.assets m
-      where c.document_type='style_group' and c.style_group_id is not null
-        and m.style_group_id=c.style_group_id and not m.is_deleted
-    ) x on true
-    join public.assets a on a.id = x.id
+    from candidate_asset_ids c
+    join public.assets a on a.id = c.id
     left join public.style_groups sg on sg.id=a.style_group_id
     cross join visibility_params v
     where public.dam_asset_matches_filters(a, sg, v.f, v.thumbnail_min_date)

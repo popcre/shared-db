@@ -237,13 +237,17 @@ begin
       raise exception 'This Import PO no longer needs a decision — refresh the list.' using errcode = '22023';
     end if;
     if p_action = 'use_coldlion_import_po' then
+      -- Historical duplicate Import PO numbers are grandfathered, so the
+      -- destination is the one open order with that number for THIS customer.
       select count(*), min(id::text)::uuid into v_n, v_dest from plm.production_order
-       where lower(btrim(production_order_number)) = lower(btrim(v_cl ->> 'import_po')) and voided_at is null;
+       where lower(btrim(production_order_number)) = lower(btrim(v_cl ->> 'import_po')) and voided_at is null
+         and company_id is not distinct from v_order.company_id;
       if v_n <> 1 then
+        if v_n = 0 and exists (select 1 from plm.production_order
+                                where lower(btrim(production_order_number)) = lower(btrim(v_cl ->> 'import_po')) and voided_at is null) then
+          raise exception 'Order % belongs to a different customer, so this line was not moved. Check ColdLion.', btrim(v_cl ->> 'import_po') using errcode = '22023';
+        end if;
         raise exception 'There is no single OrderList order % to move this line to. Create it first, or keep the Google Import PO.', btrim(v_cl ->> 'import_po') using errcode = '22023';
-      end if;
-      if (select company_id from plm.production_order where id = v_dest) is distinct from v_order.company_id then
-        raise exception 'Order % belongs to a different customer, so this line was not moved. Check ColdLion.', btrim(v_cl ->> 'import_po') using errcode = '22023';
       end if;
       update plm.production_order_line set production_order_id = v_dest,
              metadata = metadata || jsonb_build_object('coldlion_resolved_import_po', v_stamp || jsonb_build_object('from', v_order.production_order_number)),

@@ -41,6 +41,7 @@ insert into plm.production_order (id, production_order_number, company_id, metad
   ('00000000-0000-0000-0000-0000000000d1', 'D3708', '00000000-0000-0000-0000-0000000000c1', '{}'),
   ('00000000-0000-0000-0000-0000000000d2', 'D3526', '00000000-0000-0000-0000-0000000000c1', '{}'),
   ('00000000-0000-0000-0000-0000000000d3', 'D2616', '00000000-0000-0000-0000-0000000000c2', '{}'),
+  ('00000000-0000-0000-0000-0000000000d4', 'D3526', '00000000-0000-0000-0000-0000000000c2', '{}'),
   ('00000000-0000-0000-0000-0000000000f1', 'COLDLION-SO-7000001', '00000000-0000-0000-0000-0000000000c1', '{"production_order_number_origin":"coldlion_intake_placeholder"}');
 insert into plm.production_order_line (id, production_order_id, sku, quantity_ordered, metadata) values
   ('00000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-0000000000d1', 'QTY1', 1603, '{"coldlion_values":{"quantity_ordered":1610,"import_po":"D3708"}}'),

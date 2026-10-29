@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "migration_version": "20261029054455",
+  "migration_sha256": "37f9ac25021e0bd18f066c5aa34f91893410cbc41d235bb10fb4295b09331b45",
+  "checks": [
+    {
+      "id": "dflow_pd_tables",
+      "kind": "catalog_contract",
+      "contract": "dflow_product_description_tables_v1",
+      "expected_count": 1
+    },
+    {
+      "id": "dflow_pd_triggers",
+      "kind": "catalog_contract",
+      "contract": "dflow_product_description_triggers_v1",
+      "expected_count": 1
+    },
+    {
+      "id": "dflow_pd_grants",
+      "kind": "catalog_contract",
+      "contract": "dflow_product_description_grants_v1",
+      "expected_count": 1
+    }
+  ],
+  "marker_schema_version": 1,
+  "marker_reviews": [
+    {
+      "line_start": 125,
+      "line_end": 125,
+      "disposition": "no_durable_target",
+      "reason": "Inner EXECUTE inside the audit trigger function body: runtime history-row insertion performed by the trigger, not a catalog object; no post-apply catalog probe can or should assert it. Behavior is proven by the BEGIN-ROLLBACK trigger test on the sandbox database at apply time, and every static DDL statement around it is asserted by the three cited contracts."
+    }
+  ]
+}

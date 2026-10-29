@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "work_issue": 5004,
+  "outcome": "ready-for-merge",
+  "pr": 5032,
+  "migration_versions": [
+    "20261029093309"
+  ],
+  "contract_ref": "refs/db-contracts/5004/6",
+  "contract_sha256": "8c7c579741ecfe1fdc6905f2472bc439a330ab4dbce92b502f5c3e426e5bfb10",
+  "head_sha": "b0d723b982de96bb82c37ec2d639427996912e1f",
+  "base_sha": "7497322493592557d888f10f2f0630fa710eb645",
+  "files_changed": [
+    ".github/live-proofs/5004.sql",
+    "supabase/migrations/20261029093309_coldlion_triage_link_without_customer.sql",
+    "tools/coldlion-triage-resolver-pg.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "view api.dam_order_list",
+    "function public.resolve_coldlion_triage"
+  ],
+  "checks": [
+    {
+      "command": "node --test tools/coldlion-order-intake-*.test.mjs",
+      "exit_code": 0,
+      "evidence": "resolver suite # pass 7 # fail 0 on PostgreSQL 17 (new: customerless Google line links on same PO + SKU, refused on a different PO)"
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed."
+    }
+  ],
+  "assumptions_resolved": [
+    "Read-only production check: Google line D3435 / 315063 / VDC83HDFAN01 has no company; the two ColdLion lines from SO 7127674 belong to Spencer Gifts."
+  ],
+  "stop_conditions_hit": []
+}

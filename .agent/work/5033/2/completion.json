@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "work_issue": 5033,
+  "outcome": "ready-for-merge",
+  "pr": 5034,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/5033/2",
+  "contract_sha256": "b6b5a8a9d99539c73b0870b901a592ebefdcfd7abec9e37ac093311663edcf8d",
+  "head_sha": "055bda27a26ef9c6f389402c5f5644a5f069ad70",
+  "base_sha": "7497322493592557d888f10f2f0630fa710eb645",
+  "files_changed": [
+    ".github/workflows/guarded-migration-merge.yml",
+    ".github/workflows/merge-queue-gate.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "docs/development.md",
+    "docs/verification/testing-delivery/5033.md",
+    "docs/verification/throughput-dispositions/scripts~check-delivery-local.mjs.json",
+    "docs/verification/throughput-dispositions/scripts~merge-queue-hold.mjs.json",
+    "scripts/check-delivery-local.mjs",
+    "scripts/check-delivery-local.test.mjs",
+    "scripts/check-merge-queue-workflows.test.mjs",
+    "scripts/merge-queue-hold.mjs",
+    "scripts/merge-queue-hold.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "node --test scripts/check-delivery-local.test.mjs scripts/merge-queue-hold.test.mjs scripts/check-merge-queue-workflows.test.mjs",
+      "exit_code": 0,
+      "evidence": "68 local/hold/workflow regressions PASS; failure, timeout, optional checks, producer/rerun and full healthy-budget controls retained."
+    },
+    {
+      "command": "node scripts/check-delivery-local.mjs --base 7497322493592557d888f10f2f0630fa710eb645",
+      "exit_code": 0,
+      "evidence": "Actual integrated5guard run PASS: sidecars95, truth393sites112sources,72throughput+39RLS/parser+309Python; native source identity stable before/after."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base 7497322493592557d888f10f2f0630fa710eb645",
+      "exit_code": 0,
+      "evidence": "Sidecars and pinned detector baseline PASS; no baseline regeneration."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Whitespace PASS."
+    }
+  ],
+  "assumptions_resolved": [
+    "Contract1 published prospectively for implementation; contract2 prospectively expanded only required per-source truth dispositions and binds immutable predecessor. Genuine initial prose incident scaffold opened actual draft PR5034 before code; no code published under prose exemption.",
+    "No database/runtime/production change; no reviewer toolkit repair/install; no broad admin secret added to merge-group code. Existing full administrative merge preflight, review, ownership-proven cleanup and900secondhealthy hold retained.",
+    "211focused child queue/preflight/authority/acquire/transport/YAML tests passed; root68 combined regressions,52workflowYAML and464filetransportconformance passed. Real required CI/guarded merge remain publication acceptance, not claimed locally.",
+    "Actual PR5034 and final implementation head bound before independent review. Reviewed source remains immutable through terminal adoption; only current generation2 evidence pair follows implementation."
+  ],
+  "stop_conditions_hit": []
+}

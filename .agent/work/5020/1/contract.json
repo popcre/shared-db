@@ -1,0 +1,72 @@
+{
+  "schema_version": 2,
+  "generation": 1,
+  "evidence_parent": null,
+  "work_issue": 5020,
+  "work_type": "structural",
+  "route": "claim-first",
+  "goal": "Core Product Type storage for DesignFlow (claim #5021, version 20261029043759): one conditioned migration creating the mg_combination_description and item_product_description table pairs with history audit triggers and a human-override write guard in BOTH DesignFlow databases — schema dflow on the sandbox project (xupnyeifmpsacrqahwwm, where dflow_prod is absent) and schema dflow_prod on the production project (qsllyeztdwjgirsysgai, where a stale dflow schema also exists and must not be touched; dflow_prod presence selects the arm; projects with neither schema apply a recorded no-op). Includes production-verification sidecar with three verifier-owned catalog contracts (tables/indexes, triggers/functions, grants) so the dynamic DO block is hash-bound and post-apply provable. Work issue popcre/designflow-item-master#150; plan plan_core-product-type.md on its sandbox-albert branch.",
+  "base_sha": "63ce3e461295b2777bc94b3a8b65d24ef089d0ee",
+  "dispatcher": "claim-first (claim #5021, owner ZCode chat e75a842f-c460-27db-37e8-d1319a6f9d50 on EDGE-DEV)",
+  "worker": "ZCode chat e75a842f-c460-27db-37e8-d1319a6f9d50 on EDGE-DEV",
+  "branch": "zcode/5020-core-product-type",
+  "worktree": "C:/repos/shared-db-worktrees/5020-core-product-type",
+  "allowed_paths": [
+    ".agent/work/5020/1/completion.json",
+    ".agent/work/5020/1/contract.json",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production-verification-sidecars/20261029043759.json",
+    "scripts/production_catalog_verification.py",
+    "supabase/migrations/20261029043759_dflow_product_description.sql"
+  ],
+  "file_writes": [
+    ".agent/work/5020/1/completion.json",
+    ".agent/work/5020/1/contract.json",
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production-verification-sidecars/20261029043759.json",
+    "scripts/production_catalog_verification.py",
+    "supabase/migrations/20261029043759_dflow_product_description.sql"
+  ],
+  "db_reads": [
+    "table core.\"merchGroup\"",
+    "table dflow.\"itemHeader\"",
+    "table dflow_prod.\"itemHeader\""
+  ],
+  "db_writes": [
+    "table dflow.mg_combination_description",
+    "table dflow.mg_combination_description_history",
+    "table dflow.item_product_description",
+    "table dflow.item_product_description_history",
+    "function dflow.product_description_row_audit",
+    "function dflow.item_product_description_protect_human_override",
+    "table dflow_prod.mg_combination_description",
+    "table dflow_prod.mg_combination_description_history",
+    "table dflow_prod.item_product_description",
+    "table dflow_prod.item_product_description_history",
+    "function dflow_prod.product_description_row_audit",
+    "function dflow_prod.item_product_description_protect_human_override"
+  ],
+  "prohibited_actions": [
+    "Do not modify any applied migration.",
+    "Do not add a second migration version for this change.",
+    "Do not write to either live database from this pull request; applies go through the DesignFlow Sandbox Migrations workflow and the serial production lane with their own allowlists and proofs.",
+    "Do not touch the stale dflow schema on the production project.",
+    "Do not bypass, weaken or retry around exact-head review, guarded merge, preview rehearsal or production promotion gates.",
+    "Do not rebase; merge main instead."
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "python -m unittest scripts.test_check_production_verification_sidecars scripts.test_production_catalog_verification",
+    "python -I -B scripts/check_production_verification_sidecars.py --repo . --scan-version 20261029043759"
+  ],
+  "assumptions": [
+    "The migration arms are selected by schema presence only: dflow_prod exists on production and is absent on the sandbox project; dflow exists on both, so dflow_prod presence is the discriminator (verified live 2026-10-29, evidence on popcre/designflow-item-master#150).",
+    "The sandbox item service runs as the postgres pooler admin with no grant roles, so the sandbox arm needs no grants; the production arm grants designflow_prod_item_master_grants the four verbs on the live tables and INSERT on the history tables.",
+    "Post-apply the new tables are empty, so behavior proofs run inside BEGIN...ROLLBACK on the sandbox database at apply time; the CI ephemeral stack has neither schema and the version no-ops there by design."
+  ],
+  "stop_conditions": [
+    "Stop if the guarded review returns a substantive REJECT; fix on a new head and re-review.",
+    "Stop if any gate, workflow or lane tool refuses; never work around it.",
+    "Stop if main advances past the reserved version; supersede through the lane tool."
+  ]
+}

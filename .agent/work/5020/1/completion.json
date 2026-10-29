@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "work_issue": 5020,
+  "outcome": "ready-for-merge",
+  "pr": 5024,
+  "migration_versions": ["20261029043759"],
+  "contract_ref": "refs/db-contracts/5020/1",
+  "contract_sha256": "778854f6032a383936e4d82987df48e11bb8c4b30ea9e75574fa36910fd5c684",
+  "head_sha": "ba5ca4e0979a0f1c9b91e03c5586c1c7fcf3bf40",
+  "base_sha": "63ce3e461295b2777bc94b3a8b65d24ef089d0ee",
+  "files_changed": [
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production-verification-sidecars/20261029043759.json",
+    "scripts/production_catalog_verification.py",
+    "supabase/migrations/20261029043759_dflow_product_description.sql"
+  ],
+  "db_reads": [
+    "table core.\"merchGroup\"",
+    "table dflow.\"itemHeader\"",
+    "table dflow_prod.\"itemHeader\""
+  ],
+  "db_writes": [
+    "table dflow.mg_combination_description",
+    "table dflow.mg_combination_description_history",
+    "table dflow.item_product_description",
+    "table dflow.item_product_description_history",
+    "function dflow.product_description_row_audit",
+    "function dflow.item_product_description_protect_human_override",
+    "table dflow_prod.mg_combination_description",
+    "table dflow_prod.mg_combination_description_history",
+    "table dflow_prod.item_product_description",
+    "table dflow_prod.item_product_description_history",
+    "function dflow_prod.product_description_row_audit",
+    "function dflow_prod.item_product_description_protect_human_override"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed (expected-count guard, verify-cost guard, EOL reference guard) at implementation head ba5ca4e0979a0f1c9b91e03c5586c1c7fcf3bf40 after the main refresh merge; run in the claim worktree."
+    },
+    {
+      "command": "python -m unittest scripts.test_check_production_verification_sidecars scripts.test_production_catalog_verification",
+      "exit_code": 0,
+      "evidence": "16 sidecar-checker tests OK and the catalog-verification suite reported no hard failure at the same head, including the three new dflow_product_description contracts and the strict marker-review loader."
+    },
+    {
+      "command": "python -I -B scripts/check_production_verification_sidecars.py --repo . --scan-version 20261029043759",
+      "exit_code": 0,
+      "evidence": "Printed status OK with sidecar=true and all 18 dynamic execution markers covered; the three catalog contracts were also probed TRUE on both local rehearsal arm databases and FALSE on a neither-schema database (throwaway PostgreSQL 18)."
+    }
+  ],
+  "assumptions_resolved": [],
+  "stop_conditions_hit": []
+}

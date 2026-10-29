@@ -319,33 +319,18 @@ jobs:
       - name: Hold the merge lane through the actual merge
         id: hold_through_merge
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
           PR_NUMBER: ${{ steps.queue.outputs.pr }}
+          PR_HEAD_SHA: ${{ steps.queue.outputs.head }}
+          MERGE_GROUP_SHA: ${{ github.event.merge_group.head_sha }}
+          MERGE_GROUP_REF: ${{ github.event.merge_group.head_ref }}
+          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '0'
         run: |
           set -euo pipefail
-          export GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS='0'
-          # GitHub merges asynchronously once every required check is green.
-          # Ownership is the merge-lane hold, not the status write: production
-          # cannot start while this ref exists. Poll until the mutation lands
-          # or the budget expires; fail-closed either way on the non-merge path.
-          # The budget must outlast the slowest required merge-group check:
-          # supabase/tests takes ~7 minutes, so 5 minutes ejected every group
-          # (#4729). 180 x 5 s is 15 minutes, inside the 40-minute job timeout.
-          for attempt in $(seq 1 180); do
-            state="$(node scripts/gh-read.mjs pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state --jq .state)"
-            if [ "$state" = 'MERGED' ]; then
-              echo "Queue merge landed for PR #$PR_NUMBER (attempt $attempt)."
-              exit 0
-            fi
-            if [ "$state" != 'OPEN' ] && [ "$state" != 'MERGED' ]; then
-              echo "REFUSED: PR #$PR_NUMBER left the queue without merging (state=$state)." >&2
-              exit 1
-            fi
-            echo "waiting for the queue mutation to land (attempt $attempt, state=$state)"
-            sleep 5
-          done
-          echo "REFUSED: the queue mutation did not land within budget; revoking group authorization." >&2
-          exit 1
+          # Read-only monitoring retains the healthy 15-minute budget while
+          # failing promptly on required red checks, ejection or head changes.
+          # Failure still revokes authorization and releases only our owner SHA.
+          node scripts/merge-queue-hold.mjs
 
       - name: Revoke group authorization if the mutation did not land
         id: revoke_group

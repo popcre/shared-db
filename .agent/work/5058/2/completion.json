@@ -26,6 +26,11 @@
       "command": "bash scripts/check-sql.sh",
       "exit_code": 0,
       "evidence": "Static checks passed."
+    },
+    {
+      "command": "supabase/tests/master_data_item_autoflow_contracts.sql (Database Contract Tests CI)",
+      "exit_code": 0,
+      "evidence": "Database Contract Tests run 40954436819 (supabase/tests against an ephemeral database) passed on this implementation, including the #5058 re-assert and itemDesc-preference assertions."
     }
   ],
   "assumptions_resolved": [

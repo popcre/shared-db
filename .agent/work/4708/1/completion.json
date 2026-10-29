@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "work_issue": 4708,
+  "outcome": "ready-for-merge",
+  "pr": 5018,
+  "migration_versions": [
+    "20261029041610"
+  ],
+  "contract_ref": "refs/db-contracts/4708/1",
+  "contract_sha256": "fa95c7879a2df16db68e286e3e2ba5a3641e903b304616bcc9cbf6253c8e4d11",
+  "head_sha": "8aaa657ac2fcf83728244686df1a4378f7d8249f",
+  "base_sha": "00ebac33dba2f4c6014e02cacf96cf73f932289d",
+  "files_changed": [
+    ".github/live-proofs/4708.sql",
+    "supabase/migrations/20261029041610_dflow_factory_area.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "table core.factory",
+    "table core.product_category",
+    "table core.factory_product_category",
+    "table core.factory_representation",
+    "table core.factory_rep",
+    "table core.factory_vendor_login"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed."
+    }
+  ],
+  "assumptions_resolved": [
+    "The row load is a separate curated Master Data step after promotion."
+  ],
+  "stop_conditions_hit": []
+}

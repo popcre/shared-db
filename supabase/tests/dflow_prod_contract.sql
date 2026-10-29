@@ -18,7 +18,9 @@ begin
       'tracking_grid_archive',  -- #4585
       'vendor_wechat_identity',  -- #4634; proved by its own exact contract
       'prod_order_milestone_schedule',  -- #4646; isolated milestone contracts prove its shape and access
-      'item_customer_selling'  -- #4991; proved by its own exact contract
+      'item_customer_selling',  -- #4991; proved by its own exact contract
+      'mg_combination_description', 'mg_combination_description_history',
+      'item_product_description', 'item_product_description_history'  -- #5026; proved by its own exact contract
     );
   if v_tables <> 103 then
     raise exception 'expected 103 dflow_prod tables, found %', v_tables;

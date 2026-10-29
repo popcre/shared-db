@@ -55,6 +55,12 @@ begin
   if not exists (select 1 from pg_roles where rolname = 'designflow_prod_item_master_grants') then
     execute 'create role designflow_prod_item_master_grants';
   end if;
+  -- The test connection must be able to become the grants role; on replayed
+  -- stacks the role already exists and the harness user (its creator) grants
+  -- itself membership here, rolled back with everything else.
+  if not pg_has_role(current_user, 'designflow_prod_item_master_grants', 'member') then
+    execute format('grant designflow_prod_item_master_grants to %I', current_user);
+  end if;
 end
 $role$;
 

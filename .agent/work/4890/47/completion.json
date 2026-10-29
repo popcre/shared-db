@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "work_issue": 4890,
+  "outcome": "ready-for-merge",
+  "pr": 4971,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4890/47",
+  "contract_sha256": "5890c3e0821ba0b9a75988e1f30e0348e76f27eb7e2b60edcf8953602bc6a4f1",
+  "head_sha": "a7c5972c8debd72885385f1fc85f8c8f66eddc61",
+  "base_sha": "f6b32f28b74b6d0b65b7906de6e34e96dd2cb4b7",
+  "files_changed": [
+    ".github/workflows/database-contract-tests.yml",
+    "docs/verification/rls-initplan/4427/actual-table-qualification.md",
+    "docs/verification/throughput-dispositions/scripts~qualify_rls4427_actual_tables.py.json",
+    "docs/verification/throughput-dispositions/scripts~rls4427_native_restore_regression.py.json",
+    "docs/verification/throughput-dispositions/scripts~rls4427_physical_cluster.py.json",
+    "scripts/qualify_rls4427_actual_tables.py",
+    "scripts/rls4427_native_restore_regression.py",
+    "scripts/rls4427_physical_cluster.py",
+    "scripts/test_qualify_rls4427_actual_tables.py",
+    "scripts/test_rls4427_native_restore_regression.py",
+    "scripts/test_rls4427_physical_cluster.py",
+    "supabase/tests/fixtures/rls4427_native_restore_fixture.sql",
+    "supabase/tests/rls_public_admin_actual_table_performance.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python3 -m unittest scripts.test_qualify_rls4427_actual_tables scripts.test_rls4427_physical_cluster scripts.test_rls4427_native_restore_regression",
+      "exit_code": 0,
+      "evidence": "94 focused controls PASS, including fixed catalog-only metadata session, exact rejected uid() hash, unchanged eight-spelling refusal and exact admin routing; included in both complete globs."
+    },
+    {
+      "command": "node --test scripts/rls-public-admin-initplan.test.mjs scripts/agent-work-contract-git-evidence.test.mjs scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "Part of actual147 Node tests all PASS; originalpolicy/sourcehash/2124/198 retained, nativeevidence and guardcatalog checks."
+    },
+    {
+      "command": "node --test scripts/check-workflow-yaml.test.mjs scripts/database-contract-authorization.test.mjs scripts/check-merge-queue-workflows.test.mjs",
+      "exit_code": 0,
+      "evidence": "Part of actual147-test combined Node suite, all PASS; existing workflow/auth/queue contracts."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL guards PASS; no ownmigration change or live database use."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites388 sources110 derived_digestfd6b11934eaa; exactchangedqualifier sites reviewed/updated."
+    },
+    {
+      "command": "node scripts/check-workflow-yaml.mjs",
+      "exit_code": 0,
+      "evidence": "51 workflow YAML files parse clean, no conflict markers."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Whitespace check PASS."
+    },
+    {
+      "command": "python3 -m py_compile scripts/qualify_rls4427_actual_tables.py scripts/rls4427_physical_cluster.py scripts/rls4427_native_restore_regression.py",
+      "exit_code": 0,
+      "evidence": "All3 source-specific Python files compile."
+    },
+    {
+      "command": "python3 -m unittest scripts/test_*.py (complete ordinary offline glob in isolated credential/resource-free child environment)",
+      "exit_code": 0,
+      "evidence": "Both complete 58-file ordinary offline Python globs PASS: each 1705 tests/46 skips; Python3.12 35.703s, Python3.14 32.861s. Logs /tmp/4427-gen47-py312.log and /tmp/4427-gen47-py314.log."
+    },
+    {
+      "command": "cached Python3.12.14 full ordinary scripts/test_*.py offline glob",
+      "exit_code": 0,
+      "evidence": "Actual1705 PASS46skips35.703s cachedPython3.12."
+    },
+    {
+      "command": "local Python3.14.4 full ordinary scripts/test_*.py offline glob",
+      "exit_code": 0,
+      "evidence": "Actual1705 PASS46skips32.861s localPython3.14."
+    }
+  ],
+  "assumptions_resolved": [
+    "Generation47 prospective contract published before edits; base f6b32f28b74b6d0b65b7906de6e34e96dd2cb4b7 unchanged, no fetch. Generation46 pair preserved privately and immutable refs retained.",
+    "Actual native46 run40795097494 failed before timed plans. Actual diagnostic length34/hashc16c46f4e3dec29268d524c8d79f98439b83bff9cb3295ecc592df8ae575afb6 matches known synthetic has_role(uid(), admin::app_role) expression with quoted admin; inherited search_path deparse verified by exact known text hash, not cast removal. Native46 evidence remains failure/zero samples.",
+    "ONLY runtime change is fixed SET search_path=pg_catalog in dedicated snapshot metadata SQL session. Eight accepted original spellings unchanged; uid() remains refused. Exact generated snapshot strings retain qualified admin routing; altered text routes postgres. Timed/default/negative sessions unchanged.",
+    "All three local physical helper, local regression driver and fixture Git bytes identical executed44, hash map /tmp/4890-gen47-unchanged-local-runtime-hashes.json. No local SQL/deparser runtime proof claimed; actual metadata validation awaits separately reviewed native action.",
+    "Both full Python versions1705/46skips PASS, focused94 PASS, Node147 PASS, staticSQL/YAML51/truth388sites110sourcesfd6b11934eaa/compile/whitespace PASS. No resource/review/push/native/merge/production action by child.",
+    "Prepared finite47 brief only: parent exact review/adoption before ONE ordinary FF46 to47 and ONE native manual opt-in; strict conditional PRready/guardedmerge only complete valid374, originalSOURCE2124/198, all current CI, costs/cleanup/regression investigation and parent adoption. No local extra action, retry, bypass or production apply. ready-for-merge denotes source preparation only, not granted action authority."
+  ],
+  "stop_conditions_hit": []
+}

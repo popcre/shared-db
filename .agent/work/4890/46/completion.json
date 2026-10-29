@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "work_issue": 4890,
+  "outcome": "ready-for-merge",
+  "pr": 4971,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/4890/46",
+  "contract_sha256": "136ae08239e0c541d841aafd3e0730fcf695d3348c57d345cd51db2f019f7a94",
+  "head_sha": "b39dfd661290bbac14d0539475c9a05cf5b062f7",
+  "base_sha": "f6b32f28b74b6d0b65b7906de6e34e96dd2cb4b7",
+  "files_changed": [
+    ".github/workflows/database-contract-tests.yml",
+    "docs/verification/rls-initplan/4427/actual-table-qualification.md",
+    "docs/verification/throughput-dispositions/scripts~qualify_rls4427_actual_tables.py.json",
+    "docs/verification/throughput-dispositions/scripts~rls4427_native_restore_regression.py.json",
+    "docs/verification/throughput-dispositions/scripts~rls4427_physical_cluster.py.json",
+    "scripts/qualify_rls4427_actual_tables.py",
+    "scripts/rls4427_native_restore_regression.py",
+    "scripts/rls4427_physical_cluster.py",
+    "scripts/test_qualify_rls4427_actual_tables.py",
+    "scripts/test_rls4427_native_restore_regression.py",
+    "scripts/test_rls4427_physical_cluster.py",
+    "supabase/tests/fixtures/rls4427_native_restore_fixture.sql",
+    "supabase/tests/rls_public_admin_actual_table_performance.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "python3 -m unittest scripts.test_qualify_rls4427_actual_tables scripts.test_rls4427_physical_cluster scripts.test_rls4427_native_restore_regression",
+      "exit_code": 0,
+      "evidence": "93focusedcontrolsPASSincludedbothfull1704globs. EXACT8originaldeparse spellings/whitespace-onlynormalization; negativeswrongschema/function/authuid/literalrole/type/cast/OR/SELECT/imbalanced/doubleouter/NULL refuse. Allotherpolicyidentity/roles/cmd/implicitcheck/fullunion/helper/ACL/capabilityguards retained. Actualwholemainfailure diagnostic safeclasses/lengthSHA, secretSQLneverstdout/stderr."
+    },
+    {
+      "command": "node --test scripts/rls-public-admin-initplan.test.mjs scripts/agent-work-contract-git-evidence.test.mjs scripts/throughput-guard/check-throughput-truth-audit.test.mjs",
+      "exit_code": 0,
+      "evidence": "Part of actual147 Node tests all PASS; originalpolicy/sourcehash/2124/198 retained, nativeevidence and guardcatalog checks."
+    },
+    {
+      "command": "node --test scripts/check-workflow-yaml.test.mjs scripts/database-contract-authorization.test.mjs scripts/check-merge-queue-workflows.test.mjs",
+      "exit_code": 0,
+      "evidence": "Part of actual147-test combined Node suite, all PASS; existing workflow/auth/queue contracts."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL guards PASS; no ownmigration change or live database use."
+    },
+    {
+      "command": "node scripts/check-throughput-truth-audit.mjs",
+      "exit_code": 0,
+      "evidence": "truth audit OK: call_sites388 sources110 derived_digestfd6b11934eaa; exactchangedqualifier sites reviewed/updated."
+    },
+    {
+      "command": "node scripts/check-workflow-yaml.mjs",
+      "exit_code": 0,
+      "evidence": "51 workflow YAML files parse clean, no conflict markers."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "Whitespace check PASS."
+    },
+    {
+      "command": "python3 -m py_compile scripts/qualify_rls4427_actual_tables.py scripts/rls4427_physical_cluster.py scripts/rls4427_native_restore_regression.py",
+      "exit_code": 0,
+      "evidence": "All3 source-specific Python files compile."
+    },
+    {
+      "command": "python3 -m unittest scripts/test_*.py (complete ordinary offline glob in isolated credential/resource-free child environment)",
+      "exit_code": 0,
+      "evidence": "Bothcomplete58fileordinaryPython globs onceafterfinalcode inindependentTMPDIRcredential/resource-freeenv: EACH1704PASS46skips;3.12=35.199s/3.14=32.258s.93focusedsubsets. Logs/tmp/4427-gen46-py312.log and...py314.log."
+    },
+    {
+      "command": "cached Python3.12.14 full ordinary scripts/test_*.py offline glob",
+      "exit_code": 0,
+      "evidence": "Actual1704PASS46skips35.199s cachedPython3.12."
+    },
+    {
+      "command": "local Python3.14.4 full ordinary scripts/test_*.py offline glob",
+      "exit_code": 0,
+      "evidence": "Actual1704PASS46skips32.258s localPython3.14."
+    }
+  ],
+  "assumptions_resolved": [
+    "Freshsinglefetchmainadvancedf6b32f28b74b6d0b65b7906de6e34e96dd2cb4b7; rootinspected/adopted6foreignColdLion/viewmigration/liveproof/test/evidencefiles. Ordinarymergeef1815d1b52a49b6d3d6433c1a5f30e98afa0440 BEFORE46publication/edits preservedall; currentbasef6, actualtested45remainsadfc. Current46paironly,45immutable/privatepairretained.",
+    "ActualNative40791047711at45FAILEDfirstoriginalINSERTpolicyvalidation BEFOREanytimedplan/0samples. Artifact12861767260ZIPab9e818d345f299655efdf673d04989385d9c36243458cc11ca958bca0beee8d qualifierlogddb6351e4ba6fbcf61f75e9213c2dc65a85d84902c35ce51137adedf5b24247c. RejectedexpressionTEXTnotretained; schema/outerparenthesis explanationUNKNOWN/UNCONFIRMED, noliteralinvented.",
+    "Actual45SourceSuite26.780soutputSHAffa119b29cc3ce38c45789c0749412ba69985bfa8fcad8c11c23f6fca16d90d6/backupHBAconfigcrypto/sourceclonePASS;targetfixture13.051/analyze.2026/warm.338/seal2.020/prepclean14.556withinwindow;canonicalb6710db144c0c060725836ca31e87127f0c706cbf42da013b12962c69ec672de;firsttrialclean1.237/ownedcleanup.45timingfixactuallyproved, noperformanceoutcome/mergeauthority.",
+    "ROOT46decision ONLYclosed8spelling equality:has_role/public.has_role;auth.uid exact;adminliteralexact;app_role/public.app_role exactcast;noouter/ONEwholeouterpair, existingwhitespacecollapseonly. No genericstrip/schema/cast/helper/role/OR/SELECTnormalization. Allremainingmetadata/fullunion/role/ACL/helperconditions unchanged.",
+    "Own3policyfailurepacket fixedqualification/type/admin/outer/SELECTbooleanclasses+length/SHA/type/index/fieldonly;no rawunknownSQL/body. QualifierMAINappendsAFTERunchangedphysical.failure_receipt. Actualwholemainnegativeprovessecrecy/persistence. All3localexecutedfilesGitbytesidentical44, hashreusemap/tmp/4890-gen46-unchanged-local-runtime-hashes.json/doc; no extraresource/localproof.",
+    "BOTHfullPython1704PASS46skips35.199s/32.258s(93subset),147Node/staticSQL/YAML51/truth388sites110sourcesfd6b11934eaa/compile/whitespace/nativeevidencePASS. Noresources/review/push/native/merge/prod aftermainintegration. RootfreshreviewONEFFadfc\u219246+ONEnative thenSTRICTconditionalready/guardedmergeONLYvalid374/currentCI/flagsinvestigated/rootadoption; no retries/bypass/prodapply."
+  ],
+  "stop_conditions_hit": []
+}

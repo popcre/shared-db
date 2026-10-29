@@ -30,11 +30,9 @@ concurrency:
 
 jobs:
   probe:
-    name: Any new ColdLion items? (three tiny GETs)
+    name: Any new ColdLion items? (two or three tiny GETs)
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
-    outputs:
-      trigger: ${{ steps.probe.outputs.trigger }}
     steps:
       - uses: actions/checkout@v4
 

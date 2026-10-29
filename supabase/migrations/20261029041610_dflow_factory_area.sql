@@ -1,4 +1,5 @@
 -- DesignFlow factory area, #4708 / claim #4749
+-- derived-from: 20260722004500
 -- Owner rulings (Albert Hazan): 2026-10-25 "a factory record needs a party type
 -- (factory vs trading company) and a link from a trading company to the
 -- factories it represents; blank represented-by means POP deals directly";
@@ -141,7 +142,7 @@ create trigger set_updated_at before update on core.factory_vendor_login
   for each row execute function app.set_updated_at();
 
 -- Merging two factories (DB Data Admin) must carry the new link rows, or the
--- loser's delete would cascade them away. Body is the live 20260727154500 one
+-- loser's delete would cascade them away. Body is 20260722004500's (matches live)
 -- plus the block marked #4708 (verified against production 2026-10-29).
 create or replace function core.merge_factory(p_loser uuid, p_survivor uuid, p_alias_loser_name boolean default true)
  returns void

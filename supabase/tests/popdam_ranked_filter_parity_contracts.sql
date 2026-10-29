@@ -7,8 +7,10 @@ begin
   select pg_get_functiondef('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)'::regprocedure) into v_search;
   select pg_get_functiondef('public.get_effective_filter_counts(jsonb)'::regprocedure) into v_counts;
   -- #4508 (20261029161104): the ranked search's per-asset parity predicates
-  -- moved into the inlinable helper dam_asset_matches_filters; the search body
-  -- itself must delegate BOTH pre-pagination consumers to that helper.
+  -- moved into the planner-opaque helper dam_asset_matches_filters (its
+  -- per-function SET search_path blocks SQL inlining, which is what keeps the
+  -- search's planning cost at ~14 ms instead of ~2.2 s); the search body must
+  -- delegate BOTH pre-pagination consumers to that helper.
   select pg_get_functiondef('public.dam_asset_matches_filters(public.assets, public.style_groups, jsonb, timestamptz)'::regprocedure) into v_helper;
 
   if position('customerId' in v_filter)=0 or position('a.customer_id' in v_filter)=0
@@ -67,6 +69,14 @@ begin
   end if;
   if position('get_effective_filter_counts_unchecked_1703' in v_counts)=0 or position('require_dam_access' in v_counts)=0 then
     raise exception 'effective counts do not share the parity filter and DAM gate';
+  end if;
+  if not exists (
+    select 1 from pg_proc
+    where oid = 'public.dam_asset_matches_filters(public.assets, public.style_groups, jsonb, timestamptz)'::regprocedure
+      and proconfig is not null
+      and exists (select 1 from unnest(proconfig) cfg where cfg like 'search_path=%')
+  ) then
+    raise exception 'predicate helper lost its per-function SET search_path: without it PostgreSQL inlines the predicate back into the search body and the ~2.2 s planning regression returns';
   end if;
   if has_function_privilege('anon','public.filter_effective_assets(jsonb)','EXECUTE')
      or has_function_privilege('anon','public.get_effective_filter_counts(jsonb)','EXECUTE')

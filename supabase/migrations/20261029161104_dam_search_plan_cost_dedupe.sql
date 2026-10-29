@@ -8,11 +8,18 @@
 --   that duplicated tree costs ~2.2 s per cold session (measured on production
 --   2026-10-29), which pushes DAM searches into the 8 s authenticated statement
 --   timeout and makes result sets flip between variants (PopDAM "spiderman coir").
---   dam_asset_matches_filters is a STABLE one-SELECT SQL function, so the planner
---   inlines it at both call sites. Measured effect (EXPLAIN, parse+plan only, no
---   execution): 2,256/2,076 ms before -> 14.7/13.5 ms after (PR #5036 transcript).
---   The bounded execution shapes (probe LIMIT 1001, page EXISTS early-out) and the
---   result set are preserved exactly (six-case production diff, identical rows).
+--   dam_asset_matches_filters is a STABLE one-SELECT SQL function that is
+--   DELIBERATELY OPAQUE to the planner: its per-function SET search_path blocks
+--   SQL-function inlining (#1945 rule), so the planner sees a single Function
+--   Scan node per call site instead of re-planning the ~20-condition correlated
+--   subtree twice. Measured effect (EXPLAIN, parse+plan only, no execution):
+--   2,256/2,076 ms before -> 14.7/13.5 ms after (PR #5036 transcript). Opacity
+--   costs nothing at execution here: both consumers feed it rows fetched by
+--   primary key, and the bounded shapes (probe LIMIT 1001, page EXISTS
+--   early-out) and result set are preserved exactly (six-case production
+--   diff, identical rows). The SET clause is load-bearing: removing it would
+--   re-inline the predicate and silently reintroduce the 2.2 s plan cost; the
+--   parity contract pins its presence on pg_proc.proconfig.
 --   Keyword leg, semantic legs, ranking, output columns, total_count / has_more /
 --   facets semantics and grants are unchanged.
 

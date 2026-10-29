@@ -6,11 +6,13 @@
   "migration_versions": [
     "20261029185457"
   ],
-  "contract_ref": "refs/db-contracts/5048/1",
-  "contract_sha256": "f2da2e7115fe301262e6c60d5609b911e9a4a5ed3a27e7e9e104a64fcead519c",
-  "head_sha": "04c9c2b06e7529c1cfb0484d70fe95239c3818e2",
+  "contract_ref": "refs/db-contracts/5048/2",
+  "contract_sha256": "63df804a8ab5a297e349281e1dd3c5ba47e65d547df39c7939b954777baf380b",
+  "head_sha": "46bec214f8bd3d316397ed8e8040a8a3551fbf10",
   "base_sha": "197bcda400dd0b6a70360520b19f416a4dcf80c9",
   "files_changed": [
+    ".agent/work/5048/1/completion.json",
+    ".agent/work/5048/1/contract.json",
     "supabase/migrations/20261029185457_master_data_autoflow_full_description.sql"
   ],
   "db_reads": [],
@@ -25,7 +27,7 @@
     }
   ],
   "assumptions_resolved": [
-    "Read-only production check: 39 auto-flow rows hold the untouched itemDisplayDesc where itemDesc differs."
+    "Read-only production check: 4,763 ColdLion-linked lines differ from the full ColdLion description."
   ],
   "stop_conditions_hit": []
 }

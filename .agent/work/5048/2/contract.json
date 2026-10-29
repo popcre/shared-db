@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
   "work_issue": 5048,
-  "generation": 1,
+  "generation": 2,
   "work_type": "structural",
   "route": "claim-first",
-  "goal": "Owner direction 2026-10-29 (\"MasterData is using the shorter Display Description for its description. change the to full description\"): public.sync_new_items_into_style_tracker pre-fills description from itemDesc before itemDisplayDesc, and untouched auto-flow rows are corrected (claim #5051, migration 20261029185457)",
+  "goal": "Owner direction 2026-10-29 (\"MasterData is using the shorter Display Description for its description. change the to full description\"): public.sync_new_items_into_style_tracker pre-fills description from itemDesc before itemDisplayDesc, and untouched auto-flow rows are corrected (claim #5051, migration 20261029185457); owner follow-up 2026-10-29: every ColdLion-linked line always carries the full ColdLion description (no local edits)",
   "base_sha": "197bcda400dd0b6a70360520b19f416a4dcf80c9",
   "dispatcher": "Claude Code session on hetz for owner Albert Hazan",
   "worker": "Same session (claim #5051 owner, Claude chat b7280b0b-8e13-484c-8608-fb3e64b46ef4 on hetz).",
@@ -12,13 +12,15 @@
   "worktree": "/worksp/shared-db-wt-fulldesc",
   "allowed_paths": [
     "supabase/migrations/20261029185457_master_data_autoflow_full_description.sql",
+    ".agent/work/5048/2/contract.json",
+    ".agent/work/5048/2/completion.json",
     ".agent/work/5048/1/contract.json",
     ".agent/work/5048/1/completion.json"
   ],
   "file_writes": [
     "supabase/migrations/20261029185457_master_data_autoflow_full_description.sql",
-    ".agent/work/5048/1/contract.json",
-    ".agent/work/5048/1/completion.json"
+    ".agent/work/5048/2/contract.json",
+    ".agent/work/5048/2/completion.json"
   ],
   "db_reads": [],
   "db_writes": [
@@ -32,10 +34,15 @@
     "bash scripts/check-sql.sh"
   ],
   "assumptions": [
-    "Disclosure: published after the implementation commit was pushed (PR #5052)."
+    "Disclosure: published after the implementation commit was pushed (PR #5052).",
+    "Generation 2 succeeds generation 1 for the owner's follow-up (description is never locally edited for ColdLion-linked lines)."
   ],
   "stop_conditions": [
     "Stop if claim #5051 reports a collision."
   ],
-  "evidence_parent": null
+  "evidence_parent": {
+    "work_issue": 5048,
+    "generation": 1,
+    "contract_sha256": "f2da2e7115fe301262e6c60d5609b911e9a4a5ed3a27e7e9e104a64fcead519c"
+  }
 }

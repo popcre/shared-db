@@ -30,10 +30,11 @@ test('plan reuses baseline/sidecar FIRST and every requested full test family wi
   assert.deepEqual(plan[0], { name: 'sidecars-and-baseline', command: 'node', args: ['scripts/check-production-verification-sidecars.mjs', '--base', base] });
   assert.deepEqual(plan[1].args, ['scripts/check-throughput-truth-audit.mjs']);
   const throughput = readdirSync(path.join(root, 'scripts/throughput-guard')).filter(n => n.endsWith('.test.mjs')).sort().map(n => `scripts/throughput-guard/${n}`);
-  assert.deepEqual(plan[2].args, ['--test', ...throughput]);
+  assert.deepEqual(plan[3].args, ['--test', ...throughput]);
+  assert.deepEqual(plan[2].args, ['--test', 'scripts/manage-migration-author-lanes.test.mjs', 'scripts/check-merge-queue-workflows.test.mjs', 'scripts/merge-queue-hold.test.mjs', 'scripts/acquire-merge-lane-waiting.test.mjs']);
   assert.ok(throughput.length > 1);
-  for (const file of ['rls-public-admin-initplan', 'rls-owner-uid-initplan', 'rls-style-guide-access-initplan', 'rls-packaging-access-initplan', 'check-live-proof-probe']) assert.ok(plan[3].args.includes(`scripts/${file}.test.mjs`));
-  assert.deepEqual(plan[4].args, ['-m', 'unittest', 'scripts.test_shared_db_live_proof', 'scripts.test_production_catalog_verification', 'scripts.test_rls_admin_catalog_recovery', 'scripts.test_production_catalog_recovery_evidence']);
+  for (const file of ['rls-public-admin-initplan', 'rls-owner-uid-initplan', 'rls-style-guide-access-initplan', 'rls-packaging-access-initplan', 'check-live-proof-probe']) assert.ok(plan[4].args.includes(`scripts/${file}.test.mjs`));
+  assert.deepEqual(plan[5].args, ['-m', 'unittest', 'scripts.test_shared_db_live_proof', 'scripts.test_production_catalog_verification', 'scripts.test_rls_admin_catalog_recovery', 'scripts.test_production_catalog_recovery_evidence']);
   assert.equal(plan.some(p => p.args.some(a => a.includes('*'))), false);
 });
 test('plan is deterministic and runs without installed identity or Python tools', () => {
@@ -41,7 +42,7 @@ test('plan is deterministic and runs without installed identity or Python tools'
   const result = spawnSync(process.execPath, [path.join(root, 'scripts/check-delivery-local.mjs'), '--plan', '--base', base], { cwd: root, env: { PATH: '', LANG: 'C.UTF-8' }, encoding: 'utf8', timeout: 2000 });
   assert.equal(result.status, 0, result.stderr);
   const plan = JSON.parse(result.stdout);
-  assert.equal(plan.commands.length, 5); assert.equal(plan.global_timeout_ms, TOTAL_MS);
+  assert.equal(plan.commands.length, 6); assert.equal(plan.global_timeout_ms, TOTAL_MS);
 });
 test('CLI refuses partial SHA, arbitrary refs and unknown flags', () => {
   assert.deepEqual(parseArgs([]), { base: 'origin/main', plan: false });
@@ -85,7 +86,7 @@ test('HEAD, source digest and dirty-tree mutation refuse even when every command
   for (const key of ['head', 'source_digest', 'working_tree_sha256']) {
     const h = harness({ mutate: value => { value[key] = 'f'.repeat(key === 'head' ? 40 : 64); } });
     await assert.rejects(runLocal(h.options), new RegExp(`source changed during local checks: ${key}`));
-    assert.equal(h.calls.length, 6); assert.equal(h.identities.length, 2);
+    assert.equal(h.calls.length, 7); assert.equal(h.identities.length, 2);
   }
 });
 test('missing installed native identity tool refuses before any guard; no alternate hash is generated', async () => {

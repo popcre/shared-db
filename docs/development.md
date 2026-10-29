@@ -38,7 +38,7 @@ Declare the task class first: `ai-task-gates start --class <class>`
 Run `node scripts/check-delivery-local.mjs --base <full-base-sha>` before paid
 review or a full performance qualification. `--plan` prints its exact existing
 CI guards without executing them. The offline run checks sidecars and pinned
-detector baseline first, then the truth audit, the complete throughput guard
+detector baseline first, then the truth audit, native merge-coordination/workflow tests, the complete throughput guard
 family, all four RLS families and the live-proof parser, and focused Python
 catalogue/proof tests. It stops at the first failure, at 60 seconds per step or
 180 seconds overall; it never retries, fetches, reviews, or accesses a database.

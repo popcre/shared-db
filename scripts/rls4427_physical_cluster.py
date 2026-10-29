@@ -772,8 +772,15 @@ class PhysicalCluster:
         import math
         if not isinstance(active_seconds,list) or len(active_seconds)!=34 or any(isinstance(v,bool) or not isinstance(v,(float,int)) or not math.isfinite(v) or v<=0 for v in active_seconds):
             raise RuntimeError('4427 physical measured active calibration cost invalid')
-        projected=340*max(active_seconds)*(60/35)+60
-        if projected>self.budget-(time.monotonic()-self.started):raise RuntimeError('4427 physical warmup-measured340-run cost exceeds remaining bound')
+        projected=10*sum(active_seconds)*(60/35)+60
+        elapsed=time.monotonic()-self.started
+        remaining=self.budget-elapsed
+        self.events.append(dict(warmup_cost_projection=True, active_seconds=list(active_seconds),
+            sum_active_seconds=sum(active_seconds), max_active_seconds=max(active_seconds),
+            repeats_per_warmup=10, remaining_trials=340, window_factor=60/35,
+            reserve_seconds=60, elapsed_wall_seconds=elapsed, remaining_budget_seconds=remaining,
+            projected_seconds=projected, admitted=projected<=remaining))
+        if projected>remaining:raise RuntimeError('4427 physical warmup-measured340-run cost exceeds remaining bound')
         return projected
 
     def close(self):

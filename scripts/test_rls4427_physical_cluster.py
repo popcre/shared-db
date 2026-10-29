@@ -562,6 +562,24 @@ class PhysicalControls(unittest.TestCase):
         p.started-=2050
         with self.assertRaisesRegex(RuntimeError,'remaining bound'):p.projected_matrix_check([1]*34)
 
+    def test_weighted_projection_counts_each_workload_ten_times_and_keeps_refusal_receipt(self):
+        p=m.PhysicalCluster(self.source())
+        costs=[1.0]*33+[4.0]
+        actual=p.projected_matrix_check(costs)
+        self.assertAlmostEqual(actual,10*sum(costs)*(60/35)+60)
+        self.assertLess(actual,340*max(costs)*(60/35)+60)
+        self.assertEqual(p.events[-1]['active_seconds'],costs)
+        self.assertTrue(p.events[-1]['admitted'])
+        self.assertAlmostEqual(p.projected_matrix_check([2.0]*34),340*2*(60/35)+60)
+        p.started-=2050
+        with self.assertRaisesRegex(RuntimeError,'remaining bound'):
+            p.projected_matrix_check(costs)
+        receipt=p.events[-1]
+        self.assertFalse(receipt['admitted'])
+        self.assertEqual(receipt['remaining_trials'],340)
+        self.assertEqual(receipt['active_seconds'],costs)
+        self.assertLess(receipt['remaining_budget_seconds'],50)
+
     def test_cleanup_survives_action_budget_expiry(self):
         p=m.PhysicalCluster(self.source());p.started=time.monotonic()-2200
         with self.assertRaises(RuntimeError):p.budget_check()

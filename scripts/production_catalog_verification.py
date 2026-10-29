@@ -1041,7 +1041,8 @@ def designflow_fk_contract(expected: tuple[tuple[str, str, str, str, str], ...])
 
 # Issue4867: exact installed4427 snapshot, composed only with the three
 # overlapping USING changes from merged4674 when its ledger version is present.
-# Retain the historical live-proof file unchanged. This fixed verifier-owned SQL
+# The native live-proof file matches this canonical contract after stripping
+# surrounding whitespace. This fixed verifier-owned SQL
 # is a catalog-only assertion, never live consumer acceptance or apply authority.
 RLS_PUBLIC_ADMIN_INSTALL_CONTRACT = r"""
 WITH original_expected_policies AS (

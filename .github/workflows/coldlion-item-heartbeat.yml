@@ -1,20 +1,23 @@
 name: ColdLion Item Heartbeat
 
-# #5011: the new-item heartbeat. Every 5 minutes, three tiny GETs (size=1) ask
-# ColdLion "any items created in the last 6 minutes?" plus two self-checks (a
-# future-dated filter must be empty, an old-dated one non-empty) that fail the
-# run LOUDLY if the vendor starts ignoring or silently rejecting the filter —
-# evidence for the format and semantics is recorded live on issue #5011
-# (2026-10-29; modifiedFrom provably serves createdFrom semantics, so it is
-# not used and item edits land at the anchors + nightly masters).
+# #5011: the new-item heartbeat. ONE tiny GET every 5 minutes asks ColdLion
+# for the single newest item (/items?sort=createdTime,desc&size=1) and
+# dispatches the existing item sweep when that item was created within the
+# window. Recorded live evidence on issue #5011 (2026-10-29): createdFrom is
+# DAY-TYPED (three instants across one day return identical counts) so a time
+# window cannot be built on it; sort=createdTime,desc works, is ECHOED by the
+# envelope (asserted — a vendor change fails loudly), and vendor createdTime is
+# America/New_York wall time (correlated with one-sweep-cycle landing times).
+# modifiedFrom serves createdFrom semantics, so item edits land at the three
+# anchor sweeps plus the nightly masters run (trade-off recorded on #5011).
 #
-# Load: ~864 tiny probes/day + on-demand full sweeps (measured 2-25 new items
-# per day, throttled to at most one sweep per 10 minutes) + 3 anchor sweeps.
-# The old schedule pulled the full /items list every 30 minutes (~100 paged
+# Load: ~288 tiny single-row GETs/day + on-demand full sweeps (throttled to at
+# most one per 10 minutes; measured 2-41 new items/day) + 3 anchor sweeps. The
+# old schedule pulled the full /items list every 30 minutes (~100 paged
 # requests × 48 ≈ 4,800 heavy requests/day); this is a large reduction at the
-# measured item rates, with new-item latency of ~6-10 minutes instead of up to
-# 30. Owner direction 2026-10-29: "i'd rather not wait 30 minutes if i don't
-# have to."
+# measured rates, with new-item latency of ~6-10 minutes instead of up to 30.
+# Owner direction 2026-10-29: "i'd rather not wait 30 minutes if i don't have
+# to."
 on:
   schedule:
     - cron: '*/5 * * * *'
@@ -30,7 +33,7 @@ concurrency:
 
 jobs:
   probe:
-    name: Any new ColdLion items? (two or three tiny GETs)
+    name: Any new ColdLion items? (one tiny GET)
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:

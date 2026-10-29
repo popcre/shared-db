@@ -64,7 +64,8 @@ function main(argv) {
     else if (own[i] === '--poll-seconds') opts.pollSeconds = Math.max(1, value)
     else { process.stderr.write(`unknown option ${own[i]}\n`); return 2 }
   }
-  const result = acquireMergeLaneWaiting(argv.slice(sep + 1), opts)
+  let result
+  try { result = acquireMergeLaneWaiting(argv.slice(sep + 1), opts) } catch (error) { process.stderr.write(`${error.message}\n`); return 2 }
   process.stdout.write(result.stdout)
   process.stderr.write(result.stderr)
   return result.status

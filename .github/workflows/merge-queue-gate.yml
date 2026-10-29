@@ -225,7 +225,8 @@ jobs:
     needs: verify
     if: github.event_name == 'merge_group' && success()
     runs-on: blacksmith-2vcpu-ubuntu-2404
-    timeout-minutes: 25
+    # 15 min bounded lane wait + 15 min hold-through-merge + setup.
+    timeout-minutes: 40
     permissions:
       contents: write
       issues: read # openClaims lists open issues; without it the listing returns only PRs and the interlock refuses every group
@@ -285,7 +286,10 @@ jobs:
           # acquireExclusive asserts head SHA against the live PR tip, not the
           # authorized implementation head. Pass the live tip here; authorization
           # and interlock reads below still bind to authorized_head.
-          node scripts/manage-migration-author-lanes.mjs --acquire-merge \
+          # Contention waits (bounded, 900 s): another PR's run holding the lane
+          # through its own mutation is retried every 15 s with a fresh, complete
+          # --acquire-merge; any other refusal still fails on the first attempt.
+          node scripts/acquire-merge-lane-waiting.mjs --wait-seconds 900 --poll-seconds 15 -- --acquire-merge \
             --owner "github-actions:${GITHUB_RUN_ID}" --pr "${{ steps.queue.outputs.pr }}" \
             --head-sha "${{ steps.queue.outputs.head }}" > "$RUNNER_TEMP/merge-lock.json"
           echo "owner_sha=$(jq -r .ownerSha "$RUNNER_TEMP/merge-lock.json")" >> "$GITHUB_OUTPUT"
@@ -326,7 +330,7 @@ jobs:
           # or the budget expires; fail-closed either way on the non-merge path.
           # The budget must outlast the slowest required merge-group check:
           # supabase/tests takes ~7 minutes, so 5 minutes ejected every group
-          # (#4729). 180 x 5 s is 15 minutes, inside the 25-minute job timeout.
+          # (#4729). 180 x 5 s is 15 minutes, inside the 40-minute job timeout.
           for attempt in $(seq 1 180); do
             state="$(node scripts/gh-read.mjs pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state --jq .state)"
             if [ "$state" = 'MERGED' ]; then

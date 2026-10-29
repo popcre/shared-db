@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "work_issue": 5048,
+  "outcome": "ready-for-merge",
+  "pr": 5052,
+  "migration_versions": [
+    "20261029185457"
+  ],
+  "contract_ref": "refs/db-contracts/5048/1",
+  "contract_sha256": "f2da2e7115fe301262e6c60d5609b911e9a4a5ed3a27e7e9e104a64fcead519c",
+  "head_sha": "04c9c2b06e7529c1cfb0484d70fe95239c3818e2",
+  "base_sha": "197bcda400dd0b6a70360520b19f416a4dcf80c9",
+  "files_changed": [
+    "supabase/migrations/20261029185457_master_data_autoflow_full_description.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "function public.sync_new_items_into_style_tracker"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed."
+    }
+  ],
+  "assumptions_resolved": [
+    "Read-only production check: 39 auto-flow rows hold the untouched itemDisplayDesc where itemDesc differs."
+  ],
+  "stop_conditions_hit": []
+}

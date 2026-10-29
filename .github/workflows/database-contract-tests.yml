@@ -72,6 +72,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      qualify_rls4427:
+        description: 'Run the fixed #4427 synthetic actual-table qualification once'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -201,7 +207,7 @@ jobs:
     needs: classify
     if: ${{ always() }}
     runs-on: blacksmith-2vcpu-ubuntu-2404
-    timeout-minutes: 45
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.qualify_rls4427 == true && 60 || 45 }}
     steps:
       - name: Refuse an unreadable applicability decision
         if: needs.classify.result != 'success'
@@ -723,6 +729,8 @@ jobs:
         if: needs.classify.outputs.database_contract_tests == 'applicable'
         id: run
         env:
+          # Heavy #4427 qualification is a separately reviewed manual opt-in only.
+          RLS4427_QUALIFICATION: ${{ github.event_name == 'workflow_dispatch' && inputs.qualify_rls4427 == true && '1' || '0' }}
           # The local stack's fixed superuser connection. This is the Supabase CLI's
           # documented default for a throwaway local database; it is not a secret and
           # it reaches nothing outside this runner.
@@ -735,6 +743,15 @@ jobs:
           set -uo pipefail
           shopt -s nullglob
           FILES=(supabase/tests/*.sql)
+          # Full-cluster qualification observes a quiescent source only after
+          # every ordinary contract. It remains explicitly manual/default-off.
+          QUALIFIER=supabase/tests/rls_public_admin_actual_table_performance.sql
+          ORDERED=()
+          for contract_file in "${FILES[@]}"; do
+            [ "$contract_file" = "$QUALIFIER" ] || ORDERED+=("$contract_file")
+          done
+          if [ -f "$QUALIFIER" ]; then ORDERED+=("$QUALIFIER"); fi
+          FILES=("${ORDERED[@]}")
           if [ "${#FILES[@]}" -eq 0 ]; then
             echo "::error::No supabase/tests/*.sql found -- the glob or the checkout is wrong." >&2
             exit 1

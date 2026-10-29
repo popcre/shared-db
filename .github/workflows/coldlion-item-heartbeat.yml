@@ -1,0 +1,65 @@
+name: ColdLion Item Heartbeat
+
+# #5011: the new-item heartbeat. Every 5 minutes, ONE filtered GET asks
+# ColdLion "any items created since 15 minutes ago?" (~288 tiny requests/day).
+# Only when the answer is yes does it dispatch the existing ColdLion Item Sweep
+# (full /items pull + new-item detail delta + import + Master Data auto-flow).
+# This replaces the old 30-minute full sweep (~100 paged requests × 48 = ~4,800
+# requests/day) with three fixed anchor runs plus on-demand sweeps — roughly a
+# quarter of the API load, and a new item reaches Master Data within ~10 minutes
+# instead of up to 30. Owner direction 2026-10-29: "i'd rather not wait 30
+# minutes if i don't have to."
+#
+# The probe fails loudly (exit 1) if createdFrom appears ignored — a response
+# the size of the whole item master is never a real 15-minute delta — so a
+# vendor-side filter defect cannot silently hammer the API.
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: coldlion-item-heartbeat
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: Any new ColdLion items? (one filtered GET)
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    outputs:
+      trigger: ${{ steps.probe.outputs.trigger }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run the heartbeat probe's offline tests first
+        run: node --test tools/coldlion-item-heartbeat.test.mjs
+
+      - name: Probe ColdLion for items created since the window
+        id: probe
+        env:
+          COLDLION_API_KEY: ${{ secrets.COLDLION_API_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "${COLDLION_API_KEY:-}" ] || { echo "::error::COLDLION_API_KEY is not set."; exit 1; }
+          OUT="$(node tools/coldlion-item-heartbeat.mjs)"
+          echo "$OUT"
+          if printf '%s' "$OUT" | jq -e '.outcome == "trigger"' >/dev/null; then
+            echo "trigger=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "trigger=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dispatch the item sweep on new items
+        if: steps.probe.outputs.trigger == 'yes'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run coldlion-item-sweep.yml --ref main

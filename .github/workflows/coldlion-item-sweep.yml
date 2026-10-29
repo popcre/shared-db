@@ -7,7 +7,11 @@ name: ColdLion Item Sweep
 # whole step measured 80 s live on 2026-10-02 inside the nightly; #4974 adds a
 # bounded new-item detail delta — at most 20 per-item /itemDetails GETs of 10 s
 # each inside a 4-minute deadline, so the step stays minutes below its ceiling), every 30
-# minutes at 05/35 past, off the hour. The heavy landing pipeline (masters,
+# minutes at 05/35 past, off the hour — REPLACED (#5011) by three fixed anchor
+# runs (12:00/17:00/23:00 UTC = 8 AM/1 PM/7 PM New York in winter, an hour
+# earlier during DST) plus on-demand runs dispatched by the 5-minute new-item
+# heartbeat (coldlion-item-heartbeat.yml), which triggers this sweep the moment
+# ColdLion reports a created item. The heavy landing pipeline (masters,
 # prepack ~43 min, prod-detail ~63 min, ~118 min worst case) stays on its daily
 # 05:20 UTC schedule in coldlion-landing-sync.yml — this workflow must never
 # grow those steps. With the Master Data live auto-flow (#4941 in the same PR),
@@ -15,7 +19,8 @@ name: ColdLion Item Sweep
 # one sweep cycle.
 on:
   schedule:
-    - cron: '5,35 * * * *'
+    # 8 AM / 1 PM / 7 PM America/New_York in winter (an hour earlier in DST).
+    - cron: '0 12,17,23 * * *'
   workflow_dispatch:
     inputs:
       dry_run:

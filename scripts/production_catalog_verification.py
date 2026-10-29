@@ -4609,8 +4609,8 @@ CATEGORY_DFLOW_SAMPLE_QUANTITY_STATE = """
 CATALOG_CONTRACTS["dflow_sample_quantity_state_v1"] = CATEGORY_DFLOW_SAMPLE_QUANTITY_STATE
 
 
-# Durable catalog outcome of the conditioned DO block in migration
-# 20261029043759 (issue #5020, Core Product Type): exactly one arm's four
+# Durable catalog outcome of migration 20261029054455 (issue #5020,
+# Core Product Type): exactly one arm's four
 # product-description tables and four indexes exist. The sandbox project
 # (xupnyeifmpsacrqahwwm) carries only schema dflow; the production project
 # (qsllyeztdwjgirsysgai) carries dflow_prod plus a STALE dflow schema that the
@@ -4663,15 +4663,21 @@ CATEGORY_DFLOW_PRODUCT_DESCRIPTION_TRIGGERS = """
 CATALOG_CONTRACTS["dflow_product_description_triggers_v1"] = CATEGORY_DFLOW_PRODUCT_DESCRIPTION_TRIGGERS
 
 # Same migration, grants: the sandbox arm is owner-only (postgres admin, no
-# grant roles exist there); the production arm grants the item-master grants
-# role all four verbs on both live tables and INSERT on both history tables.
+# grant roles exist there); the production arm — discriminated from the
+# sandbox arm exactly like its sibling contracts — grants the item-master
+# grants role all four verbs on both live tables and INSERT on both history
+# tables. The role-existence guard keeps the probe from raising instead of
+# failing cleanly if the role were missing.
 CATEGORY_DFLOW_PRODUCT_DESCRIPTION_GRANTS = """
-  (to_regclass('dflow.item_product_description') is not null
-   or (to_regclass('dflow_prod.item_product_description') is not null
-    and has_table_privilege('designflow_prod_item_master_grants', 'dflow_prod.item_product_description', 'SELECT, INSERT, UPDATE, DELETE')
-    and has_table_privilege('designflow_prod_item_master_grants', 'dflow_prod.mg_combination_description', 'SELECT, INSERT, UPDATE, DELETE')
-    and has_table_privilege('designflow_prod_item_master_grants', 'dflow_prod.item_product_description_history', 'INSERT')
-    and has_table_privilege('designflow_prod_item_master_grants', 'dflow_prod.mg_combination_description_history', 'INSERT')))
+  ((to_regclass('dflow.mg_combination_description') is not null
+     and to_regclass('dflow_prod.mg_combination_description') is null)
+   or (to_regclass('dflow_prod.mg_combination_description') is not null
+     and to_regclass('dflow.mg_combination_description') is null
+     and exists (select 1 from pg_roles where rolname = 'designflow_prod_item_master_grants')
+     and has_table_privilege('designflow_prod_item_master_grants', 'dflow_prod.item_product_description', 'SELECT, INSERT, UPDATE, DELETE')
+     and has_table_privilege('designflow_prod_item_master_grants', 'dflow_prod.mg_combination_description', 'SELECT, INSERT, UPDATE, DELETE')
+     and has_table_privilege('designflow_prod_item_master_grants', 'dflow_prod.item_product_description_history', 'INSERT')
+     and has_table_privilege('designflow_prod_item_master_grants', 'dflow_prod.mg_combination_description_history', 'INSERT')))
 """
 CATALOG_CONTRACTS["dflow_product_description_grants_v1"] = CATEGORY_DFLOW_PRODUCT_DESCRIPTION_GRANTS
 

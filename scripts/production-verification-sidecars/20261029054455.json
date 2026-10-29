@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "migration_version": "20261029054455",
-  "migration_sha256": "37f9ac25021e0bd18f066c5aa34f91893410cbc41d235bb10fb4295b09331b45",
+  "migration_sha256": "3cfc4c0f1042c752758f18219c402690948dfdc540ac0106648bb5d46cab6963",
   "checks": [
     {
       "id": "dflow_pd_tables",
@@ -25,10 +25,10 @@
   "marker_schema_version": 1,
   "marker_reviews": [
     {
-      "line_start": 125,
-      "line_end": 125,
+      "line_start": 130,
+      "line_end": 130,
       "disposition": "no_durable_target",
-      "reason": "Inner EXECUTE inside the audit trigger function body: runtime history-row insertion performed by the trigger, not a catalog object; no post-apply catalog probe can or should assert it. Behavior is proven by the BEGIN-ROLLBACK trigger test on the sandbox database at apply time, and every static DDL statement around it is asserted by the three cited contracts."
+      "reason": "Inner EXECUTE inside the audit trigger function body: runtime history-row insertion performed by the trigger, not a catalog object; no post-apply catalog probe can or should assert it. Its behavior is exercised by the committed supabase/tests/dflow_product_description_contracts.sql contract test (self-contained fixtures, one transaction, ROLLBACK) and re-proven read-only on the sandbox database at apply time."
     }
   ]
 }

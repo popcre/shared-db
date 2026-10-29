@@ -12,8 +12,13 @@
 -- everywhere." So every run (nightly and on import) also re-asserts the full
 -- ColdLion description on EVERY ColdLion-linked line, overwriting local edits,
 -- and this migration does it once now (~4.8k lines on production at authoring
--- time). Prior values stay in the style tracker audit log. Unlinked lines are
--- untouched. The PopDAM page locks the column for linked lines.
+-- time). The style tracker audit log does not cover description, so the first
+-- overwritten local value is kept in row_data.pre_coldlion_description for
+-- recovery. Lines whose ColdLion item has no description at all are left as
+-- they are. These are system writes: the audit-fields trigger stamps
+-- updated_at and sets updated_by to the caller (null for cron), exactly as the
+-- existing nightly bridge refresh does. Unlinked lines are untouched. The
+-- PopDAM page locks the column for linked lines.
 
 -- derived-from: 20261028183729
 
@@ -224,7 +229,11 @@ begin
   -- #5058: a ColdLion-linked line's description is ColdLion's full description,
   -- never a local edit. Re-assert it every run so ColdLion changes flow in.
   update public.style_tracker_rows r
-       set description = src.full_desc
+       set description = src.full_desc,
+           row_data = case
+             when r.description is null or r.row_data ? 'pre_coldlion_description' then r.row_data
+             else coalesce(r.row_data, '{}'::jsonb) || jsonb_build_object('pre_coldlion_description', r.description)
+           end
       from (
         select b.style_tracker_row_id,
                coalesce(nullif(i.raw ->> 'itemDesc', ''), nullif(i.raw ->> 'itemDisplayDesc', ''), nullif(i.description, '')) as full_desc
@@ -247,7 +256,11 @@ grant execute on function public.sync_new_items_into_style_tracker(boolean, time
 
 -- One-time: bring every ColdLion-linked line to the full description now.
 update public.style_tracker_rows r
-   set description = src.full_desc
+   set description = src.full_desc,
+       row_data = case
+         when r.description is null or r.row_data ? 'pre_coldlion_description' then r.row_data
+         else coalesce(r.row_data, '{}'::jsonb) || jsonb_build_object('pre_coldlion_description', r.description)
+       end
   from (
     select b.style_tracker_row_id,
            coalesce(nullif(i.raw ->> 'itemDesc', ''), nullif(i.raw ->> 'itemDisplayDesc', ''), nullif(i.description, '')) as full_desc
@@ -261,16 +274,98 @@ update public.style_tracker_rows r
 
 do $verify$
 declare
-  v_src text;
+  v_fn record;
+  v_job cron.job%rowtype;
+  v_fnsrc text;
 begin
-  select prosrc into v_src from pg_proc
+  -- #5058: everything the parent (#4974) asserted, then this change's own checks.
+  -- Dependencies CREATE FUNCTION does not validate: fail at migration time, not at the
+  -- 05:50 cron run (governed review round 1, medium finding).
+  if not exists (select 1 from pg_attribute
+                  where attrelid = 'plm.item'::regclass and attname = 'style_number'
+                     and not attisdropped)
+     or not exists (select 1 from pg_attribute
+                     where attrelid = 'plm.item'::regclass and attname = 'item_number'
+                        and not attisdropped)
+     or not exists (select 1 from pg_attribute
+                     where attrelid = 'plm.item'::regclass and attname = 'created_at'
+                        and not attisdropped) then
+    raise exception '#4909: plm.item is missing style_number/item_number/created_at';
+  end if;
+  if to_regprocedure('plm.refresh_style_tracker_item_bridge()') is null
+     or pg_get_function_result('plm.refresh_style_tracker_item_bridge()'::regprocedure)
+        <> 'TABLE(inserted_count integer, updated_count integer, total_count integer)' then
+    raise exception '#4909: plm.refresh_style_tracker_item_bridge() is missing or reshaped';
+  end if;
+  if not exists (select 1 from pg_attribute
+                  where attrelid = 'plm.style_tracker_item_bridge'::regclass
+                    and attname = 'plm_item_id' and not attisdropped) then
+    raise exception '#4909: plm.style_tracker_item_bridge is missing plm_item_id';
+  end if;
+
+  -- #4956: the assortment evidence table must carry the columns the skip reads.
+  if not exists (select 1 from pg_attribute
+                  where attrelid = 'coldlion.item_detail'::regclass and attname = 'pre_pack_code'
+                     and not attisdropped)
+     or not exists (select 1 from pg_attribute
+                     where attrelid = 'coldlion.item_detail'::regclass and attname = 'fetched_at'
+                        and not attisdropped)
+     or not exists (select 1 from pg_attribute
+                     where attrelid = 'coldlion.item_detail'::regclass and attname = 'company_code'
+                        and not attisdropped)
+     or not exists (select 1 from pg_attribute
+                     where attrelid = 'coldlion.item_detail'::regclass and attname = 'division_code'
+                        and not attisdropped)
+     or not exists (select 1 from pg_attribute
+                     where attrelid = 'coldlion.item_detail'::regclass and attname = 'item_no'
+                        and not attisdropped) then
+    raise exception '#4956: coldlion.item_detail is missing the assortment-marker columns';
+  end if;
+
+  if to_regprocedure('public.sync_new_items_into_style_tracker(boolean)') is not null then
+    raise exception '#4974: the shadowed (boolean) overload must not survive this migration';
+  end if;
+
+  select prosecdef, proconfig, proacl, prosrc into v_fn from pg_proc
    where oid = 'public.sync_new_items_into_style_tracker(boolean, timestamptz)'::regprocedure;
-  if position($q$coalesce(nullif(i.raw ->> 'itemDesc', ''), nullif(i.raw ->> 'itemDisplayDesc', '')$q$ in v_src) = 0
-     or position($q$coalesce(nullif(i.raw ->> 'itemDisplayDesc', ''), nullif(i.raw ->> 'itemDesc', '')$q$ in v_src) > 0 then
+  if not v_fn.prosecdef
+     or v_fn.proconfig is distinct from array['search_path=public, plm, pg_catalog'] then
+    raise exception '#4909: sync_new_items_into_style_tracker lost SECURITY DEFINER or search_path';
+  end if;
+  if (select array_agg(format('%s:%s', coalesce(nullif(a.grantee::regrole::text, '-'), 'PUBLIC'), a.privilege_type) order by 1)
+        from aclexplode(v_fn.proacl) a)
+     is distinct from array['postgres:EXECUTE', 'service_role:EXECUTE'] then
+    raise exception '#4909: execute ACL changed: %', v_fn.proacl;
+  end if;
+
+  -- #4956: the shipped body really carries the assortment skip halves.
+  v_fnsrc := v_fn.prosrc;
+  if position('pre_pack_code' in v_fnsrc) = 0
+     or position('v_masters_fetched_at' in v_fnsrc) = 0
+     or position('p_cutoff' in v_fnsrc) = 0 then
+    raise exception '#4956/#4974: the assortment skip or cutoff parameter is absent from the function body';
+  end if;
+
+  select * into v_job from cron.job where jobname = 'nightly-style-tracker-item-autoflow';
+  if v_job.jobid is null or v_job.schedule is distinct from '50 5 * * *'
+     or position('sync_new_items_into_style_tracker' in v_job.command) = 0 then
+    raise exception '#4909: cron job nightly-style-tracker-item-autoflow is not registered as expected';
+  end if;
+  -- #5058: columns the re-assert reads and writes.
+  if not exists (select 1 from pg_attribute where attrelid = 'plm.item'::regclass and attname = 'raw' and not attisdropped)
+     or not exists (select 1 from pg_attribute where attrelid = 'plm.item'::regclass and attname = 'source_system' and not attisdropped)
+     or not exists (select 1 from pg_attribute where attrelid = 'plm.item'::regclass and attname = 'description' and not attisdropped)
+     or not exists (select 1 from pg_attribute where attrelid = 'plm.style_tracker_item_bridge'::regclass and attname = 'style_tracker_row_id' and not attisdropped)
+     or not exists (select 1 from pg_attribute where attrelid = 'public.style_tracker_rows'::regclass and attname = 'row_data' and not attisdropped) then
+    raise exception '#5058: a column the description re-assert depends on is missing';
+  end if;
+  if position($q$coalesce(nullif(i.raw ->> 'itemDesc', ''), nullif(i.raw ->> 'itemDisplayDesc', '')$q$ in v_fnsrc) = 0
+     or position($q$coalesce(nullif(i.raw ->> 'itemDisplayDesc', ''), nullif(i.raw ->> 'itemDesc', '')$q$ in v_fnsrc) > 0 then
     raise exception '#5058: description pre-fill does not prefer itemDesc';
   end if;
-  if position('pre_pack_code' in v_src) = 0 or position('p_cutoff' in v_src) = 0 then
-    raise exception '#5058: re-derived body lost the assortment skip or cutoff';
+  if position('pre_coldlion_description' in v_fnsrc) = 0
+     or position('set description = src.full_desc' in v_fnsrc) = 0 then
+    raise exception '#5058: the function body lacks the ColdLion description re-assert';
   end if;
 end
 $verify$;

@@ -63,14 +63,21 @@ def process_input(stream):
     return {'stdin':stream}
 
 
-def capture_external(stderr,tool,code,phase):
+def capture_external(stderr,tool,code,phase,stdout=None):
     """Raw external diagnostics stay0600 outside cleanup's config/PGDATA trees."""
     raw=stderr if isinstance(stderr,bytes) else (stderr or '').encode(errors='replace')
     fd,path=tempfile.mkstemp(prefix='rls4427-private-external-',suffix='.stderr')
     with os.fdopen(fd,'wb') as out:out.write(raw)
     found=re.search(rb'(?:ERROR|FATAL):\s+([A-Z0-9]{5})(?::|\s|$)',raw)
-    return dict(phase=phase,tool=tool,exit_code=code,sqlstate=found[1].decode() if found else None,
+    receipt=dict(phase=phase,tool=tool,exit_code=code,sqlstate=found[1].decode() if found else None,
                 private_stderr_path=path,private_stderr_sha256=hashlib.sha256(raw).hexdigest())
+    if stdout is not None:
+        output=stdout if isinstance(stdout,bytes) else stdout.encode(errors='replace')
+        fd,output_path=tempfile.mkstemp(prefix='rls4427-private-external-',suffix='.stdout')
+        with os.fdopen(fd,'wb') as out:out.write(output[:65536])
+        receipt.update(private_stdout_path=output_path,private_stdout_sha256=hashlib.sha256(output).hexdigest(),
+                       stdout_bytes=len(output),stdout_retained_bytes=min(len(output),65536))
+    return receipt
 
 
 def failure_receipt(error,phase,events):
@@ -81,7 +88,7 @@ def failure_receipt(error,phase,events):
     if getattr(error,'physical_external',None):result['physical_external']=dict(error.physical_external)
     if isinstance(error,subprocess.CalledProcessError):
         tool=Path(error.cmd[0]).name if isinstance(error.cmd,list) and error.cmd else 'external'
-        result['external']=capture_external(error.stderr,tool,error.returncode,phase)
+        result['external']=capture_external(error.stderr,tool,error.returncode,phase,error.output)
     return result
 
 
@@ -505,7 +512,7 @@ class PhysicalCluster:
         r=subprocess.run(['/usr/bin/docker','--host','unix:///var/run/docker.sock','--config',str(self.root/'docker-config'),*args],
             env=self.env,**process_input(input_file),stdout=output_file or subprocess.PIPE,stderr=subprocess.PIPE,timeout=20 if self.cleanup_mode else 120)
         if r.returncode and not allowed_failure:
-            self.last_external_failure=capture_external(r.stderr,args[0],r.returncode,self.phase)
+            self.last_external_failure=capture_external(r.stderr,args[0],r.returncode,self.phase,r.stdout if output_file is None else None)
             error=RuntimeError('4427 owned physical operation failed: '+args[0])
             error.physical_external=dict(self.last_external_failure)
             raise error
@@ -521,7 +528,7 @@ class PhysicalCluster:
         if (row['Id']!=self.cid or row['Name']!='/'+self.name or row['Image']!=self.image_id or row['Config'].get('Labels')!=self.target_labels
             or row['Config'].get('User')!='100:101' or row['Config'].get('Entrypoint')!=['/bin/sleep'] or row['Config'].get('Cmd')!=['infinity']
             or h.get('NetworkMode')!='none' or h.get('Privileged') is not False or h.get('ReadonlyRootfs') is not True or h.get('Binds')
-            or h.get('Memory')!=2147483648 or h.get('NanoCpus')!=1000000000 or h.get('PidsLimit')!=256
+            or h.get('Init') is not True or h.get('Memory')!=2147483648 or h.get('NanoCpus')!=1000000000 or h.get('PidsLimit')!=256
             or h.get('Devices') or h.get('CapAdd') or h.get('PidMode','') or h.get('PortBindings')
             or h.get('Tmpfs',{})!=TMPFS or any(m.get('Type')!='tmpfs' or m.get('Destination') not in expected_tmpfs for m in row.get('Mounts',[]))
             or set(n.get('Networks',{}))!={'none'} or any(n.get('Ports',{}).values()) or not (running or stopped)):
@@ -562,7 +569,7 @@ class PhysicalCluster:
         import io
         r=self.target(['psql','-XqAtw','-h','127.0.0.1','-p','5432','-U',role,'-d','postgres','-v','ON_ERROR_STOP=1','-v','VERBOSITY=sqlstate'],input_file=io.BytesIO(query.encode()),allowed_failure=True)
         if r.returncode:
-            self.last_external_failure=capture_external(r.stderr,'psql',r.returncode,self.phase)
+            self.last_external_failure=capture_external(r.stderr,'psql',r.returncode,self.phase,r.stdout)
             raise subprocess.CalledProcessError(r.returncode,['psql'],output=r.stdout.decode(),stderr=r.stderr.decode())
         return r.stdout.decode()
 
@@ -609,7 +616,7 @@ class PhysicalCluster:
             image=json.loads(self.docker('image','inspect',self.image_id).stdout)
             if len(image)!=1 or image[0]['Id']!=self.image_id:raise RuntimeError('4427 physical cached source image differs')
             self.target_labels={**(image[0].get('Config',{}).get('Labels') or {}),**self.labels}
-            args=['run','--detach','--pull=never','--name',self.name,'--network','none','--read-only','--user','100:101','--memory','2g','--cpus','1','--pids-limit','256','--entrypoint','/bin/sleep']
+            args=['run','--detach','--init','--pull=never','--name',self.name,'--network','none','--read-only','--user','100:101','--memory','2g','--cpus','1','--pids-limit','256','--entrypoint','/bin/sleep']
             for path,options in TMPFS.items():args+=['--tmpfs',path+':'+options]
             for k,v in self.labels.items():args+=['--label',k+'='+v]
             self.phase='target-create'

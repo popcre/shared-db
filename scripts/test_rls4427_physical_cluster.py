@@ -488,11 +488,11 @@ class PhysicalControls(unittest.TestCase):
         import subprocess
         p=m.PhysicalCluster(self.source());p.cid='a'*64;p.image_id='sha256:'+'b'*64;p.target_labels=dict(p.labels)
         row=dict(Id=p.cid,Name='/'+p.name,Image=p.image_id,Config=dict(Labels=p.target_labels,User='100:101',Entrypoint=['/bin/sleep'],Cmd=['infinity']),
-            State=dict(Running=True),HostConfig=dict(NetworkMode='none',Privileged=False,ReadonlyRootfs=True,Memory=2147483648,NanoCpus=1000000000,PidsLimit=256,Tmpfs=dict(m.TMPFS)),
+            State=dict(Running=True),HostConfig=dict(Init=True,NetworkMode='none',Privileged=False,ReadonlyRootfs=True,Memory=2147483648,NanoCpus=1000000000,PidsLimit=256,Tmpfs=dict(m.TMPFS)),
             NetworkSettings=dict(Networks={'none':{}},Ports={}),Mounts=[])
         def result(value):return subprocess.CompletedProcess([],0,stdout=json.dumps([value]).encode(),stderr=b'')
         with patch.object(p,'docker',return_value=result(row)):p.custody()
-        for section,key,value in [('Config','User','0'),('Config','Labels',{}),('HostConfig','Memory',4294967296),('HostConfig','PidsLimit',512),
+        for section,key,value in [('Config','User','0'),('Config','Labels',{}),('HostConfig','Init',False),('HostConfig','Memory',4294967296),('HostConfig','PidsLimit',512),
             ('HostConfig','NetworkMode','bridge'),('HostConfig','Binds',['/host:/target']),('HostConfig','ReadonlyRootfs',False),
             ('HostConfig','Tmpfs',{**m.TMPFS,m.DATA:m.TMPFS[m.DATA].replace('4294967296','8589934592')}),
             ('NetworkSettings','Ports',{'5432/tcp':[{'HostPort':'5432'}]})]:
@@ -504,7 +504,7 @@ class PhysicalControls(unittest.TestCase):
         for foreign in (False,True):
             p=m.PhysicalCluster(self.source());p.cid='a'*64;p.running=True;p.image_id='sha256:'+'b'*64;p.target_labels=dict(p.labels)
             row=dict(Id='b'*64 if foreign else p.cid,Name='/'+p.name,Image=p.image_id,Config=dict(Labels=p.target_labels,User='100:101',Entrypoint=['/bin/sleep'],Cmd=['infinity']),
-                State=dict(Running=False,Status='exited',OOMKilled=True),HostConfig=dict(NetworkMode='none',Privileged=False,ReadonlyRootfs=True,Memory=2147483648,NanoCpus=1000000000,PidsLimit=256,Tmpfs=dict(m.TMPFS)),
+                State=dict(Running=False,Status='exited',OOMKilled=True),HostConfig=dict(Init=True,NetworkMode='none',Privileged=False,ReadonlyRootfs=True,Memory=2147483648,NanoCpus=1000000000,PidsLimit=256,Tmpfs=dict(m.TMPFS)),
                 NetworkSettings=dict(Networks={'none':{}},Ports={}),Mounts=[])
             operations=[]
             def docker(*args,**kwargs):
@@ -579,6 +579,38 @@ class PhysicalControls(unittest.TestCase):
         self.assertEqual(receipt['remaining_trials'],340)
         self.assertEqual(receipt['active_seconds'],costs)
         self.assertLess(receipt['remaining_budget_seconds'],50)
+
+    def test_failed_stdout_is_private_bounded_and_full_digest_only_public(self):
+        import hashlib,stat
+        secret=b'private-output-secret'
+        raw=secret+b'x'*70000
+        receipt=m.capture_external(b'','psql',128,'target-trial',raw)
+        try:
+            retained=Path(receipt['private_stdout_path']).read_bytes()
+            self.assertEqual(retained,raw[:65536])
+            self.assertEqual(receipt['stdout_bytes'],len(raw))
+            self.assertEqual(receipt['private_stdout_sha256'],hashlib.sha256(raw).hexdigest())
+            self.assertEqual(stat.S_IMODE(Path(receipt['private_stdout_path']).stat().st_mode),0o600)
+            self.assertNotIn(secret.decode(),json.dumps(receipt))
+        finally:
+            Path(receipt['private_stdout_path']).unlink()
+            Path(receipt['private_stderr_path']).unlink()
+
+    def test_docker_failure_keeps_private_stdout_receipt(self):
+        import subprocess
+        p=m.PhysicalCluster(self.source());p.root=Path('/tmp/fixed-owned-test')
+        result=subprocess.CompletedProcess([],128,stdout=b'private-runtime-cause',stderr=b'')
+        with patch.object(m.subprocess,'run',return_value=result):
+            with self.assertRaisesRegex(RuntimeError,'owned physical operation failed') as caught:
+                p.docker('exec','fixed-owned-id','psql')
+        receipt=m.failure_receipt(caught.exception,'target-trial',[])
+        external=receipt['physical_external']
+        try:
+            self.assertEqual(Path(external['private_stdout_path']).read_bytes(),result.stdout)
+            self.assertNotIn('private-runtime-cause',json.dumps(receipt))
+        finally:
+            Path(external['private_stdout_path']).unlink()
+            Path(external['private_stderr_path']).unlink()
 
     def test_cleanup_survives_action_budget_expiry(self):
         p=m.PhysicalCluster(self.source());p.started=time.monotonic()-2200

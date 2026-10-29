@@ -205,6 +205,12 @@ begin
     raise exception 'This line no longer exists — refresh the list.' using errcode = 'P0002';
   end if;
   select * into v_order from plm.production_order where id = v_line.production_order_id;
+  -- Only a line that really carries a ColdLion line can be reconciled:
+  -- coldlion_values alone is metadata a user could have written.
+  if not exists (select 1 from plm.production_order_line_source_ref r
+                  where r.production_order_line_id = p_line and r.source_system = 'coldlion') then
+    raise exception 'This line has no ColdLion line, so there is nothing to reconcile.' using errcode = '22023';
+  end if;
   v_cl := v_line.metadata -> 'coldlion_values';
   v_stamp := jsonb_build_object('by', v_actor, 'at', now());
 

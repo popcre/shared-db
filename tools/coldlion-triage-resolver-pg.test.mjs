@@ -56,6 +56,10 @@ insert into plm.production_order_line (id, production_order_id, sku, quantity_or
 insert into plm.production_order_line_source_ref (production_order_line_id, source_system, source_id) values
   ('00000000-0000-0000-0000-000000000011', 'google_order_list', 'g11'),
   ('00000000-0000-0000-0000-000000000011', 'coldlion', 'coldlion:so:1:line:1:component:1'),
+  ('00000000-0000-0000-0000-000000000012', 'coldlion', 'coldlion:so:1:line:2:component:1'),
+  ('00000000-0000-0000-0000-000000000013', 'coldlion', 'coldlion:so:1:line:3:component:1'),
+  ('00000000-0000-0000-0000-000000000014', 'coldlion', 'coldlion:so:1:line:4:component:1'),
+  ('00000000-0000-0000-0000-000000000015', 'coldlion', 'coldlion:so:1:line:5:component:1'),
   ('00000000-0000-0000-0000-000000000021', 'google_order_list', 'g21'),
   ('00000000-0000-0000-0000-000000000022', 'google_order_list', 'g22'),
   ('00000000-0000-0000-0000-000000000031', 'coldlion', 'coldlion:so:7000001:line:1:component:1'),
@@ -108,6 +112,12 @@ test("unmatched ColdLion line: link moves refs and snapshots onto the Google lin
   refused(11, "keep_separate", null, /no longer needs a decision/);
   assert.equal(resolve(32, "keep_separate"), "Kept as its own ColdLion row.");
   refused(32, "keep_separate", null, /no longer needs a decision/);
+});
+
+test("a line with forged ColdLion values but no ColdLion line is refused", { skip: !container }, () => {
+  psql(`update plm.production_order_line set metadata = '{"coldlion_values":{"quantity_ordered":1,"import_po":"D3526"}}' where id='${L(22)}'`);
+  refused(22, "use_coldlion_quantity", null, /has no ColdLion line/);
+  refused(22, "use_coldlion_import_po", null, /has no ColdLion line/);
 });
 
 test("refuses without a signed-in user and on an unknown action", { skip: !container }, () => {

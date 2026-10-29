@@ -340,3 +340,6 @@ select pl.id, 'coldlion', 'coldlion:so:${SO}:line:1:component:9', true, '{}' fro
    and not exists (select 1 from plm.production_order_line_source_ref r where r.production_order_line_id = pl.id);`);
   assert.equal(psql(buildAutoMergeSql({ runId: run(), write: true })), "0");
 });
+
+// The #5004 guided resolver runs in the same isolated PostgreSQL step.
+import "./coldlion-triage-resolver-pg.test.mjs";

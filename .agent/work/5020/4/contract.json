@@ -1,0 +1,80 @@
+{
+  "schema_version": 2,
+  "generation": 4,
+  "evidence_parent": {
+    "work_issue": 5020,
+    "generation": 3,
+    "contract_sha256": "faf292fcce3d3e96764ee0a21ba4c135fb48f4e189599147f7696e08f032acce"
+  },
+  "work_issue": 5020,
+  "work_type": "structural",
+  "route": "claim-first",
+  "goal": "Core Product Type storage, SANDBOX HALF (claim #5027, version 20261029054455): static migration creating the dflow.mg_combination_description and dflow.item_product_description table pairs with history audit triggers and the human-override write guard on project xupnyeifmpsacrqahwwm, plus its hash-bound verification sidecar (three verifier-owned catalog contracts), registry entry, and the regenerated throughput-guard truth baseline the new detector source requires. Fail-loud self-checks keep it off the production project (stale dflow schema there); the paired production half is issue #5026. Work issue popcre/designflow-item-master#150; plan plan_core-product-type.md on its sandbox-albert branch.",
+  "base_sha": "63ce3e461295b2777bc94b3a8b65d24ef089d0ee",
+  "dispatcher": "claim-first (claim #5027, owner ZCode chat e75a842f-c460-27db-37e8-d1319a6f9d50 on EDGE-DEV)",
+  "worker": "ZCode chat e75a842f-c460-27db-37e8-d1319a6f9d50 on EDGE-DEV",
+  "branch": "zcode/5020a-dflow-pd",
+  "worktree": "D:/repos/shared-db-worktrees/5020a",
+  "allowed_paths": [
+    ".agent/work/5020/4/completion.json",
+    ".agent/work/5020/4/contract.json",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20261029054455.json",
+    "scripts/production_catalog_verification.py",
+    "supabase/migrations/20261029054455_dflow_product_description.sql"
+  ],
+  "file_writes": [
+    ".agent/work/5020/4/completion.json",
+    ".agent/work/5020/4/contract.json",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20261029054455.json",
+    "scripts/production_catalog_verification.py",
+    "supabase/migrations/20261029054455_dflow_product_description.sql"
+  ],
+  "db_reads": [
+    "table core.\"merchGroup\"",
+    "table dflow.\"itemHeader\""
+  ],
+  "db_writes": [
+    "table dflow.mg_combination_description",
+    "table dflow.mg_combination_description_history",
+    "table dflow.item_product_description",
+    "table dflow.item_product_description_history",
+    "function dflow.product_description_row_audit",
+    "function dflow.item_product_description_protect_human_override",
+    "index dflow.item_product_description_combination_idx",
+    "index dflow.item_product_description_review_idx",
+    "index dflow.item_product_description_run_idx",
+    "index dflow.mg_combination_description_run_idx",
+    "trigger product_description_audit on dflow.mg_combination_description",
+    "trigger product_description_audit on dflow.item_product_description",
+    "trigger item_product_description_write_guard on dflow.item_product_description"
+  ],
+  "prohibited_actions": [
+    "Do not modify any applied migration.",
+    "Do not add a second migration version to this pull request; the production half is a separate claim and pull request on issue #5026.",
+    "Do not write to any live database from this pull request; the sandbox apply goes through the DesignFlow Sandbox Migrations workflow with its own allowlist and proofs.",
+    "Do not touch any dflow_prod object.",
+    "Do not bypass, weaken or retry around exact-head review, guarded merge or apply gates.",
+    "Do not rebase; merge main instead."
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "python -m unittest scripts.test_check_production_verification_sidecars scripts.test_production_catalog_verification",
+    "python -I -B scripts/check_production_verification_sidecars.py --repo . --scan-version 20261029054455",
+    "node scripts/check-production-verification-sidecars.mjs --base origin/main"
+  ],
+  "assumptions": [
+    "The sandbox project carries schema dflow and not dflow_prod, so the arm selector is dflow_prod absence (verified live 2026-10-29).",
+    "The sandbox item service runs as the postgres pooler admin with no grant roles, so no grants are created on this half.",
+    "The CI ephemeral stack carries neither dflow schema, so the contract tests there do not exercise this migration; its behavior gate is the BEGIN-ROLLBACK trigger test on the sandbox database at apply time.",
+    "Editing the detector (production_catalog_verification.py) obligates regenerating the throughput-guard truth baseline to the current detector hash and migration inventory; the regeneration adds every marker-bearing file merged since the last regeneration, not only this change's own file."
+  ],
+  "stop_conditions": [
+    "Stop if the governed review returns a substantive REJECT; fix on a new head and re-review.",
+    "Stop if any gate, workflow or lane tool refuses; never work around it.",
+    "Stop if main advances past the version; supersede through the lane tool."
+  ]
+}

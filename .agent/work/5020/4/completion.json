@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "work_issue": 5020,
+  "outcome": "ready-for-merge",
+  "pr": 5029,
+  "migration_versions": [
+    "20261029054455"
+  ],
+  "contract_ref": "refs/db-contracts/5020/4",
+  "contract_sha256": "9079a85698cf7055e2419d159ac9468f0dcb91b1d15070ae6659eba5785227de",
+  "head_sha": "6ed127840b4fd99d644c17a170c3d84c569f9a9f",
+  "base_sha": "63ce3e461295b2777bc94b3a8b65d24ef089d0ee",
+  "files_changed": [
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-guard-truth-baseline-20260828.json",
+    "scripts/production-verification-sidecars/20261029054455.json",
+    "scripts/production_catalog_verification.py",
+    "supabase/migrations/20261029054455_dflow_product_description.sql"
+  ],
+  "db_reads": [
+    "table core.\"merchGroup\"",
+    "table dflow.\"itemHeader\""
+  ],
+  "db_writes": [
+    "table dflow.mg_combination_description",
+    "table dflow.mg_combination_description_history",
+    "table dflow.item_product_description",
+    "table dflow.item_product_description_history",
+    "function dflow.product_description_row_audit",
+    "function dflow.item_product_description_protect_human_override",
+    "index dflow.item_product_description_combination_idx",
+    "index dflow.item_product_description_review_idx",
+    "index dflow.item_product_description_run_idx",
+    "index dflow.mg_combination_description_run_idx",
+    "trigger product_description_audit on dflow.mg_combination_description",
+    "trigger product_description_audit on dflow.item_product_description",
+    "trigger item_product_description_write_guard on dflow.item_product_description"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed at implementation head 6ed127840b4fd99d644c17a170c3d84c569f9a9f."
+    },
+    {
+      "command": "python -m unittest scripts.test_check_production_verification_sidecars scripts.test_production_catalog_verification",
+      "exit_code": 0,
+      "evidence": "16 sidecar-checker tests OK and the catalog-verification suite reported no hard failure, including the three new dflow_product_description contracts and the strict marker-review loader."
+    },
+    {
+      "command": "python -I -B scripts/check_production_verification_sidecars.py --repo . --scan-version 20261029054455",
+      "exit_code": 0,
+      "evidence": "Status OK, sidecar=true, the single dynamic execution marker covered by a reviewed no_durable_target declaration; contracts probed TRUE on a local sandbox-shape rehearsal database and FALSE on a neither-schema database (throwaway PostgreSQL 18; guard, audit and idempotency behavior exercised)."
+    },
+    {
+      "command": "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+      "exit_code": 0,
+      "evidence": "Throughput-guard truth baseline regenerated for the new detector source hash (e2969274bd58...) and the current inventory (876 migration files, 120 marker-bearing); the guard verifies the baseline against the live detector and passes."
+    }
+  ],
+  "assumptions_resolved": [],
+  "stop_conditions_hit": []
+}

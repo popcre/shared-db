@@ -224,9 +224,10 @@ jobs:
     name: Protected merge
     needs: prepare
     runs-on: blacksmith-2vcpu-ubuntu-2404
-    # Short by construction: the quota wait and the bounded preflight wait already
-    # happened in `prepare`; under the lease every external wait is zero.
-    timeout-minutes: 20
+    # The busy-lane wait happens before acquisition (at most 15 minutes). Keep
+    # the original 20-minute execution budget after it; under-lease quota waits
+    # remain zero. This job must not time out just after it obtains the lane.
+    timeout-minutes: 35
     concurrency:
       group: shared-db-guarded-merge
       # Never cancel a merge that may hold the lease. A PENDING job replaced by a

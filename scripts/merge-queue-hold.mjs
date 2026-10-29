@@ -54,7 +54,10 @@ export function readReportedRequiredChecks(repo, number, sha, read = ghJson, {no
     if (now() >= deadline) throw new QueueHoldError('queue mutation did not land within the 900-second hold budget')
     const args = ['api','graphql','-f','query=query($owner:String!,$name:String!,$number:Int!,$sha:GitObjectID!,$after:String){repository(owner:$owner,name:$name){object(oid:$sha){... on Commit{oid statusCheckRollup{contexts(first:100,after:$after){nodes{__typename ... on CheckRun{name databaseId status conclusion isRequired(pullRequestNumber:$number) startedAt completedAt checkSuite{app{databaseId}}} ... on StatusContext{id context state createdAt isRequired(pullRequestNumber:$number)}} pageInfo{hasNextPage endCursor}}}}}}}', '-f',`owner=${owner}`,'-f',`name=${name}`,'-F',`number=${number}`,'-f',`sha=${sha}`]
     if (after !== undefined) args.push('-f',`after=${after}`)
-    const response = read(args), object = response?.data?.repository?.object
+    // These fixed documents are queries only. The shared transport conservatively
+    // classifies GraphQL POST as mutating; its supported idempotency proof keeps
+    // transient read retries without replaying a mutation or waiting on quota.
+    const response = read(args, { attempts: 4, idempotentWrite: true, maxRateLimitWaitMs: 0 }), object = response?.data?.repository?.object
     if (response?.errors?.length || object?.oid !== sha) throw new QueueHoldError('exact-group required-context read failed')
     if (object.statusCheckRollup === null) {
       if (after !== undefined) throw new QueueHoldError('required contexts changed during pagination')
@@ -75,7 +78,7 @@ export function readReportedRequiredChecks(repo, number, sha, read = ghJson, {no
 
 export function readQueuePullRequest(repo, number, read = ghJson) {
   const [owner, name] = repo.split('/')
-  const response = read(['api', 'graphql', '-f', 'query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){number state baseRefName headRefOid mergeQueueEntry{id}}}}', '-f', `owner=${owner}`, '-f', `name=${name}`, '-F', `number=${number}`])
+  const response = read(['api', 'graphql', '-f', 'query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){number state baseRefName headRefOid mergeQueueEntry{id}}}}', '-f', `owner=${owner}`, '-f', `name=${name}`, '-F', `number=${number}`], { attempts: 4, idempotentWrite: true, maxRateLimitWaitMs: 0 })
   if (response?.errors?.length) throw new QueueHoldError('queue membership read returned GraphQL errors')
   return response?.data?.repository?.pullRequest
 }

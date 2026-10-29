@@ -749,3 +749,13 @@ test('queue hold is read-only exact-group monitoring and preserves write-token c
   assert.match(cleanup, /if: always\(\) && steps\.merge_lock\.outputs\.owner_sha != ''/)
   assert.match(cleanup, /--release-merge --owner-sha "\$OWNER_SHA"/)
 })
+
+// A full pre-acquisition wait must retain the original post-acquisition margin.
+test('guarded merge preserves twenty minutes after its busy-lane wait', () => {
+  const src = readWorkflow('guarded-migration-merge.yml')
+  const job = src.slice(src.indexOf('  merge:\n'))
+  const minutes = Number(job.match(/timeout-minutes: (\d+)/)?.[1])
+  const seconds = Number(job.match(/acquire-merge-lane-waiting\.mjs" --wait-seconds (\d+)/)?.[1])
+  assert.equal(seconds, 900)
+  assert.ok(minutes * 60 >= seconds + 20 * 60)
+})

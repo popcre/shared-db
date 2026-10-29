@@ -1,3 +1,4 @@
+import { ghJson } from './lib/github-transport.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { holdMergeQueue, requiredCheckProgress, readQueuePullRequest, readReportedRequiredChecks, HOLD_SECONDS, POLL_SECONDS } from './merge-queue-hold.mjs'
@@ -68,6 +69,8 @@ test('readonly GraphQL adapter binds exactcommit,requiredPRflags and completepag
   assert.equal(snapshot.sha,group);assert.equal(snapshot.contexts.length,2)
   assert.match(calls[0].join(' '),/object\(oid:\$sha\)/);assert.match(calls[0].join(' '),/isRequired\(pullRequestNumber:\$number\)/)
   assert.ok(calls.every(args=>args.includes(`sha=${group}`)));assert.ok(calls[1].includes('after=cursor1'))
+  assert.match(calls[0].find(arg=>arg.startsWith('query=')), /\$after:String\)/)
+  assert.equal(calls[0].some(arg=>arg.startsWith('after=')), false)
   assert.doesNotMatch(calls[0].join(' '),/mutation|SYNC_TOKEN|protection|rules\/branches/)
 })
 test('exactcommit withnullrollup is legitimatelyempty; wrongcommit/nullobject/errorsrefuse',()=>{
@@ -90,4 +93,23 @@ test('queue membership reader isreadonly and refuses GraphQL errors',()=>{
 test('malformedidentities and wrongselfproducer refuse',async()=>{
   for(const changed of [{PR_NUMBER:'bad'},{MERGE_GROUP_SHA:'main'},{PR_HEAD_SHA:''},{MERGE_GROUP_REF:'refs/heads/gh-readonly-queue/main/../other'}]) await assert.rejects(holdMergeQueue({...env,...changed},harness({pullRequest:()=>{throw Error('mustnotread')}}).deps),/identity|head/)
   assert.throws(()=>requiredCheckProgress(input([run('Queue interlock',{checkSuite:{app:{databaseId:7}}})]),group),/different producer/)
+})
+
+test('fixed GraphQL queries preserve shared transient retries without quota waits', () => {
+  for (const contextRead of [true, false]) {
+    let calls = 0
+    const read = (args, opts) => {
+      assert.deepEqual(opts, { attempts: 4, idempotentWrite: true, maxRateLimitWaitMs: 0 })
+      assert.match(args.find(arg => arg.startsWith('query=')), /^query=query\(/)
+      assert.doesNotMatch(args.find(arg => arg.startsWith('query=')), /\bmutation\b/)
+      return ghJson(args, { ...opts, quotaLatch: null, repository: null, wait: () => {}, reportStderr: () => {}, executor: () => {
+        calls++
+        if (calls === 1) throw Object.assign(new Error('transient'), { status: 1, stderr: 'HTTP 502: Bad Gateway' })
+        return JSON.stringify(contextRead ? page([]) : {data:{repository:{pullRequest:pr()}}})
+      } })
+    }
+    if (contextRead) readReportedRequiredChecks('popcre/shared-db',123,group,read)
+    else readQueuePullRequest('popcre/shared-db',123,read)
+    assert.equal(calls, 2)
+  }
 })

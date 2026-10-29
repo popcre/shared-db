@@ -75,7 +75,8 @@ credentials only to abort a failed, ejected or replaced group. Missing/pending
 checks retain the healthy 15-minute budget. This monitor never authorizes a
 merge: the existing full required-check preflight, review and owned-lane checks
 remain mandatory. Busy owned-lane acquisition uses the existing bounded waiter;
-all non-occupancy refusals still stop immediately.
+all non-occupancy refusals still stop immediately. The guarded job preserves
+its original 20-minute post-acquisition execution margin after that wait.
 
 ### Node tool tests (primary)
 

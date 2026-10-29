@@ -326,7 +326,7 @@ jobs:
           # head and the live main tip: both commits must exist locally (#3669).
           # Fetching objects only; nothing from the head is checked out or run.
           git fetch --no-tags --quiet origin main "$HEAD_SHA"
-          node "$GITHUB_WORKSPACE/trusted-policy/scripts/manage-migration-author-lanes.mjs" --acquire-merge \
+          node "$GITHUB_WORKSPACE/trusted-policy/scripts/acquire-merge-lane-waiting.mjs" --wait-seconds 900 --poll-seconds 15 -- --acquire-merge \
             --owner "github-actions:${GITHUB_RUN_ID}" --pr "${{ inputs.pull_request }}" \
             --head-sha "${{ inputs.head_sha }}" > "$RUNNER_TEMP/merge-lock.json"
           echo "owner_sha=$(jq -r .ownerSha "$RUNNER_TEMP/merge-lock.json")" >> "$GITHUB_OUTPUT"

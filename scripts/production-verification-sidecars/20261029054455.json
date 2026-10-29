@@ -4,22 +4,30 @@
   "migration_sha256": "3cfc4c0f1042c752758f18219c402690948dfdc540ac0106648bb5d46cab6963",
   "checks": [
     {
-      "id": "dflow_pd_tables",
-      "kind": "catalog_contract",
-      "contract": "dflow_product_description_tables_v1",
-      "expected_count": 1
+      "id": "dflow_pd_combination_table_exists",
+      "kind": "exact_row_count",
+      "relation": "dflow.mg_combination_description",
+      "filters": [
+        {
+          "column": "status",
+          "type": "text",
+          "equals": "pending"
+        }
+      ],
+      "expected_count": 0
     },
     {
-      "id": "dflow_pd_triggers",
-      "kind": "catalog_contract",
-      "contract": "dflow_product_description_triggers_v1",
-      "expected_count": 1
-    },
-    {
-      "id": "dflow_pd_grants",
-      "kind": "catalog_contract",
-      "contract": "dflow_product_description_grants_v1",
-      "expected_count": 1
+      "id": "dflow_pd_item_table_exists",
+      "kind": "exact_row_count",
+      "relation": "dflow.item_product_description",
+      "filters": [
+        {
+          "column": "source",
+          "type": "text",
+          "equals": "combination"
+        }
+      ],
+      "expected_count": 0
     }
   ],
   "marker_schema_version": 1,

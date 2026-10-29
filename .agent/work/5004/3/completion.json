@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "work_issue": 5004,
+  "outcome": "ready-for-merge",
+  "pr": 5006,
+  "migration_versions": [
+    "20261029023554"
+  ],
+  "contract_ref": "refs/db-contracts/5004/3",
+  "contract_sha256": "2d40bff1d8fc2b0857db6a63717eb39f04ceb76c2cbd80f39e231bc586f4dffe",
+  "head_sha": "2347ab0253e3d705759651f22db35e1f5e32f368",
+  "base_sha": "c67bb2846f6755011c9e8fad34f98ab2420df4fd",
+  "files_changed": [
+    ".github/live-proofs/5004.sql",
+    "supabase/migrations/20261029023554_coldlion_reconciliation_triage.sql",
+    "tools/coldlion-order-intake-identity-pg.test.mjs",
+    "tools/coldlion-triage-resolver-pg.test.mjs"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "view api.dam_order_list",
+    "function public.resolve_coldlion_triage"
+  ],
+  "checks": [
+    {
+      "command": "node --test tools/coldlion-order-intake-*.test.mjs",
+      "exit_code": 0,
+      "evidence": "# pass 13 # fail 0 for the PG17 identity suite with the #5004 resolver suite (4/4: different-customer link refusal, same-customer Import PO move past a foreign duplicate) on PostgreSQL 17"
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed."
+    }
+  ],
+  "assumptions_resolved": [
+    "Read-only production check before authoring: api.dam_order_list has 94 columns, last coldlion_import_po; 4 disagreements and 147 unmatched ColdLion lines live; no recurring Google import overwrites OrderList quantities (only coldlion and clickup sync runs in 7 days)."
+  ],
+  "stop_conditions_hit": []
+}

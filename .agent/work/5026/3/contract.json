@@ -1,0 +1,87 @@
+{
+  "schema_version": 2,
+  "generation": 3,
+  "evidence_parent": {
+    "work_issue": 5026,
+    "generation": 2,
+    "contract_sha256": "14cb266cb0edf90d21926ae5ac71bc563bfccb36645897a236de1010c8216a6d"
+  },
+  "work_issue": 5026,
+  "work_type": "structural",
+  "route": "claim-first",
+  "goal": "Core Product Type storage, PRODUCTION HALF (claim #5046, version 20261029175542 re-reserved from 20261029054534 after main's re-reserves sorted ahead; base main 197bcda): paired production twin of the muse-APPROVED sandbox half PR #5029 (issue #5020) — static migration creating the dflow_prod.mg_combination_description and dflow_prod.item_product_description table pairs with the hardened human-override guard (GUC exactly 'on' case-insensitively, covering insert, update, delete and attribution rewrites) and a pg_attribute-based audit; grants to designflow_prod_item_master_grants on the production project only; fail-loud self-check refuses any database without dflow_prod; committed supabase/tests behavior contract test (self-contained fixtures, one transaction, ROLLBACK, grant-role fixture where absent); generic exact_row_count sidecar kinds (the guarded merge validates sidecars against the protected main copy of the checker); designflow-prod foreign-target registration in production_migration_guard with its truth-audit catalogue disposition. Nothing is applied to any database by this pull request; the production apply goes through the governed lane after merge. Work issue popcre/designflow-item-master#150. Generation 2 addresses every finding of the governed muse REJECT at head fc2e1d83f: H1 sequence+schema usage grants for the grants role (with grants-role contract coverage proving the app path and the audit path), H2 append-only history grants (SELECT, INSERT only), M1 relkind/column/role self-checks instead of bare to_regclass, M2 correct issue/claim/version references in operator-facing text, M3 the guard now requires the human GUC for any source='human' claim (insert, update, delete) beyond the override flag, L3 test additions (A2 role path, B3 machine source claim, G2 CHECK isolation under the human GUC), L4 catalogue rewritten as a minimal one-entry insert against main, L5 drop-if-exists rollback recipe. Generation 3 only widens db_writes to the lane-parsed object set (schema dflow_prod and the granted identity sequence) so the contract, the expanded claim #5046 and the completed issue scope agree exactly; no source change.",
+  "base_sha": "197bcda400dd0b6a70360520b19f416a4dcf80c9",
+  "dispatcher": "claim-first (claim #5046, owner ZCode chat 9f663110-edaf-40e0-83e5-74591c22942f on EDGE-DEV)",
+  "worker": "ZCode chat 9f663110-edaf-40e0-83e5-74591c22942f on EDGE-DEV",
+  "branch": "zcode/5026-dflow-prod-pd",
+  "worktree": "D:/repos/shared-db-worktrees/5026b",
+  "allowed_paths": [
+    ".agent/work/5026/3/completion.json",
+    ".agent/work/5026/3/contract.json",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-dispositions/scripts~production_migration_guard.py.json",
+    "scripts/production-verification-sidecars/20261029175542.json",
+    "scripts/production_migration_guard.py",
+    "supabase/migrations/20261029175542_dflow_prod_product_description.sql",
+    "supabase/tests/dflow_prod_product_description_contracts.sql"
+  ],
+  "file_writes": [
+    ".agent/work/5026/3/completion.json",
+    ".agent/work/5026/3/contract.json",
+    "config/production-verification-sidecar-registry.json",
+    "docs/verification/throughput-dispositions/scripts~production_migration_guard.py.json",
+    "scripts/production-verification-sidecars/20261029175542.json",
+    "scripts/production_migration_guard.py",
+    "supabase/migrations/20261029175542_dflow_prod_product_description.sql",
+    "supabase/tests/dflow_prod_product_description_contracts.sql"
+  ],
+  "db_reads": [
+    "table dflow_prod.\"itemHeader\"",
+    "table core.\"merchGroup\""
+  ],
+  "db_writes": [
+    "table dflow_prod.mg_combination_description",
+    "table dflow_prod.mg_combination_description_history",
+    "table dflow_prod.item_product_description",
+    "table dflow_prod.item_product_description_history",
+    "function dflow_prod.product_description_row_audit",
+    "function dflow_prod.item_product_description_protect_human_override",
+    "index dflow_prod.item_product_description_combination_idx",
+    "index dflow_prod.item_product_description_review_idx",
+    "index dflow_prod.item_product_description_run_idx",
+    "index dflow_prod.mg_combination_description_run_idx",
+    "trigger product_description_audit on dflow_prod.mg_combination_description",
+    "trigger product_description_audit on dflow_prod.item_product_description",
+    "trigger item_product_description_write_guard on dflow_prod.item_product_description",
+    "schema dflow_prod",
+    "sequence dflow_prod.mg_combination_description_id_seq"
+  ],
+  "prohibited_actions": [
+    "Do not modify any applied migration.",
+    "Do not add a second migration version to this pull request; the sandbox half is a separate claim and pull request on issue #5020.",
+    "Do not write to any live database from this pull request; the production apply goes through the governed lane with its own proofs.",
+    "Do not touch any dflow.* object (sandbox half scope, claim #5043).",
+    "Do not bypass, weaken or retry around exact-head review, guarded merge or apply gates.",
+    "Do not rebase; merge main instead."
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "python -m unittest scripts.test_check_production_verification_sidecars",
+    "python -I -B scripts/check_production_verification_sidecars.py --repo . --scan-version 20261029175542",
+    "node scripts/check-production-verification-sidecars.mjs --base origin/main",
+    "psql -h localhost -p 55432 -U postgres -d t_ct -v ON_ERROR_STOP=1 -f supabase/tests/dflow_prod_product_description_contracts.sql",
+    "node scripts/check-throughput-truth-audit.mjs"
+  ],
+  "assumptions": [
+    "The production project qsllyeztdwjgirsysgai carries schema dflow_prod with dflow_prod.\"itemHeader\" and core.\"merchGroup\", and also a stale legacy dflow schema the migration deliberately does not touch or refuse (verified live 2026-10-29).",
+    "designflow_prod_item_master_grants exists only on the production project; the committed contract test creates it inside its rolled-back transaction everywhere else so the grant statement applies on every shape.",
+    "The sandbox half (PR #5029, version 20261029161229) lands on main before this pull request merges; queue order serializes the two by version.",
+    "Sidecar checks use the generic exact_row_count kind: the guarded merge validates sidecars against the protected main copy of the checker, which cannot know contract names introduced by a pull request.",
+    "The guard GUC check treats any case variant of 'on' as the human signal (lower() comparison) and every other value, including unset, as a machine session."
+  ],
+  "stop_conditions": [
+    "Stop if the governed review returns a substantive REJECT; fix on a new head and re-review.",
+    "Stop if any gate, workflow or lane tool refuses; never work around it.",
+    "Stop if main advances past the version; supersede through the lane tool."
+  ]
+}

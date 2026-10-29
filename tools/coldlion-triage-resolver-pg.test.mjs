@@ -26,7 +26,9 @@ const resolverSql = () => {
 
 const ACTOR = "00000000-0000-0000-0000-00000000a11c";
 const SCHEMA = `
-create schema plm; create schema dam; create schema auth;
+create schema plm; create schema dam; create schema auth; create schema coldlion;
+create table coldlion.order_history_line (id uuid primary key default gen_random_uuid(), sales_order_no bigint not null,
+  sales_order_line_no integer not null, prod_reference_no text, fetched_at timestamptz not null, created_at timestamptz not null default now());
 create table auth.actor (id uuid);
 create function auth.uid() returns uuid language sql as $$select id from auth.actor limit 1$$;
 create table plm.production_order (id uuid primary key default gen_random_uuid(), production_order_number text,
@@ -64,6 +66,8 @@ insert into plm.production_order_line_source_ref (production_order_line_id, sour
   ('00000000-0000-0000-0000-000000000022', 'google_order_list', 'g22'),
   ('00000000-0000-0000-0000-000000000031', 'coldlion', 'coldlion:so:7000001:line:1:component:1'),
   ('00000000-0000-0000-0000-000000000032', 'coldlion', 'coldlion:so:7000001:line:2:component:1');
+insert into coldlion.order_history_line (sales_order_no, sales_order_line_no, prod_reference_no, fetched_at) values
+  (1, 3, 'D3708', now() - interval '1 day'), (1, 3, 'D3526', now()), (1, 4, 'D2616', now()), (1, 5, 'D9999', now());
 insert into dam.production_order_snapshot (production_order_line_id) values ('00000000-0000-0000-0000-000000000031');
 `;
 
@@ -112,6 +116,11 @@ test("unmatched ColdLion line: link moves refs and snapshots onto the Google lin
   refused(11, "keep_separate", null, /no longer needs a decision/);
   assert.equal(resolve(32, "keep_separate"), "Kept as its own ColdLion row.");
   refused(32, "keep_separate", null, /no longer needs a decision/);
+});
+
+test("an Import PO move needs ColdLion's own history to agree with the value on screen", { skip: !container }, () => {
+  psql(`update plm.production_order_line set metadata = jsonb_set(metadata, '{coldlion_values,import_po}', '"D3526"') where id='${L(14)}'`);
+  refused(14, "use_coldlion_import_po", null, /no longer shows Import PO D3526/);
 });
 
 test("a line with forged ColdLion values but no ColdLion line is refused", { skip: !container }, () => {

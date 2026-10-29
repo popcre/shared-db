@@ -243,6 +243,24 @@ begin
       raise exception 'This Import PO no longer needs a decision — refresh the list.' using errcode = '22023';
     end if;
     if p_action = 'use_coldlion_import_po' then
+      -- The destination comes from ColdLion's own order history, never from
+      -- metadata alone: the newest retained prod_reference_no of this line's
+      -- ColdLion sales order line must still be the value on screen.
+      if not exists (
+        select 1
+          from plm.production_order_line_source_ref r
+          cross join lateral (
+            select nullif(btrim(h.prod_reference_no), '') as import_po
+              from coldlion.order_history_line h
+             where r.source_id ~ '^coldlion:so:[0-9]+:line:[0-9]+:'
+               and h.sales_order_no = split_part(r.source_id, ':', 3)::bigint
+               and h.sales_order_line_no = split_part(r.source_id, ':', 5)::integer
+             order by h.fetched_at desc, h.created_at desc, h.id
+             limit 1) oh
+         where r.production_order_line_id = p_line and r.source_system = 'coldlion'
+           and lower(oh.import_po) = lower(btrim(v_cl ->> 'import_po'))) then
+        raise exception 'ColdLion no longer shows Import PO % for this line — refresh the list.', btrim(v_cl ->> 'import_po') using errcode = '22023';
+      end if;
       -- Historical duplicate Import PO numbers are grandfathered, so the
       -- destination is the one open order with that number for THIS customer.
       select count(*), min(id::text)::uuid into v_n, v_dest from plm.production_order

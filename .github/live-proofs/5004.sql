@@ -8,4 +8,4 @@ select
   and to_regprocedure('public.resolve_coldlion_triage(uuid,text,uuid)') is not null
   and has_function_privilege('authenticated', 'public.resolve_coldlion_triage(uuid,text,uuid)', 'execute')
   and not has_function_privilege('anon', 'public.resolve_coldlion_triage(uuid,text,uuid)', 'execute')
-  as live_proof_passed;
+  as passed;

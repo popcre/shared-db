@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "migration_version": "20261029054455",
-  "migration_sha256": "3cfc4c0f1042c752758f18219c402690948dfdc540ac0106648bb5d46cab6963",
+  "migration_version": "20261029154720",
+  "migration_sha256": "97c78e4cb3033ed310265bebe4261631c33672920d4888109cef59ff4b609393",
   "checks": [
     {
       "id": "dflow_pd_combination_table_exists",

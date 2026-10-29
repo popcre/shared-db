@@ -1,6 +1,6 @@
 {
   "detector_schema_version": 1,
-  "detector_source_sha256": "34ce6597647761febfdc9562993f8df1ec33addbea0319c9c7e340e98339048c",
+  "detector_source_sha256": "702b9e000d4d537eefa312d48ca4b95c590445e46469cf2d661c1d1df0786811",
   "command": "node scripts/check-production-verification-sidecars.mjs",
   "total_migration_files": 880,
   "matched_count": 120,
@@ -601,8 +601,8 @@
       "marker_count": 1
     },
     {
-      "version": "20261029054455",
-      "path": "supabase/migrations/20261029054455_dflow_product_description.sql",
+      "version": "20261029154720",
+      "path": "supabase/migrations/20261029154720_dflow_product_description.sql",
       "marker_count": 1
     }
   ],

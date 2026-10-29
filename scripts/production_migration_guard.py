@@ -418,7 +418,7 @@ FOREIGN_TARGET_MIGRATIONS = {
         "note": "PR#4143, source issue #3869 and immutable generation 9 contract scope this link change to DesignFlow sandbox only. Source instructions prohibit shared production/preview apply. Exact version confirmed in sandbox ledger October11,2026. This is target scope, not retirement; it remains in-scope on designflow-nonprod.",
     },
 
-    "20261029054455": {
+    "20261029154720": {
         "target": "designflow-nonprod",
         "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
         "issue": "#5020",

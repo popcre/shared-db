@@ -4609,7 +4609,7 @@ CATEGORY_DFLOW_SAMPLE_QUANTITY_STATE = """
 CATALOG_CONTRACTS["dflow_sample_quantity_state_v1"] = CATEGORY_DFLOW_SAMPLE_QUANTITY_STATE
 
 
-# Durable catalog outcome of migration 20261029054455 (issue #5020,
+# Durable catalog outcome of migration 20261029154720 (issue #5020,
 # Core Product Type): exactly one arm's four
 # product-description tables and four indexes exist. The sandbox project
 # (xupnyeifmpsacrqahwwm) carries only schema dflow; the production project

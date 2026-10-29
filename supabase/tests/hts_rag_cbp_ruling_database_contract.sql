@@ -44,16 +44,31 @@ begin
   end if;
   if not has_function_privilege('designflow_hts_alsand_worker', 'hts_rag.hts_rag_refresh_type_heading_stats()', 'EXECUTE')
      or has_function_privilege('anon', 'hts_rag.hts_rag_refresh_type_heading_stats()', 'EXECUTE')
-     or has_table_privilege('designflow_hts_prod_runtime', 'hts_rag.hts_rag_type_heading_stats', 'SELECT') then
+     or has_table_privilege('designflow_hts_prod_runtime', 'hts_rag.hts_rag_type_heading_stats', 'SELECT')
+     or has_table_privilege('anon', 'hts_rag.hts_rag_type_heading_stats', 'SELECT')
+     or has_table_privilege('authenticated', 'hts_rag.hts_rag_type_heading_stats', 'SELECT') then
     raise exception 'type_heading_stats privileges differ';
+  end if;
+  if not exists (select 1 from pg_proc where oid = 'hts_rag.hts_rag_refresh_type_heading_stats()'::regprocedure
+                  and prosecdef and proconfig = array['search_path=""'])
+     or not exists (select 1 from pg_indexes where schemaname = 'hts_rag' and indexname = 'hts_rag_type_heading_stats_uq'
+                  and indexdef like 'CREATE UNIQUE INDEX % NULLS NOT DISTINCT') then
+    raise exception 'refresh function or its concurrent-refresh key differs';
   end if;
 end
 $cbp_ruling_db$;
 
 -- Behaviour: environment-bound insert, cross-environment refusal, code roles, refresh.
+-- One plain refresh only: once populated the function refreshes CONCURRENTLY,
+-- which PostgreSQL refuses inside a transaction block.
 begin;
-insert into hts_rag.hts_rag_rulings (ruling_number, full_text, ruling_date, source_environment)
-  values ('N022925', 'The applicable subheading for the lap desk will be 4420.90.8000.', '2008-02-01', 'alsand');
+-- The CI session user may only SET ROLE into roles it is a member of; test-only
+-- grant, rolled back with the transaction (same preamble as hts_rag_shared_schema_contract.sql).
+grant designflow_hts_prod_worker, designflow_hts_alsand_worker to postgres;
+insert into hts_rag.hts_rag_rulings (ruling_number, full_text, full_text_hash, ruling_date, source_environment)
+  values ('N022925', 'The applicable subheading for the lap desk will be 4420.90.8000.',
+          encode(sha256(convert_to('The applicable subheading for the lap desk will be 4420.90.8000.', 'UTF8')), 'hex'),
+          '2008-02-01', 'alsand');
 set local role designflow_hts_alsand_worker;
 insert into hts_rag.hts_rag_article_types (name, synonyms, vocab_version, source_environment)
   values ('lap desk', '{lapdesk}', 'v1', 'alsand');
@@ -80,7 +95,6 @@ do $$ begin
   end;
 end $$;
 select hts_rag.hts_rag_refresh_type_heading_stats();
-select hts_rag.hts_rag_refresh_type_heading_stats();
 do $$ begin
   if (select count(*) from hts_rag.hts_rag_type_heading_stats where chapter = '94' and outcome = 'rejected' and all_materials) <> 1
      or (select product_count from hts_rag.hts_rag_type_heading_stats where heading = '4420' and outcome = 'held' and all_materials) <> 1 then
@@ -91,4 +105,5 @@ delete from hts_rag.hts_rag_ruling_products;
 do $$ begin
   if exists (select 1 from hts_rag.hts_rag_heading_decisions) then raise exception 'decisions did not cascade'; end if;
 end $$;
+reset role;
 rollback;

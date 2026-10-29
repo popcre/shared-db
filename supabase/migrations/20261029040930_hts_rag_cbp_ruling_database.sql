@@ -548,7 +548,7 @@ create index hts_rag_product_components_product_idx
 create index hts_rag_product_attributes_product_idx
   on hts_rag.hts_rag_product_attributes (product_id);
 create index hts_rag_product_attributes_key_idx
-  on hts_rag.hts_rag_product_attributes (key) where is_decisive;
+  on hts_rag.hts_rag_product_attributes (key, is_decisive);
 create index hts_rag_heading_decisions_product_idx
   on hts_rag.hts_rag_heading_decisions (product_id);
 create index hts_rag_heading_decisions_heading_idx

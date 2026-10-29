@@ -226,16 +226,20 @@ $fn$;
 revoke all on function public.sync_new_items_into_style_tracker(boolean, timestamptz) from public, anon, authenticated;
 grant execute on function public.sync_new_items_into_style_tracker(boolean, timestamptz) to service_role;
 
--- One-time correction: move auto-created EH001 rows the old body put in the
--- Licensed list. Scoped to the auto origin so team-entered rows are untouched.
--- Idempotent: zero rows once corrected.
+-- One-time correction (owner 2026-10-29: "all EH001 items should be in
+-- Generic"): move every Licensed row whose bridged item, or auto-flow origin,
+-- is division EH001. Idempotent: zero rows once corrected.
 with wrong as (
   select r.id,
          row_number() over (order by r.source_row_number, r.id) as rn
   from public.style_tracker_rows r
-  where r.row_data ->> 'origin' = 'plm_item_autoflow'
-    and r.row_data ->> 'coldlion_division' = 'EH001'
-    and r.tracker_type = 'licensed'
+  where r.tracker_type = 'licensed'
+    and (r.row_data ->> 'coldlion_division' = 'EH001'
+         or exists (select 1
+                      from plm.style_tracker_item_bridge b
+                      join plm.item i on i.id = b.plm_item_id
+                     where b.style_tracker_row_id = r.id
+                       and i.raw ->> 'divisionCode' = 'EH001'))
 ), base as (
   select coalesce(max(source_row_number), 2) as n
   from public.style_tracker_rows

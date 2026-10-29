@@ -24,6 +24,12 @@
 
 begin;
 
+-- The CI ephemeral stack carries BOTH dflow and dflow_prod (production shape),
+-- on which this migration must refuse by design. This test needs the sandbox
+-- shape, so dflow_prod is dropped INSIDE the transaction; the final ROLLBACK
+-- restores it untouched. On a bare throwaway database this is a no-op.
+drop schema if exists dflow_prod cascade;
+
 -- Environment-aware fixtures: on the CI ephemeral stack the replay creates the
 -- real dflow schema and core."merchGroup" with GENERATED ALWAYS identity keys;
 -- on a bare throwaway database this file creates plain-integer fixtures. Ids

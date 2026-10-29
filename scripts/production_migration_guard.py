@@ -390,9 +390,15 @@ PREVIEW_ONLY_HISTORICAL_RESTORATIONS = {
 # Every target name the repository knows. A registry entry naming anything else
 # is a typo or an invented database, and fails closed rather than silently
 # excluding a version from a target that does not exist.
-KNOWN_MIGRATION_TARGETS = frozenset({"production", "preview", "designflow-nonprod"})
+KNOWN_MIGRATION_TARGETS = frozenset({"production", "preview", "designflow-nonprod", "designflow-prod"})
 
 FOREIGN_TARGET_MIGRATIONS = {
+    "20261029054534": {
+        "target": "designflow-prod",
+        "project": "DesignFlow production qsllyeztdwjgirsysgai (popdam)",
+        "issue": "#5026",
+        "note": "Paired production half of PR#5029 (issue #5020): creates the dflow_prod.mg_combination_description / dflow_prod.item_product_description pairs with audit and human-override guard triggers on the DesignFlow production project only. The migration's own self-check refuses to run where dflow_prod is missing, and the paired sandbox half is version 20261029161229 (issue #5020). This is target scope, not retirement.",
+    },
     "20261002135053": {
         "target": "designflow-nonprod",
         "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",

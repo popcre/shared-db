@@ -1,6 +1,6 @@
 -- Issue #5020 (claim #5021): Core Product Type storage for DesignFlow —
 -- PRODUCTION HALF of the matched pair (schema `dflow_prod`, project
--- qsllyeztdwjgirsysgai). The sandbox half is version 20261029043759
+-- qsllyeztdwjgirsysgai). The sandbox half is the paired version 20261029161229
 -- (schema `dflow`, project xupnyeifmpsacrqahwwm).
 -- Work issue popcre/designflow-item-master#150; plan plan_core-product-type.md
 -- (branch sandbox-albert). Owner answers (Albert Hazan, 2026-10-29) are Settled
@@ -27,10 +27,12 @@
 -- Key shapes verified live 2026-10-29: itemHeader PK item_id_pk integer;
 -- core."merchGroup" PK mg_id integer; udf_merchgroup0N_id integer.
 --
--- Human override contract: a session may create, change or clear a human
--- override only after set_config('app.product_description.human','on',true)
--- in the same transaction (the item-master PATCH does this). Bulk/refresh
--- connections never set it, so the trigger fires for them.
+-- Human override contract: a session may create, change, clear,
+-- re-attribute or DELETE a human override only after
+-- set_config('app.product_description.human','on',true) in the same
+-- transaction (the item-master PATCH does this; the value must be exactly
+-- 'on'). Bulk/refresh connections never set it, so the trigger fires for them
+-- on insert, update and delete alike.
 --
 -- Idempotent: IF NOT EXISTS / OR REPLACE / drop-if-exists; re-apply is a
 -- no-op. Rollback: drop trigger item_product_description_write_guard on
@@ -116,15 +118,18 @@ create table if not exists dflow_prod.item_product_description_history (
 );
 
 -- Audit: every UPDATE/DELETE copies the OLD row into the matching history table.
+-- The column list is derived from pg_attribute (not information_schema) so the
+-- audit never depends on the invoking role's column visibility.
 create or replace function dflow_prod.product_description_row_audit() returns trigger as $fn$
 declare
   cols text;
 begin
-  select string_agg(quote_ident(column_name), ', ' order by ordinal_position)
+  select string_agg(quote_ident(a.attname), ', ' order by a.attnum)
     into cols
-  from information_schema.columns
-  where table_schema = tg_table_schema
-    and table_name = tg_table_name;
+  from pg_attribute a
+  where a.attrelid = tg_relid
+    and a.attnum > 0
+    and not a.attisdropped;
   execute format('insert into %I.%I (%s) select $1.*',
     tg_table_schema, tg_table_name || '_history', cols)
     using old;
@@ -142,19 +147,40 @@ create trigger product_description_audit
   after update or delete on dflow_prod.item_product_description
   for each row execute function dflow_prod.product_description_row_audit();
 
--- Guard: a human override is never created, changed or cleared by a machine
--- connection — only by a session that set app.product_description.human.
+-- Guard: a human override is never created, changed, cleared, re-attributed or
+-- deleted by a machine connection. Only a session that set
+-- app.product_description.human to exactly 'on' (case-insensitive) inside the
+-- transaction may do any of those. Any other value — including 'off', 'false',
+-- '0' or an unset variable — is a machine session and is refused.
 create or replace function dflow_prod.item_product_description_protect_human_override() returns trigger as $fn$
+declare
+  human boolean := lower(coalesce(current_setting('app.product_description.human', true), '')) = 'on';
 begin
-  if coalesce(current_setting('app.product_description.human', true), '') = ''
+  if tg_op = 'INSERT' then
+    if new.is_human_override and not human then
+      raise exception 'item_product_description % claims a human override; only a human session may create one (set app.product_description.human = on in the transaction)',
+        new.item_fk using errcode = 'check_violation';
+    end if;
+    return new;
+  end if;
+  if tg_op = 'DELETE' then
+    if old.is_human_override and not human then
+      raise exception 'item_product_description % carries a human override; only a human session may delete it (set app.product_description.human = on in the transaction)',
+        old.item_fk using errcode = 'check_violation';
+    end if;
+    return old;
+  end if;
+  if not human and (
+    (old.is_human_override or new.is_human_override)
     and (
-      (old.is_human_override
-        and (new.description is distinct from old.description
-             or new.is_human_override is distinct from old.is_human_override))
-      or (not old.is_human_override and new.is_human_override)
+      new.description is distinct from old.description
+      or new.is_human_override is distinct from old.is_human_override
+      or (old.is_human_override
+          and (new.override_user_fk is distinct from old.override_user_fk
+               or new.override_at is distinct from old.override_at))
     )
-  then
-    raise exception 'item_product_description % carries or claims a human override; only a human session may set, change or clear it (set app.product_description.human in the transaction)',
+  ) then
+    raise exception 'item_product_description % carries or claims a human override; only a human session may change, clear or re-attribute it (set app.product_description.human = on in the transaction)',
       old.item_fk using errcode = 'check_violation';
   end if;
   return new;
@@ -163,7 +189,7 @@ $fn$ language plpgsql;
 
 drop trigger if exists item_product_description_write_guard on dflow_prod.item_product_description;
 create trigger item_product_description_write_guard
-  before update on dflow_prod.item_product_description
+  before insert or update or delete on dflow_prod.item_product_description
   for each row execute function dflow_prod.item_product_description_protect_human_override();
 
 -- Review list and run-scoped rollback support.

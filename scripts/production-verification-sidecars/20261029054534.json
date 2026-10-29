@@ -1,34 +1,42 @@
 {
   "schema_version": 1,
   "migration_version": "20261029054534",
-  "migration_sha256": "a010cc5df7fdd4838df15c4fa8bed8119776cbc6a901558f7a87e5264b09c5c9",
+  "migration_sha256": "9f42b88ff4b093ed962e3d8872c431d712b3bb72700dfcf0bf3ac1c4489699ae",
   "checks": [
     {
-      "id": "dflow_prod_pd_tables",
-      "kind": "catalog_contract",
-      "contract": "dflow_product_description_tables_v1",
-      "expected_count": 1
+      "id": "dflow_prod_pd_combination_table_exists",
+      "kind": "exact_row_count",
+      "relation": "dflow_prod.mg_combination_description",
+      "filters": [
+        {
+          "column": "status",
+          "type": "text",
+          "equals": "pending"
+        }
+      ],
+      "expected_count": 0
     },
     {
-      "id": "dflow_prod_pd_triggers",
-      "kind": "catalog_contract",
-      "contract": "dflow_product_description_triggers_v1",
-      "expected_count": 1
-    },
-    {
-      "id": "dflow_prod_pd_grants",
-      "kind": "catalog_contract",
-      "contract": "dflow_product_description_grants_v1",
-      "expected_count": 1
+      "id": "dflow_prod_pd_item_table_exists",
+      "kind": "exact_row_count",
+      "relation": "dflow_prod.item_product_description",
+      "filters": [
+        {
+          "column": "source",
+          "type": "text",
+          "equals": "combination"
+        }
+      ],
+      "expected_count": 0
     }
   ],
   "marker_schema_version": 1,
   "marker_reviews": [
     {
-      "line_start": 128,
-      "line_end": 128,
+      "line_start": 133,
+      "line_end": 133,
       "disposition": "no_durable_target",
-      "reason": "Inner EXECUTE inside the audit trigger function body: runtime history-row insertion performed by the trigger, not a catalog object; no post-apply catalog probe can or should assert it. Behavior is proven by the BEGIN-ROLLBACK trigger test at production apply time, and every static DDL statement around it is asserted by the three cited contracts."
+      "reason": "Inner EXECUTE inside the audit trigger function body: runtime history-row insertion performed by the trigger, not a catalog object; no post-apply catalog probe can or should assert it. Its behavior is exercised by the committed supabase/tests/dflow_prod_product_description_contracts.sql contract test (self-contained fixtures, one transaction, ROLLBACK) and re-proven read-only on the production database at apply time."
     }
   ]
 }

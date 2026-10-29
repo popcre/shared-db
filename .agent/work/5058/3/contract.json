@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
   "work_issue": 5058,
-  "generation": 2,
+  "generation": 3,
   "work_type": "structural",
   "route": "claim-first",
-  "goal": "Owner direction 2026-10-29: Master Data description is ColdLion's full description and never locally edited. public.sync_new_items_into_style_tracker prefers itemDesc and re-asserts it on every ColdLion-linked line each run (claim #5059, migration 20261029204605)",
+  "goal": "Owner direction 2026-10-29: Master Data description is ColdLion's full description and never locally edited. public.sync_new_items_into_style_tracker prefers itemDesc and re-asserts it on every ColdLion-linked line each run (claim #5059, migration 20261029204605); folds in #5063 (EH001 items filed in the Generic list, one-time move of EH001 Licensed rows) from superseded PR #5062 at its author session's request",
   "base_sha": "69f81af9544c3ab7c010ec2d093aad3179e97ef1",
   "dispatcher": "Claude Code session on hetz for owner Albert Hazan",
   "worker": "Same session (claim #5059 owner, Claude chat b7280b0b-8e13-484c-8608-fb3e64b46ef4 on hetz).",
@@ -13,18 +13,20 @@
   "allowed_paths": [
     "supabase/migrations/20261029204605_master_data_coldlion_full_description.sql",
     "supabase/tests/master_data_item_autoflow_contracts.sql",
+    "supabase/tests/master_data_autoflow_generic_division_contracts.sql",
     ".github/live-proofs/5058.sql",
-    ".agent/work/5058/1/contract.json",
-    ".agent/work/5058/1/completion.json",
     ".agent/work/5058/2/contract.json",
-    ".agent/work/5058/2/completion.json"
+    ".agent/work/5058/2/completion.json",
+    ".agent/work/5058/3/contract.json",
+    ".agent/work/5058/3/completion.json"
   ],
   "file_writes": [
     "supabase/migrations/20261029204605_master_data_coldlion_full_description.sql",
     "supabase/tests/master_data_item_autoflow_contracts.sql",
+    "supabase/tests/master_data_autoflow_generic_division_contracts.sql",
     ".github/live-proofs/5058.sql",
-    ".agent/work/5058/2/contract.json",
-    ".agent/work/5058/2/completion.json"
+    ".agent/work/5058/3/contract.json",
+    ".agent/work/5058/3/completion.json"
   ],
   "db_reads": [],
   "db_writes": [
@@ -36,19 +38,20 @@
   ],
   "required_checks": [
     "bash scripts/check-sql.sh",
-    "supabase/tests/master_data_item_autoflow_contracts.sql (Database Contract Tests CI)"
+    "supabase/tests/master_data_item_autoflow_contracts.sql and master_data_autoflow_generic_division_contracts.sql (Database Contract Tests CI)"
   ],
   "assumptions": [
     "Supersedes #5048 / parked PR #5052 (same object, owner widened scope).",
     "Generation 2 answers the GLM REVISE: pre-image kept in row_data.pre_coldlion_description, parent verify assertions restored, contract tests added, live proof added.",
-    "Contents write: the migration and every sync run rewrite public.style_tracker_rows.description (and row_data pre-image) on ColdLion-linked lines, owner-directed; the structural claim covers the function only."
+    "Contents write: the migration and every sync run rewrite public.style_tracker_rows.description (and row_data pre-image) on ColdLion-linked lines, owner-directed; the structural claim covers the function only.",
+    "Generation 3 folds in #5063 / PR #5062 (same function; Muse APPROVE at 1bbd7096 there), which also moves EH001 Licensed rows to Generic.Style (data write)."
   ],
   "stop_conditions": [
     "Stop if claim #5059 reports a collision."
   ],
   "evidence_parent": {
     "work_issue": 5058,
-    "generation": 1,
-    "contract_sha256": "41cdfcccf3c4e55e1708d77dbdda345641dfc8e3af4241785a86a410d5e53cdb"
+    "generation": 2,
+    "contract_sha256": "e8b4e8a6b2543ded4b3d64f026359c3b2de0191869622af61d826f4bb45448cd"
   }
 }

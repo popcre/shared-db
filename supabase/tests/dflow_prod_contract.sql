@@ -42,8 +42,8 @@ begin
                 'sample_shipment_notice', 'sample_shipment_notice_recipient', 'product_type_factory_time', 'vendor_wechat_identity', 'prod_order_milestone_schedule', 'item_customer_selling')  -- #2874, #2875 and #3737
          )
     );
-  if v_sequences <> 97 then
-    raise exception 'expected 97 dflow_prod sequences, found %', v_sequences;
+  if v_sequences <> 100 then
+    raise exception 'expected 100 dflow_prod sequences, found %', v_sequences;
   end if;
 
   if exists (

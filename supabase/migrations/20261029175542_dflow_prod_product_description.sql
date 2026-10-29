@@ -30,8 +30,8 @@
 -- Human override contract: a session may create, change, clear,
 -- re-attribute or DELETE a human override only after
 -- set_config('app.product_description.human','on',true) in the same
--- transaction (the item-master PATCH does this; the value must be exactly
--- 'on'). Bulk/refresh connections never set it, so the trigger fires for them
+-- transaction (the item-master PATCH does this; the value must be 'on'
+-- case-insensitively). Bulk/refresh connections never set it, so the trigger fires for them
 -- on insert, update and delete alike.
 --
 -- Idempotent: IF NOT EXISTS / OR REPLACE / drop-if-exists; re-apply is a

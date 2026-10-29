@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "work_issue": 5058,
-  "generation": 1,
+  "generation": 2,
   "work_type": "structural",
   "route": "claim-first",
   "goal": "Owner direction 2026-10-29: Master Data description is ColdLion's full description and never locally edited. public.sync_new_items_into_style_tracker prefers itemDesc and re-asserts it on every ColdLion-linked line each run (claim #5059, migration 20261029204605)",
@@ -12,13 +12,19 @@
   "worktree": "/worksp/shared-db-wt-fulldesc",
   "allowed_paths": [
     "supabase/migrations/20261029204605_master_data_coldlion_full_description.sql",
+    "supabase/tests/master_data_item_autoflow_contracts.sql",
+    ".github/live-proofs/5058.sql",
     ".agent/work/5058/1/contract.json",
-    ".agent/work/5058/1/completion.json"
+    ".agent/work/5058/1/completion.json",
+    ".agent/work/5058/2/contract.json",
+    ".agent/work/5058/2/completion.json"
   ],
   "file_writes": [
     "supabase/migrations/20261029204605_master_data_coldlion_full_description.sql",
-    ".agent/work/5058/1/contract.json",
-    ".agent/work/5058/1/completion.json"
+    "supabase/tests/master_data_item_autoflow_contracts.sql",
+    ".github/live-proofs/5058.sql",
+    ".agent/work/5058/2/contract.json",
+    ".agent/work/5058/2/completion.json"
   ],
   "db_reads": [],
   "db_writes": [
@@ -29,13 +35,20 @@
     "No production or preview apply by hand; promotion follows the automatic workflow."
   ],
   "required_checks": [
-    "bash scripts/check-sql.sh"
+    "bash scripts/check-sql.sh",
+    "supabase/tests/master_data_item_autoflow_contracts.sql (Database Contract Tests CI)"
   ],
   "assumptions": [
-    "Supersedes #5048 / parked PR #5052 (same object, owner widened scope)."
+    "Supersedes #5048 / parked PR #5052 (same object, owner widened scope).",
+    "Generation 2 answers the GLM REVISE: pre-image kept in row_data.pre_coldlion_description, parent verify assertions restored, contract tests added, live proof added.",
+    "Contents write: the migration and every sync run rewrite public.style_tracker_rows.description (and row_data pre-image) on ColdLion-linked lines, owner-directed; the structural claim covers the function only."
   ],
   "stop_conditions": [
     "Stop if claim #5059 reports a collision."
   ],
-  "evidence_parent": null
+  "evidence_parent": {
+    "work_issue": 5058,
+    "generation": 1,
+    "contract_sha256": "41cdfcccf3c4e55e1708d77dbdda345641dfc8e3af4241785a86a410d5e53cdb"
+  }
 }

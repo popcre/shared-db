@@ -6,12 +6,16 @@
   "migration_versions": [
     "20261029204605"
   ],
-  "contract_ref": "refs/db-contracts/5058/1",
-  "contract_sha256": "41cdfcccf3c4e55e1708d77dbdda345641dfc8e3af4241785a86a410d5e53cdb",
-  "head_sha": "aa85171548106babdf1eccfbcfcb3b655f46ecf8",
+  "contract_ref": "refs/db-contracts/5058/2",
+  "contract_sha256": "e8b4e8a6b2543ded4b3d64f026359c3b2de0191869622af61d826f4bb45448cd",
+  "head_sha": "820ff51d3d741250b0c257309ba91cc3a44b5d55",
   "base_sha": "69f81af9544c3ab7c010ec2d093aad3179e97ef1",
   "files_changed": [
-    "supabase/migrations/20261029204605_master_data_coldlion_full_description.sql"
+    ".agent/work/5058/1/completion.json",
+    ".agent/work/5058/1/contract.json",
+    ".github/live-proofs/5058.sql",
+    "supabase/migrations/20261029204605_master_data_coldlion_full_description.sql",
+    "supabase/tests/master_data_item_autoflow_contracts.sql"
   ],
   "db_reads": [],
   "db_writes": [

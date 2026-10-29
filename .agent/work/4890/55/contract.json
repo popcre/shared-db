@@ -1,0 +1,86 @@
+{
+  "schema_version": 2,
+  "work_issue": 4890,
+  "generation": 55,
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Complete existing family guard coverage for approved gzip and full anti-closure context; correct stale verifier comment only",
+  "base_sha": "aafdea08946b8465e6966bbf1cd7cdab765b999e",
+  "dispatcher": "Root chat: terminal53REVISE adopted; finalprospective55same54files+production_catalog_verification.py COMMENTONLY, extendexistingNodefamily gziphash/schema/privacy/disclaimer; no resource/push/review/query.",
+  "worker": "Codex child01a1834a-813e-7b12-b17a-3e8c3aaedfb8",
+  "branch": "codex/4427-final-proof-integrity55",
+  "worktree": "/tmp/shared-db-4427-closeout54",
+  "allowed_paths": [
+    "docs/verification/rls-initplan/4427/acceptance.md",
+    "docs/verification/rls-initplan/4427/actual-table-runtime-evidence.json.gz",
+    ".github/live-proofs/4427.sql",
+    "scripts/test_rls_admin_catalog_recovery.py",
+    "scripts/rls-public-admin-initplan.test.mjs",
+    "scripts/production_catalog_verification.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No push/paidreview/GH/merge/resource/database/production/fetch/issueclosure action by child",
+    "No rootplan update or unrelated file changes",
+    "No gate bypass/modification; root must obtain supported publication route"
+  ],
+  "required_checks": [
+    "AffectedNodefamily plus parser tests and gzip/privacy/disclaimer guard",
+    "Focused309Python canonical/shared_db_live_proof tests",
+    "StaticSQL/exactcanonical99648/approvedgzip/Markdownlinks/comment-only verification",
+    "git diff --check and native contract completion/exact Git evidence"
+  ],
+  "assumptions": [
+    "Existingcodeclass preeditreviewgatePASS on clean freshaafdea branch; no paidreview started. No structural/database changes.",
+    "Canonicalprivatefile32828bytes SHA99648c0a01fcba2001490a5f29e08f7a160e2fdc5fa31e593cdefa65accfe118 equals RLS_PUBLIC_ADMIN_INSTALL_CONTRACT.strip(); exactbytes copied, no wrapper/newline/normalization/guardweakening. Originalrawconstantwhitespacehash94c4notmistakenforcanonical.",
+    "Oldproof expectedthree rawauth.uid owner clauses despitealreadyaccepted ledger4674successor; replace withalreadyproductionacceptedcanonical conditionalcomparison. Preservehistoricalbaselinehash independently andallpolicy/table/helper/archive/ledgerchecks.",
+    "Only2approvedacceptanceartifacts+canonicalprobe+focusedtest+53pair; rootplanexcluded/full52preserved. No newworkflow/flag/timeout/harness/runtimekey/role/SQLmutation.",
+    "ParentfutureexistingstandardSharedDBLiveProof producer: unboundedSQLdefault with120sHTTP/read_onlytrue/no retry/15minjob; no8sroleguard/transactionrollback claim. Actualartifact stillpending afterreview/publication/merge; neverfakeit.",
+    "No resources/prod/paidreview/push/GH/fetch/merge/issueclosure by child. Parent owns all adoption and finiteactionreview.",
+    "Source53worktree/branch/head/files untouched duringrootpaidreview.54in separateownfreshbaseaafdea nofetch. AdditionalNode adaptation decodescanonicalSQLquotedJSON via same normalizerasexistingPython, retainsall72identities39tables2helpers44hasrole; obsoleteSQLcommentassert replaced with existingproducerseparationcontext. No testsdisabled/thresholdweakened.",
+    "Finalscoped53REVISErepair: existingNode test pins approvedgzip84f6/uncompressed10c96/counts/schema/noForbiddenprivatekeysstrings; no newgenerator/sharedartifact. PreserveFULLoriginalanti-closuredisclaimer in test context and machinecheck existingproducerseparateacceptance/acceptance.md nongeneralclaim. VerifierstalecommentONLY; canonicalconstantbytes94c4raw/99648strip unchanged."
+  ],
+  "stop_conditions": [
+    "Any native scope/gate refusal",
+    "Unknown config/include/key/ownership/archive/dependency or source quiescence",
+    "Any cron/clock/worker/physical/capability/cleanup violation",
+    "Any need for source mutation, scheduler suppression, unowned resource or shared target"
+  ],
+  "evidence_parent": {
+    "work_issue": 4890,
+    "generation": 30,
+    "contract_sha256": "a6e03551660582514b855100800d519a4bcfaa782745d4c804bacca668bed195"
+  },
+  "file_writes": [
+    "scripts/qualify_rls4427_actual_tables.py",
+    "scripts/test_qualify_rls4427_actual_tables.py",
+    "scripts/rls4427_physical_cluster.py",
+    "scripts/test_rls4427_physical_cluster.py",
+    "scripts/rls4427_native_restore_regression.py",
+    "scripts/test_rls4427_native_restore_regression.py",
+    "supabase/tests/fixtures/rls4427_native_restore_fixture.sql",
+    "supabase/tests/rls_public_admin_actual_table_performance.sql",
+    ".github/workflows/database-contract-tests.yml",
+    "docs/verification/rls-initplan/4427/actual-table-qualification.md",
+    "docs/verification/throughput-dispositions/scripts~qualify_rls4427_actual_tables.py.json",
+    ".agent/work/4890/17/contract.json",
+    ".agent/work/4890/17/completion.json",
+    "docs/verification/throughput-dispositions/scripts~rls4427_physical_cluster.py.json",
+    "docs/verification/throughput-dispositions/scripts~rls4427_native_restore_regression.py.json",
+    ".agent/work/4890/23/contract.json",
+    ".agent/work/4890/23/completion.json",
+    ".agent/work/4890/24/contract.json",
+    ".agent/work/4890/24/completion.json",
+    ".agent/work/4890/25/contract.json",
+    ".agent/work/4890/25/completion.json",
+    ".agent/work/4890/27/contract.json",
+    ".agent/work/4890/27/completion.json",
+    ".agent/work/4890/28/contract.json",
+    ".agent/work/4890/28/completion.json",
+    ".agent/work/4890/29/contract.json",
+    ".agent/work/4890/29/completion.json",
+    ".agent/work/4890/30/contract.json",
+    ".agent/work/4890/30/completion.json"
+  ]
+}

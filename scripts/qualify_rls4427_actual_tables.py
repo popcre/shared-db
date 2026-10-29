@@ -184,6 +184,23 @@ def summarize(samples):
     return out
 
 
+ORIGINAL_POLICY_CALLS=tuple(f"{function}(auth.uid(), 'admin'::{role_type})"
+    for function in ('has_role','public.has_role') for role_type in ('app_role','public.app_role'))
+ORIGINAL_POLICY_SPELLINGS=ORIGINAL_POLICY_CALLS+tuple('('+call+')' for call in ORIGINAL_POLICY_CALLS)
+
+
+def policy_expression_diagnostic(value,key,field):
+    text=re.sub(r'\s+',' ',value).strip() if isinstance(value,str) else ''
+    return dict(policy_index=next(i for i,(table,name,_) in enumerate(POLICIES) if (table,name)==key),field=field,
+        value_type='string' if isinstance(value,str) else 'null' if value is None else 'OTHER',
+        length=len(value) if isinstance(value,str) else None,normalized_length=len(text),
+        sha256=hashlib.sha256(value.encode('utf-8',errors='surrogatepass')).hexdigest() if isinstance(value,str) else None,
+        function_public=bool(re.match(r'^\(?public\.has_role\(',text)),function_unqualified=bool(re.match(r'^\(?has_role\(',text)),
+        type_public='::public.app_role' in text,type_unqualified='::app_role' in text,admin_literal="'admin'" in text,
+        starts_outer=text.startswith('('),ends_outer=text.endswith('))'),balanced_parenthesis_count=text.count('(')==text.count(')'),
+        select_present=bool(re.search(r'\bSELECT\b',text,re.IGNORECASE)))
+
+
 def validate_policy_delta(before, after, variant):
     if before['capability'] != after['capability'] or before['helpers'] != after['helpers']:
         raise RuntimeError('4427 capabilities or helper definitions changed')
@@ -201,8 +218,11 @@ def validate_policy_delta(before, after, variant):
         field = expected[key]
         if {k:v for k,v in a.items() if k != field} != {k:v for k,v in b.items() if k != field}:
             raise RuntimeError('4427 policy roles/command/implicit check changed')
-        if re.sub(r'\s+', ' ', b[field]).strip() != "has_role(auth.uid(), 'admin'::app_role)":
-            raise RuntimeError('4427 original expression not exact')
+        normalized=re.sub(r'\s+', ' ', b[field]).strip() if isinstance(b[field],str) else None
+        if normalized not in ORIGINAL_POLICY_SPELLINGS:
+            error=RuntimeError('4427 original expression not exact')
+            error.policy_expression_diagnostic=policy_expression_diagnostic(b[field],key,field)
+            raise error
         changed.add(key)
     if variant == 'original' and changed != {(t,n) for t,n,_ in POLICIES}:
         raise RuntimeError('4427 intended original policy delta incomplete')
@@ -557,6 +577,7 @@ def main():
     except Exception as exc:
         cluster=getattr(driver,'cluster_attempt',None)
         failure=physical4427.failure_receipt(exc,getattr(driver,'phase','admission'),getattr(cluster,'events',[]))
+        if getattr(exc,'policy_expression_diagnostic',None) is not None:failure['policy_expression_diagnostic']=exc.policy_expression_diagnostic
         failure['elapsed_action_seconds']=time.monotonic()-driver.started if driver is not None else None
         failure['elapsed_phase_seconds']=time.monotonic()-driver.phase_started if getattr(driver,'phase_started',None) is not None else None
         failure['source_external']=getattr(driver,'last_external_failure',None)

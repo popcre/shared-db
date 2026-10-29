@@ -335,6 +335,41 @@ class Actual4427StaticTests(unittest.TestCase):
                 self.assertNotIn('not-for-logs',str(diagnostic.call_args))
                 self.assertNotIn('not-for-logs',str(diagnostic.call_args))
 
+    def test_eight_closed_original_deparse_spellings_preserve_exact_call(self):
+        expected={prefix+function+"(auth.uid(), 'admin'::"+typ+")"+suffix for function in ('has_role','public.has_role') for typ in ('app_role','public.app_role') for prefix,suffix in (('',''),('(',')'))}
+        self.assertEqual(set(m.ORIGINAL_POLICY_SPELLINGS),expected);self.assertEqual(len(expected),8)
+        rows=[dict(table=table,name=name,qual='SELECT wrapped' if clause=='USING' else None,check='SELECT wrapped' if clause=='WITH CHECK' else None,command='ALL',roles=[0],permissive=True) for table,name,clause in m.POLICIES]
+        before=dict(capability=['unchanged'],helpers=['unchanged'],policies=rows)
+        for expression in expected:
+            for whitespace in (False,True):
+                after=copy.deepcopy(before)
+                for row,(_,_,clause) in zip(after['policies'],m.POLICIES):row['check' if clause=='WITH CHECK' else 'qual']=expression.replace(', ', ', \n\t  ') if whitespace else expression
+                m.validate_policy_delta(before,after,'original')
+        ordinary="has_role(auth.uid(), 'admin'::app_role)"
+        bad=[ordinary.replace('has_role','evil.has_role'),ordinary.replace('has_role','public.other_role'),ordinary.replace('auth.uid()','uid()'),ordinary.replace('auth.uid()','evil.uid()'),ordinary.replace("'admin'","'member'"),ordinary.replace('::app_role','::text'),ordinary.replace('::app_role','::evil.app_role'),ordinary.replace('::app_role','::app_role::text'),ordinary+' OR true','SELECT '+ordinary,'(SELECT '+ordinary+')','('+ordinary,ordinary+')','(('+ordinary+'))',ordinary.replace('auth.uid()','auth.uid'),None]
+        for expression in bad:
+            after=copy.deepcopy(before)
+            for row,(_,_,clause) in zip(after['policies'],m.POLICIES):row['check' if clause=='WITH CHECK' else 'qual']=expression
+            with self.subTest(expression=expression),self.assertRaisesRegex(RuntimeError,'expression not exact'):m.validate_policy_delta(before,after,'original')
+
+    def test_own_policy_failure_diagnostic_reaches_main_without_raw_unknown_sql(self):
+        import io,json,time
+        from types import SimpleNamespace
+        from contextlib import redirect_stderr
+        rows=[dict(table=table,name=name,qual='SELECT wrapped' if clause=='USING' else None,check='SELECT wrapped' if clause=='WITH CHECK' else None,command='ALL',roles=[0],permissive=True) for table,name,clause in m.POLICIES]
+        before=dict(capability=[],helpers=[],policies=rows);after=copy.deepcopy(before)
+        secret="public.has_role(auth.uid(), 'UNIT_PRIVATE_POLICY_SECRET'::public.app_role) OR (SELECT true)"
+        after['policies'][0]['check']=secret
+        driver=SimpleNamespace(run=lambda:m.validate_policy_delta(before,after,'original'),phase='physical-matrix-0-assets-INSERT-original',started=time.monotonic(),cluster_attempt=None,last_external_failure=None,cleanup_error=None)
+        stderr=io.StringIO()
+        with patch.object(m,'NativeCI',return_value=driver),redirect_stderr(stderr):code=m.main()
+        self.assertEqual(code,1);self.assertNotIn('UNIT_PRIVATE_POLICY_SECRET',stderr.getvalue());self.assertNotIn(secret,stderr.getvalue())
+        receipt=json.loads(stderr.getvalue());diagnostic=receipt['policy_expression_diagnostic']
+        self.assertEqual(receipt['invariant'],'4427 original expression not exact');self.assertEqual(diagnostic['policy_index'],0);self.assertEqual(diagnostic['field'],'check')
+        self.assertEqual(diagnostic['sha256'],m.hashlib.sha256(secret.encode()).hexdigest());self.assertEqual(diagnostic['length'],len(secret))
+        self.assertTrue(diagnostic['function_public']);self.assertTrue(diagnostic['type_public']);self.assertTrue(diagnostic['select_present'])
+        self.assertFalse(diagnostic['admin_literal']);self.assertNotIn('expression',diagnostic)
+
     def test_only_current_physical_source_commands_are_admitted(self):
         import io
         with patch.dict(os.environ,self.valid_env(),clear=True):c=m.NativeCI()

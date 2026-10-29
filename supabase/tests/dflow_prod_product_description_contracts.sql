@@ -116,6 +116,39 @@ insert into dflow_prod.item_product_description
 select current_setting('zz.ct.i1')::int, id, description, 'combination', true, 'zz-run-1'
 from dflow_prod.mg_combination_description;
 
+-- A2. Least-privilege proof AS the grants role: identity-sequence USAGE and
+-- table grants let the application write, and the history tables refuse
+-- mutation (append-only audit).
+set role designflow_prod_item_master_grants;
+insert into dflow_prod.mg_combination_description
+  (mg01_id, mg02_id, mg03_id, description, status, run_id)
+values (current_setting('zz.ct.g2')::int, current_setting('zz.ct.g1')::int, current_setting('zz.ct.g3')::int,
+        'ZZ role fixture', 'pending', 'zz-run-2');
+insert into dflow_prod.item_product_description
+  (item_fk, combination_fk, description, source, verified, run_id)
+values (current_setting('zz.ct.i2')::int,
+        (select id from dflow_prod.mg_combination_description where run_id = 'zz-run-2'),
+        'ZZ role fixture words', 'combination', false, 'zz-run-2');
+-- The audit trigger runs as its invoker, so this role UPDATE also proves the
+-- history table INSERT grant and the history identity sequence USAGE.
+update dflow_prod.item_product_description set description = 'ZZ role rewrite'
+where item_fk = current_setting('zz.ct.i2')::int;
+do $$
+begin
+  begin
+    update dflow_prod.item_product_description_history set description = 'rewrite history'
+    where item_fk = current_setting('zz.ct.i1')::int;
+    raise exception 'contract A2 failed: grants role mutated an audit history row';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    delete from dflow_prod.mg_combination_description_history;
+    raise exception 'contract A2 failed: grants role deleted audit history';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+reset role;
+
 -- B. Machine writes the guard must refuse, each asserted by errcode 23514.
 do $$
 begin
@@ -132,6 +165,12 @@ begin
     update dflow_prod.item_product_description set description = 'machine pending rewrite' where item_fk = current_setting('zz.ct.i1')::int;
   exception when check_violation then
     raise exception 'contract B2 failed: guard must not protect non-override rows';
+  end;
+  begin
+    insert into dflow_prod.item_product_description (item_fk, description, source)
+    values (current_setting('zz.ct.i3')::int, 'machine claims human source', 'human');
+    raise exception 'contract B3 failed: machine INSERT claiming source=human was accepted';
+  exception when check_violation then null;
   end;
 end $$;
 
@@ -191,6 +230,20 @@ begin
   exception when check_violation then null;
   end;
 end $$;
+
+-- G2. The override-source CHECK is an independent backstop: with the human GUC
+-- on, the guard lets the row through and the CONSTRAINT must refuse it.
+select set_config('app.product_description.human', 'on', true);
+do $$
+begin
+  begin
+    insert into dflow_prod.item_product_description (item_fk, description, is_human_override, source)
+    values (current_setting('zz.ct.i3')::int, 'x', true, 'combination');
+    raise exception 'contract G2 failed: override=true with source=combination accepted under the human GUC';
+  exception when check_violation then null;
+  end;
+end $$;
+select set_config('app.product_description.human', '', true);
 
 -- H. Idempotent re-apply.
 \i supabase/migrations/20261029175542_dflow_prod_product_description.sql

@@ -1,4 +1,4 @@
--- Issue #5020 (claim #5021): Core Product Type storage for DesignFlow —
+-- Issue #5026 (claim #5046): Core Product Type storage for DesignFlow —
 -- PRODUCTION HALF of the matched pair (schema `dflow_prod`, project
 -- qsllyeztdwjgirsysgai). The sandbox half is the paired version 20261029161229
 -- (schema `dflow`, project xupnyeifmpsacrqahwwm).
@@ -35,12 +35,12 @@
 -- on insert, update and delete alike.
 --
 -- Idempotent: IF NOT EXISTS / OR REPLACE / drop-if-exists; re-apply is a
--- no-op. Rollback: drop trigger item_product_description_write_guard on
--- dflow_prod.item_product_description and trigger product_description_audit
--- on both tables, drop function
--- dflow_prod.item_product_description_protect_human_override, drop function
--- dflow_prod.product_description_row_audit, drop table
--- dflow_prod.item_product_description_history,
+-- no-op. Rollback (drop-if-exists, FK-correct order): drop trigger if exists
+-- item_product_description_write_guard on dflow_prod.item_product_description
+-- and trigger if exists product_description_audit on both tables, drop
+-- function if exists dflow_prod.item_product_description_protect_human_override,
+-- drop function if exists dflow_prod.product_description_row_audit, drop
+-- table if exists dflow_prod.item_product_description_history,
 -- dflow_prod.item_product_description,
 -- dflow_prod.mg_combination_description_history,
 -- dflow_prod.mg_combination_description.
@@ -51,15 +51,33 @@ set statement_timeout = '2min';
 do $$
 begin
   if to_regnamespace('dflow_prod') is null then
-    raise exception '#5020/20261029175542 self-check: schema dflow_prod is missing — wrong database for the production half (the sandbox half 20261029043759 applies on the sandbox project)'
+    raise exception '#5026/20261029175542 self-check: schema dflow_prod is missing — wrong database for the production half (the sandbox half 20261029161229 applies on the sandbox project)'
       using errcode = 'feature_not_supported';
   end if;
-  if to_regclass('core."merchGroup"') is null then
-    raise exception '#5020/20261029175542 self-check: core."merchGroup" is missing — cannot create the combination FKs'
+  if not exists (
+    select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'core' and c.relname = 'merchGroup' and c.relkind in ('r','p')
+  ) or not exists (
+    select 1 from pg_attribute a
+    where a.attrelid = 'core."merchGroup"'::regclass and a.attname = 'mg_id'
+      and a.atttypid = 'integer'::regtype and not a.attisdropped
+  ) then
+    raise exception '#5026/20261029175542 self-check: core."merchGroup" is missing or not an integer-keyed table — cannot create the combination FKs'
       using errcode = 'feature_not_supported';
   end if;
-  if to_regclass('dflow_prod."itemHeader"') is null then
-    raise exception '#5020/20261029175542 self-check: dflow_prod."itemHeader" is missing — wrong database'
+  if not exists (
+    select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'dflow_prod' and c.relname = 'itemHeader' and c.relkind in ('r','p')
+  ) or not exists (
+    select 1 from pg_attribute a
+    where a.attrelid = 'dflow_prod."itemHeader"'::regclass and a.attname = 'item_id_pk'
+      and a.atttypid = 'integer'::regtype and not a.attisdropped
+  ) then
+    raise exception '#5026/20261029175542 self-check: dflow_prod."itemHeader" is missing or not an integer-keyed table — wrong database'
+      using errcode = 'feature_not_supported';
+  end if;
+  if not exists (select 1 from pg_roles where rolname = 'designflow_prod_item_master_grants') then
+    raise exception '#5026/20261029175542 self-check: role designflow_prod_item_master_grants does not exist — this is not the production project (verified live 2026-10-29)'
       using errcode = 'feature_not_supported';
   end if;
 end $$;
@@ -148,39 +166,42 @@ create trigger product_description_audit
   for each row execute function dflow_prod.product_description_row_audit();
 
 -- Guard: a human override is never created, changed, cleared, re-attributed or
--- deleted by a machine connection. Only a session that set
--- app.product_description.human to exactly 'on' (case-insensitive) inside the
--- transaction may do any of those. Any other value — including 'off', 'false',
--- '0' or an unset variable — is a machine session and is refused.
+-- deleted by a machine connection, and a row may claim source='human' only the
+-- same way. Only a session that set app.product_description.human to 'on'
+-- (case-insensitively) inside the transaction may do any of those. Any other
+-- value — including 'off', 'false', '0' or an unset variable — is a machine
+-- session and is refused.
 create or replace function dflow_prod.item_product_description_protect_human_override() returns trigger as $fn$
 declare
   human boolean := lower(coalesce(current_setting('app.product_description.human', true), '')) = 'on';
 begin
   if tg_op = 'INSERT' then
-    if new.is_human_override and not human then
-      raise exception 'item_product_description % claims a human override; only a human session may create one (set app.product_description.human = on in the transaction)',
+    if (new.is_human_override or new.source = 'human') and not human then
+      raise exception 'item_product_description % claims a human override or human source; only a human session may create one (set app.product_description.human = on in the transaction)',
         new.item_fk using errcode = 'check_violation';
     end if;
     return new;
   end if;
   if tg_op = 'DELETE' then
-    if old.is_human_override and not human then
-      raise exception 'item_product_description % carries a human override; only a human session may delete it (set app.product_description.human = on in the transaction)',
+    if (old.is_human_override or old.source = 'human') and not human then
+      raise exception 'item_product_description % carries a human override or human source; only a human session may delete it (set app.product_description.human = on in the transaction)',
         old.item_fk using errcode = 'check_violation';
     end if;
     return old;
   end if;
   if not human and (
-    (old.is_human_override or new.is_human_override)
+    (old.is_human_override or old.source = 'human'
+     or new.is_human_override or new.source = 'human')
     and (
       new.description is distinct from old.description
       or new.is_human_override is distinct from old.is_human_override
+      or new.source is distinct from old.source
       or (old.is_human_override
           and (new.override_user_fk is distinct from old.override_user_fk
                or new.override_at is distinct from old.override_at))
     )
   ) then
-    raise exception 'item_product_description % carries or claims a human override; only a human session may change, clear or re-attribute it (set app.product_description.human = on in the transaction)',
+    raise exception 'item_product_description % carries or claims a human override or human source; only a human session may change, clear, re-describe or re-attribute it (set app.product_description.human = on in the transaction)',
       old.item_fk using errcode = 'check_violation';
   end if;
   return new;
@@ -205,9 +226,26 @@ create index if not exists item_product_description_run_idx
 create index if not exists mg_combination_description_run_idx
   on dflow_prod.mg_combination_description (run_id);
 
+-- Least privilege: schema and sequence usage plus full CRUD on the two live
+-- tables for the feature and its run-scoped rollback; the history tables are
+-- append-only audit copies, so the grants role gets SELECT and INSERT only —
+-- it can never rewrite or erase history. The identity sequences behind the
+-- three GENERATED ALWAYS PKs need USAGE or every app-role INSERT fails on the
+-- default (20261008014009 pairs table and sequence grants the same way).
+grant usage on schema dflow_prod to designflow_prod_item_master_grants;
+
 grant select, insert, update, delete
   on dflow_prod.mg_combination_description,
-    dflow_prod.mg_combination_description_history,
-    dflow_prod.item_product_description,
+    dflow_prod.item_product_description
+  to designflow_prod_item_master_grants;
+
+grant select, insert
+  on dflow_prod.mg_combination_description_history,
     dflow_prod.item_product_description_history
+  to designflow_prod_item_master_grants;
+
+grant usage
+  on sequence dflow_prod.mg_combination_description_id_seq,
+    dflow_prod.mg_combination_description_history_history_id_seq,
+    dflow_prod.item_product_description_history_history_id_seq
   to designflow_prod_item_master_grants;

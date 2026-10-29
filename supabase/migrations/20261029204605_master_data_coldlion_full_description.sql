@@ -20,6 +20,14 @@
 -- existing nightly bridge refresh does. Unlinked lines are untouched. The
 -- PopDAM page locks the column for linked lines.
 
+-- Folded in (issue #5063, superseded PR #5062; owner 2026-10-29, verbatim:
+-- "there is 1 generic division and 2 licensed divisions. check the division."
+-- and "yes, all EH001 items should be in Generic"): new EH001 items are filed
+-- in the Generic list (Generic.Style / generic, numbered after the Generic
+-- max), and every existing Licensed row whose bridged item or auto-flow origin
+-- is EH001 moves to Generic once (47 rows on production when rehearsed),
+-- followed by a bridge refresh because the bridge snapshots tracker_type.
+
 -- derived-from: 20261028183729
 
 begin;
@@ -39,6 +47,7 @@ declare
   v_eligible integer;
   v_deferred integer;
   v_next_row_number integer;
+  v_next_generic_row_number integer;
   v_masters_fetched_at timestamptz;
 begin
   -- Assortment evidence clock (#4956, hardened #4974 review round 1 H2): only a
@@ -136,6 +145,12 @@ begin
   where source_workbook_id = '1ZL6cEwydC0cWSGP2I92uILn1ixILr_qAeDfDfD6F214'
     and source_sheet = 'License.Style';
 
+  -- Owner direction 2026-10-29: EH001 is the one generic division; CW001 and SP001 are licensed.
+  select coalesce(max(source_row_number), 2) + 1 into v_next_generic_row_number
+  from public.style_tracker_rows
+  where source_workbook_id = '1ZL6cEwydC0cWSGP2I92uILn1ixILr_qAeDfDfD6F214'
+    and source_sheet = 'Generic.Style';
+
   with deduped as (
     select distinct on (upper(btrim(coalesce(i.style_number, i.item_number))))
            i.id as plm_item_id,
@@ -157,7 +172,8 @@ begin
              'coldlion_vendor_code', nullif(i.raw ->> 'vendorCode', ''),
              'coldlion_royalty_code', nullif(i.raw ->> 'royaltyCode', ''),
              'coldlion_size_range', nullif(i.raw ->> 'sizeRangeCode', '')
-           )) as row_data_value
+           )) as row_data_value,
+           coalesce((i.raw ->> 'divisionCode') = 'EH001', false) as is_generic
     from plm.item i
     left join core.licensor lic on lic.id = i.licensor_id
     where i.created_at >= p_cutoff
@@ -194,7 +210,7 @@ begin
   ),
   capped as (
     select plm_item_id, sku_value, created_at, desc_value, licensor_value,
-           discontinued_value, notes_value, row_data_value
+           discontinued_value, notes_value, row_data_value, is_generic
     from deduped
     order by created_at, plm_item_id
     limit v_max_rows
@@ -205,9 +221,10 @@ begin
   )
   select
     '1ZL6cEwydC0cWSGP2I92uILn1ixILr_qAeDfDfD6F214',
-    'License.Style',
-    v_next_row_number + row_number() over (order by c.created_at, c.plm_item_id) - 1,
-    'licensed',
+    case when c.is_generic then 'Generic.Style' else 'License.Style' end,
+    case when c.is_generic then v_next_generic_row_number else v_next_row_number end
+      + row_number() over (partition by c.is_generic order by c.created_at, c.plm_item_id) - 1,
+    case when c.is_generic then 'generic' else 'licensed' end,
     c.sku_value,
     c.desc_value,
     c.licensor_value,
@@ -226,25 +243,6 @@ begin
     perform plm.refresh_style_tracker_item_bridge();
   end if;
 
-  -- #5058: a ColdLion-linked line's description is ColdLion's full description,
-  -- never a local edit. Re-assert it every run so ColdLion changes flow in.
-  update public.style_tracker_rows r
-       set description = src.full_desc,
-           row_data = case
-             when r.description is null or r.row_data ? 'pre_coldlion_description' then r.row_data
-             else coalesce(r.row_data, '{}'::jsonb) || jsonb_build_object('pre_coldlion_description', r.description)
-           end
-      from (
-        select b.style_tracker_row_id,
-               coalesce(nullif(i.raw ->> 'itemDesc', ''), nullif(i.raw ->> 'itemDisplayDesc', ''), nullif(i.description, '')) as full_desc
-          from plm.style_tracker_item_bridge b
-          join plm.item i on i.id = b.plm_item_id
-         where i.source_system = 'coldlion'
-      ) src
-     where src.style_tracker_row_id = r.id
-       and src.full_desc is not null
-       and r.description is distinct from src.full_desc;
-
   eligible_count := v_eligible;
   deferred_count := v_deferred;
   return next;
@@ -253,6 +251,39 @@ $fn$;
 
 revoke all on function public.sync_new_items_into_style_tracker(boolean, timestamptz) from public, anon, authenticated;
 grant execute on function public.sync_new_items_into_style_tracker(boolean, timestamptz) to service_role;
+
+-- One-time correction (owner 2026-10-29: "all EH001 items should be in
+-- Generic"): move every Licensed row whose bridged item, or auto-flow origin,
+-- is division EH001. Idempotent: zero rows once corrected.
+with wrong as (
+  select r.id,
+         row_number() over (order by r.source_row_number, r.id) as rn
+  from public.style_tracker_rows r
+  where r.tracker_type = 'licensed'
+    and r.source_workbook_id = '1ZL6cEwydC0cWSGP2I92uILn1ixILr_qAeDfDfD6F214'
+    and r.source_sheet = 'License.Style'
+    and (r.row_data ->> 'coldlion_division' = 'EH001'
+         or exists (select 1
+                      from plm.style_tracker_item_bridge b
+                      join plm.item i on i.id = b.plm_item_id
+                     where b.style_tracker_row_id = r.id
+                       and i.raw ->> 'divisionCode' = 'EH001'))
+), base as (
+  select coalesce(max(source_row_number), 2) as n
+  from public.style_tracker_rows
+  where source_workbook_id = '1ZL6cEwydC0cWSGP2I92uILn1ixILr_qAeDfDfD6F214'
+    and source_sheet = 'Generic.Style'
+)
+update public.style_tracker_rows r
+   set tracker_type = 'generic',
+       source_sheet = 'Generic.Style',
+       source_row_number = base.n + wrong.rn
+  from wrong, base
+ where r.id = wrong.id;
+
+-- The bridge snapshots tracker_type; order linking reads it, so refresh now.
+select plm.refresh_style_tracker_item_bridge();
+
 
 -- One-time: bring every ColdLion-linked line to the full description now.
 update public.style_tracker_rows r
@@ -362,6 +393,10 @@ begin
   if position($q$coalesce(nullif(i.raw ->> 'itemDesc', ''), nullif(i.raw ->> 'itemDisplayDesc', '')$q$ in v_fnsrc) = 0
      or position($q$coalesce(nullif(i.raw ->> 'itemDisplayDesc', ''), nullif(i.raw ->> 'itemDesc', '')$q$ in v_fnsrc) > 0 then
     raise exception '#5058: description pre-fill does not prefer itemDesc';
+  end if;
+  -- #5063 (folded in): generic-division routing.
+  if position('Generic.Style' in v_fnsrc) = 0 or position('''EH001''' in v_fnsrc) = 0 then
+    raise exception '#5063: division routing is absent from the function body';
   end if;
   if position('pre_coldlion_description' in v_fnsrc) = 0
      or position('set description = src.full_desc' in v_fnsrc) = 0 then

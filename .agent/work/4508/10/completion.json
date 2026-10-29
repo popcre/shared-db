@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "work_issue": 4508,
+  "outcome": "ready-for-merge",
+  "pr": 5036,
+  "migration_versions": [
+    "20261029161104"
+  ],
+  "contract_ref": "refs/db-contracts/4508/10",
+  "contract_sha256": "e5bef4e7b6da13374b573f6d337b56c189671f138d370beba4a5257cf109779f",
+  "head_sha": "598ad9179a191286b05785513bff6dc02564e5b0",
+  "base_sha": "69f81af9544c3ab7c010ec2d093aad3179e97ef1",
+  "files_changed": [
+    "config/atomic-migration-allowlist.json",
+    "supabase/migrations/20261029161104_dam_search_plan_cost_dedupe.sql",
+    "supabase/tests/popdam_ranked_filter_parity_contracts.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "function public.search_dam_documents",
+    "function public.dam_asset_matches_filters"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed on the rebased head."
+    },
+    {
+      "command": "ai-review muse diff-review --base origin/main --assert-head 598ad9179a191286b05785513bff6dc02564e5b0 --implementer glm --detach",
+      "exit_code": 0,
+      "evidence": "Four Muse rounds on prior heads (three REJECT findings all fixed, one terminal APPROVE at e169d753); advisory per main #5054. Rebased-head review attached in PR discussion."
+    }
+  ],
+  "assumptions_resolved": [
+    "Six-case production equivalence: identical rows/totals/has_more/facets.",
+    "Ephemeral CI suite passed with contract tests on the pre-rebase head; CI re-runs on this head.",
+    "Claim #5041 held with current owner check-in at every protected action."
+  ],
+  "stop_conditions_hit": []
+}

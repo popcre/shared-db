@@ -26,8 +26,8 @@ begin
   if position('licensorId' in v_helper)=0 or position('propertyId' in v_helper)=0
      or position('customerId' in v_helper)=0 or position('tagFilter' in v_helper)=0
      or position('fileType' in v_helper)=0 or position('contentType' in v_helper)=0
-     or position('productMaterial' in v_helper)=0 or position('status' in v_helper)=0
-     or position('workflowStatus' in v_helper)=0 or position('stage' in v_helper)=0
+     or position('productMaterial' in v_helper)=0 or position($q$->'status'$q$ in v_helper)=0
+     or position('workflowStatus' in v_helper)=0 or position($q$->'stage'$q$ in v_helper)=0
      or position('isLicensed' in v_helper)=0 or position('assetType' in v_helper)=0
      or position('artSource' in v_helper)=0 or position('fileStatus' in v_helper)=0
      or position('productCategory' in v_helper)=0
@@ -35,7 +35,7 @@ begin
      or position('no_pdf_compat' in v_helper)=0
      or position('no_preview_unsupported' in v_helper)=0
      or position('WALL ART' in v_helper)=0 or position('3FZ' in v_helper)=0
-     or position('customer' in v_helper)=0 or position('program' in v_helper)=0
+     or position($q$->>'customer'$q$ in v_helper)=0 or position($q$->>'program'$q$ in v_helper)=0
      or position('p_asset.modified_at >= p_thumbnail_min_date' in v_helper)=0
      or position('not p_asset.is_deleted' in v_helper)=0 then
     raise exception 'ranked filters are missing from the shared per-asset predicate helper';
@@ -45,14 +45,14 @@ begin
         / length('dam_asset_matches_filters') <> 2
      or position('dam_asset_matches_filters' in v_search)
         > position('page as materialized' in lower(v_search))
-     or position('dam_asset_matches_filters' in reverse(v_search))
-        > position('page as materialized' in reverse(lower(v_search))) then
+     or position(reverse('dam_asset_matches_filters') in reverse(v_search))
+        <= position(reverse('page as materialized') in reverse(lower(v_search))) then
     raise exception 'ranked search must filter through the shared predicate helper in both pre-pagination consumers';
   end if;
   -- per-asset predicate keys must NOT be inlined in the scan zone. The facet
   -- builder in the summary CTE legitimately reuses names like 'fileType', so
   -- the scan zone ends where 'summary as materialized' begins.
-  v_scan_zone := substring(v_search from 1 for position('summary as materialized' in v_search) - 1);
+  v_scan_zone := substring(v_search from 1 for position('summary as materialized' in lower(v_search)) - 1);
   if position('licensorId' in v_scan_zone) > 0 or position('propertyId' in v_scan_zone) > 0
      or position('customerId' in v_scan_zone) > 0 or position('tagFilter' in v_scan_zone) > 0
      or position('fileType' in v_scan_zone) > 0 or position('contentType' in v_scan_zone) > 0
@@ -60,6 +60,8 @@ begin
      or position('isLicensed' in v_scan_zone) > 0 or position('assetType' in v_scan_zone) > 0
      or position('artSource' in v_scan_zone) > 0 or position('fileStatus' in v_scan_zone) > 0
      or position('productCategory' in v_scan_zone) > 0
+     or position($q$->'status'$q$ in v_scan_zone) > 0 or position($q$->'stage'$q$ in v_scan_zone) > 0
+     or position($q$->>'customer'$q$ in v_scan_zone) > 0 or position($q$->>'program'$q$ in v_scan_zone) > 0
      or position('WALL ART' in v_scan_zone) > 0 or position('3FZ' in v_scan_zone) > 0 then
     raise exception 'ranked search inlined per-asset filter predicates instead of delegating to the helper';
   end if;

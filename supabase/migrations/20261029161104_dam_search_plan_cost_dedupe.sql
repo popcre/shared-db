@@ -9,8 +9,10 @@
 --   2026-10-29), which pushes DAM searches into the 8 s authenticated statement
 --   timeout and makes result sets flip between variants (PopDAM "spiderman coir").
 --   dam_asset_matches_filters is a STABLE one-SELECT SQL function, so the planner
---   inlines it at both call sites: one parse/plan of the predicate, while both bounded
---   execution shapes (probe LIMIT 1001, page EXISTS early-out) are preserved exactly.
+--   inlines it at both call sites. Measured effect (EXPLAIN, parse+plan only, no
+--   execution): 2,256/2,076 ms before -> 14.7/13.5 ms after (PR #5036 transcript).
+--   The bounded execution shapes (probe LIMIT 1001, page EXISTS early-out) and the
+--   result set are preserved exactly (six-case production diff, identical rows).
 --   Keyword leg, semantic legs, ranking, output columns, total_count / has_more /
 --   facets semantics and grants are unchanged.
 

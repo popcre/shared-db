@@ -1,7 +1,7 @@
--- Version: 20261030002114
+-- Version: 20261030042314
 -- derived-from: 20261027114004
 -- #4508: cut search_dam_documents planning cost by factoring the per-asset visibility
---        predicate into one inlinable helper.
+--        predicate into one planner-opaque helper.
 --   The 20261027114004 body hand-copies the ~20-condition asset visibility filter in
 --   two places: the 1,001-row summary probe (visible_assets) and the correlated EXISTS
 --   inside page_documents (re-deriving the same UNION over candidate assets). Planning
@@ -34,7 +34,7 @@ begin
      or position('hnsw.iterative_scan' in v_src) = 0
      or position('semantic_ann as materialized' in v_src) = 0
      or position('threshold applied after the legs' in v_src) = 0 then
-    raise exception '#4508/20261030002114: live search_dam_documents is not the 20261027114004 body; refusing to replace';
+    raise exception '#4508/20261030042314: live search_dam_documents is not the 20261027114004 body; refusing to replace';
   end if;
 end
 $guard$;

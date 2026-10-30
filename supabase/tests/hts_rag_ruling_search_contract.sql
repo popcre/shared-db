@@ -36,6 +36,8 @@ $ruling_search_privileges$;
 
 -- Behaviour: chapter pass, fallback pass, active-only, RRF ordering, held codes.
 begin;
+-- Test-only membership lets the non-superuser CI session SET ROLE; rolled back below.
+grant designflow_hts_alsand_runtime to postgres;
 insert into hts_rag.hts_rag_rulings (ruling_number, subject, full_text, full_text_hash, ruling_date, source_environment, effective_status)
 values
   ('ZT0001', 'The tariff classification of a plush stuffed toy bear from China',
@@ -53,6 +55,13 @@ values ('ZT0001', '9503.00.0073', 'held', 'parse-v1', 'alsand'),
        ('ZT0003', '9503.00.0073', 'held', 'parse-v1', 'alsand'),
        ('ZT0004', '6912.00.4400', 'held', 'parse-v1', 'alsand');
 
+-- A trusted phrase without a denormalized chapter is found only by the global
+-- vector pass; the ruling's held code still makes it an in-chapter result.
+insert into hts_rag.hts_rag_ruling_products
+  (ruling_number, item_label, plain_phrase, phrase_embedding, review_state, extract_version, source_environment)
+values ('ZT0001', 'Toy bear', 'plush stuffed toy bear',
+        array_fill(1::real, array[768])::extensions.halfvec, 'trusted', 'search-test', 'alsand');
+
 set local role designflow_hts_alsand_runtime;
 do $ruling_search_behaviour$
 declare
@@ -60,6 +69,8 @@ declare
   v_held text[];
   v_pass smallint;
   v_in boolean;
+  v_score double precision;
+  v_vector_rank integer;
 begin
   -- Chapter 95 only, threshold 1: pass 1 is enough; the revoked ruling never appears.
   select array_agg(s.ruling_number order by s.score desc), min(s.pass)
@@ -69,7 +80,7 @@ begin
     raise exception 'pass 1 returned % (pass %), expected only ZT0001', v_rows, v_pass;
   end if;
 
-  -- Rejected codes do not put a ruling in a chapter; pass 2 runs (threshold 5) and keeps the in-chapter boost.
+  -- Rejected codes do not put a ruling in a chapter; pass 2 runs (threshold 5).
   select array_agg(s.ruling_number order by s.score desc) into v_rows
   from hts_rag.hts_rag_search_rulings('plush stuffed toy bear', array['95'], 10) s;
   if v_rows[1] <> 'ZT0001' or not ('ZT0002' = any (v_rows)) or 'ZT0003' = any (v_rows) then
@@ -79,6 +90,19 @@ begin
   from hts_rag.hts_rag_search_rulings('plush stuffed toy bear', array['95'], 10) s where s.ruling_number = 'ZT0002';
   if v_pass <> 2 or v_in then
     raise exception 'ZT0002 should come from pass 2 outside the candidate chapters (pass %, in %)', v_pass, v_in;
+  end if;
+
+  -- Exercise the in-chapter pass-2 boost with a vector-only result absent from pass 1.
+  select s.pass, s.in_candidate_chapters, s.score, s.vector_rank
+    into v_pass, v_in, v_score, v_vector_rank
+  from hts_rag.hts_rag_search_rulings('', array['95'], 100,
+         array_fill(1::real, array[768])::extensions.halfvec, 100) s
+  where s.ruling_number = 'ZT0001';
+  if v_pass is distinct from 2::smallint or v_in is distinct from true
+     or v_vector_rank is null or v_score is null
+     or abs(v_score - (1.0 / (60 + v_vector_rank) + 1.0 / 61)) > 1e-9 then
+    raise exception 'in-chapter pass-2 boost missing (pass %, in %, score %, vector rank %)',
+      v_pass, v_in, v_score, v_vector_rank;
   end if;
 
   -- No chapters: all active law; held codes returned; score is RRF with k = 60.

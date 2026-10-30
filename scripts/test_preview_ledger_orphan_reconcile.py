@@ -10,7 +10,20 @@ class Tests(unittest.TestCase):
         workflow=(P.parent.parent/'.github/workflows/preview-ledger-orphan-reconciliation.yml').read_text(encoding='utf-8')
         self.assertIn('config/preview-ledger-orphan-reconciliations.json',workflow)
         self.assertNotIn('case "$ISSUE:$CLAIM:$SOURCE_PR:$ORPHAN:$REPLACEMENT"',workflow)
-        self.assertEqual(len(M.SUPPORTED_CASES),16)
+        self.assertEqual(len(M.SUPPORTED_CASES),17)
+
+    def test_issue_4508_recovery_tuple_and_evidence_are_narrowly_supported(self):
+        case=M.SUPPORTED_CASES[(4508,5090,5075)]
+        self.assertEqual(case,{
+            'mode':'replacement_already_applied',
+            'orphan_version':'20261030014205',
+            'replacement_version':'20261030042314',
+            'preview_run_id':41012458156,
+            'preview_artifact_id':12958590525,
+            'preview_artifact_digest':'sha256:254880bc0e3679ccaaece3cee956a731a07babe56ebb3159a45123b0bd87a76e',
+            'issue_state':'open',
+            'claim_state':'closed',
+        })
 
     def test_stage_catalog_open_successor_governance_and_substitution_refusals(self):
         """Execute real governance, distinguishing producer from applied-source commits."""

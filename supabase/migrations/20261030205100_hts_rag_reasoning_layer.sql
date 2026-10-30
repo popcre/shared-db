@@ -301,11 +301,19 @@ comment on column hts_rag.hts_rag_heading_decisions.decisive_keys is
   'DEPRECATED (design §13.8): replaced by hts_rag_decision_facts. Dropped after extract-v2 data is migrated.';
 grant update (code_prefix, rejected_proposed_by, sentence_seq, extraction_id)
   on hts_rag.hts_rag_heading_decisions to designflow_hts_prod_worker, designflow_hts_alsand_worker;
+create policy hts_rag_prod_worker_update on hts_rag.hts_rag_heading_decisions
+  for update to designflow_hts_prod_worker using (true) with check (true);
+create policy hts_rag_alsand_worker_update on hts_rag.hts_rag_heading_decisions
+  for update to designflow_hts_alsand_worker using (true) with check (true);
 
 alter table hts_rag.hts_rag_product_attributes add column sentence_seq integer;
 comment on column hts_rag.hts_rag_product_attributes.is_decisive is
   'DEPRECATED (design §13.8): decisiveness belongs to a decision (hts_rag_decision_facts). Dropped after extract-v2 data is migrated.';
 grant update (sentence_seq) on hts_rag.hts_rag_product_attributes to designflow_hts_prod_worker, designflow_hts_alsand_worker;
+create policy hts_rag_prod_worker_update on hts_rag.hts_rag_product_attributes
+  for update to designflow_hts_prod_worker using (true) with check (true);
+create policy hts_rag_alsand_worker_update on hts_rag.hts_rag_product_attributes
+  for update to designflow_hts_alsand_worker using (true) with check (true);
 
 alter table hts_rag.hts_rag_ruling_products add column extraction_id uuid;
 alter table hts_rag.hts_rag_ruling_products add column likely_superseded boolean not null default false;
@@ -344,7 +352,7 @@ create table hts_rag.hts_rag_decision_tests (
   constraint hts_rag_decision_tests_extraction_fkey foreign key (extraction_id)
     references hts_rag.hts_rag_extractions(id) on delete cascade,
   constraint hts_rag_decision_tests_outcome_check check (outcome in ('satisfied', 'failed', 'not_reached', 'assumed')),
-  constraint hts_rag_decision_tests_uq unique (decision_id, test_id),
+  constraint hts_rag_decision_tests_uq unique (decision_id, test_id, extraction_id),
   constraint hts_rag_decision_tests_source_environment_chk check (source_environment in ('production', 'alsand'))
 );
 comment on table hts_rag.hts_rag_decision_tests is
@@ -361,7 +369,7 @@ revoke all on hts_rag.hts_rag_decision_tests
        designflow_hts_prod_worker, designflow_hts_alsand_worker;
 grant select, insert, delete on hts_rag.hts_rag_decision_tests
   to designflow_hts_prod_worker, designflow_hts_alsand_worker;
-grant update (outcome, is_dispositive, reason_sentence_seq) on hts_rag.hts_rag_decision_tests
+grant update (outcome, is_dispositive, reason_sentence_seq, extraction_id) on hts_rag.hts_rag_decision_tests
   to designflow_hts_prod_worker, designflow_hts_alsand_worker;
 create policy hts_rag_prod_worker_access on hts_rag.hts_rag_decision_tests
   for select to designflow_hts_prod_worker using (true);
@@ -493,7 +501,7 @@ create table hts_rag.hts_rag_counterfactuals (
   source_environment text not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint hts_rag_counterfactuals_pkey primary key (product_id, attribute_key, then_code_prefix),
+  constraint hts_rag_counterfactuals_pkey primary key (product_id, attribute_key, then_code_prefix, extraction_id, sentence_seq),
   constraint hts_rag_counterfactuals_product_fkey foreign key (product_id)
     references hts_rag.hts_rag_ruling_products(id) on delete cascade,
   constraint hts_rag_counterfactuals_key_fkey foreign key (attribute_key)
@@ -532,6 +540,110 @@ create policy hts_rag_prod_runtime_read on hts_rag.hts_rag_counterfactuals
   for select to designflow_hts_prod_runtime using (true);
 create policy hts_rag_alsand_runtime_read on hts_rag.hts_rag_counterfactuals
   for select to designflow_hts_alsand_runtime using (true);
+
+-- Sentence provenance: refuse dangling (ruling_number, seq) references. Composite FK is
+-- impossible because these tables lack ruling_number; resolve it through the parent chain.
+create function hts_rag.validate_sentence_provenance()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_ruling text;
+  v_seq integer;
+begin
+  if tg_table_name = 'hts_rag_heading_decisions' then
+    v_seq := new.sentence_seq;
+    if v_seq is not null then
+      select p.ruling_number into v_ruling
+        from hts_rag.hts_rag_ruling_products p where p.id = new.product_id;
+    end if;
+  elsif tg_table_name = 'hts_rag_product_attributes' then
+    v_seq := new.sentence_seq;
+    if v_seq is not null then
+      select p.ruling_number into v_ruling
+        from hts_rag.hts_rag_ruling_products p where p.id = new.product_id;
+    end if;
+  elsif tg_table_name = 'hts_rag_decision_tests' then
+    v_seq := new.reason_sentence_seq;
+    if v_seq is not null then
+      select p.ruling_number into v_ruling
+        from hts_rag.hts_rag_heading_decisions hd
+        join hts_rag.hts_rag_ruling_products p on p.id = hd.product_id
+       where hd.id = new.decision_id;
+    end if;
+  elsif tg_table_name = 'hts_rag_decision_facts' then
+    v_seq := new.sentence_seq;
+    select p.ruling_number into v_ruling
+      from hts_rag.hts_rag_decision_tests dt
+      join hts_rag.hts_rag_heading_decisions hd on hd.id = dt.decision_id
+      join hts_rag.hts_rag_ruling_products p on p.id = hd.product_id
+     where dt.id = new.decision_test_id;
+  elsif tg_table_name = 'hts_rag_decision_authorities' then
+    v_seq := new.sentence_seq;
+    select p.ruling_number into v_ruling
+      from hts_rag.hts_rag_heading_decisions hd
+      join hts_rag.hts_rag_ruling_products p on p.id = hd.product_id
+     where hd.id = new.decision_id;
+  elsif tg_table_name = 'hts_rag_counterfactuals' then
+    v_seq := new.sentence_seq;
+    select p.ruling_number into v_ruling
+      from hts_rag.hts_rag_ruling_products p where p.id = new.product_id;
+  end if;
+  if v_seq is not null then
+    if v_ruling is null or not exists (
+      select 1 from hts_rag.hts_rag_ruling_sentences
+       where ruling_number = v_ruling and seq = v_seq
+    ) then
+      raise exception 'sentence provenance (%, %) not found in hts_rag_ruling_sentences', v_ruling, v_seq;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+create trigger validate_sentence_provenance
+before insert or update on hts_rag.hts_rag_heading_decisions
+for each row execute function hts_rag.validate_sentence_provenance();
+create trigger validate_sentence_provenance
+before insert or update on hts_rag.hts_rag_product_attributes
+for each row execute function hts_rag.validate_sentence_provenance();
+create trigger validate_sentence_provenance
+before insert or update on hts_rag.hts_rag_decision_tests
+for each row execute function hts_rag.validate_sentence_provenance();
+create trigger validate_sentence_provenance
+before insert or update on hts_rag.hts_rag_decision_facts
+for each row execute function hts_rag.validate_sentence_provenance();
+create trigger validate_sentence_provenance
+before insert or update on hts_rag.hts_rag_decision_authorities
+for each row execute function hts_rag.validate_sentence_provenance();
+create trigger validate_sentence_provenance
+before insert or update on hts_rag.hts_rag_counterfactuals
+for each row execute function hts_rag.validate_sentence_provenance();
+
+-- affected_product_ids membership: every uuid must reference hts_rag_ruling_products.
+create function hts_rag.validate_affected_product_ids()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_id uuid;
+begin
+  if new.affected_product_ids is not null then
+    foreach v_id in array new.affected_product_ids loop
+      if not exists (select 1 from hts_rag.hts_rag_ruling_products where id = v_id) then
+        raise exception 'affected_product_ids contains unknown product %', v_id;
+      end if;
+    end loop;
+  end if;
+  return new;
+end;
+$$;
+create trigger validate_affected_product_ids
+before insert or update on hts_rag.hts_rag_ruling_links
+for each row execute function hts_rag.validate_affected_product_ids();
 
 create materialized view hts_rag.hts_rag_fault_lines as
 with pairs as (

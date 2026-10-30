@@ -59,6 +59,7 @@ values ('zz_principal_use', 'text', 'test', 'alsand') on conflict do nothing;
 do $reasoning_behaviour$
 declare
   v_ext uuid; v_product uuid; v_held uuid; v_rej uuid; v_test uuid; v_rows integer;
+  v_ext2 uuid; v_attr uuid; v_test2 uuid;
 begin
   insert into hts_rag.hts_rag_extractions (ruling_number, pass, extract_version, model, prompt_hash, text_hash, is_current, source_environment)
   values ('ZR0001', 'reasoning', 'test-v1', 'test', 'p', 't', true, 'alsand') returning id into v_ext;
@@ -105,6 +106,47 @@ begin
   if not exists (select 1 from hts_rag.hts_rag_fault_lines_any_type where prefix_a = '9405.50' and prefix_b = '9505.10') then
     raise exception 'type-agnostic fault line missing';
   end if;
+  -- (5a) UPDATE new columns on heading_decisions and product_attributes under RLS
+  insert into hts_rag.hts_rag_product_attributes (product_id, key, value_text, source_span, source_environment)
+  values (v_product, 'zz_principal_use', 'candle holder', int4range(0, 34), 'alsand') returning id into v_attr;
+  update hts_rag.hts_rag_heading_decisions
+     set code_prefix = '9405.50.40', sentence_seq = 0, rejected_proposed_by = 'cbp_alternative'
+   where id = v_held;
+  update hts_rag.hts_rag_product_attributes set sentence_seq = 0 where id = v_attr;
+  -- (5b) second extraction version writes beside the old
+  insert into hts_rag.hts_rag_extractions (ruling_number, pass, extract_version, model, prompt_hash, text_hash, source_environment)
+  values ('ZR0001', 'reasoning', 'test-v2', 'test', 'p', 't', 'alsand') returning id into v_ext2;
+  insert into hts_rag.hts_rag_decision_tests (decision_id, test_id, outcome, is_dispositive, reason_sentence_seq, extraction_id, source_environment)
+  values (v_rej, (select id from hts_rag.hts_rag_classification_tests where canonical_name like 'Festive article: utilitarian%'),
+          'failed', true, 0, v_ext2, 'alsand') returning id into v_test2;
+  insert into hts_rag.hts_rag_counterfactuals (product_id, attribute_key, if_value, then_code_prefix, sentence_seq, extraction_id, source_environment)
+  values (v_product, 'zz_principal_use', 'decoration', '9505.10', 0, v_ext2, 'alsand');
+  -- (5c) provenance forgery refused: bad sentence_seq
+  begin
+    insert into hts_rag.hts_rag_heading_decisions (product_id, heading, code_prefix, outcome, sentence_seq, extraction_id, source_environment)
+    values (v_product, '9405', '9405.50', 'held', 999, v_ext, 'alsand');
+    raise exception 'forged sentence_seq was accepted';
+  exception when others then
+    if sqlerrm like '%forged%' then raise; end if;
+    if sqlerrm not like '%sentence provenance%' then raise; end if;
+  end;
+  begin
+    insert into hts_rag.hts_rag_counterfactuals (product_id, attribute_key, if_value, then_code_prefix, sentence_seq, extraction_id, source_environment)
+    values (v_product, 'zz_principal_use', 'decoration', '9505.10', 999, v_ext, 'alsand');
+    raise exception 'forged counterfactual sentence_seq was accepted';
+  exception when others then
+    if sqlerrm like '%forged%' then raise; end if;
+    if sqlerrm not like '%sentence provenance%' then raise; end if;
+  end;
+  -- (5c) provenance forgery refused: bad affected_product_ids
+  begin
+    insert into hts_rag.hts_rag_ruling_links (from_ruling, to_ruling, kind, link_source, affected_product_ids, source_environment)
+    values ('ZR0001', 'ZR0002', 'revokes', 'text', array[gen_random_uuid()], 'alsand');
+    raise exception 'forged affected_product_ids was accepted';
+  exception when others then
+    if sqlerrm like '%forged%' then raise; end if;
+    if sqlerrm not like '%affected_product_ids%' then raise; end if;
+  end;
 end
 $reasoning_behaviour$;
 reset role;

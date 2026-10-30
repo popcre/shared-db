@@ -176,7 +176,13 @@ const CALLABLE = new Set(['count', 'coalesce', 'nullif', 'greatest', 'least', 'l
   'array_agg', 'string_agg', 'min', 'max', 'sum', 'avg', 'bool_and', 'bool_or', 'array_length', 'cardinality', 'abs', 'round',
   'now', 'clock_timestamp', 'statement_timestamp', 'transaction_timestamp', 'gen_random_uuid', 'encode', 'decode', 'md5',
   'digest', 'pg_backend_pid', 'txid_current'])
-const QUALIFIED_CALLABLE = new Set(['extensions.digest', 'extensions.gen_random_uuid'])
+const QUALIFIED_CALLABLE = new Set(['extensions.digest', 'extensions.gen_random_uuid', 'plm.set_source_resolution'])
+// #5079: plm.set_source_resolution() is the only documented write path for a source
+// row's canonical resolution (plm.source_resolution), which is how a curated Character
+// or Property promotion records which source identity it came from. A call is a row
+// write into plm.source_resolution and is reported as one, so the claim must hold it.
+export const RESOLUTION_SETTER = 'plm.set_source_resolution'
+export const RESOLUTION_TABLE = 'table plm.source_resolution'
 // Words that take a parenthesis without being a function call.
 const PAREN_KEYWORDS = new Set(['values', 'in', 'exists', 'not', 'and', 'or', 'any', 'all', 'some', 'row', 'filter', 'over', 'as',
   'select', 'from', 'where', 'on', 'conflict', 'using', 'when', 'then', 'else', 'if', 'elsif', 'case', 'returning', 'into', 'join',
@@ -283,7 +289,10 @@ export function inspectCuratedSql(sql) {
       if (FORBIDDEN_WORDS.has(word)) throw new CuratedSqlError(`forbidden word ${word.toUpperCase()}`)
       if (FORBIDDEN_IDENTS.has(word)) throw new CuratedSqlError(`forbidden function ${word}`)
       if (FORBIDDEN_PREFIXES.some((prefix) => word.startsWith(prefix)) && !ALLOWED_PG_WORDS.has(word)) throw new CuratedSqlError(`forbidden function or catalog ${word}`)
-      if (next?.type === 'punct' && next.value === '(') checkCall(tokens, k, plpgsql && declaring)
+      if (next?.type === 'punct' && next.value === '(') {
+        checkCall(tokens, k, plpgsql && declaring)
+        if (word === 'set_source_resolution' && prev?.type === 'punct' && prev.value === '.' && tokens[k - 2]?.type === 'word' && tokens[k - 2].value === 'plm') { writes.add(RESOLUTION_TABLE); dml++ }
+      }
       if (['from', 'join'].includes(word)) for (const read of checkSource(tokens, k)) reads.add(read)
       if (word === 'do' && !(next?.type === 'word' && ['nothing', 'update'].includes(next.value))) {
         throw new CuratedSqlError('nested or non-leading DO is refused')

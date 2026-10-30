@@ -341,7 +341,14 @@ $$;
 --   * entries validated by is_plausible_source_file_name instead of "not all digits".
 -- Multi-line sections still stop at a blank line or a "label:" line, which is how the
 -- POP licensing-sheet template is laid out.
-create or replace function public.parse_pdf_files_used(p_asset_id uuid)
+-- The implementation lives in parse_pdf_files_used_v2 and the legacy name delegates.
+-- Rationale: the CI harness re-applies the pre-adoption baseline after the migrations
+-- replay (database-contract-tests.yml steps 12-14), so a CREATE OR REPLACE of a routine
+-- the baseline also defines is silently restored to the baseline body before the tests
+-- run. A migration-owned name is the only parser the harness cannot overwrite. The
+-- legacy delegating wrapper keeps production callers on the new behaviour and degrades
+-- to the old body only inside that harness.
+create or replace function public.parse_pdf_files_used_v2(p_asset_id uuid)
 returns integer
 language plpgsql
 set search_path to 'public'
@@ -414,10 +421,22 @@ begin
 end;
 $function$;
 
-comment on function public.parse_pdf_files_used(uuid) is
+comment on function public.parse_pdf_files_used_v2(uuid) is
   'Parse the "FILES USED" section of a licensing-sheet / tech-pack PDF text sample into '
   'public.sku_files_used. Gated by is_style_guide_source_pdf; entries are validated by '
-  'is_plausible_source_file_name.';
+  'is_plausible_source_file_name. Migration-owned name: the CI harness restores baseline '
+  'routine bodies for pre-existing names after the migrations replay.';
+
+-- Legacy entry point: the pdf_text_samples trigger and older callers use this name.
+create or replace function public.parse_pdf_files_used(p_asset_id uuid)
+returns integer
+language plpgsql
+set search_path to 'public'
+as $function$
+begin
+  return public.parse_pdf_files_used_v2(p_asset_id);
+end;
+$function$;
 
 -- ---------------------------------------------------------------------------
 -- 4. Declared style-guide parser - writes public.sku_style_guide_links
@@ -478,7 +497,9 @@ comment on function public.parse_pdf_declared_style_guide(uuid) is
 -- ---------------------------------------------------------------------------
 -- 5. Backfill both parsers across every existing text sample
 -- ---------------------------------------------------------------------------
-create or replace function public.backfill_pdf_files_used()
+-- Migration-owned name, for the same baseline-restoration reason as
+-- parse_pdf_files_used_v2. The legacy name delegates to it.
+create or replace function public.backfill_pdf_files_used_v2()
 returns integer
 language plpgsql
 set search_path to 'public'
@@ -494,18 +515,28 @@ begin
       and extracted_text is not null
       and char_count > 100
   ) loop
-    v_total := v_total + public.parse_pdf_files_used(v_id);
+    v_total := v_total + public.parse_pdf_files_used_v2(v_id);
     perform public.parse_pdf_declared_style_guide(v_id);
   end loop;
   return v_total;
 end;
 $function$;
 
-comment on function public.backfill_pdf_files_used() is
+comment on function public.backfill_pdf_files_used_v2() is
   'Re-run the FILES USED and declared-style-guide parsers over every existing '
   'pdf_text_samples row. Needed because bulk_insert_pdf_text_samples skips the per-row '
   'trigger and only parses the rows in that batch; samples written before the parsers '
   'existed are otherwise never parsed.';
+
+create or replace function public.backfill_pdf_files_used()
+returns integer
+language plpgsql
+set search_path to 'public'
+as $function$
+begin
+  return public.backfill_pdf_files_used_v2();
+end;
+$function$;
 
 -- ---------------------------------------------------------------------------
 -- 6. Cross-reference resolver
@@ -656,8 +687,12 @@ comment on function public.resolve_sku_style_guide_links() is
 
 revoke all on function public.resolve_sku_style_guide_links() from public, anon, authenticated;
 grant execute on function public.resolve_sku_style_guide_links() to service_role, postgres;
+revoke all on function public.backfill_pdf_files_used_v2() from public, anon, authenticated;
+grant execute on function public.backfill_pdf_files_used_v2() to service_role, postgres;
 revoke all on function public.backfill_pdf_files_used() from public, anon, authenticated;
 grant execute on function public.backfill_pdf_files_used() to service_role, postgres;
+revoke all on function public.parse_pdf_files_used_v2(uuid) from public, anon, authenticated;
+grant execute on function public.parse_pdf_files_used_v2(uuid) to service_role, postgres;
 revoke all on function public.parse_pdf_files_used(uuid) from public, anon, authenticated;
 grant execute on function public.parse_pdf_files_used(uuid) to service_role, postgres;
 revoke all on function public.parse_pdf_declared_style_guide(uuid) from public, anon, authenticated;

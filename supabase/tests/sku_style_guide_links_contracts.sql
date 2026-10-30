@@ -27,7 +27,10 @@ begin
   -- this migration. Their revoke statements are pinned statically in
   -- scripts/sku-style-guide-links.test.mjs instead.
   foreach service_function in array array[
-    'public.resolve_sku_style_guide_links()'
+    'public.resolve_sku_style_guide_links()',
+    'public.parse_pdf_files_used_v2(uuid)',
+    'public.backfill_pdf_files_used_v2()',
+    'public.parse_pdf_declared_style_guide(uuid)'
   ] loop
     foreach role_name in array array['anon', 'authenticated'] loop
       if has_function_privilege(role_name, service_function, 'EXECUTE') then
@@ -102,7 +105,7 @@ declare
   before_count integer;
   result jsonb;
 begin
-  n := public.parse_pdf_files_used('50910000-0000-0000-0000-000000000001');
+  n := public.parse_pdf_files_used_v2('50910000-0000-0000-0000-000000000001');
   if n <> 3 or (select count(*) from public.sku_files_used where sku = '#5091-inline') <> 3
      or not exists (select 1 from public.sku_files_used where file_name = 'Third.ai') then
     raise exception 'Inline delimiters, punctuation, noise or latest-sample selection regressed: n=%, rows=%, names=%, body=%',
@@ -110,17 +113,17 @@ begin
       (select count(*) from public.sku_files_used where sku = '#5091-inline'),
       (select coalesce(string_agg(file_name, ' | '), '<none>') from public.sku_files_used where sku = '#5091-inline'),
       (select prosrc from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace
-        where ns.nspname = 'public' and p.proname = 'parse_pdf_files_used');
+        where ns.nspname = 'public' and p.proname = 'parse_pdf_files_used_v2');
   end if;
-  perform public.parse_pdf_files_used('50910000-0000-0000-0000-000000000001');
+  perform public.parse_pdf_files_used_v2('50910000-0000-0000-0000-000000000001');
   if (select count(*) from public.sku_files_used where sku = '#5091-inline') <> 3 then
     raise exception 'Repeated parsing duplicated files';
   end if;
-  n := public.parse_pdf_files_used('50910000-0000-0000-0000-000000000002');
+  n := public.parse_pdf_files_used_v2('50910000-0000-0000-0000-000000000002');
   if n <> 2 or exists (select 1 from public.sku_files_used where file_name like 'Not_a_file%') then
     raise exception 'Multiline section boundaries regressed';
   end if;
-  if public.parse_pdf_files_used('50910000-0000-0000-0000-000000000003') <> 0 then
+  if public.parse_pdf_files_used_v2('50910000-0000-0000-0000-000000000003') <> 0 then
     raise exception 'Non-source PDF was parsed';
   end if;
   perform public.parse_pdf_declared_style_guide('50910000-0000-0000-0000-000000000001');

@@ -39,9 +39,22 @@ test('nightly resolver remains service-only and scheduled after file resolution'
 
 test('browser privileges are explicitly cleared before narrow grants', () => {
   assert.match(sql, /revoke all on public\.sku_style_guide_links from public, anon, authenticated;/);
-  for (const signature of ['backfill_pdf_files_used()', 'parse_pdf_files_used(uuid)', 'parse_pdf_declared_style_guide(uuid)']) {
+  for (const signature of ['backfill_pdf_files_used()', 'backfill_pdf_files_used_v2()', 'parse_pdf_files_used(uuid)', 'parse_pdf_files_used_v2(uuid)', 'parse_pdf_declared_style_guide(uuid)']) {
     assert.ok(resolver.includes(`revoke all on function public.${signature} from public, anon, authenticated;`), signature);
     assert.ok(resolver.includes(`grant execute on function public.${signature} to service_role, postgres;`), signature);
   }
   assert.doesNotMatch(combined, /20261030040817/);
+});
+
+test('parser logic lives in migration-owned names the harness cannot restore', () => {
+  // database-contract-tests.yml re-applies the pre-adoption baseline after the
+  // migrations replay, restoring any routine the baseline also defines. The real
+  // parser must therefore live under a name the baseline has never seen.
+  assert.match(resolver, /create or replace function public\.parse_pdf_files_used_v2\(p_asset_id uuid\)/);
+  assert.match(resolver, /create or replace function public\.backfill_pdf_files_used_v2\(\)/);
+  assert.match(resolver, /regexp_split_to_array\(v_inline, '\[,;\|\]'\)/);
+  assert.match(resolver, /is_plausible_source_file_name\(v_entry\)/);
+  // Legacy names delegate instead of duplicating the logic.
+  assert.match(resolver, /return public\.parse_pdf_files_used_v2\(p_asset_id\);/);
+  assert.match(resolver, /return public\.backfill_pdf_files_used_v2\(\);/);
 });

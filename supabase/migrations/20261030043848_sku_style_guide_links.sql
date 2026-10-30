@@ -266,13 +266,13 @@ drop policy if exists "authenticated read" on public.sku_style_guide_links;
 create policy "authenticated read" on public.sku_style_guide_links
   for select to authenticated using (true);
 
-revoke all on public.sku_style_guide_links from public, anon;
+revoke all on public.sku_style_guide_links from public, anon, authenticated;
 grant select on public.sku_style_guide_links to authenticated;
 grant select, insert, update, delete, truncate on public.sku_style_guide_links to service_role, postgres;
 
 -- Item -> licensor-scrape style guide links (resolver half).
 --
--- Companion to 20261030040817_sku_style_guide_links_schema.sql.
+-- Companion to the schema half above in this migration.
 --
 -- Three evidence arms write into public.sku_style_guide_links:
 --   1. filename_exact / filename_normalized  - an extracted "FILES USED" name matched
@@ -656,8 +656,11 @@ comment on function public.resolve_sku_style_guide_links() is
 
 revoke all on function public.resolve_sku_style_guide_links() from public, anon, authenticated;
 grant execute on function public.resolve_sku_style_guide_links() to service_role, postgres;
+revoke all on function public.backfill_pdf_files_used() from public, anon, authenticated;
 grant execute on function public.backfill_pdf_files_used() to service_role, postgres;
+revoke all on function public.parse_pdf_files_used(uuid) from public, anon, authenticated;
 grant execute on function public.parse_pdf_files_used(uuid) to service_role, postgres;
+revoke all on function public.parse_pdf_declared_style_guide(uuid) from public, anon, authenticated;
 grant execute on function public.parse_pdf_declared_style_guide(uuid) to service_role, postgres;
 grant execute on function public.style_guide_label_norm(text) to service_role, postgres, authenticated;
 grant execute on function public.is_plausible_source_file_name(text) to service_role, postgres, authenticated;

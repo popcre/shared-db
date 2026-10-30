@@ -3,6 +3,9 @@ begin;
 
 do $contract$
 declare
+  privilege text;
+  service_function text;
+  role_name text;
   definition text := pg_get_viewdef('plm.asset_file_style_guide_index'::regclass, true);
 begin
   if has_table_privilege('authenticated', 'plm.asset_file_style_guide_index', 'select')
@@ -10,6 +13,26 @@ begin
      or not has_table_privilege('authenticated', 'public.sku_style_guide_links', 'select') then
     raise exception 'Internal index must be service-only; UI results must remain readable';
   end if;
+  foreach privilege in array array['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'] loop
+    if has_table_privilege('authenticated', 'public.sku_style_guide_links', privilege) then
+      raise exception 'Authenticated must not have % on SKU style-guide results', privilege;
+    end if;
+  end loop;
+  foreach service_function in array array[
+    'public.resolve_sku_style_guide_links()',
+    'public.backfill_pdf_files_used()',
+    'public.parse_pdf_files_used(uuid)',
+    'public.parse_pdf_declared_style_guide(uuid)'
+  ] loop
+    foreach role_name in array array['anon', 'authenticated'] loop
+      if has_function_privilege(role_name, service_function, 'EXECUTE') then
+        raise exception '% must not execute %', role_name, service_function;
+      end if;
+    end loop;
+    if not has_function_privilege('service_role', service_function, 'EXECUTE') then
+      raise exception 'Service role must execute %', service_function;
+    end if;
+  end loop;
   if definition ~ '(sega_style_guide_candidate|wildbrain_asset_guide|wildbrain_guide)' then
     raise exception 'Inferred relationships leaked into the direct-source index';
   end if;

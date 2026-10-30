@@ -35,3 +35,13 @@ test('nightly resolver remains service-only and scheduled after file resolution'
   assert.match(resolver, /grant execute on function public\.resolve_sku_style_guide_links\(\) to service_role, postgres;/);
   assert.match(resolver, /'resolve-sku-style-guide-links-nightly',\s*'30 4 \* \* \*',\s*\$\$select public\.resolve_sku_style_guide_links\(\)\$\$/);
 });
+
+
+test('browser privileges are explicitly cleared before narrow grants', () => {
+  assert.match(sql, /revoke all on public\.sku_style_guide_links from public, anon, authenticated;/);
+  for (const signature of ['backfill_pdf_files_used()', 'parse_pdf_files_used(uuid)', 'parse_pdf_declared_style_guide(uuid)']) {
+    assert.ok(resolver.includes(`revoke all on function public.${signature} from public, anon, authenticated;`), signature);
+    assert.ok(resolver.includes(`grant execute on function public.${signature} to service_role, postgres;`), signature);
+  }
+  assert.doesNotMatch(combined, /20261030040817/);
+});

@@ -32,7 +32,7 @@
 do $characters$
 declare
   v_issue constant text := 'popcre/shared-db#5079';
-  v_actor constant text := 'shared-db migration 20261030051639';
+  v_actor constant text := 'shared-db migration 20261030153101';
   v_lic uuid;
   v_n integer;
   v_expected integer;

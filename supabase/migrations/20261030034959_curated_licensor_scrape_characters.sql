@@ -46,6 +46,18 @@
 -- ("similar names are never a mapping", ruling 2026-10-11). Each link is a current
 -- direct_source_assertion support edge plus its canonical association row.
 --
+-- SOURCE RESOLUTION COLUMNS. The source decision says promotion is the plm.*_character
+-- resolution columns being filled. The curated Master Data lane admits row writes into
+-- core.* only (scripts/db-flow/curated-admission.mjs isCuratedTarget), so this load
+-- records the source-to-canonical link in core.taxonomy_source_ref (one row per character,
+-- keyed on the exact source identity, licensor-stamped by its guard) and sets no plm.*
+-- column. Filling the plm.* resolution columns from those refs is a follow-up on #5079.
+--
+-- ONE CHANGE, PER-LICENSOR ATTRIBUTION. One claim reserved one version, so all seven
+-- licensors are in this one atomic change. Every row's code and metadata name its source
+-- system, and each licensor has its own self-check below, so an identity error is
+-- attributable to one licensor and reversible by deleting that source system's rows.
+--
 -- Idempotent: a rerun inserts nothing.
 
 do $characters$
@@ -106,7 +118,7 @@ begin
          jsonb_build_object('source_system', 'nbcu_creative_asset_factory', 'source_table', 'plm.nbcu_character',
                             'source_id', n.character_key, 'loaded_by', v_actor, 'issue', v_issue)
     from (select character_key, min(btrim(character_label)) as label
-            from plm.nbcu_character group by character_key) n
+            from plm.nbcu_character where nullif(btrim(character_label), '') is not null group by character_key) n
    where nullif(n.label, '') is not null
   on conflict do nothing;
 
@@ -116,7 +128,7 @@ begin
          jsonb_build_object('source_system', 'paramount_creative_library', 'source_table', 'plm.pmt_character',
                             'source_id', p.character_source_id, 'loaded_by', v_actor, 'issue', v_issue)
     from (select character_source_id::text as character_source_id, min(btrim(character_name)) as label
-            from plm.pmt_character group by 1) p
+            from plm.pmt_character where nullif(btrim(character_name), '') is not null group by 1) p
    where nullif(p.label, '') is not null
   on conflict do nothing;
 
@@ -126,7 +138,7 @@ begin
          jsonb_build_object('source_system', 'wildbrain_tenovos', 'source_table', 'plm.wildbrain_character',
                             'source_id', b.character_source_id, 'loaded_by', v_actor, 'issue', v_issue)
     from (select character_source_id::text as character_source_id, min(btrim(character_label)) as label
-            from plm.wildbrain_character where in_source_dictionary group by 1) b
+            from plm.wildbrain_character where in_source_dictionary and nullif(btrim(character_label), '') is not null group by 1) b
    where nullif(b.label, '') is not null
   on conflict do nothing;
 
@@ -136,7 +148,7 @@ begin
   insert into core.taxonomy_source_ref
     (entity_schema, entity_table, entity_id, source_system, source_table, source_id, source_name, confidence, raw)
   select 'core', 'character', ch.id, ch.metadata ->> 'source_system', ch.metadata ->> 'source_table',
-         ch.metadata ->> 'source_id', ch.name, 1, jsonb_build_object('loaded_by', v_actor, 'issue', v_issue)
+         ch.metadata ->> 'source_id', ch.name, 'verified', jsonb_build_object('loaded_by', v_actor, 'issue', v_issue)
     from core.character ch
    where ch.metadata ->> 'issue' = v_issue
   on conflict (source_system, source_table, source_id) do nothing;
@@ -144,10 +156,10 @@ begin
   -- ------------------------------------------------- direct OPA Property links
   insert into core.property_character_source_edge
     (property_id, character_id, licensor_id, source_system, source_id, source_evidence, evidence_kind,
-     is_direct_source_relationship, observation_count, confidence, is_current, metadata, created_by, updated_by)
+     observation_count, confidence, is_current, metadata, created_by, updated_by)
   select distinct pr.entity_id, ch.id, ch.licensor_id, 'disney_opa',
          pc.licensed_property_id::text || ':' || pc.character_id::text,
-         'plm.opa_property_character', 'direct_source_assertion', true, 0, null, true,
+         'plm.opa_property_character', 'direct_source_assertion', 0, null, true,
          jsonb_build_object('loaded_by', v_actor, 'issue', v_issue), v_actor, v_actor
     from plm.opa_property_character pc
     join core.character ch

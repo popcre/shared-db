@@ -58,3 +58,17 @@ test('parser logic lives in migration-owned names the harness cannot restore', (
   assert.match(resolver, /return public\.parse_pdf_files_used_v2\(p_asset_id\);/);
   assert.match(resolver, /return public\.backfill_pdf_files_used_v2\(\);/);
 });
+
+
+test('resolver folds repeated evidence to each conflict identity and refreshes the method', () => {
+  assert.match(resolver, /group by s\.sku, s\.file_name, i\.source_system, i\.source_style_guide_key\s*\)/);
+  assert.match(resolver, /bool_or\(lower\(btrim\(s\.file_name\)\) = lower\(btrim\(i\.matched_file_name\)\)\)/);
+  assert.match(resolver, /match_method\s*= excluded\.match_method/);
+  assert.match(resolver, /group by sku, public\.style_guide_label_norm\(label\)/);
+  assert.match(resolver, /group by d\.sku, g\.source_system, g\.source_style_guide_key/);
+});
+
+test('migration invokes the historical backfill after restricting execution', () => {
+  const invocation = resolver.indexOf('select public.backfill_pdf_files_used_v2();');
+  assert.ok(invocation > resolver.indexOf('grant execute on function public.backfill_pdf_files_used_v2() to service_role, postgres;'));
+});

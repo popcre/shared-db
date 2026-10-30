@@ -89,6 +89,9 @@ insert into public.pdf_text_samples values
  ('50910000-0000-0000-0000-000000000001',
   E'FILES USED: Hero.PSD; Shared | Third.ai.,; 123; none\nCORE/STYLE GUIDE USED: The Hero Guide',
   '2020-01-02', 120),
+ ('50910000-0000-0000-0000-000000000001',
+  E'FILES USED: Hero.PSD; Shared | Third.ai.,; 123; none\nCORE/STYLE GUIDE USED: The Hero Guide',
+  '2020-01-03', 120),
  ('50910000-0000-0000-0000-000000000002',
   E'SOURCE ART:\nLine_A.psd\n\nNot_a_file.psd\nARTWORK FILES:\nLine_B.ai\nNEXT FIELD:\nNot_a_file_either.psd',
   '2020-01-02', 120),
@@ -96,6 +99,7 @@ insert into public.pdf_text_samples values
 
 insert into public.sku_style_contract_index values
  ('contract', 'hero', 'hero', 'Hero Guide', null, 'Hero.PSD'),
+ ('contract', 'hero', 'hero', 'The Hero Guide!', null, 'hero.psd'),
  ('contract', 'shared', 'shared-a', 'Shared A', null, 'Shared.psd'),
  ('contract', 'shared', 'shared-b', 'Shared B', null, 'Shared.ai');
 
@@ -126,7 +130,14 @@ begin
   if public.parse_pdf_files_used_v2('50910000-0000-0000-0000-000000000003') <> 0 then
     raise exception 'Non-source PDF was parsed';
   end if;
-  perform public.parse_pdf_declared_style_guide('50910000-0000-0000-0000-000000000001');
+  -- Exercise the historical backfill independently of the per-asset calls.
+  delete from public.sku_files_used;
+  n := public.backfill_pdf_files_used_v2();
+  if n <> 5 or (select count(*) from public.sku_files_used) <> 5
+     or not exists (select 1 from public.sku_style_guide_links
+       where sku = '#5091-inline' and source_system = 'sheet_declared') then
+    raise exception 'Historical backfill failed to run both parsers: %', n;
+  end if;
   result := public.resolve_sku_style_guide_links();
   if (result->>'filename_rows')::integer <> 3
      or (result->>'declared_rows')::integer <> 1
@@ -146,6 +157,15 @@ begin
       where sku = '#5091-inline' and source_system = 'contract'
         and file_name is null and match_method = 'sheet_label_match') then
     raise exception 'Resolver evidence, confidence or NULL-file identity regressed';
+  end if;
+  -- A re-derived exact match must replace an older normalized classification.
+  update public.sku_style_guide_links set match_method = 'filename_normalized'
+    where sku = '#5091-inline' and file_name = 'Hero.PSD';
+  perform public.resolve_sku_style_guide_links();
+  if not exists (select 1 from public.sku_style_guide_links
+      where sku = '#5091-inline' and file_name = 'Hero.PSD'
+        and match_method = 'filename_exact' and match_confidence = 1) then
+    raise exception 'Resolver retained a stale match method';
   end if;
   select count(*) into before_count from public.sku_style_guide_links where sku like '#5091-%';
   perform public.resolve_sku_style_guide_links();

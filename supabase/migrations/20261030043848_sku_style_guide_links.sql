@@ -561,13 +561,13 @@ begin
   ),
   hits as (
     select s.sku, s.file_name, i.source_system, i.source_style_guide_key,
-           i.style_guide_label, i.core_style_guide_id,
-           min(lower(btrim(i.matched_file_name))) as sample_file_name,
+           min(i.style_guide_label) as style_guide_label,
+           min(i.core_style_guide_id::text)::uuid as core_style_guide_id,
+           bool_or(lower(btrim(s.file_name)) = lower(btrim(i.matched_file_name))) as exact_match,
            count(distinct i.matched_file_name)    as matched_asset_count
     from src s
     join plm.asset_file_style_guide_index i on i.file_name_norm = s.fn
-    group by s.sku, s.file_name, i.source_system, i.source_style_guide_key,
-             i.style_guide_label, i.core_style_guide_id
+    group by s.sku, s.file_name, i.source_system, i.source_style_guide_key
   ),
   scored as (
     -- How many distinct portal guides this one (sku, file_name) lands on. More than
@@ -581,7 +581,7 @@ begin
        match_method, match_confidence, matched_asset_count, core_style_guide_id)
     select s.sku, s.file_name, s.source_system, s.source_style_guide_key,
            s.style_guide_label,
-           case when lower(btrim(s.file_name)) = s.sample_file_name
+           case when s.exact_match
                 then 'filename_exact' else 'filename_normalized' end,
            1.0 / greatest(s.guide_count, 1)::real,
            s.matched_asset_count,
@@ -591,6 +591,7 @@ begin
     do update
       set last_seen_at = now(),
           style_guide_label   = excluded.style_guide_label,
+          match_method        = excluded.match_method,
           match_confidence    = excluded.match_confidence,
           matched_asset_count = excluded.matched_asset_count,
           core_style_guide_id = coalesce(excluded.core_style_guide_id,
@@ -600,7 +601,7 @@ begin
   select count(*) into v_filename_rows from ins;
 
   -- ARM 2 - the sheet's own declared style guide, verbatim.
-  with decl as (
+  with raw_decl as (
     select a.sku,
            btrim(btrim((regexp_match(p.extracted_text,
              '(?im)^\s*(?:core\s*/\s*)?style\s+guide\s+used\s*:\s*([^\r\n]{1,200})'))[1]),
@@ -612,11 +613,20 @@ begin
       and a.sku is not null and btrim(a.sku) <> ''
       and public.is_style_guide_source_pdf(a.file_type::text, a.filename)
   ),
+  decl as (
+    -- One proposal per result identity, including equivalent OCR spellings.
+    select sku, public.style_guide_label_norm(label) as label_key, min(label) as label
+    from raw_decl
+    where label <> ''
+      and public.style_guide_label_norm(label) is not null
+      and public.is_plausible_source_file_name(label)
+    group by sku, public.style_guide_label_norm(label)
+  ),
   ins as (
     insert into public.sku_style_guide_links
       (sku, file_name, source_system, source_style_guide_key, style_guide_label,
        match_method, match_confidence, matched_asset_count)
-    select d.sku, null, 'sheet_declared', public.style_guide_label_norm(d.label),
+    select d.sku, null, 'sheet_declared', d.label_key,
            d.label, 'sheet_declared', 1.0, 1
     from decl d
     where d.label <> ''
@@ -649,11 +659,12 @@ begin
     where btrim(i.style_guide_label) <> ''
   ),
   hits as (
-    select d.sku, d.label, g.source_system, g.source_style_guide_key,
-           g.style_guide_label, g.core_style_guide_id
+    select d.sku, g.source_system, g.source_style_guide_key,
+           min(g.style_guide_label) as style_guide_label
     from decl d
     join guides g on g.ln = public.style_guide_label_norm(d.label)
     where public.style_guide_label_norm(d.label) is not null
+    group by d.sku, g.source_system, g.source_style_guide_key
   ),
   ins as (
     insert into public.sku_style_guide_links
@@ -700,6 +711,10 @@ grant execute on function public.parse_pdf_declared_style_guide(uuid) to service
 grant execute on function public.style_guide_label_norm(text) to service_role, postgres, authenticated;
 grant execute on function public.is_plausible_source_file_name(text) to service_role, postgres, authenticated;
 grant execute on function public.file_name_norm(text) to service_role, postgres, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Parse historical samples once as part of installing the improved parsers.
+select public.backfill_pdf_files_used_v2();
 
 -- ---------------------------------------------------------------------------
 -- 7. Nightly refresh

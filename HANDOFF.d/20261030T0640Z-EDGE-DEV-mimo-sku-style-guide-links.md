@@ -89,11 +89,24 @@ Two things to settle, in order:
 
 ## 4. After the merge
 
-Run as `service_role` against `qsllyeztdwjgirsysgai` (prove the project ref first):
+Run as `service_role` against `qsllyeztdwjgirsysgai` (prove the project ref first),
+using one dedicated database session for the entire block. The historical backfill
+can exceed 120 seconds; use a direct database connection without a client-side
+120-second request cap. The session timeout override below applies only to this
+transaction and resets at commit:
 
 ```sql
+begin;
+set local statement_timeout = 0;
 select public.backfill_pdf_files_used_v2();        -- re-parse every pdf_text_samples row
 select public.resolve_sku_style_guide_links();     -- populate sku_style_guide_links
+commit;
+
+-- Bounded verification: expect true; false leaves live proof open.
+begin;
+set local statement_timeout = '10s';
+select exists (select 1 from public.sku_style_guide_links limit 1) as has_links;
+commit;
 ```
 
 Then the nightly cron keeps it fresh. `backfill_pdf_files_used_v2()` is the one that

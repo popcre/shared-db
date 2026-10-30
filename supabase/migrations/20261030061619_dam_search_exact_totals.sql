@@ -40,7 +40,7 @@
 do $guard$
 declare v_src text; v_helper_oid regprocedure;
 begin
-  v_helper_oid := 'public.dam_asset_matches_filters(public.assets, public.style_groups, jsonb, timestamptz)'::regprocedure;
+  v_helper_oid := to_regprocedure('public.dam_asset_matches_filters(public.assets, public.style_groups, jsonb, timestamptz)');
   select p.prosrc into v_src from pg_proc p
    where p.oid = to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)');
   if v_src is null
@@ -50,17 +50,18 @@ begin
      or position('hnsw.iterative_scan' in v_src) = 0
      or position('semantic_ann as materialized' in v_src) = 0
      or position('threshold applied after the legs' in v_src) = 0 then
-    raise exception '#5053: live search_dam_documents is not the 20261029161104 body; refusing to replace';
+    raise exception '#5053: live search_dam_documents is not the 20261030042314 (#4508) body; refusing to replace';
   end if;
 end
 $guard$;
 
 set statement_timeout = '15min';
 
--- Replace the composite helper with the scalar-argument form. Drop first:
--- the signature change would otherwise leave both overloads live.
-drop function if exists public.dam_asset_matches_filters(public.assets, public.style_groups, jsonb, timestamptz);
-
+-- Create the scalar-argument overload FIRST. The still-live search body calls
+-- the composite overload, so dropping it before the body is replaced is
+-- dependency-blocked ("other objects depend on it"); both overloads coexist
+-- until the new search body below replaces the calls, and only then is the
+-- composite overload dropped.
 CREATE FUNCTION public.dam_asset_matches_filters(
   p_id uuid,
   p_is_deleted boolean,
@@ -384,7 +385,9 @@ AS $function$
         -- the owner ruled out. Emit only the exactness flags; the filter
         -- sidebar shows blanks instead of under-counts (documented fallback
         -- shape, still exact totals).
-        then jsonb_build_object('totalExact',true,'totalKind','exact')
+        then jsonb_build_object(
+          'fileType','{}'::jsonb,'status','{}'::jsonb,'workflowStatus','{}'::jsonb,'stage','{}'::jsonb,'isLicensed','{}'::jsonb,
+          'totalExact',true,'totalKind','exact')
         else jsonb_build_object(
       'fileType',coalesce((select jsonb_object_agg(k,c) from (select file_type::text k,count(*) c from matched_assets group by 1)x),'{}'::jsonb),
       'status',coalesce((select jsonb_object_agg(k,c) from (select status::text k,count(*) c from matched_assets group by 1)x),'{}'::jsonb),
@@ -415,3 +418,10 @@ $function$;
 
 revoke all on function public.search_dam_documents(text, jsonb, integer, integer, text[], extensions.vector, real, real) from public;
 grant execute on function public.search_dam_documents(text, jsonb, integer, integer, text[], extensions.vector, real, real) to authenticated, service_role;
+
+-- NOW the composite overload has no callers left; drop it. Both overloads
+-- coexisted above only inside this single atomic migration.
+drop function if exists public.dam_asset_matches_filters(public.assets, public.style_groups, jsonb, timestamptz);
+
+comment on function public.search_dam_documents(text, jsonb, integer, integer, text[], extensions.vector, real, real) is
+  '#5053: totals are always exact (exact_docs counts every matching document); past the 1,001-row probe per-key facet counts are blanked, never lower bounds; the summary row is always returned, including no-match (total_count 0).';

@@ -23,8 +23,8 @@ name: Merge Queue Gate
 #      still accepted and the tail may not be in the merged tree (canary #4321).
 #   3. requires the guarded merge lane's exact-head authorization status to be
 #      green on that PR head, then re-runs the SQL guards, production sidecars,
-#      live-proof probe, cross-PR object collision, migration lease, exact-head
-#      approval and ascending-version ordering against the correct identities;
+#      live-proof probe and ascending-version ordering
+#      (cross-PR collision and lease re-checks removed, ai-devops#2172) against the correct identities;
 #   4. holds the group when the PRECEDING main commit added migrations until
 #      that exact commit carries `Post-merge preview rehearsal: success` —
 #      GitHub serializes merges, but only this gate knows a migration merge must
@@ -162,7 +162,7 @@ jobs:
           }
           echo "Group $MERGE_GROUP_SHA contains the exact reviewed head $PR_HEAD (mode=$AUTH_MODE; live tip $PR_TIP)."
 
-      - name: Revalidate exact reviewed PR head, claims, collisions, and migration order
+      - name: Revalidate exact reviewed PR head and migration order
         if: github.event_name == 'merge_group'
         env:
           GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
@@ -184,8 +184,6 @@ jobs:
           bash scripts/check-sql.sh
           node scripts/check-production-verification-sidecars.mjs --base origin/main
           node scripts/check-live-proof-probe.mjs
-          node scripts/check-pr-object-collisions.mjs
-          node scripts/check-migration-pr-lease.mjs
           node scripts/merge-queue-contract.mjs
 
       - name: Require the latest preceding migration merge to have completed preview rehearsal

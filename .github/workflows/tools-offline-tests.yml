@@ -422,6 +422,9 @@ jobs:
       - name: Exact global SQL role accounting
         if: steps.route.outputs.pure_prose != 'true'
         run: node --test scripts/lib/sql-role-operations.test.mjs
+      - name: Review fixer ownership and stale-PR lifecycle
+        if: steps.route.outputs.pure_prose != 'true'
+        run: node --test scripts/review-fixer-lifecycle.test.mjs
       - name: Verify ColdLion replay proof guards (#3302)
         if: steps.route.outputs.pure_prose != 'true'
         run: node --test scripts/issue-2863-live-proof.test.mjs

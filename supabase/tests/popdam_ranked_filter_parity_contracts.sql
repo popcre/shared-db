@@ -43,8 +43,10 @@ begin
     raise exception 'ranked filters are missing from the shared per-asset predicate helper';
   end if;
   if position('page as materialized' in lower(v_search))=0
+     -- #5053: exact_docs is the third pre-pagination consumer of the helper
+     -- (summary probe, page EXISTS, exact_docs EXISTS ... LIMIT 1).
      or (length(v_search) - length(replace(v_search, 'dam_asset_matches_filters', '')))
-        / length('dam_asset_matches_filters') <> 2
+        / length('dam_asset_matches_filters') <> 3
      or position('dam_asset_matches_filters' in v_search)
         > position('page as materialized' in lower(v_search))
      or position(reverse('dam_asset_matches_filters') in reverse(v_search))

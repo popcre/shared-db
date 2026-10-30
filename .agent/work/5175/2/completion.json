@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "work_issue": 5175,
+  "outcome": "ready-for-merge",
+  "pr": 5178,
+  "migration_versions": [],
+  "contract_ref": "refs/db-contracts/5175/2",
+  "contract_sha256": "1ec7a64e1fd1a40510dcd1ef16c8e329eeb471b9774b26abd75a0efc2d03aa02",
+  "base_sha": "9bdcd84ef4f63ecff340fc304f48daf066e1adeb",
+  "head_sha": "0f8b4b6d49995f170bdfad2f2e2a73aa8382a488",
+  "files_changed": [
+    ".github/workflows/review-fixer.yml",
+    ".github/workflows/tools-offline-tests.yml",
+    "scripts/review-fixer-lifecycle.mjs",
+    "scripts/review-fixer-lifecycle.test.mjs",
+    "scripts/review_finding_hold.py",
+    "scripts/test_review_finding_hold.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.test_review_finding_hold",
+      "exit_code": 0,
+      "evidence": "scripts/test_review_finding_hold.py: 34 offline tests passed on implementation 0f8b4b6d49995f170bdfad2f2e2a73aa8382a488; includes exact target-job success despite unrelated failed branch and fail-closed wrong/missing proof cases."
+    },
+    {
+      "command": "node --test scripts/review-fixer-lifecycle.test.mjs",
+      "exit_code": 0,
+      "evidence": "scripts/review-fixer-lifecycle.test.mjs: 10 offline tests passed on implementation 0f8b4b6d49995f170bdfad2f2e2a73aa8382a488; includes exact claim owner deferral, stale PR occupancy release, hostile path and symlink refusal."
+    },
+    {
+      "command": "node scripts/check-github-transport-conformance.mjs",
+      "exit_code": 0,
+      "evidence": "454 files scanned; every governed GitHub call uses scripts/lib/github-transport.mjs."
+    },
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL guards passed; no added migration or database contact. Live-ledger check explicitly not configured and not claimed."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "evidence": "No whitespace errors in the implementation diff."
+    }
+  ],
+  "assumptions_resolved": [
+    "Original implementation scope was published before code at refs/db-contracts/5175/1 (fa2eebbec9b4bcb42e014128e97be30e6525f0b4); generation 2 binds its digest and adds CI invocation scope before that workflow edit. No pre-work chronology is backdated.",
+    "The shared fixer marker contract binds repository, issue, source_pr, reviewed_head, target_branch/target_head, nonempty evidence, run_id/run_url, run_attempt and SHA256 target job_name.",
+    "Existing shared-db promotion callers already grant actions read/write; no permissions widened.",
+    "The stale fixer creates no structural claim itself: closing its exact PR removes prSources occupancy; any associated structural claim is preserved and blocks automatic cleanup.",
+    "Live proof is pending on shared-db #5175 and ai-devops #2171. This ready-for-merge record claims source/test readiness only, not merged delivery or live runtime acceptance."
+  ],
+  "stop_conditions_hit": []
+}

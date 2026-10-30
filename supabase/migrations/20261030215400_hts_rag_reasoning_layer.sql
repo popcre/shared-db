@@ -1,4 +1,4 @@
--- Issue popcre/shared-db#5188 (claim #5194, designflow-backend#254): the reasoning layer.
+-- Issue popcre/shared-db#5188 (claim #5197, designflow-backend#254): the reasoning layer.
 -- derived-from: none
 -- Design: designflow-backend docs/design_cbp-ruling-database.md §13 (Fable review,
 -- designflow-backend#254 comment 6532099662). Sentences become the unit of provenance;
@@ -602,6 +602,9 @@ begin
   return new;
 end;
 $$;
+comment on function hts_rag.validate_sentence_provenance() is
+  'Trigger: refuses a claim whose (ruling_number, sentence_seq) is not in hts_rag_ruling_sentences. designflow-backend#254 §13.1.';
+revoke all on function hts_rag.validate_sentence_provenance() from public, anon, authenticated, service_role;
 create trigger validate_sentence_provenance
 before insert or update on hts_rag.hts_rag_heading_decisions
 for each row execute function hts_rag.validate_sentence_provenance();
@@ -641,6 +644,9 @@ begin
   return new;
 end;
 $$;
+comment on function hts_rag.validate_affected_product_ids() is
+  'Trigger: refuses ruling_links.affected_product_ids that name an unknown product. designflow-backend#254 §13.5.';
+revoke all on function hts_rag.validate_affected_product_ids() from public, anon, authenticated, service_role;
 create trigger validate_affected_product_ids
 before insert or update on hts_rag.hts_rag_ruling_links
 for each row execute function hts_rag.validate_affected_product_ids();

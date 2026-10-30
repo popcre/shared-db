@@ -137,3 +137,8 @@ https://qsllyeztdwjgirsysgai.supabase.co
 ```
 
 The shared schema migrations and CRM contact segment API have been applied to the production/default project.
+
+<!-- Synthetic live proof source for ai-devops #2171 and shared-db #5175.
+This harmless prose-only control must stay in a draft PR and must never merge.
+The parent coordinator activates the INVALID finding only after central delivery,
+then closes the fixture PR and finding after recording the live evidence. -->

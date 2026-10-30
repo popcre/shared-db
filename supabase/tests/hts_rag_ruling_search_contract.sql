@@ -53,6 +53,7 @@ values ('ZT0001', '9503.00.0073', 'held', 'parse-v1', 'alsand'),
        ('ZT0003', '9503.00.0073', 'held', 'parse-v1', 'alsand'),
        ('ZT0004', '6912.00.4400', 'held', 'parse-v1', 'alsand');
 
+grant designflow_hts_alsand_runtime to postgres;
 set local role designflow_hts_alsand_runtime;
 do $ruling_search_behaviour$
 declare

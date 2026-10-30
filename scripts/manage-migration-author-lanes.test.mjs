@@ -977,6 +977,7 @@ test('#3291 later slots inherit slot one permissions and replacements cannot wid
   assert.deepEqual(second.reviewerAllowlist,allowed)
   assert.deepEqual(assignNextReviewer(request,io),second)
   const replacementRequest={...request,failedSequence:second.sequence,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true}
+
   assert.throws(()=>replaceFailedReviewer({...replacementRequest,reviewerAllowlist:['deepseek-v4.1-flash']},io),/does not match/)
   const replacement=replaceFailedReviewer(replacementRequest,io)
   assert.deepEqual(replacement.reviewerAllowlist,allowed)
@@ -2359,6 +2360,40 @@ test('an existing verdict at the merged head still refuses a new assignment',()=
 
 const failedReview={issue:9,pr:109,headSha:'abcdef9000000000000000000000000000000000'}
 function failedReviewIo(){const io=reviewIo();io.getPr=()=>({state:'open',head:{sha:failedReview.headSha}});assignNextReviewer(failedReview,io);return io}
+
+function historicalFailureFixture(t){
+ const repo=mkdtempSync(path.join(tmpdir(),'historical-review-source-')),git=args=>execFileSync('git',args,{cwd:repo,encoding:'utf8',stdio:['ignore','pipe','pipe']})
+ git(['init','-q']);git(['config','user.name','Fixture']);git(['config','user.email','fixture@example.test'])
+ writeFileSync(path.join(repo,'.gitignore'),'.ai/\n');git(['add','.gitignore']);git(['commit','-qm','fixture base']);const base=git(['rev-parse','HEAD']).trim()
+ writeFileSync(path.join(repo,'source.txt'),'original source\n');git(['add','source.txt']);git(['commit','-qm','fixture reviewed source']);const oldHead=git(['rev-parse','HEAD']).trim()
+ writeFileSync(path.join(repo,'source.txt'),'advanced source\n');git(['add','source.txt']);git(['commit','-qm','advance PR head']);const currentHead=git(['rev-parse','HEAD']).trim();git(['reset','--hard','-q',oldHead])
+ const reviews=path.join(repo,'.ai','reviews');mkdirSync(reviews,{recursive:true,mode:0o775});chmodSync(path.dirname(reviews),0o700);chmodSync(reviews,0o775)
+ const receiptPath=path.join(reviews,`governed-source-${randomUUID()}.json`),sourceDigest='d'.repeat(64),receipt={schema_version:1,identity:{repository:repo,head:oldHead,base,merge_base:base,source_digest:sourceDigest},packet_sha256:'e'.repeat(64)}
+ writeFileSync(receiptPath,JSON.stringify(receipt),{mode:0o600})
+ const startAt='2026-10-15T03:32:32.171Z',logPath=path.join(repo,'retired-wrapper.log')
+ t.after(()=>rmSync(repo,{recursive:true,force:true}))
+ const io=reviewIo(),deepseek=ACTIVE_REVIEWERS.find(row=>row.name==='deepseek-v4.1-flash')
+ io.reviewerOrder=()=>[deepseek,...ACTIVE_REVIEWERS.filter(row=>row!==deepseek)]
+ io.getPr=()=>({number:109,state:'open',head:{sha:oldHead,ref:'codex/historical-fixture'}})
+ const request={issue:9,pr:109,headSha:oldHead};assignNextReviewer(request,io)
+ io.getPr=()=>({number:109,state:'open',head:{sha:currentHead,ref:'codex/historical-fixture'}})
+ const startSha=io.makeOwnerCommit(`db-coordination review-started issue=9 pr=109 head=${oldHead} slot=1 sequence=1 reviewer=deepseek-v4.1-flash at=${startAt} session=- receipt-path=sha256:${createHash('sha256').update(receiptPath).digest('hex')} source=sha256:${sourceDigest}`)
+ io.refs.set(reviewStartedMarkerRef({...request,sequence:1},1),startSha)
+ io.isCommitAncestor=(ancestor,descendant)=>ancestor===oldHead&&descendant===currentHead
+ io.readReviewStates=leases=>new Map(leases.map(lease=>[`${lease.issue}:${lease.pr}`,{issue:{state:'open'},pr:{number:109,state:'open',head:{sha:currentHead,ref:'codex/historical-fixture'}},evidence:[]}]))
+ io.readReviewRefs=refs=>new Map(refs.map(ref=>[ref,io.refs.get(ref)??null]))
+ io.atomicReviewRefs=changes=>{for(const change of changes)assert.equal(io.refs.get(change.ref)??null,change.expected??null);for(const change of changes){if(change.sha===null)io.refs.delete(change.ref);else io.refs.set(change.ref,change.sha)}}
+ io.atomicReviewMutexRelease=ownerSha=>io.atomicReviewRefs([{ref:MUTEX_REF,expected:ownerSha,sha:null}])
+ return {io,request:{...request,failedSequence:1,failureCode:'wrapper_terminal_failure',confirmNoVerdict:true,confirmNoArtifact:true,historicalTerminalFailureLog:logPath,historicalSourceReceipt:receiptPath},oldHead,currentHead,startSha,receiptPath,logPath}
+}
+
+for(const operation of [qualifyHistoricalReviewerFailure,releaseFailedReviewer])test(`historical wrapper evidence stays retired for ${operation.name}`,t=>{
+ const {io,request}=historicalFailureFixture(t),before=[...io.refs]
+ for(const name of ['makeOwnerCommit','createRef','updateRef','deleteRef','atomicReviewRefs','atomicReviewMutexRelease','pauseReviewerFailure'])io[name]=()=>assert.fail(`retired recovery attempted ${name}`)
+ assert.throws(()=>operation(request,io),/retired with the old review engine/)
+ assert.deepEqual([...io.refs],before)
+})
+
 const replacementRequest={...failedReview,failedSequence:1,failureCode:'insufficient_quota',confirmNoVerdict:true,confirmNoArtifact:true}
 
 test('terminal provider failure advances exactly once and retry is idempotent',()=>{

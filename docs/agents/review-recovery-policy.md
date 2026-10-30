@@ -24,11 +24,9 @@ Release does not launch another paid reviewer. The next supported assignment or 
 
 ## Historical wrapper-preparation failure evidence
 
-The supported historical variant recognizes the exact DeepSeek native wrapper preparation-failure format. An explicitly requested historical release may classify its retained `source-receipt-conflict` preparation failure after the open PR has advanced. It never assigns a reviewer to the old source. The old head must be an ancestor of the current eligible open PR head; the original assignment, paid start, source receipt, active lease and absence of a verdict or artifact must all agree. Ordinary current-head release requirements remain unchanged.
+Historical wrapper-preparation failure evidence is retired with the old review engine ([popcre/ai-devops#2074](https://github.com/popcre/ai-devops/issues/2074)). Historical qualification and release refuse; retained diagnostics cannot establish a new historical failure proof. Do not use this retired recovery procedure.
 
-The retained private diagnostic must prove exit 1, no signal or spawn error, packet construction followed by the exact source-receipt failure, and no provider dispatch or verdict. Its original source receipt must independently match the immutable start's receipt-path hash and source identity. A complete original-tuple start inventory must identify exactly one matching reviewer start before the diagnostic. This is recorded honestly as unique temporal binding, not a shared cryptographic run identifier. Missing, ambiguous or changed evidence refuses. Private original bytes remain private; the immutable failure record retains only normalized facts and hashes.
-
-All evidence and canonical PR/lease/verdict state are re-proved under the coordination mutex. One compare-and-swap operation creates the original tuple's failure record and removes only its exact held lease. Original starts, source, decisions and counters remain untouched. Only that proven verdict-less preparation failure receives the existing service-failure treatment; unknown or negative results remain charged. A fresh current-head assigned review is still mandatory.
+Already-recorded `proof=historical-terminal-v1` releases remain readable as immutable history. Ordinary current-head `wrapper_terminal_failure` release and replacement remain supported under their existing evidence requirements.
 
 ## Lifecycle-recorded delivery
 

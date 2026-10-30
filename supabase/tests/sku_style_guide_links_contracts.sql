@@ -105,7 +105,12 @@ begin
   n := public.parse_pdf_files_used('50910000-0000-0000-0000-000000000001');
   if n <> 3 or (select count(*) from public.sku_files_used where sku = '#5091-inline') <> 3
      or not exists (select 1 from public.sku_files_used where file_name = 'Third.ai') then
-    raise exception 'Inline delimiters, punctuation, noise or latest-sample selection regressed';
+    raise exception 'Inline delimiters, punctuation, noise or latest-sample selection regressed: n=%, rows=%, names=%, body=%',
+      n,
+      (select count(*) from public.sku_files_used where sku = '#5091-inline'),
+      (select coalesce(string_agg(file_name, ' | '), '<none>') from public.sku_files_used where sku = '#5091-inline'),
+      (select prosrc from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace
+        where ns.nspname = 'public' and p.proname = 'parse_pdf_files_used');
   end if;
   perform public.parse_pdf_files_used('50910000-0000-0000-0000-000000000001');
   if (select count(*) from public.sku_files_used where sku = '#5091-inline') <> 3 then

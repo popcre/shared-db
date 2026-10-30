@@ -1,6 +1,6 @@
 -- Ruling search (designflow-backend#254 step 6, design docs/design_cbp-ruling-database.md §5-§6).
 -- derived-from: none
--- Issue popcre/shared-db#5163 (claim #5164).
+-- Issue popcre/shared-db#5163 (claim #5166).
 -- Two-pass hybrid search over active CBP rulings, fused by reciprocal rank fusion (k = 60):
 --   lists: full-text (weighted subject A + ruling text D), trigram on the subject,
 --          and, when the caller passes a query embedding, the nearest trusted product phrases.

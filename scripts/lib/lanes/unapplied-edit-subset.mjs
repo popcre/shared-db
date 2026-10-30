@@ -20,7 +20,7 @@ import { fileMatchesLedgerStatements } from '../../check-applied-migration-edit.
 
 export class UnappliedEditSubsetError extends Error {}
 
-export function branchBoundClaimWrites(branch, io, { now = new Date() } = {}) {
+export function branchBoundClaimWrites(branch, io, { now = new Date(), migrationFiles = [] } = {}) {
   const refuse = (reason) => { throw new UnappliedEditSubsetError(reason) }
   if (typeof branch !== 'string' || !branch.trim()) refuse('the pull request head branch is unreadable')
   if (typeof io.openClaims !== 'function') refuse('open claims are not readable through this io, so the branch-bound claim cannot be proven')
@@ -29,6 +29,12 @@ export function branchBoundClaimWrites(branch, io, { now = new Date() } = {}) {
   if (!Array.isArray(claims)) refuse('the open-claim listing is unreadable')
   const matching = []
   for (const claim of claims) {
+    // Only a lease explicitly bound to another branch can be ignored before
+    // parsing. Ambiguous or missing branch identity still fails closed.
+    const body = String(claim?.body ?? '')
+    const fence = /```db-author-lease\s*\n([\s\S]*?)```/.exec(body)
+    const branches = fence ? [...fence[1].matchAll(/^\s*branch:\s*(.+)$/gm)].map((match) => match[1].trim()) : []
+    if (branches.length === 1 && branches[0] !== branch) continue
     let lease
     try { lease = parseAuthorLease(String(claim?.body ?? ''), now) } catch (error) { refuse(`claim #${claim?.number ?? '?'} is unreadable: ${error.message}`) }
     if (!lease.legacy && lease.branch === branch && lease.active) matching.push({ ...claim, lease })
@@ -36,6 +42,8 @@ export function branchBoundClaimWrites(branch, io, { now = new Date() } = {}) {
   if (matching.length !== 1) {
     refuse(`exactly one active branch-bound claim is required for branch ${branch}; found ${matching.length}${matching.length ? ` (${matching.map((claim) => `#${claim.number}`).join(', ')})` : ''}`)
   }
+  const editedVersions = new Set(migrationFiles.filter((row) => row.status === 'modified').map((row) => row.version))
+  if (!editedVersions.has(matching[0].lease.version)) refuse(`claim #${matching[0].number} version is not an edited migration version`)
   const writes = [...(matching[0].lease.writes ?? [])]
   if (!writes.length) refuse(`claim #${matching[0].number} holds no writes`)
   return { claimNumber: Number(matching[0].number), writes }

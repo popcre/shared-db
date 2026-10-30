@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "work_issue": 4508,
+  "outcome": "ready-for-merge",
+  "pr": 5071,
+  "migration_versions": [
+    "20261030002114"
+  ],
+  "contract_ref": "refs/db-contracts/4508/12",
+  "contract_sha256": "f9fa46f1e5ac7819ea79ecc2e64b1de250374e0e55914600f01f27e8267195c0",
+  "head_sha": "9097440f0858dc19ff6f84c8e7eb113030aed692",
+  "base_sha": "69f81af9544c3ab7c010ec2d093aad3179e97ef1",
+  "files_changed": [
+    "config/atomic-migration-allowlist.json",
+    "supabase/migrations/20261030002114_dam_search_plan_cost_dedupe.sql",
+    "supabase/tests/popdam_ranked_filter_parity_contracts.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "function public.search_dam_documents",
+    "function public.dam_asset_matches_filters"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks passed on the renamed-version head."
+    }
+  ],
+  "assumptions_resolved": [
+    "Same SQL as prior version 20261029161104 (parked with claim #5041); renamed per park rule; preview applied via run 40956396482.",
+    "Six-case production equivalence identical; Muse terminal APPROVE at 7fbf428f6 (advisory regime).",
+    "Claim #5070 held with current owner check-in."
+  ],
+  "stop_conditions_hit": []
+}

@@ -2,8 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const schema = readFileSync(new URL('../supabase/migrations/20261030040817_sku_style_guide_links_schema.sql', import.meta.url), 'utf8');
-const resolver = readFileSync(new URL('../supabase/migrations/20261030040818_sku_style_guide_links_resolver.sql', import.meta.url), 'utf8');
+const combined = readFileSync(new URL('../supabase/migrations/20261030043848_sku_style_guide_links.sql', import.meta.url), 'utf8');
+// One claim reserves one migration version, so both halves ship in one file.
+// Split on the resolver-half banner so each test can scope its assertions.
+const splitAt = combined.indexOf('-- Item -> licensor-scrape style guide links (resolver half).');
+const schema = splitAt === -1 ? combined : combined.slice(0, splitAt);
+const resolver = splitAt === -1 ? '' : combined.slice(splitAt);
 const sql = schema.replace(/--[^\n]*/g, '');
 const view = sql.match(/create or replace view plm\.asset_file_style_guide_index[\s\S]*?;/i)[0];
 

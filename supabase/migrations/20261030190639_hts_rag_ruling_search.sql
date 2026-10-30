@@ -1,6 +1,6 @@
 -- Ruling search (designflow-backend#254 step 6, design docs/design_cbp-ruling-database.md §5-§6).
 -- derived-from: none
--- Issue popcre/shared-db#5163 (claim #5167).
+-- Issue popcre/shared-db#5163 (claim #5174).
 -- Two-pass hybrid search over active CBP rulings, fused by reciprocal rank fusion (k = 60):
 --   lists: full-text (weighted subject A + ruling text D), trigram on the subject,
 --          and, when the caller passes a query embedding, the nearest trusted product phrases.
@@ -176,3 +176,14 @@ revoke all on function hts_rag.hts_rag_search_rulings(text, text[], integer, ext
 grant execute on function hts_rag.hts_rag_search_rulings(text, text[], integer, extensions.halfvec, integer)
   to designflow_hts_prod_runtime, designflow_hts_alsand_runtime,
      designflow_hts_prod_worker, designflow_hts_alsand_worker;
+
+-- Runtime access for the classifier (designflow-backend#254 comment 6531208064). The
+-- ruling library is the classifier's evidence (design §5), so both runtime roles read
+-- every ruling, not only those behind an accepted precedent. Rulings are public CBP
+-- documents. Policies are permissive and OR with the existing precedent-only ones.
+-- Product rows stay worker-only: hts_rag_search_rulings (SECURITY DEFINER) returns them.
+create policy hts_rag_prod_runtime_library_read on hts_rag.hts_rag_rulings
+  for select to designflow_hts_prod_runtime using (true);
+create policy hts_rag_alsand_runtime_library_read on hts_rag.hts_rag_rulings
+  for select to designflow_hts_alsand_runtime using (true);
+grant usage on schema extensions to designflow_hts_prod_runtime, designflow_hts_alsand_runtime;

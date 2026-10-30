@@ -416,9 +416,11 @@ begin
      is distinct from '{27120000-0000-4000-8000-000000000011}' then
     raise exception 'prod runtime sees links of unqualified precedents';
   end if;
-  if (select array_agg(ruling_number order by ruling_number)::text from hts_rag.hts_rag_rulings)
-     is distinct from '{ZZ-R1}' then
-    raise exception 'prod runtime sees rulings not relied on by a qualified precedent';
+  -- #5163: runtime roles read the whole ruling library (classifier evidence), not only
+  -- rulings relied on by a qualified precedent.
+  if not exists (select 1 from hts_rag.hts_rag_rulings where ruling_number = 'ZZ-R1')
+     or (select count(*) from hts_rag.hts_rag_rulings where ruling_number like 'ZZ-R%') < 2 then
+    raise exception 'prod runtime does not see the whole ruling library';
   end if;
 
   begin
@@ -443,7 +445,7 @@ do $alsand_runtime$
 begin
   if (select count(*) from hts_rag.hts_rag_precedents) <> 1
      or (select count(*) from hts_rag.hts_rag_precedent_rulings) <> 1
-     or (select count(*) from hts_rag.hts_rag_rulings) <> 1 then
+     or (select count(*) from hts_rag.hts_rag_rulings where ruling_number like 'ZZ-R%') < 2 then
     raise exception 'alsand runtime visibility differs from the qualified operative set';
   end if;
 

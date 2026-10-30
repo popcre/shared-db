@@ -105,3 +105,23 @@ end
 $ruling_search_behaviour$;
 reset role;
 rollback;
+
+-- Runtime access (#5163): both runtime roles read every ruling and may use schema extensions.
+do $ruling_runtime_access$
+declare
+  v_role text;
+begin
+  foreach v_role in array array['designflow_hts_prod_runtime','designflow_hts_alsand_runtime'] loop
+    if not has_schema_privilege(v_role, 'extensions', 'USAGE') then
+      raise exception '% lacks USAGE on schema extensions', v_role;
+    end if;
+    if not exists (select 1 from pg_policies where schemaname = 'hts_rag' and tablename = 'hts_rag_rulings'
+                    and roles @> array[v_role::name] and cmd = 'SELECT' and qual = 'true') then
+      raise exception '% cannot read the whole ruling library', v_role;
+    end if;
+    if has_table_privilege(v_role, 'hts_rag.hts_rag_ruling_products', 'SELECT') then
+      raise exception '% reads product rows directly; they stay worker-only', v_role;
+    end if;
+  end loop;
+end
+$ruling_runtime_access$;

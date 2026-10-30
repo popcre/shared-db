@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "work_issue": 5092,
+  "outcome": "ready-for-merge",
+  "pr": 5200,
+  "migration_versions": ["20261030224416"],
+  "contract_ref": "refs/db-contracts/5092/4",
+  "contract_sha256": "2b27a855ca9242e1b4358374a308663f1833dc58d2768b0ac06b7224581c029b",
+  "base_sha": "5facef6cd1032c2bbe0156583fe47d889c3136ff",
+  "head_sha": "38356d23472ae0f98559ac831a30e4edffa9eb96",
+  "files_changed": ["supabase/migrations/20261030224416_drop_sku_files_used_fuzzy_trigger.sql"],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static checks re-proven by hand after the origin/main refresh merge 38356d234 (refresh-code-pr-branch refuses to re-run this helper check): Guard B vs origin/main newest 20261030125352, expected-count, verify-cost, EOL reference."
+    }
+  ],
+  "assumptions_resolved": [
+    "Version 20261030224416 reserved by claim #5199 before the file existed",
+    "Contract published to refs/db-contracts/5092/4 before the implementation commit",
+    "Branch refreshed against main 5facef6cd after PR #5104 merged; evidence pair rebound to the new merge base and implementation head"
+  ],
+  "stop_conditions_hit": []
+}

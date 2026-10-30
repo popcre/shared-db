@@ -722,6 +722,15 @@ grant execute on function public.file_name_norm(text) to service_role, postgres,
 --   select public.resolve_sku_style_guide_links();
 
 -- ---------------------------------------------------------------------------
+-- 6b. Support the historical parse's per-row lookup: without this expression
+-- index every backfill row re-scans style_guide_files through
+-- normalize_for_sg_match(filename). The parse now runs post-promotion
+-- (service_role), and this index is what keeps it minutes instead of hours.
+create index if not exists style_guide_files_name_norm_idx
+  on public.style_guide_files (normalize_for_sg_match(filename))
+  where is_active = true;
+
+-- ---------------------------------------------------------------------------
 -- 7. Nightly refresh
 -- ---------------------------------------------------------------------------
 -- Runs after the 02:00 UTC PopSG crawl and the 04:00 UTC sku_files_used resolver, so

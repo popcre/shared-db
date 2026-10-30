@@ -4097,12 +4097,14 @@ function requireAdmission(options, io, args = {}) {
 // #2599: a curated Master Data issue declares no db-work-scope objects (its admission
 // returns writes: []), yet its data-only migration still needs a lane, a reserved
 // version and an exact claim that preview preparation checks against the migration's
-// row writes. The claim may therefore name only curated tables (core.*); preview
+// row writes. The claim may therefore name only curated tables (core.*, plus
+// plm.source_resolution written through plm.set_source_resolution()); preview
 // admission still proves every row write is covered.
 export function requireCuratedClaimObjects(requested,issue){
   if(!requested.length)throw new LaneError(`curated issue #${issue} claim requires at least one exact core.* table`)
   const bad=requested.filter((object)=>!/^table core\.[a-z_][a-z0-9_]*$/.test(object)&&object!=='table plm.source_resolution')
   if(bad.length)throw new LaneError(`curated issue #${issue} claim may name only curated core.* tables and table plm.source_resolution: ${bad.join(', ')}`)
+  if(!requested.some((object)=>/^table core\.[a-z_][a-z0-9_]*$/.test(object)))throw new LaneError(`curated issue #${issue} claim requires at least one exact core.* table`)
 }
 function requireAdmissionGate(options, io, { pr = null, timestamp, mutexOwner = null } = {}) {
   if(mutexOwner)requireOwnedRef(MUTEX_REF,mutexOwner,io)

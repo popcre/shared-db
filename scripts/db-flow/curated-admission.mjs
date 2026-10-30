@@ -168,7 +168,8 @@ function codeUnits(sql) {
 }
 
 // Expression-level calls are an ALLOWLIST too: only these side-effect-free
-// builtins may be called. Anything else (pg_net, vault, SECURITY DEFINER
+// builtins may be called, plus the one accounted writer plm.set_source_resolution()
+// (RESOLUTION_TABLE below). Anything else (pg_net, vault, SECURITY DEFINER
 // helpers, extension functions) refuses, because its body is never seen here.
 const CALLABLE = new Set(['count', 'coalesce', 'nullif', 'greatest', 'least', 'lower', 'upper', 'trim', 'btrim', 'ltrim', 'rtrim',
   'length', 'char_length', 'concat', 'concat_ws', 'replace', 'split_part', 'left', 'right', 'substr', 'position',
@@ -181,7 +182,8 @@ const QUALIFIED_CALLABLE = new Set(['extensions.digest', 'extensions.gen_random_
 // row's canonical resolution (plm.source_resolution), which is how a curated Character
 // or Property promotion records which source identity it came from. A call is a row
 // write into plm.source_resolution and is reported as one, so the claim must hold it.
-export const RESOLUTION_SETTER = 'plm.set_source_resolution'
+// Only the bare spelling plm.set_source_resolution( is admitted; any quoted spelling of
+// the setter is refused so a call can never escape the write accounting.
 export const RESOLUTION_TABLE = 'table plm.source_resolution'
 // Words that take a parenthesis without being a function call.
 const PAREN_KEYWORDS = new Set(['values', 'in', 'exists', 'not', 'and', 'or', 'any', 'all', 'some', 'row', 'filter', 'over', 'as',
@@ -281,6 +283,7 @@ export function inspectCuratedSql(sql) {
         // bare spelling (case aside), so it gets the same forbidden checks.
         const name = token.value.toLowerCase(), member = tokens[k - 1]?.type === 'punct' && tokens[k - 1].value === '.'
         if (FORBIDDEN_WORDS.has(name) || FORBIDDEN_IDENTS.has(name) || (FORBIDDEN_PREFIXES.some((prefix) => name.startsWith(prefix)) && !ALLOWED_PG_WORDS.has(name))) throw new CuratedSqlError(`forbidden quoted identifier "${token.value}"`)
+        if (name === 'set_source_resolution') throw new CuratedSqlError('plm.set_source_resolution must be called by its bare name so its write is accounted')
         if (tokens[k + 1]?.type === 'punct' && tokens[k + 1].value === '(') checkCall(tokens, k, plpgsql && declaring)
         continue
       }

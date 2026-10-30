@@ -319,14 +319,16 @@ class Tests(unittest.TestCase):
             with self.assertRaises(M.Refusal): M.reconcile('url',{},args,['select 1'],['select 1'],'replacement_already_applied')
     def test_apply_is_transactional_exact_delete_and_readback(self):
         args=type('A',(),{'orphan_version':'20260817150944','replacement_version':'20260817124545','mode':'apply'})()
-        before=[{'version':'20260817150944','statements':['select 1']},{'version':'20260817124545','statements':['select 1']}]
-        after=[{'version':'20260817124545','statements':['select 1']}]
+        before=[{'version':'20260817150944','statements':['select 1']},{'version':'20260817124545','statements':['select 2']}]
+        after=[{'version':'20260817124545','statements':['select 2']}]
         with patch.object(M,'ledger_rows',side_effect=[before,after]), patch.object(M,'psql',return_value='') as call:
-            self.assertEqual(M.reconcile('url',{},args,['select 1'],['select 1'],'replacement_already_applied'),(before,after))
+            self.assertEqual(M.reconcile('url',{},args,['select 1'],['select 2'],'replacement_already_applied'),(before,after))
             sql=call.call_args.args[2]
             self.assertIn('begin;',sql); self.assertIn('lock table supabase_migrations.schema_migrations in exclusive mode',sql)
             self.assertIn("delete from supabase_migrations.schema_migrations where version='20260817150944'",sql)
             self.assertNotIn("delete from supabase_migrations.schema_migrations where version='20260817124545'",sql)
+            self.assertIn("where version='20260817150944') <> $expected$[\"select 1\"]$expected$::jsonb",sql)
+            self.assertIn("where version='20260817124545') <> $expected$[\"select 2\"]$expected$::jsonb",sql)
             self.assertIn('commit;',sql)
     def test_database_failure_stops_before_post_commit_readback(self):
         args=type('A',(),{'orphan_version':'20260817150944','replacement_version':'20260817124545','mode':'apply'})()
@@ -619,6 +621,65 @@ class AtomicApplyEvidenceTests(unittest.TestCase):
         self.assertIn('ATOMIC APPLY OK: target=preview version={evidence_version} ledger_row=1 ',src)
 
 class OrphanSourceCommitTests(unittest.TestCase):
+    def test_pinned_orphan_fetch_and_main_use_distinct_statements(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            origin = root / 'origin'
+            checkout = root / 'checkout'
+            origin.mkdir(); checkout.mkdir()
+            M.git(origin, 'init', '--quiet')
+            migrations = origin / 'supabase/migrations'
+            migrations.mkdir(parents=True)
+            orphan = '20261030014205'
+            replacement = '20261030042314'
+            migration = migrations / (orphan + '_orphan.sql')
+            migration.write_text('select 1;\nselect 3;\n', encoding='utf-8')
+            (migrations / (replacement + '_other.sql')).write_text('select 9;\n')
+            M.git(origin, 'add', 'supabase')
+            M.git(origin, '-c', 'user.name=Test', '-c', 'user.email=test@example.com',
+                  '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'pinned orphan')
+            commit = M.git(origin, 'rev-parse', 'HEAD')
+            # Change origin's current bytes so reading HEAD instead of the pin fails.
+            migration.write_text('select 99;\n', encoding='utf-8')
+            M.git(origin, 'add', 'supabase')
+            M.git(origin, '-c', 'user.name=Test', '-c', 'user.email=test@example.com',
+                  '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'later bytes')
+            M.git(checkout, 'init', '--quiet')
+            M.git(checkout, 'remote', 'add', 'origin', str(origin))
+            source = root / 'source/supabase/migrations'
+            source.mkdir(parents=True)
+            (source / (replacement + '_replacement.sql')).write_text('select 2;\n')
+            args = SimpleNamespace(
+                reconciliation='preview', repo=checkout, source_pr_dir=root / 'source',
+                orphan_source_dir=root / 'unused', issue=4508, claim=5090, source_pr=5075,
+                orphan_version=orphan, replacement_version=replacement,
+                expected_project_ref='a' * 20, linked_dir=root, main_sha='b' * 40,
+                mode='apply', evidence_out=root / 'evidence.json', preview_run_id=1,
+                preview_artifact_id=2, preview_artifact_digest='sha256:test')
+            case = {'mode':'replacement_already_applied', 'orphan_source_commit':commit}
+            before = [{'version':orphan, 'statements':['select 1', 'select 3']},
+                      {'version':replacement, 'statements':['select 2']}]
+            after = [before[1]]
+            # Only external governance and database access are substituted; the
+            # pinned fetch, extraction, parsing, main routing and SQL are real.
+            with tempfile.TemporaryDirectory() as extracted, \
+                 patch.object(M.tempfile, 'mkdtemp', return_value=extracted), \
+                 patch.object(M, 'parse_args', return_value=args), \
+                 patch.object(M, 'SUPPORTED_CASES', {(4508,5090,5075):case}), \
+                 patch.object(M, 'validate_governance', return_value={'case_mode':case['mode']}) as governance, \
+                 patch.object(M, 'linked_connection', return_value=('url', {})), \
+                 patch.object(M, 'ledger_rows', side_effect=[before, after]), \
+                 patch.object(M, 'psql', return_value='') as execute:
+                self.assertEqual(M.main(), 0)
+                self.assertEqual(args.orphan_migration.read_text(), 'select 1;\nselect 3;\n')
+                self.assertEqual(governance.call_args.args[1:], (['select 1', 'select 3'], ['select 2']))
+                sql = execute.call_args.args[2]
+                self.assertIn(f"where version='{orphan}') <> $expected$[\"select 1\",\"select 3\"]$expected$::jsonb", sql)
+                self.assertIn(f"where version='{replacement}') <> $expected$[\"select 2\"]$expected$::jsonb", sql)
+            evidence = json.loads(args.evidence_out.read_text())
+            self.assertEqual((evidence['before'], evidence['after']), (before, after))
+
     def test_issue_4508_orphan_is_read_from_its_own_commit(self):
         case=[c for c in M.SUPPORTED_CASES.values() if c.get('orphan_version')=='20261030014205'][0]
         self.assertEqual(case['orphan_source_commit'],'2a0f16d2f4152374d10acd972c07b799fdfcee4a')

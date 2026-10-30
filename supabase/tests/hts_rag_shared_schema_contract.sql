@@ -279,8 +279,14 @@ begin
   ] loop
     begin
       execute format(
-        'insert into hts_rag.%1$I select (jsonb_populate_record(null::hts_rag.%1$I, to_jsonb(t) || jsonb_build_object(''source_environment'', ''alsand''))).* from hts_rag.%1$I t limit 1',
-        v_table
+        -- Explicit non-generated columns: a stored generated column (e.g. search_tsv, #5163)
+        -- refuses any written value, which would mask the provenance refusal under test.
+        'insert into hts_rag.%1$I (%2$s) select %3$s from hts_rag.%1$I t cross join lateral jsonb_populate_record(null::hts_rag.%1$I, to_jsonb(t) || jsonb_build_object(''source_environment'', ''alsand'')) r limit 1',
+        v_table,
+        (select string_agg(quote_ident(a.attname), ', ' order by a.attnum) from pg_attribute a
+          where a.attrelid = ('hts_rag.' || quote_ident(v_table))::regclass and a.attnum > 0 and not a.attisdropped and a.attgenerated = ''),
+        (select string_agg('r.' || quote_ident(a.attname), ', ' order by a.attnum) from pg_attribute a
+          where a.attrelid = ('hts_rag.' || quote_ident(v_table))::regclass and a.attnum > 0 and not a.attisdropped and a.attgenerated = '')
       );
       raise exception 'production worker forged alsand provenance on %', v_table;
     exception when insufficient_privilege then null;
@@ -353,8 +359,14 @@ begin
   ] loop
     begin
       execute format(
-        'insert into hts_rag.%1$I select (jsonb_populate_record(null::hts_rag.%1$I, to_jsonb(t) || jsonb_build_object(''source_environment'', ''production''))).* from hts_rag.%1$I t limit 1',
-        v_table
+        -- Explicit non-generated columns: a stored generated column (e.g. search_tsv, #5163)
+        -- refuses any written value, which would mask the provenance refusal under test.
+        'insert into hts_rag.%1$I (%2$s) select %3$s from hts_rag.%1$I t cross join lateral jsonb_populate_record(null::hts_rag.%1$I, to_jsonb(t) || jsonb_build_object(''source_environment'', ''production'')) r limit 1',
+        v_table,
+        (select string_agg(quote_ident(a.attname), ', ' order by a.attnum) from pg_attribute a
+          where a.attrelid = ('hts_rag.' || quote_ident(v_table))::regclass and a.attnum > 0 and not a.attisdropped and a.attgenerated = ''),
+        (select string_agg('r.' || quote_ident(a.attname), ', ' order by a.attnum) from pg_attribute a
+          where a.attrelid = ('hts_rag.' || quote_ident(v_table))::regclass and a.attnum > 0 and not a.attisdropped and a.attgenerated = '')
       );
       raise exception 'Alsand worker forged production provenance on %', v_table;
     exception when insufficient_privilege then null;

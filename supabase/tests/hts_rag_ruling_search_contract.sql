@@ -53,6 +53,23 @@ values ('ZT0001', '9503.00.0073', 'held', 'parse-v1', 'alsand'),
        ('ZT0003', '9503.00.0073', 'held', 'parse-v1', 'alsand'),
        ('ZT0004', '6912.00.4400', 'held', 'parse-v1', 'alsand');
 
+-- Vector-only evidence: the closer out-of-chapter ruling must lose to the
+-- in-chapter fallback boost. Product chapters deliberately differ from held codes
+-- for ZT0001, exercising a pass-2 in-chapter hit that was absent from pass 1.
+insert into hts_rag.hts_rag_ruling_products
+  (ruling_number, item_label, plain_phrase, held_chapter, phrase_embedding,
+   effective_status, review_state, extract_version, source_environment)
+select ruling_number, 'search fixture', 'search fixture', '94', embedding,
+       status, review, 'parse-v1', 'alsand'
+from (values
+  ('ZT0001', (array[1::real] || array_fill(0::real, array[767]))::extensions.halfvec, 'active', 'trusted'),
+  ('ZT0002', array_fill(1::real, array[768])::extensions.halfvec, 'active', 'trusted'),
+  ('ZT0003', array_fill(1::real, array[768])::extensions.halfvec, 'active', 'trusted'),
+  ('ZT0004', null::extensions.halfvec, 'active', 'trusted'),
+  ('ZT0004', array_fill(1::real, array[768])::extensions.halfvec, 'active', 'pending'),
+  ('ZT0004', array_fill(1::real, array[768])::extensions.halfvec, 'revoked', 'trusted')
+) as fixtures(ruling_number, embedding, status, review);
+
 grant designflow_hts_alsand_runtime to postgres;
 set local role designflow_hts_alsand_runtime;
 do $ruling_search_behaviour$
@@ -61,6 +78,7 @@ declare
   v_held text[];
   v_pass smallint;
   v_in boolean;
+  v_embedding extensions.halfvec := array_fill(1::real, array[768])::extensions.halfvec;
 begin
   -- Chapter 95 only, threshold 1: pass 1 is enough; the revoked ruling never appears.
   select array_agg(s.ruling_number order by s.score desc), min(s.pass)
@@ -92,6 +110,37 @@ begin
              where s.score > (case when s.fts_rank is null then 0 else 1.0 / (60 + s.fts_rank) end)
                            + (case when s.trgm_rank is null then 0 else 1.0 / (60 + s.trgm_rank) end) + 1e-9) then
     raise exception 'score is not reciprocal rank fusion with k = 60';
+  end if;
+
+  -- Vector-only search: null embeddings, untrusted/inactive products and
+  -- revoked rulings contribute no evidence. Nearest vector wins without chapters.
+  select array_agg(s.ruling_number order by s.score desc) into v_rows
+  from hts_rag.hts_rag_search_rulings('', null, 10, v_embedding) s;
+  if v_rows is distinct from array['ZT0002', 'ZT0001'] then
+    raise exception 'vector-only order/filtering returned %', v_rows;
+  end if;
+  if exists (select 1 from hts_rag.hts_rag_search_rulings('', null, 10, v_embedding) s
+             where s.vector_rank is null or s.fts_rank is not null or s.trgm_rank is not null
+                or abs(s.score - 1.0 / (60 + s.vector_rank)) > 1e-9) then
+    raise exception 'vector-only score is not RRF';
+  end if;
+
+  -- Product chapter 94 supplies a strong pass 1; chapter 95 must fall back.
+  if (select count(*) from hts_rag.hts_rag_search_rulings('', array['94'], 10, v_embedding, 1) s
+      where s.pass = 1 and s.vector_rank is not null) <> 2 then
+    raise exception 'vector chapter pass did not return both trusted products';
+  end if;
+  select array_agg(s.ruling_number order by s.score desc) into v_rows
+  from hts_rag.hts_rag_search_rulings('', array['95'], 10, v_embedding, 1) s;
+  if v_rows is distinct from array['ZT0001', 'ZT0002'] then
+    raise exception 'vector fallback boost returned %', v_rows;
+  end if;
+  if exists (select 1 from hts_rag.hts_rag_search_rulings('', array['95'], 10, v_embedding, 1) s
+             where s.pass <> 2 or s.vector_rank is null
+                or s.in_candidate_chapters <> (s.ruling_number = 'ZT0001')
+                or abs(s.score - (1.0 / (60 + s.vector_rank)
+                   + case when s.ruling_number = 'ZT0001' then 1.0 / 61 else 0 end)) > 1e-9) then
+    raise exception 'vector fallback score or chapter flag is incorrect';
   end if;
 
   -- Empty query returns nothing; limit is honoured.

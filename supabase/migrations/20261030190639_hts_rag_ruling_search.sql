@@ -78,6 +78,7 @@ as $function$
       from hts_rag.hts_rag_ruling_products rp
       join hts_rag.hts_rag_rulings r on r.ruling_number = rp.ruling_number
       where p_query_embedding is not null
+        and rp.phrase_embedding is not null
         and rp.effective_status = 'active' and rp.review_state = 'trusted'
         and r.effective_status = 'active' and not coalesce(r.operationally_revoked, false)
         and (p_scope_chapters is null or rp.held_chapter = any (p_scope_chapters))
@@ -125,18 +126,24 @@ as $function$
            (select array_agg(distinct c) from unnest(p_chapters) c where c ~ '^[0-9]{2}$') as chapters,
            least(greatest(coalesce(p_limit, 20), 1), 100) as lim
   ),
+  pass1_params as materialized (
+    select * from params p
+    where p.chapters is not null and (p.q <> '' or p_query_embedding is not null)
+  ),
   pass1 as materialized (
     select h.*, 1::smallint as pass
-    from params p
+    from pass1_params p
     cross join lateral hts_rag.hts_rag_search_rulings_pass(p.q, p.tsq, p_query_embedding, p.chapters) h
-    where p.chapters is not null and (p.q <> '' or p_query_embedding is not null)
+  ),
+  pass2_params as materialized (
+    select * from params p
+    where (p.q <> '' or p_query_embedding is not null)
+      and (p.chapters is null or (select count(*) from pass1) < least(coalesce(p_min_pass1, 5), p.lim))
   ),
   pass2 as materialized (
     select h.*, 2::smallint as pass
-    from params p
+    from pass2_params p
     cross join lateral hts_rag.hts_rag_search_rulings_pass(p.q, p.tsq, p_query_embedding, null) h
-    where (p.q <> '' or p_query_embedding is not null)
-      and (p.chapters is null or (select count(*) from pass1) < least(coalesce(p_min_pass1, 5), p.lim))
   ),
   hits as (
     select * from pass1

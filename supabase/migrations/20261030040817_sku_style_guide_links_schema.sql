@@ -56,6 +56,8 @@ comment on function public.file_name_norm(text) is
 --     is not a Style Guide and must never be stored as one (level-mismatch trap).
 --   * Coca-Cola publishes assets with no guide relationship.
 --   * Disney OPA publishes properties/characters only - it has no file or guide arm.
+--   * Sega guide candidates and Wildbrain keyword guides are pipeline inferences,
+--     not portal-declared style guides.
 -- Adding a portal means adding one UNION ALL arm here, after confirming the portal
 -- itself asserts asset -> style guide.
 create or replace view plm.asset_file_style_guide_index
@@ -141,23 +143,6 @@ with (security_invoker = true) as
   join plm.wb_style_guide_normalized g on g.id = l.style_guide_id
 
   union all
-  -- Sega DSI: the portal has no guide master; guides are derived candidates hung
-  -- off a catalog node. The asset -> catalog edge is direct; the catalog -> guide
-  -- candidate is the source's own candidate, so it is carried through as stated.
-  select
-    'sega_dsi',
-    public.file_name_norm(a.file_name),
-    c.catalog_source_id,
-    c.candidate_label,
-    null::uuid,
-    a.file_name
-  from plm.sega_asset a
-  join plm.sega_asset_catalog ac
-    on ac.capture_id = a.capture_id and ac.asset_source_id = a.asset_source_id
-  join plm.sega_style_guide_candidate c
-    on c.capture_id = ac.capture_id and c.catalog_source_id = ac.catalog_source_id
-
-  union all
   -- Peanuts (Tenovos): the asset row itself carries the style guide key.
   select
     'peanuts_tenovos',
@@ -184,34 +169,21 @@ with (security_invoker = true) as
     on l.capture_id = a.capture_id and l.asset_source_id = a.asset_source_id
   join plm.sesame_style_guide g
     on g.capture_id = l.capture_id and g.value_key = l.value_key
-  where btrim(a.original_file_name) <> ''
-
-  union all
-  -- Wildbrain: junction asset -> guide.
-  select
-    'wildbrain',
-    public.file_name_norm(a.original_file_name),
-    g.guide_key,
-    g.guide_label,
-    null::uuid,
-    a.original_file_name
-  from plm.wildbrain_asset a
-  join plm.wildbrain_asset_guide l
-    on l.capture_id = a.capture_id and l.asset_source_id = a.asset_source_id
-  join plm.wildbrain_guide g
-    on g.capture_id = l.capture_id and g.guide_key = l.guide_key
   where btrim(a.original_file_name) <> '';
 
 comment on view plm.asset_file_style_guide_index is
   'Cross-portal index: one row per (portal, normalised file name, style guide the portal '
   'asserts that file belongs to). Every arm is a DIRECT source assertion; no arm infers a '
   'guide from co-occurrence. Paramount Collections and Coca-Cola assets are deliberately '
-  'absent - neither portal publishes a style-guide relationship.';
+  'absent - neither portal publishes a style-guide relationship. Sega and Wildbrain '
+  'are excluded because their guide relationships are inferred.';
 
 alter view plm.asset_file_style_guide_index owner to postgres;
 
-revoke all on plm.asset_file_style_guide_index from public, anon;
-grant select on plm.asset_file_style_guide_index to authenticated, service_role;
+-- Internal resolver index: ASGARD landing tables are service-role-only.
+-- UI readers use the authenticated-readable sku_style_guide_links result instead.
+revoke all on plm.asset_file_style_guide_index from public, anon, authenticated;
+grant select on plm.asset_file_style_guide_index to service_role;
 
 -- ---------------------------------------------------------------------------
 -- 3. Item -> style guide link table

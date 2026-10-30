@@ -939,8 +939,9 @@ export const githubIo = {
     ].join('\n')
     let stdout
     try{
-      stdout=execFileSync(process.execPath,['--input-type=module','--eval',`${importer}\n${script}`],{encoding:'utf8',stdio:['ignore','pipe','pipe'],maxBuffer:8*1024*1024,env:process.env})
+      stdout=execFileSync(process.execPath,['--input-type=module','--eval',`${importer}\n${script}`],{encoding:'utf8',stdio:['ignore','pipe','pipe'],maxBuffer:8*1024*1024,env:process.env,timeout:60000,killSignal:'SIGKILL'})
     }catch(error){
+      if(error.code==='ETIMEDOUT')throw new LaneError('the applied-migration ledger read timed out after 60000 ms (fail closed)')
       throw new LaneError(`the applied-migration ledger read failed: ${String(error.stderr||error.message).slice(0,400)}`)
     }
     try{return JSON.parse(stdout)}catch{throw new LaneError('the applied-migration ledger read returned malformed JSON')}

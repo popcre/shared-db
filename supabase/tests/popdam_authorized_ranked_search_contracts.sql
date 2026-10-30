@@ -202,7 +202,9 @@ begin
     'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)'::regprocedure
   ) into v_definition;
   if position('candidate_asset_ids' in v_definition) = 0
-     or position('select distinct a.document_type, a.entity_id, a.asset_id' in v_definition) = 0 then
+     -- #5053: ranked_documents is gone (totals from exact_docs); the ranked
+     -- document projection lives in page_documents over the keyed expansion.
+     or position('select c.document_type,c.entity_id,c.asset_id,c.style_group_id,' in v_definition) = 0 then
     raise exception 'ranked search must use keyed asset and Style Group visibility joins';
   end if;
   if position('d.search_tsv @@ any(array(select q.tsq from queries q))' in v_definition) = 0

@@ -281,7 +281,10 @@ export function inspectCuratedSql(sql) {
         // bare spelling (case aside), so it gets the same forbidden checks.
         const name = token.value.toLowerCase(), member = tokens[k - 1]?.type === 'punct' && tokens[k - 1].value === '.'
         if (FORBIDDEN_WORDS.has(name) || FORBIDDEN_IDENTS.has(name) || (FORBIDDEN_PREFIXES.some((prefix) => name.startsWith(prefix)) && !ALLOWED_PG_WORDS.has(name))) throw new CuratedSqlError(`forbidden quoted identifier "${token.value}"`)
-        if (tokens[k + 1]?.type === 'punct' && tokens[k + 1].value === '(') checkCall(tokens, k, plpgsql && declaring)
+        if (tokens[k + 1]?.type === 'punct' && tokens[k + 1].value === '(') {
+          checkCall(tokens, k, plpgsql && declaring)
+          if (token.value === 'set_source_resolution' && member && tokens[k - 2]?.type === 'word' && tokens[k - 2].value === 'plm') { writes.add(RESOLUTION_TABLE); dml++ }
+        }
         continue
       }
       if (token.type !== 'word') continue

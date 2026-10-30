@@ -12764,6 +12764,11 @@ test('preview preparation admits a curated data-only migration whose row writes 
   assert.equal(deriveLivePreviewCandidate(1769,curated({migrationBody:"insert into plm.licensing_write_authorization (backend_pid) values (pg_backend_pid());\n"+load,writes:['table core.property']})).pr,1809)
   assert.throws(()=>deriveLivePreviewCandidate(1769,curated({migrationBody:load,writes:['table core.licensor']})),/curated row writes table core\.property are not covered by claim #1805/)
   assert.throws(()=>deriveLivePreviewCandidate(1769,curated({migrationBody:'create table core.evil();\n'+load,writes:['table core.property']})),/not an admissible curated data-only migration/)
+  for(const setter of ['set_source_resolution','"set_source_resolution"']){
+    const migrationBody=load+`do $x$ begin perform plm.${setter}('nbcu','character','c','matched',null,null,null,null,'r',null); end $x$;`
+    assert.throws(()=>deriveLivePreviewCandidate(1769,curated({migrationBody,writes:['table core.property']})),/curated row writes table plm\.source_resolution are not covered by claim #1805/)
+    assert.equal(deriveLivePreviewCandidate(1769,curated({migrationBody,writes:['table core.property','table plm.source_resolution']})).pr,1809)
+  }
   // the structural route still refuses the same data-only SQL
   assert.throws(()=>deriveLivePreviewCandidate(1769,mergedRehearsalIo({migrationBody:load,writes:['table core.property']}).io),/not structural/)
 })
@@ -12888,4 +12893,27 @@ test('curated SQL reports plm.set_source_resolution calls as plm.source_resoluti
   assert.throws(()=>inspectCuratedSql("select plm.other_setter('a');"),/not an allowed side-effect-free builtin/)
   assert.throws(()=>inspectCuratedSql("update plm.opa_character set core_character_id = null where character_id = 1;"),/outside curated Master Data/)
   assert.throws(()=>inspectCuratedSql("insert into plm.source_resolution (source_id) values ('x');"),/outside curated Master Data/)
+})
+
+
+test('curated claim acquisition admits core tables and refuses unrelated plm tables (#5099)',async()=>{
+  async function fixture(){
+    const io=await twoWriteAdmittedIo()
+    const getIssue=io.getIssue
+    io.getIssue=(number)=>({...getIssue(number),body:['```db-work-scope','status: ready','work_type: curated-master-data','route: curated-master-data-governance','change_type: migration','live_assertion: one row','generated_types: not-applicable','priority: 1','writes:','reads:','```'].join('\n')})
+    return io
+  }
+  const options={...opts,task:'#41',objects:['table core.character'],admitIssue:41,claim:true}
+  assert.ok(acquireAuthorLane(options,NOW,await fixture()).claim)
+  const refused=await fixture()
+  assert.throws(()=>acquireAuthorLane({...options,objects:['table plm.item']},NOW,refused),/only curated core/)
+  assert.equal(refused.refs.has(MUTEX_REF),false)
+})
+
+test('quoted resolution setter reports writes alone and beside curated inserts (#5099)',async()=>{
+  const {inspectCuratedSql}=await import('./db-flow/curated-admission.mjs')
+  const call=`perform plm."set_source_resolution"('nbcu','character','c','matched',null,null,null,null,'r',null);`
+  assert.deepEqual([...inspectCuratedSql(`do $x$ begin ${call} end $x$;`).writes],['table plm.source_resolution'])
+  const sql=`do $x$ begin insert into core.character (code) values ('c'); ${call} end $x$;`
+  assert.deepEqual([...inspectCuratedSql(sql).writes].sort(),['table core.character','table plm.source_resolution'])
 })

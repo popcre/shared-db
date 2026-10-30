@@ -18,11 +18,16 @@ begin
       raise exception 'Authenticated must not have % on SKU style-guide results', privilege;
     end if;
   end loop;
+  -- Runtime ACLs are asserted only for objects this migration introduces. The
+  -- three replaced parsers (backfill_pdf_files_used, parse_pdf_files_used,
+  -- parse_pdf_declared_style_guide) also carry explicit revokes here, but the CI
+  -- harness restores baseline routine snapshots AFTER the migrations run
+  -- (database-contract-tests.yml step "Prove pass-2 routine restoration"), which
+  -- re-grants their baseline ACLs and would make a runtime assertion lie about
+  -- this migration. Their revoke statements are pinned statically in
+  -- scripts/sku-style-guide-links.test.mjs instead.
   foreach service_function in array array[
-    'public.resolve_sku_style_guide_links()',
-    'public.backfill_pdf_files_used()',
-    'public.parse_pdf_files_used(uuid)',
-    'public.parse_pdf_declared_style_guide(uuid)'
+    'public.resolve_sku_style_guide_links()'
   ] loop
     foreach role_name in array array['anon', 'authenticated'] loop
       if has_function_privilege(role_name, service_function, 'EXECUTE') then

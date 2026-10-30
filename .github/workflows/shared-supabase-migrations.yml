@@ -51,7 +51,7 @@ on:
         type: string
         required: false
       confirmation:
-        description: "Production: DRY-RUN <sha>, APPLY <sha>, or OWNER-OVERRIDE <sha> (owner-authorized, skips reviewer evidence)"
+        description: "Production: DRY-RUN <sha> or APPLY <sha>"
         type: string
         required: false
       review_run_id:
@@ -1314,6 +1314,14 @@ jobs:
           path: ${{ runner.temp }}/automatic-production-apply-review-evidence.json
           if-no-files-found: error
           retention-days: 90
+      # plan_skinny-review.md rule 8.6 (popcre/ai-devops #2075): a blocking
+      # review-finding issue (open, or closed as not planned within 24 hours)
+      # that names the source PR holds it out of production. Queried live.
+      - name: Hold for a blocking review finding
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_PR: ${{ steps.source_guard.outputs.source_pr || steps.train_source_guard.outputs.source_pr }}
+        run: python scripts/review_finding_hold.py --pr "$SOURCE_PR"
       - name: Dispatch the existing serial production lane
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1579,10 +1587,6 @@ jobs:
         run: |
           test -n "$REQUESTED_SHA"
           test -n "$PRODUCTION_ALLOWLIST"
-          if [ "$REQUESTED_CONFIRMATION" = "OWNER-OVERRIDE $REQUESTED_SHA" ]; then
-            echo "OWNER OVERRIDE confirmation accepted (Albert Hazan 2026-10-22)."
-            exit 0
-          fi
           test "$REQUESTED_CONFIRMATION" = "APPLY $REQUESTED_SHA"
       - uses: actions/checkout@v4
         with:
@@ -1693,20 +1697,6 @@ jobs:
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
           CONFIRMATION: ${{ inputs.confirmation }}
         run: |
-          # Owner-authorized override (Albert Hazan 2026-10-22): confirmation
-          # "OWNER-OVERRIDE <sha>" skips reviewer evidence. Typed SHA must match.
-          # All other hard guards still run.
-          if [[ "$CONFIRMATION" == OWNER-OVERRIDE* ]]; then
-            EXPECTED="OWNER-OVERRIDE $REQUESTED_SHA"
-            if [ "$CONFIRMATION" != "$EXPECTED" ]; then
-              echo "REFUSED: confirmation must be exactly: $EXPECTED" >&2
-              exit 1
-            fi
-            echo "OWNER OVERRIDE ACCEPTED: $CONFIRMATION"
-            echo "Owner Albert Hazan directed production apply without reviewer evidence on 2026-10-22."
-            echo "Allowlist: $PRODUCTION_ALLOWLIST  SHA: $REQUESTED_SHA"
-            exit 0
-          fi
           python scripts/production_apply_review_evidence.py \
             --review-run-id "$REVIEW_RUN_ID" \
             --expected-artifact-digest "$REVIEW_ARTIFACT_DIGEST" \
@@ -1761,18 +1751,6 @@ jobs:
           CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
-          # Owner override (Albert Hazan 2026-10-22): skip automated risk gate.
-          if [[ "$CONFIRMATION" == OWNER-OVERRIDE* ]]; then
-            EXPECTED="OWNER-OVERRIDE $REQUESTED_SHA"
-            if [ "$CONFIRMATION" != "$EXPECTED" ]; then
-              echo "REFUSED: confirmation must be exactly: $EXPECTED" >&2
-              exit 1
-            fi
-            echo "OWNER OVERRIDE: skipping automated business-risk gate."
-            echo '{"schema":"shared-db-production-risk-assessment/v1","owner_override":true,"owner":"Albert Hazan","date":"2026-10-22","main_sha":"'"$REQUESTED_SHA"'","allowlist":"'"$PRODUCTION_ALLOWLIST"'","note":"Owner directed apply without reviewer evidence; automated risk gate skipped by typed override."}' \
-              | tee "$RUNNER_TEMP/production-business-risk-evidence.json"
-            exit 0
-          fi
           test -n "$SOURCE_PR"
           test -n "$WORK_ISSUE"
           TRAIN_ARGS=()
@@ -1865,10 +1843,6 @@ jobs:
           REQUESTED_CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           test -n "$REQUESTED_SHA"
-          if [ "$REQUESTED_CONFIRMATION" = "OWNER-OVERRIDE $REQUESTED_SHA" ]; then
-            echo "OWNER OVERRIDE confirmation accepted (Albert Hazan 2026-10-22)."
-            exit 0
-          fi
           test "$REQUESTED_CONFIRMATION" = "APPLY $REQUESTED_SHA"
       - uses: actions/checkout@v4
         with:
@@ -1946,15 +1920,6 @@ jobs:
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
           CONFIRMATION: ${{ inputs.confirmation }}
         run: |
-          if [[ "$CONFIRMATION" == OWNER-OVERRIDE* ]]; then
-            EXPECTED="OWNER-OVERRIDE $REQUESTED_SHA"
-            if [ "$CONFIRMATION" != "$EXPECTED" ]; then
-              echo "REFUSED: confirmation must be exactly: $EXPECTED" >&2
-              exit 1
-            fi
-            echo "OWNER OVERRIDE: skipping re-verify review evidence."
-            exit 0
-          fi
           python scripts/production_apply_review_evidence.py \
             --review-run-id "$REVIEW_RUN_ID" \
             --expected-artifact-digest "$REVIEW_ARTIFACT_DIGEST" \
@@ -2006,18 +1971,6 @@ jobs:
           CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
-          # Owner override (Albert Hazan 2026-10-22): skip automated risk gate.
-          if [[ "$CONFIRMATION" == OWNER-OVERRIDE* ]]; then
-            EXPECTED="OWNER-OVERRIDE $REQUESTED_SHA"
-            if [ "$CONFIRMATION" != "$EXPECTED" ]; then
-              echo "REFUSED: confirmation must be exactly: $EXPECTED" >&2
-              exit 1
-            fi
-            echo "OWNER OVERRIDE: skipping automated business-risk gate."
-            echo '{"schema":"shared-db-production-risk-assessment/v1","owner_override":true,"owner":"Albert Hazan","date":"2026-10-22","main_sha":"'"$REQUESTED_SHA"'","allowlist":"'"$PRODUCTION_ALLOWLIST"'","note":"Owner directed apply without reviewer evidence; automated risk gate skipped by typed override."}' \
-              | tee "$RUNNER_TEMP/production-business-risk-evidence.json"
-            exit 0
-          fi
           test -n "$SOURCE_PR"
           test -n "$WORK_ISSUE"
           TRAIN_ARGS=()
@@ -2143,6 +2096,12 @@ jobs:
             --allowlist "$PRODUCTION_ALLOWLIST" \
             --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt" \
             "${DERIVATION_ARGS[@]}"
+      # Rule 8.6 again, live, immediately before the apply step (#2075).
+      - name: Hold for a blocking review finding (immediately before apply)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_PR: ${{ inputs.source_pr }}
+        run: python scripts/review_finding_hold.py --pr "$SOURCE_PR"
       - name: Fresh dry-run, then apply
         id: apply
         env:

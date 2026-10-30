@@ -87,6 +87,13 @@ begin
 end;
 $function$;
 
+-- Production already holds these grants (verified 2026-10-30), but no migration
+-- declared them, so a from-empty replay denies the call. Declared here while
+-- re-deriving the function, matching the delete RPC's discipline below.
+revoke all on function public.add_style_tracker_rows(text, text, integer) from public;
+grant execute on function public.add_style_tracker_rows(text, text, integer) to authenticated;
+grant execute on function public.add_style_tracker_rows(text, text, integer) to service_role;
+
 -- 3. Guarded delete entry point. SECURITY DEFINER because the audit table has
 --    no INSERT policy for authenticated callers (audit writes normally happen
 --    through the SECURITY DEFINER trigger); the explicit has_role gate below

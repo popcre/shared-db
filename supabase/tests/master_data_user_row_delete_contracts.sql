@@ -18,6 +18,12 @@ begin
 end $test$;
 
 -- Admin fixture on CI synthetic bootstrap user 1; user 2 stays non-admin.
+-- The profile is created if front-door provisioning has not made it yet (local
+-- replay databases start with the bootstrap auth.users but no profiles).
+insert into public.profiles(user_id, email)
+select a.id, a.email from auth.users a
+where a.id = '00000000-7541-4000-8000-000000000001'::uuid
+  and not exists (select 1 from public.profiles p where p.user_id = a.id);
 insert into public.user_roles(user_id, role)
 select '00000000-7541-4000-8000-000000000001'::uuid, 'admin'::public.app_role
 where not exists (

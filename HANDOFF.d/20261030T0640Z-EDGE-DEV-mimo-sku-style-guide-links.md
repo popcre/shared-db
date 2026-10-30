@@ -1,3 +1,9 @@
+---
+issue: 5092
+status: BLOCKED
+owner: successor-required (operator adoption or mimo session)
+---
+
 # sku_style_guide_links — item → licensor-scrape style guide links
 
 **Session:** MiMo chat (unknown session id) on EDGE-DEV

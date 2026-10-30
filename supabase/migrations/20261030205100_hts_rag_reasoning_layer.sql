@@ -604,16 +604,17 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
-declare
-  v_view text;
 begin
-  foreach v_view in array array['hts_rag_fault_lines', 'hts_rag_fault_lines_any_type'] loop
-    if exists (select 1 from pg_matviews where schemaname = 'hts_rag' and matviewname = v_view and ispopulated) then
-      execute format('refresh materialized view concurrently hts_rag.%I', v_view);
-    else
-      execute format('refresh materialized view hts_rag.%I', v_view);
-    end if;
-  end loop;
+  if exists (select 1 from pg_matviews where schemaname = 'hts_rag' and matviewname = 'hts_rag_fault_lines' and ispopulated) then
+    refresh materialized view concurrently hts_rag.hts_rag_fault_lines;
+  else
+    refresh materialized view hts_rag.hts_rag_fault_lines;
+  end if;
+  if exists (select 1 from pg_matviews where schemaname = 'hts_rag' and matviewname = 'hts_rag_fault_lines_any_type' and ispopulated) then
+    refresh materialized view concurrently hts_rag.hts_rag_fault_lines_any_type;
+  else
+    refresh materialized view hts_rag.hts_rag_fault_lines_any_type;
+  end if;
 end;
 $$;
 comment on function hts_rag.hts_rag_refresh_fault_lines() is

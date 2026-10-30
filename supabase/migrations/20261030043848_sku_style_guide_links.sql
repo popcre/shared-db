@@ -720,15 +720,9 @@ grant execute on function public.file_name_norm(text) to service_role, postgres,
 -- service_role after promotion, per HANDOFF.d/20261030T0640Z-EDGE-DEV section 4:
 --   select public.backfill_pdf_files_used_v2();
 --   select public.resolve_sku_style_guide_links();
-
--- ---------------------------------------------------------------------------
--- 6b. Support the historical parse's per-row lookup: without this expression
--- index every backfill row re-scans style_guide_files through
--- normalize_for_sg_match(filename). The parse now runs post-promotion
--- (service_role), and this index is what keeps it minutes instead of hours.
-create index if not exists style_guide_files_name_norm_idx
-  on public.style_guide_files (normalize_for_sg_match(filename))
-  where is_active = true;
+-- Root-cause guard for wherever that parse is run from: the function carries
+-- its own statement budget so it can never again inherit a caller's short cap.
+alter function public.backfill_pdf_files_used_v2() set statement_timeout = '30min';
 
 -- ---------------------------------------------------------------------------
 -- 7. Nightly refresh

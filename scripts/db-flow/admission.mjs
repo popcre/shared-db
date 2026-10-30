@@ -334,7 +334,7 @@ export function structuralWritesMatch(inspection, declared) {
 // admitted issue's `writes:` describe the whole migration. A merged-but-
 // unapplied version (its own rehearsal rolled back) could therefore never be
 // fixed: the fix pull request edits the migration, admission compares the
-// fragment against the whole, and no edit can pass — while the same missing
+// fragment against the whole, and no edit can pass — while the same absent
 // rehearsal signal holds every later migration group. The one governed lane
 // through, exactly as designed on issue #5141: when EVERY migration file in
 // the pull request carries a version that NO ledger has applied anywhere

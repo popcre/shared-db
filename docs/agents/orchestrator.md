@@ -168,7 +168,7 @@ active claim, the fragment is admitted as a SUBSET of the admitted writes. The p
 excuses a version only when its recorded statements are reproduced exactly by the file at the PR
 head (the edit guard's own byte-exact rule, PR #2933), because admission re-runs at this same PR's
 promotion after its own rehearsal applied the edited body. Production presence is never excused.
-Every unknown fact — unreadable ledger, missing token, zero or several matching claims, an object
+Every unknown fact — unreadable ledger, absent token, zero or several matching claims, an object
 nobody declared or claimed — refuses (fail closed). Added-migration pull requests keep exact
 equality unchanged. The outcome-completion gate (`--complete-outcome`) still demands exact match;
 closing the work issue of an edited migration needs its own governed rule.

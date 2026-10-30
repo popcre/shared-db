@@ -902,7 +902,7 @@ export const githubIo = {
   // while the Supabase Management API client is async fetch; the child runs the
   // SAME library code (db-flow/read-preview-ledger.mjs and the edit guard's
   // fetchLedgerStatements), so there is no second HTTP implementation, and any
-  // failure — missing token, unreachable API, malformed row — is rethrown so
+  // failure — absent token, unreachable API, malformed row — is rethrown so
   // the subset proof fails closed exactly like every other ledger guard.
   appliedMigrationVersions(){
     const out=this.runLedgerQuery([

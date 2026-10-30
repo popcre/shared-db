@@ -9,9 +9,9 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { ghJson } from './lib/github-transport.mjs'
 import { currentRepository } from './lib/repository-identity.mjs'
-import { defaultIo, gatherOpenPrObjects, normalizeObject } from './check-dispatch-collision.mjs'
-import { dispatchObjectKeys } from './check-pr-object-collisions.mjs'
-import { parseAuthorLease, assertLaneAvailable } from './lib/lanes/claims.mjs'
+import { defaultIo, gatherOpenPrObjects, normalizeObject, findDispatchConflicts } from './check-dispatch-collision.mjs'
+import { dispatchObjectKeys, roleReadKeys } from './check-pr-object-collisions.mjs'
+import { parseAuthorLease } from './lib/lanes/claims.mjs'
 
 const read = (args) => ghJson(args)
 const page = (endpoint) => {
@@ -30,12 +30,12 @@ export const liveIo = {
   },
 }
 
-export function proposedObjects(worktree, paths) {
+export function proposedAccess(worktree, paths) {
   if (!Array.isArray(paths) || paths.some((p) => typeof p !== 'string' || path.isAbsolute(p)
       || p.includes('\\') || p.includes('\0') || p.split('/').some((part) => part === '..' || part === '')))
     throw new Error('paths must be repository-relative file names')
   const root = realpathSync(worktree)
-  const objects = new Set()
+  const objects = new Set(), reads = new Set()
   for (const filename of paths) {
     if (!filename.startsWith('supabase/migrations/') || !filename.endsWith('.sql')) continue
     const full = path.resolve(root, filename)
@@ -47,24 +47,31 @@ export function proposedObjects(worktree, paths) {
       catch (error) { if (error.code === 'ENOENT') { cursor = null; break } throw error }
     }
     if (cursor === null) continue // Deleted migrations carry no new SQL body.
-    for (const object of dispatchObjectKeys(readFileSync(full, 'utf8'))) objects.add(normalizeObject(object))
+    const sql = readFileSync(full, 'utf8')
+    for (const object of dispatchObjectKeys(sql)) objects.add(normalizeObject(object))
+    for (const object of roleReadKeys(sql)) reads.add(normalizeObject(object))
   }
-  return [...objects].sort()
+  return { objects: [...objects].sort(), reads: [...reads].sort() }
 }
 
-export function checkObjects({ repo, sourcePr, objects }, io = liveIo) {
-  if (!objects.length) return { state: 'clear', objects: [] } // File overlap is checked by the shared fixer.
+export function proposedObjects(worktree, paths) {
+  return proposedAccess(worktree, paths).objects
+}
+
+export function checkObjects({ repo, sourcePr, objects, reads = [] }, io = liveIo) {
+  if (!objects.length && !reads.length) return { state: 'clear', objects: [] }
   const claims = io.claims(repo)
+  const proposed = { objects, reads }
   for (const claim of claims) {
     const lease = parseAuthorLease(claim.body)
-    const overlap = [...new Set([...lease.objects, ...(lease.reads ?? [])].map(normalizeObject))].filter((object) => objects.includes(object))
+    const conflicts = findDispatchConflicts(proposed, [{ objects: lease.objects, reads: lease.reads }])
+    const overlap = conflicts.objectConflicts.flatMap((row) => row.objects)
     if (overlap.length) return { state: 'defer', reason: `claim #${claim.number} owner ${lease.owner ?? 'legacy/unknown'} holds ${overlap.join(', ')}`, claim: claim.number, owner: lease.owner }
   }
-  const sources = io.sources(repo, sourcePr).map((row) => ({ ...row, objects: [...new Set([...(row.objects ?? []), ...(row.reads ?? [])])] }))
-  try { assertLaneAvailable(claims, objects, new Date(), { prSources: sources }) }
-  catch (error) {
-    if (/^object collision with /.test(error.message)) return { state: 'defer', reason: error.message }
-    throw error
+  const conflicts = findDispatchConflicts(proposed, io.sources(repo, sourcePr))
+  if (conflicts.objectConflicts.length) {
+    const holder = conflicts.objectConflicts[0]
+    return { state: 'defer', reason: `object collision with ${holder.label}: ${holder.objects.join(', ')}` }
   }
   return { state: 'clear', objects }
 }
@@ -96,7 +103,7 @@ export function main(args = process.argv.slice(2), io = liveIo) {
     }
     const issue = positive('--issue'), repo = currentRepository(process.env.GITHUB_REPOSITORY || process.env.SHARED_DB_REPO)
     let result
-    if (mode === 'check') result = checkObjects({ repo, sourcePr: positive('--source-pr'), objects: proposedObjects(opts['--worktree'], JSON.parse(readFileSync(opts['--paths-file'], 'utf8'))) }, io)
+    if (mode === 'check') result = checkObjects({ repo, sourcePr: positive('--source-pr'), ...proposedAccess(opts['--worktree'], JSON.parse(readFileSync(opts['--paths-file'], 'utf8'))) }, io)
     else if (mode === 'retire') result = retirementAudit({ repo, issue, fixPr: positive('--fix-pr') }, io)
     else throw new Error('choose check or retire')
     console.log(JSON.stringify(result))

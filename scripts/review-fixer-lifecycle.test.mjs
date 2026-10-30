@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node
 import path from 'node:path'
 import { tmpdir } from 'node:os'
 import { readFileSync } from 'node:fs'
-import { checkObjects, proposedObjects, retirementAudit } from './review-fixer-lifecycle.mjs'
+import { checkObjects, proposedObjects, proposedAccess, retirementAudit } from './review-fixer-lifecycle.mjs'
 import { claimBody, assertLaneAvailable } from './lib/lanes/claims.mjs'
 
 const repo = 'popcre/shared-db'
@@ -84,4 +84,30 @@ test('caller lifecycle events are trusted cleanup routes alongside normal fixer 
   assert.match(text, /pull_request_target:\n    types: \[synchronize, closed\]/)
   assert.match(text, /uses: popcre\/ai-devops\/\.github\/workflows\/review-fixer.yml@main/)
   assert.doesNotMatch(text, /ref:.*head|checkout.*head/)
+})
+
+test('proposed role reads defer to writers but allow concurrent readers', () => {
+  const reads = ['role shared']
+  const writer = { number: 93, body: claimBody({ version: '20261030190002', writes: reads,
+    owner: 'role-writer', branch: 'role-work', worktree: '/tmp/role-work', expiresAt: new Date('2099-01-01') }) }
+  const proposed = { repo, sourcePr: 1, objects: [], reads }
+  assert.equal(checkObjects(proposed, io([writer])).state, 'defer')
+  assert.equal(checkObjects(proposed, io([], [{ label: 'PR #3', objects: reads }])).state, 'defer')
+  const reader = { number: 94, body: claimBody({ version: '20261030190003', writes: ['table core.other'], reads,
+    owner: 'role-reader', branch: 'reader', worktree: '/tmp/reader', expiresAt: new Date('2099-01-01') }) }
+  assert.equal(checkObjects(proposed, io([reader], [{ label: 'PR #4', objects: [], reads }])).state, 'clear')
+  assert.throws(() => checkObjects(proposed, { ...io(), sources() { throw new Error('network') } }), /network/)
+})
+
+test('ownership migration collects role reads independently of writes', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'fixer-reads-'))
+  try {
+    mkdirSync(path.join(root, 'supabase/migrations'), { recursive: true })
+    const name = 'supabase/migrations/20261030190000_owner.sql'
+    writeFileSync(path.join(root, name), 'alter table core.fixture owner to shared;')
+    const access = proposedAccess(root, [name])
+    assert.ok(access.reads.includes('role shared'))
+    assert.ok(!access.objects.includes('role shared'))
+    assert.equal(checkObjects({ repo, sourcePr: 1, ...access }, io([], [{ label: 'PR #3', objects: ['role shared'] }])).state, 'defer')
+  } finally { rmSync(root, { recursive: true, force: true }) }
 })

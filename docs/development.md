@@ -87,7 +87,6 @@ its original 20-minute post-acquisition execution margin after that wait.
 
 ```bash
 node --test scripts/check-lane-route-sync.test.mjs
-node --test scripts/check-review-parallelism-brief.test.mjs
 node --test scripts/check-handoff-contract.test.mjs
 node --test scripts/check-documents-only-pull-request.test.mjs
 node --test scripts/check-self-service-additive-lane.test.mjs

@@ -1,5 +1,14 @@
 # AGENTS.md — §5, §5.0-D, §5.0-E, §5.1, §5.2, §5.2-A, §5.2-B (merge protocol)
 
+> **Retired review gate — [owner ruling §0.0-R](owner-rulings.md#00-r-owner-ruling--review-is-advisory-never-a-merge-gate-albert-hazan-2026-10-29) (2026-10-29).**
+> Review is advisory for every pull request, including migrations and production
+> promotion. Any instructions below requiring reviewer assignment, an exact-head
+> APPROVE, review-slot completion, or a governed-review command are historical
+> and no longer authorize or block merge or promotion. The deleted
+> `check-exact-head-approval.mjs` and `run-governed-review.mjs` are not executable
+> steps. Author leases, version ordering, collision checks, tests, preview
+> rehearsal, guarded merge locking and production authorization remain binding.
+
 > Moved verbatim from `AGENTS.md` by issue #3481 so that file stays a short router. Section numbers and headings are unchanged; a citation of "AGENTS.md §X" resolves here. Relative link targets were re-pointed from this folder; no rule text changed.
 
 ## 5. The `shared-db` merge protocol (the checklist the AI runs)

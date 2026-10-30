@@ -1,5 +1,14 @@
 # Current shared-db workflow
 
+> **Retired review gate — [owner ruling §0.0-R](owner-rulings.md#00-r-owner-ruling--review-is-advisory-never-a-merge-gate-albert-hazan-2026-10-29) (2026-10-29).**
+> Review is advisory for every pull request, including migrations and production
+> promotion. Any instructions below requiring reviewer assignment, an exact-head
+> APPROVE, review-slot completion, or a governed-review command are historical
+> and no longer authorize or block merge or promotion. The deleted
+> `check-exact-head-approval.mjs` and `run-governed-review.mjs` are not executable
+> steps. Author leases, version ordering, collision checks, tests, preview
+> rehearsal, guarded merge locking and production authorization remain binding.
+
 This is the current route map. Historical incident reports explain decisions;
 they do not override the current implementation or Albert's later rulings.
 The matrix below is checked by `scripts/check-current-workflow-policy.mjs`.
@@ -31,8 +40,7 @@ the guarded merge path. A maintenance change does not claim database objects or
 wait for structural intake. A merged loader repair still requires
 its stated runtime acceptance; merged code is not automatically delivered work.
 
-**Landing a ready pull request (do not skip):** green required checks and an
-exact-head approval do **not** merge the PR by themselves. The required
+**Landing a ready pull request (do not skip):** green required checks do **not** merge the PR by themselves. The required
 `Migration guarded merge authorization` status is published only by the
 **Guarded Merge** workflow (`guarded-migration-merge.yml`) after it re-proves
 the head under the merge lock. Auto-merge / the merge queue stays blocked until

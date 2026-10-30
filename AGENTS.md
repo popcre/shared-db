@@ -530,56 +530,12 @@ to the owner in plain English and let them choose order.
 
 ## Running pull-request waits (kept in this file)
 
-### 5.0-C Run CI and the governed review in PARALLEL, and batch fixes into ONE head (issue #3002, added 2026-09-20)
+### 5.0-C Run CI and advisory review in parallel; batch fixes (issue #3002)
 
-Observed 2026-09-15 on PRs #2980 and #2981: sessions waited for a full green CI
-run before requesting the governed review that must approve the merge, then
-pushed once per review finding, rerunning the whole matrix each time (the Windows
-jobs alone are ~30 minutes). That roughly doubles wall-clock per pull request.
-The cause is structural, not carelessness: review evidence binds to the exact
-head SHA, so any fix pushed after a review voids that review, and sessions learn
-to "spend" only one review.
-
-**The rule, from now on:**
-
-1. **Start the governed review as soon as a head is pushed, in parallel with
-   CI.** Do not wait for a green matrix first. Accept that a required fix costs
-   one re-review — that is cheaper than serialising two long waits, and a
-   re-review is exactly what the exact-head rule is for.
-2. **Batch fixes into a single new head.** Collect every finding from the review
-   round *and* every CI failure, fix them together, and push once. One push per
-   finding is forbidden: each one reruns the full matrix and voids the review
-   again.
-3. **Hold the wait inside the turn.** Watch both with the repository's bounded,
-   event-aware waiter, concurrently. Never end a turn to report that something
-   is still running.
-
-**What this does NOT change — and must never be traded for speed:**
-
-- The exact-head APPROVE requirement stands exactly as enforced by
-  `scripts/check-exact-head-approval.mjs`. A review
-  bound to an earlier head does not authorize a later head, and the only
-  equivalence permitted is the narrow, already-enforced #2758 rule
-  (`scripts/lib/pr-content-equivalence.mjs`): an ancestor head whose pull-request
-  diff is byte-identical, ignoring only `.agent/` evidence files. A tree-identical
-  re-push keeps every existing review (slot 1 is not re-drawn). A returned or refused
-  slot cannot be revived from an older assignment; the newest valid assignment
-  controls. **Owner ruling 2026-10-14: one independent exact-head APPROVE is
-  enough for every change, including migrations.**
-- **The proposal in #3002 to accept a review bound to a head whose only later
-  change is test or evidence files is REFUSED.** Tests are code: a changed test
-  changes what the change proves, and a reviewer who never saw it never reviewed
-  it. Widening equivalence beyond `.agent/` would be reviewing less, not
-  reviewing faster.
-- **Retiring a required check is an AI decision with evidence (owner ruling
-  2026-09-28, see `docs/agents/owner-rulings.md`).** A required check may be
-  retired, merged into another, or made advisory when measured evidence shows it
-  mostly fails for reasons unrelated to the change; the pull request carrying it
-  states the exact before/after required-check list and gets an assigned AI
-  reviewer's APPROVE before branch protection changes. On any single pull
-  request no gate is skipped, and no reviewer
-  requirement is dropped. Speed comes from parallelising; do not delete the
-  exact-head review.
-
-`scripts/check-review-parallelism-brief.mjs` holds this brief and this refusal in
-place, and fails the tools-offline check if either is removed or contradicted.
+The exact-head approval gate and its parallelism checker are retired under
+[owner ruling §0.0-R](docs/agents/owner-rulings.md#00-r-owner-ruling--review-is-advisory-never-a-merge-gate-albert-hazan-2026-10-29).
+CI starts when the head is pushed; the advisory review workflow runs independently.
+Do not wait for, request, or require a review verdict to merge. Batch related
+review findings and CI fixes into one head when practical. Preserve required
+checks, author leases, migration ordering, collision checks, preview rehearsal,
+the guarded merge lock and production authorization.

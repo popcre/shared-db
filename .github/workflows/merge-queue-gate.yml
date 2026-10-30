@@ -276,6 +276,11 @@ jobs:
         id: merge_lock
         env:
           GH_TOKEN: ${{ github.token }}
+          # #5141: admission of a pull request that EDITS an unapplied migration
+          # proves the version is ledger-absent (read-only SELECT, the same one
+          # the edit guard runs); ordinary added-migration admissions never
+          # reach that read.
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           set -euo pipefail
           # Mutual exclusion is enforced here: --acquire-merge refuses while the

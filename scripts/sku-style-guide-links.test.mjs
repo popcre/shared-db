@@ -69,6 +69,9 @@ test('resolver folds repeated evidence to each conflict identity and refreshes t
 });
 
 test('migration invokes the historical backfill after restricting execution', () => {
-  const invocation = resolver.indexOf('select public.backfill_pdf_files_used_v2();');
-  assert.ok(invocation > resolver.indexOf('grant execute on function public.backfill_pdf_files_used_v2() to service_role, postgres;'));
+  const executable = resolver.replace(/--[^\n]*/g, '');
+  const grant = executable.indexOf('grant execute on function public.backfill_pdf_files_used_v2() to service_role, postgres;');
+  const invocation = executable.indexOf('select public.backfill_pdf_files_used_v2();');
+  assert.ok(grant >= 0, 'backfill execution grant must exist');
+  assert.ok(invocation > grant, 'executable backfill must follow its grant');
 });

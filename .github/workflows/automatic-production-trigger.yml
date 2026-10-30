@@ -1,0 +1,39 @@
+name: Automatic production promotion trigger
+
+# popcre/ai-devops plan_skinny-review.md rule 8.6 (stage G, #2075). No session
+# or person starts production promotion: this starts the existing post-merge
+# preview rehearsal for the oldest merged migration PR not yet in production,
+# whose automatic-production-promotion job then dispatches the production
+# apply. A blocking review-finding issue holds the PR (checked here, again
+# before dispatch, and again immediately before the apply step).
+
+on:
+  push:
+    branches: [main]
+    paths: ['supabase/migrations/**']
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: automatic-production-trigger
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
+      issues: read
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the next automatic promotion
+        run: python scripts/automatic_promotion_candidates.py

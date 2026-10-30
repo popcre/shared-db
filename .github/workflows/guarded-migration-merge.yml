@@ -320,6 +320,11 @@ jobs:
         working-directory: trusted-policy
         env:
           GH_TOKEN: ${{ github.token }}
+          # #5141: admission of a pull request that EDITS an unapplied migration
+          # proves the version is ledger-absent (read-only SELECT, the same one
+          # the edit guard runs); ordinary added-migration admissions never
+          # reach that read.
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           HEAD_SHA: ${{ inputs.head_sha }}
         run: |
           set -euo pipefail
@@ -377,7 +382,6 @@ jobs:
           node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-main-tip-freshness.mjs" --contains
           bash "$GITHUB_WORKSPACE/trusted-policy/scripts/check-sql.sh" --data-root "$GITHUB_WORKSPACE" --head-sha "$REQUESTED_SHA" --source-sha '${{ steps.executable_source.outputs.sha }}'
           node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-production-verification-sidecars.mjs" --base origin/main --data-root "$GITHUB_WORKSPACE" --head-sha "$REQUESTED_SHA" --source-sha '${{ steps.executable_source.outputs.sha }}'
-          node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-migration-pr-lease.mjs"
           node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-live-proof-probe.mjs"
       # Queue admission must come from an app token: a merge-queue entry created with
       # GITHUB_TOKEN starts no merge_group workflows, so GitHub ejects it after 30
@@ -411,8 +415,8 @@ jobs:
           test "$(node "$GITHUB_WORKSPACE/trusted-policy/scripts/gh-read.mjs" pr view '${{ inputs.pull_request }}' --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)" = "$REQUESTED_SHA"
           git fetch origin main
           node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-main-tip-freshness.mjs" --contains
-          # Dispatch runs protected main, but collision checking reads the frozen PR.
-          # Re-read its full identity before binding only that command's head.
+          # Re-read the frozen PR's full identity before merging its head. Cross-PR
+          # collision and author-lease re-checks were removed (ai-devops#2172).
           collision_pr="$(node "$GITHUB_WORKSPACE/trusted-policy/scripts/gh-read.mjs" api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
           printf '%s' "$collision_pr" | node --input-type=module -e '
             import { readFileSync } from "node:fs";
@@ -428,8 +432,6 @@ jobs:
               throw new Error("guarded collision target is not the exact open canonical pull request on main");
             }
           '
-          GITHUB_SHA="$REQUESTED_SHA" node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-pr-object-collisions.mjs"
-          node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-migration-pr-lease.mjs"
           node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-live-proof-probe.mjs"
           umask 077
           gh api "repos/${GITHUB_REPOSITORY}/statuses/$REQUESTED_SHA" -f state=success -f context='Migration guarded merge authorization' -f description='Exclusive merge lock held and exact head revalidated' > "$RUNNER_TEMP/self-authorization-receipt.json"

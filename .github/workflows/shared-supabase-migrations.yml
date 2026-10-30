@@ -594,6 +594,10 @@ jobs:
         id: preview_lock
         env:
           GH_TOKEN: ${{ github.token }}
+          # #5141: admission of a pull request that EDITS an unapplied migration
+          # proves the version is ledger-absent; the same read-only SELECT the
+          # edit guard runs. Ordinary (added-migration) admissions never read it.
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           CLAIM_PR: ${{ inputs.claim_pr }}
           CLAIM_HEAD_SHA: ${{ inputs.claim_head_sha }}
           HISTORICAL_SOURCE_PR: ${{ inputs.historical_preview_source_pr }}
@@ -1015,19 +1019,35 @@ jobs:
       # cancelled apply never publishes it, the SHA is the proven checkout
       # commit (inputs.commit_sha == HEAD, freshness-checked above), and the
       # project was asserted to be preview in this job's first step.
+      # (#5086) The historical-recovery lane posts the SAME signal. When the
+      # claim-lane already applied every allowlisted version pre-merge, the
+      # hard guard refuses a merged-main apply ("already applied on preview")
+      # and itself directs to the historical-recovery lane for fresh evidence
+      # at exact main; without this posting the queue holds every migration
+      # group forever. The historical run proves the identical facts on the
+      # identical commit — exact-SHA freshness-checked checkout, preview
+      # project asserted, ledger carries every version — by no-write proof
+      # instead of by applying, and that difference is named in the
+      # description. A failed or cancelled recovery still never publishes.
       - name: Publish the exact-SHA preview rehearsal status for the merge queue
-        if: success() && inputs.mode == 'apply' && (inputs.merged_preview_source_pr != '' || inputs.merged_preview_source_pr_map != '')
+        if: success() && inputs.mode == 'apply' && (inputs.merged_preview_source_pr != '' || inputs.merged_preview_source_pr_map != '' || inputs.historical_preview_source_pr != '' || inputs.historical_preview_source_pr_map != '')
         env:
           GH_TOKEN: ${{ github.token }}
           REHEARSED_SHA: ${{ inputs.commit_sha }}
+          IS_MERGED_LANE: ${{ inputs.merged_preview_source_pr != '' || inputs.merged_preview_source_pr_map != '' }}
         run: |
           set -euo pipefail
           case "$REHEARSED_SHA" in *[!0-9a-f]* | "") echo "REFUSED: rehearsed SHA is not a 40-hex commit: ${REHEARSED_SHA:-empty}" >&2; exit 1 ;; esac
           test "${#REHEARSED_SHA}" -eq 40
+          if [ "$IS_MERGED_LANE" = "true" ]; then
+            DESCRIPTION="Exact main commit rehearsed on preview by run $GITHUB_RUN_ID"
+          else
+            DESCRIPTION="Exact main commit proven on preview by historical recovery run $GITHUB_RUN_ID (already applied; no database write)"
+          fi
           gh api "repos/${GITHUB_REPOSITORY}/statuses/$REHEARSED_SHA" \
             -f state=success \
             -f context='Post-merge preview rehearsal' \
-            -f description="Exact main commit rehearsed on preview by run $GITHUB_RUN_ID" \
+            -f description="$DESCRIPTION" \
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
       - name: Save preview evidence
         if: always()
@@ -1852,6 +1872,11 @@ jobs:
         id: production_lock
         env:
           GH_TOKEN: ${{ github.token }}
+          # #5141: admission re-runs at promotion, after this same pull request's
+          # rehearsal applied the edited body to preview; the ledger read plus the
+          # byte-exact preview-statements match prove that applied body is THIS
+          # body. Read-only, exactly like the edit guard's own SELECTs.
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           REQUESTED_SHA: ${{ inputs.commit_sha }}
           SOURCE_PR: ${{ inputs.source_pr }}
         run: |

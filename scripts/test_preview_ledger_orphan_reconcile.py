@@ -10,7 +10,7 @@ class Tests(unittest.TestCase):
         workflow=(P.parent.parent/'.github/workflows/preview-ledger-orphan-reconciliation.yml').read_text(encoding='utf-8')
         self.assertIn('config/preview-ledger-orphan-reconciliations.json',workflow)
         self.assertNotIn('case "$ISSUE:$CLAIM:$SOURCE_PR:$ORPHAN:$REPLACEMENT"',workflow)
-        self.assertEqual(len(M.SUPPORTED_CASES),16)
+        self.assertEqual(len(M.SUPPORTED_CASES),17)
 
     def test_stage_catalog_open_successor_governance_and_substitution_refusals(self):
         """Execute real governance, distinguishing producer from applied-source commits."""
@@ -594,5 +594,34 @@ class SandboxNoReplacementTests(unittest.TestCase):
         self.assertNotIn("qsllyeztdwjgirsysgai\n", workflow.replace("PRODUCTION_PROJECT_REF_NEVER_WRITE_HERE: qsllyeztdwjgirsysgai", ""))
         self.assertIn("concurrency:", workflow)
         self.assertIn("group: designflow-sandbox-migrations", workflow)
+
+class PreviewJobSuccessTests(unittest.TestCase):
+    def jobs(self, root, rows):
+        path=root/'jobs.json'; path.write_text(json.dumps({'jobs':[dict(run_id=7,status='completed',**r) for r in rows]})); return path
+    def check(self, case, rows):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            M.assert_preview_jobs_succeeded(case, SimpleNamespace(preview_run_id=7, run_jobs_json=self.jobs(pathlib.Path(tmp), rows)))
+    def test_production_only_failure_is_accepted_when_pinned(self):
+        self.check({'preview_job_success':True},[{'name':'SQL migration guards','conclusion':'success'},{'name':'preview','conclusion':'success'},{'name':'Automatic production qualification and dispatch','conclusion':'failure'},{'name':'production-dry-run','conclusion':'skipped'}])
+    def test_unpinned_case_or_failed_preview_is_refused(self):
+        ok=[{'name':'preview','conclusion':'success'},{'name':'Automatic production qualification and dispatch','conclusion':'failure'}]
+        with self.assertRaisesRegex(M.Refusal,'exact successful run'): self.check({},ok)
+        with self.assertRaisesRegex(M.Refusal,'preview job did not succeed'): self.check({'preview_job_success':True},[{'name':'preview','conclusion':'failure'}])
+        with self.assertRaisesRegex(M.Refusal,'non-production job'): self.check({'preview_job_success':True},[{'name':'preview','conclusion':'success'},{'name':'SQL migration guards','conclusion':'failure'}])
+    def test_issue_4508_case_is_pinned(self):
+        case=M.SUPPORTED_CASES[(4508,5090,5075,'20261030014205','20261030042314')] if (4508,5090,5075,'20261030014205','20261030042314') in M.SUPPORTED_CASES else M.SUPPORTED_CASES[(4508,5090,5075)]
+        self.assertEqual((case['mode'],case['preview_run_id'],case['preview_job_success']),('replacement_already_applied',41012458156,True))
+
+class AtomicApplyEvidenceTests(unittest.TestCase):
+    def test_atomic_apply_line_is_exact_version_bound(self):
+        src=P.read_text(encoding='utf-8')
+        self.assertIn('ATOMIC APPLY OK: target=preview version={evidence_version} ledger_row=1 ',src)
+
+class OrphanSourceCommitTests(unittest.TestCase):
+    def test_issue_4508_orphan_is_read_from_its_own_commit(self):
+        case=[c for c in M.SUPPORTED_CASES.values() if c.get('orphan_version')=='20261030014205'][0]
+        self.assertEqual(case['orphan_source_commit'],'2a0f16d2f4152374d10acd972c07b799fdfcee4a')
+        with self.assertRaisesRegex(M.Refusal,'full commit sha'): M.load_orphan_at_commit(P.parent.parent,'abc','20261030014205')
 
 if __name__=='__main__': unittest.main()

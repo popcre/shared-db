@@ -162,6 +162,7 @@ jobs:
           node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" --out "$RUNNER_TEMP/pr-files-pages.json" api --paginate "repos/${GITHUB_REPOSITORY}/pulls/$SOURCE_PR/files?per_page=100"
           python -c 'import json,sys; p=json.load(open(sys.argv[1])); json.dump([x for page in p for x in page] if p and isinstance(p[0],list) else p,open(sys.argv[2],"w"))' "$RUNNER_TEMP/pr-files-pages.json" "$RUNNER_TEMP/pr-files.json"
           node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" --out "$RUNNER_TEMP/run.json" api "repos/${GITHUB_REPOSITORY}/actions/runs/$PREVIEW_RUN_ID"
+          node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" --out "$RUNNER_TEMP/run-jobs.json" api "repos/${GITHUB_REPOSITORY}/actions/runs/$PREVIEW_RUN_ID/jobs?per_page=100"
           node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" --out "$RUNNER_TEMP/artifact.json" api "repos/${GITHUB_REPOSITORY}/actions/artifacts/$ARTIFACT_ID"
           node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" --out "$RUNNER_TEMP/preview.zip" api -H 'Accept: application/vnd.github+json' "repos/${GITHUB_REPOSITORY}/actions/artifacts/$ARTIFACT_ID/zip"
           mkdir "$RUNNER_TEMP/preview-evidence"
@@ -204,7 +205,7 @@ jobs:
             --issue "$ISSUE" --claim "$CLAIM" --source-pr "$SOURCE_PR" \
             --preview-run-id "$PREVIEW_RUN_ID" --preview-artifact-id "$ARTIFACT_ID" --preview-artifact-digest "$ARTIFACT_DIGEST" \
             --issue-json "$RUNNER_TEMP/issue.json" --claim-json "$RUNNER_TEMP/claim.json" --pr-json "$RUNNER_TEMP/pr.json" --pr-files-json "$RUNNER_TEMP/pr-files.json" \
-            --run-json "$RUNNER_TEMP/run.json" --artifact-json "$RUNNER_TEMP/artifact.json" --preview-evidence-dir "$RUNNER_TEMP/preview-evidence" \
+            --run-json "$RUNNER_TEMP/run.json" --run-jobs-json "$RUNNER_TEMP/run-jobs.json" --artifact-json "$RUNNER_TEMP/artifact.json" --preview-evidence-dir "$RUNNER_TEMP/preview-evidence" \
             --evidence-out "$RUNNER_TEMP/reconciliation-check.json"
       - name: Transactional one-row reconciliation
         env:
@@ -227,7 +228,7 @@ jobs:
             --issue "$ISSUE" --claim "$CLAIM" --source-pr "$SOURCE_PR" \
             --preview-run-id "$PREVIEW_RUN_ID" --preview-artifact-id "$ARTIFACT_ID" --preview-artifact-digest "$ARTIFACT_DIGEST" \
             --issue-json "$RUNNER_TEMP/issue.json" --claim-json "$RUNNER_TEMP/claim.json" --pr-json "$RUNNER_TEMP/pr.json" --pr-files-json "$RUNNER_TEMP/pr-files.json" \
-            --run-json "$RUNNER_TEMP/run.json" --artifact-json "$RUNNER_TEMP/artifact.json" --preview-evidence-dir "$RUNNER_TEMP/preview-evidence" \
+            --run-json "$RUNNER_TEMP/run.json" --run-jobs-json "$RUNNER_TEMP/run-jobs.json" --artifact-json "$RUNNER_TEMP/artifact.json" --preview-evidence-dir "$RUNNER_TEMP/preview-evidence" \
             --evidence-out "$RUNNER_TEMP/reconciliation-apply.json"
       - name: Upload immutable before and after evidence
         if: always()

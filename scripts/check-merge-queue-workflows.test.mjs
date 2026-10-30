@@ -27,8 +27,9 @@ const readWorkflow = (name) => readFileSync(new URL(`../.github/workflows/${name
 
 function guardedCollisionWire(pr, { fetchFails = false } = {}) {
   const workflow = readWorkflow('guarded-migration-merge.yml')
-  const block = /          collision_pr="\$\(node[\s\S]*?          GITHUB_SHA="\$REQUESTED_SHA" node "\$GITHUB_WORKSPACE\/trusted-policy\/scripts\/check-pr-object-collisions\.mjs"/.exec(workflow)?.[0]
-  assert.ok(block, 'the actual guarded identity read and collision command must exist')
+  // Collision re-check removed (ai-devops#2172); the identity read stays.
+  const block = /          collision_pr="\$\(node[\s\S]*?\n          '\n/.exec(workflow)?.[0]
+  assert.ok(block, 'the actual guarded identity read must exist')
   const script = `set -euo pipefail
 node() {
   if [ "$1" = "$GITHUB_WORKSPACE/trusted-policy/scripts/gh-read.mjs" ]; then
@@ -101,16 +102,15 @@ ${decision}
 
 const guardedCollisionPull = () => ({ number: 7, state: 'open', head: { sha: 'a'.repeat(40), repo: { full_name: 'popcre/shared-db' } }, base: { ref: 'main', repo: { full_name: 'popcre/shared-db' } } })
 
-test('actual protected guarded collision wire binds the validated PR head only to collision checking', () => {
+test('actual protected guarded identity wire accepts the exact open PR head', () => {
   const result = guardedCollisionWire(guardedCollisionPull())
   assert.equal(result.status, 0, result.stderr)
-  assert.match(result.stdout, new RegExp(`collision-head=${'a'.repeat(40)}`))
   assert.match(result.stdout, new RegExp(`workflow-head=${'b'.repeat(40)}`))
   const workflow = readWorkflow('guarded-migration-merge.yml')
   const locked = workflow.slice(workflow.indexOf('      - name: Re-prove the head and merge while the lock is held'))
   assert.ok(locked.indexOf('check-main-tip-freshness.mjs --contains') < locked.indexOf('collision_pr='))
   assert.ok(locked.indexOf('headRefOid') < locked.indexOf('collision_pr='))
-  assert.ok(locked.indexOf('GITHUB_SHA="$REQUESTED_SHA" node "$GITHUB_WORKSPACE/trusted-policy/scripts/check-pr-object-collisions.mjs"') < locked.indexOf("-f state=success"))
+  assert.ok(locked.indexOf('collision_pr=') < locked.indexOf("-f state=success"))
 })
 
 for (const [label, mutate] of [
@@ -499,6 +499,21 @@ test('the preview rehearsal publishes the exact rehearsed main SHA, and only on 
   assert.match(preview, /^ {6}statuses: write$/m, 'the preview job cannot publish commit statuses')
   assert.ok(preview.includes("context='Post-merge preview rehearsal'"), 'the preview job does not publish the rehearsal status')
   assert.ok(preview.includes('if: success() &&'), 'the rehearsal status is not gated on success() — a failure must never post success')
+  // (#5086) The historical-recovery lane posts the SAME exact-SHA release
+  // signal. When the claim lane already applied every allowlisted version
+  // pre-merge, the hard guard refuses a merged-main apply and directs to
+  // historical recovery for fresh evidence at exact main; a lane excluded
+  // here deadlocks every later migration group. The posting condition must
+  // stay success()-gated and must distinguish the no-write proof in the
+  // description the run leaves behind.
+  const publish = preview.slice(preview.indexOf('- name: Publish the exact-SHA preview rehearsal status for the merge queue'))
+  const condition = /if: success\(\) && inputs\.mode == 'apply' && \(([^)]*)\)/.exec(publish)?.[1] ?? ''
+  assert.ok(condition, 'the rehearsal status publishing condition was not found')
+  for (const input of ['inputs.merged_preview_source_pr', 'inputs.merged_preview_source_pr_map', 'inputs.historical_preview_source_pr', 'inputs.historical_preview_source_pr_map']) {
+    assert.ok(condition.includes(`${input} != ''`), `the rehearsal status publishing condition no longer includes ${input} (#5086): the queue deadlocks when only historical-recovery evidence can exist`)
+  }
+  assert.match(publish, /IS_MERGED_LANE:/, 'the publishing step must distinguish merged-lane apply from historical no-write proof (#5086)')
+  assert.match(publish, /proven on preview by historical recovery run/, 'the historical form must say it proved an already-applied version, not that it applied one (#5086)')
 })
 
 test('SQL migration guards fetch the base ref explicitly on merge_group (#3280 governed review)', () => {

@@ -48,7 +48,7 @@ on:
         description: "Comma-separated schemas to include in the generated contract"
         type: string
         required: true
-        default: "public,dflow,plm,core,app"
+        default: "public,dflow,plm,core,app,hts_rag"
       work_issue:
         description: "Optional open shared-db issue requiring generated_types: required; blank keeps the preview download path"
         type: string
@@ -161,7 +161,7 @@ jobs:
       APPLICATION_COMMIT_SHA: ${{ inputs.application_commit_sha }}
       PRODUCTION_PROJECT_REF: qsllyeztdwjgirsysgai
       PREVIEW_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
-      SCHEMAS: public,dflow,plm,core,app
+      SCHEMAS: public,dflow,plm,core,app,hts_rag
     steps:
       - uses: actions/checkout@v4
         with:

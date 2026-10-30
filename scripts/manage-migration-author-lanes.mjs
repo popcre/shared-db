@@ -17,7 +17,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { constants as fsConstants, closeSync, existsSync, fstatSync, openSync, readFileSync, renameSync, writeFileSync, lstatSync, realpathSync, readdirSync } from 'node:fs'
 import { readZipEntries } from './lib/zip-entries.mjs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { gatherOpenPrObjects, normalizeObject, parseClaimBlock } from './check-dispatch-collision.mjs'
 import { dependencyIssue, parseDependencyDeclarations, classifyDependencies, findCompletionRecord, findDependencyCycles, validateCompletionRecord, validateDependencyDeclaration, COMPLETION_FENCE, DependencyError } from './lib/work-dependencies.mjs'
 import { assertLease, evaluateRecovery, formatLeaseMessage, parseLeaseMessage, recoveredLeaseMetadata, LeaseError } from './lib/exclusive-lease.mjs'
@@ -553,7 +553,7 @@ export const githubIo = {
   },
   // The changed-file list a documents-only classification is made from (#2102).
   // Fetched through `ghPaginated` so this side and the merge gate
-  // (`check-exact-head-approval.mjs`) build the list the SAME way: paginate,
+  // (the retired exact-head approval gate, deleted #2074) build the list the SAME way: paginate,
   // slurp, verify every page is an array, flatten. One classifier with two
   // fetchers is how the two enforcement points come to disagree, and a
   // disagreement here is a permanently stuck pull request -- the draw refusing
@@ -896,6 +896,55 @@ export const githubIo = {
       ?{...file,content:this.getFileAt(file.filename??file.path,headSha)}:file)
     return inspectPrStructuralChange(files)
   },
+  // #5141 — the two read-only ledger reads behind the unapplied-migration-edit
+  // subset proof in db-flow/admission.mjs. They run in a child node process
+  // because admission (and every lane command that runs it) is synchronous
+  // while the Supabase Management API client is async fetch; the child runs the
+  // SAME library code (db-flow/read-preview-ledger.mjs and the edit guard's
+  // fetchLedgerStatements), so there is no second HTTP implementation, and any
+  // failure — absent token, unreachable API, malformed row — is rethrown so
+  // the subset proof fails closed exactly like every other ledger guard.
+  appliedMigrationVersions(){
+    const out=this.runLedgerQuery([
+      'const out={}',
+      'for(const [name,ref] of Object.entries(PROJECT_REFS)){',
+      '  try{out[name]=await fetchAppliedVersions(ref)}catch(error){fail(error)}',
+      '}',
+      'process.stdout.write(JSON.stringify(out))',
+    ].join('\n'))
+    const ledgers={}
+    for(const name of ['preview','production']){
+      if(!Array.isArray(out[name])||!out[name].length)throw new LaneError(`the ${name} applied-migration ledger came back unreadable or empty`)
+      ledgers[name]=new Set(out[name].map(String))
+    }
+    return ledgers
+  },
+  previewLedgerStatements(version){
+    if(!/^\d{14}$/.test(String(version??'')))throw new LaneError('preview ledger statements require an exact 14-digit migration version')
+    const out=this.runLedgerQuery([
+      `const version=${JSON.stringify(String(version))}`,
+      'let statements',
+      'try{statements=await fetchLedgerStatements(PROJECT_REFS.preview,version)}catch(error){fail(error)}',
+      'process.stdout.write(JSON.stringify(statements))',
+    ].join('\n'))
+    if(!Array.isArray(out))throw new LaneError(`preview ledger statements for ${version} came back unreadable`)
+    return out
+  },
+  runLedgerQuery(script){
+    const here=path.dirname(fileURLToPath(import.meta.url))
+    const importer=[
+      `import {fetchAppliedVersions,PROJECT_REFS} from ${JSON.stringify(pathToFileURL(path.join(here,'db-flow','read-preview-ledger.mjs')).href)}`,
+      `import {fetchLedgerStatements} from ${JSON.stringify(pathToFileURL(path.join(here,'check-applied-migration-edit.mjs')).href)}`,
+      'const fail=(error)=>{process.stderr.write(String((error&&error.message)||error));process.exit(3)}',
+    ].join('\n')
+    let stdout
+    try{
+      stdout=execFileSync(process.execPath,['--input-type=module','--eval',`${importer}\n${script}`],{encoding:'utf8',stdio:['ignore','pipe','pipe'],maxBuffer:8*1024*1024,env:process.env})
+    }catch(error){
+      throw new LaneError(`the applied-migration ledger read failed: ${String(error.stderr||error.message).slice(0,400)}`)
+    }
+    try{return JSON.parse(stdout)}catch{throw new LaneError('the applied-migration ledger read returned malformed JSON')}
+  },
   // Issue #2342: the caller reads a whole SET of files at one ref, which used to
   // be a Contents call each. One recursive tree read now answers every path, and
   // blobs are cached by SHA, so a file unchanged across refs is fetched once.
@@ -917,11 +966,15 @@ export const githubIo = {
     const byName=new Map(checks.map((row)=>[row.name,String(row.state).toUpperCase()]))
     const failed=pendingRequiredContexts(protectedContexts,byName)
     if(failed.length)throw new LaneError(`required full CI is not successful on the current head: ${failed.join(', ')}`)
-    // #3806: the post-merge rehearsal route judges a merged PR whose verdict may be archived.
-    assertDurableReviewApproval(issue,pr,head,this,{includeArchived:true})
+    // Review is advice only (owner ruling 2026-10-29, ai-devops#2074 stage F
+    // deleted the durable verdict refs). Preview admission instead holds while
+    // a blocking review-finding issue references this PR -- the same rule 8.6
+    // query production promotion uses (scripts/review_finding_hold.py).
+    try{execFileSync('python3',['scripts/review_finding_hold.py','--pr',String(pr),'--repo',REPO],{encoding:'utf8',timeout:180000,maxBuffer:1024*1024})}
+    catch(error){throw new LaneError(error?.status===3?`a blocking review-finding issue references PR #${pr}`:`review-finding hold query failed: ${error?.message??error}`)}
     const states=dependencies.length?this.dependencyStates(dependencies):{},closure=classifyDependencies(issue,dependencies,states)
     if(!closure.satisfied)throw new LaneError(`migration dependency closure is incomplete: ${closure.blocked.map((row)=>`#${row.number}`).join(', ')}`)
-    return {full_ci_success:true,review_approved:true,dependency_closure_complete:true}
+    return {full_ci_success:true,review_approved:true,review_finding_hold:'clear',dependency_closure_complete:true}
   },
   getIssue(number) { return ghJson(['api', `repos/${REPO}/issues/${number}`]) },
   getIssueComments(number) { return ghPaginated(`repos/${REPO}/issues/${number}/comments?per_page=100`) },
@@ -3111,26 +3164,11 @@ function historicalDiagnosticHeader(file,{pr,headSha}){
   return {read,text,fields,at:new Date(Date.parse(stamp)).toISOString(),pathTime:fileTime}
 }
 
-function parseHistoricalWrapperDiagnostic(file,{pr,headSha,reviewer,startedAt}){
-  const {read,text,fields,at,pathTime}=historicalDiagnosticHeader(file,{pr,headSha})
-  const stamp=fields.get('time')
-  if(!stamp||!Number.isFinite(Date.parse(stamp))||fields.get('wrapper')!=='ai-deepseek-agent'||Number(fields.get('pr'))!==pr||fields.get('head')!==headSha||fields.get('exit_status')!=='1'||fields.get('signal')!=='none'||fields.get('spawn_error')!=='none')throw new LaneError('original wrapper diagnostic identity or terminal status is not the required preparation failure')
-  if(reviewer!=='deepseek-v4.1-flash'||Date.parse(stamp)<Date.parse(startedAt)||Date.parse(stamp)-Date.parse(startedAt)>30*60*1000)throw new LaneError('original wrapper diagnostic is not temporally bound to the exact reviewer start')
-  const tailMarker='stderr_tail (last 8192 chars, redacted):\n',markerAt=text.indexOf(tailMarker)
-  if(markerAt<0||fields.get('recognized_reason')!=='wrapper stderr was present but its reason was not recognized; inspect the exact wrapper session')throw new LaneError('original wrapper diagnostic lacks its retained complete preparation stderr')
-  let stderr=text.slice(markerAt+tailMarker.length)
-  if(stderr.endsWith('\n'))stderr=stderr.slice(0,-1)
-  const stderrBytes=Number(fields.get('stderr_bytes'))
-  if(!Number.isSafeInteger(stderrBytes)||stderrBytes<1||stderrBytes>8192||Buffer.byteLength(stderr,'utf8')!==stderrBytes)throw new LaneError('original wrapper diagnostic stderr is truncated or inconsistent')
-  const steps=[...stderr.matchAll(/^ai-review-engine: step ([a-z-]+)$/gm)].map(m=>m[1])
-  const required=['task-gate','identity','lifecycle-begin','sandbox','packet-build']
-  const allowed=['reviewer event recording: sandbox evidence requirement is missing; cleanup refused','ai-review-sandbox: sandbox evidence is not reconciled; retained for local recovery']
-  const lines=stderr.endsWith('\n')?stderr.slice(0,-1).split('\n'):stderr.split('\n'),other=lines.filter(line=>!allowed.includes(line)&&!/^ai-review-sandbox: [1-9]\d* orphan examination cap reached; remaining orphans wait for the next parent run$/.test(line)&&!/^ai-review-engine: step [a-z-]+$/.test(line)&&line!=='ai-review-packet: error: source-receipt-conflict'&&line!=='ai-review-engine: error: source evidence verification failed.')
-  if(JSON.stringify(steps)!==JSON.stringify(required)||other.length!==0||lines.filter(line=>line===allowed[0]).length<1||lines.filter(line=>line===allowed[1]).length<1||
-     (stderr.match(/^ai-review-packet: error: source-receipt-conflict$/gm)??[]).length!==1||
-     (stderr.match(/^ai-review-engine: error: source evidence verification failed\.$/gm)??[]).length!==1||
-     /\b(?:VERDICT\s*:|APPROVE|REVISE|REJECT)\b/i.test(stderr))throw new LaneError('original wrapper diagnostic does not prove a verdict-less packet-build source-receipt-conflict')
-  return {read,at,pathTime}
+// The old review engine that wrote these wrapper diagnostics was deleted with
+// the governed-review runner (popcre/ai-devops#2074) and its refs were removed,
+// so historical wrapper-failure evidence can no longer be proven. Fail closed.
+function parseHistoricalWrapperDiagnostic(){
+  throw new LaneError('historical wrapper diagnostics are retired with the old review engine (ai-devops#2074); no historical failure can be proven')
 }
 
 function historicalStartBinding({request,original,sourceReceipt,diagnostic,starts}){

@@ -129,7 +129,13 @@ def verified_invalid(issue: dict[str, Any], repository: str, pr: int,
             if not (detail.get("id") == int(run_id) and detail.get("run_attempt") == int(attempt)
                     and detail.get("html_url") == run_url
                     and detail.get("repository", {}).get("full_name") == repository
-                    and detail.get("path") == ".github/workflows/review-fixer.yml"):
+                    and detail.get("path") == ".github/workflows/review-fixer.yml"
+                    # Run metadata is supplied by GitHub, unlike the marker.
+                    # Only default-branch fixer dispatches may dismiss findings;
+                    # branch lifecycle runs must never supply this authority.
+                    and detail.get("head_branch") == "main"
+                    and re.fullmatch(r"[0-9a-f]{40}", str(detail.get("head_sha", "")))
+                    and detail.get("event") in {"issues", "schedule", "workflow_dispatch"}):
                 continue
             matching = [job for job in jobs(f"repos/{repository}/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100")
                         if isinstance(job.get("name"), str)

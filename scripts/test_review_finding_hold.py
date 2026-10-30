@@ -108,6 +108,7 @@ class InvalidEvidence(unittest.TestCase):
         self.comment = {"user": {"login": "github-actions[bot]", "type": "Bot"},
                         "created_at": "2026-10-30T10:59:00Z", "updated_at": "2026-10-30T10:59:00Z"}
         self.detail = {"id": 123, "run_attempt": 1, "html_url": self.proof["run_url"], "repository": {"full_name": REPO},
+                       "head_branch": "main", "head_sha": "c" * 40, "event": "issues",
                        "path": ".github/workflows/review-fixer.yml", "status": "completed", "conclusion": "success",
                        "run_started_at": "2026-10-30T10:50:00Z", "updated_at": "2026-10-30T11:01:00Z"}
         self.job = {"name": "fix / " + self.proof["job_name"], "run_id": 123, "run_attempt": 1,
@@ -168,6 +169,20 @@ class InvalidEvidence(unittest.TestCase):
                 self.detail.update(changes)
                 self.assertFalse(self.verify())
                 self.detail = old
+
+    def test_branch_forgery_and_lifecycle_runs_are_refused(self):
+        for changes in ({"head_branch": "attacker"}, {"head_branch": None},
+                        {"head_sha": None}, {"head_sha": "bad"},
+                        {"event": "push"}, {"event": "delete"},
+                        {"event": "pull_request_target"}, {"event": None}):
+            with self.subTest(changes=changes):
+                old = self.detail.copy()
+                self.detail.update(changes)
+                self.assertFalse(self.verify())
+                self.detail = old
+        for event in ("issues", "schedule", "workflow_dispatch"):
+            self.detail["event"] = event
+            self.assertTrue(self.verify())
 
     def test_successful_target_job_exempts_despite_unrelated_branch_failure(self):
         self.detail.update(status="completed", conclusion="failure")
@@ -282,10 +297,6 @@ class WorkflowShape(unittest.TestCase):
         self.assertIn("automatic_promotion_candidates.py", text)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TriggerDecision(unittest.TestCase):
     import automatic_promotion_candidates as cand  # noqa: E402
 
@@ -314,3 +325,7 @@ class TriggerDecision(unittest.TestCase):
         runs = [{"status": "completed", "conclusion": "failure", "created_at": "2026-10-30T02:00:00Z",
                  "display_title": "DB preview apply abc PR5100 20261030010000"}] * 3
         self.assertIn("ENGINEER ACTION REQUIRED", self.run_(runs)[2])
+
+
+if __name__ == "__main__":
+    unittest.main()

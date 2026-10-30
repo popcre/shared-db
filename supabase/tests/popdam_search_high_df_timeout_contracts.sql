@@ -192,6 +192,13 @@ begin
   if (f->>'totalExact')::boolean is not true or f->>'totalKind' <> 'exact' then
     raise exception 'large result set not flagged exact: %', f;
   end if;
+  -- #5053: past the probe the per-key facet counts would be lower bounds, so
+  -- the same five keys must be present and BLANKED, never dropped or under-counted.
+  if f->'fileType' is distinct from '{}'::jsonb or f->'status' is distinct from '{}'::jsonb
+     or f->'workflowStatus' is distinct from '{}'::jsonb or f->'stage' is distinct from '{}'::jsonb
+     or f->'isLicensed' is distinct from '{}'::jsonb then
+    raise exception 'truncated facets must keep their keys blanked: %', f;
+  end if;
   if not more or total <> 2105 then
     raise exception 'exact total % / has_more % inconsistent', total, more;
   end if;

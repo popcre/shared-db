@@ -307,10 +307,6 @@ AS $function$
     from visible_assets a
     where not (select truncated from probe_state)
        or a.rn < (select max(x.rn) from visible_assets x)
-  ), ranked_documents as materialized (
-    select distinct a.document_type, a.entity_id, a.asset_id, a.style_group_id,
-      a.keyword_rank, a.semantic_rank, a.rank
-    from summary_assets a
   ), matched_assets as materialized (
     select distinct a.id,a.asset_style_group_id style_group_id,a.file_type,a.status,a.workflow_status,a.stage,a.is_licensed from summary_assets a
   ), page_documents as materialized (
@@ -400,7 +396,7 @@ AS $function$
     -- from (select 1): summary is ALWAYS exactly one row, including the
     -- no-match query (total 0). Every select-list item is a scalar
     -- subquery, so a constant anchor row yields the same values as any
-    -- ranked_documents row would.
+    -- matched_assets row would.
     from (select 1) as summary_anchor
   ), page as materialized (
     select r.document_type,r.entity_id,r.asset_id,r.style_group_id,r.keyword_rank,r.semantic_rank,r.rank

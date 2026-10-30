@@ -1,4 +1,4 @@
--- Version: 20261030061619
+-- Version: 20261030224046
 -- Exact DAM search totals (issue #5053; owner ask 2026-10-29: "I don't want
 -- estimates, i want precise numbers only").
 -- derived-from: 20261030042314

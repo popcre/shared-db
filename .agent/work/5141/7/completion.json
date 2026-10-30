@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "work_issue": 5141,
+  "pr": 5189,
+  "outcome": "ready-for-merge",
+  "contract_ref": "refs/db-contracts/5141/7",
+  "contract_sha256": "f7aab19320db2f52b20b49c55e6feffff25bcd49b999b5e7bc1fcd68c54e18a7",
+  "head_sha": "4c631331231534bfd5d2990b8462ee02d40cacfc",
+  "base_sha": "cdd3af478955d4c2503405a96aeb200a5dd895d3",
+  "files_changed": [
+    "config/atomic-migration-allowlist.json"
+  ],
+  "migration_versions": [],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "evidence": "Static checks pass with the pre-staged entry.",
+      "exit_code": 0
+    }
+  ],
+  "assumptions_resolved": [
+    "Pinned bytes verified against the branch head."
+  ],
+  "stop_conditions_hit": []
+}

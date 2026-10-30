@@ -1,0 +1,37 @@
+{
+  "schema_version": 2,
+  "work_issue": 5141,
+  "generation": 7,
+  "evidence_parent": {
+    "work_issue": 5141,
+    "generation": 6,
+    "contract_sha256": "8894026c8b325b7e99bd9c63e0751eb9a92ad2507cda16eaa96f0f21e71ad601"
+  },
+  "work_type": "repo-maintenance",
+  "route": "repo-maintenance",
+  "goal": "Pre-stage the atomic allowlist entry for 20261030061619 (#5114/#5053 DAM exact search totals) so its post-merge rehearsal can run on the atomic lane",
+  "base_sha": "cdd3af478955d4c2503405a96aeb200a5dd895d3",
+  "branch": "zcode/5141-atomic-allowlist-061619",
+  "worktree": "/worksp/shared-db/.wt-5141-cfg3",
+  "dispatcher": "ZCode chat e0cd8b5b-7ad0-4808-8171-b61d90f08b82 on hetz (coordinator delivery): config PR for 20261030061619's rehearsal",
+  "worker": "ZCode chat e0cd8b5b-7ad0-4808-8171-b61d90f08b82 on hetz",
+  "allowed_paths": [
+    "config/atomic-migration-allowlist.json"
+  ],
+  "file_writes": [],
+  "db_reads": [],
+  "db_writes": [],
+  "prohibited_actions": [
+    "No migration file changes",
+    "No database writes; rehearsal and promotion run through the governed workflow only"
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh"
+  ],
+  "assumptions": [
+    "The pinned sha256 is the file at branch zcode/5053-dam-search-exact-totals head 728591a92717b5a78b200fa42cebb1dd4b0e7be1; if the branch changes before merge, this entry must be re-pinned"
+  ],
+  "stop_conditions": [
+    "#5114's merged file differs from the pinned sha"
+  ]
+}

@@ -93,6 +93,9 @@ as $function$
   full join vec v on v.ruling_number = coalesce(f.ruling_number, t.ruling_number)
 $function$;
 
+comment on function hts_rag.hts_rag_search_rulings_pass(text, tsquery, extensions.halfvec, text[]) is
+  'Internal: one pass of hts_rag_search_rulings (three ranked lists, at most 200 rulings each). designflow-backend#254.';
+
 -- The search interface (signature is the contract the classifier builds against).
 create function hts_rag.hts_rag_search_rulings(
   p_query text,

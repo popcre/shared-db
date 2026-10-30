@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import re
+import tempfile
 import subprocess
 from pathlib import Path
 
@@ -88,6 +89,18 @@ def git(repo: Path, *args: str) -> str:
     if result.returncode:
         raise Refusal("git evidence check failed")
     return result.stdout.strip()
+
+
+def load_orphan_at_commit(repo: Path, commit: str, orphan: str) -> tuple[Path, list[str]]:
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise Refusal("orphan_source_commit must be a full commit sha")
+    git(repo, "fetch", "--quiet", "origin", commit)
+    names = [n for n in git(repo, "ls-tree", "--name-only", commit, "supabase/migrations/").splitlines() if re.fullmatch(rf"supabase/migrations/{orphan}_[^/]+\.sql", n)]
+    if len(names) != 1:
+        raise Refusal("orphan source commit does not hold exactly one orphan migration")
+    directory = Path(tempfile.mkdtemp(prefix="orphan-source-"))
+    (directory / Path(names[0]).name).write_text(git(repo, "show", f"{commit}:{names[0]}") + "\n", encoding="utf-8")
+    return load_replacement(directory, orphan)
 
 
 def load_replacement(directory: Path, replacement: str) -> tuple[Path, list[str]]:
@@ -211,7 +224,8 @@ def validate_governance(args, orphan_statements: list[str], replacement_statemen
     evidence_version = args.replacement_version if case["mode"] in {"replacement_already_applied", "rehearsal_reset"} else args.orphan_version
     if evidence_version in before_versions or evidence_version not in after_versions or after_versions - before_versions != {evidence_version}:
         raise Refusal("preview artifact does not prove the exact one-version ledger addition")
-    if f"Applying migration {evidence_version}_" not in apply:
+    # The atomic apply path (atomic_migration_apply.py) logs one exact OK line per version.
+    if f"Applying migration {evidence_version}_" not in apply and not re.search(rf"^ATOMIC APPLY OK: target=preview version={evidence_version} ledger_row=1 ", apply, re.M):
         raise Refusal("preview artifact does not prove the exact migration application")
     return {"case_mode": case["mode"], "orphan_statement_count": len(orphan_statements), "replacement_statement_count": len(replacement_statements), "orphan_sha256": hashlib.sha256(args.orphan_migration.read_bytes()).hexdigest(), "replacement_sha256": hashlib.sha256(args.replacement_migration.read_bytes()).hexdigest()}
 
@@ -344,6 +358,7 @@ def reconcile(url: str, env: dict[str, str], args, expected_orphan: list[str], e
     if args.mode == "check":
         return before, before
     expected_json = json.dumps(expected_orphan, separators=(",", ":"))
+    replacement_json = json.dumps(expected_replacement, separators=(",", ":"))
     if case_mode == "byte_identical_rename":
         replacement_name = args.replacement_migration.stem.split("_", 1)[1].replace("'", "''")
         sql = rf"""\set ON_ERROR_STOP on
@@ -382,7 +397,7 @@ begin
     raise exception 'ledger ownership changed before reconciliation';
   end if;
   if (select to_jsonb(statements) from supabase_migrations.schema_migrations where version='{args.orphan_version}') <> $expected${expected_json}$expected$::jsonb
-     or (select to_jsonb(statements) from supabase_migrations.schema_migrations where version='{args.replacement_version}') <> $expected${expected_json}$expected$::jsonb then
+     or (select to_jsonb(statements) from supabase_migrations.schema_migrations where version='{args.replacement_version}') <> $expected${replacement_json}$expected$::jsonb then
     raise exception 'ledger statements changed before reconciliation';
   end if;
   delete from supabase_migrations.schema_migrations where version='{args.orphan_version}';
@@ -468,7 +483,12 @@ def main() -> int:
         if not re.fullmatch(r"[a-z]{20}", args.expected_project_ref) or args.expected_project_ref == "qsllyeztdwjgirsysgai":
             raise Refusal("reconciliation requires a configured non-production Supabase project ref")
         args.replacement_migration, replacement_statements = load_replacement(args.source_pr_dir / "supabase/migrations", args.replacement_version)
-        if case and case["mode"] in {"replacement_already_applied", "rehearsal_reset"}:
+        if case and case["mode"] == "replacement_already_applied" and case.get("orphan_source_commit"):
+            # The orphan and its replacement differ, so the orphan's ledger row is
+            # checked against the orphan file at its own pinned commit (its
+            # original preview apply), never against the replacement's bytes.
+            args.orphan_migration, orphan_statements = load_orphan_at_commit(args.repo, case["orphan_source_commit"], args.orphan_version)
+        elif case and case["mode"] in {"replacement_already_applied", "rehearsal_reset"}:
             args.orphan_migration, orphan_statements = args.replacement_migration, replacement_statements
         else:
             args.orphan_migration, orphan_statements = load_replacement(args.orphan_source_dir / "supabase/migrations", args.orphan_version)

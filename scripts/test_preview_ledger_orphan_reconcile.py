@@ -613,4 +613,15 @@ class PreviewJobSuccessTests(unittest.TestCase):
         case=M.SUPPORTED_CASES[(4508,5090,5075,'20261030014205','20261030042314')] if (4508,5090,5075,'20261030014205','20261030042314') in M.SUPPORTED_CASES else M.SUPPORTED_CASES[(4508,5090,5075)]
         self.assertEqual((case['mode'],case['preview_run_id'],case['preview_job_success']),('replacement_already_applied',41012458156,True))
 
+class AtomicApplyEvidenceTests(unittest.TestCase):
+    def test_atomic_apply_line_is_exact_version_bound(self):
+        src=P.read_text(encoding='utf-8')
+        self.assertIn('ATOMIC APPLY OK: target=preview version={evidence_version} ledger_row=1 ',src)
+
+class OrphanSourceCommitTests(unittest.TestCase):
+    def test_issue_4508_orphan_is_read_from_its_own_commit(self):
+        case=[c for c in M.SUPPORTED_CASES.values() if c.get('orphan_version')=='20261030014205'][0]
+        self.assertEqual(case['orphan_source_commit'],'2a0f16d2f4152374d10acd972c07b799fdfcee4a')
+        with self.assertRaisesRegex(M.Refusal,'full commit sha'): M.load_orphan_at_commit(P.parent.parent,'abc','20261030014205')
+
 if __name__=='__main__': unittest.main()

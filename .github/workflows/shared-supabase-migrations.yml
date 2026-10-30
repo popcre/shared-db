@@ -594,6 +594,10 @@ jobs:
         id: preview_lock
         env:
           GH_TOKEN: ${{ github.token }}
+          # #5141: admission of a pull request that EDITS an unapplied migration
+          # proves the version is ledger-absent; the same read-only SELECT the
+          # edit guard runs. Ordinary (added-migration) admissions never read it.
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           CLAIM_PR: ${{ inputs.claim_pr }}
           CLAIM_HEAD_SHA: ${{ inputs.claim_head_sha }}
           HISTORICAL_SOURCE_PR: ${{ inputs.historical_preview_source_pr }}
@@ -1868,6 +1872,11 @@ jobs:
         id: production_lock
         env:
           GH_TOKEN: ${{ github.token }}
+          # #5141: admission re-runs at promotion, after this same pull request's
+          # rehearsal applied the edited body to preview; the ledger read plus the
+          # byte-exact preview-statements match prove that applied body is THIS
+          # body. Read-only, exactly like the edit guard's own SELECTs.
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           REQUESTED_SHA: ${{ inputs.commit_sha }}
           SOURCE_PR: ${{ inputs.source_pr }}
         run: |

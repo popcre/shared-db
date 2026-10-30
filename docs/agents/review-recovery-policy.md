@@ -1,5 +1,14 @@
 # Review service recovery policy
 
+> **Retired review gate — [owner ruling §0.0-R](owner-rulings.md#00-r-owner-ruling--review-is-advisory-never-a-merge-gate-albert-hazan-2026-10-29) (2026-10-29).**
+> Review is advisory for every pull request, including migrations and production
+> promotion. Any instructions below requiring reviewer assignment, an exact-head
+> APPROVE, review-slot completion, or a governed-review command are historical
+> and no longer authorize or block merge or promotion. The deleted
+> `check-exact-head-approval.mjs` and `run-governed-review.mjs` are not executable
+> steps. Author leases, version ordering, collision checks, tests, preview
+> rehearsal, guarded merge locking and production authorization remain binding.
+
 Owner-authorized implementation is tracked on [#4297](https://github.com/popcre/shared-db/issues/4297). The combined source was externally merged through PR #4294; remaining audit and conservative-counting repairs continue on that same work issue. Original source, history and attribution are preserved. The earlier external merge is not evidence of independent approval. This tooling policy requires one independent exact-head approval for every change, including migrations (owner ruling §6.27), and preserves guarded merge. Every drawn slot still owes its own qualifying verdict.
 
 ## Spend is uncapped (owner 2026-10-16)

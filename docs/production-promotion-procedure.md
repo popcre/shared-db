@@ -1,5 +1,14 @@
 # Promoting to production when a backlog exists
 
+> **Retired review gate — [owner ruling §0.0-R](agents/owner-rulings.md#00-r-owner-ruling--review-is-advisory-never-a-merge-gate-albert-hazan-2026-10-29) (2026-10-29).**
+> Review is advisory for every pull request, including migrations and production
+> promotion. Any instructions below requiring reviewer assignment, an exact-head
+> APPROVE, review-slot completion, or a governed-review command are historical
+> and no longer authorize or block merge or promotion. The deleted
+> `check-exact-head-approval.mjs` and `run-governed-review.mjs` are not executable
+> steps. Author leases, version ordering, collision checks, tests, preview
+> rehearsal, guarded merge locking and production authorization remain binding.
+
 > **This was `AGENTS.md` §5.1 until 2026-08-20.** Moved because `AGENTS.md` had reached 229 KB
 > against its own 80 KB ceiling (issue #1331). Text below is unchanged, and `AGENTS.md §5.1`
 > still points here.

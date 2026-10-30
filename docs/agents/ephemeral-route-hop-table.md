@@ -1,5 +1,14 @@
 # The #2758 ephemeral route hop table — merge to production (issue #3199 Phase C1)
 
+> **Retired review gate — [owner ruling §0.0-R](owner-rulings.md#00-r-owner-ruling--review-is-advisory-never-a-merge-gate-albert-hazan-2026-10-29) (2026-10-29).**
+> Review is advisory for every pull request, including migrations and production
+> promotion. Any instructions below requiring reviewer assignment, an exact-head
+> APPROVE, review-slot completion, or a governed-review command are historical
+> and no longer authorize or block merge or promotion. The deleted
+> `check-exact-head-approval.mjs` and `run-governed-review.mjs` are not executable
+> steps. Author leases, version ordering, collision checks, tests, preview
+> rehearsal, guarded merge locking and production authorization remain binding.
+
 **Purpose.** Every hop between "the guarded merge completed" and "production apply finished" on
 the low-risk (#2758) route, naming who or what performs it, what evidence it consumes, and — if
 manual — exactly why it stays manual. This table is the Phase C2 audit: C2's conclusion

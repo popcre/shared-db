@@ -162,7 +162,7 @@ begin
   end if;
 end $$;
 
--- 3c. Above the 1000-asset summary probe the total is a flagged lower bound,
+-- 3c. Above the 1000-asset summary probe the total stays exact,
 --     and paging stays correct past the probe.
 do $$
 declare
@@ -189,16 +189,16 @@ begin
 
   select min(total_count), bool_or(has_more), (array_agg(facets))[1] into total, more, f
   from public.search_dam_documents('zz4535lb', '{}'::jsonb, 20, 0);
-  if (f->>'totalExact')::boolean is not false or f->>'totalKind' <> 'lower_bound' then
-    raise exception 'large result set not flagged lower_bound: %', f;
+  if (f->>'totalExact')::boolean is not true or f->>'totalKind' <> 'exact' then
+    raise exception 'large result set not flagged exact: %', f;
   end if;
-  if not more or total < 21 or total > 2105 then
-    raise exception 'lower-bound total % / has_more % inconsistent', total, more;
+  if more is not true or total is distinct from 2105::bigint then
+    raise exception 'exact total % / has_more % inconsistent', total, more;
   end if;
 
   select count(entity_id), bool_or(has_more), min(total_count) into deep_rows, deep_more, deep_total
   from public.search_dam_documents('zz4535lb', '{}'::jsonb, 20, 2100);
-  if deep_rows <> 5 or deep_more or deep_total < 2105 then
+  if deep_rows <> 5 or deep_more is not false or deep_total is distinct from 2105::bigint then
     raise exception 'page past the probe: rows %, has_more %, total %', deep_rows, deep_more, deep_total;
   end if;
 

@@ -394,11 +394,7 @@ AS $function$
       'totalExact',true,
       'totalKind','exact'
     ) end facets
-    -- limit 1 keeps summary a single row now that the exact total is a
-    -- scalar from exact_docs; every select-list item is a scalar subquery,
-    -- so any ranked_documents row yields the same values.
-    from ranked_documents
-    limit 1
+    -- Scalar subqueries keep summary a single row even when no documents match.
   ), page as materialized (
     select r.document_type,r.entity_id,r.asset_id,r.style_group_id,r.keyword_rank,r.semantic_rank,r.rank
     from page_documents r order by r.rn

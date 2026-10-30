@@ -10,7 +10,7 @@ begin
   -- moved into the planner-opaque helper dam_asset_matches_filters (its
   -- per-function SET search_path blocks SQL inlining, which is what keeps the
   -- search's planning cost at ~14 ms instead of ~2.2 s); the search body must
-  -- delegate BOTH pre-pagination consumers to that helper.
+  -- delegate all three consumers (visibility, paging, exact totals) to that helper.
   select pg_get_functiondef('public.dam_asset_matches_filters(uuid, boolean, timestamptz, timestamptz, text, uuid, uuid, uuid, uuid, uuid, uuid, uuid, public.file_type, text, text[], public.asset_status, public.workflow_status, text, boolean, public.asset_type, public.art_source, text, text, text, text, text, jsonb, timestamptz)'::regprocedure) into v_helper;
 
   if position('customerId' in v_filter)=0 or position('a.customer_id' in v_filter)=0
@@ -44,12 +44,12 @@ begin
   end if;
   if position('page as materialized' in lower(v_search))=0
      or (length(v_search) - length(replace(v_search, 'dam_asset_matches_filters', '')))
-        / length('dam_asset_matches_filters') <> 2
+        / length('dam_asset_matches_filters') <> 3
      or position('dam_asset_matches_filters' in v_search)
         > position('page as materialized' in lower(v_search))
      or position(reverse('dam_asset_matches_filters') in reverse(v_search))
         <= position(reverse('page as materialized') in reverse(lower(v_search))) then
-    raise exception 'ranked search must filter through the shared predicate helper in both pre-pagination consumers';
+    raise exception 'ranked search must filter through the shared predicate helper in all three pre-pagination consumers';
   end if;
   -- per-asset predicate keys must NOT be inlined in the scan zone. The facet
   -- builder in the summary CTE legitimately reuses names like 'fileType', so

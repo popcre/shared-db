@@ -1,0 +1,25 @@
+{
+  "_why": "Dated verification artifact (work issue #3774, PR #3788, owner ruling 2026-09-28 docs/agents/owner-rulings.md 0.5): the live GET repos/popcre/shared-db/branches/main/protection/required_status_checks readback, redacted to strict and contexts, after 'Agent work contract' and 'Orchestrator marker guard' were retired with scripts/update-required-checks.mjs --remove --apply under the Gemini 3.8 Flash High governed APPROVE on PR #3788. The mirror main-required-status-checks.json must carry exactly these contexts; scripts/check-merge-queue-workflows.test.mjs enforces that.",
+  "repo": "popcre/shared-db",
+  "branch": "main",
+  "capturedIso": "2026-09-29T10:08:18Z",
+  "endpoint": "repos/popcre/shared-db/branches/main/protection/required_status_checks",
+  "strict": false,
+  "contexts": [
+    "Cancelled work guard",
+    "Cross-PR object collision",
+    "Destructive SQL outside migrations",
+    "Domain ownership",
+    "Handoff contract",
+    "Intake pointer guard",
+    "Merge queue gate",
+    "Migration author lease",
+    "Migration guarded merge authorization",
+    "Promotion contract tests (offline)",
+    "Queue-sensitive checks (aggregate)",
+    "SQL migration guards",
+    "Tools offline tests",
+    "supabase/tests against an ephemeral database"
+  ],
+  "contextCount": 14
+}

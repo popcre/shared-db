@@ -1215,7 +1215,7 @@ jobs:
             --historical-pr "$HISTORICAL_PR" --claim-pr "$CLAIM_PR" --claim-head "$CLAIM_HEAD" --production-pr "$PRODUCTION_PR" \
             --recovery "$RUNNER_TEMP/recovery-evidence/historical-preview-source.json" \
             --train-output "$RUNNER_TEMP/automatic-production-train.json" >> "$GITHUB_OUTPUT"
-      - name: Re-prove current main, guarded merge, and durable exact-head verdict
+      - name: Re-prove current main and the merged source PR
         id: governed_review
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1248,11 +1248,12 @@ jobs:
             echo "::error::ENGINEER ACTION REQUIRED: source PR has no exact head. Nothing was dispatched." >&2
             exit 2
           fi
-          # Newest-by-timestamp Migration guarded merge authorization, via the
-          # shared paginated /statuses helper (never combined /status + first).
-          GUARDED_STATE="$(node scripts/merge-queue-contract.mjs --authorization-state --head-sha "$SOURCE_HEAD")"
-          if [ "$GUARDED_STATE" != success ]; then
-            echo "::error::ENGINEER ACTION REQUIRED: the newest guarded-merge authorization is not successful at source head ${SOURCE_HEAD} (state: ${GUARDED_STATE:-none}). Nothing was dispatched." >&2
+          # popcre/ai-devops#2172 stage C2: the merged PR's merge commit on exact
+          # main plus the preview evidence is the source of truth; the guarded-merge
+          # authorization status is no longer read.
+          SOURCE_MERGE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${SOURCE_PR}" --jq 'if .merged == true then .merge_commit_sha else "" end')"
+          if ! [[ "$SOURCE_MERGE_SHA" =~ ^[0-9a-f]{40}$ ]] || ! git merge-base --is-ancestor "$SOURCE_MERGE_SHA" "$MAIN_SHA"; then
+            echo "::error::ENGINEER ACTION REQUIRED: source PR ${SOURCE_PR} has no merge commit on exact main. Nothing was dispatched." >&2
             exit 2
           fi
           echo "source_head=$SOURCE_HEAD" >> "$GITHUB_OUTPUT"

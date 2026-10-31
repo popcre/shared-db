@@ -60,15 +60,18 @@ them unnoticed.
 
 ## What it is generated from, and why that matters
 
-It is generated from the live **preview** project `rjyboqwcdzcocqgmsyel`, which
-is the first place a merged migration lands and therefore the earliest honest
-source of the post-change shape.
+The **Generate database types** workflow (`generate-database-types.yml`) has two
+read-only paths. With `work_issue` blank, it reads the live **preview** project
+selected by the repository variable `PREVIEW_PROJECT_REF` and produces the
+`database-types` download described above. With `work_issue` supplied, it reads
+**production** and produces an issue-bound artifact containing the generated
+TypeScript and `db-generated-types-proof.json`. The production proof requires
+exactly `public,dflow,plm,core,app,hts_rag`.
 
-It is **not** generated from production, and the workflow refuses to point at
-production at all. It is also not generated from replaying migration files: the
-point of reading a real database is to describe what actually exists, including
-anything the migration history alone would not reproduce.
-
-One consequence worth knowing: between a preview apply and the matching
-production promotion, this file describes preview. That window is intentional
-and is exactly when applications need the new types to build against.
+Neither path replays migration files. A merged migration is not evidence that
+it has been applied to the source database. Before presenting a production
+snapshot as current, compare its generation time and the production migration
+ledger with the migrations whose objects consumers need. Record the source,
+generation run, and any unapplied migrations in the regeneration PR. If ledger
+verification is unavailable, mark production freshness unverified; do not infer
+that missing objects are intentionally unapplied or hand-edit generated types.

@@ -534,6 +534,23 @@ function readCompleteReviewStates(repository,leases){
   })
   return states
 }
+export function assertReviewFindingHoldClear(pr,{run=execFileSync,platform=process.platform}={}){
+  try{
+    run(platform==='win32'?'python':'python3',[
+      path.join(path.dirname(fileURLToPath(import.meta.url)),'review_finding_hold.py'),
+      '--pr',String(pr),'--repo',REPO,
+    ],{encoding:'utf8',timeout:180000,maxBuffer:1024*1024,stdio:['pipe','pipe','pipe']})
+  }catch(error){
+    const diagnostic=[error?.message??String(error),error?.stdout,error?.stderr]
+      .filter((value)=>value!==undefined&&value!==null&&String(value).trim())
+      .map((value)=>String(value).trim()).join('\n')
+    const reason=error?.status===3
+      ?`a blocking review-finding issue references PR #${pr}`
+      :`review-finding hold query failed (status=${error?.status??'none'}, code=${error?.code??'none'}, signal=${error?.signal??'none'})`
+    throw new LaneError(`${reason}: ${diagnostic}`)
+  }
+}
+
 export const githubIo = {
   releaseRefOverGit(ref, ownerSha) { return releaseRefOverGit(ref, ownerSha) },
   enforceAdmission:true,
@@ -970,11 +987,10 @@ export const githubIo = {
     // deleted the durable verdict refs). Preview admission instead holds while
     // a blocking review-finding issue references this PR -- the same rule 8.6
     // query production promotion uses (scripts/review_finding_hold.py).
-    try{execFileSync('python3',['scripts/review_finding_hold.py','--pr',String(pr),'--repo',REPO],{encoding:'utf8',timeout:180000,maxBuffer:1024*1024})}
-    catch(error){throw new LaneError(error?.status===3?`a blocking review-finding issue references PR #${pr}`:`review-finding hold query failed: ${error?.message??error}`)}
+    assertReviewFindingHoldClear(pr)
     const states=dependencies.length?this.dependencyStates(dependencies):{},closure=classifyDependencies(issue,dependencies,states)
     if(!closure.satisfied)throw new LaneError(`migration dependency closure is incomplete: ${closure.blocked.map((row)=>`#${row.number}`).join(', ')}`)
-    return {full_ci_success:true,review_approved:true,review_finding_hold:'clear',dependency_closure_complete:true}
+    return {full_ci_success:true,review_finding_hold:'clear',dependency_closure_complete:true}
   },
   getIssue(number) { return ghJson(['api', `repos/${REPO}/issues/${number}`]) },
   getIssueComments(number) { return ghPaginated(`repos/${REPO}/issues/${number}/comments?per_page=100`) },

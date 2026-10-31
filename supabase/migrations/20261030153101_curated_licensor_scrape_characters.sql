@@ -1,7 +1,3 @@
--- Assert the security invariant of the table this migration writes to (idempotent;
--- RLS is already enabled since 20260907030418).
-alter table core.property_character_source_edge enable row level security;
-
 -- Issue popcre/shared-db#5079 (claim #5103): canonical Characters for licensor MV, then DY, SW, WB, NB, VM and SS
 -- (Marvel) from the authorized licensor portal scrape, one licensor per change
 -- (docs/core-character-backfill-source-decision-20260902.md sec.6 item 4).

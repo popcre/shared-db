@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "work_issue": 5141,
+  "pr": 5212,
+  "outcome": "ready-for-merge",
+  "contract_ref": "refs/db-contracts/5141/8",
+  "contract_sha256": "dc4c7415259401e566589900eac9f7cde23e79ef2f3b27af81f696adffe6e2c6",
+  "head_sha": "9a904021eefceaa5e8a7ca4c4a994a6546c41bc1",
+  "base_sha": "f2f5d227fe2251e8c22dbcd4c98aa772089e1c32",
+  "files_changed": [
+    "config/atomic-migration-allowlist.json"
+  ],
+  "migration_versions": [],
+  "db_reads": [],
+  "db_writes": [],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "evidence": "Static checks pass; the entry pins the sha256 of the file merged on main at f2f5d227fe2.",
+      "exit_code": 0
+    }
+  ],
+  "assumptions_resolved": [
+    "Pinned bytes verified against main."
+  ],
+  "stop_conditions_hit": []
+}

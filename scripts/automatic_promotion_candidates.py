@@ -39,18 +39,27 @@ def gh(*args: str) -> Any:
 
 def merged_migration_prs(repo: str) -> list[dict[str, Any]]:
     pulls = gh(f"repos/{repo}/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100")
+    main_tree = gh(f"repos/{repo}/git/trees/main?recursive=1").get("tree", [])
+    on_main = {e.get("path") for e in main_tree if e.get("type") == "blob"}
     found = []
     for pr in pulls:
         merged = pr.get("merged_at")
         if not merged or merged <= ACTIVATED_AT:
             continue
         files = gh("--paginate", "--slurp", f"repos/{repo}/pulls/{pr['number']}/files?per_page=100")
-        versions = sorted(
-            m.group(1)
+        added = [
+            f.get("filename", "")
             for page in files for f in page
-            if f.get("status") == "added" and (m := MIGRATION_RE.match(f.get("filename", "")))
-        )
-        if versions:
+            if f.get("status") == "added" and MIGRATION_RE.match(f.get("filename", ""))
+        ]
+        # Superseded-by-removal (#5128): a merged PR whose every added migration
+        # file a later merge removed from main is no longer promotable work --
+        # its versions can never apply (edit-guard owns applied versions, and a
+        # replacement version carries the change). Without this skip such a PR
+        # stays first by merged_at forever and its failed-attempt counter parks
+        # the whole automatic lane (observed 2026-10-31: PR #5129 vs 20261030125352).
+        versions = sorted(m.group(1) for m in map(MIGRATION_RE.match, added) if m)
+        if versions and any(name in on_main for name in added):
             found.append({"number": pr["number"], "merged_at": merged, "versions": versions})
     return sorted(found, key=lambda p: p["merged_at"])
 

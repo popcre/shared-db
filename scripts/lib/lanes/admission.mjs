@@ -65,19 +65,28 @@ export function admitIssue(number, io = githubIo, { pr = null, actor = 'manage-m
       const files=io.getPrFiles(Number(pr)).map((file)=>/^supabase\/migrations\/\d{14}_[^/]+\.sql$/.test(String(file?.filename??file?.path??''))&&file?.status!=='removed'
         ?{...file,content:io.getFileAt(file.filename??file.path,head)}:file)
       if(admitted.curated){
-        // A curated migration that merged but is applied NOWHERE (an atomic
-        // rollback) may be edited in place, like the structural #5141 lane: the
-        // version must be absent from both the preview and production ledgers,
-        // and the whole edited file is then inspected exactly as if newly added.
-        const curatedEdits=unappliedEditMigrationFiles(files).filter((row)=>row.status==='modified')
+        // Edited curated files need nonempty ledgers and the same byte-exact
+        // preview continuation as structural edits. Inspect full bodies below.
+        const editFiles=unappliedEditMigrationFiles(files)
+        const curatedEdits=editFiles.filter((row)=>row.status==='modified')
+        let curatedClaim
         if(curatedEdits.length){
           let ledgers
-          try{ledgers=appliedLedgerVersions(io)}catch(error){throw new AdmissionError(`pull request #${pr} cannot prove its edited curated migration is unapplied: ${error.message}`)}
-          const applied=curatedEdits.filter((row)=>ledgers.preview.has(row.version)||ledgers.production.has(row.version))
+          try{
+            curatedClaim=branchBoundClaimWrites(livePr?.head?.ref,io)
+            ledgers=appliedLedgerVersions(io)
+            for(const name of ['preview','production'])if(!ledgers[name].size)throw new Error(`the ${name} ledger came back empty, so nothing was compared`)
+            ledgers.previewIdentical=previewVerifiedIdentical(editFiles,ledgers,io,{readFileAt:(name)=>io.getFileAt(name,head)})
+          }catch(error){throw new AdmissionError(`pull request #${pr} cannot prove its edited curated migration is unapplied: ${error.message}`)}
+          const applied=editFiles.filter((row)=>ledgers.production.has(row.version)||(ledgers.preview.has(row.version)&&!ledgers.previewIdentical.has(row.version)))
           if(applied.length)throw new AdmissionError(`pull request #${pr} edits applied curated migration(s) ${applied.map((row)=>row.version).join(', ')}; fix forward instead`)
         }
         const curatedFiles=curatedEdits.length?files.map((file)=>curatedEdits.some((row)=>row.name===(file.filename??file.path))?{...file,status:'added'}:file):files
         const inspection=inspectPrCuratedDataChange(curatedFiles,issue,scope)
+        if(curatedClaim){
+          const unclaimed=inspection.row_writes.filter((key)=>!curatedClaim.writes.includes(key))
+          if(unclaimed.length)throw new AdmissionError(`pull request #${pr} curated writes not held by its branch-bound active claim: ${unclaimed.join(', ')}`)
+        }
         admitted={...admitted,actual_objects:[],reads:inspection.reads,row_writes:inspection.row_writes,row_reads:inspection.row_reads,migrations:inspection.migrations}
       }else{
       const inspection=inspectPrStructuralChange(files)

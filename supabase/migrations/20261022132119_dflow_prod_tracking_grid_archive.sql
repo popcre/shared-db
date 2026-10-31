@@ -1,5 +1,6 @@
 -- Issue #4585. Version reserved by migration-author claim #4586.
--- derived-from: 20261022014315
+-- derived-from: none
+-- (New table. Same shape as 20261022014315 in schema dflow, which it does not replace.)
 -- Production table for DesignFlow Production Tracking / Licensing Tracking Archive and
 -- Unarchive (application PR popcre/designflow-frontend#352).
 --

@@ -1,0 +1,29 @@
+name: Shared DB 5188 Observation
+
+# Credential-free p95 observation for outcome #5188 (application_return_to:
+# popcre/designflow-backend). The application-side publisher
+# (designflow-backend shared-db-5188-proof.yml) verifies THIS artifact and
+# republishes the envelope — the app repository never receives a database
+# credential. Read-only: one server-side-timed SELECT per sample.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  observe:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Time hts_rag_search_rulings on production (read-only)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/observe-5188-search-p95.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shared-db-5188-observation-${{ github.sha }}
+          path: ${{ runner.temp }}/shared-db-5188-observation/observation.json
+          if-no-files-found: error
+          retention-days: 90

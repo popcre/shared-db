@@ -8,7 +8,7 @@
  ],
  "contract_ref": "refs/db-contracts/5163/10",
  "contract_sha256": "9a0b0fca04477861032432ed1e35451337f6fe0e9ab0a97075b0975120fea2e1",
- "head_sha": "00cc0cb8462f3db28ebd2c12e7e564fba724e8a3",
+ "head_sha": "ea1d4c62ce694faddc515935d5653d9208675531",
  "base_sha": "69b71688f2f53772cb4db0782c3b584c517725bc",
  "files_changed": [
   "config/preview-ledger-orphan-reconciliations.json",
@@ -44,6 +44,11 @@
    "command": "python3 -m pytest -q scripts/test_preview_ledger_orphan_reconcile.py",
    "exit_code": 0,
    "evidence": "45 passed"
+  },
+  {
+   "command": "python3 -m pytest -q scripts/test_migration_derivation.py",
+   "exit_code": 0,
+   "evidence": "passed"
   }
  ],
  "assumptions_resolved": [

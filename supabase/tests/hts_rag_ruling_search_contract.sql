@@ -168,7 +168,7 @@ begin
                     and roles @> array[v_role::name] and cmd = 'SELECT' and qual = 'true') then
       raise exception '% cannot read the whole ruling library', v_role;
     end if;
-    -- 20261031235018 (#5188): the classifier joins product rows, so runtime reads them (read-only).
+    -- 20261101000536 (#5188): the classifier joins product rows, so runtime reads them (read-only).
     if not has_table_privilege(v_role, 'hts_rag.hts_rag_ruling_products', 'SELECT')
        or has_table_privilege(v_role, 'hts_rag.hts_rag_ruling_products', 'INSERT') then
       raise exception '% product-row access differs (read, never write)', v_role;

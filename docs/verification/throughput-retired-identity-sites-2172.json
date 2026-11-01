@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "retired_by_issue": 2172,
-  "note": "popcre/ai-devops#2172 (Stage C2b): the production gate's lean-core rewrite deleted this call site.",
+  "note": "popcre/ai-devops#2172 Stage C2: call sites deleted by the lean-core rewrite (C2b risk gate) and the retirement of migration-author-lease.yml (C2c). Historical disposition fields preserved.",
   "sites": [
     {
       "site": "scripts/production_business_risk_gate.py:2095",

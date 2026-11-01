@@ -348,8 +348,8 @@
     },
     {
       "issue": 5079,
-      "claim": 5323,
-      "source_pr": 5324,
+      "claim": 5339,
+      "source_pr": 5361,
       "mode": "replacement_pending",
       "orphan_version": "20261101125528",
       "replacement_version": "20261101153043",

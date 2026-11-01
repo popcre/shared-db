@@ -65,34 +65,78 @@ class Tests(unittest.TestCase):
             'claim_state':'open',
         })
 
-    def test_issue_5079_preview_only_restore_is_narrowly_evidence_bound(self):
-        case=M.SUPPORTED_CASES[(5079,5323,5324)]
-        self.assertEqual(case,{
-            'mode':'replacement_pending',
-            'orphan_version':'20261101125528',
-            'replacement_version':'20261101153043',
-            'orphan_run_head':'900dd82892e3dd1d73d270d39c76544f2a2b5903',
-            'orphan_commit_sha':'914106d2c3874d3b214dd4191f096ee547772f0e',
-            'preview_run_id':41310201660,
-            'preview_artifact_id':13084942989,
-            'preview_artifact_digest':'sha256:325d7125162f3736cf5989d477c31a0ab3995dcc2335823102aec2dacac69812',
-            'merged_source':True,
-            'issue_state':'closed',
-            'claim_state':'closed',
-            'note':'Applied to preview as run 41310201660; promotion evidence never qualified, so it was never bound for production. Preview-only restore of Disney characters that production already holds. Its link rows are carried by 20261101153043, which reached production with 20261101153102.',
-        })
-
-    def test_issue_5079_evidence_pins_refuse_substitution(self):
-        case=M.SUPPORTED_CASES[(5079,5323,5324)]
-        args=type('A',(),{
-            'preview_run_id':41310201660,
-            'preview_artifact_id':13084942989,
-            'preview_artifact_digest':'sha256:325d7125162f3736cf5989d477c31a0ab3995dcc2335823102aec2dacac69812',
-        })()
-        M.validate_pinned_evidence(case,args)
-        args.preview_run_id=41330807520
-        with self.assertRaises(M.Refusal):
-            M.validate_pinned_evidence(case,args)
+    def test_issue_5079_preview_only_restore_governance_and_substitution_refusals(self):
+        """Bind replacement ownership separately from the historical orphan evidence."""
+        from types import SimpleNamespace
+        import copy
+        main='a'*40
+        merged='1a467b361'+'0'*31
+        with tempfile.TemporaryDirectory() as directory:
+            root=pathlib.Path(directory); (root/'supabase/migrations').mkdir(parents=True)
+            orphan=root/'20261101125528_curated_licensor_scrape_characters_restore.sql'
+            orphan.write_text('select 1;')
+            source=root/'source'; (source/'supabase/migrations').mkdir(parents=True)
+            replacement=source/'supabase/migrations/20261101153043_curated_scrape_property_character_links.sql'
+            replacement.write_text('select 2;')
+            # Exercise the same source-tree resolution used by the command entry point.
+            resolved,statements=M.load_replacement(replacement.parent,'20261101153043')
+            evidence=root/'evidence'; evidence.mkdir()
+            (evidence/'preview-ledger-before.txt').write_text(json.dumps([{'version':'20261101000000'}]))
+            (evidence/'preview-ledger-after.txt').write_text(json.dumps([{'version':'20261101000000'},{'version':'20261101125528'}]))
+            (evidence/'preview-apply.txt').write_text('Applying migration '+orphan.name)
+            args=SimpleNamespace(repo=root,main_sha=main,issue=5079,claim=5339,source_pr=5361,
+                orphan_version='20261101125528',replacement_version='20261101153043',
+                source_pr_dir=source,orphan_source_dir=root/'orphan',orphan_migration=orphan,
+                replacement_migration=resolved,preview_evidence_dir=evidence,
+                preview_run_id=41310201660,preview_artifact_id=13084942989,
+                preview_artifact_digest='sha256:325d7125162f3736cf5989d477c31a0ab3995dcc2335823102aec2dacac69812')
+            rows={
+                'issue':{'number':5079,'state':'closed'},
+                'claim':{'number':5339,'state':'closed','title':'CLAIM: #5079 links','body':'version: 20261101153043'},
+                'pr':{'number':5361,'state':'closed','merged':True,'merge_commit_sha':merged},
+                'pr_files':[{'filename':'supabase/migrations/'+replacement.name}],
+                'run':{'id':args.preview_run_id,'status':'completed','conclusion':'success',
+                    'event':'workflow_dispatch','path':'.github/workflows/shared-supabase-migrations.yml',
+                    'head_sha':'900dd82892e3dd1d73d270d39c76544f2a2b5903'},
+                'artifact':{'id':args.preview_artifact_id,'workflow_run':{'id':args.preview_run_id},
+                    'digest':args.preview_artifact_digest,'expired':False,
+                    'name':'preview-migration-apply-914106d2c3874d3b214dd4191f096ee547772f0e'},
+            }
+            for key in rows:setattr(args,key+'_json',root/(key+'.json'))
+            def git(where,*command):
+                if command[0]=='merge-base':return ''
+                if where==args.orphan_source_dir:return '914106d2c3874d3b214dd4191f096ee547772f0e'
+                return main
+            def execute(data):
+                for key,value in data.items():getattr(args,key+'_json').write_text(json.dumps(value))
+                with patch.object(M,'git',side_effect=git):
+                    return M.validate_governance(args,['select 1'],statements)
+            self.assertEqual(execute(rows)['case_mode'],'replacement_pending')
+            mutations=[
+                ('orphan-claim',lambda d:d['claim'].update(number=5323)),
+                ('orphan-version-in-claim',lambda d:d['claim'].update(body='version: 20261101125528')),
+                ('orphan-pr',lambda d:d['pr'].update(number=5324)),
+                ('missing-replacement',lambda d:d.update(pr_files=[])),
+                ('orphan-exposed',lambda d:d['pr_files'].append({'filename':'supabase/migrations/'+orphan.name})),
+                ('wrong-producer',lambda d:d['run'].update(head_sha='b'*40)),
+                ('wrong-applied-source',lambda d:d['artifact'].update(name='preview-migration-apply-'+'b'*40)),
+            ]
+            for label,mutate in mutations:
+                with self.subTest(label=label):
+                    changed=copy.deepcopy(rows);mutate(changed)
+                    with self.assertRaises(M.Refusal):execute(changed)
+            for field,bad in [('preview_run_id',1),('preview_artifact_id',1),('preview_artifact_digest','sha256:0')]:
+                with self.subTest(pin=field):
+                    original=getattr(args,field);setattr(args,field,bad)
+                    changed=copy.deepcopy(rows)
+                    # Keep supplied API evidence internally consistent so only the pin refuses.
+                    changed['run']['id']=args.preview_run_id
+                    changed['artifact'].update(id=args.preview_artifact_id,digest=args.preview_artifact_digest,
+                        workflow_run={'id':args.preview_run_id})
+                    with self.assertRaisesRegex(M.Refusal,'pinned supported-case evidence'):execute(changed)
+                    setattr(args,field,original)
+            args.claim=5323;args.source_pr=5324
+            with self.assertRaises(M.Refusal):execute(rows)
 
     def test_issue_2506_rehearsal_reset_is_narrowly_evidence_bound(self):
         case=M.SUPPORTED_CASES[(2506,2510,2512,'20260907131610','20260907131610')]

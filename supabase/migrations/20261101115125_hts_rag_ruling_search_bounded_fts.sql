@@ -3,7 +3,7 @@
 -- After the CBP extraction bulk load evicted the cache, hts_rag_search_rulings took
 -- 98-120 s per call: the full-text pass ORed every query word and ranked every match
 -- with ts_rank over the TOASTed search_tsv. It now matches rulings holding all, or at
--- least 60%, of the words (each side capped at 1000) and ranks them by the subject.
+-- least half, of the words (each side capped at 1000) and ranks them by the subject.
 -- Signature, grants and the outer function are unchanged.
 
 -- Load pg_trgm before the function pins its parameter (see 20261101000005).
@@ -28,7 +28,7 @@ as $function$
     where p_scope_chapters is not null and c.role = 'held' and left(c.code, 2) = any (p_scope_chapters)
   ),
   -- The query's distinct stems (at most 8). The full-text pass matches rulings that
-  -- contain all of them, or at least 60% of them, instead of any one of them: an OR of
+  -- contain all of them, or at least half of them, instead of any one of them: an OR of
   -- every word matched ~16k rulings for a 4-word query, and ranking that many read
   -- thousands of pages from disk once the cache was cold (98-120 s per call, #5305).
   lex as materialized (
@@ -37,7 +37,7 @@ as $function$
           where p_tsquery is not null order by w limit 8) x
   ),
   need as materialized (
-    select greatest(1, ceil(count(*) * 0.6))::integer as k, count(*)::integer as n from lex
+    select greatest(1, ceil(count(*) / 2.0))::integer as k, count(*)::integer as n from lex
   ),
   combo (last_i, n, expr) as (
     select l.i, 1, quote_literal(l.w) from lex l

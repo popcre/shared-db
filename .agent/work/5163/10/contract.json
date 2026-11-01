@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
-  "generation": 9,
+  "generation": 10,
   "evidence_parent": {
     "work_issue": 5163,
-    "generation": 8,
-    "contract_sha256": "74dbf4fbda43edfd8ad40438030cb74480330dc96912588d354772f51d43c9d6"
+    "generation": 9,
+    "contract_sha256": "1ebfade3a28c391a94968b7ccbf862d4184ab46611c8fb79d855a0620d072962"
   },
   "work_issue": 5163,
   "work_type": "structural",
@@ -17,17 +17,25 @@
   "worktree": "/home/ahazan/repos/shared-db-wt-254-search-timeout",
   "allowed_paths": [
     "supabase/migrations/20261101000005_hts_rag_ruling_search.sql",
+    "config/preview-ledger-orphan-reconciliations.json",
+    "scripts/test_preview_ledger_orphan_reconcile.py",
     ".agent/work/5163/8/contract.json",
     ".agent/work/5163/8/completion.json",
     ".agent/work/5163/9/contract.json",
-    ".agent/work/5163/9/completion.json"
+    ".agent/work/5163/9/completion.json",
+    ".agent/work/5163/10/contract.json",
+    ".agent/work/5163/10/completion.json"
   ],
   "file_writes": [
     "supabase/migrations/20261101000005_hts_rag_ruling_search.sql",
+    "config/preview-ledger-orphan-reconciliations.json",
+    "scripts/test_preview_ledger_orphan_reconcile.py",
     ".agent/work/5163/8/contract.json",
     ".agent/work/5163/8/completion.json",
     ".agent/work/5163/9/contract.json",
-    ".agent/work/5163/9/completion.json"
+    ".agent/work/5163/9/completion.json",
+    ".agent/work/5163/10/contract.json",
+    ".agent/work/5163/10/completion.json"
   ],
   "db_reads": [],
   "db_writes": [
@@ -49,7 +57,8 @@
   ],
   "required_checks": [
     "bash scripts/check-sql.sh",
-    "git diff --check origin/main...HEAD"
+    "git diff --check origin/main...HEAD",
+    "python3 -m pytest -q scripts/test_preview_ledger_orphan_reconcile.py"
   ],
   "assumptions": [
     "pg_trgm and pgvector are installed in schema extensions on the shared project (verified read-only 2026-10-30)"

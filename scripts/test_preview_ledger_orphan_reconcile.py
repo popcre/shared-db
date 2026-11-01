@@ -65,6 +65,35 @@ class Tests(unittest.TestCase):
             'claim_state':'open',
         })
 
+    def test_issue_5079_preview_only_restore_is_narrowly_evidence_bound(self):
+        case=M.SUPPORTED_CASES[(5079,5323,5324)]
+        self.assertEqual(case,{
+            'mode':'replacement_pending',
+            'orphan_version':'20261101125528',
+            'replacement_version':'20261101153043',
+            'orphan_run_head':'900dd82892e3dd1d73d270d39c76544f2a2b5903',
+            'orphan_commit_sha':'914106d2c3874d3b214dd4191f096ee547772f0e',
+            'preview_run_id':41310201660,
+            'preview_artifact_id':13084942989,
+            'preview_artifact_digest':'sha256:325d7125162f3736cf5989d477c31a0ab3995dcc2335823102aec2dacac69812',
+            'merged_source':True,
+            'issue_state':'closed',
+            'claim_state':'closed',
+            'note':'Applied to preview as run 41310201660; promotion evidence never qualified, so it was never bound for production. Preview-only restore of Disney characters that production already holds. Its link rows are carried by 20261101153043, which reached production with 20261101153102.',
+        })
+
+    def test_issue_5079_evidence_pins_refuse_substitution(self):
+        case=M.SUPPORTED_CASES[(5079,5323,5324)]
+        args=type('A',(),{
+            'preview_run_id':41310201660,
+            'preview_artifact_id':13084942989,
+            'preview_artifact_digest':'sha256:325d7125162f3736cf5989d477c31a0ab3995dcc2335823102aec2dacac69812',
+        })()
+        M.validate_pinned_evidence(case,args)
+        args.preview_run_id=41330807520
+        with self.assertRaises(M.Refusal):
+            M.validate_pinned_evidence(case,args)
+
     def test_issue_2506_rehearsal_reset_is_narrowly_evidence_bound(self):
         case=M.SUPPORTED_CASES[(2506,2510,2512,'20260907131610','20260907131610')]
         self.assertEqual(case,{

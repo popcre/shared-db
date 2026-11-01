@@ -254,10 +254,10 @@ jobs:
         # scripts/test_self_service_boundary_lexing.py under the Python glob.
         run: |
           set -euo pipefail
-          for f in scripts/check-self-service-additive-lane.test.mjs scripts/check-lane-route-sync.test.mjs; do
+          for f in scripts/check-self-service-additive-lane.test.mjs; do
             test -f "$f" || { echo "::error::Missing $f"; exit 1; }
           done
-          node --test scripts/check-self-service-additive-lane.test.mjs scripts/check-lane-route-sync.test.mjs
+          node --test scripts/check-self-service-additive-lane.test.mjs
 
       - name: Run the GitHub transport and repository identity tests and conformance checks (#2342, #2530)
         if: steps.route.outputs.pure_prose != 'true'

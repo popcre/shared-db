@@ -122,9 +122,12 @@ def decide(prs: list[dict[str, Any]], runs: list[dict[str, Any]], held: callable
 
 def earlier_preview_apply(pr: dict[str, Any], runs: list[dict[str, Any]]) -> int | None:
     """The oldest successful post-merge preview apply of this PR, if any."""
-    tag = f"PR{pr['number']} "
+    # Recovery runs title themselves "PR " with no number, so match the versions.
+    def names_pr(title: str) -> bool:
+        words = title.split()
+        return all(v in words for v in pr["versions"])
     hits = [r for r in runs
-            if ((r.get("display_title") or "") + " ").startswith("DB preview apply") and tag in (r.get("display_title") or "") + " "
+            if (r.get("display_title") or "").startswith("DB preview apply") and names_pr(r.get("display_title") or "")
             and r.get("conclusion") == "success" and r.get("created_at", "") > pr["merged_at"]]
     return min(hits, key=lambda r: r.get("created_at", ""))["id"] if hits else None
 

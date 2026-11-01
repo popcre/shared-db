@@ -34,9 +34,12 @@ class EarlierPreviewApply(unittest.TestCase):
             {"id": 3, "conclusion": "success", "created_at": "2026-10-30T02:00:00Z", "display_title": "DB preview apply a PR5165 20261030190639"},
             {"id": 8, "conclusion": "failure", "created_at": "2026-10-31T01:00:00Z", "display_title": "DB preview apply a PR5165 20261030190639"},
             {"id": 6, "conclusion": "success", "created_at": "2026-10-31T01:30:00Z", "display_title": "DB preview apply a PR51650 x"},
+            {"id": 5, "conclusion": "success", "created_at": "2026-10-31T01:40:00Z", "display_title": "DB preview apply a PR 202610301906390"},
         ]
         self.assertEqual(m.earlier_preview_apply(pr, runs), 7)
         self.assertIsNone(m.earlier_preview_apply(pr, runs[3:]))
+        recovery = {"id": 4, "conclusion": "success", "created_at": "2026-10-31T01:50:00Z", "display_title": "DB preview apply a PR 20261030190639"}
+        self.assertEqual(m.earlier_preview_apply(pr, runs + [recovery]), 4)
 
 
 if __name__ == "__main__":

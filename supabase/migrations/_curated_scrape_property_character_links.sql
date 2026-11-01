@@ -43,7 +43,7 @@ do $links$
 declare
   v_issue constant text := 'popcre/shared-db#5079';
   v_claim constant text := 'popcre/shared-db#5313';
-  v_actor constant text := 'shared-db migration 20261101122911';
+  v_actor constant text := 'shared-db migration ';
   v_n integer;
   v_wb uuid;
   v_prop record;
@@ -67,7 +67,7 @@ begin
     values ('core', 'property', v_prop.id, v_prop.code, v_prop.name,
             'DC and Harry Potter are properties under Warner Bros, not their own licensors.',
             'Albert Hazan', timestamptz '2026-11-01 12:00:00+00', 'docs/owner-rulings.md 6.34',
-            'core.property.licensor_id moved to WB by migration 20261101122911');
+            'core.property.licensor_id moved to WB by migration ');
   end loop;
 
   create temporary table pg_temp.scrape_links on commit drop as

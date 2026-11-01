@@ -1,3 +1,4 @@
+-- derived-from: 20260814223552
 -- Issue popcre/shared-db#5377 (claim #5378): AI tag saves still hit the statement
 -- timeout after 20261101153023, because this function inserted one tag per statement
 -- and so fired the statement-level search refresh once per tag. Validation and the

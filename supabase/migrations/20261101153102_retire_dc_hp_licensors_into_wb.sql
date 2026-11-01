@@ -66,6 +66,11 @@ begin
       raise exception '#5079: plm.import_item_master_data no longer resolves licensors by the expected text';
     end if;
     execute replace(v_def, v_old, v_new);
+    select pg_get_functiondef(p.oid) into v_def from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'plm' and p.proname = 'import_item_master_data';
+    if position(v_new in v_def) = 0 then
+      raise exception '#5079: plm.import_item_master_data did not take the DC and HP redirect';
+    end if;
   end if;
 
   select id, name into v_wb, v_wb_name from core.licensor where code = 'WB';

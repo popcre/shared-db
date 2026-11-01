@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url'
 
 export const PRODUCTION_PROJECT_REF = 'qsllyeztdwjgirsysgai'
 export const PRODUCTION_PROJECT_URL = `https://api.supabase.com/v1/projects/${PRODUCTION_PROJECT_REF}`
-export const GENERATED_TYPES_SCHEMAS = Object.freeze(['public', 'dflow', 'plm', 'core', 'app'])
+export const GENERATED_TYPES_SCHEMAS = Object.freeze(['public', 'dflow', 'plm', 'core', 'app', 'hts_rag'])
 export const GENERATED_TYPES_PRODUCER = 'popcre/shared-db'
 export const GENERATED_TYPES_WORKFLOW_PATH = '.github/workflows/generate-database-types.yml'
 const SHA = /^[0-9a-f]{40}$/i

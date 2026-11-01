@@ -361,7 +361,7 @@
       "merged_source": true,
       "issue_state": "closed",
       "claim_state": "closed",
-      "note": "Applied to preview as run 41310201660; promotion evidence never qualified, so it was never bound for production. Preview-only restore of Disney characters that production already holds. Its link rows are carried by 20261101153043, which reached production with 20261101153102."
+      "note": "Applied to preview as run 41310201660; promotion evidence never qualified, so it was never bound for production. Preview-only restore of Disney characters that production already holds. Its link rows are carried by 20261101153043, which reached production with 20261101153102. Suppression registration: the reconciler additionally requires the replacement-side claim and source PR, which this identity does not carry (review finding #5391)."
     },
     {
       "issue": 5377,

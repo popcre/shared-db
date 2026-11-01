@@ -111,21 +111,24 @@
       "semantic_key": "scripts/production_business_risk_gate.py:28b95d22fe7cde0a3c9398625c92c820fa45356e75d284f5f4eae073104cc76a:context-48563e8e002165c59c801c89a7bb1c12d4b442955c125d737b699bbacab80163",
       "line_sha256": "28b95d22fe7cde0a3c9398625c92c820fa45356e75d284f5f4eae073104cc76a",
       "disposition": "excluded",
-      "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
+      "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation.",
+      "legacy_semantic_key": "scripts/production_business_risk_gate.py:28b95d22fe7cde0a3c9398625c92c820fa45356e75d284f5f4eae073104cc76a:1"
     },
     {
       "site": "scripts/production_business_risk_gate.py:2414",
       "semantic_key": "scripts/production_business_risk_gate.py:3fb4af7e3ddb6724b4c4ca06f6283e3b5208d66bde4fd70e7a9a8719bd7a9996:context-3f612043026324527e7b2fc830e8e5dac40583d3f89698e9da8a200c9c94272d",
       "line_sha256": "3fb4af7e3ddb6724b4c4ca06f6283e3b5208d66bde4fd70e7a9a8719bd7a9996",
       "disposition": "excluded",
-      "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
+      "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation.",
+      "legacy_semantic_key": "scripts/production_business_risk_gate.py:3fb4af7e3ddb6724b4c4ca06f6283e3b5208d66bde4fd70e7a9a8719bd7a9996:1"
     },
     {
       "site": "scripts/production_business_risk_gate.py:2415",
       "semantic_key": "scripts/production_business_risk_gate.py:fabdb1c33b277da40125b14521d3411518d67a5a462ad2386fab74207c009017:context-6dfa6e3dacc9348c64726a50c6dba84586fcd987f09d00790de6451eff696b55",
       "line_sha256": "fabdb1c33b277da40125b14521d3411518d67a5a462ad2386fab74207c009017",
       "disposition": "excluded",
-      "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation."
+      "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation.",
+      "legacy_semantic_key": "scripts/production_business_risk_gate.py:fabdb1c33b277da40125b14521d3411518d67a5a462ad2386fab74207c009017:1"
     }
   ]
 }

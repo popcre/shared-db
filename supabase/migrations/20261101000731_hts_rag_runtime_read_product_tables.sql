@@ -1,4 +1,4 @@
--- #5188: DesignFlow HTS runtime roles read the product, heading-decision and vocabulary
+-- #5244: DesignFlow HTS runtime roles read the product, heading-decision and vocabulary
 -- tables the classifier joins (fixes "permission denied for table hts_rag.hts_rag_ruling_products").
 -- Same runtime-read pattern as 20261030215400 (e.g. hts_rag_ruling_sentences): SELECT grant plus
 -- one unscoped select policy per runtime role. Workers keep their existing grants and policies.

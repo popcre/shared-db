@@ -14,12 +14,24 @@
 -- 20261030034959. This is a copy's exact name, not the similar-name mapping refused by
 -- the 2026-10-11 ruling. Every source edge used is a direct publication by the portal.
 --
--- LICENSOR. Property and Character must already share a licensor. Warner-scrape characters
--- all belong to WB, so DC and HP Properties produce no link here; that is a licensor
--- ownership question this load does not decide. OPA Properties must also carry canonical
--- studio evidence naming the Property's licensor.
+-- WARNER. Owner ruling, Albert Hazan, 2026-11-01 (verbatim): "DC and Harry Potter were not
+-- left out. they used to (Wrongly) be listed as their own licensors. that was wrong, they
+-- are properties under Warner Bros, which is how it is now." core.property still parented
+-- them to the DC and HP licensor rows, so their Properties move to WB here, one guarded
+-- authorization per row. plm.item, public.assets, public.style_groups and the two
+-- core.licensor rows are NOT changed here (docs/owner-rulings.md 6.34).
 --
--- Insert-only and idempotent: nothing existing is changed.
+-- LICENSOR. Property and Character must share a licensor. OPA Properties must also carry
+-- canonical studio evidence naming the Property's licensor.
+--
+-- Link writes are insert-only. Idempotent: a rerun moves and inserts nothing.
+
+alter table plm.licensing_write_authorization
+  drop constraint licensing_write_authorization_write_kind_check,
+  add constraint licensing_write_authorization_write_kind_check check (write_kind = any (array[
+    'scrape_consolidation', 'licensing_review_create', 'coldlion_status', 'canonical_merge',
+    'owner_ruling_fr_inactivation', 'owner_ruling_fr_removal', 'owner_ruling_fk_removal',
+    'owner_ruling_wb_property_reparent']::text[]));
 
 do $links$
 declare
@@ -27,7 +39,28 @@ declare
   v_claim constant text := 'popcre/shared-db#5313';
   v_actor constant text := 'shared-db migration 20261101122911';
   v_n integer;
+  v_wb uuid;
+  v_prop record;
 begin
+  select id into v_wb from core.licensor where code = 'WB';
+  for v_prop in
+    select p.id, p.code, p.name from core.property p
+      join core.licensor l on l.id = p.licensor_id where l.code in ('DC', 'HP') and v_wb is not null
+  loop
+    insert into plm.licensing_write_authorization
+      (backend_pid, transaction_id, target_table, write_kind, plan_id, plan_hash, actor, protected_columns, expires_at)
+    values (pg_backend_pid(), txid_current(), 'core.property', 'owner_ruling_wb_property_reparent', gen_random_uuid(),
+            encode(extensions.digest('5079/reparent/' || v_prop.id::text, 'sha256'), 'hex'),
+            v_actor, array['licensor_id'], clock_timestamp() + interval '1 minute');
+    update core.property set licensor_id = v_wb where id = v_prop.id;
+    insert into core.taxonomy_owner_ruling
+      (entity_schema, entity_table, entity_id, entity_code, entity_name, ruling, ruled_by, ruled_at, ruling_evidence, action_taken)
+    values ('core', 'property', v_prop.id, v_prop.code, v_prop.name,
+            'DC and Harry Potter are properties under Warner Bros, not their own licensors.',
+            'Albert Hazan', timestamptz '2026-11-01 12:00:00+00', 'docs/owner-rulings.md 6.34',
+            'core.property.licensor_id moved to WB by migration 20261101122911');
+  end loop;
+
   create temporary table pg_temp.scrape_links on commit drop as
   with mg as (
     select mg_code, min(btrim(mg_desc)) as d

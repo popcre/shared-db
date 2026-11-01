@@ -223,12 +223,22 @@ class GuardTests(unittest.TestCase):
     def test_preview_only_historical_restoration_is_never_production_allowlisted(self):
         self.assertEqual(
             PREVIEW_ONLY_HISTORICAL_RESTORATIONS,
-            {"20260817150944", "20260824150630"},
+            {"20260817150944", "20260824150630", "20261101065326", "20261101074415"},
         )
         with self.assertRaisesRegex(GuardError, "preview-only historical restoration"):
             parse_allowlist("20260817150944")
         with self.assertRaisesRegex(GuardError, "preview-only historical restoration"):
             parse_allowlist("20260824150630")
+
+    def test_issue_5330_stranded_versions_are_held_and_refused(self):
+        for version in ("20261101065326", "20261101074415"):
+            with self.subTest(version=version):
+                result = classify_pending_version(version, {"20261101005850"}, REPO)
+                self.assertEqual(result["kind"], "deliberately-held")
+                self.assertIn("Preview-only", result["reason"])
+                with self.assertRaisesRegex(GuardError, "preview-only historical restoration"):
+                    parse_allowlist(version)
+        self.assertEqual(parse_allowlist("20261101123510"), ["20261101123510"])
 
     def test_empty_allowlist_entries_require_the_exact_empty_refusal(self):
         for raw in ("", " ", "20260907131728,", "20260907131728, ,20260907152838"):

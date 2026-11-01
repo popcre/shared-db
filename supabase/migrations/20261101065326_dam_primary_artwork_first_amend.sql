@@ -1,4 +1,4 @@
--- Version: 20261101014849
+-- Version: 20261101065326
 -- Amend 20261101005850 per review-finding #5253 (issue #5259; application
 -- issue u2giants/popdam3#616).
 -- derived-from: 20261101005850
@@ -82,9 +82,9 @@ create trigger trg_compute_primary_sort_tier
 -- 3) Capture, BEFORE the backfill, the groups containing a tier-changed
 --    asset (finding 2): a group's winner cannot change without a member
 --    tier change, so only these groups need a primaries refresh afterwards.
-create temp table pg_temp.tier_changed_groups_20261101014849 (style_group_id uuid primary key) on commit drop;
+create temp table pg_temp.tier_changed_groups_20261101065326 (style_group_id uuid primary key) on commit drop;
 
-insert into pg_temp.tier_changed_groups_20261101014849 (style_group_id)
+insert into pg_temp.tier_changed_groups_20261101065326 (style_group_id)
 select distinct a.style_group_id
 from public.assets a
 where a.style_group_id is not null
@@ -172,7 +172,7 @@ begin
     from (
       select style_group_id,
              (row_number() over (order by style_group_id)) / 500 as bucket
-      from pg_temp.tier_changed_groups_20261101014849
+      from pg_temp.tier_changed_groups_20261101065326
     ) s
     group by bucket
   loop

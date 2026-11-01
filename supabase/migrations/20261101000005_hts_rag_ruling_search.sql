@@ -1,8 +1,11 @@
 -- Ruling search (designflow-backend#254 step 6, design docs/design_cbp-ruling-database.md §5-§6).
--- derived-from: 20261030190639
--- 20261030190639_hts_rag_ruling_search.sql was stranded: its production apply hit the
--- default statement timeout while backfilling search_tsv). Same objects, idempotent, with a
--- longer statement timeout; the stranded preview-only row is registered as an orphan.
+-- derived-from: none
+-- Reissue of 20261030190639_hts_rag_ruling_search.sql, which was stranded: its production
+-- apply hit the default statement timeout while backfilling search_tsv. Same objects,
+-- idempotent, with a longer statement timeout; the stranded preview-only row is registered
+-- as an orphan. Declared `none` deliberately: the stranded version is absent from the
+-- production ledger and this file re-creates the objects without depending on it, so a
+-- named base would make promotion base-absent (ai-review finding 1, issue #5246).
 -- Issue popcre/shared-db#5163 (claim #5174, reissued to 20261101000005).
 -- Two-pass hybrid search over active CBP rulings, fused by reciprocal rank fusion (k = 60):
 --   lists: full-text (weighted subject A + ruling text D), trigram on the subject,

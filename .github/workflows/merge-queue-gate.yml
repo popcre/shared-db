@@ -111,6 +111,8 @@ jobs:
         if: github.event_name == 'merge_group'
         env:
           GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
+          MERGE_GROUP_REF: ${{ github.event.merge_group.head_ref }}
+          PR_NUMBER: ${{ steps.queue.outputs.pr }}
         run: |
           set -euo pipefail
           git fetch --no-tags origin main

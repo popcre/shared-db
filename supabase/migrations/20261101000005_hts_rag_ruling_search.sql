@@ -1,5 +1,6 @@
 -- Ruling search (designflow-backend#254 step 6, design docs/design_cbp-ruling-database.md §5-§6).
--- derived-from: 20261030190639_hts_rag_ruling_search.sql (stranded: its production apply hit the
+-- derived-from: 20261030190639
+-- 20261030190639_hts_rag_ruling_search.sql was stranded: its production apply hit the
 -- default statement timeout while backfilling search_tsv). Same objects, idempotent, with a
 -- longer statement timeout; the stranded preview-only row is registered as an orphan.
 -- Issue popcre/shared-db#5163 (claim #5174, reissued to 20261101000005).

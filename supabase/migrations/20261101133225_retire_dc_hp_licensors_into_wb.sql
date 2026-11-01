@@ -1,7 +1,7 @@
 -- derived-from: none
--- Issue popcre/shared-db#5079 (claim #5319). Owner ruling 2026-11-01, docs/owner-rulings.md
+-- Issue popcre/shared-db#5079 (claim #5329). Owner ruling 2026-11-01, docs/owner-rulings.md
 -- 6.34. Albert Hazan, verbatim: "they are properties under Warner Bros" and "Yes, move them".
--- Follows 20261101122911, which moved the DC and HP Properties to WB.
+-- Follows 20261101133201, which moved the DC and HP Properties to WB.
 --
 -- WHAT STAYS. "DC" and "HP" remain ColdLion MG05 codes and SKU characters 6-7, so
 -- public.assets.licensor_code keeps them. Both core.licensor rows stay, inactive, as the
@@ -49,7 +49,7 @@ create trigger redirect_retired_wb_licensor before insert or update of licensor_
 
 do $retire$
 declare
-  v_actor constant text := 'shared-db migration 20261101123846';
+  v_actor constant text := 'shared-db migration 20261101133225';
   v_old constant text := 'from core.licensor where code=b.merch_group_05';
   v_new constant text := 'from core.licensor where code=case when b.merch_group_05 in (''DC'',''HP'') then ''WB'' else b.merch_group_05 end';
   v_def text;

@@ -4,6 +4,18 @@
 {
 "issue": 5163,
 "claim": 5174,
+"source_pr": 5242,
+"mode": "replacement_pending",
+"orphan_version": "20261101000005",
+"replacement_version": "20261101013801",
+"orphan_run_head": "c851aa473a78ec0be72e2699ab41a9423adbf960",
+"orphan_commit_sha": "13e965a09f1978e3d736f7c92ebbd6ca1a57d8b4",
+"issue_state": "open",
+"claim_state": "open"
+},
+{
+"issue": 5163,
+"claim": 5174,
 "source_pr": 5165,
 "mode": "replacement_pending",
 "orphan_version": "20261030190639",

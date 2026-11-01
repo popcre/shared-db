@@ -146,9 +146,10 @@ begin
   for v_batch in
     select array_agg(id order by id)
     from (
-      select id from public.style_groups order by id
+      select id, (row_number() over (order by id)) / 500 as bucket
+      from public.style_groups
     ) s
-    group by (row_number() over (order by id)) / 500
+    group by bucket
   loop
     perform public.refresh_style_group_primaries(v_batch);
   end loop;

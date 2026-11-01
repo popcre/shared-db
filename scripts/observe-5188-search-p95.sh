@@ -52,6 +52,10 @@ export PGPASSWORD="$SUPABASE_DB_PASSWORD"
 
 SCOPED_FILE="$OUT_DIR/scoped.txt"
 CORPUS_FILE="$OUT_DIR/corpus.txt"
+CORPUS_ERRORS="$LINK_DIR/corpus-errors.txt"
+CORPUS_TIMEOUTS=0
+# A failed rerun must not leave an earlier passing artifact available to upload.
+rm -f "$OUT_DIR/observation.json"
 : > "$SCOPED_FILE"
 : > "$CORPUS_FILE"
 
@@ -72,26 +76,44 @@ for ((i = 0; i < SAMPLES; i++)); do
   # Pass 2 shape: full corpus, recorded as context only. Bounded so one slow
   # sample cannot kill the run (run 41279896464 died on a statement timeout
   # here); a timed-out sample is recorded as a miss and the run continues.
-  MS="$(psql "$CONNINFO" -X -At -v ON_ERROR_STOP=1 -c \
+  if MS="$(LC_ALL=C psql "$CONNINFO" -X -qAt -v ON_ERROR_STOP=1 -v VERBOSITY=verbose -c \
     "set statement_timeout = '45s';
      select round((extract(epoch from clock_timestamp() - t0) * 1000)::numeric, 2)
        from (select clock_timestamp() as t0) s,
-            lateral (select count(*) from hts_rag.hts_rag_search_rulings('${ESCAPED}')) r" 2>/dev/null || echo TIMEOUT)"
-  [[ "$MS" =~ ^[0-9]+(\.[0-9]+)?$ ]] || MS="TIMEOUT"
+            lateral (select count(*) from hts_rag.hts_rag_search_rulings('${ESCAPED}')) r" 2>"$CORPUS_ERRORS")"; then
+    [[ "$MS" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "corpus sample $i produced no timing: $MS" >&2; exit 1; }
+  else
+    cat "$CORPUS_ERRORS" >&2
+    if grep -Eq '^ERROR:  57014: canceling statement due to statement timeout$' "$CORPUS_ERRORS"; then
+      MS="TIMEOUT"
+      CORPUS_TIMEOUTS=$((CORPUS_TIMEOUTS + 1))
+    else
+      exit 1
+    fi
+  fi
   echo "$MS" >> "$CORPUS_FILE"
 done
+
+if ((CORPUS_TIMEOUTS == SAMPLES)); then
+  echo "full-corpus observation failed: all $SAMPLES samples timed out" >&2
+  exit 1
+fi
 
 STATS="$(node -e '
 const fs = require("node:fs");
 const pct = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1))];
 const read = (f) => fs.readFileSync(f, "utf8").trim().split(/\s+/).filter(x => /^[0-9]+(\.[0-9]+)?$/.test(x)).map(Number).sort((a, b) => a - b);
 const s = read(process.argv[1]); const c = read(process.argv[2]);
+// Timeouts are censored at 45 s, not discarded: corpus percentiles are lower
+// bounds whenever a timeout is present (never percentiles of survivors alone).
+for (let i = 0; i < Number(process.argv[3]); i++) c.push(45000);
+c.sort((a, b) => a - b);
 console.log(pct(s, 50), pct(s, 95), pct(c, 50), pct(c, 95));
-' "$SCOPED_FILE" "$CORPUS_FILE")"
+' "$SCOPED_FILE" "$CORPUS_FILE" "$CORPUS_TIMEOUTS")"
 read -r SCOPED_P50 SCOPED_P95 CORPUS_P50 CORPUS_P95 <<<"$STATS"
 
 OBSERVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-echo "ruling search scoped p50=${SCOPED_P50}ms p95=${SCOPED_P95}ms | full-corpus p50=${CORPUS_P50}ms p95=${CORPUS_P95}ms | n=${SAMPLES} (server-side, migration admin)"
+echo "ruling search scoped p50=${SCOPED_P50}ms p95=${SCOPED_P95}ms | full-corpus lower-bound p50=${CORPUS_P50}ms p95=${CORPUS_P95}ms | corpus timeouts=${CORPUS_TIMEOUTS}/${SAMPLES} | n=${SAMPLES} (server-side, migration admin)"
 if awk -v p95="$SCOPED_P95" -v budget="$P95_BUDGET_MS" 'BEGIN { exit !(p95 < budget) }'; then :; else
   echo "chapter-scoped ruling search p95 ${SCOPED_P95}ms is not under ${P95_BUDGET_MS}ms"; exit 1
 fi
@@ -99,13 +121,15 @@ fi
 node -e '
 const fs = require("node:fs");
 const path = require("node:path");
-const [outDir, workIssue, observedAt, sp50, sp95, cp50, cp95, n, budget, repo, runId, sha] = process.argv.slice(1);
+const [outDir, workIssue, observedAt, sp50, sp95, cp50, cp95, n, budget, repo, runId, sha, timeouts] = process.argv.slice(1);
 const observation = {
   schema_version: 1, kind: "search-p95-observation",
   work_issue: Number(workIssue), environment: "production", result: "passed",
   observed_at: observedAt,
   p50_ms: Number(sp50), p95_ms: Number(sp95),
   corpus_p50_ms: Number(cp50), corpus_p95_ms: Number(cp95),
+  corpus_completed_samples: Number(n) - Number(timeouts), corpus_timeout_samples: Number(timeouts),
+  corpus_timeout_ms: 45000, corpus_percentiles_are_lower_bounds: Number(timeouts) > 0,
   samples: Number(n), budget_ms: Number(budget), workload: "chapter-scoped pass 1 (classifier benchmark)",
   producer: { repository: repo, run_id: Number(runId), commit_sha: String(sha).toLowerCase() },
 };
@@ -113,4 +137,4 @@ fs.mkdirSync(outDir, { recursive: true });
 fs.writeFileSync(path.join(outDir, "observation.json"), JSON.stringify(observation, null, 2) + "\n");
 console.log(`observation.json written with observed_at=${observedAt}`);
 ' "$OUT_DIR" "$WORK_ISSUE" "$OBSERVED_AT" "$SCOPED_P50" "$SCOPED_P95" "$CORPUS_P50" "$CORPUS_P95" \
-  "$SAMPLES" "$P95_BUDGET_MS" "${GITHUB_REPOSITORY:-popcre/shared-db}" "${GITHUB_RUN_ID:-0}" "${GITHUB_SHA:-0}"
+  "$SAMPLES" "$P95_BUDGET_MS" "${GITHUB_REPOSITORY:-popcre/shared-db}" "${GITHUB_RUN_ID:-0}" "${GITHUB_SHA:-0}" "$CORPUS_TIMEOUTS"

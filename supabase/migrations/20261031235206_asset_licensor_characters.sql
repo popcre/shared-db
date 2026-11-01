@@ -1,6 +1,7 @@
 -- #5231: asset <-> licensor character (core.character) tags for the PopDAM tagger.
 -- Mirrors public.asset_characters; the four DAM functions below are their live
 -- definitions with only the licensor-character additions.
+-- derived-from: 20260825010603, 20260825082910, 20260826144047
 
 create table public.asset_licensor_characters (
   asset_id uuid not null references public.assets(id) on delete cascade,

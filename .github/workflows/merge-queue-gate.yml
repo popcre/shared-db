@@ -3,64 +3,21 @@ name: Merge Queue Gate
 # The cross-event gate for the native merge queue (issue #2530 Phase C Step 7;
 # plan_shared_db_popcre_transfer_merge_queue.md).
 #
-# WHY THIS WORKFLOW EXISTS. A merge group runs on a SYNTHETIC commit — the one
-# queued pull request's head merged onto current main. That commit is not the
-# reviewed head, and the pull_request payload does not exist here, so the
-# PR-shaped gates cannot re-bind themselves. This workflow:
+# WHY THIS WORKFLOW EXISTS. A merge group runs on a SYNTHETIC commit -- the one
+# queued pull request's head merged onto current main. Owner ruling 2026-10-30
+# (popcre/ai-devops#2172 stage C2): this gate keeps only what protects production
+# data ordering, and it is advisory (not a required context):
 #
-#   1. resolves the ONE pull request the merge_group ref names and re-verifies
-#      it against the live API (open, base main, readable head) — zero,
-#      multiple, malformed, closed or wrong-base identities are refused;
-#   2. proves the exact reviewed PR head is an ANCESTOR of the synthetic group
-#      commit — the queue can never merge bytes that contain less than the
-#      reviewed head. The reviewed head is the AUTHORIZED implementation head
-#      (the commit carrying guarded-merge authorization), not blindly the live
-#      tip: a live tip that is implementation + an evidence-pair tail only is
-#      accepted the way `verifyGitEvidence` shapes a tail. Pair identity is
-#      the Agent work contract's job at admission; this gate only requires the
-#      tail files to be exactly one complete evidence pair. Containment binds
-#      to the authorized head, so a group built before the tail was pushed is
-#      still accepted and the tail may not be in the merged tree (canary #4321).
-#   3. requires the guarded merge lane's exact-head authorization status to be
-#      green on that PR head, then re-runs the SQL guards, production sidecars,
-#      live-proof probe and ascending-version ordering
-#      (cross-PR collision and lease re-checks removed, ai-devops#2172) against the correct identities;
-#   4. holds the group when the PRECEDING main commit added migrations until
-#      that exact commit carries `Post-merge preview rehearsal: success` —
-#      GitHub serializes merges, but only this gate knows a migration merge must
-#      rehearse on shared preview before the next migration merges; maintenance may repair its evidence;
-#   5. publishes the required `Migration guarded merge authorization` commit
-#      status on the group SHA — success only after every proof above, failure
-#      (fail-closed) whenever any of them refuses.
+#   1. single-PR identity: resolves the ONE pull request the merge_group ref
+#      names and re-verifies it against the live API, and proves its head is
+#      contained in the synthetic group commit;
+#   2. ascending migration versions: re-runs the SQL guards, production
+#      sidecars, live-proof probe and version ordering;
+#   3. the preview hold: when the PRECEDING main commit added migrations, the
+#      group waits until that exact commit carries
+#      `Post-merge preview rehearsal: success`.
 #
-# QUEUE INTERLOCK (workflow-refactor closeout §5). Steps 1–5 alone are not
-# enough: the preview hold can wait 25 minutes after step 3's authorization
-# read, and a production freeze can revoke that authorization or take the
-# production lane during the wait. Posting group-SHA success from the stale
-# read would let GitHub merge under a freeze. The `authorize` job therefore
-# owns the ASYNCHRONOUS MUTATION, not merely the status posting:
-#
-#   - it acquires the exclusive merge lane (production acquisition already
-#     refuses to overlap a held merge lane, and vice versa);
-#   - under that lock it re-reads the PR-head authorization and the production
-#     interlock (`--recheck-interlock`) — a revocation during the wait refuses;
-#   - only then does it post group-SHA success;
-#   - it HOLDS the merge lane until GitHub lands the actual merge, so a freeze
-#     cannot slip between status posting and the mutation;
-#   - failure after posting revokes the group-SHA status (fail-closed).
-#
-# The `verify` job is the required `Merge queue gate` check-run. The
-# `authorize` job is intentionally NOT a required context: its commit status
-# is the required signal, and keeping the job out of the required set is what
-# lets GitHub merge while the job still holds the lane through the mutation
-# (a required check-run still running would keep the group pending forever).
-#
-# On pull_request and workflow_dispatch `verify` proves its own contract tests
-# and nothing else, so the context can become required BEFORE the ruleset is
-# active and ordinary guarded merges stay viable the whole time.
-#
-# Concurrency: never cancel an in-progress merge-group run — GitHub re-requests
-# checks for the same group, and cancelling the older run could starve it.
+# Guarded-merge authorization, the queue interlock, claims and leases are retired.
 
 on:
   pull_request:
@@ -71,7 +28,7 @@ permissions:
   contents: read
   issues: read
   pull-requests: read
-  statuses: write
+
 
 concurrency:
   group: shared-db-merge-queue-${{ github.ref }}
@@ -132,55 +89,31 @@ jobs:
           tip="$(echo "$facts" | jq -r .headRefOid)"
           echo "pr=$(echo "$facts" | jq -r .number)" >> "$GITHUB_OUTPUT"
           echo "head=$tip" >> "$GITHUB_OUTPUT"
-          # Authorized head under the verifyGitEvidence ancestor+tail rule: the
-          # implementation commit carrying guarded-merge authorization, with at
-          # most this PR's own evidence pair after it (canary #4321).
-          auth="$(node scripts/merge-queue-contract.mjs --resolve-authorized-head --head-sha "$tip")"
-          echo "$auth"
-          echo "authorized_head=$(echo "$auth" | jq -r .authorizedHead)" >> "$GITHUB_OUTPUT"
-          echo "authorized_mode=$(echo "$auth" | jq -r .mode)" >> "$GITHUB_OUTPUT"
 
-      - name: Prove the exact reviewed head is contained in the synthetic group commit
+      # popcre/ai-devops#2172 stage C2: the gate keeps only single-PR identity,
+      # ascending migration versions, and the preceding-migration preview hold.
+      # Guarded-merge authorization, claims and leases are retired.
+      - name: Prove the queued PR head is contained in the synthetic group commit
         if: github.event_name == 'merge_group'
         env:
           MERGE_GROUP_SHA: ${{ github.event.merge_group.head_sha }}
-          PR_HEAD: ${{ steps.queue.outputs.authorized_head }}
           PR_TIP: ${{ steps.queue.outputs.head }}
-          AUTH_MODE: ${{ steps.queue.outputs.authorized_mode }}
         run: |
           set -euo pipefail
           git cat-file -e "${MERGE_GROUP_SHA}^{commit}"
-          git cat-file -e "${PR_HEAD}^{commit}"
           git cat-file -e "${PR_TIP}^{commit}"
-          git merge-base --is-ancestor "$PR_HEAD" "$MERGE_GROUP_SHA" || {
-            echo "REFUSED: merge group $MERGE_GROUP_SHA does not contain the exact authorized PR head $PR_HEAD." >&2
+          git merge-base --is-ancestor "$PR_TIP" "$MERGE_GROUP_SHA" || {
+            echo "REFUSED: merge group $MERGE_GROUP_SHA does not contain the queued PR head $PR_TIP." >&2
             exit 1
           }
-          git merge-base --is-ancestor "$PR_HEAD" "$PR_TIP" || {
-            echo "REFUSED: live PR tip $PR_TIP is not a descendant of authorized head $PR_HEAD." >&2
-            exit 1
-          }
-          echo "Group $MERGE_GROUP_SHA contains the exact reviewed head $PR_HEAD (mode=$AUTH_MODE; live tip $PR_TIP)."
 
-      - name: Revalidate exact reviewed PR head and migration order
+      - name: Revalidate migration order
         if: github.event_name == 'merge_group'
         env:
           GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
-          PR_NUMBER: ${{ steps.queue.outputs.pr }}
-          REQUESTED_SHA: ${{ steps.queue.outputs.authorized_head }}
         run: |
           set -euo pipefail
           git fetch --no-tags origin main
-          # Newest-by-timestamp, never array order: a freeze revocation is a
-          # second row on the same context and must win over the earlier
-          # admission success. Shared helper keeps both readers aligned.
-          # REQUESTED_SHA is the authorized (implementation) head, not the live
-          # tip: authorization is bound to the reviewed head (plan §8).
-          authorization="$(node scripts/merge-queue-contract.mjs --authorization-state --head-sha "$REQUESTED_SHA")"
-          test "$authorization" = 'success' || {
-            echo "REFUSED: exact PR head $REQUESTED_SHA carries no successful guarded merge authorization (newest state: ${authorization:-none})." >&2
-            exit 1
-          }
           bash scripts/check-sql.sh
           node scripts/check-production-verification-sidecars.mjs --base origin/main
           node scripts/check-live-proof-probe.mjs
@@ -201,170 +134,3 @@ jobs:
             exit 0
           fi
           node scripts/merge-queue-contract.mjs --require-preview-rehearsal --sha "$target" --base-sha "$BASE_SHA"
-
-      - name: Publish fail-closed authorization when queue validation fails
-        if: github.event_name == 'merge_group' && failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          MERGE_GROUP_SHA: ${{ github.event.merge_group.head_sha }}
-        run: |
-          gh api "repos/${GITHUB_REPOSITORY}/statuses/$MERGE_GROUP_SHA" \
-            -f state=failure \
-            -f context='Migration guarded merge authorization' \
-            -f description='Merge queue validation failed; authorization refused'
-
-  # NOT a required context — see the header. This job owns the asynchronous
-  # mutation: merge-lane hold + fresh interlock re-check + status posting +
-  # hold-through-merge. A required check-run still running would deadlock the
-  # group (GitHub waits for the check; the check waits for the merge).
-  authorize:
-    name: Queue interlock
-    needs: verify
-    if: github.event_name == 'merge_group' && success()
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    # 15 min bounded lane wait + 15 min hold-through-merge + setup.
-    timeout-minutes: 40
-    permissions:
-      contents: write
-      issues: read # openClaims lists open issues; without it the listing returns only PRs and the interlock refuses every group
-      pull-requests: read
-      statuses: write
-      checks: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      # Read-only token from the pop-ai-watchers GitHub App: its own API budget, separate
-      # from the per-repository Actions installation limit. Writes keep github.token.
-      # Absent secret or mint failure -> empty output -> read steps fall back to github.token.
-      - name: Mint read-only API token (pop-ai-watchers app)
-        id: read_token
-        continue-on-error: true
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ secrets.POP_AI_WATCHERS_APP_ID }}
-          private-key: ${{ secrets.POP_AI_WATCHERS_PRIVATE_KEY }}
-          permission-actions: read
-          permission-checks: read
-          permission-contents: read
-          permission-issues: read
-          permission-pull-requests: read
-          permission-statuses: read
-      - name: Resolve the queued pull request for interlock ownership
-        id: queue
-        env:
-          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
-          MERGE_GROUP_REF: ${{ github.event.merge_group.head_ref }}
-        run: |
-          set -euo pipefail
-          facts="$(node scripts/merge-queue-contract.mjs --resolve-queue-pr)"
-          echo "$facts"
-          tip="$(echo "$facts" | jq -r .headRefOid)"
-          echo "pr=$(echo "$facts" | jq -r .number)" >> "$GITHUB_OUTPUT"
-          echo "head=$tip" >> "$GITHUB_OUTPUT"
-          auth="$(node scripts/merge-queue-contract.mjs --resolve-authorized-head --head-sha "$tip")"
-          echo "$auth"
-          echo "authorized_head=$(echo "$auth" | jq -r .authorizedHead)" >> "$GITHUB_OUTPUT"
-
-      - name: Acquire the exclusive merge lane through the actual mutation
-        id: merge_lock
-        env:
-          GH_TOKEN: ${{ github.token }}
-          # #5141: admission of a pull request that EDITS an unapplied migration
-          # proves the version is ledger-absent (read-only SELECT, the same one
-          # the edit guard runs); ordinary added-migration admissions never
-          # reach that read.
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        run: |
-          set -euo pipefail
-          # Mutual exclusion is enforced here: --acquire-merge refuses while the
-          # production lane is held, and production acquisition refuses while
-          # this lane is held. A freeze that started after admission therefore
-          # cannot overlap the mutation this job owns.
-          # acquireExclusive asserts head SHA against the live PR tip, not the
-          # authorized implementation head. Pass the live tip here; authorization
-          # and interlock reads below still bind to authorized_head.
-          # Contention waits (bounded, 900 s): another PR's run holding the lane
-          # through its own mutation is retried every 15 s with a fresh, complete
-          # --acquire-merge; any other refusal still fails on the first attempt.
-          node scripts/acquire-merge-lane-waiting.mjs --wait-seconds 900 --poll-seconds 15 -- --acquire-merge \
-            --owner "github-actions:${GITHUB_RUN_ID}" --pr "${{ steps.queue.outputs.pr }}" \
-            --head-sha "${{ steps.queue.outputs.head }}" > "$RUNNER_TEMP/merge-lock.json"
-          echo "owner_sha=$(jq -r .ownerSha "$RUNNER_TEMP/merge-lock.json")" >> "$GITHUB_OUTPUT"
-
-      - name: Re-check authorization and production interlock under the merge lock
-        env:
-          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
-          REQUESTED_SHA: ${{ steps.queue.outputs.authorized_head }}
-        run: |
-          set -euo pipefail
-          # The hold is a no-wait zone: never sit on the merge lane for a quota
-          # reset.
-          export GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS='0'
-          node scripts/merge-queue-contract.mjs --recheck-interlock --head-sha "$REQUESTED_SHA"
-
-      - name: Publish guarded authorization on the merge-group commit
-        id: publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-          MERGE_GROUP_SHA: ${{ github.event.merge_group.head_sha }}
-        run: |
-          gh api "repos/${GITHUB_REPOSITORY}/statuses/$MERGE_GROUP_SHA" \
-            -f state=success \
-            -f context='Migration guarded merge authorization' \
-            -f description='Interlock re-checked under the merge lock; lane held through the mutation'
-
-      - name: Hold the merge lane through the actual merge
-        id: hold_through_merge
-        env:
-          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
-          PR_NUMBER: ${{ steps.queue.outputs.pr }}
-          PR_HEAD_SHA: ${{ steps.queue.outputs.head }}
-          MERGE_GROUP_SHA: ${{ github.event.merge_group.head_sha }}
-          MERGE_GROUP_REF: ${{ github.event.merge_group.head_ref }}
-          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '0'
-        run: |
-          set -euo pipefail
-          # Read-only monitoring retains the healthy 15-minute budget while
-          # failing promptly on required red checks, ejection or head changes.
-          # Failure still revokes authorization and releases only our owner SHA.
-          node scripts/merge-queue-hold.mjs
-
-      - name: Revoke group authorization if the mutation did not land
-        id: revoke_group
-        if: failure() && steps.publish.outcome == 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          MERGE_GROUP_SHA: ${{ github.event.merge_group.head_sha }}
-        run: |
-          gh api "repos/${GITHUB_REPOSITORY}/statuses/$MERGE_GROUP_SHA" \
-            -f state=failure \
-            -f context='Migration guarded merge authorization' \
-            -f description='Queue interlock lost ownership before the mutation landed; authorization revoked'
-
-      # Fail fast when the interlock refuses BEFORE publishing (for example a
-      # live promotion merge freeze makes --acquire-merge refuse). Without
-      # this, the required context is never posted and GitHub holds the group
-      # in AWAITING_CHECKS until check_response_timeout_minutes, stalling every
-      # entry behind it (2026-10-25: PR #4759 head entry stalled ~30 minutes).
-      - name: Publish fail-closed authorization when the interlock refuses before publishing
-        if: failure() && steps.publish.outcome != 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          MERGE_GROUP_SHA: ${{ github.event.merge_group.head_sha }}
-        run: |
-          gh api "repos/${GITHUB_REPOSITORY}/statuses/$MERGE_GROUP_SHA" \
-            -f state=failure \
-            -f context='Migration guarded merge authorization' \
-            -f description='Queue interlock refused before authorization; group fails closed'
-
-      - name: Release the exclusive merge lane with ownership proof
-        if: always() && steps.merge_lock.outputs.owner_sha != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          OWNER_SHA: ${{ steps.merge_lock.outputs.owner_sha }}
-        run: node scripts/manage-migration-author-lanes.mjs --release-merge --owner-sha "$OWNER_SHA"

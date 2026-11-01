@@ -22,6 +22,7 @@ jobs:
       - uses: supabase/setup-cli@v1
       - name: Time hts_rag_search_rulings on production (read-only)
         env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: bash scripts/observe-5188-search-p95.sh
       - uses: actions/upload-artifact@v4

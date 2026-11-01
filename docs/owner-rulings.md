@@ -2229,6 +2229,8 @@ Verbatim from Albert, relayed from the PopDAM session (2026-11-01):
 
 **Effect.** DC and Harry Potter are not licensors. Their Properties belong to `WB` WARNER BROS, and their Characters resolve through the Warner scrape. Migration `20261101122911` moves their `core.property` rows to `WB`.
 
-**Not yet aligned (verified production, 2026-11-01).** The `DC` and `HP` rows remain active in `core.licensor`; `plm.item` (1,254 rows), `public.assets` (4,236), `public.style_groups` (736) and `plm.property_import` (51) still point at them, and four ColdLion licensor source refs still map to them.
+Albert confirmed the move of existing rows, verbatim (2026-11-01): "Yes, move them".
+
+**SKU codes stay.** `DC` and `HP` remain valid ColdLion codes and SKU characters 6-7. They resolve to `WB`; the two `core.licensor` rows stay `inactive` so those codes and old history still have a referent. Every prior row is archived in `archive.dc_hp_wb_repoint_20261101`.
 
 Posted by Claude chat 8b15975b-42fa-4ebc-acab-6338808d482a on hetz

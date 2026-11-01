@@ -18,13 +18,19 @@
 -- left out. they used to (Wrongly) be listed as their own licensors. that was wrong, they
 -- are properties under Warner Bros, which is how it is now." core.property still parented
 -- them to the DC and HP licensor rows, so their Properties move to WB here, one guarded
--- authorization per row. plm.item, public.assets, public.style_groups and the two
--- core.licensor rows are NOT changed here (docs/owner-rulings.md 6.34).
+-- authorization per row, after archiving each row's old parent. Albert then confirmed
+-- (verbatim, 2026-11-01): "Yes, move them". The rows that still reference the DC and HP
+-- licensors are re-pointed by the following migration (docs/owner-rulings.md 6.34).
 --
 -- LICENSOR. Property and Character must share a licensor. OPA Properties must also carry
 -- canonical studio evidence naming the Property's licensor.
 --
 -- Link writes are insert-only. Idempotent: a rerun moves and inserts nothing.
+
+create table if not exists archive.dc_hp_wb_repoint_20261101 (
+  source_table text not null, row_key text not null, old_row jsonb not null,
+  archived_at timestamptz not null default now(), primary key (source_table, row_key));
+alter table archive.dc_hp_wb_repoint_20261101 enable row level security;
 
 alter table plm.licensing_write_authorization
   drop constraint licensing_write_authorization_write_kind_check,
@@ -47,6 +53,9 @@ begin
     select p.id, p.code, p.name from core.property p
       join core.licensor l on l.id = p.licensor_id where l.code in ('DC', 'HP') and v_wb is not null
   loop
+    insert into archive.dc_hp_wb_repoint_20261101 (source_table, row_key, old_row)
+    select 'core.property', x.id::text, to_jsonb(x) from core.property x where x.id = v_prop.id
+    on conflict do nothing;
     insert into plm.licensing_write_authorization
       (backend_pid, transaction_id, target_table, write_kind, plan_id, plan_hash, actor, protected_columns, expires_at)
     values (pg_backend_pid(), txid_current(), 'core.property', 'owner_ruling_wb_property_reparent', gen_random_uuid(),

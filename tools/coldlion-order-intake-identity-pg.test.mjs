@@ -614,3 +614,34 @@ for (const side of ['placeholder','google']) {
     });
   }
 }
+
+test('existing linked value refresh validates source corrections before touching saved values', {skip:!container},()=>{
+  resetScopeFixture();
+  const source=psql(`select source_id from plm.production_order_line_source_ref where source_system='coldlion'`);
+  const correction=JSON.stringify({version:1,source_id:source,original_sku:'SCOPED-ITEM',canonical_sku:'SCOPED-ITEM',original_customer_po:'62004433',canonical_customer_po:'62004433',evidence_ref:'test5402'});
+  psql(`update plm.production_order_line_source_ref set metadata=metadata || jsonb_build_object('orderlist_source_correction','${correction}'::jsonb);
+    insert into plm.production_order(production_order_number) values('D-EXISTING');
+    update plm.production_order_line set production_order_id=(select id from plm.production_order where production_order_number='D-EXISTING');
+    insert into plm.production_order_line_source_ref(production_order_line_id,source_system,source_id,is_primary,metadata)
+      select id,'google_order_list','google:existing',true,'{}' from plm.production_order_line;`);
+  psql(buildAutoMergeSql({runId:run(),write:true}));
+  assert.equal(psql(`select metadata->'coldlion_values'->>'quantity_ordered' from plm.production_order_line`),'24');
+  psql(`update coldlion.intake_order_component set order_qty=31`);
+  assert.equal(psql(buildAutoMergeSql({runId:run(),write:true})),'0','refresh continues without any newly merged pairs');
+  assert.equal(psql(`select metadata->'coldlion_values'->>'quantity_ordered' from plm.production_order_line`),'31');
+  psql(`update coldlion.intake_order_line set po_number='SOURCE-CHANGED';update coldlion.intake_order_component set order_qty=77`);
+  const before=psql(`select to_jsonb(l) from plm.production_order_line l`);
+  assert.throws(()=>psql(buildAutoMergeSql({runId:run(),write:true})),/source correction no longer matches/);
+  assert.equal(psql(`select to_jsonb(l) from plm.production_order_line l`),before,'stale existing-linked correction cannot overwrite coldlion_values');
+  for (const protectedCase of ['header-void','line-void','cancelled-status','cancellation-proof']) {
+    psql(`update plm.production_order set voided_at=null;
+      update plm.production_order_line set voided_at=null,status=null,metadata=metadata-'orderlist_source_cancellation'`);
+    if(protectedCase==='header-void') psql(`update plm.production_order set voided_at=now()`);
+    if(protectedCase==='line-void') psql(`update plm.production_order_line set voided_at=now()`);
+    if(protectedCase==='cancelled-status') psql(`update plm.production_order_line set status='cancelled'`);
+    if(protectedCase==='cancellation-proof') psql(`update plm.production_order_line set metadata=metadata || '{"orderlist_source_cancellation":{"version":1}}'::jsonb`);
+    const protectedBefore=psql(`select to_jsonb(l) from plm.production_order_line l`);
+    assert.equal(psql(buildAutoMergeSql({runId:run(),write:true})),'0',protectedCase+' is outside linked refresh and guard scope');
+    assert.equal(psql(`select to_jsonb(l) from plm.production_order_line l`),protectedBefore);
+  }
+});

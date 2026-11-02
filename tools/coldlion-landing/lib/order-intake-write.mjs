@@ -1043,9 +1043,22 @@ export function buildAutoMergeSql({ runId, write = false } = {}) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(runId ?? "")) {
     throw new Error("buildAutoMergeSql requires a UUID run id");
   }
+  // Existing linked rows also receive a source-value refresh. Validate that
+  // exact mutation scope as well as the newly selected consolidation pairs.
+  const refreshEligibility = `r.source_system = 'coldlion'
+    and r.source_id ~ '^coldlion:so:[0-9]+:line:[0-9]+:component:[0-9]+$'
+    and coalesce(p.metadata ->> 'production_order_number_origin', '') <> 'coldlion_intake_placeholder'
+    and pl.voided_at is null and p.voided_at is null
+    and pl.status is distinct from 'cancelled'
+    and not (coalesce(pl.metadata,'{}'::jsonb) ? 'orderlist_source_cancellation')`;
   const refPredicate = `r.production_order_line_id in (
     select placeholder_line from pg_temp.coldlion_auto_merge
-    union select google_line from pg_temp.coldlion_auto_merge)`;
+    union select google_line from pg_temp.coldlion_auto_merge
+    union select r.production_order_line_id
+      from plm.production_order_line_source_ref r
+      join plm.production_order_line pl on pl.id=r.production_order_line_id
+      join plm.production_order p on p.id=pl.production_order_id
+      where ${refreshEligibility})`;
   return `begin isolation level repeatable read;
 
 create temporary table coldlion_auto_merge (placeholder_line uuid primary key, google_line uuid unique not null) on commit drop;
@@ -1192,12 +1205,7 @@ cur as (
   left join oh
     on oh.sales_order_no = split_part(r.source_id, ':', 3)::bigint
    and oh.sales_order_line_no = split_part(r.source_id, ':', 5)::integer
-  where r.source_system = 'coldlion'
-    and r.source_id ~ '^coldlion:so:[0-9]+:line:[0-9]+:component:[0-9]+$'
-    and coalesce(p.metadata ->> 'production_order_number_origin', '') <> 'coldlion_intake_placeholder'
-    and pl.voided_at is null and p.voided_at is null
-    and pl.status is distinct from 'cancelled'
-    and not (coalesce(pl.metadata,'{}'::jsonb) ? 'orderlist_source_cancellation')
+  where ${refreshEligibility}
   order by r.production_order_line_id, r.source_id
 )
 update plm.production_order_line pl

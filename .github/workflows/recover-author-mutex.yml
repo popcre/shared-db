@@ -38,5 +38,5 @@ jobs:
         run: |
           set -euo pipefail
           test "$CONFIRMATION" = "RECOVER $EXPECTED_SHA"
-          node scripts/manage-migration-author-lanes.mjs --recover-author-mutex \
+          node scripts/manage-migration-coordination.mjs --recover-author-mutex \
             --expected-sha "$EXPECTED_SHA" --confirm-stale

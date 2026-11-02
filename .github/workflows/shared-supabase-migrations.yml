@@ -177,7 +177,7 @@ jobs:
           TRAIN_TARGET: ${{ inputs.target == 'preview' && inputs.mode == 'apply' && inputs.historical_preview_source_pr_map != '' && inputs.historical_preview_source_pr == '' && inputs.merged_preview_source_pr == '' && inputs.merged_preview_source_pr_map == '' && inputs.claim_pr == '' && inputs.claim_head_sha == '' && inputs.source_pr == '' && 'production' || inputs.target }}
           TRAIN_COMMIT: ${{ inputs.commit_sha }}
           TRAIN_ALLOWLIST: ${{ inputs.target == 'production' && inputs.production_allowlist || inputs.preview_allowlist }}
-        run: node scripts/manage-migration-author-lanes.mjs --verify-train-dispatch "$TRAIN_REF" --target "$TRAIN_TARGET" --commit-sha "$TRAIN_COMMIT" --allowlist "$TRAIN_ALLOWLIST"
+        run: node scripts/manage-migration-coordination.mjs --verify-train-dispatch "$TRAIN_REF" --target "$TRAIN_TARGET" --commit-sha "$TRAIN_COMMIT" --allowlist "$TRAIN_ALLOWLIST"
       - name: Test the migration-train manifest and manager commands
         run: node --test scripts/db-flow/migration-train.test.mjs
       - name: Run SQL checks
@@ -648,12 +648,12 @@ jobs:
             fi
           fi
           test -n "$CLAIM_PR"; test -n "$CLAIM_HEAD_SHA"
-          ADMITTED_ISSUE="$(node scripts/manage-migration-author-lanes.mjs --resolve-admitted-issue-for-pr "$CLAIM_PR" | jq -r .issue)"
+          ADMITTED_ISSUE="$(node scripts/manage-migration-coordination.mjs --resolve-admitted-issue-for-pr "$CLAIM_PR" | jq -r .issue)"
           test "$ADMITTED_ISSUE" -gt 0
           LOCK_KIND=preview
           if [ -n "$HISTORICAL_SOURCE_PR" ]; then LOCK_KIND=preview-recovery; fi
           if [ -n "${MERGED_SOURCE_PR:-}" ]; then LOCK_KIND=preview-rehearsal; fi
-          node scripts/manage-migration-author-lanes.mjs --acquire-$LOCK_KIND \
+          node scripts/manage-migration-coordination.mjs --acquire-$LOCK_KIND \
             --admit-issue "$ADMITTED_ISSUE" \
             --owner "github-actions:${GITHUB_RUN_ID}" --pr "$CLAIM_PR" --head-sha "$CLAIM_HEAD_SHA" \
             "${LANE_VERSIONS[@]}" \
@@ -1072,7 +1072,7 @@ jobs:
           OWNER_SHA: ${{ steps.preview_lock.outputs.owner_sha }}
         # Every preview lane kind writes the SAME ref, so one release covers all
         # three. Named --release-preview because that is the ref's name.
-        run: node scripts/manage-migration-author-lanes.mjs --release-preview --owner-sha "$OWNER_SHA"
+        run: node scripts/manage-migration-coordination.mjs --release-preview --owner-sha "$OWNER_SHA"
 
   # A successful merged-main rehearsal already carries every fact needed to
   # decide whether the existing production lane may start. This job performs
@@ -1257,7 +1257,7 @@ jobs:
             exit 2
           fi
           echo "source_head=$SOURCE_HEAD" >> "$GITHUB_OUTPUT"
-          ADMISSION="$(node scripts/manage-migration-author-lanes.mjs --resolve-admitted-issue-for-pr "$SOURCE_PR")"
+          ADMISSION="$(node scripts/manage-migration-coordination.mjs --resolve-admitted-issue-for-pr "$SOURCE_PR")"
           WORK_ISSUE="$(jq -r 'if (.issue | type) == "number" and .issue >= 1 then .issue else error("resolver returned no positive issue") end' <<<"$ADMISSION")"
           if [ -n "${TRAIN_WORK_ISSUE:-}" ]; then test "$WORK_ISSUE" = "$TRAIN_WORK_ISSUE"; fi
           echo "work_issue=$WORK_ISSUE" >> "$GITHUB_OUTPUT"
@@ -1883,9 +1883,9 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$SOURCE_PR"
-          ADMITTED_ISSUE="$(node scripts/manage-migration-author-lanes.mjs --resolve-admitted-issue-for-pr "$SOURCE_PR" | jq -r .issue)"
+          ADMITTED_ISSUE="$(node scripts/manage-migration-coordination.mjs --resolve-admitted-issue-for-pr "$SOURCE_PR" | jq -r .issue)"
           test "$ADMITTED_ISSUE" -gt 0
-          node scripts/manage-migration-author-lanes.mjs --acquire-production \
+          node scripts/manage-migration-coordination.mjs --acquire-production \
             --admit-issue "$ADMITTED_ISSUE" --pr "$SOURCE_PR" \
             --owner "github-actions:${GITHUB_RUN_ID}" --head-sha "$REQUESTED_SHA" \
             > "$RUNNER_TEMP/production-lock.json"
@@ -2218,7 +2218,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           OWNER_SHA: ${{ steps.production_lock.outputs.owner_sha }}
-        run: node scripts/manage-migration-author-lanes.mjs --release-production --owner-sha "$OWNER_SHA"
+        run: node scripts/manage-migration-coordination.mjs --release-production --owner-sha "$OWNER_SHA"
       # PROMOTION MERGE FREEZE (owner instruction 2026-10-02, "assign someone to
       # pause merges during production runs"). A session may set the freeze for
       # this source PR before drawing the risk assessment; the run ending ends it.
@@ -2230,4 +2230,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_PR: ${{ inputs.source_pr }}
-        run: node scripts/manage-migration-author-lanes.mjs --release-promotion-freeze --pr "$SOURCE_PR"
+        run: node scripts/manage-migration-coordination.mjs --release-promotion-freeze --pr "$SOURCE_PR"

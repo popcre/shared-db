@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "work_issue": 4508,
+  "pr": 5397,
+  "base_sha": "523222ab1584d252c7ea387a5ebf2f5389c6cdea",
+  "head_sha": "02226baf0c3127f4a2bed34475d6c801a4720bf9",
+  "contract_ref": "refs/db-contracts/4508/19",
+  "contract_sha256": "28dcfbf507f57ba9a008dc200334afeb05be4e1f9015d5ccff020395e994117d",
+  "files_changed": [
+    "config/atomic-migration-allowlist.json",
+    "supabase/migrations/20261102003027_dam_dense_group_vectors.sql",
+    "supabase/tests/popdam_dense_group_vectors_contracts.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "function public.search_dam_documents",
+    "function public.dam_search_semantic_anchor",
+    "table dam.search_group_vectors",
+    "function dam.sync_search_group_vectors",
+    "trigger trg_sync_search_group_vectors on public.dam_search_documents"
+  ],
+  "migration_versions": [
+    "20261102003027"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL guards passed."
+    },
+    {
+      "command": "isolated PostgreSQL17/pgvector migration plus popdam_dense_group_vectors_contracts.sql",
+      "exit_code": 0,
+      "evidence": "Migration and vector parity, insert, replace, key change, invalidate, delete, asset isolation and privilege checks passed."
+    },
+    {
+      "command": "compare canonical function definitions",
+      "exit_code": 0,
+      "evidence": "Both bodies byte identical except exact-scan relation; all scoring and authorization preserved."
+    }
+  ],
+  "assumptions_resolved": [
+    "Authenticated live anchor hit 5s timeout and search hit 30s timeout; exact group vector scan exceeded 15s under load",
+    "Both search function bodies remain byte identical except exact-scan relation",
+    "Private dense projection tracks every vector mutation in the same transaction"
+  ],
+  "stop_conditions_hit": [],
+  "outcome": "ready-for-merge"
+}

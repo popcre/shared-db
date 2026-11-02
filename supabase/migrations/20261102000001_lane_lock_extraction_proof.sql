@@ -1,3 +1,4 @@
+-- catalog-verification: no-op comment-only lock-extraction proof; it changes no database object
 -- Comment-only migration: proof that the extracted exclusive lock code works.
 -- This migration exercises the preview and production lock acquisition/release
 -- in scripts/lib/lanes/exclusive-locks.mjs (extracted from manage-migration-author-lanes.mjs

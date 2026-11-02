@@ -1,9 +1,11 @@
 """Regression coverage for pre-ledger sandbox dependencies (#4578)."""
 import tempfile
 import unittest
+import sys
 from pathlib import Path
 from unittest.mock import Mock
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from production_migration_guard import GuardError, preflight_batch, read_sandbox_dependencies
 
 

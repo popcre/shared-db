@@ -827,7 +827,7 @@ jobs:
           # `supabase db push` that runs in $GITHUB_WORKSPACE.
           ATOMIC_VERSION="$(python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
             --migrations-dir "$RUNNER_TEMP/bounded-preview/supabase/migrations" \
-            --classify-allowlist "$PREVIEW_ALLOWLIST")"
+            --target preview --classify-allowlist "$PREVIEW_ALLOWLIST")"
           if [ -n "$ATOMIC_VERSION" ]; then
             psql --version
             EXPECTED_PROJECT_REF="$PREVIEW_PROJECT_REF" python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
@@ -861,7 +861,7 @@ jobs:
           # inheriting an earlier job's claim.
           ATOMIC_VERSION="$(python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
             --migrations-dir "$RUNNER_TEMP/bounded-preview/supabase/migrations" \
-            --classify-allowlist "$PREVIEW_ALLOWLIST")"
+            --target preview --classify-allowlist "$PREVIEW_ALLOWLIST")"
           if [ -n "$ATOMIC_VERSION" ]; then
             psql --version
             EXPECTED_PROJECT_REF="$PREVIEW_PROJECT_REF" python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
@@ -1536,7 +1536,7 @@ jobs:
           # a `supabase db push` that runs in $GITHUB_WORKSPACE.
           ATOMIC_VERSION="$(python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
             --migrations-dir "$RUNNER_TEMP/bounded-production/supabase/migrations" \
-            --classify-allowlist "$PRODUCTION_ALLOWLIST")"
+            --target production --classify-allowlist "$PRODUCTION_ALLOWLIST")"
           if [ -n "$ATOMIC_VERSION" ]; then
             psql --version
             EXPECTED_PROJECT_REF="$PRODUCTION_PROJECT_REF" python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
@@ -2125,7 +2125,7 @@ jobs:
           # about to write to.
           ATOMIC_VERSION="$(python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
             --migrations-dir "$RUNNER_TEMP/bounded-production/supabase/migrations" \
-            --classify-allowlist "$PRODUCTION_ALLOWLIST")"
+            --target production --classify-allowlist "$PRODUCTION_ALLOWLIST")"
           if [ -n "$ATOMIC_VERSION" ]; then
             psql --version
             EXPECTED_PROJECT_REF="$PRODUCTION_PROJECT_REF" python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \

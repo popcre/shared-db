@@ -16,7 +16,7 @@
 do $characters$
 declare
   v_issue constant text := 'popcre/shared-db#5079';
-  v_actor constant text := 'shared-db migration 20261102012257 (Disney side rows for the preview restore)';
+  v_actor constant text := 'shared-db migration 20261102012258 (Disney side rows for the preview restore)';
   v_lic uuid;
   v_n integer;
 begin
@@ -77,7 +77,7 @@ $characters$;
 do $characters$
 declare
   v_issue constant text := 'popcre/shared-db#5079';
-  v_actor constant text := 'shared-db migration 20261102012257 (Disney side rows for the preview restore)';
+  v_actor constant text := 'shared-db migration 20261102012258 (Disney side rows for the preview restore)';
   v_lic uuid;
   v_n integer;
 begin
@@ -138,7 +138,7 @@ $characters$;
 do $characters$
 declare
   v_issue constant text := 'popcre/shared-db#5079';
-  v_actor constant text := 'shared-db migration 20261102012257 (Disney side rows for the preview restore)';
+  v_actor constant text := 'shared-db migration 20261102012258 (Disney side rows for the preview restore)';
   v_lic uuid;
   v_n integer;
 begin

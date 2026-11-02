@@ -19,7 +19,7 @@ Reviewer availability is the bounded active-lease index. Before the parallel-rev
 
 An exact-head verdict, terminal failure/replacement, moved head, merged PR, or closed PR makes a lease stale; a verdict additionally releases the lease it was recorded against, so the stale classification is the fallback for leases no verdict path reclaimed. Stale leases are deleted only while the global mutex is owned and the fixed ref still matches its expected SHA. If release cannot be proved, preserve the named ref/SHA and use the guarded `recover-author-mutex.yml` procedure.
 
-Phase 2 rules: protected object claims and active-author capacity are separate; relinquishment never releases a claim. The follow-on abandonment/recovery lifecycle is planned in [`../../plan_author_lane_abandonment_lifecycle.md`](../../plan_author_lane_abandonment_lifecycle.md); read its STATUS table before changing author-capacity behavior. Preview dependencies produce `PREVIEW_WAIT`, never a successful workflow. Immediately before manual preview dispatch, run `node scripts/manage-migration-author-lanes.mjs --prepare-preview-dispatch <issue>`, rerun the read-only selector/fresh-ledger check, and dispatch only its matching stored instruction. Historical recovery is `mode=apply` only; historical dry-run proves nothing. Use `--repair-preview-ready <ready-id> --issue <n>` only for a v2-bound stale wrong digest; a corrupt live digest requires an owner decision and no mutation. Reviewer reservations are per exact review, never per provider: one reviewer may run any number of reviews at once and there is no busy state or `review-wait` (issue #3130). The authoring engine is excluded from review (the authoring session declares it in `SHARED_DB_AUTHOR_ENGINE`; #3874); Gemini 3.8 Flash High re-entered the active rotation on 2026-09-06 (PR #2438, ai-devops issue #285) after a recorded live re-qualification, Kimi K3 was unpaused on 2026-09-07 (PR #2483) but is paused again as of 2026-09-22 (issue #3423), and Codex GPT-5.6 Sol was retired on 2026-09-06 (issue #2485) by owner instruction so it is not drawable. The exclusion is a same-engine conflict guard keyed on the authoring engine, not a marker (issue #2127; marker-resolver text below is historical).
+Phase 2 rules: protected object claims and active-author capacity are separate; relinquishment never releases a claim. The follow-on abandonment/recovery lifecycle is planned in [`../../plan_author_lane_abandonment_lifecycle.md`](../../plan_author_lane_abandonment_lifecycle.md); read its STATUS table before changing author-capacity behavior. Preview dependencies produce `PREVIEW_WAIT`, never a successful workflow. Immediately before manual preview dispatch, run `node scripts/manage-migration-coordination.mjs --prepare-preview-dispatch <issue>`, rerun the read-only selector/fresh-ledger check, and dispatch only its matching stored instruction. Historical recovery is `mode=apply` only; historical dry-run proves nothing. Use `--repair-preview-ready <ready-id> --issue <n>` only for a v2-bound stale wrong digest; a corrupt live digest requires an owner decision and no mutation. Reviewer reservations are per exact review, never per provider: one reviewer may run any number of reviews at once and there is no busy state or `review-wait` (issue #3130). The authoring engine is excluded from review (the authoring session declares it in `SHARED_DB_AUTHOR_ENGINE`; #3874); Gemini 3.8 Flash High re-entered the active rotation on 2026-09-06 (PR #2438, ai-devops issue #285) after a recorded live re-qualification, Kimi K3 was unpaused on 2026-09-07 (PR #2483) but is paused again as of 2026-09-22 (issue #3423), and Codex GPT-5.6 Sol was retired on 2026-09-06 (issue #2485) by owner instruction so it is not drawable. The exclusion is a same-engine conflict guard keyed on the authoring engine, not a marker (issue #2127; marker-resolver text below is historical).
 
 Relocated from `AGENTS.md` on 2026-08-20 (issue #1331, PR #1212) so the router stays under its
 80 KB ceiling. **Text unchanged, section number unchanged.** `AGENTS.md` §4 carries the operative
@@ -44,17 +44,27 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    the single-holder preview/merge/production refs, all of which remain
    enforced. More authors never means more sessions touching a live database;
    it means more drafts queueing for the same serial stages. Do not reintroduce
-   a lane cap in `scripts/manage-migration-author-lanes.mjs`; a test refuses it.
+   a lane cap in `scripts/manage-migration-coordination.mjs`; a test refuses it.
 
-   **Do not open a migration file first.** Acquire an author lane, object claim
-   and unique 14-digit version as one dispatch operation:
+   **Do not open a migration file first.** Reserve an object claim and a unique
+   14-digit version as one dispatch operation:
 
    ```bash
-   node scripts/manage-migration-author-lanes.mjs --claim \
-     --task "<issue and outcome>" --owner "<agent/session>" \
-     --branch "<branch>" --worktree "<absolute isolated worktree>" \
-     --objects "<every exact object written, comma-separated>"
+   node scripts/check-dispatch-collision.mjs \
+     --objects "<every exact object written, comma-separated>" --reserve-version
+
+   node scripts/check-dispatch-collision.mjs \
+     --task "<issue and outcome>" \
+     --objects "<every exact object written, comma-separated>" \
+     --version <the reserved version> --claim-body-file claim.md
+
+   gh issue create --body-file claim.md
    ```
+
+   The first command acquires the 14-digit version atomically
+   (`refs/db-claims/<version>`, create-if-absent); the second writes the fenced
+   claim body to a file so no shell quoting rule can lose the block (#669) and
+   prints the filing command.
 
    Allocation is serialized across computers by a GitHub-backed lock. The command
    fails closed if claims are unreadable, objects overlap an open claim or pull
@@ -64,15 +74,11 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    The created issue body is authoritative and machine-readable. Never hand-edit
    its fenced blocks. The permanent version ref prevents reuse even after a lease
    ends. Clock expiry releases neither protection nor capacity. When durable
-   external evidence blocks clean work, use `--relinquish-author-lease
-   --claim-number <n> --owner <owner> --blocked-on issue:#<n>`; after the blocker
-   clears, use `--resume-author-lease --claim-number <n> --owner <owner>
-   --lease-hours <hours>`. The value flag is `--claim-number` on both: a bare
-   `--claim` is the boolean that claims a lane. If a resumed claim still carries
-   `blocked_on`, `worktree_state` or `recovery` (refused as unreadable), repair it
-   with `--repair-resumed-claim --claim-number <n> --owner <owner>`; it only
-   removes that residue, and only after a recorded `author_capacity_resumed`
-   event (issue #3170).
+   external evidence blocks clean work, use the guarded capacity relinquishment.
+   (`--relinquish-author-lease`, `--resume-author-lease`, and
+   `--repair-resumed-claim` were retired by #5409; there is no replacement.
+   `--claim-number` remains the value flag on surviving commands; `--claim` was
+   the boolean that claimed a lane and is also retired.)
 
    **An expired lease is not an abandoned lane (issue #2301).** Expiry is
    created by time passing. It proves that nobody renewed a claim; it does not
@@ -83,7 +89,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    Detect with the read-only audit:
 
    ```bash
-   node scripts/manage-migration-author-lanes.mjs --abandonment-audit
+   node scripts/manage-migration-coordination.mjs --abandonment-audit
    ```
 
    It prints the same report as `--reconcile-flow` but cannot write: the
@@ -153,11 +159,10 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
 
    1. Open the durable abandonment audit issue above and let the audit output
       stand as its first evidence.
-   2. Relinquish capacity with the observed worktree state:
-      `--relinquish-author-lease --claim-number <n> --owner <owner> --blocked-on issue:#<audit issue> --worktree-state <clean|dirty|absent|remote>`.
-      The value flag is `--claim-number`; the CLI parses a bare `--claim` as the
-      boolean that claims a lane, so giving it a value dies in the parser on the
-      bare number.
+   2. Relinquish capacity with the observed worktree state.
+      (`--relinquish-author-lease` was retired by #5409; there is no replacement.
+      `--claim-number` remains the value flag; `--claim` was the boolean that
+      claimed a lane and is also retired.)
       `--worktree-state` is not optional on this path — acting on abandonment
       evidence is refused without it, because the observation is the operator's
       own and may never be inferred from a stale audit. The reconciler prints
@@ -167,17 +172,13 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
       are. Never delete a ref, a branch, a claim or a worktree to free a lane.
    4. Recover the work when the author or a successor returns, and record the
       recovery evidence on the audit issue.
-   5. Resume atomically with
-      `--resume-author-lease --claim-number <n> --owner <owner> --lease-hours <hours>`,
-      which re-runs every current collision, capacity and version check.
+   5. Resume atomically.
+      (`--resume-author-lease` was retired by #5409; there is no replacement.)
 
    **Parking a stuck claim** (the work should return later, but the session cannot
-   finish it now): `--release-claim <n> --owner <exact owner> --confirm-finished --park`
-   closes — never deletes — the claim branch's open pull request with a resume note,
-   then performs the ordinary release under the same owner, mutex and claim checks.
-   To resume: reopen the pull request, take a new claim on the same objects, and move
-   the migration to a new version (the parked version stays reserved forever).
-   `--park` never combines with `--retire`.
+   finish it now): `--release-claim`, `--park`, and `--retire` were all retired
+   by #5409; there is no replacement. (Historical note: `--park` never combined
+   with `--retire`.)
 
    **Procedure 2 — terminal retirement** (the work cannot or should not return):
 
@@ -187,7 +188,8 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
       allocator-assigned AI reviewer's APPROVE — see the authority boundary below.
    3. Close the pull request through the normal authenticated operator flow.
       Never delete its branch or its refs.
-   4. Retire the claim with the tombstoning `--release-claim`, which writes an
+   4. Retire the claim with the tombstoning `--release-claim` (retired by #5409;
+      there is no replacement), which writes an
       immutable tombstone and reads it back before the claim closes.
    5. A successor takes a fresh claim tuple and a fresh migration version. The
       retired version can never be reissued, and a retired claim is refused on
@@ -207,9 +209,9 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    (#3675). An `ambiguous` observation
    is not a state; re-observe, or treat it as `3` and stop.
 
-   Audit lanes with `node scripts/manage-migration-author-lanes.mjs --audit`.
+   Audit lanes with `node scripts/manage-migration-coordination.mjs --audit`.
    Audit and refill the dynamic queues with
-   `node scripts/manage-migration-author-lanes.mjs --queue-audit`. Every open
+   `node scripts/manage-migration-coordination.mjs --queue-audit`. Every open
    `db-work` issue must contain one authoritative block:
 
    ````text
@@ -292,7 +294,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    Publish the record with the ONE command that does it, then close the issue:
 
    ```bash
-   node scripts/manage-migration-author-lanes.mjs --complete-work --issue <n> --report-file report.json
+   node scripts/manage-migration-coordination.mjs --complete-work --issue <n> --report-file report.json
    ```
 
    It re-derives the evidence rather than trusting the file: a `merged` record must
@@ -349,7 +351,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    Record it, confirm the read-back, then close:
 
    ```bash
-   node scripts/manage-migration-author-lanes.mjs --complete-work --issue 2824 --report-file report.json
+   node scripts/manage-migration-coordination.mjs --complete-work --issue 2824 --report-file report.json
    ```
 
    #### Changing a scope `status:` — `--set-scope-status` (issue #2824)
@@ -365,7 +367,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    Hand editing a scope block is no longer the sanctioned route. Use:
 
    ```bash
-   node scripts/manage-migration-author-lanes.mjs --set-scope-status --issue <n> --status <ready|blocked|owner-decision> --reason "<one line>"
+   node scripts/manage-migration-coordination.mjs --set-scope-status --issue <n> --status <ready|blocked|owner-decision> --reason "<one line>"
    ```
 
    It takes the author mutex, re-parses the block, writes exactly the one
@@ -400,7 +402,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    claim database objects.
 
    **Each non-structural work type has a named exit** (AGENTS.md §0.0-C, and
-   `NON_STRUCTURAL_EXITS` in `scripts/manage-migration-author-lanes.mjs`, which is
+   `NON_STRUCTURAL_EXITS` in `scripts/lib/lanes/queue-routing.mjs`, which is
    the enforced form):
 
    | work type | exit | who does it |
@@ -437,7 +439,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
 
    A malformed slug is a hard parse error; a missing one is reported as
    `NO RETURN ADDRESS` and makes `--queue-audit` exit `2`. Return the issue with
-   `node scripts/manage-migration-author-lanes.mjs --return-issue <n>`, which
+   `node scripts/manage-migration-coordination.mjs --return-issue <n>`, which
    files it in the owning repository first and only then closes it here. Never
    close a rejected issue by hand. `return_to` is forbidden on structural work,
    which stays here.
@@ -470,12 +472,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    migration files.
 
    After an issue reaches an exact reviewed head, atomically assign its external
-   reviewer with:
-
-   ```bash
-   node scripts/manage-migration-author-lanes.mjs --assign-reviewer \
-     --issue <issue> --pr <pr> --head-sha <exact-head>
-   ```
+   reviewer. (`--assign-reviewer` was retired by #5409; there is no replacement.)
 
    When the owner restricts one workstream to named reviewers, add
    `--reviewer-allowlist <canonical-name,...>` to assignment and replacement.
@@ -527,7 +524,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    Codex GPT-5.6 Sol was retired from the rotation on 2026-09-06 (issue #2485)
    by owner instruction and is no longer drawable.
    That is exactly `ACTIVE_REVIEWERS` in
-   [`scripts/manage-migration-author-lanes.mjs`](../../scripts/manage-migration-author-lanes.mjs),
+   [`scripts/lib/lanes/reviewer-roster.mjs`](../../scripts/lib/lanes/reviewer-roster.mjs),
    which is `REVIEWERS` minus `RETIRED_REVIEWERS` and `QUARANTINED_REVIEWERS`;
    the code is the truth and this sentence must be re-derived from it, never the
    other way round.
@@ -613,10 +610,8 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    provider), a reviewer never reviews a change authored by its own engine, and a
    provider `ai-review-preflight` does not report `usable` is not drawn.
 
-   A reviewer that is truthfully unusable for one pull request is excluded with
-   `--exclude-reviewer --issue <issue> --pr <pr> --reviewer <name> --reason
-   <independence-conflict|terminal-unavailable> --evidence-sha
-   <durable-assignment-or-replacement-sha>`. The exclusion is immutable,
+   A reviewer that is truthfully unusable for one pull request is excluded.
+   (`--exclude-reviewer` was retired by #5409; there is no replacement.) The exclusion is immutable,
    PR-local, requires an existing assignment or replacement for the same
    reviewer, and releases that exact active lease when present. It does not
    create a failure record. New heads skip the reviewer; if exclusions consume the
@@ -648,24 +643,17 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    namespace each of them lives in.
 
    To continue the same head after excluding slot N, draw a fresh reviewer for
-   that exact head and slot. WHICH COMMAND depends on what was returned, and
-   only one of the two will work:
-
-   - the returned record was the ORIGINAL assignment -> re-run
-     `--assign-reviewer` for that head and slot;
-   - the returned record was a REPLACEMENT -> re-run
-     `--replace-failed-reviewer` with the SAME `--failed-sequence`.
-     `--assign-reviewer` recreates the original ref, which the merge gate will
-     not accept as an answer for a returned replacement.
+   that exact head and slot. (`--assign-reviewer` and `--replace-failed-reviewer`
+   were both retired by #5409; there is no replacement.)
 
    Either way the excluded reviewer stays barred from this pull request, and the
    newly drawn reviewer must record its OWN durable APPROVE. A pull
    request excluded before returns existed is repaired by re-running the
-   IDENTICAL `--exclude-reviewer` command, which completes the return without
+   IDENTICAL `--exclude-reviewer` command (retired by #5409), which completes the return without
    recording a second exclusion.
 
-   ONE exclusion reason, and only one, can be lifted:
-   `--reinstate-reviewer-exclusion --issue <issue> --pr <pr> --reviewer <name>`.
+   ONE exclusion reason, and only one, can be lifted.
+   (`--reinstate-reviewer-exclusion` was retired by #5409; there is no replacement.)
    NO LIMIT ON REUSING A REVIEWER (owner ruling, marker #2893, 2026-09-14): the
    `already-reviewed` reason is retired. A new exclusion with it is refused, and a
    historical record of it still parses but never bars a draw -- the same
@@ -704,7 +692,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    the historical name unchanged), and each generation is barred until its OWN
    `-gen<N>` reinstatement lifts it. Nothing is deleted or rewritten: the whole
    history -- exclusion, lift, re-exclusion -- stays readable, and
-   `--reinstate-reviewer-exclusion` always answers the NEWEST generation, so an
+   `--reinstate-reviewer-exclusion` (retired by #5409) always answers the NEWEST generation, so an
    independence re-exclusion after a lift can never itself be lifted. Four
    generations are read; using all four is a refusal, not a silent overwrite.
 
@@ -720,7 +708,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    the next reviewer can record a verdict for that head normally and the raced
    object remains readable for audit. That re-filing is its own atomic
    compare-and-swap push, made after the push that records the exclusion and its
-   returns -- so if it fails, re-run the IDENTICAL `--exclude-reviewer` command.
+   returns -- so if it fails, re-run the IDENTICAL `--exclude-reviewer` command (retired by #5409).
    The re-run rebuilds the returned records from the return namespace and
    completes the re-filing, recording no second exclusion and no second return.
 
@@ -730,7 +718,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    each in its own session and sandbox. Never treat another live review by the
    same provider as a reason to skip, wait for, or replace it. Historical Qwen assignments, failures, and
    replacement evidence remain readable and must be recovered or replaced
-   through `scripts/manage-migration-author-lanes.mjs`, never hand-edited. Use
+   through `scripts/manage-migration-coordination.mjs`, never hand-edited. Use
    only the wrapper returned by the manager and its fixed model settings. Reuse
    one named session for rebuttals. Require
    a current exact-head re-read and `APPROVE` or `REVISE` with evidence. Verify
@@ -760,8 +748,8 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
 
    - **Never record a bare verdict.** An `APPROVE` with no findings and no
      statement of what was actually examined is a wrapper or provider failure,
-     not a clean review. Treat it as `verdict=none` and use
-     `--replace-failed-reviewer` exactly as for a transport failure.
+     not a clean review. Treat it as `verdict=none`.
+     (`--replace-failed-reviewer` was retired by #5409; there is no replacement.)
    - **Require the reviewer to say what it covered** — which files, which
      migrations, which conditions — not merely what it concluded. A review whose
      coverage cannot be checked cannot be relied on to have missed nothing.
@@ -780,10 +768,9 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    starting, prove the selected wrapper can read its own authentication file and
    create its session directory. A permission denial, missing authentication,
    provider quota error, or wrapper timeout with no verdict is a transport failure,
-   not a review. Stop that process, record `verdict=none` and `artifact=none`, and
-   immediately use `--replace-failed-reviewer` with the matching terminal failure
-   code. Continue with the manager-selected replacement from the full-access
-   session in the same turn. Never leave an author, preview, merge, or
+   not a review. Stop that process, record `verdict=none` and `artifact=none`.
+   (`--replace-failed-reviewer` was retired by #5409; there is no replacement.)
+   Never leave an author, preview, merge, or
    production lane waiting on a reviewer process that cannot authenticate or
    write its own state. A real `REVISE` verdict is not a transport failure and
    must never be replaced.
@@ -793,24 +780,13 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    the reviewer's provider account has run out of credit. In that same reply,
    tell Albert in plain words which provider needs credits and where, quoting
    the `OUT OF CREDIT:` text as printed. Never make him open another session to
-   learn it. Then replace the reviewer with `--replace-failed-reviewer
-   --failure-code insufficient_quota --confirm-no-verdict --confirm-no-artifact`
-   and continue with the replacement.
+   learn it. (`--replace-failed-reviewer --failure-code insufficient_quota` was
+   retired by #5409; there is no replacement.)
 
-   **`--replace-failed-reviewer` is slot-aware, and the slot must be named.** It
-   defaults to `--review-slot 1`. Pass `--review-slot 2` to replace a failed
-   second reviewer; the request is then resolved only against slot 2's own
-   assignment and replacement refs, and the replacement is chosen to stay
-   independent of whoever currently holds slot 1. Naming the wrong slot is
-   refused with `durable reviewer assignment or replacement does not match the
-   replacement request` — that refusal is a correct fail-closed, not a bug, and
-   is never to be worked around by loosening the match. Before issue #1832 the
-   flag was silently ignored, so a slot-2 failure had no working replacement
-   route at all and a slot-2 request could only ever be answered from slot 1's
-   records. A slot-2 replacement still requires the issue open, the PR still at
-   the exact head, and no verdict yet recorded for that head — including slot 1's
-   own verdict. If slot 1 has already reported at that head, slot 2 cannot be
-   replaced there; assign against the current head instead.
+   **`--replace-failed-reviewer` was retired by #5409; there is no replacement.**
+   (Historical note: it was slot-aware and the slot had to be named. Naming the
+   wrong slot was refused — that refusal was a correct fail-closed, not a bug,
+   and was never to be worked around by loosening the match.)
 
    Append objective reviewer evidence through an `ai-devops` PR to
    `models_comparison_grok_kim_glm.md`: issue/PR, requested and proven model,
@@ -1055,7 +1031,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    **What that lock does NOT do, stated exactly.** It does not exclude a merge
    or a production promotion. `EXCLUSIVE_REFS` gives merge and production their
    own refs, and only two cross-checks exist — both inside `acquireExclusive` in
-   [`scripts/manage-migration-author-lanes.mjs`](../../scripts/manage-migration-author-lanes.mjs),
+   [`scripts/lib/lanes/exclusive-locks.mjs`](../../scripts/lib/lanes/exclusive-locks.mjs),
    findable by their refusal text rather than by a line number, which drifts:
    a promotion waits for the merge ref (`a guarded merge is active; production
    promotion must wait`), and a merge waits for the production ref
@@ -1136,7 +1112,7 @@ summary and points here; where the two differ in wording, `AGENTS.md` wins.
    **DOES** recover a post-merge rehearsal **when the rehearsal ran AT the authoring merge commit**.
    Measured that day on `20260820165926` (PR #1335): merged via the guarded lane to `1247d125`,
    rehearsed immediately from that exact tip, then an unrelated PR (#1340) moved main and changed
-   `scripts/manage-migration-author-lanes.mjs`. The production gate refused on the producer-file
+   `scripts/manage-migration-author-lanes.mjs` (now `manage-migration-coordination.mjs`). The production gate refused on the producer-file
    pin, re-rehearsing was impossible (`BLOCKED: already applied on production`), and the recovery
    lane then **succeeded** — run 32402833543 — because the rehearsal commit *was* the authoring
    merge commit. Production applied as run 32402996954.

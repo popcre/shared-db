@@ -725,6 +725,10 @@ jobs:
           fi
           psql -v ON_ERROR_STOP=1 --no-psqlrc -f "$SEED" 2>&1 | tee "$RUNNER_TEMP/fixture-seed.log"
 
+      - name: Prove OrderList vendor and workflow readers against PostgreSQL
+        if: needs.classify.outputs.database_contract_tests == 'applicable'
+        run: bash scripts/test-orderlist-vendor-workflow.sh
+
       - name: Run every supabase/tests/*.sql
         if: needs.classify.outputs.database_contract_tests == 'applicable'
         id: run

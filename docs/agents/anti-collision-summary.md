@@ -26,16 +26,25 @@ object/version/source protection. See the current procedure in the full text.
    #2775: no limit on migration author lanes, ever). Exact object claims and version reservations
    still refuse every object/version collision, including against protected relinquished claims.
 
-   **Do not open a migration file first.** Acquire an author lane, an exact object claim, and a
+   **Do not open a migration file first.** Reserve an exact object claim and a
    centrally reserved 14-digit version as one dispatch operation:
 
    ```bash
-   node scripts/manage-migration-author-lanes.mjs --claim \
-     --admit-issue <work-issue> \
-     --task "<issue and outcome>" --owner "<agent/session>" \
-     --branch "<branch>" --worktree "<absolute isolated worktree>" \
-     --objects "<every exact object written, comma-separated>"
+   node scripts/check-dispatch-collision.mjs \
+     --objects "<every exact object written, comma-separated>" --reserve-version
+
+   node scripts/check-dispatch-collision.mjs \
+     --task "<issue and outcome>" \
+     --objects "<every exact object written, comma-separated>" \
+     --version <the reserved version> --claim-body-file claim.md
+
+   gh issue create --body-file claim.md
    ```
+
+   The first command acquires the 14-digit version atomically
+   (`refs/db-claims/<version>`, create-if-absent); the second writes the fenced
+   claim body to a file so no shell quoting rule can lose the block (#669) and
+   prints the filing command.
 
    Allocation is serialized across computers by a GitHub-backed lock and **fails closed**. The
    created issue body is authoritative and machine-readable — **never hand-edit its fenced
@@ -61,7 +70,8 @@ object/version/source protection. See the current procedure in the full text.
      authoring so version reservation and exact-object collision locking remain enforced.
    - **A verdict with no coverage statement is not review evidence** (issue #1220). An `APPROVE`
      with no findings and no statement of what was examined is a wrapper or provider failure, not
-     a clean review — treat it as `verdict=none` and use `--replace-failed-reviewer`. **Silence is
+     a clean review — treat it as `verdict=none`. (`--replace-failed-reviewer`
+     was retired by #5409; there is no replacement.) **Silence is
      never approval.**
    - Reviewer rotation, the business-risk gate, and the transport-failure rule (**a wrapper that
      cannot authenticate is a transport failure, not a review — replace it, never pause the
@@ -79,7 +89,7 @@ object/version/source protection. See the current procedure in the full text.
     not failed on the exact head, then fail closed with the exact blocker. The configured rotation is
     GLM 5.3, Qwen 3.8 Max, Muse Spark 1.3 Contributor,
     Gemini 3.8 Flash High, DeepSeek V4.1 Flash, and StepFun Step 5 (Linux machines only), minus the authoring engine (automation still keys this on the marker; see #3874) — exactly
-    `ACTIVE_REVIEWERS` in `scripts/manage-migration-author-lanes.mjs`.
+    `ACTIVE_REVIEWERS` in `scripts/lib/lanes/reviewer-roster.mjs`.
     **Preference (owner, 2026-09-27, issue #3592):** the allocator rotates
     among eligible non-Grok reviewers first; Grok was drawn only when that
     preferred pool could not take the exact review (also for slot 2 and replacements), and is

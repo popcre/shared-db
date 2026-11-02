@@ -1230,11 +1230,19 @@ test('curated master data admission still refuses schema DDL, non-migration chan
   assert.throws(() => parseQueueScope(curatedBody({ extra:['  - table core.property'] })), /must not claim database objects/)
 })
 
-test('an edited curated migration is admitted only while it is applied nowhere (#5079)', () => {
+test('edited curated migrations require ledger, rehearsal, and branch-bound claim proofs (#5079, #5205)', () => {
   const body = curatedBody()
-  const edited = (ledgers) => ({ ...curatedIo(body, curatedSql), getPrFiles:()=>[{filename:'supabase/migrations/20261011164757_curated_warner_property_the_exorcist_1973.sql',status:'modified'}], appliedMigrationVersions:()=>ledgers })
+  const edited = (ledgers) => ({ ...curatedIo(body, curatedSql), getPr:()=>({state:'open',head:{sha:'f'.repeat(40),ref:'curated-edit'}}), openClaims:()=>[{number:12,body:claimBody({version:'20261011164757',objects:['table core.property'],owner:'test',branch:'curated-edit',worktree:'test',expiresAt:new Date(Date.now()+3600000)})}], previewLedgerStatements:()=>[], getPrFiles:()=>[{filename:'supabase/migrations/20261011164757_curated_warner_property_the_exorcist_1973.sql',status:'modified'}], appliedMigrationVersions:()=>ledgers })
   const none = { preview:new Set(['20260101000000']), production:new Set(['20260101000000']) }
   assert.equal(admitIssue(4172, edited(none), { pr: 4176, allowLegacy: true }).admitted, true)
+  for(const name of ['preview','production'])assert.throws(()=>admitIssue(4172,edited({...none,[name]:new Set()}),{pr:4176}),/ledger came back empty/)
+  const rehearsed={...none,preview:new Set(['20261011164757'])}
+  assert.equal(admitIssue(4172,{...edited(rehearsed),previewLedgerStatements:()=>[curatedSql.trim()]},{pr:4176}).admitted,true)
+  assert.throws(()=>admitIssue(4172,{...edited(none),openClaims:()=>[]},{pr:4176}),/branch-bound claim/)
+  assert.throws(()=>admitIssue(4172,{...edited(none),getFileAt:()=>curatedSql.replace('core.property','core.character')},{pr:4176}),/not held by its branch-bound active claim/)
+  const mixed={...edited(none),getPrFiles:()=>[...edited(none).getPrFiles(),{filename:'supabase/migrations/20261011164758_other.sql',status:'added'}],getFileAt:(name)=>name.endsWith('_other.sql')?curatedSql.replace('core.property','core.character'):curatedSql}
+  assert.throws(()=>admitIssue(4172,mixed,{pr:4176}),/not held by its branch-bound active claim/)
+  assert.equal(admitIssue(4172,{...mixed,getFileAt:()=>curatedSql},{pr:4176}).admitted,true)
   assert.throws(() => admitIssue(4172, edited({ ...none, production:new Set(['20261011164757']) }), { pr: 4176, allowLegacy: true }), /edits applied curated migration/)
   assert.throws(() => admitIssue(4172, edited({ ...none, preview:new Set(['20261011164757']) }), { pr: 4176, allowLegacy: true }), /edits applied curated migration/)
   assert.throws(() => admitIssue(4172, { ...edited(none), appliedMigrationVersions:()=>{ throw new Error('no token') } }, { pr: 4176, allowLegacy: true }), /cannot prove its edited curated migration is unapplied/)

@@ -1,3 +1,5 @@
+import contextlib
+import io
 import os
 import sys
 import unittest
@@ -81,11 +83,17 @@ class OverdueHoldAlert(unittest.TestCase):
         m.is_held = lambda repo, n: self.pr["findings"]
         sys.argv, os.environ["GITHUB_REPOSITORY"] = ["x", "--dry-run"], "o/r"
         try:
-            self.assertEqual(m.main(), 1)
-            m.is_held = lambda repo, n: []
-            self.assertEqual(m.main(), 0)
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(m.main(), 1)
+                m.is_held = lambda repo, n: []
+                self.assertEqual(m.main(), 0)
+            self.assertIn("::error title=Production release held over 30 minutes::PR #5456", out.getvalue())
         finally:
             m.gh, m.merged_migration_prs, m.workflow_runs, m.is_held, sys.argv = saved[:5]
+            if saved[5] is None:
+                os.environ.pop("GITHUB_REPOSITORY", None)
+            else:
+                os.environ["GITHUB_REPOSITORY"] = saved[5]
 
 
 class WorkflowRunsWindow(unittest.TestCase):

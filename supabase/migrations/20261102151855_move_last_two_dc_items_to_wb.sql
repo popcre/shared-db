@@ -11,6 +11,14 @@ do $move$
 declare
   v_remaining integer;
 begin
+  if exists (
+    select 1 from core.property
+     where id = '99e3b4f5-f7ec-4d7a-b56a-9b71b374b61c'
+       and name is distinct from 'THE BATMAN MOVIE'
+  ) then
+    raise exception 'popcre/shared-db#5436: expected property THE BATMAN MOVIE';
+  end if;
+
   update plm.item i
      set licensor_id = p.licensor_id
     from core.property p
@@ -22,8 +30,7 @@ begin
 
   select count(*) into v_remaining
     from plm.item
-   where item_number in ('SDD2DDYTB01', 'EB92DYTB01')
-     and licensor_id = '33962356-f1f9-4226-b3ef-00154e5b7d56';
+   where licensor_id = '33962356-f1f9-4226-b3ef-00154e5b7d56';
 
   if v_remaining > 0 then
     raise exception 'popcre/shared-db#5436: % item(s) still on the DC licensor', v_remaining;

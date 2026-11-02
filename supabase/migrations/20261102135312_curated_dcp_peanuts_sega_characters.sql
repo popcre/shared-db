@@ -13,9 +13,10 @@
 -- crossover Disney characters). SE drops labels that describe art rather than a character.
 -- DISNEY LINKS. A DY Property links to a DCP Property when every word of its name is in the
 -- portal's Property slug; links are co_occurrence evidence from assets tagged with both, top
--- 120 per Property with at least two assets. They only narrow the list offered to the tagger.
+-- 120 per Property with at least two assets. They only narrow the list offered to the tagger,
+-- so they stay source edges: core.property_character_associations requires direct evidence.
 --
--- Insert-only and idempotent. RECOVERY: retire edges and associations whose metadata issue
+-- Insert-only and idempotent. RECOVERY: retire edges whose metadata issue
 -- and loaded_by match, then remove the characters and source refs with the same marker.
 
 do $characters$
@@ -79,7 +80,7 @@ begin
     where n.source_system in ('disney_dcpvault', 'lucasfilm_dcpvault')
       and not exists (select 1 from plm.source_resolution r
                        where r.source_system = n.source_system and r.entity_kind = 'character'
-                         and r.source_id = n.source_id and r.resolution_status <> 'unresolved');
+                         and r.source_id = n.source_id and r.resolution_status = 'matched' and r.core_character_id = ch.id);
 
   create temporary table pg_temp.disney_links on commit drop as
   with cp as (
@@ -114,8 +115,18 @@ begin
                       where e.property_id = l.property_id and e.character_id = l.character_id
                         and e.source_system = 'disney_dcpvault' and e.is_current);
 
-  insert into core.property_character_associations (property_id, character_id, is_current)
-  select l.property_id, l.character_id, true from pg_temp.disney_links l
-  on conflict (property_id, character_id) do nothing;
+  -- Fail closed when a scrape holds rows but nothing eligible landed.
+  if exists (select 1 from plm.dcp_character) and not exists
+     (select 1 from core.character ch join core.licensor l on l.id = ch.licensor_id where l.code = 'DY' and ch.metadata ->> 'issue' = v_issue and ch.metadata ->> 'source_system' = 'disney_dcpvault')
+    then raise exception '#5079: no DY characters loaded'; end if;
+  if exists (select 1 from plm.lucasfilm_dcp_character) and not exists
+     (select 1 from core.character ch join core.licensor l on l.id = ch.licensor_id where l.code = 'SW' and ch.metadata ->> 'source_system' = 'lucasfilm_dcpvault')
+    then raise exception '#5079: no SW characters loaded'; end if;
+  if exists (select 1 from plm.peanuts_character) and not exists
+     (select 1 from core.character ch join core.licensor l on l.id = ch.licensor_id where l.code = 'PN')
+    then raise exception '#5079: no PN characters loaded'; end if;
+  if exists (select 1 from plm.sega_character_candidate) and not exists
+     (select 1 from core.character ch join core.licensor l on l.id = ch.licensor_id where l.code = 'SE')
+    then raise exception '#5079: no SE characters loaded'; end if;
 end
 $characters$;

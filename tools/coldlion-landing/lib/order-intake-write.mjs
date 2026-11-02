@@ -79,8 +79,8 @@ export function lineSourceId(salesOrderNo, salesOrderLineNo, componentOrdinal) {
  * The canonical-write transaction. One statement-set, one transaction:
  *
  *   0. winner selection at both grains (DISTINCT ON riding the two Phase A
- *      winner-selection indexes; the two-key tiebreak — greatest last_seen_run,
- *      then *_source_hash — makes the winner total-order deterministic, so two
+ *      winner-selection indexes; actual sync_run.started_at orders observations,
+ *      then run ID and source hash break ties deterministically, so two
  *      runs can never mint different winners, ordinals, or source_ids);
  *   1. customer resolution core.company_source_ref FIRST, then
  *      plm.erp_customer (active = true) — either miss or a disagreement
@@ -225,7 +225,8 @@ winning_components as (
   -- across the sibling rows, riding coldlion_intake_order_component_winner_idx
   -- per line_id. NULL sub keys are one identity to DISTINCT ON; the sort keys
   -- keep NULLS LAST so the direct line's NULL-sub component is unambiguous.
-  -- The hash tiebreaks make the winner total-order deterministic.
+  -- UUIDs carry no chronology: component observation time comes first too.
+  -- Run ID and hash tiebreaks make the winner total-order deterministic.
   select distinct on (wl.sales_order_no, wl.sales_order_line_no,
                       wl.master_item_no, c.sub_item_no, c.sub_label_code)
     c.line_id, wl.sales_order_no, wl.sales_order_line_no, wl.master_item_no,
@@ -233,9 +234,11 @@ winning_components as (
     c.component_source_hash
   from coldlion.intake_order_component c
   join winning_lines wl on wl.id = c.line_id
+  left join coldlion.sync_run component_run on component_run.id=c.last_seen_run
   order by wl.sales_order_no, wl.sales_order_line_no, wl.master_item_no,
            c.sub_item_no asc nulls last, c.sub_label_code asc nulls last,
-           c.last_seen_run desc, wl.line_source_hash, c.component_source_hash
+           component_run.started_at desc nulls last, c.last_seen_run desc,
+           wl.line_source_hash, c.component_source_hash
 ),
 existing_component_refs as (
   -- Component identity is (master_item_no, sub_item_no, sub_label_code),
@@ -1104,6 +1107,20 @@ update plm.production_order_line g
   from pg_temp.coldlion_auto_merge m
   join plm.production_order_line pl on pl.id = m.placeholder_line
  where g.id = m.google_line and g.quantity_ordered is null and pl.quantity_ordered is not null;
+
+-- The quantity reader binds an order-time component recipe to its source
+-- hash. Moving only the ref loses that provenance on an existing Google row.
+-- Carry it only to the exact same SKU/assortment and only when no hash exists.
+-- A conflicting saved hash is retained for explicit reconciliation.
+update plm.production_order_line g
+   set metadata=coalesce(g.metadata,'{}'::jsonb) ||
+     jsonb_build_object('component_source_hash',pl.metadata->'component_source_hash')
+  from pg_temp.coldlion_auto_merge m
+  join plm.production_order_line pl on pl.id=m.placeholder_line
+ where g.id=m.google_line and g.sku=pl.sku
+   and g.assortment_id is not distinct from pl.assortment_id
+   and not (coalesce(g.metadata,'{}'::jsonb) ? 'component_source_hash')
+   and nullif(btrim(pl.metadata->>'component_source_hash'),'') is not null;
 
 update plm.production_order_line_source_ref r
    set production_order_line_id = m.google_line

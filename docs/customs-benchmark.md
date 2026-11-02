@@ -38,7 +38,13 @@ families; an archive used for development is not an untouched evaluation set.
 The generic [loader](../tools/load-customs-benchmark.py) contains no private data
 and issues no DDL. Its inputs are the private source directory, original workbook,
 exact target ref and a local `project-ref` file. The Supabase Management API token
-comes only from the environment through 1Password. The default mode only verifies;
+comes only from the environment through 1Password. Full imports use
+`CUSTOMS_DB_DIRECT=1` with `psycopg` and the canonical database password and
+pooler host in environment variables: the Management API rejects large PDF
+queries. The loader verifies TLS using the repository CA and compares the direct
+database cluster identity with the proved project through the Management API
+before every statement. This uses the supported database connection for large
+content; no schema or access control is bypassed. The default mode only verifies;
 `--apply` inserts immutable rows with conflict preservation. Run against the
 actual DesignFlow non-production and shared production targets independently;
 shared preview is rehearsal, not the requested development delivery.

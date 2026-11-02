@@ -61,14 +61,39 @@ class Database:
     def __init__(self,ref,ref_file):
         self.ref,self.ref_file=ref,Path(ref_file)
         self.token=os.environ['SUPABASE_ACCESS_TOKEN']
+        self.connection=None
+        if os.environ.get('CUSTOMS_DB_DIRECT') == '1':
+            self.prove()
+            import psycopg
+            from psycopg.rows import dict_row
+            host=os.environ['SUPABASE_DB_HOST']
+            if not host.endswith('.pooler.supabase.com'):raise ValueError('Expected canonical Supabase pooler')
+            self.connection=psycopg.connect(host=host,port=5432,dbname='postgres',user='postgres.'+ref,
+                password=os.environ['SUPABASE_DB_PASSWORD'],sslmode='verify-full',
+                sslrootcert=str(Path(__file__).resolve().parents[1]/'scripts/certs/supabase-root-2021.crt'),
+                connect_timeout=15,autocommit=True,row_factory=dict_row)
+            self.prove()
     def api(self,path,data=None):
         req=urllib.request.Request('https://api.supabase.com/v1/'+path,data=None if data is None else json.dumps(data).encode(),headers={'Authorization':'Bearer '+self.token,'Content-Type':'application/json'})
         with urllib.request.urlopen(req,timeout=120) as response:return json.load(response)
     def prove(self):
         if self.ref_file.read_text().strip()!=self.ref:raise ValueError('Local project-ref target mismatch')
         if self.api('projects/'+self.ref)['id']!=self.ref:raise ValueError('Management API target mismatch')
+        if getattr(self,'connection',None) is not None:
+            sql="select current_database() as database_name,(pg_control_system()).system_identifier::text as cluster_id"
+            expected=self.api('projects/'+self.ref+'/database/query',{'query':sql,'read_only':True})
+            actual=self.connection.execute(sql).fetchall()
+            if expected != actual:raise ValueError('Direct database cluster differs from proved API target')
     def query(self,sql,write=False):
         self.prove() # fresh target proof immediately before each write/read
+        if self.connection is not None:
+            with self.connection.transaction():
+                with self.connection.cursor() as cursor:
+                    if not write:cursor.execute('set transaction read only')
+                    cursor.execute("set local statement_timeout='120s'")
+                    cursor.execute("set local lock_timeout='3s'")
+                    cursor.execute(sql)
+                    return cursor.fetchall() if cursor.description is not None else []
         return self.api('projects/'+self.ref+'/database/query',{'query':sql,'read_only':not write})
 
 def run(args):

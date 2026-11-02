@@ -98,6 +98,12 @@ def run_jobs(repo: str, run_id: int) -> list[dict[str, Any]]:
     return gh(f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100").get("jobs", [])
 
 
+def names_versions(title: str, versions: list[str]) -> bool:
+    """Match complete versions, including comma-joined allowlists."""
+    words = {v for word in title.split() for v in word.split(",")}
+    return bool(versions) and all(v in words for v in versions)
+
+
 def decide(prs: list[dict[str, Any]], runs: list[dict[str, Any]], held: callable,
            applied: callable = lambda run: False, main_sha: str = "") -> tuple[str, dict[str, Any] | None, str]:
     """Return (action, pr, reason); action is dispatch, wait or idle."""
@@ -115,7 +121,9 @@ def decide(prs: list[dict[str, Any]], runs: list[dict[str, Any]], held: callable
             return "wait", pr, f"PR #{pr['number']} is held by a blocking review finding"
         # Attempts count per main commit: a later merge may be the cure, so it earns fresh tries.
         attempts = sum(1 for t, r in zip(titles, runs)
-                       if t.startswith("DB preview apply") and tag in t and r.get("created_at", "") > pr["merged_at"]
+                       if t.startswith("DB preview apply")
+                       and (tag in t or (" PR " in t and names_versions(t, pr["versions"])))
+                       and r.get("created_at", "") > pr["merged_at"]
                        and (not main_sha or f" {main_sha} " in t)
                        and r.get("conclusion") != "success")
         if attempts >= MAX_ATTEMPTS:
@@ -126,14 +134,12 @@ def decide(prs: list[dict[str, Any]], runs: list[dict[str, Any]], held: callable
 
 def earlier_preview_apply(pr: dict[str, Any], runs: list[dict[str, Any]],
                           preview_ok: callable = lambda run: False) -> int | None:
-    """The oldest preview apply of this PR whose preview job succeeded, if any."""
-    # Recovery runs title themselves "PR " with no number, so match the versions.
-    def names_pr(title: str) -> bool:
-        # Several versions are one comma-joined word in the title.
-        words = {v for word in title.split() for v in word.split(",")}
-        return all(v in words for v in pr["versions"])
+    """Prefer the oldest post-merge original; fall back to a pre-merge original."""
+    # Historical recoveries have an empty PR field and cannot be originals.
     hits = [r for r in runs
-            if (r.get("display_title") or "").startswith("DB preview apply") and names_pr(r.get("display_title") or "")
+            if (r.get("display_title") or "").startswith("DB preview apply")
+            and " PR " not in (r.get("display_title") or "")
+            and names_versions(r.get("display_title") or "", pr["versions"])
             # A run can fail after preview applied, e.g. at the review-finding hold.
             and (r.get("conclusion") == "success" or preview_ok(r))]
     # A pre-merge rehearsal also leaves the versions on preview, so it is the

@@ -10,6 +10,23 @@ NOT_APPLIED = [{"steps": [{"name": m.APPLY_STEP, "conclusion": "failure"}, {"nam
 
 
 class AttemptsPerMainCommit(unittest.TestCase):
+    def test_recovery_failures_are_bounded_and_match_exact_versions(self):
+        pr = {"number": 7, "merged_at": "2026-01-01", "versions": ["123", "456"]}
+        run = {"display_title": "DB preview apply old PR 123,456", "status": "completed",
+               "conclusion": "failure", "created_at": "2026-01-02"}
+        held = lambda n: False
+        self.assertEqual(m.decide([pr], [run] * 2, held, main_sha="old")[0], "dispatch")
+        action, _, reason = m.decide([pr], [run] * 3, held, main_sha="old")
+        self.assertEqual(action, "wait")
+        self.assertIn("ENGINEER ACTION REQUIRED", reason)
+        self.assertEqual(m.decide([pr], [run] * 3, held, main_sha="new")[0], "dispatch")
+        for title in ("DB preview apply old PR 123,4560", "DB preview apply old PR 123"):
+            self.assertEqual(m.decide([pr], [{**run, "display_title": title}] * 3,
+                                     held, main_sha="old")[0], "dispatch")
+        for changes in ({"created_at": "2025-12-31"}, {"conclusion": "success"}):
+            self.assertEqual(m.decide([pr], [{**run, **changes}] * 3,
+                                     held, main_sha="old")[0], "dispatch")
+
     def test_a_new_main_commit_earns_fresh_attempts(self):
         pr = {"number": 7, "merged_at": "2026-01-01", "versions": ["1"]}
         runs = [{"display_title": "DB preview apply old PR7 1", "status": "completed", "conclusion": "failure", "created_at": "2026-01-02"}] * 3
@@ -45,7 +62,7 @@ class AppliedDespiteCatalogCheck(unittest.TestCase):
 
 
 class EarlierPreviewApply(unittest.TestCase):
-    def test_finds_the_oldest_successful_post_merge_preview_apply(self):
+    def test_prefers_post_merge_original_and_falls_back_to_pre_merge(self):
         pr = {"number": 5165, "merged_at": "2026-10-31T00:00:00Z", "versions": ["20261030190639"]}
         runs = [
             {"id": 9, "conclusion": "success", "created_at": "2026-10-31T05:00:00Z", "display_title": "DB preview apply a PR5165 20261030190639"},
@@ -59,10 +76,14 @@ class EarlierPreviewApply(unittest.TestCase):
         self.assertEqual(m.earlier_preview_apply(pr, [runs[2]]), 3)  # pre-merge is the fallback
         self.assertIsNone(m.earlier_preview_apply(pr, runs[3:]))
         recovery = {"id": 4, "conclusion": "success", "created_at": "2026-10-31T01:50:00Z", "display_title": "DB preview apply a PR 20261030190639"}
-        self.assertEqual(m.earlier_preview_apply(pr, runs + [recovery]), 4)
+        self.assertEqual(m.earlier_preview_apply(pr, runs + [recovery]), 7)
         held = {**recovery, "id": 2, "conclusion": "failure", "created_at": "2026-10-31T01:45:00Z"}
         self.assertEqual(m.earlier_preview_apply(pr, runs + [held]), 7)
-        self.assertEqual(m.earlier_preview_apply(pr, runs + [held], lambda r: r["id"] == 2), 2)
+        self.assertEqual(m.earlier_preview_apply(pr, runs + [held], lambda r: r["id"] == 2), 7)
+        self.assertEqual(m.earlier_preview_apply(pr, [runs[2], recovery, held], lambda r: True), 3)
+        self.assertIsNone(m.earlier_preview_apply(pr, [recovery, held], lambda r: True))
+        failed_original = {**runs[2], "conclusion": "failure"}
+        self.assertEqual(m.earlier_preview_apply(pr, [failed_original], lambda r: True), 3)
 
 
 if __name__ == "__main__":

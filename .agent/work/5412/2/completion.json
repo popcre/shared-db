@@ -28,7 +28,7 @@
       "evidence": "Exact preview hash validates five inner statements; production atomic authorization is refused and production classification retains ordinary CLI routing."
     },
     {
-      "command": "node scripts/check-throughput-truth-audit.mjs and focused truth-audit tests",
+      "command": "node scripts/check-throughput-truth-audit.mjs",
       "exit_code": 0,
       "evidence": "Reviewed unchanged missing-entry refusal with new target-classifier context; inventory and focused tests pass."
     }

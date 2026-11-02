@@ -76,7 +76,11 @@ def run(args):
     db=Database(args.expected_ref,args.project_ref_file)
     if args.apply:
         db.query('insert into plm.customs_benchmark_dataset (dataset_id,benchmark_name,authority_scope,source_manifest,original_intelligence,authority_context,source_file_count,source_byte_count,observation_count) values ('+','.join([literal(ident),literal('customs_intelligence_20261101'),literal('historical_customs_evidence'),json_sql(manifest),json_sql(data),literal(CONTEXT),str(len(files)),str(sum(x[3] for x in files)),str(len(rows))])+') on conflict do nothing;',True)
+        existing = {r['relative_path']:(r['content_sha256'],r['byte_count']) for r in db.query('select relative_path,content_sha256,byte_count from plm.customs_benchmark_artifact where dataset_id='+literal(ident))}
         for name,path,digest,size in files:
+            if name in existing:
+                if existing[name] != (digest,size):raise ValueError('Conflicting preserved artifact')
+                continue
             content=path.read_bytes()
             if sha(content)!=digest:raise ValueError('Source changed during import')
             sql='insert into plm.customs_benchmark_artifact (dataset_id,relative_path,content_sha256,media_type,byte_count,content) values ('+','.join([literal(ident),literal(name),literal(digest),literal(mimetypes.guess_type(name)[0] or 'application/octet-stream'),str(size),"decode("+literal(content.hex())+",'hex')"])+') on conflict do nothing;'
@@ -110,7 +114,7 @@ def main():
     try:run(args)
     except Exception as exc:
         # Error bodies can contain SQL, secrets or private source evidence.
-        print('Customs benchmark operation failed ('+type(exc).__name__+'); private error details withheld.',file=sys.stderr)
+        print('Customs benchmark operation failed ('+type(exc).__name__+', HTTP '+str(getattr(exc,'code','n/a'))+'); private error details withheld.',file=sys.stderr)
         return 1
     return 0
 if __name__=='__main__':sys.exit(main())

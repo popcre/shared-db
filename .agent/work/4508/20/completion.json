@@ -3,13 +3,16 @@
   "work_issue": 4508,
   "pr": 5397,
   "base_sha": "523222ab1584d252c7ea387a5ebf2f5389c6cdea",
-  "head_sha": "02226baf0c3127f4a2bed34475d6c801a4720bf9",
-  "contract_ref": "refs/db-contracts/4508/19",
-  "contract_sha256": "28dcfbf507f57ba9a008dc200334afeb05be4e1f9015d5ccff020395e994117d",
+  "head_sha": "d8003a052ac1b5946f7306352a2d304971ff11c7",
+  "contract_ref": "refs/db-contracts/4508/20",
+  "contract_sha256": "994791103bd0102c1651ce9b5bc30aa859cb986fe00a4e3bf40e197b8f29522b",
   "files_changed": [
+    ".agent/work/4508/19/completion.json",
+    ".agent/work/4508/19/contract.json",
     "config/atomic-migration-allowlist.json",
     "supabase/migrations/20261102003027_dam_dense_group_vectors.sql",
-    "supabase/tests/popdam_dense_group_vectors_contracts.sql"
+    "supabase/tests/popdam_dense_group_vectors_contracts.sql",
+    "supabase/tests/popdam_semantic_anchor_contracts.sql"
   ],
   "db_reads": [],
   "db_writes": [
@@ -37,12 +40,18 @@
       "command": "compare canonical function definitions",
       "exit_code": 0,
       "evidence": "Both bodies byte identical except exact-scan relation; all scoring and authorization preserved."
+    },
+    {
+      "command": "popdam_semantic_anchor_contracts.sql in isolated PostgreSQL17",
+      "exit_code": 0,
+      "evidence": "Asset, exact group, untyped and null anchors plus anon denial pass with normal document synchronization."
     }
   ],
   "assumptions_resolved": [
     "Authenticated live anchor hit 5s timeout and search hit 30s timeout; exact group vector scan exceeded 15s under load",
     "Both search function bodies remain byte identical except exact-scan relation",
-    "Private dense projection tracks every vector mutation in the same transaction"
+    "Private dense projection tracks every vector mutation in the same transaction",
+    "The existing anchor fixture must exercise normal document writes instead of disabling every synchronization trigger; no runtime migration bytes changed after preview apply"
   ],
   "stop_conditions_hit": [],
   "outcome": "ready-for-merge"

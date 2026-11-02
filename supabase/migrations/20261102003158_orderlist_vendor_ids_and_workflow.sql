@@ -12,7 +12,7 @@ returns table(facts jsonb) language sql stable security invoker rows 1 begin ato
     select b.id as bridge_id, s.id as tracker_id
     from plm.item target
     join public.style_tracker_rows s
-      on lower(btrim(s.sku))=lower(btrim(coalesce(nullif(target.style_number,''),target.item_number)))
+      on lower(btrim(s.sku))=lower(btrim(coalesce(nullif(btrim(target.style_number),''),nullif(btrim(target.item_number),''))))
       and s.tracker_type=p_catalog
     join plm.style_tracker_item_bridge b on b.style_tracker_row_id=s.id and b.tracker_type=p_catalog
     join plm.item linked on linked.id=b.plm_item_id

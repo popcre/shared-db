@@ -11,6 +11,12 @@ DO $$ declare f jsonb; begin
  assert f->>'source'='master_data' and f->>'test_report'='false' and f->>'professional_photos'='false','unique fallback';
  assert (select facts->>'source' from dam.orderlist_product_facts('99999999-9999-4999-8999-000000000001','generic'))='unavailable','wrong catalog';
  assert (select facts->>'source' from dam.orderlist_product_facts('99999999-9999-4999-8999-000000000001',null))='unavailable','absent catalog';
+
+ update plm.item set item_number=' ',style_number=' ' where id='99999999-9999-4999-8999-000000000001';
+ update public.style_tracker_rows set sku=' ';
+ assert (select facts->>'source' from dam.orderlist_product_facts('99999999-9999-4999-8999-000000000001','licensed'))='unavailable','blank style never falls back';
+ update plm.item set item_number='ZZ-WORKFLOW',style_number='ZZ-WORKFLOW' where id='99999999-9999-4999-8999-000000000001';
+ update public.style_tracker_rows set sku=' zz-workflow ';
  update plm.item set raw='{"companyCode":"OTHER"}' where id='99999999-9999-4999-8999-000000000002';
  assert (select facts->>'source' from dam.orderlist_product_facts('99999999-9999-4999-8999-000000000001','licensed'))='unavailable','company isolation';
  update plm.item set raw='{"companyCode":"ZZ"}' where id='99999999-9999-4999-8999-000000000002';

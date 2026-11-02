@@ -1,21 +1,18 @@
 -- Narrow the ruling search trigram pass for the chapter-scoped benchmark
 -- (issue #5283, claim #5432; unblocks shared-db #5188's live assertion).
--- derived-from: none
---
--- Profiled on production (issue #5188 comment 6553758780, #5283 comments
--- 6553845723/6554406461): the chapter-scoped search's trigram pass was 5,612 ms
--- (3,758 ms after the covering index) because the planner drives from the
--- 950-row chapter scope and re-evaluates the similarity filter per probe. Run
--- WITHOUT the scope semi-join, the same predicate takes the intended plan —
--- `Bitmap Index Scan on hts_rag_rulings_subject_trgm_active_idx` — in about
--- 1.8 s, most of that the GIN scan itself. This rewrites only the trigram pass:
--- the candidates are materialized first (forcing that index plan), and the
--- chapter scope then filters that small set. Everything else is identical —
--- return shape, RRF fusion, the full-text and vector passes, and the
--- pg_trgm.word_similarity_threshold pin. A reissue of the same objects as
--- 20261101000005, idempotent for replay.
+-- derived-from: 20261101143319
+-- Re-derives the CURRENT body of hts_rag_search_rulings_pass (the #5305 chain
+-- ending at 20261101143319) and changes only the trigram pass: its candidates
+-- are materialized without the chapter scope first, so the planner takes the
+-- trigram index plan instead of probing the scope list and re-checking the
+-- similarity filter per row. Measured on production after the #5305 tuning:
+-- scoped p50 135 ms / p95 695 ms against a 300 ms budget (run 41483457125).
+-- Everything else is byte-identical to 20261101143319's body — the half-stem
+-- full-text pass, the 300-row caps, the subject ranking, the RRF fusion, the
+-- vector pass, and the pg_trgm.word_similarity_threshold pin.
 
-select extensions.word_similarity('', '');
+-- Load pg_trgm before the function pins its parameter (see 20261101000005).
+select extensions.show_limit();
 
 create or replace function hts_rag.hts_rag_search_rulings_pass(
   p_query text,
@@ -30,25 +27,75 @@ security invoker
 set search_path = ''
 set pg_trgm.word_similarity_threshold = '0.4'
 as $function$
-  with scope as materialized (
+  with recursive scope as materialized (
     select distinct c.ruling_number
     from hts_rag.hts_rag_ruling_codes c
     where p_scope_chapters is not null and c.role = 'held' and left(c.code, 2) = any (p_scope_chapters)
   ),
-  fts as (
-    select r.ruling_number,
-           row_number() over (order by ts_rank(r.search_tsv, p_tsquery, 1) desc, r.ruling_date desc nulls last, r.ruling_number)::integer as rnk
+  -- The query's distinct stems (at most 8). The full-text pass matches rulings that
+  -- contain all of them, or at least half of them, instead of any one of them: an OR of
+  -- every word matched ~16k rulings for a 4-word query, and ranking that many read
+  -- thousands of pages from disk once the cache was cold (98-120 s per call, #5305).
+  lex as materialized (
+    select w, row_number() over (order by w) as i
+    from (select w from unnest(tsvector_to_array(to_tsvector('english'::regconfig, coalesce(p_query, '')))) w
+          where p_tsquery is not null order by w limit 8) x
+  ),
+  need as materialized (
+    select greatest(1, ceil(count(*) / 2.0))::integer as k, count(*)::integer as n from lex
+  ),
+  combo (last_i, n, expr) as (
+    select l.i, 1, quote_literal(l.w) from lex l
+    union all
+    select l.i, c.n + 1, c.expr || ' & ' || quote_literal(l.w)
+    from combo c join lex l on l.i > c.last_i
+    where c.n < (select k from need)
+  ),
+  ftsq as materialized (
+    select (select string_agg(quote_literal(l.w), ' & ')::tsquery from lex l) as all_q,
+           (select string_agg('(' || c.expr || ')', ' | ')::tsquery from combo c where c.n = (select k from need)) as most_q
+  ),
+  -- Every candidate costs one heap page, and on a cold cache each page is a disk
+  -- read, so the pass reads at most 300 rulings: those holding every stem first,
+  -- then rulings holding half the stems only to fill the remainder (#5305).
+  all_hits as materialized (
+    select r.ruling_number, r.subject, r.ruling_date, true as all_words
     from hts_rag.hts_rag_rulings r
-    where p_tsquery is not null
-      and r.effective_status = 'active' and not coalesce(r.operationally_revoked, false)
-      and r.search_tsv @@ p_tsquery
+    where r.effective_status = 'active' and not coalesce(r.operationally_revoked, false)
+      and r.search_tsv @@ (select all_q from ftsq)
       and (p_scope_chapters is null or r.ruling_number in (select s.ruling_number from scope s))
+    limit 300
+  ),
+  most_hits as (
+    select r.ruling_number, r.subject, r.ruling_date, false as all_words
+    from hts_rag.hts_rag_rulings r
+    where (select count(*) from all_hits) < 300
+      and r.effective_status = 'active' and not coalesce(r.operationally_revoked, false)
+      and r.search_tsv @@ (select most_q from ftsq)
+      and r.ruling_number not in (select a.ruling_number from all_hits a)
+      and (p_scope_chapters is null or r.ruling_number in (select s.ruling_number from scope s))
+    limit (select 300 - count(*) from all_hits)
+  ),
+  fts_hits as (
+    select * from all_hits
+    union all
+    select * from most_hits
+  ),
+  -- Rank by the subject line, not the TOASTed full-text vector: rulings holding every
+  -- word first, then subject relevance, then the newest.
+  fts as (
+    select f.ruling_number,
+           row_number() over (order by f.all_words desc,
+                                       ts_rank(to_tsvector('english'::regconfig, coalesce(f.subject, '')), p_tsquery) desc,
+                                       f.ruling_date desc nulls last, f.ruling_number)::integer as rnk
+    from fts_hits f
     order by rnk
     limit 200
   ),
   -- The trigram candidates are materialized WITHOUT the chapter scope first, so
-  -- the planner uses hts_rag_rulings_subject_trgm_active_idx (the standalone
-  -- plan) instead of probing the scope list and re-checking the filter per row.
+  -- the planner uses hts_rag_rulings_subject_trgm_active_idx instead of probing
+  -- the scope list and re-checking the similarity filter per row (the measured
+  -- 5.6s/3.8s scope-driven shape, #5283).
   trgm_candidates as materialized (
     select r.ruling_number, r.subject, r.ruling_date
     from hts_rag.hts_rag_rulings r

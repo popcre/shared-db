@@ -13,5 +13,8 @@ begin
       raise exception 'Archive privileges do not preserve append-only access: %',t;
     end if;
   end loop;
+  if exists (select 1 from information_schema.columns where table_schema='plm' and table_name='customs_benchmark_artifact' and data_type='bytea') then
+    raise exception 'File bytes must stay in private object storage';
+  end if;
 end $test$;
 rollback;

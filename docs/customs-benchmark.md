@@ -2,63 +2,83 @@
 
 Owner: DesignFlow HTS evaluation; shared-db issue #5447, application issue
 [designflow-backend#279](https://github.com/popcre/designflow-backend/issues/279).
-Albert explicitly requested lossless preservation in development and production
-and designation as the authoritative software-comparison benchmark.
+Albert requested lossless preservation in development and production and an
+authoritative software-comparison benchmark. He then directed that seldom-used
+PDFs belong in DigitalOcean object storage rather than database files.
 
 `plm.customs_benchmark_dataset` holds the complete original intelligence object,
-source-file manifest, content-addressed dataset identity, authority context and
-expected counts. `plm.customs_benchmark_artifact` preserves every original file
-byte, relative filename, media type, byte count and SHA-256, including all customs
-PDFs, extracts, earlier catalogs and load evidence, report, reproducibility
-scripts, previews and the original item-master workbook.
-`plm.customs_benchmark_observation` makes every source section queryable without
-losing any unrecognized source fields in `original_record`. These are private
-archive records, outside the sanitized shared `hts_rag` learning tables. Do not
-copy commercial source documents or identifiers into that shared-learning path.
+source manifest, content-addressed identity, authority context and counts.
+`plm.customs_benchmark_observation` makes every source section queryable while
+preserving every unknown source field in `original_record`.
+`plm.customs_benchmark_artifact` holds private object-storage locations, original
+filenames, types, byte counts and SHA-256 checksums. Original JSON/JSONL extraction
+records are also retained as queryable `structured_content`.
+
+All original file bytes live in a dedicated **private DigitalOcean Spaces
+bucket**, including the customs PDFs, complete master workbook, earlier extracts
+and catalogs, reports, scripts and previews. There is no file-byte column in the
+database. Object keys use content hashes, not commercial filenames. Each object
+must have a private ACL, pass an authenticated full-byte hash check and deny an
+anonymous request. No permanent public or expiring signed URL is stored.
+
+This private archive stays outside the sanitized shared `hts_rag` learning
+contract. Do not copy commercial source documents or identifiers into that path.
 
 ## Authority and evaluation
 
-The archive is authoritative for the preserved historical customs evidence.
-Compare software outputs against its linked styles and physical product facts,
-retaining the packet, entry, page, source hash and original status on every
-comparison. A direct historical candidate is eligible for historical agreement
-measurement; it still requires source association checking before becoming a
-frozen answer. Historical filings are not binding CBP rulings or automatically
-valid current-law labels. Code mapping must retain original codes and supported
-successors separately. Do not silently rewrite the item-master HTS field.
+The preserved archive is authoritative for historical customs evidence. Compare
+software outputs to the linked styles and physical product facts, preserving
+packet, entry, page, source hash and original status with every comparison.
+Direct historical candidates still require source association verification
+before becoming frozen answers. Historical filings are not binding CBP rulings
+or automatically valid current-law labels. Retain original codes and separately
+supported current successors; never silently rewrite the item-master HTS field.
 
-Packet inference, product-family research leads, clock-component exclusions,
-unmatched styles, coverage and anomalies remain available, but must never become
-confirmed item answers by inheritance. Report their coverage separately. Keep
-benchmark answers out of model prompts and memory for the evaluated items and
-families; an archive used for development is not an untouched evaluation set.
+Packet inference, family research leads, clock-component exclusions, unmatched
+styles, coverage and anomalies remain available but cannot become confirmed
+answers by inheritance. Report their coverage separately. Keep evaluated answers
+out of prompts and training/retrieval memory for the evaluated items and families.
+Previously examined development material is not an untouched evaluation set.
 
 ## Import and verification
 
-The generic [loader](../tools/load-customs-benchmark.py) contains no private data
-and issues no DDL. Its inputs are the private source directory, original workbook,
-exact target ref and a local `project-ref` file. The Supabase Management API token
-comes only from the environment through 1Password. Full imports use
-`CUSTOMS_DB_DIRECT=1` with `psycopg` and the canonical database password and
-pooler host in environment variables: the Management API rejects large PDF
-queries. The loader verifies TLS using the repository CA and compares the direct
-database cluster identity with the proved project through the Management API
-before every statement. This uses the supported database connection for large
-content; no schema or access control is bypassed. The default mode only verifies;
-`--apply` inserts immutable rows with conflict preservation. Run against the
-actual DesignFlow non-production and shared production targets independently;
-shared preview is rehearsal, not the requested development delivery.
+The generic [loader](../tools/load-customs-benchmark.py) contains no private
+source data and issues no DDL. Source inputs are the private customs directory
+and original master workbook. Storage uses `S3_ENDPOINT_URL`, `S3_BUCKET`,
+`AWS_DEFAULT_REGION` and credentials supplied only through a protected process
+environment. Use the application's canonical existing storage credential source;
+never commit values. `--archive-only` preserves and verifies objects without
+accessing a database. No source file is deleted or replaced.
 
-Before every request the loader checks the local target file and the Management
-API project identity. It re-reads every artifact's bytes and verifies database
-SHA-256 plus size, compares every observation and the entire original intelligence
-object, then re-inventories the source files. A partial import is **not usable or
-complete** until full verification succeeds. Re-running safely finishes missing
-rows; a conflicting existing row stops verification without replacing evidence.
-The tables grant only SELECT/INSERT to `service_role`, with RLS enabled and no
-browser policies. Backend evaluation uses a trusted server-side identity; this
-change adds no public endpoint, browser access or classifier behavior.
+The default database mode only verifies; `--apply` inserts immutable rows with
+conflict preservation. The exact target ref and local `project-ref` file are
+required. The Management API token comes from 1Password. The optional verified
+pooler connection uses `CUSTOMS_DB_DIRECT=1`, `psycopg`, the canonical password
+and pooler host supplied through the environment; it proves the same cluster as
+the Management API before every statement. Default verification transactions are
+read-only. File bytes never travel through a PostgreSQL statement.
 
-Schema goes through canonical automatic production promotion and the existing
-sandbox migration workflow. Source data stays out of GitHub, Actions and public
-logs. The same issue retains target-specific load receipts and live proof.
+For each actual development and production target, verify every private object,
+every object pointer and parsed extraction record, all observation fields, the
+entire original intelligence object, expected counts and a fresh source inventory.
+A partial import is not complete or usable until this full reconciliation passes.
+Re-running finishes missing rows; conflicts stop verification without replacing
+evidence. The tables grant only SELECT/INSERT to `service_role`, with RLS enabled
+and no browser policies. Evaluation access requires a trusted server-side identity.
+No new public endpoint or classifier behavior is introduced.
+
+## Extraction route
+
+The saved extraction covers all source packets. Preserve it rather than replacing
+it with a new unverified OCR result. PopDAM documents Indra in its PDF-processing
+agent: `packages/agent-common/src/indra-ocr.ts`,
+`apps/bridge-agent/Dockerfile`, and `docs/WORKER_LOGIC.md` section 10 in the PopDAM
+repository. Its configured Python runtime processes rendered page images with
+bundled ONNX models, after native PDF text extraction. This is an agent integration,
+not evidence of a standalone Hetz HTTP service. Reuse that supported integration
+for scanned or unreadable pages if needed; retain any new output separately with
+source/page/tool provenance. No re-extraction is required to preserve this dataset.
+
+Schema uses canonical automatic production promotion and the existing sandbox
+migration workflow. Private source content never enters GitHub or Actions logs.
+The same issue retains storage proof, both-target receipts and live proof.

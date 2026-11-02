@@ -21,10 +21,12 @@ create table plm.customs_benchmark_artifact (
   content_sha256 text not null check (content_sha256 ~ '^[0-9a-f]{64}$'),
   media_type text not null,
   byte_count bigint not null check (byte_count >= 0),
-  content bytea not null,
-  primary key (dataset_id, relative_path),
-  check (octet_length(content) = byte_count),
-  check (encode(sha256(content), 'hex') = content_sha256)
+  storage_endpoint text not null check (storage_endpoint like 'https://%'),
+  storage_bucket text not null check (btrim(storage_bucket) <> ''),
+  storage_key text not null check (storage_key like 'private/customs-benchmark/%'),
+  private_verified boolean not null check (private_verified),
+  structured_content jsonb,
+  primary key (dataset_id, relative_path)
 );
 create table plm.customs_benchmark_observation (
   dataset_id text not null references plm.customs_benchmark_dataset(dataset_id),
@@ -45,7 +47,7 @@ create table plm.customs_benchmark_observation (
 comment on table plm.customs_benchmark_dataset is
   'Authoritative preserved historical customs evidence benchmark, owner-directed in #5447. Historical evidence is not current-law classification truth; original statuses, exclusions and source bytes are mandatory.';
 comment on table plm.customs_benchmark_artifact is
-  'Private byte-exact source archive: customs packets, item-master snapshot, extracts, reports, scripts and context. Never expose via browser roles or copy into sanitized shared HTS learning.';
+  'Private object-storage pointers and byte checksums for customs packets, item-master snapshot, extracts, reports, scripts and context; parsed extraction JSON stays queryable. File bytes are not stored in PostgreSQL. Never expose via browser roles or copy into sanitized shared HTS learning.';
 comment on table plm.customs_benchmark_observation is
   'Queryable authoritative historical comparison records. Only explicit historical link candidates may enter historical exact-match scoring; family leads, packet inference, clock exclusions and unresolved cases remain distinct. Retain original_record verbatim in meaning.';
 alter table plm.customs_benchmark_dataset enable row level security;

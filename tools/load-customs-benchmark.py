@@ -11,6 +11,8 @@ import os
 from pathlib import Path
 import sys
 import urllib.request
+import urllib.error
+from urllib.parse import quote
 
 SECTIONS = ('matches','suggestions','code_checks','unmatched','coverage','anomalies')
 CONTEXT = ('Owner-directed authoritative historical customs evidence benchmark (#5447; '
@@ -96,20 +98,67 @@ class Database:
                     return cursor.fetchall() if cursor.description is not None else []
         return self.api('projects/'+self.ref+'/database/query',{'query':sql,'read_only':not write})
 
+class ObjectStore:
+    """Private content-addressed originals. Never put original filenames in keys."""
+    def __init__(self):
+        import boto3
+        self.endpoint=os.environ['S3_ENDPOINT_URL'].rstrip('/')
+        self.bucket=os.environ['S3_BUCKET']
+        if not self.endpoint.startswith('https://'):raise ValueError('Storage must use HTTPS')
+        self.client=boto3.client('s3',endpoint_url=self.endpoint,
+            region_name=os.environ['AWS_DEFAULT_REGION'],
+            aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+            aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'])
+    def preserve(self,ident,path,digest,size,apply):
+        key='private/customs-benchmark/'+ident+'/'+digest
+        try:
+            self.client.head_object(Bucket=self.bucket,Key=key)
+            exists=True
+        except self.client.exceptions.ClientError as exc:
+            if exc.response['Error']['Code'] not in ('404','NoSuchKey','NotFound'):raise
+            exists=False
+        if not exists:
+            if not apply:raise ValueError('Missing archived original')
+            content=path.read_bytes()
+            if sha(content)!=digest:raise ValueError('Source changed before archive write')
+            self.client.put_object(Bucket=self.bucket,Key=key,Body=content,ACL='private',
+                ContentType=mimetypes.guess_type(path.name)[0] or 'application/octet-stream',
+                Metadata={'sha256':digest})
+        acl=self.client.get_object_acl(Bucket=self.bucket,Key=key)
+        if any(g['Grantee'].get('Type')=='Group' for g in acl['Grants']):
+            raise ValueError('Archived object has non-private ACL')
+        content=self.client.get_object(Bucket=self.bucket,Key=key)['Body'].read()
+        if len(content)!=size or sha(content)!=digest:raise ValueError('Archived source bytes differ')
+        # Authenticated GET proves existence; unsigned HEAD proves no public read.
+        url=self.endpoint.replace('https://','https://'+self.bucket+'.',1)+'/'+quote(key,safe='/')
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url,method='HEAD'),timeout=20) as response:
+                code=response.status
+        except urllib.error.HTTPError as exc:code=exc.code
+        if code!=403:raise ValueError('Archived object is not privately denied')
+        structured=None
+        if path.suffix.lower()=='.json':structured=json.loads(content)
+        elif path.suffix.lower()=='.jsonl':structured=[json.loads(line) for line in content.decode().splitlines() if line.strip()]
+        return dict(storage_endpoint=self.endpoint,storage_bucket=self.bucket,storage_key=key,
+            private_verified=True,structured_content=structured)
+
 def run(args):
     ident,manifest,files,data,rows=inventory(args.root,args.master)
+    store=ObjectStore()
+    objects={}
+    for name,path,digest,size in files:
+        objects[name]=store.preserve(ident,path,digest,size,args.apply or args.archive_only)
+    if args.archive_only:
+        assert inventory(args.root,args.master)[0]==ident,'Source changed during archive'
+        print(json.dumps(dict(dataset_id=ident,files=len(files),source_bytes=sum(x[3] for x in files),
+            all_source_sha256_verified=True,all_objects_private=True,database_file_bytes=0)))
+        return
     db=Database(args.expected_ref,args.project_ref_file)
     if args.apply:
         db.query('insert into plm.customs_benchmark_dataset (dataset_id,benchmark_name,authority_scope,source_manifest,original_intelligence,authority_context,source_file_count,source_byte_count,observation_count) values ('+','.join([literal(ident),literal('customs_intelligence_20261101'),literal('historical_customs_evidence'),json_sql(manifest),json_sql(data),literal(CONTEXT),str(len(files)),str(sum(x[3] for x in files)),str(len(rows))])+') on conflict do nothing;',True)
-        existing = {r['relative_path']:(r['content_sha256'],r['byte_count']) for r in db.query('select relative_path,content_sha256,byte_count from plm.customs_benchmark_artifact where dataset_id='+literal(ident))}
         for name,path,digest,size in files:
-            if name in existing:
-                if existing[name] != (digest,size):raise ValueError('Conflicting preserved artifact')
-                continue
-            content=path.read_bytes()
-            if sha(content)!=digest:raise ValueError('Source changed during import')
-            sql='insert into plm.customs_benchmark_artifact (dataset_id,relative_path,content_sha256,media_type,byte_count,content) values ('+','.join([literal(ident),literal(name),literal(digest),literal(mimetypes.guess_type(name)[0] or 'application/octet-stream'),str(size),"decode("+literal(content.hex())+",'hex')"])+') on conflict do nothing;'
-            db.query(sql,True)
+            o=objects[name]
+            db.query('insert into plm.customs_benchmark_artifact (dataset_id,relative_path,content_sha256,media_type,byte_count,storage_endpoint,storage_bucket,storage_key,private_verified,structured_content) values ('+','.join([literal(ident),literal(name),literal(digest),literal(mimetypes.guess_type(name)[0] or 'application/octet-stream'),str(size),literal(o['storage_endpoint']),literal(o['storage_bucket']),literal(o['storage_key']),'true',json_sql(o['structured_content']) if o['structured_content'] is not None else 'NULL'])+') on conflict do nothing;',True)
         for start in range(0,len(rows),100):
             values=[]
             for r in rows[start:start+100]:
@@ -120,22 +169,26 @@ def run(args):
     d=stored[0]
     assert d['source_manifest']==manifest and d['original_intelligence']==data and d['authority_context']==CONTEXT,'Dataset context mismatch'
     assert (d['source_file_count'],d['source_byte_count'],d['observation_count'])==(len(files),sum(x[3] for x in files),len(rows)),'Dataset counts mismatch'
-    artifacts=db.query("select relative_path,content_sha256,byte_count,encode(sha256(content),'hex') as actual_sha256 from plm.customs_benchmark_artifact where dataset_id="+literal(ident)+' order by relative_path')
+    artifacts=db.query('select relative_path,content_sha256,byte_count,storage_endpoint,storage_bucket,storage_key,private_verified,structured_content from plm.customs_benchmark_artifact where dataset_id='+literal(ident))
     expected={n:(h,s) for n,p,h,s in files}
-    assert len(artifacts)==len(expected),'Incomplete archive'
-    for a in artifacts:assert expected[a['relative_path']]==(a['actual_sha256'],a['byte_count']) and a['content_sha256']==a['actual_sha256'],'Archive bytes mismatch'
+    assert len(artifacts)==len(expected),'Incomplete archive references'
+    for a in artifacts:
+        assert expected[a['relative_path']]==(a['content_sha256'],a['byte_count']),'Archive identity mismatch'
+        assert {k:a[k] for k in objects[a['relative_path']]}==objects[a['relative_path']],'Archive location or extraction mismatch'
     observed=db.query('select section,source_ordinal,style_number,product_description,product_family,historical_hts,packet_reference,evidence_status,exact_historical_candidate,current_law_verified,original_record from plm.customs_benchmark_observation where dataset_id='+literal(ident))
     assert sorted(observed,key=lambda r:(r['section'],r['source_ordinal']))==sorted(rows,key=lambda r:(r['section'],r['source_ordinal'])),'Observation or context mismatch'
-    # Re-inventory after reads proves no original changed while being loaded.
     assert inventory(args.root,args.master)[0]==ident,'Source changed during verification'
-    print(json.dumps(dict(target=args.expected_ref,dataset_id=ident,files=len(files),source_bytes=sum(x[3] for x in files),observations=len(rows),sections={s:len(data[s]) for s in SECTIONS},all_source_sha256_verified=True,all_row_context_verified=True)))
+    print(json.dumps(dict(target=args.expected_ref,dataset_id=ident,files=len(files),source_bytes=sum(x[3] for x in files),observations=len(rows),sections={s:len(data[s]) for s in SECTIONS},all_source_sha256_verified=True,all_row_context_verified=True,all_objects_private=True,database_file_bytes=0)))
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--root',required=True);p.add_argument('--master',required=True)
-    p.add_argument('--expected-ref',required=True);p.add_argument('--project-ref-file',required=True)
+    p.add_argument('--expected-ref');p.add_argument('--project-ref-file')
+    p.add_argument('--archive-only',action='store_true')
     p.add_argument('--apply',action='store_true')
     args=p.parse_args()
+    if not args.archive_only and (not args.expected_ref or not args.project_ref_file):p.error('Database target and project-ref file required')
+    if args.archive_only and args.apply:p.error('Choose archive-only or apply')
     try:run(args)
     except Exception as exc:
         # Error bodies can contain SQL, secrets or private source evidence.

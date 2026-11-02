@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "work_issue": 4508,
+  "pr": 5422,
+  "base_sha": "64310a3240579a34a62d5e68f009a81482ff6a41",
+  "head_sha": "3a174e6c37cb00827e438a8a20290a36bce46e98",
+  "contract_ref": "refs/db-contracts/4508/24",
+  "contract_sha256": "1f5e38cabea61c2f80678bef220584952a325893bcb1422e74ac61edf92a6477",
+  "files_changed": [
+    "supabase/migrations/20261102020822_dam_dense_vectors_replica_sync.sql",
+    "supabase/tests/popdam_dense_group_vectors_contracts.sql",
+    "config/atomic-migration-allowlist.json"
+  ],
+  "db_reads": [
+    "table public.dam_search_documents"
+  ],
+  "db_writes": [
+    "table public.dam_search_documents",
+    "trigger trg_sync_search_group_vectors on public.dam_search_documents",
+    "table dam.search_group_vectors"
+  ],
+  "migration_versions": [
+    "20261102020822"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Static SQL guards pass; CI performs live-ledger guards separately."
+    },
+    {
+      "command": "disposable PostgreSQL original drift, forward migration and dense-vector contract",
+      "exit_code": 0,
+      "evidence": "Reproduced missing/stale/orphan rows under original replica writes; repaired two entries/deleted one orphan. Complete parity and origin/replica lifecycle pass, including same-key asset isolation."
+    },
+    {
+      "command": "python3 -m unittest scripts/test_atomic_migration_apply.py",
+      "exit_code": 0,
+      "evidence": "27 tests pass; the actual new five-statement body is hash-authorized on both targets; original03027 SHA remains unchanged."
+    }
+  ],
+  "assumptions_resolved": [
+    "Finding5401 replica-mode drift is reproduced in disposable PostgreSQL",
+    "Original03027 remains byte-identical and already preview applied",
+    "Normal and replica mutations must synchronously preserve complete projection parity"
+  ],
+  "stop_conditions_hit": [],
+  "outcome": "ready-for-merge"
+}

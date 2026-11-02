@@ -806,8 +806,14 @@ jobs:
                   ;;
               esac
             fi
+            contract_user="$PGUSER"
+            # This contract needs the existing disposable superuser's replica setting;
+            # no role grants or production changes are made.
+            if [ "$base" = "popdam_dense_group_vectors_contracts.sql" ]; then
+              contract_user=supabase_admin
+            fi
             echo "::group::$base"
-            if psql -v ON_ERROR_STOP=1 --no-psqlrc -f "$run_file" > "$log" 2>&1; then
+            if PGUSER="$contract_user" psql -v ON_ERROR_STOP=1 --no-psqlrc -f "$run_file" > "$log" 2>&1; then
               rc=0
             else
               rc=$?

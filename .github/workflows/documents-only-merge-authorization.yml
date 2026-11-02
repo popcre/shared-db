@@ -117,7 +117,7 @@ jobs:
           set -euo pipefail
           extra=()
           [ "$BASE_CHANGED" = true ] && extra+=(--revoke-required-status)
-          node scripts/manage-migration-author-lanes.mjs \
+          node scripts/manage-migration-coordination.mjs \
             --authorize-repository-maintenance-status \
             --pr "$PR_NUMBER" --head-sha "$HEAD_SHA" \
             --description 'Prose-only head verified under the coordination/production-freeze mutex' \

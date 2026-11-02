@@ -74,7 +74,7 @@ claim exactly. Never hand-edit this fence after the decision is recorded. -->
 ## Audit output
 
 <!-- Paste the report from:
-     node scripts/manage-migration-author-lanes.mjs --abandonment-audit
+     node scripts/manage-migration-coordination.mjs --abandonment-audit
      and state its exit code: 0 clean, 2 expired, 3 unverifiable.
      A 3 concludes nothing. Do not proceed on a 3. -->
 

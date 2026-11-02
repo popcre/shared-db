@@ -11,6 +11,11 @@ on:
   push:
     branches: [main]
     paths: ['supabase/migrations/**']
+  # Start the next PR as soon as a dispatched apply succeeds. Failures wait for
+  # the hourly schedule, so a failing apply is not retried in a tight loop.
+  workflow_run:
+    workflows: ['Shared Supabase Migrations']
+    types: [completed]
   schedule:
     - cron: '23 * * * *'
   workflow_dispatch:
@@ -24,6 +29,7 @@ concurrency:
 
 jobs:
   trigger:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.conclusion == 'success')
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     permissions:

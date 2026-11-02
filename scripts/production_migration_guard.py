@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import urllib.request
 
 from migration_derivation import (
     DerivationError,
@@ -2666,18 +2667,31 @@ def read_sandbox_dependencies(ledger_name, project_ref, token, query=None, fetch
         raise GuardError("live dependency reads require the exact DesignFlow sandbox target")
     if not token:
         raise GuardError("sandbox live dependency read requires SUPABASE_ACCESS_TOKEN")
-    from sandbox_migration_preflight import fetch_project, check_returned_project, Refusal
-    from production_catalog_verification import run_query
-    try:
-        check_returned_project(project_ref, (fetch or fetch_project)(project_ref, token))
-        rows = (query or run_query)(project_ref, token, """
+    # This reader uses only stdlib so sandbox-only inspection cannot expand
+    # the production preview producer's pinned executable/data closure.
+    def read_api(suffix, payload=None):
+        request = urllib.request.Request(
+            f"https://api.supabase.com/v1/projects/{project_ref}{suffix}",
+            data=None if payload is None else json.dumps(payload).encode(),
+            headers={"Authorization": f"Bearer {token}",
+                     "User-Agent": "shared-db-sandbox-dependency-proof/1",
+                     "Content-Type": "application/json"})
+        with urllib.request.urlopen(request, timeout=60) as response:
+            return json.loads(response.read().decode("utf-8"))
+    if fetch:
+        project = fetch(project_ref, token)
+    else:
+        project = read_api("")
+    if not isinstance(project, dict) or (project.get("id") or project.get("ref")) != project_ref:
+        raise GuardError("Management API returned a different sandbox project identity")
+    statement = """
             SELECT n.nspname || '.' || c.relname AS name
             FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
             WHERE n.nspname='dflow' AND c.relkind IN ('r','p','v','m','f')
             ORDER BY 1
-        """)
-    except Refusal as exc:
-        raise GuardError(str(exc)) from exc
+        """
+    rows = query(project_ref, token, statement) if query else read_api(
+        "/database/query", {"query": statement, "read_only": True})
     if not isinstance(rows, list) or not rows:
         raise GuardError("sandbox dependency catalog is missing or empty")
     names = []

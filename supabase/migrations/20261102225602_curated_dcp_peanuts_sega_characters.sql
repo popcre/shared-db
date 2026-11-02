@@ -19,6 +19,31 @@
 -- Insert-only and idempotent. RECOVERY: retire edges whose metadata issue
 -- and loaded_by match, then remove the characters and source refs with the same marker.
 
+create function pg_temp.slug_name(p_slug text) returns text language plpgsql immutable as $fn$
+declare
+  v_out text := '';
+  v_word text;
+  v_part text;
+begin
+  foreach v_word in array string_to_array(p_slug, '-') loop
+    continue when v_word = '';
+    if v_word = 's' and v_out <> '' then v_out := v_out || '''s'; continue; end if;
+    v_part := case
+      when v_word ~ '[0-9]' or v_word in ('ii', 'iii', 'iv', 'vi', 'vii', 'viii', 'ix') then upper(v_word)
+      when v_word ~ '^mc[a-z]' then 'Mc' || initcap(substr(v_word, 3))
+      when v_word = 'de' and v_out <> '' then 'de'
+      else initcap(v_word) end;
+    -- Codes keep their hyphen: a short prefix before a digit token, as the slug has it.
+    if v_word ~ '[0-9]' and length(v_out) > 0 and split_part(v_out, ' ', -1) ~ '^[A-Za-z0-9]{1,2}$' then
+      v_out := regexp_replace(v_out, '[^ ]+$', upper(split_part(v_out, ' ', -1))) || '-' || v_part;
+    else
+      v_out := btrim(v_out || ' ' || v_part);
+    end if;
+  end loop;
+  return regexp_replace(v_out, ' The$', '');
+end
+$fn$;
+
 do $characters$
 declare
   v_issue constant text := 'popcre/shared-db#5079';
@@ -29,12 +54,12 @@ begin
   select l.id as licensor_id, s.name, s.source_system || ':' || s.source_id as code, s.source_system, s.source_table, s.source_id
     from (
       select 'DY' as lic, c.source_system, 'plm.dcp_character' as source_table, c.source_id,
-             initcap(replace(regexp_replace(split_part(c.source_id, '/', 3), '-disney-(pooh|princess)$', ''), '-', ' ')) as name
+             pg_temp.slug_name(regexp_replace(split_part(c.source_id, '/', 3), '-disney-(pooh|princess)$', '')) as name
         from plm.dcp_character c
        where split_part(c.source_id, '/', 3) !~ '^(unnamed-character|aliens-as-)'
       union all
       select 'SW', c.source_system, 'plm.lucasfilm_dcp_character', c.source_id,
-             initcap(replace(split_part(c.source_id, '/', 3), '-', ' '))
+             pg_temp.slug_name(split_part(c.source_id, '/', 3))
         from plm.lucasfilm_dcp_character c
        where split_part(c.source_id, '/', 3) !~ '^unnamed-character'
          and exists (select 1 from plm.lucasfilm_dcp_asset_character_observation co
@@ -67,7 +92,9 @@ begin
 
   insert into core.taxonomy_source_ref
     (entity_schema, entity_table, entity_id, source_system, source_table, source_id, source_name, confidence, raw)
-  select 'core', 'character', ch.id, n.source_system, n.source_table, n.source_id, ch.name, 'verified', v_meta
+  select 'core', 'character', ch.id, n.source_system, n.source_table, n.source_id, ch.name,
+         -- Peanuts labels are a licensor search vocabulary; Sega labels are derived candidates.
+         (case n.source_system when 'peanuts' then 'probable' when 'sega' then 'possible' else 'verified' end)::core.source_confidence, v_meta
     from pg_temp.new_chars n
     join core.character ch on ch.licensor_id = n.licensor_id and ch.code = n.code
   on conflict (source_system, source_table, source_id) do nothing;

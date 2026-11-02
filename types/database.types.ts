@@ -46283,6 +46283,13 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_dam_order_vendor_ids: {
+        Args: { p_line_ids: string[] }
+        Returns: {
+          order_line_id: string
+          vendor_code: string
+        }[]
+      }
       get_dam_search_embedding_status: { Args: never; Returns: Json }
       get_dam_search_performance_stats: {
         Args: never

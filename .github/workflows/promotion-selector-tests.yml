@@ -1,0 +1,24 @@
+name: Promotion selector tests
+
+# Advisory unit tests for the automatic promotion selector and review-finding hold.
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/automatic_promotion_candidates.py'
+      - 'scripts/review_finding_hold.py'
+      - 'scripts/test_automatic_promotion_candidates.py'
+      - 'scripts/test_review_finding_hold.py'
+      - '.github/workflows/promotion-selector-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: python -m unittest discover -s scripts -p 'test_automatic_promotion_candidates.py' -v
+      - run: python -m unittest discover -s scripts -p 'test_review_finding_hold.py' -v

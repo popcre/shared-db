@@ -11,9 +11,9 @@ values('99999999-9999-4999-8999-000000000003','99999999-9999-4999-8999-000000000
 insert into coldlion.sync_run(id,endpoint,requested_by,started_at)
 values('99999999-9999-4999-8999-000000000004','zz-editor-test','zz-test',now());
 insert into coldlion.intake_order_line(id,company_code,sales_order_no,sales_order_line_no,master_item_no,po_number,line_source_hash,first_seen_run,last_seen_run,fetched_at)
-values('99999999-9999-4999-8999-000000000005','EDGEHOME',9123456,1,'ZZ-RAW','ZZ-OLD-PO','zz-editor-line','99999999-9999-4999-8999-000000000004','99999999-9999-4999-8999-000000000004',now());
+values('99999999-9999-4999-8999-000000000005','EDGEHOME',9123456,1,'ZZ-RAW','ZZ-OLD-PO',repeat('a',64),'99999999-9999-4999-8999-000000000004','99999999-9999-4999-8999-000000000004',now());
 insert into coldlion.intake_order_component(id,line_id,sub_item_no,sub_label_code,component_source_hash,first_seen_run,last_seen_run,fetched_at)
-values('99999999-9999-4999-8999-000000000006','99999999-9999-4999-8999-000000000005','ZZ-RAW','ZZ','zz-editor-component','99999999-9999-4999-8999-000000000004','99999999-9999-4999-8999-000000000004',now());
+values('99999999-9999-4999-8999-000000000006','99999999-9999-4999-8999-000000000005','ZZ-RAW','ZZ',repeat('b',64),'99999999-9999-4999-8999-000000000004','99999999-9999-4999-8999-000000000004',now());
 insert into plm.item(id,source_system,source_id,item_number,style_number)
 values('99999999-9999-4999-8999-000000000007','zz-test','ZZ-EDITOR-ITEM','ZZ-FIXED','ZZ-FIXED');
 insert into public.style_tracker_rows(id,source_sheet,tracker_type,sku)

@@ -73,16 +73,17 @@ begin
     left join plm.production_order_line_source_ref r on r.production_order_line_id=l.id and r.source_system='coldlion' and r.is_primary
     where l.id=any(p_line_ids)
   ), intake_candidates as materialized (
-    select l.*,h.company_code,h.prod_reference_no,h.master_item_no,h.last_seen_run,
-      max(h.last_seen_run) over(partition by l.id) as latest_run
+    select l.*,h.company_code,h.prod_reference_no,h.master_item_no,run.started_at as seen_at,
+      max(run.started_at) over(partition by l.id) as latest_run
     from lines l join coldlion.intake_order_line h on h.company_code='EDGEHOME'
       and h.sales_order_no=l.so and h.sales_order_line_no=l.ln
       and h.master_item_no=coalesce(nullif(l.assortment_id,''),l.sku)
+    join coldlion.sync_run run on run.id=h.last_seen_run and run.started_at is not null
   ), intake as materialized (
     select i.id,min(i.sku) as sku,min(i.assortment_id) as assortment_id,min(i.so) as so,
       min(i.company_code) as company_code,min(i.master_item_no) as master_item_no,
       min(nullif(btrim(i.prod_reference_no),'')) as prod_reference_no
-    from intake_candidates i where i.last_seen_run=i.latest_run
+    from intake_candidates i where i.seen_at=i.latest_run
     group by i.id having count(*)=count(nullif(btrim(i.prod_reference_no),''))
       and count(distinct nullif(btrim(i.prod_reference_no),''))=1
   ), history as materialized (

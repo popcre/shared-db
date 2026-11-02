@@ -135,7 +135,7 @@ jobs:
             exit 3
           fi
           set +e
-          node scripts/manage-migration-author-lanes.mjs --abandonment-audit | tee /tmp/abandonment-audit.json
+          node scripts/manage-migration-coordination.mjs --abandonment-audit | tee /tmp/abandonment-audit.json
           CODE=${PIPESTATUS[0]}
           set -e
           {

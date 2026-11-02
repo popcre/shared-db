@@ -405,6 +405,14 @@ test('admitIssue accepts a modified-migration pull request only through the prov
     previewLedgerStatements:()=>{throw new Error('must not be read while preview holds no version')},
     ...extra,
   }}
+  const wrongVersion=claim.replace('20261030043848','20261030043849')
+  assert.throws(()=>admitIssue(41,io({openClaims:()=>[{number:12,body:wrongVersion}]}),{pr:7}),/version is not an edited migration version/)
+  const unrelatedMalformed=claim.replace('zcode/recovery-5141','other/branch').replace('owner:', 'unknown_field:')
+  assert.equal(admitIssue(41,io({openClaims:()=>[{number:13,body:unrelatedMalformed},{number:12,body:claim}]}),{pr:7}).admitted,true)
+  const relatedMalformed=claim.replace('owner:', 'unknown_field:')
+  assert.throws(()=>admitIssue(41,io({openClaims:()=>[{number:12,body:relatedMalformed}]}),{pr:7}),/claim #12 is unreadable/)
+  assert.throws(()=>admitIssue(41,io({openClaims:()=>[{number:12,body:claim},{number:13,body:claim}]}),{pr:7}),/found 2/)
+  assert.throws(()=>admitIssue(41,io({getPrFiles:()=>[...files,{filename:'supabase/migrations/20261030043849_added.sql',status:'added'}]}),{pr:7}),/mixed added and modified migrations cannot use subset admission/)
   const admitted=admitIssue(41,io(),{pr:7})
   assert.equal(admitted.admitted,true)
   assert.deepEqual(admitted.unapplied_edit_subset,{claim:12,versions:['20261030043848']})

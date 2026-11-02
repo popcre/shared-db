@@ -364,6 +364,7 @@ export function structuralWritesMatchUnappliedEdit(inspection, declared, migrati
   const refuse=(reason)=>{throw new AdmissionError(`unapplied-migration-edit subset admission refused: ${reason}`)}
   if(!Array.isArray(migrationFiles)||!migrationFiles.length)refuse('the pull request names no migration file')
   if(!migrationFiles.some((row)=>row.status==='modified'))return false
+  if(migrationFiles.some((row)=>row.status==='added'))refuse('added migrations must exactly match admitted writes; mixed added and modified migrations cannot use subset admission')
   for(const row of migrationFiles){
     if(row.status!=='added'&&row.status!=='modified')refuse(`migration ${row.name} has unknown status ${JSON.stringify(row.status)}; only added or modified migrations can be subset-admitted`)
     if(!/^\d{14}$/.test(String(row.version??''))||!/^supabase\/migrations\/\d{14}_[^/]+\.sql$/.test(row.name))refuse(`migration ${row.name} has an unreadable version`)

@@ -91,7 +91,7 @@ export function admitIssue(number, io = githubIo, { pr = null, actor = 'manage-m
         if(!editFiles.some((row)=>row.status==='modified'))throw new AdmissionError(`pull request #${pr} structural objects must exactly match admitted issue #${number} writes`)
         let claim,ledgers
         try{
-          claim=branchBoundClaimWrites(livePr?.head?.ref,io)
+          claim=branchBoundClaimWrites(livePr?.head?.ref,io,{migrationFiles:editFiles})
           ledgers=appliedLedgerVersions(io)
           ledgers.previewIdentical=previewVerifiedIdentical(editFiles,ledgers,io,{readFileAt:(name)=>io.getFileAt(name,head)})
         }catch(error){

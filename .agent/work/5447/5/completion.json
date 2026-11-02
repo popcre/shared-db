@@ -8,16 +8,16 @@
   ],
   "contract_ref": "refs/db-contracts/5447/5",
   "contract_sha256": "c524472c4a61fac0e263c93033a203a2688d2adce6f0883266d73fa392f4c136",
-  "head_sha": "38479126a55c03f42ef725259cb7653218e6ffec",
+  "head_sha": "d7a260b4184e04eba915e6448948918ca1c7deec",
   "base_sha": "90e6b1df001f44a90fe1b6020539fcea3647f4a3",
   "files_changed": [
     ".github/live-proofs/5447.sql",
+    "config/db-data-admin-property-source-coverage.json",
     "docs/customs-benchmark.md",
     "supabase/migrations/20261102163736_customs_benchmark.sql",
     "supabase/tests/customs_benchmark_contract.sql",
     "tools/load-customs-benchmark.py",
-    "tools/test_customs_benchmark.py",
-    "config/db-data-admin-property-source-coverage.json"
+    "tools/test_customs_benchmark.py"
   ],
   "db_reads": [],
   "db_writes": [
@@ -45,6 +45,16 @@
       "command": "private object-storage smoke and disposable PostgreSQL integration",
       "exit_code": 0,
       "evidence": "Dedicated private DigitalOcean bucket; generic uploader verified full bytes, parsed JSON, repeat reads and anonymous denial. Database schema contains no bytea/file content column; migration, private access test, first/repeat import and read-only verification passed on disposable PostgreSQL 17."
+    },
+    {
+      "command": "python3 -m unittest discover -s scripts -p test_*.py",
+      "exit_code": 0,
+      "evidence": "Final object-storage implementation: 1,770 tests passed, 46 environment-dependent skips; three loader preservation tests also passed."
+    },
+    {
+      "command": "private source archive and recovery manifest reconciliation",
+      "exit_code": 0,
+      "evidence": "All 150 original files (58,797,711 bytes) downloaded with matching SHA-256, private ACLs and anonymous denial; separate private recovery manifest verified. No original corruption or database file bytes."
     }
   ],
   "assumptions_resolved": [

@@ -54,7 +54,7 @@ create table plm.production_order_line (id uuid primary key default gen_random_u
   line_number text, sku text, quantity_ordered numeric, order_person text, order_type text,
   customer_po_number text, assortment_id text, assortment_component_ordinal integer, case_pack numeric,
   ship_to text, start_ship_date date, cancel_date date, metadata jsonb, source_system text, source_id text,
-  source_style_type text, item_id uuid, master_data_match_status text, voided_at timestamptz,
+  source_style_type text, item_id uuid, master_data_match_status text, voided_at timestamptz, status text,
   sku_normalized text generated always as (nullif(btrim(lower(sku)), '')) stored,
   updated_at timestamptz default now(), unique (source_system, source_id));
 create table plm.production_order_line_source_ref (production_order_line_id uuid references plm.production_order_line (id) on delete cascade, source_system text,
@@ -418,4 +418,23 @@ test("voided superseded source components stay historical and never auto-merge",
   psql(buildAutoMergeSql({ runId: run(), write: true }));
   assert.equal(psql(`select count(*) from plm.production_order_line`), '2');
   assert.equal(psql(`select count(*) from plm.production_order_line where voided_at is not null`), '1');
+});
+
+
+test("verified source cancellation survives replay and changed cancellation demands review", { skip: !container }, () => {
+  psql(`drop database if exists ${DB}`, "postgres");
+  psql(`create database ${DB}`, "postgres");
+  psql(SCHEMA);
+  psql(stage(run(), ['CANCELLED-COMPONENT']));
+  write();
+  psql(`update coldlion.intake_order_line set line_cancelled_qty=line_qty;
+    update plm.production_order_line l set status='cancelled',metadata=l.metadata || jsonb_build_object(
+      'orderlist_source_cancellation',jsonb_build_object('version',1,'source_id',r.source_id,
+        'line_qty',96,'line_cancelled_qty',96,'evidence_ref','issue636'))
+      from plm.production_order_line_source_ref r where r.production_order_line_id=l.id;`);
+  psql(buildWriteSql({ runId: run(), order: SO, write: true }));
+  assert.equal(psql(`select status from plm.production_order_line`), 'cancelled');
+  psql(`update coldlion.intake_order_line set line_cancelled_qty=0`);
+  assert.throws(() => psql(buildWriteSql({ runId: run(), order: SO, write: true })), /source cancellation changed; review required/);
+  assert.equal(psql(`select status from plm.production_order_line`), 'cancelled');
 });

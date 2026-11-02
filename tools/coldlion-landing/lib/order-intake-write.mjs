@@ -1,4 +1,4 @@
-import { correctionExpressions, buildSourceCorrectionPreflightSql } from './order-source-corrections.mjs';
+import { correctionExpressions, buildSourceCorrectionPreflightSql, buildCancellationPreflightSql } from './order-source-corrections.mjs';
 // The ColdLion order-intake CANONICAL WRITER (plan_coldlion_order_intake.md §9 C2).
 //
 // A SEPARATE script from order-intake.mjs (the poller stays claim-only): this
@@ -148,6 +148,7 @@ export function buildWriteSql({ runId, write = false, limit = null, order = null
   return `begin;
 
 ${buildSourceCorrectionPreflightSql()}
+${buildCancellationPreflightSql()}
 
 create temporary table coldlion_orderlist_link_scope (
   line_id uuid primary key, expected_type text, incoming_sku text,
@@ -1034,6 +1035,7 @@ export function buildAutoMergeSql({ runId, write = false } = {}) {
   return `begin;
 
 ${buildSourceCorrectionPreflightSql()}
+${buildCancellationPreflightSql()}
 
 create temporary table coldlion_auto_merge (placeholder_line uuid primary key, google_line uuid unique not null) on commit drop;
 

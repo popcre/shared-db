@@ -1,3 +1,4 @@
+import { correctionExpressions, buildSourceCorrectionPreflightSql } from './order-source-corrections.mjs';
 // The ColdLion order-intake CANONICAL WRITER (plan_coldlion_order_intake.md §9 C2).
 //
 // A SEPARATE script from order-intake.mjs (the poller stays claim-only): this
@@ -143,7 +144,10 @@ export function buildWriteSql({ runId, write = false, limit = null, order = null
             and r.metadata ->> 'sub_item_no' is not distinct from nullif(c.sub_item_no, '')
             and r.metadata ->> 'sub_label_code' is not distinct from nullif(c.sub_label_code, ''))))`;
   const scopeLimit = limit !== null ? `\n  limit ${sqlNumber(limit)}` : "";
+  const corrected = correctionExpressions({ sku: "raw.sku", po: "raw.po_number" });
   return `begin;
+
+${buildSourceCorrectionPreflightSql()}
 
 create temporary table coldlion_orderlist_link_scope (
   line_id uuid primary key, expected_type text, incoming_sku text,
@@ -248,7 +252,10 @@ existing_component_refs as (
          r.metadata ->> 'master_item_no' as master_item_no,
          nullif(r.metadata ->> 'sub_item_no', '') as sub_item_no,
          nullif(r.metadata ->> 'sub_label_code', '') as sub_label_code,
-         pl.sku as line_sku
+         case when r.metadata->'orderlist_source_correction'->>'source_id'=r.source_id
+           and r.metadata->'orderlist_source_correction'->>'canonical_sku'=pl.sku
+           then r.metadata->'orderlist_source_correction'->>'original_sku'
+           else pl.sku end as line_sku
   from plm.production_order_line_source_ref r
   join plm.production_order_line pl on pl.id = r.production_order_line_id
   where r.source_system = 'coldlion'
@@ -532,7 +539,7 @@ all_headers as (
   from header_ref hr
   where hr.origin = 'coldlion_intake_placeholder'
 ),
-canonical_lines as (
+source_canonical_lines as (
   -- One canonical line per winning component. Direct line →
   -- sku = COALESCE(NULLIF(sub_item_no,''), master_item_no), assortment_id
   -- NULL; prepack component → assortment_id = master_item_no (the parent
@@ -578,6 +585,12 @@ canonical_lines as (
    and cp.sku = coalesce(nullif(btrim(o.sub_item_no), ''), wl.master_item_no)
   join all_headers ah on ah.sales_order_no = wl.sales_order_no
 ),
+canonical_lines as (
+  select raw.*, ${corrected.sku} as corrected_sku, ${corrected.po} as corrected_po
+  from source_canonical_lines raw
+  left join plm.production_order_line_source_ref r
+    on r.source_system='coldlion' and r.source_id=raw.line_source_id
+),
 line_inserts as (
   -- Line idempotency is the deterministic source ref: a miss inserts the
   -- line; a hit takes the update path below. The insert never rewrites a
@@ -589,9 +602,9 @@ line_inserts as (
      assortment_component_ordinal, case_pack, ship_to, start_ship_date,
      cancel_date, metadata, source_system, source_id, source_style_type,
      master_data_match_status)
-  select cl.production_order_id, cl.sales_order_line_no::text, cl.sku,
+  select cl.production_order_id, cl.sales_order_line_no::text, cl.corrected_sku,
          cl.quantity_ordered, cl.sales_person_code1, cl.order_type,
-         cl.po_number, cl.assortment_id, cl.assortment_component_ordinal,
+         cl.corrected_po, cl.assortment_id, cl.assortment_component_ordinal,
          cl.case_pack, cl.ship_to, cl.start_date, cl.cancel_date,
          jsonb_build_object(
            'line_qty', cl.line_qty,
@@ -601,7 +614,7 @@ line_inserts as (
            'master_item_no', cl.master_item_no,
            'component_source_hash', cl.component_source_hash),
          'coldlion', cl.line_source_id, cl.source_style_type,
-         case when nullif(btrim(cl.sku), '') is not null and cl.source_style_type is not null
+         case when nullif(btrim(cl.corrected_sku), '') is not null and cl.source_style_type is not null
               then 'unmatched' else 'not_applicable' end
   from canonical_lines cl
   where not exists (
@@ -677,11 +690,11 @@ line_updates as (
   update plm.production_order_line pl
      set production_order_id = cl.production_order_id,
          line_number = cl.sales_order_line_no::text,
-         sku = cl.sku,
+         sku = cl.corrected_sku,
          quantity_ordered = cl.quantity_ordered,
          order_person = cl.sales_person_code1,
          order_type = cl.order_type,
-         customer_po_number = cl.po_number,
+         customer_po_number = cl.corrected_po,
          assortment_id = cl.assortment_id,
          assortment_component_ordinal = cl.assortment_component_ordinal,
          case_pack = case when cl.line_fully_cancelled then pl.case_pack else cl.case_pack end,
@@ -705,9 +718,9 @@ line_updates as (
           pl.assortment_id, pl.assortment_component_ordinal, pl.case_pack,
           pl.ship_to, pl.start_ship_date, pl.cancel_date, pl.source_style_type, pl.metadata)
        is distinct from
-         (cl.production_order_id, cl.sales_order_line_no::text, cl.sku,
+         (cl.production_order_id, cl.sales_order_line_no::text, cl.corrected_sku,
           cl.quantity_ordered, cl.sales_person_code1, cl.order_type,
-          cl.po_number, cl.assortment_id, cl.assortment_component_ordinal,
+          cl.corrected_po, cl.assortment_id, cl.assortment_component_ordinal,
           case when cl.line_fully_cancelled then pl.case_pack else cl.case_pack end,
           cl.ship_to, cl.start_date, cl.cancel_date,
           coalesce(pl.source_style_type, cl.source_style_type),
@@ -728,7 +741,7 @@ link_scope as (
   select li.id, li.source_style_type, li.sku, null, null, null,
     jsonb_build_object('source_id', li.source_id, 'production_order_id', li.production_order_id) from line_inserts li
   union all
-  select pl.id, cl.source_style_type, cl.sku, pl.sku, pl.item_id, pl.master_data_match_status,
+  select pl.id, cl.source_style_type, cl.corrected_sku, pl.sku, pl.item_id, pl.master_data_match_status,
     jsonb_build_object('source_id', pl.source_id, 'production_order_id', pl.production_order_id,
       'component_source_hash', pl.metadata->>'component_source_hash',
       'master_item_no', pl.metadata->>'master_item_no',
@@ -939,8 +952,9 @@ ${write ? "commit;" : "rollback;"}
  * expected | identity_quarantined | a sample of offenders. Anything non-zero fails the intake run loudly.
  */
 export function buildIdentityGuardSql() {
+  const correction = correctionExpressions({ sku: "s.sku", po: "s.po_number", metadata: "f.metadata", sourceId: "f.source_id" });
   return `with lv as (
-  select l.id, l.sales_order_no, l.sales_order_line_no, l.master_item_no,
+  select l.id, l.sales_order_no, l.sales_order_line_no, l.master_item_no, l.po_number,
          rank() over (partition by l.sales_order_no, l.sales_order_line_no
                       order by r.started_at desc nulls last, l.last_seen_run desc) as run_rank
   from coldlion.intake_order_line l
@@ -949,14 +963,14 @@ export function buildIdentityGuardSql() {
   where l.division_code is distinct from 'EP001'
 ),
 staged as (
-  select distinct lv.sales_order_no, lv.sales_order_line_no, lv.master_item_no,
+  select distinct lv.sales_order_no, lv.sales_order_line_no, lv.master_item_no, lv.po_number,
          nullif(c.sub_item_no, '') as sub_item_no, nullif(c.sub_label_code, '') as sub_label_code,
          coalesce(nullif(btrim(c.sub_item_no), ''), lv.master_item_no) as sku
   from lv join coldlion.intake_order_component c on c.line_id = lv.id
   where lv.run_rank = 1
 ),
 refs as (
-  select split_part(r.source_id, ':', 3)::bigint as sales_order_no,
+  select r.metadata, split_part(r.source_id, ':', 3)::bigint as sales_order_no,
          split_part(r.source_id, ':', 5)::integer as sales_order_line_no,
          nullif(r.metadata ->> 'master_item_no', '') is not null as has_identity,
          r.metadata ->> 'master_item_no' as master_item_no,
@@ -972,7 +986,7 @@ refs as (
 ),
 checked as (
   select s.*, count(f.source_id) as refs,
-         count(*) filter (where f.sku is distinct from s.sku and f.source_id is not null) as wrong_sku,
+         count(*) filter (where f.sku is distinct from (${correction.sku}) and f.source_id is not null) as wrong_sku,
          min(f.source_id) as source_id
   from staged s
   left join refs f
@@ -980,7 +994,7 @@ checked as (
    and f.sales_order_line_no = s.sales_order_line_no and f.master_item_no = s.master_item_no
    and f.sub_item_no is not distinct from s.sub_item_no
    and f.sub_label_code is not distinct from s.sub_label_code
-  group by s.sales_order_no, s.sales_order_line_no, s.master_item_no, s.sub_item_no, s.sub_label_code, s.sku
+  group by s.sales_order_no, s.sales_order_line_no, s.master_item_no, s.sub_item_no, s.sub_label_code, s.sku, s.po_number
 )
 select (select count(*) from checked where refs = 0) as missing,
        (select count(*) from checked where refs > 1) as duplicate,
@@ -1019,6 +1033,8 @@ export function buildAutoMergeSql({ runId, write = false } = {}) {
   }
   return `begin;
 
+${buildSourceCorrectionPreflightSql()}
+
 create temporary table coldlion_auto_merge (placeholder_line uuid primary key, google_line uuid unique not null) on commit drop;
 
 with ph as (
@@ -1029,7 +1045,8 @@ with ph as (
            where r.production_order_line_id = pl.id and r.source_system = 'coldlion') as sales_order_line_no
   from plm.production_order_line pl
   join plm.production_order p on p.id = pl.production_order_id
-  where p.metadata ->> 'production_order_number_origin' = 'coldlion_intake_placeholder'
+  where pl.voided_at is null
+    and p.metadata ->> 'production_order_number_origin' = 'coldlion_intake_placeholder'
     and p.production_order_number ~ '^COLDLION-SO-[0-9]+$'
     and exists (select 1 from plm.production_order_line_source_ref r
                 where r.production_order_line_id = pl.id and r.source_system = 'coldlion')
@@ -1043,7 +1060,8 @@ g as (
          gp.production_order_number as import_po
   from plm.production_order_line gl
   join plm.production_order gp on gp.id = gl.production_order_id
-  where gp.production_order_number !~ '^COLDLION-SO-'
+  where gl.voided_at is null
+    and gp.production_order_number !~ '^COLDLION-SO-'
     and exists (select 1 from plm.production_order_line_source_ref r
                 where r.production_order_line_id = gl.id and r.source_system = 'google_order_list')
     and not exists (select 1 from plm.production_order_line_source_ref r

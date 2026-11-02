@@ -33,7 +33,7 @@ Albert wants the shared database to use less compute. The photo library (POP DAM
 ## 4. Scope
 
 In: one new migration adding an index (and, only if step 1's gate fails, a rewrite of the candidate query's `ORDER BY` that keeps identical ordering semantics).
-NOT in: changing claim priority or retry rules, the worker code, embedding model work (#4664 proper), the semantic-anchor RPC (#4999), the backlog size itself.
+NOT in: changing claim priority or retry rules, the worker code, embedding model work (parent issue #4664), the semantic-anchor RPC (#4999), the backlog size itself.
 
 ## 5. Current state
 
@@ -92,7 +92,7 @@ Supabase MCP (`execute_sql`) is authenticated read-only on production. `gh` auth
 
 ## 13. Done, risks, open questions
 
-Done: migration merged, promoted, production EXPLAIN < 50 ms recorded with artifact path, 24 h mean < 100 ms, #4664 checkbox ticked, this STATUS table updated with evidence, handoff updated.
+Done: migration merged, promoted, production EXPLAIN < 50 ms recorded with artifact path, 24 h mean < 100 ms, #5482 checkbox ticked, this STATUS table updated with evidence, handoff updated.
 Risk: index build briefly locks writes on `dam_search_documents` if not concurrent — rollback is `drop index`. Open: whether the old index becomes removable (decide by `idx_scan` after 24 h).
 
 ## Self-audit

@@ -33,7 +33,7 @@ Albert wants the shared database to use less compute. DesignFlow's customs-rulin
 ## 4. Scope
 
 In: diagnosing and fixing the slow pass inside `hts_rag_search_rulings_pass` / `hts_rag_search_rulings` with index or query changes that preserve ranking.
-NOT in: ranking formula changes, filling `phrase_embedding` (a data-load job under #5188), DesignFlow backend code, the reasoning layer itself.
+NOT in: ranking formula changes, filling `phrase_embedding` (a data-load job under parent issue #5188), DesignFlow backend code, the reasoning layer itself.
 
 ## 5. Current state
 
@@ -85,7 +85,7 @@ Supabase MCP `execute_sql` (read-only role; cannot EXECUTE the pass function). `
 
 ## 13. Done, risks, open questions
 
-Done: cause named with artifact, fix merged and promoted, 24 h mean < 1 s recorded, #5188 checkbox ticked, STATUS + handoff updated.
+Done: cause named with artifact, fix merged and promoted, 24 h mean < 1 s recorded, #5483 checkbox ticked, STATUS + handoff updated.
 Risk: ranking drift — guarded by result diff. Rollback: re-apply previous function body in a new migration.
 Open: whether the problem survives #5283 (step 0 decides).
 

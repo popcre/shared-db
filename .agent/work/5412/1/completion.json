@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "work_issue": 5412,
+  "pr": 5413,
+  "base_sha": "a0a526bf78fe7830775268ca757bec4460e4eb3f",
+  "head_sha": "128fc8ac7e04883c44558e3142036956c9818cb7",
+  "contract_ref": "refs/db-contracts/5412/1",
+  "contract_sha256": "48455ae5876366f1a0ea4f413aa1ee908fb52bec0a722f83458846faa3ff32d4",
+  "files_changed": [
+    ".github/workflows/shared-supabase-migrations.yml",
+    "config/atomic-migration-allowlist.json",
+    "scripts/atomic_migration_apply.py",
+    "scripts/test_atomic_migration_apply.py"
+  ],
+  "db_reads": [],
+  "db_writes": [],
+  "migration_versions": [],
+  "checks": [
+    {
+      "command": "python3 -m unittest scripts/test_atomic_migration_apply.py",
+      "exit_code": 0,
+      "evidence": "27 focused tests passed, including target routing and malformed/mixed allowlists."
+    },
+    {
+      "command": "canonical atomic loader against unchanged merged 03158 source",
+      "exit_code": 0,
+      "evidence": "Exact preview hash validates five inner statements; production atomic authorization is refused and production classification retains ordinary CLI routing."
+    }
+  ],
+  "assumptions_resolved": [
+    "Supabase CLI refuses missing local history for preview-applied 03027, blocking unrelated merged 03158 rehearsal",
+    "Existing exact-hash atomic applier avoids replaying or repairing any unrelated ledger row",
+    "Preview-only classification must preserve the ordinary production CLI route"
+  ],
+  "stop_conditions_hit": [],
+  "outcome": "ready-for-merge"
+}

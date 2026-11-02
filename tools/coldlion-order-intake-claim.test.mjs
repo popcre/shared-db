@@ -480,6 +480,10 @@ test("the write-path object assertion names every table, constraint, index and c
   assert.match(assertion, /k\.type_name is null or c\.data_type = k\.type_name/);
   const ordinalEntry = WRITE_REQUIRED_COLUMNS.find((e) => e.column === "assortment_component_ordinal");
   assert.equal(ordinalEntry.type, "integer");
+  for (const table of ['production_order', 'production_order_line']) {
+    assert.equal(WRITE_REQUIRED_COLUMNS.find(e => e.schema === 'plm' && e.table === table && e.column === 'voided_at')?.type, 'timestamp with time zone');
+  }
+  assert.equal(WRITE_REQUIRED_COLUMNS.find(e => e.schema === 'plm' && e.table === 'production_order_line' && e.column === 'status')?.type, 'text');
   assert.ok(WRITE_REQUIRED_COLUMNS.some((e) => e.table === "intake_order_line" && e.column === "po_number"));
   assert.ok(WRITE_REQUIRED_COLUMNS.some((e) => e.table === "intake_new_order" && e.column === "state_changed_at"));
   // Read-only shape: no line STARTS a data-modifying statement (the word

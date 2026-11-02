@@ -21,10 +21,16 @@ values('99999999-9999-4999-8999-000000000008','ZZ-EDITOR','licensed','ZZ-FIXED')
 insert into plm.style_tracker_item_bridge(id,style_tracker_row_id,source_workbook_id,source_sheet,tracker_type,sku,plm_item_id)
 values('99999999-9999-4999-8999-000000000009','99999999-9999-4999-8999-000000000008','ZZ-EDITOR','ZZ-EDITOR','licensed','ZZ-FIXED','99999999-9999-4999-8999-000000000007');
 DO $$ declare c jsonb; begin
- perform public.update_dam_order('99999999-9999-4999-8999-000000000001','{}','[{"id":"99999999-9999-4999-8999-000000000002","sku":"ZZ-FIXED","customer_po_number":"ZZ-NEW-PO"}]');
+ perform public.update_dam_order('99999999-9999-4999-8999-000000000001','{}','[{"id":"99999999-9999-4999-8999-000000000002","sku":"ZZ-FIXED","customer_po_number":"ZZ-NEW-PO","source_style_type":" Licensed "}]');
  select metadata->'orderlist_source_correction' into c from plm.production_order_line_source_ref where id='99999999-9999-4999-8999-000000000003';
  assert c->>'original_sku'='ZZ-RAW' and c->>'original_customer_po'='ZZ-OLD-PO' and c->>'canonical_sku'='ZZ-FIXED' and c->>'canonical_customer_po'='ZZ-NEW-PO','first editor save source-bound';
  assert (select item_id from plm.production_order_line where id='99999999-9999-4999-8999-000000000002')='99999999-9999-4999-8999-000000000007','changed SKU relinks exact style/catalog';
+ perform public.update_dam_order('99999999-9999-4999-8999-000000000001','{}','[{"id":"99999999-9999-4999-8999-000000000002","source_style_type":"Licensed"}]');
+ assert (select source_style_type='licensed' and item_id='99999999-9999-4999-8999-000000000007' from plm.production_order_line where id='99999999-9999-4999-8999-000000000002'),'recasing uses normalized stored catalog';
+ perform public.update_dam_order('99999999-9999-4999-8999-000000000001','{}','[{"id":"99999999-9999-4999-8999-000000000002","source_style_type":null}]');
+ assert (select source_style_type is null and item_id is null and master_data_match_status='unmatched' from plm.production_order_line where id='99999999-9999-4999-8999-000000000002'),'cleared catalog cannot retain or assign item';
+ perform public.update_dam_order('99999999-9999-4999-8999-000000000001','{}','[{"id":"99999999-9999-4999-8999-000000000002","source_style_type":" LICENSED "}]');
+ assert (select source_style_type='licensed' and item_id='99999999-9999-4999-8999-000000000007' from plm.production_order_line where id='99999999-9999-4999-8999-000000000002'),'restored normalized catalog relinks exact item';
  perform public.update_dam_order('99999999-9999-4999-8999-000000000001','{}','[{"id":"99999999-9999-4999-8999-000000000002","customer_po_number":"ZZ-NEWER-PO"}]');
  select metadata->'orderlist_source_correction' into c from plm.production_order_line_source_ref where id='99999999-9999-4999-8999-000000000003';
  assert c->>'original_customer_po'='ZZ-OLD-PO' and c->>'canonical_customer_po'='ZZ-NEWER-PO','repeat edit retains raw original';

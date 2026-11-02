@@ -23,6 +23,7 @@ declare
   v_google record;
   v_candidates integer;
   v_item uuid;
+  v_catalog text;
 begin
   if v_actor is null then
     raise exception 'update_dam_order: authentication required' using errcode = '42501';
@@ -164,7 +165,8 @@ begin
                                   else pol.voided_by end,
         updated_at         = now()
       where pol.id = v_line_id
-        and pol.production_order_id = p_order_id;
+        and pol.production_order_id = p_order_id
+      returning pol.source_style_type into v_catalog;
 
       get diagnostics v_hit = row_count;
       if v_hit = 0 then
@@ -173,12 +175,12 @@ begin
       end if;
       -- A different style must not retain the previous product's facts.
       if lower(btrim(v_sku)) is distinct from lower(btrim(v_old.sku))
-        or (v_patch ? 'source_style_type' and v_patch->>'source_style_type' is distinct from v_old.source_style_type) then
+        or v_catalog is distinct from v_old.source_style_type then
         select count(distinct b.plm_item_id),(array_agg(distinct b.plm_item_id))[1]
           into v_candidates,v_item
         from plm.style_tracker_item_bridge b join public.style_tracker_rows t on t.id=b.style_tracker_row_id
         where lower(btrim(t.sku))=lower(btrim(v_sku)) and b.plm_item_id is not null
-          and b.tracker_type=coalesce(v_patch->>'source_style_type',v_old.source_style_type)
+          and b.tracker_type=v_catalog
           and t.tracker_type=b.tracker_type;
         update plm.production_order_line set item_id=case when v_candidates=1 then v_item end,
           master_data_match_status=case when v_candidates=1 then 'matched' when v_candidates>1 then 'ambiguous' else 'unmatched' end
@@ -191,5 +193,8 @@ begin
   return p_order_id;
 end;
 $function$;
+
+comment on function public.link_dam_order_line(uuid,uuid,text) is
+  'Manual exact item-link resolution through plm.style_tracker_item_bridge. Requires an exact, unique licensed/generic-qualified SKU match, never fuzzy. Ordinary SKU/catalog editor corrections also re-resolve the link under the same unique style/catalog rule in update_dam_order; source intake has its separately guarded exact linking path.';
 
 commit;

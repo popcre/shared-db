@@ -11,7 +11,8 @@ name: DesignFlow Sandbox Migrations
 # guarded components unchanged:
 #   - production_migration_guard.py preflight / prepare / assert-bounded /
 #     verify-dry-run (the bounded checkout that makes include-all safe),
-#   - merge-queue-contract.mjs (guarded merge; review is advisory since 2026-10-29),
+#   - production_business_risk_gate.py prove_pr_and_checks (merged source and
+#     required exact-head checks; review is advisory since 2026-10-29),
 #   - production_catalog_verification.py (read-only post-apply catalog proof).
 # Sandbox-only gates live in scripts/sandbox_migration_preflight.py: target
 # identity, the sandbox version blocklist, the same-name collision preflight,
@@ -58,6 +59,7 @@ permissions:
   contents: read
   pull-requests: read
   statuses: read
+  checks: read
   actions: read
 
 # THE SERIAL TARGET LOCK. One global group for every run of this workflow and
@@ -153,16 +155,13 @@ jobs:
           fi
       - name: Sandbox allowlist gate
         run: python scripts/sandbox_migration_preflight.py allowlist --repo "$GITHUB_WORKSPACE" --allowlist "$SANDBOX_ALLOWLIST"
-      - name: Bind the source PR (merged, authored every version, independently approved)
+      - name: Bind the source PR (merged, authored every version, required checks passed)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          SOURCE_HEAD="$(node scripts/sandbox-migration-binding.mjs --source-pr "$SOURCE_PR" --commit-sha "$COMMIT_SHA" --allowlist "$SANDBOX_ALLOWLIST")"
-          GUARDED_STATE="$(node scripts/merge-queue-contract.mjs --authorization-state --head-sha "$SOURCE_HEAD")"
-          if [ "$GUARDED_STATE" != success ]; then
-            echo "REFUSED: source PR head ${SOURCE_HEAD} has no successful guarded-merge authorization (state: ${GUARDED_STATE:-none})." >&2; exit 2
-          fi
+          node scripts/sandbox-migration-binding.mjs --source-pr "$SOURCE_PR" --commit-sha "$COMMIT_SHA" --allowlist "$SANDBOX_ALLOWLIST"
+          python scripts/sandbox_migration_preflight.py source-proof --repo "$GITHUB_WORKSPACE" --source-pr "$SOURCE_PR" --commit-sha "$COMMIT_SHA" --allowlist "$SANDBOX_ALLOWLIST"
       - name: Verify the target identity
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

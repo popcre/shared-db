@@ -1,6 +1,14 @@
 {
   "schema_version": 1,
   "migrations": {
+    "20261102003027": {
+      "sha256": "1b6de5834005b8ace1a829d2f53e91adda59cbc333743a568d4f7671af8b62d4",
+      "targets": [
+        "preview",
+        "production"
+      ],
+      "strip_outer_transaction": true
+    },
     "20260816110750": {
       "sha256": "0b178fab222aec93b0c06cd676c83a6d4cdfdeac62a0af68184e6ed24c08eca2",
       "targets": [
@@ -101,14 +109,6 @@
         "preview",
         "production"
       ]
-    },
-    "20261102003027": {
-      "sha256": "1b6de5834005b8ace1a829d2f53e91adda59cbc333743a568d4f7671af8b62d4",
-      "targets": [
-        "preview",
-        "production"
-      ],
-      "strip_outer_transaction": true
     }
   }
 }

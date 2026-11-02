@@ -167,7 +167,7 @@ export function buildWriteSql({ runId, write = false, limit = null, order = null
   const refPredicate = `exists (select 1 from (${scopeSql}) writer_scope
     where writer_scope.sales_order_no=split_part(r.source_id,':',3)::bigint)`;
   const corrected = correctionExpressions({ sku: "raw.sku", po: "raw.po_number" });
-  return `begin;
+  return `begin isolation level repeatable read;
 
 ${buildSourceCorrectionPreflightSql({ refPredicate })}
 ${buildCancellationPreflightSql({ refPredicate })}
@@ -1046,7 +1046,7 @@ export function buildAutoMergeSql({ runId, write = false } = {}) {
   const refPredicate = `r.production_order_line_id in (
     select placeholder_line from pg_temp.coldlion_auto_merge
     union select google_line from pg_temp.coldlion_auto_merge)`;
-  return `begin;
+  return `begin isolation level repeatable read;
 
 create temporary table coldlion_auto_merge (placeholder_line uuid primary key, google_line uuid unique not null) on commit drop;
 

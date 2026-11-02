@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   buildWriteSql,
+  buildAutoMergeSql,
   buildWriteFailureSql,
   buildWriterObjectAssertionSql,
   parseWriteSummary,
@@ -378,7 +379,8 @@ test("case pack default: exact source label before unanimous non-null variant de
 });
 
 test("one transaction, dry-run rolls back, live commits, the sealed ledger is never touched", () => {
-  assert.match(sql, /^begin;$/m);
+  assert.match(sql, /^begin isolation level repeatable read;/);
+  assert.match(buildAutoMergeSql({ runId: RUN }), /^begin isolation level repeatable read;/);
   assert.match(sql, /^commit;$/m);
   assert.doesNotMatch(sql, /rollback;/);
   assert.match(drySql, /rollback;\s*$/);

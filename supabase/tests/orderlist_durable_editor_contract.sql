@@ -9,7 +9,7 @@ values ('99999999-9999-4999-8999-000000000002','99999999-9999-4999-8999-00000000
 insert into plm.production_order_line_source_ref(id,production_order_line_id,source_system,source_id,is_primary,metadata)
 values('99999999-9999-4999-8999-000000000003','99999999-9999-4999-8999-000000000002','coldlion','coldlion:so:9123456:line:1:component:1',true,'{"master_item_no":"ZZ-RAW","sub_item_no":"ZZ-RAW","sub_label_code":"ZZ"}');
 insert into coldlion.sync_run(id,endpoint,requested_by,started_at)
-values('99999999-9999-4999-8999-000000000004','zz-editor-test','zz-test',now());
+values('99999999-9999-4999-8999-000000000004','/zz-editor-test','zz-test',now());
 insert into coldlion.intake_order_line(id,company_code,sales_order_no,sales_order_line_no,master_item_no,po_number,line_source_hash,first_seen_run,last_seen_run,fetched_at)
 values('99999999-9999-4999-8999-000000000005','EDGEHOME',9123456,1,'ZZ-RAW','ZZ-OLD-PO',repeat('a',64),'99999999-9999-4999-8999-000000000004','99999999-9999-4999-8999-000000000004',now());
 insert into coldlion.intake_order_component(id,line_id,sub_item_no,sub_label_code,component_source_hash,first_seen_run,last_seen_run,fetched_at)

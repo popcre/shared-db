@@ -12,6 +12,7 @@ from pathlib import Path
 import sys
 import urllib.request
 import urllib.error
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 
 SECTIONS = ('matches','suggestions','code_checks','unmatched','coverage','anomalies')
@@ -145,9 +146,11 @@ class ObjectStore:
 def run(args):
     ident,manifest,files,data,rows=inventory(args.root,args.master)
     store=ObjectStore()
-    objects={}
-    for name,path,digest,size in files:
-        objects[name]=store.preserve(ident,path,digest,size,args.apply or args.archive_only)
+    def preserve_file(record):
+        name,path,digest,size=record
+        return name,store.preserve(ident,path,digest,size,args.apply or args.archive_only)
+    with ThreadPoolExecutor(max_workers=4) as workers:
+        objects=dict(workers.map(preserve_file,files))
     if args.archive_only:
         assert inventory(args.root,args.master)[0]==ident,'Source changed during archive'
         print(json.dumps(dict(dataset_id=ident,files=len(files),source_bytes=sum(x[3] for x in files),
@@ -156,9 +159,11 @@ def run(args):
     db=Database(args.expected_ref,args.project_ref_file)
     if args.apply:
         db.query('insert into plm.customs_benchmark_dataset (dataset_id,benchmark_name,authority_scope,source_manifest,original_intelligence,authority_context,source_file_count,source_byte_count,observation_count) values ('+','.join([literal(ident),literal('customs_intelligence_20261101'),literal('historical_customs_evidence'),json_sql(manifest),json_sql(data),literal(CONTEXT),str(len(files)),str(sum(x[3] for x in files)),str(len(rows))])+') on conflict do nothing;',True)
+        artifact_values=[]
         for name,path,digest,size in files:
             o=objects[name]
-            db.query('insert into plm.customs_benchmark_artifact (dataset_id,relative_path,content_sha256,media_type,byte_count,storage_endpoint,storage_bucket,storage_key,private_verified,structured_content) values ('+','.join([literal(ident),literal(name),literal(digest),literal(mimetypes.guess_type(name)[0] or 'application/octet-stream'),str(size),literal(o['storage_endpoint']),literal(o['storage_bucket']),literal(o['storage_key']),'true',json_sql(o['structured_content']) if o['structured_content'] is not None else 'NULL'])+') on conflict do nothing;',True)
+            artifact_values.append('('+','.join([literal(ident),literal(name),literal(digest),literal(mimetypes.guess_type(name)[0] or 'application/octet-stream'),str(size),literal(o['storage_endpoint']),literal(o['storage_bucket']),literal(o['storage_key']),'true',json_sql(o['structured_content']) if o['structured_content'] is not None else 'NULL'])+')')
+        db.query('insert into plm.customs_benchmark_artifact (dataset_id,relative_path,content_sha256,media_type,byte_count,storage_endpoint,storage_bucket,storage_key,private_verified,structured_content) values '+','.join(artifact_values)+' on conflict do nothing;',True)
         for start in range(0,len(rows),100):
             values=[]
             for r in rows[start:start+100]:

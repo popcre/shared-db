@@ -161,7 +161,7 @@ jobs:
       APPLICATION_COMMIT_SHA: ${{ inputs.application_commit_sha }}
       PRODUCTION_PROJECT_REF: qsllyeztdwjgirsysgai
       PREVIEW_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
-      SCHEMAS: public,dflow,plm,core,app,hts_rag
+      SCHEMAS: public,dflow,plm,core,app
     steps:
       - uses: actions/checkout@v4
         with:

@@ -56,7 +56,14 @@ def registered_orphan_versions() -> set[str]:
 
 
 def merged_migration_prs(repo: str) -> list[dict[str, Any]]:
-    pulls = gh(f"repos/{repo}/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100")
+    # Page until updates predate activation: one 100-PR page let a busy day
+    # push an unpromoted merge out of view (observed 2026-11-02: PR #5417).
+    pulls: list[dict[str, Any]] = []
+    for page in range(1, 51):
+        batch = gh(f"repos/{repo}/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100&page={page}") or []
+        pulls += batch
+        if len(batch) < 100 or (batch[-1].get("updated_at") or "") <= ACTIVATED_AT:
+            break
     manifest_orphans = registered_orphan_versions()
     found = []
     for pr in pulls:

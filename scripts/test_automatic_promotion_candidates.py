@@ -145,5 +145,22 @@ class EarlierPreviewApply(unittest.TestCase):
         self.assertEqual(m.earlier_preview_apply(pr, runs + [held], lambda r: r["id"] == 2), 2)
 
 
+
+class DiscoveryPagesPastFirstHundred(unittest.TestCase):
+    def test_second_page_merge_is_found(self):
+        def page(n, updated):
+            return [{"number": n * 1000 + i, "merged_at": None, "updated_at": updated} for i in range(100)]
+        pages = {1: page(1, "2026-11-02T20:00:00Z"),
+                 2: [{"number": 5417, "merged_at": "2026-11-02T14:57:58Z", "updated_at": "2026-11-02T14:58:00Z"}]}
+        files = [[{"status": "added", "filename": "supabase/migrations/20261102012258_x.sql"}]]
+        saved = (m.gh, m.registered_orphan_versions)
+        m.gh = lambda *a: files if a[0] == "--paginate" else pages[int(a[0].rsplit("page=", 1)[1])]
+        m.registered_orphan_versions = lambda: set()
+        try:
+            self.assertEqual([p["number"] for p in m.merged_migration_prs("o/r")], [5417])
+        finally:
+            m.gh, m.registered_orphan_versions = saved
+
+
 if __name__ == "__main__":
     unittest.main()

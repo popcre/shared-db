@@ -15,7 +15,7 @@ COMMENT ON COLUMN public.pdf_text_samples.ocr_engine IS
 COMMENT ON COLUMN public.pdf_text_samples.extracted_fields IS
   'Fields parsed from the sheet text by the PopDAM agent-api parser. Blank fields are JSON null.';
 COMMENT ON COLUMN public.pdf_text_samples.indra_rescan_outcome IS
-  'replaced, kept_existing (OCR empty or far shorter than stored text) or failed (file unreadable; stored text kept).';
+  'replaced, kept_existing (OCR empty, under 100 characters against 100 or more stored, or under a quarter of 500 or more stored) or failed (file unreadable; stored text kept).';
 
 CREATE TABLE IF NOT EXISTS public.pdf_text_samples_backup (
   asset_id uuid PRIMARY KEY,
@@ -145,6 +145,7 @@ DECLARE
   v_old public.pdf_text_samples%ROWTYPE;
   v_text text;
   v_len int;
+  v_old_len int;
   v_replace boolean;
   v_outcome text;
   v_replaced int := 0; v_kept int := 0; v_failed int := 0;
@@ -171,8 +172,9 @@ BEGIN
 
     v_text := NULLIF(btrim(r.e->>'extracted_text'), '');
     v_len := COALESCE(length(v_text), 0);
+    v_old_len := COALESCE(length(v_old.extracted_text), 0);
     v_replace := v_len > 0 AND NOT (
-      v_len < 100 AND COALESCE(length(v_old.extracted_text), 0) >= 100);
+      (v_len < 100 AND v_old_len >= 100) OR (v_old_len >= 500 AND v_len < v_old_len / 4));
     v_outcome := CASE WHEN v_replace THEN 'replaced'
                       WHEN NULLIF(r.e->>'error', '') IS NOT NULL THEN 'failed'
                       ELSE 'kept_existing' END;
@@ -184,18 +186,18 @@ BEGIN
         indra_rescan_at, indra_rescan_outcome, indra_rescan_error)
       VALUES (r.asset_id, r.e->>'filename', r.e->>'relative_path',
         CASE WHEN v_replace THEN 'ocr_text' ELSE 'failed' END,
-        CASE WHEN v_replace THEN v_text END, (r.e->>'page_count')::int,
+        CASE WHEN v_replace THEN v_text END, NULLIF(r.e->>'page_count', '')::int,
         CASE WHEN v_replace THEN v_len ELSE 0 END, NULLIF(r.e->>'error', ''),
         NULLIF(r.e->>'thumbnail_url', ''), now(), CASE WHEN v_replace THEN 'indra' END,
         CASE WHEN v_replace THEN r.e->'fields' END,
         now(), v_outcome, NULLIF(r.e->>'error', ''));
     ELSIF v_replace THEN
       UPDATE public.pdf_text_samples p SET
-        filename = r.e->>'filename',
-        relative_path = r.e->>'relative_path',
+        filename = COALESCE(NULLIF(r.e->>'filename', ''), p.filename),
+        relative_path = COALESCE(NULLIF(r.e->>'relative_path', ''), p.relative_path),
         extraction_method = 'ocr_text',
         extracted_text = v_text,
-        page_count = COALESCE((r.e->>'page_count')::int, p.page_count),
+        page_count = COALESCE(NULLIF(r.e->>'page_count', '')::int, p.page_count),
         char_count = v_len,
         extraction_error = NULL,
         thumbnail_url = COALESCE(NULLIF(r.e->>'thumbnail_url', ''), p.thumbnail_url),

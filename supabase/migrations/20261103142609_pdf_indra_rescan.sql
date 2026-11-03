@@ -142,6 +142,8 @@ SET search_path TO 'pg_catalog', 'public'
 AS $function$
 DECLARE
   r record;
+  v_asset_id uuid;
+  v_page_count integer;
   v_old public.pdf_text_samples%ROWTYPE;
   v_text text;
   v_len int;
@@ -154,10 +156,23 @@ BEGIN
   SET LOCAL app.skip_parse_pdf_trigger = '1';
 
   FOR r IN
-    SELECT (e->>'asset_id')::uuid AS asset_id, e FROM jsonb_array_elements(p_rows) e
+    SELECT e FROM jsonb_array_elements(p_rows) e
   LOOP
+    -- Validate casts before any writes. A malformed element must not roll back
+    -- successful rows (or their backups) elsewhere in this batch.
+    BEGIN
+      v_asset_id := NULLIF(r.e->>'asset_id', '')::uuid;
+      v_page_count := NULLIF(r.e->>'page_count', '')::integer;
+    EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range THEN
+      v_failed := v_failed + 1;
+      CONTINUE;
+    END;
+    IF v_asset_id IS NULL THEN
+      v_failed := v_failed + 1;
+      CONTINUE;
+    END IF;
     v_old := NULL;
-    SELECT * INTO v_old FROM public.pdf_text_samples p WHERE p.asset_id = r.asset_id;
+    SELECT * INTO v_old FROM public.pdf_text_samples p WHERE p.asset_id = v_asset_id;
 
     IF v_old.asset_id IS NOT NULL THEN
       INSERT INTO public.pdf_text_samples_backup (
@@ -172,7 +187,8 @@ BEGIN
     v_text := NULLIF(btrim(r.e->>'extracted_text'), '');
     v_len := COALESCE(length(v_text), 0);
     v_replace := v_len > 0 AND NOT (
-      v_len < 100 AND COALESCE(length(v_old.extracted_text), 0) >= 100);
+      COALESCE(length(v_old.extracted_text), 0) >= 100
+      AND (v_len < 100 OR v_len < length(v_old.extracted_text) * 0.5));
     v_outcome := CASE WHEN v_replace THEN 'replaced'
                       WHEN NULLIF(r.e->>'error', '') IS NOT NULL THEN 'failed'
                       ELSE 'kept_existing' END;
@@ -182,20 +198,20 @@ BEGIN
         asset_id, filename, relative_path, extraction_method, extracted_text, page_count,
         char_count, extraction_error, thumbnail_url, sampled_at, ocr_engine, extracted_fields,
         indra_rescan_at, indra_rescan_outcome, indra_rescan_error)
-      VALUES (r.asset_id, r.e->>'filename', r.e->>'relative_path',
+      VALUES (v_asset_id, r.e->>'filename', r.e->>'relative_path',
         CASE WHEN v_replace THEN 'ocr_text' ELSE 'failed' END,
-        CASE WHEN v_replace THEN v_text END, (r.e->>'page_count')::int,
+        CASE WHEN v_replace THEN v_text END, v_page_count,
         CASE WHEN v_replace THEN v_len ELSE 0 END, NULLIF(r.e->>'error', ''),
         NULLIF(r.e->>'thumbnail_url', ''), now(), CASE WHEN v_replace THEN 'indra' END,
         CASE WHEN v_replace THEN r.e->'fields' END,
         now(), v_outcome, NULLIF(r.e->>'error', ''));
     ELSIF v_replace THEN
       UPDATE public.pdf_text_samples p SET
-        filename = r.e->>'filename',
-        relative_path = r.e->>'relative_path',
+        filename = COALESCE(r.e->>'filename', p.filename),
+        relative_path = COALESCE(r.e->>'relative_path', p.relative_path),
         extraction_method = 'ocr_text',
         extracted_text = v_text,
-        page_count = COALESCE((r.e->>'page_count')::int, p.page_count),
+        page_count = COALESCE(v_page_count, p.page_count),
         char_count = v_len,
         extraction_error = NULL,
         thumbnail_url = COALESCE(NULLIF(r.e->>'thumbnail_url', ''), p.thumbnail_url),
@@ -205,14 +221,14 @@ BEGIN
         indra_rescan_at = now(),
         indra_rescan_outcome = v_outcome,
         indra_rescan_error = NULL
-      WHERE p.asset_id = r.asset_id;
+      WHERE p.asset_id = v_asset_id;
     ELSE
       -- Stored text is untouched, so the search-document trigger does not fire.
       UPDATE public.pdf_text_samples p SET
         indra_rescan_at = now(),
         indra_rescan_outcome = v_outcome,
         indra_rescan_error = NULLIF(r.e->>'error', '')
-      WHERE p.asset_id = r.asset_id;
+      WHERE p.asset_id = v_asset_id;
     END IF;
 
     IF v_outcome = 'replaced' THEN v_replaced := v_replaced + 1;
@@ -222,16 +238,16 @@ BEGIN
     CONTINUE WHEN NOT v_replace;
 
     SELECT a.sku, a.file_type::text, a.filename INTO v_sku, v_ftype, v_fname
-    FROM public.assets a WHERE a.id = r.asset_id;
+    FROM public.assets a WHERE a.id = v_asset_id;
     CONTINUE WHEN NOT public.is_style_guide_source_pdf(v_ftype, v_fname);
 
     UPDATE public.assets a SET designer_name = r.e->'fields'->>'creative_designer'
-    WHERE a.id = r.asset_id AND NULLIF(btrim(a.designer_name), '') IS NULL
+    WHERE a.id = v_asset_id AND NULLIF(btrim(a.designer_name), '') IS NULL
       AND NULLIF(btrim(r.e->'fields'->>'creative_designer'), '') IS NOT NULL;
     GET DIAGNOSTICS v_n = ROW_COUNT; v_creative := v_creative + v_n;
 
     UPDATE public.assets a SET technical_designer_name = r.e->'fields'->>'technical_designer'
-    WHERE a.id = r.asset_id AND NULLIF(btrim(a.technical_designer_name), '') IS NULL
+    WHERE a.id = v_asset_id AND NULLIF(btrim(a.technical_designer_name), '') IS NULL
       AND NULLIF(btrim(r.e->'fields'->>'technical_designer'), '') IS NOT NULL;
     GET DIAGNOSTICS v_n = ROW_COUNT; v_technical := v_technical + v_n;
 

@@ -9,7 +9,10 @@
 # stays under 300 ms" is the design's classification benchmark
 # (designflow-backend#254, design docs §5-§6), which queries with CANDIDATE
 # CHAPTERS (pass 1). Full-corpus queries (pass 2, what a no-chapters call does)
-# are recorded as context and do NOT gate. No writes: every statement is one
+# are recorded as context. Both workloads are recorded without failing on a
+# budget miss (owner direction 2026-11-02: proceed with the proof and the close).
+# The artifact records whether the scoped benchmark met its budget; recording
+# an observation does not mean the budget passed. No writes: every statement is one
 # SELECT. Emits observation.json for the application-side publisher
 # (popcre/designflow-backend shared-db-5188-proof), which verifies it and
 # republishes the outcome envelope; the app repository never receives a
@@ -104,7 +107,10 @@ const path = require("node:path");
 const [outDir, workIssue, observedAt, sp50, sp95, cp50, cp95, n, budget, repo, runId, sha] = process.argv.slice(1);
 const observation = {
   schema_version: 1, kind: "search-p95-observation",
-  work_issue: Number(workIssue), environment: "production", result: "passed",
+  work_issue: Number(workIssue), environment: "production",
+  result: Number(sp95) < Number(budget) ? "passed" : "observed-over-budget",
+  budget_met: Number(sp95) < Number(budget),
+  owner_direction: "2026-11-02: proceed with the proof and the close; record the measurement as observed even when the budget is missed.",
   observed_at: observedAt,
   p50_ms: Number(sp50), p95_ms: Number(sp95),
   corpus_p50_ms: Number(cp50), corpus_p95_ms: Number(cp95),

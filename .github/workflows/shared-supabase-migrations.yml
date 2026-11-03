@@ -1609,6 +1609,18 @@ jobs:
           test -n "$REQUESTED_SHA"
           test -n "$PRODUCTION_ALLOWLIST"
           test "$REQUESTED_CONFIRMATION" = "APPLY $REQUESTED_SHA"
+      # A production apply run is never RE-RUN (issue #5532). A re-run hides
+      # what earlier attempts did: run 41545991868 attempt 1 applied its
+      # versions and the re-run blinded the queue into retrying an applied
+      # batch. The automatic queue dispatches a FRESH run with fresh evidence;
+      # that is the only retry path.
+      - name: Refuse a re-run of a production apply run
+        if: github.run_attempt > 1
+        env:
+          ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          echo "::error::REFUSED: a production apply run is never re-run (this is attempt $ATTEMPT). A re-run hides what earlier attempts did - run 41545991868 attempt 1 applied its versions and the re-run blinded the queue (#5532). The automatic queue dispatches a fresh run with fresh evidence. NO MIGRATION WAS APPLIED."
+          exit 1
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.commit_sha }}
@@ -1865,6 +1877,17 @@ jobs:
         run: |
           test -n "$REQUESTED_SHA"
           test "$REQUESTED_CONFIRMATION" = "APPLY $REQUESTED_SHA"
+      # A production apply run is never RE-RUN (issue #5532): a re-run hides
+      # what earlier attempts did and is never the retry path. The automatic
+      # queue dispatches a fresh run with fresh evidence. Same guard as the
+      # review job above; see the comment there.
+      - name: Refuse a re-run of a production apply run
+        if: github.run_attempt > 1
+        env:
+          ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          echo "::error::REFUSED: a production apply run is never re-run (this is attempt $ATTEMPT). A re-run hides what earlier attempts did - run 41545991868 attempt 1 applied its versions and the re-run blinded the queue (#5532). The automatic queue dispatches a fresh run with fresh evidence. NO MIGRATION WAS APPLIED."
+          exit 1
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.commit_sha }}

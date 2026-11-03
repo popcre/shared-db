@@ -1,6 +1,7 @@
 import contextlib
 import io
 import os
+import re
 import sys
 import unittest
 from datetime import datetime, timezone
@@ -181,6 +182,44 @@ class TriggerReactsToFailures(unittest.TestCase):
         self.assertIn("github.event.workflow_run.event == 'workflow_dispatch'", text)
         self.assertIn("github.event.workflow_run.conclusion == 'success'", text)
         self.assertIn("github.event.workflow_run.conclusion == 'failure'", text)
+
+
+class MigrationsWorkflowPokesTheTrigger(unittest.TestCase):
+    """GitHub never delivers workflow_run events for completions of runs the
+    GITHUB_TOKEN dispatched -- how every selector-dispatched preview, recovery
+    and production apply starts (verified 2026-11-03). The migrations workflow
+    must therefore poke the trigger after every dispatched run (#5532), or the
+    queue idles until the hourly schedule or a merge whatever the trigger's
+    job filter says."""
+
+    @classmethod
+    def setUpClass(cls):
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            ".github", "workflows", "shared-supabase-migrations.yml")
+        with open(path, encoding="utf-8") as fh:
+            cls.text = fh.read()
+
+    def notify_body(self):
+        parts = self.text.split("\n  notify-automatic-production-trigger:", 1)
+        self.assertEqual(len(parts), 2, "the migrations workflow must carry the notify job")
+        return parts[1]
+
+    def test_dispatch_runs_poke_the_trigger_when_they_finish(self):
+        body = self.notify_body()
+        self.assertIn("if: always() && github.event_name == 'workflow_dispatch'", body)
+        self.assertIn("gh workflow run automatic-production-trigger.yml", body)
+        # Never poison the reported run's conclusion: a red run that actually
+        # applied would burn automatic attempts and retry an applied batch.
+        self.assertIn("continue-on-error: true", body)
+
+    def test_the_notify_waits_for_every_job(self):
+        body = self.notify_body()
+        match = re.search(r"needs: \[([^\]]+)\]", body)
+        self.assertIsNotNone(match, "the notify job must declare needs")
+        needed = {name.strip() for name in match.group(1).split(",")}
+        job_ids = set(re.findall(r"(?m)^  ([a-z][a-z0-9-]+):$", self.text))
+        self.assertIn("notify-automatic-production-trigger", job_ids)
+        self.assertEqual(job_ids - {"notify-automatic-production-trigger"}, needed)
 
 
 class WorkflowRunsWindow(unittest.TestCase):

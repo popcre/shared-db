@@ -11,6 +11,7 @@ on:
       - 'scripts/test_review_finding_hold.py'
       - '.github/workflows/promotion-selector-tests.yml'
       - '.github/workflows/automatic-production-trigger.yml'
+      - '.github/workflows/shared-supabase-migrations.yml'
 
 permissions:
   contents: read

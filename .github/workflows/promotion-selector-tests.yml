@@ -10,6 +10,7 @@ on:
       - 'scripts/test_automatic_promotion_candidates.py'
       - 'scripts/test_review_finding_hold.py'
       - '.github/workflows/promotion-selector-tests.yml'
+      - '.github/workflows/automatic-production-trigger.yml'
 
 permissions:
   contents: read

@@ -2231,3 +2231,46 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SOURCE_PR: ${{ inputs.source_pr }}
         run: node scripts/manage-migration-coordination.mjs --release-promotion-freeze --pr "$SOURCE_PR"
+
+  # ===========================================================================
+  # NUDGE THE PRODUCTION QUEUE (issue #5532, added 2026-11-03).
+  #
+  # The queue-selection trigger listens on `workflow_run`, but GitHub never
+  # delivers workflow_run events for the completion of a run that the
+  # repository's GITHUB_TOKEN dispatched -- which is how every selector-
+  # dispatched preview, recovery and production apply here starts. Verified
+  # 2026-11-03: three token-dispatched completions produced no trigger run at
+  # all, while a user-dispatched failure was delivered (and then skipped by the
+  # old success-only filter). A repository_dispatch event created by the token
+  # DOES create a run, so this job emits one generic nudge per dispatched run,
+  # whatever the outcome, and the queue-selection automation -- which this lane
+  # deliberately never names (see check-main-tip-freshness) -- decides what to
+  # start next. That is what keeps the queue moving after a failure instead of
+  # idling until the hourly schedule or a merge (2026-11-02: 7:49 PM EST to
+  # 8:57 PM EST).
+  #
+  # Validation runs (pull_request / merge_group) do not nudge: their completions
+  # already reach the workflow_run listener, and they carry no queue outcome.
+  # The nudge never fails the run it reports on: a poisoned workflow conclusion
+  # would burn an automatic attempt for a run that actually applied, so the step
+  # is continue-on-error and the hourly schedule remains the backstop if a
+  # nudge is ever lost.
+  #
+  # WHEN ADDING A JOB TO THIS WORKFLOW, ADD IT TO THE needs LIST BELOW. The
+  # nudge must fire only after every job has reached its outcome, and the
+  # queue-selection test suite refuses a job this list does not cover.
+  # ===========================================================================
+  notify-production-queue:
+    name: Nudge the production queue
+    if: always() && github.event_name == 'workflow_dispatch'
+    needs: [validate, preview, automatic-production-promotion, production-dry-run, production-apply-review, production-apply]
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Emit the production-queue nudge (reaction to this run's outcome)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=production-queue-nudge

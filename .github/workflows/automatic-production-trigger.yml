@@ -18,10 +18,19 @@ on:
   # the selector caps every PR at three automatic attempts per main commit,
   # counting failed preview AND production runs, and passes a PR out of attempts
   # over with a loud ENGINEER ACTION REQUIRED alert so later PRs keep promoting.
-  # The hourly schedule stays as the backstop.
+  #
+  # This listener only sees completions of runs a USER dispatched with their own
+  # token: GitHub never delivers workflow_run events for completions of runs the
+  # GITHUB_TOKEN dispatched, which is how the selector's own dispatches start
+  # (verified 2026-11-03). The migrations workflow's notify-production-queue
+  # job therefore emits one `production-queue-nudge` repository_dispatch per
+  # dispatched run, whatever the outcome -- a repository_dispatch created by
+  # the token DOES create a run. The hourly schedule stays as the backstop.
   workflow_run:
     workflows: ['Shared Supabase Migrations']
     types: [completed]
+  repository_dispatch:
+    types: [production-queue-nudge]
   schedule:
     - cron: '23 * * * *'
   workflow_dispatch:

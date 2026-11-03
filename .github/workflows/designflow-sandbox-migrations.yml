@@ -8,13 +8,15 @@ name: DesignFlow Sandbox Migrations
 #
 # This workflow NEVER targets shared production or shared preview, and it does
 # not change shared-supabase-migrations.yml in any way. It reuses the existing
-# guarded components unchanged:
+# guarded components:
 #   - production_migration_guard.py preflight / prepare / assert-bounded /
 #     verify-dry-run (the bounded checkout that makes include-all safe),
 #   - production_business_risk_gate.py prove_pr_and_checks (merged source and
 #     required exact-head checks; review is advisory since 2026-10-29),
 #   - production_catalog_verification.py (read-only post-apply catalog proof).
-# Sandbox-only gates live in scripts/sandbox_migration_preflight.py: target
+# The guard's --sandbox-live-dependencies read (issue #4578) is the one
+# sandbox-only gate outside scripts/sandbox_migration_preflight.py, which holds
+# the others: target
 # identity, the sandbox version blocklist, the same-name collision preflight,
 # the absent-schema statement conditioning (issue #2986; bounded checkout only),
 # and the exact ledger delta. scripts/test_sandbox_migration_preflight.py

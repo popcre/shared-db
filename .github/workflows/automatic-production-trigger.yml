@@ -11,8 +11,14 @@ on:
   push:
     branches: [main]
     paths: ['supabase/migrations/**']
-  # Start the next PR as soon as a dispatched apply succeeds. Failures wait for
-  # the hourly schedule, so a failing apply is not retried in a tight loop.
+  # Start the next PR as soon as a dispatched apply succeeds OR fails (#5532).
+  # Failures used to wait for the hourly schedule or a merge, which idled the
+  # whole queue for up to an hour (2026-11-02: a failed preview at 7:49 PM EST,
+  # nothing dispatched until 8:57 PM EST). Prompt reaction is not a retry loop:
+  # the selector caps every PR at three automatic attempts per main commit,
+  # counting failed preview AND production runs, and passes a PR out of attempts
+  # over with a loud ENGINEER ACTION REQUIRED alert so later PRs keep promoting.
+  # The hourly schedule stays as the backstop.
   workflow_run:
     workflows: ['Shared Supabase Migrations']
     types: [completed]
@@ -29,7 +35,7 @@ concurrency:
 
 jobs:
   trigger:
-    if: github.event_name != 'workflow_run' || (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.conclusion == 'success')
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.event == 'workflow_dispatch' && (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure'))
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     permissions:

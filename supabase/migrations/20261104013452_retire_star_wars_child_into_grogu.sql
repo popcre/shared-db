@@ -1,5 +1,12 @@
 -- popdam3#680, replaces 20261104000346 before it reached production (review finding #5549).
 -- "Child" and "Grogu" are one Star Wars character. Retiring is a status change, never a delete.
+create table archive.character_child_grogu_links_20261104 (
+  asset_id uuid primary key,
+  old_row jsonb not null,
+  archived_at timestamptz not null default now()
+);
+alter table archive.character_child_grogu_links_20261104 enable row level security;
+
 do $$
 declare
   c_child constant uuid := '0e5896e5-7813-4f82-a428-d4669504100a';
@@ -13,13 +20,6 @@ begin
   if v_licensor is null then
     raise exception 'Child and Grogu must both exist under one licensor';
   end if;
-
-  create table archive.character_child_grogu_links_20261104 (
-    asset_id uuid primary key,
-    old_row jsonb not null,
-    archived_at timestamptz not null default now()
-  );
-  alter table archive.character_child_grogu_links_20261104 enable row level security;
 
   insert into archive.character_child_grogu_links_20261104 (asset_id, old_row)
   select l.asset_id, to_jsonb(l)

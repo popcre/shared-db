@@ -78,7 +78,7 @@ concurrency:
 jobs:
   sandbox:
     name: DesignFlow sandbox bounded migration
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     # The sandbox database password is an ENVIRONMENT secret, visible only to
     # jobs bound to this environment.

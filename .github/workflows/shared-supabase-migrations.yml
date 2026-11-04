@@ -141,7 +141,7 @@ concurrency:
 jobs:
   validate:
     name: SQL migration guards
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     steps:
@@ -342,7 +342,7 @@ jobs:
   preview:
     if: github.event_name == 'workflow_dispatch' && inputs.target == 'preview'
     needs: validate
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 90
     permissions:
@@ -1088,7 +1088,7 @@ jobs:
       inputs.mode == 'apply' &&
       (inputs.merged_preview_source_pr != '' || inputs.merged_preview_source_pr_map != '' || (inputs.historical_preview_source_pr != '' && inputs.historical_preview_source_pr_map == '') || (inputs.migration_train_ref != '' && inputs.historical_preview_source_pr_map != ''))
     needs: [validate, preview]
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       # write: admission creates a db-coordination commit object and ref via the
@@ -1399,7 +1399,7 @@ jobs:
   production-dry-run:
     if: github.event_name == 'workflow_dispatch' && inputs.target == 'production' && inputs.mode == 'dry-run'
     needs: validate
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 90
     env:
@@ -1586,7 +1586,7 @@ jobs:
     name: Production apply review (immutable evidence + hard guards)
     if: github.event_name == 'workflow_dispatch' && inputs.target == 'production' && inputs.mode == 'apply'
     needs: validate
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 90
     permissions:
@@ -1853,7 +1853,7 @@ jobs:
     name: Production apply (automatic evidence gates)
     if: github.event_name == 'workflow_dispatch' && inputs.target == 'production' && inputs.mode == 'apply'
     needs: [validate, production-apply-review]
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 90
     permissions:
@@ -2287,7 +2287,7 @@ jobs:
     name: Nudge the production queue
     if: always() && github.event_name == 'workflow_dispatch'
     needs: [validate, preview, automatic-production-promotion, production-dry-run, production-apply-review, production-apply]
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: write

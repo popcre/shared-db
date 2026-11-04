@@ -43,7 +43,7 @@ concurrency:
 jobs:
   reconcile:
     name: Reconcile one pinned sandbox ledger orphan
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     environment: designflow-sandbox
     timeout-minutes: 15
     env:

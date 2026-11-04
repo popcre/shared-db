@@ -71,7 +71,7 @@ concurrency:
 jobs:
   require-main:
     name: Refuse abandonment audit outside main
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - name: Require the protected main ref
@@ -87,7 +87,7 @@ jobs:
     name: Author lane abandonment audit
     needs: require-main
     if: github.ref == 'refs/heads/main'
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     environment: preview
     timeout-minutes: 10
     steps:

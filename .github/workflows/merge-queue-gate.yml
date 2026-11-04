@@ -37,7 +37,7 @@ concurrency:
 jobs:
   verify:
     name: Merge queue gate
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     # Must exceed the preview hold's own bounded wait (25 minutes by default)
     # so the hold's refusal is reported by the contract, not by a timeout.
     timeout-minutes: 40

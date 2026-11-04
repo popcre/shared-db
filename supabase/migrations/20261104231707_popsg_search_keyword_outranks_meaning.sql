@@ -1,4 +1,4 @@
--- Version: 20261104220347
+-- Version: 20261104231707
 -- derived-from: 20261027183509
 -- Issue: popcre/shared-db#4437 (app u2giants/popdam3#706).
 -- Relevance test 2026-11-04: with a query vector, file searches for exact character

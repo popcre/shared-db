@@ -45,7 +45,7 @@ concurrency:
 jobs:
   trigger:
     if: github.event_name != 'workflow_run' || (github.event.workflow_run.event == 'workflow_dispatch' && (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure'))
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read

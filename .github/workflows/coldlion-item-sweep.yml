@@ -42,7 +42,7 @@ concurrency:
 jobs:
   sweep:
     name: Refresh Item Master (plm.item) from ColdLion /items
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     # Measured 80 s before #4974; the new-item detail delta adds at most
     # ~3.5 min worst case (20 GETs × 10 s inside a 4-min deadline). 15 min stays
     # a real stall-killing ceiling (#1266).

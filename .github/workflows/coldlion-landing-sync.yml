@@ -105,7 +105,7 @@ jobs:
   sync:
     if: github.event_name != 'workflow_dispatch' || inputs.operation == 'refresh'
     name: Sync Item Master, masters and recent history windows
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     # Budget arithmetic, measured live 2026-09-18 (dispatch run 35303647480,
     # cancelled at the then-90-minute ceiling mid-prod-detail-refresh): setup +
     # offline gate ~4 min, history ~2 min, masters ~4 min, prepack refresh ~43 min
@@ -204,7 +204,7 @@ jobs:
   prepack-backfill:
     if: github.event_name == 'workflow_dispatch' && inputs.operation == 'prepack-backfill'
     name: Backfill prepack detail codes
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -250,7 +250,7 @@ jobs:
   prod-detail-backfill:
     if: github.event_name == 'workflow_dispatch' && inputs.operation == 'prod-detail-backfill'
     name: Backfill production detail
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4

@@ -18,7 +18,7 @@ permissions:
 jobs:
   test:
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -46,7 +46,7 @@ jobs:
       always() && github.repository == 'popcre/shared-db' && github.ref == 'refs/heads/main' &&
       ((github.event_name == 'schedule' && needs.test.result == 'skipped') ||
        (github.event_name == 'workflow_dispatch' && needs.test.result == 'success'))
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: production
     concurrency:

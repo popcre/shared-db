@@ -70,7 +70,7 @@ concurrency:
 jobs:
   intake:
     name: Stage, detect, decode
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     # A workflow_dispatch run executes the SELECTED REF's copy of this file, so
     # without this guard any branch could run its own edited workflow against
     # the production secrets. Manual dispatch of THIS ref only (round-2 L-7).

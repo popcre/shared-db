@@ -38,7 +38,7 @@ jobs:
     # string array compares case-insensitively, matching the script's lowercasing;
     # the literal must equal PROPOSAL_LABEL in scripts/lib/destructive-analysis-guard.mjs.
     if: github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'destructive-proposal')
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

@@ -840,6 +840,12 @@ PREVIEW_PRODUCER_PATHS = (
 PREVIEW_RUNTIME_DATA_DIRS = ("supabase", "config")
 
 PREVIEW_RUNTIME_DATA_EXEMPTIONS = {
+    "config/acknowledged-production-re-runs.json": (
+        "Never read by the preview job or its migration helpers. Only main() of "
+        "scripts/automatic_promotion_candidates.py reads it, in the separate "
+        "automatic production trigger workflow, to decide whether that run reports "
+        "a re-run alert, so it cannot affect migration bytes or preview evidence."
+    ),
     "config/designflow-consumer-release-notify.yml": (
         "Never read by the preview job or its migration helpers. This "
         "inert consumer Actions notification template is copied to consumer "

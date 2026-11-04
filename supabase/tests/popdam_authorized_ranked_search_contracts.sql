@@ -117,7 +117,7 @@ begin
        > position('visible_assets as materialized' in v_definition) then
     raise exception 'indexed ranked candidates must precede expensive asset expansion';
   end if;
-  if position('length(q.query_text) >= 3' in v_definition) = 0 then
+  if position('length(q.query_text) >= 4' in v_definition) = 0 then
     raise exception 'short queries must not activate unindexable substring scans';
   end if;
   if position('offset (select page_offset from params)' in lower(v_definition)) = 0

@@ -301,20 +301,17 @@ def version_on_main(version: str) -> bool:
     return bool(glob.glob(os.path.join(os.path.dirname(HERE), "supabase", "migrations", f"{version}_*.sql")))
 
 
-def acknowledged_re_runs() -> dict[int, int]:
-    """Run id -> highest attempt an engineer has recorded a disposition for. An
-    unreadable file acknowledges nothing, so the alert stays loud."""
-    path = os.path.join(os.path.dirname(HERE), "config", "acknowledged-production-re-runs.json")
-    try:
-        with open(path, encoding="utf-8") as fh:
-            return {int(r["run_id"]): int(r["attempt"]) for r in json.load(fh)["runs"]}
-    except (OSError, ValueError, KeyError, TypeError) as exc:
-        print(f"::error::cannot read {path} ({exc}); no production re-run counts as acknowledged")
-        return {}
+# Run id -> highest attempt an engineer has recorded a disposition for (#5558).
+# A listed attempt stops failing this trigger; an unlisted run or a higher attempt
+# still fails it. The workflow's refusal steps do not read this.
+ACKNOWLEDGED_RE_RUNS = {
+    41545991868: 2,  # PR 5494, before the refusal existed; attempt 1 applied 20261102202014
+    41661658015: 2,  # PR 5539, before the refusal existed; attempt 2 succeeded
+}
 
 
 def recent_re_runs(runs: list[dict[str, Any]], now: datetime,
-                   acknowledged: dict[int, int] | None = None) -> list[dict[str, Any]]:
+                   acknowledged: dict[int, int] = {}) -> list[dict[str, Any]]:
     """Production apply runs that were RE-RUN within the last day. A re-run is
     never the retry path -- the queue dispatches a fresh run with fresh
     evidence -- and it hides what earlier attempts did (2026-11-03: run
@@ -323,7 +320,6 @@ def recent_re_runs(runs: list[dict[str, Any]], now: datetime,
     queue run, so a repeat is never silent again. An attempt already recorded in
     `acknowledged` stops alerting (#5558: an unactionable red hides real alerts);
     a further re-run of the same run alerts again."""
-    acknowledged = acknowledged or {}
     return [r for r in runs
             if (r.get("display_title") or "").startswith("DB production apply")
             and int(r.get("run_attempt") or 1) > max(1, acknowledged.get(r.get("id"), 1))
@@ -359,7 +355,7 @@ def main(now: datetime | None = None) -> int:
         print(f"::error title=ENGINEER ACTION REQUIRED: automatic attempts exhausted::"
               f"PR #{entry['number']} (versions {','.join(entry['versions'])}) failed {entry['exhausted']} "
               f"automatic attempts at this main commit; later PRs still promote")
-    reruns = recent_re_runs(runs, now, acknowledged_re_runs())
+    reruns = recent_re_runs(runs, now, ACKNOWLEDGED_RE_RUNS)
     for r in reruns:
         print(f"::error title=ENGINEER ACTION REQUIRED: production apply re-run::"
               f"run {r['id']} ({r.get('display_title')}) was re-run (attempt {r.get('run_attempt')}); "

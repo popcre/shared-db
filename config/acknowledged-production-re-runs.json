@@ -1,7 +1,0 @@
-{
-  "_comment": "Production apply re-runs an engineer has dispositioned (#5558). A listed attempt stops failing the automatic trigger; any higher attempt or unlisted run still fails it. The refusal steps in shared-supabase-migrations.yml are independent of this file.",
-  "runs": [
-    {"run_id": 41545991868, "attempt": 2, "issue": 5558, "reason": "PR 5494 re-run before the refusal existed; attempt 1 applied 20261102202014. Investigated under #5532."},
-    {"run_id": 41661658015, "attempt": 2, "issue": 5558, "reason": "PR 5539 re-run before the refusal existed; the attempt succeeded and production holds 20261103142609."}
-  ]
-}

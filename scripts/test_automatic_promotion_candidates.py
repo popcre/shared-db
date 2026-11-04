@@ -342,21 +342,12 @@ class ProductionReRunAlert(unittest.TestCase):
         self.assertEqual(len(m.recent_re_runs([again], now, {self.rerun["id"]: 2})), 1)
         self.assertEqual(len(m.recent_re_runs([self.rerun], now, {1: 2})), 1)
 
-    def test_an_unreadable_acknowledgement_file_acknowledges_nothing(self):
-        with mock.patch("builtins.open", mock.mock_open(read_data="not json")):
-            with contextlib.redirect_stdout(io.StringIO()) as out:
-                self.assertEqual(m.acknowledged_re_runs(), {})
-        self.assertIn("::error::", out.getvalue())
-
-    def test_the_recorded_acknowledgements_parse(self):
-        self.assertEqual(m.acknowledged_re_runs(), {41545991868: 2, 41661658015: 2})
-
     def test_a_version_deleted_from_main_is_not_on_main(self):
         self.assertFalse(m.version_on_main("20261104000346"))
         self.assertTrue(m.version_on_main("20261103174555"))
 
-    @mock.patch.object(m, "acknowledged_re_runs", return_value={})
-    def test_main_fails_the_run_on_a_re_run(self, _acks):
+    @mock.patch.object(m, "ACKNOWLEDGED_RE_RUNS", {})
+    def test_main_fails_the_run_on_a_re_run(self):
         saved = (m.gh, m.merged_migration_prs, m.workflow_runs, m.is_held, m.applied_in_any_attempt,
                  sys.argv, os.environ.get("GITHUB_REPOSITORY"))
         m.gh = lambda *a: {"sha": "abc"}

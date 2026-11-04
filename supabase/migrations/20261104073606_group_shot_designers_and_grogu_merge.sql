@@ -1,8 +1,10 @@
 -- popdam3#680, owner rulings Nov 3, 2026:
 -- "\"group shot\" should itself be a character for tagging purposes"
 -- "Eli is a freelancer/illustrator. the others are not and should be inactivated."
+-- Only where the character list is loaded: test databases must keep it empty.
 insert into core."character" (id, licensor_id, code, name, status, metadata)
-values ('90f4dfa8-b4f9-4880-b2f7-e772f5e40ca7', null, 'tagging_label:group_shot', 'Group Shot', 'active', '{"issue":"u2giants/popdam3#680","kind":"tagging_label"}'::jsonb)
+select '90f4dfa8-b4f9-4880-b2f7-e772f5e40ca7', null, 'tagging_label:group_shot', 'Group Shot', 'active', '{"issue":"u2giants/popdam3#680","kind":"tagging_label"}'::jsonb
+where exists (select 1 from core."character")
 on conflict (id) do update set name = excluded.name, code = excluded.code, status = excluded.status, metadata = excluded.metadata;
 
 insert into core.freelance_designer (name, status, metadata)
@@ -23,7 +25,8 @@ on conflict (normalized_name) do update set status = excluded.status, metadata =
 
 do $$
 begin
-  if not exists (select 1 from core."character" where id = '90f4dfa8-b4f9-4880-b2f7-e772f5e40ca7' and status = 'active' and name = 'Group Shot' and licensor_id is null) then
+  if exists (select 1 from core."character")
+     and not exists (select 1 from core."character" where id = '90f4dfa8-b4f9-4880-b2f7-e772f5e40ca7' and status = 'active' and name = 'Group Shot' and licensor_id is null) then
     raise exception 'Group Shot character missing';
   end if;
   if (select count(*) from core.creative_designer where normalized_name in ('tan','cliff','hana','uta','ira') and status = 'inactive') <> 5 then

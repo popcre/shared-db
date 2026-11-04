@@ -1,3 +1,4 @@
+-- derived-from: 20261104212000
 -- Fix forward on review finding #5580 (PopDAM #680). Customer names match literally and are
 -- normalized. A value already in use needs no table scan, so a rescan stays linear.
 -- Tags are additive by design: a sheet edit never removes a tag; undo is by source pdf_sheet.

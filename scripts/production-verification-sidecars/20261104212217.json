@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "migration_version": "20261104212217",
+  "migration_sha256": "666560b93aeb06554c112b38ffa87d1bf3626bf2b2f6d574714aa2cfb449f384",
+  "checks": [],
+  "marker_schema_version": 1,
+  "marker_reviews": [
+    {
+      "line_start": 387,
+      "line_end": 387,
+      "disposition": "no_durable_target",
+      "reason": "Same reviewed guides-body execution as the base function; only the keyword rank weights change, with signature, settings and privileges untouched. Post-apply behavior is proven by the scored search test on popdam3#680."
+    }
+  ]
+}

@@ -4,6 +4,13 @@
 -- at embedding_max_attempts mark_dam_search_embedding_error makes it permanent, which
 -- nothing clears when the thumbnail arrives. Leave such documents unclaimed until they
 -- have one. Only the candidate predicate changes; CREATE OR REPLACE keeps the grants.
+do $$
+begin
+  if to_regprocedure('public.claim_dam_search_embedding_documents(integer,text,integer)') is null then
+    raise exception 'claim_dam_search_embedding_documents must exist before this migration';
+  end if;
+end $$;
+
 create or replace function public.claim_dam_search_embedding_documents(p_limit integer default 100, p_worker_id text default null::text, p_lease_seconds integer default 300)
  returns table(document_type text, entity_id uuid, search_text text, thumbnail_url text, content_sha256 text, lease_token uuid, lease_expires_at timestamp with time zone, attempt integer)
  language plpgsql

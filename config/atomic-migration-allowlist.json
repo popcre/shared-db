@@ -187,6 +187,13 @@
       ],
       "initial_credential_role": "designflow_hts_evaluation_reader"
     },
+    "20261105142040": {
+      "sha256": "a0b94b7ca07e72b0fdb29c1bd70f86137b8a6691e5a0974a0c00c7dfdcb5f7d6",
+      "targets": [
+        "preview",
+        "production"
+      ]
+    },
     "20261105142616": {
       "sha256": "faa341b2e472907f1e31275068b4c258272f6e0df782401cfaaec000faeb9059",
       "targets": [

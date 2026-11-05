@@ -48,7 +48,7 @@ def python_tools(syntax):
             if not (isinstance(parent,ast.BinOp) and isinstance(parent.op,ast.Div) and parent.left is node):suffix(parts(node))
         if isinstance(node,ast.Call):
             name=getattr(node.func,'id',None) or getattr(node.func,'attr',None)
-            if name in {'Path','PurePath','PurePosixPath','join','joinpath'}:suffix(node.args)
+            if name in {'Path','PurePath','PurePosixPath','join','joinpath'} and not (name=='join' and isinstance(getattr(node.func,'value',None),ast.Constant)):suffix(node.args)
         if isinstance(node,(ast.Assign,ast.AnnAssign)) and literal(node.value) in {'tools','tools/'}:
             raise RiskGateError('unresolved maintenance tools-directory alias')
     return dependencies

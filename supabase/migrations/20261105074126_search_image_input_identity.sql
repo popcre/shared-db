@@ -9,7 +9,7 @@ create or replace function dam.search_embedding_image_provenance(
   p_asset_id uuid, p_thumbnail_url text, p_previous jsonb default '{}'::jsonb)
 returns jsonb language plpgsql volatile security definer
 set search_path = public, dam, extensions set timezone = 'UTC' as $$
-declare a record; v_render timestamptz; v_cached jsonb; v_input jsonb;
+declare a record; v_render timestamptz; v_cached jsonb; v_input jsonb; v_invalid_previous boolean:=false;
 begin
   if p_asset_id is null or nullif(btrim(p_thumbnail_url),'') is null then return null; end if;
   select modified_at,file_size,thumbnail_url into a from public.assets where id=p_asset_id and not is_deleted;
@@ -21,23 +21,39 @@ begin
     order by q.completed_at desc limit 1;
   -- Keep the last observed successful render after queue retention removes it.
   if p_previous->>'asset_id'=p_asset_id::text then
-    v_render:=greatest(v_render,(p_previous->>'render_completed_at')::timestamptz);
+    begin
+      v_render:=greatest(v_render,(p_previous->>'render_completed_at')::timestamptz);
+    exception when invalid_datetime_format or datetime_field_overflow or invalid_time_zone_displacement_value then
+      v_invalid_previous:=true;
+    end;
   end if;
   if v_cached->>'asset_id'=p_asset_id::text then
-    v_render:=greatest(v_render,(v_cached->>'render_completed_at')::timestamptz);
+    begin
+      v_render:=greatest(v_render,(v_cached->>'render_completed_at')::timestamptz);
+    exception when invalid_datetime_format or datetime_field_overflow or invalid_time_zone_displacement_value then
+      v_invalid_previous:=true;
+    end;
   end if;
-  if a.modified_at is null and v_render is null then return null; end if;
+  if a.modified_at is null and v_render is null and not v_invalid_previous then return null; end if;
   v_input:=jsonb_strip_nulls(jsonb_build_object('version',1,'model','google/siglip2-base-patch16-naflex',
     'image_transform','uncropped-thumbnail','asset_id',p_asset_id,'thumbnail_url',p_thumbnail_url,
-    'source_modified_at',a.modified_at,'source_file_size',a.file_size,'render_completed_at',v_render));
+    'source_modified_at',a.modified_at,'source_file_size',a.file_size,'render_completed_at',v_render,
+    'invalid_previous',case when v_invalid_previous then true end));
   return v_input||jsonb_build_object('sha256',encode(digest(v_input::text,'sha256'),'hex'));
 end $$;
 
 create or replace function dam.search_embedding_inputs_match(
  p_old jsonb,p_new jsonb,p_old_text_hash text,p_new_text_hash text,
  p_model text,p_vector_at timestamptz,p_indexed_at timestamptz)
-returns boolean language sql immutable set search_path=public as $$
- select coalesce(case
+returns boolean language plpgsql stable set search_path=public as $$
+declare v_source timestamptz; v_render timestamptz;
+begin
+ -- Validate JSON dates even on the equal-hash path. Corruption must abstain,
+ -- never abort an ordinary tagging/source transaction.
+ v_source:=(p_new->'_embedding_input'->>'source_modified_at')::timestamptz;
+ v_render:=(p_new->'_embedding_input'->>'render_completed_at')::timestamptz;
+ if p_new->'_embedding_input'->>'invalid_previous'='true' then return false; end if;
+ return coalesce(case
  when p_new->'_embedding_input'->>'sha256' is not null and p_old->'_embedding_input'->>'sha256' is not null
  then p_new->'_embedding_input'->>'sha256'=p_old->'_embedding_input'->>'sha256'
    and (p_model='google/siglip2-base-patch16-naflex' or (p_model is null and p_vector_at is null))
@@ -45,14 +61,16 @@ returns boolean language sql immutable set search_path=public as $$
    -- Bootstrap only a proven same-image canonical vector or an existing job
    -- newer than the authoritative source/render revision; never library reset.
    p_old->>'thumbnail_url'=p_new->>'thumbnail_url'
+   -- The size trigger identifies only the asset whose source actually changed.
+   and current_setting('dam.search_image_size_changed_asset',true) is distinct from p_new->'_embedding_input'->>'asset_id'
    and (p_model='google/siglip2-base-patch16-naflex' or (p_model is null and p_vector_at is null))
-   and coalesce(p_vector_at,p_indexed_at)>=greatest(
-     (p_new->'_embedding_input'->>'source_modified_at')::timestamptz,
-     (p_new->'_embedding_input'->>'render_completed_at')::timestamptz)
+   and coalesce(p_vector_at,p_indexed_at)>=greatest(v_source,v_render)
  when p_old->'_embedding_input'->>'sha256' is not null then false
  else p_old_text_hash=p_new_text_hash and p_old->>'thumbnail_url' is not distinct from p_new->>'thumbnail_url'
- end,false)
-$$;
+ end,false);
+exception when invalid_datetime_format or datetime_field_overflow or invalid_time_zone_displacement_value then
+ return false;
+end $$;
 revoke all on function dam.search_embedding_image_provenance(uuid,text,jsonb) from public,anon,authenticated;
 revoke all on function dam.search_embedding_inputs_match(jsonb,jsonb,text,text,text,timestamptz,timestamptz) from public,anon,authenticated;
 grant execute on function dam.search_embedding_image_provenance(uuid,text,jsonb) to service_role;
@@ -225,7 +243,7 @@ begin
   update public.dam_search_documents set embedding=p_embedding,embedding_model=p_embedding_model,embedding_updated_at=now(),
     embedding_error=null,embedding_error_category=null,embedding_next_retry_at=null,embedding_lease_token=null,
     embedding_lease_owner=null,embedding_lease_expires_at=null where document_type=p_document_type and entity_id=p_entity_id
-    and coalesce(metadata->>'_embedding_lease_input_sha256',content_sha256)=p_content_sha256 and (metadata->'_embedding_input' is null or p_embedding_model='google/siglip2-base-patch16-naflex') and embedding_lease_token=p_lease_token and embedding_lease_expires_at>now(); return found;
+    and coalesce(metadata->>'_embedding_lease_input_sha256',content_sha256)=p_content_sha256 and p_embedding_model='google/siglip2-base-patch16-naflex' and embedding_lease_token=p_lease_token and embedding_lease_expires_at>now(); return found;
 end
 $function$
 ;

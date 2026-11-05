@@ -23,11 +23,21 @@ for each row execute function public.refresh_dam_search_after_render_completion(
 -- size-only source revision case, without replacing another owner's trigger.
 create or replace function public.refresh_dam_search_after_source_size_change()
 returns trigger language plpgsql security definer set search_path=public as $$
-declare v_group uuid;
+declare v_group uuid; v_previous text;
 begin
-  perform public.refresh_dam_search_asset_document(new.id);
-  v_group:=new.style_group_id;
-  if v_group is not null then perform public.refresh_dam_search_style_group_document(v_group); end if;
+  -- Scope legacy invalidation to this genuine source-size revision. Preserve
+  -- outer trigger context for nested writes; this marker is never authority.
+  v_previous:=current_setting('dam.search_image_size_changed_asset',true);
+  perform set_config('dam.search_image_size_changed_asset',new.id::text,true);
+  begin
+    perform public.refresh_dam_search_asset_document(new.id);
+    v_group:=new.style_group_id;
+    if v_group is not null then perform public.refresh_dam_search_style_group_document(v_group); end if;
+  exception when others then
+    perform set_config('dam.search_image_size_changed_asset',coalesce(v_previous,''),true);
+    raise;
+  end;
+  perform set_config('dam.search_image_size_changed_asset',coalesce(v_previous,''),true);
   return new;
 end $$;
 create trigger trg_dam_search_after_source_size_change after update of file_size on public.assets

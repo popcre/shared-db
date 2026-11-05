@@ -20,7 +20,7 @@ There is no historical thumbnail fingerprint column. Existing canonical vectors 
 
 ## Verification
 
-Seventeen isolated preview checks passed: keyword hash changes; text retains lease/vector; original claim completion/error after text changes; source revision and URL invalidation; same-URL render invalidation; stale/wrong-token/expired completion rejection; model rejection; render-history retention; exact asset-to-new-group reuse; group text preservation; bounded historical bootstrap; timezone stability.
+Nineteen isolated preview checks passed: keyword hash changes; text retains lease/vector; original claim completion/error after text changes; source revision and URL invalidation; same-URL render invalidation; stale/wrong-token/expired completion rejection; model rejection; render-history retention; exact asset-to-new-group reuse; group text preservation; bounded historical bootstrap; timezone stability; no-op heap rewrite avoidance; pending queue-age preservation.
 
 The committed SQL contract invokes installed function definitions rebound only to synthetic temporary tables, including actual render and source-size trigger functions. Its additional automatic-trigger checks passed in the private preview rehearsal. Public asset, group, render, and search rows were never written. Temporary objects disappear when the connection closes.
 
@@ -30,3 +30,13 @@ The new render index and each subsequent migration have 500ms lock acquisition, 
 - [ ] Automatic preview and production receipts after producer transition.
 - [ ] Live unchanged-image tagging update and same-URL render evidence, with tagging saves healthy.
 - [ ] Full Step 3 plan acceptance; no premature #706 closure.
+
+## Save-path performance investigation (T8 dependent cleanup)
+
+A separate live cleanup could commit only 25 of 1,669 candidate changes before its existing style-group search refresh timed out with IO/DataFileRead and no blocking process. This package does not claim that blocker repaired before live save evidence.
+
+Read-only production statistics showed about 147,000 search rows, 38,000 dead rows, and only 16,000 HOT updates out of 97,000 updates. The table has HNSW vectors and pending-order indexes on indexed_at. The repair now skips the upsert rewrite entirely when searchable content/image provenance are unchanged, ignoring the internal claimed-job metadata key in that comparison. An unchanged picture retains its original queue timestamp; ordinary keyword changes still update exact searchable text and source timestamps.
+
+A private preview fixture with 147,002 documents and 15,002 sparse vectors plus HNSW/pending indexes measured twenty unchanged group refreshes: original 26.334ms, 6,430 local buffer hits and 19 reads; replacement 42.406ms, 560 local hits and zero reads. Both were fast; the additional provenance logic costs CPU while avoiding heap/index work. This does not reproduce cold production IO or prove its latency repaired. A larger 75,002 dense-vector HNSW fixture hit its bounded 55-second build timeout and its temporary objects were dropped on disconnect. No production query ceiling or trigger was changed to conceal that failure.
+
+Representative save-path and actual dependent-cleanup retry evidence remain required. Source heap/index density and cache conditions materially differ from the compact fixture.

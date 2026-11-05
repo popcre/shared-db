@@ -39,7 +39,7 @@ begin if ok is distinct from true then raise exception 'image input contract: %'
 do $$
 declare id uuid:='00000000-0000-4000-8000-000000056340'; gid uuid:='00000000-0000-4000-8000-000000056341';
  j record; before_doc record; after_doc record; v extensions.vector:=('[1,'||repeat('0,',766)||'0]')::extensions.vector;
- old_fp text; new_fp text;
+ old_fp text; new_fp text; old_tid tid; new_tid tid;
 begin
  insert into va_assets(id,filename,relative_path,file_type,is_deleted,thumbnail_url,ai_description,updated_at,modified_at,file_size)
  values(id,'synthetic.png','fixture/synthetic.png','png',false,'https://example.invalid/stable.png','original',now(),now()-interval '1 day',100);
@@ -50,6 +50,7 @@ begin
  perform pg_temp.va_refresh_dam_search_asset_document(id);
  select * into after_doc from va_docs where entity_id=id;
  perform pg_temp.va_assert(before_doc.embedding_lease_token=after_doc.embedding_lease_token,'text refresh preserves lease');
+ perform pg_temp.va_assert(before_doc.indexed_at=after_doc.indexed_at,'text refresh preserves pending queue age');
  perform pg_temp.va_assert(before_doc.content_sha256<>after_doc.content_sha256,'keyword hash still updates exactly');
  perform pg_temp.va_assert(pg_temp.va_upsert_dam_search_embedding(j.document_type,j.entity_id,j.content_sha256,j.lease_token,v,
    'google/siglip2-base-patch16-naflex'),'original poller claim completes after text change');
@@ -95,6 +96,10 @@ begin
  perform set_config('TimeZone','UTC',true);
  new_fp:=pg_temp.va_search_embedding_image_provenance(id,'https://example.invalid/stable.png','{}')->>'sha256';
  perform pg_temp.va_assert(old_fp=new_fp,'session timezone cannot change image identity');
+ select ctid into old_tid from va_docs where entity_id=id;
+ perform pg_temp.va_refresh_dam_search_asset_document(id);
+ select ctid into new_tid from va_docs where entity_id=id;
+ perform pg_temp.va_assert(old_tid=new_tid,'unchanged search document avoids heap and vector-index rewrite');
  update va_assets set file_size=102;
  perform pg_temp.va_assert((select embedding is null from va_docs where entity_id=id),'size-only trigger invalidates image');
  update va_assets set thumbnail_url='https://example.invalid/new.png'; perform pg_temp.va_refresh_dam_search_asset_document(id);

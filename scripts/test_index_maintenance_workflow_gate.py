@@ -250,6 +250,9 @@ def native_fixture(request):
         test.main='d'*40
         test.current_files={**test.source_files,'tools/unrelated-hts.mjs':'// unrelated changed HTS'}
         case=request.pop('_test_case','unrelated')
+        if case in ('budget2000','budget2001'):
+            test.entry.update(lock_timeout_ms=2000 if case=='budget2000' else 2001,swap_timeout_ms=3000,statement_timeout_ms=900000,total_timeout_s=3600)
+            test.dispatch['policy_digest']=maintenance.digest(test.entry)
         if case=='guard':test.current_files['scripts/safety.py']='# replaced vulnerable guard'
         if case=='policy':test.current_files['config/nontransactional-index-maintenance.json']='{"schema_version":1,"operations":{}}'
         if case=='forcepush':test.ancestry=False

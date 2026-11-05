@@ -93,3 +93,11 @@ test('actual native production admission re-derives full authority; normal produ
  maintenanceExclusive('release',r,state)
  assert.equal(state.refs.has(EXCLUSIVE_REFS.production),false)
 })
+
+test('actual native current SG budget permits reviewed2000ms but refuses2001ms; no health-budget widening',()=>{
+ const good=actualGateIo('budget2000'),r=actualRequest('preview')
+ r.lease=maintenanceExclusive('acquire',r,good);maintenanceExclusive('release',r,good)
+ const bad=actualGateIo('budget2001')
+ assert.throws(()=>maintenanceExclusive('acquire',actualRequest('preview'),bad))
+ assert.equal(bad.refs.has(EXCLUSIVE_REFS.preview),false)
+})

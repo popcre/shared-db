@@ -28,7 +28,7 @@ POP DAM shows, for each product (SKU), which licensor style guide its artwork ca
 
 ## 2. The application (original assessment context, 2026-11-04)
 
-`popcre/shared-db` owns the shared Supabase Postgres (production project ref `qsllyeztdwjgirsysgai`) used by DesignFlow, POP DAM, PIM, CRM. Schema changes are SQL migrations under `supabase/migrations/`; they reach production only via the automatic promotion workflow after a preview-branch rehearsal (`AGENTS.md` line ~213; skill `shared-db-change`). There is no app deploy from this repo.
+`popcre/shared-db` owns the shared Supabase Postgres (production target resolved from protected configuration) used by DesignFlow, POP DAM, PIM, CRM. Schema changes are SQL migrations under `supabase/migrations/`; they reach production only via the automatic promotion workflow after a preview-branch rehearsal (`AGENTS.md` line ~213; skill `shared-db-change`). There is no app deploy from this repo.
 
 Objects involved (all defined in `supabase/migrations/20261030043848_sku_style_guide_links.sql`):
 - `public.pdf_text_samples` — OCR/extracted text per PDF asset (unique on `asset_id`). ~27.9k rows, 94 MB; ~18.8k rows sampled in the last 7 days (it churns heavily).

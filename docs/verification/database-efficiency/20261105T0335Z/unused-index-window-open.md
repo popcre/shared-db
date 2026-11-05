@@ -1,7 +1,7 @@
 # Issue #5610 — opening index observation
 
 Observed: November 4, 2026, 10:35 PM EST (America/New_York).
-Production target verified immediately before read: the configured shared production project (project URL checked through the connected read-only tool).
+Production target verified immediately before read: the project matching protected configuration key `supabase_shared_prod_ref` (project URL checked through the connected read-only tool).
 Read-only catalog queries; no database changes or statistics resets.
 
 Postmaster started: November 4, 2026, 12:52:59 PM EST.
@@ -9,6 +9,32 @@ Postmaster started: November 4, 2026, 12:52:59 PM EST.
 Earliest close-snapshot review: November 18, 2026, 8:55 PM EST, subject to unchanged postmaster/statistics continuity. This opening evidence does not satisfy the observation period.
 
 Two original drop candidates already have reads: `public.idx_style_guide_file_tags_tag_status` (72) and `public.idx_assets_ai_tag_untagged_candidates` (2). Keep both under the plan's any-scans rule. The old `public.dam_search_embedding_claim_idx` also has 18 reads and stays. The remaining four original candidates total 345,194,496 bytes (about 329 MiB); zero scans today does not authorize dropping them.
+
+## Exact read-only queries
+
+The first call combined these statements; the tool returned the final index result set. The timestamp statement was then repeated separately to preserve its result.
+
+```sql
+select now() observed_at, pg_postmaster_start_time() postmaster_started_at,
+       (select stats_reset from pg_stat_database
+        where datname=current_database()) stats_reset;
+
+select s.schemaname, s.relname, s.indexrelname, s.idx_scan,
+       s.last_idx_scan, pg_relation_size(s.indexrelid) bytes,
+       pg_get_indexdef(s.indexrelid) definition
+from pg_stat_user_indexes s
+join pg_index i using(indexrelid)
+where not i.indisunique and not i.indisprimary
+  and (pg_relation_size(s.indexrelid)>50*1024*1024
+       or s.indexrelname='dam_search_embedding_claim_idx')
+order by bytes desc;
+```
+
+Repeated timestamp result (EST, America/New_York):
+
+```json
+[{"observed_at":"2026-11-04 22:35:55.669001-05","postmaster_started_at":"2026-11-04 12:52:59.286785-05","stats_reset":null}]
+```
 
 ## Complete large-index snapshot and old claim index
 

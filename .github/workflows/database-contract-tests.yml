@@ -370,6 +370,9 @@ jobs:
           python -m pip install 'psycopg[binary]==3.2.13'
           HTS_EVALUATION_MIGRATION_FILE="$RUNNER_TEMP/migrations/20261105121341_hts_evaluation_read_access.sql" \
             python scripts/test_hts_evaluation_access_postgres.py
+          HTS_EVALUATION_MIGRATION_FILE="$RUNNER_TEMP/migrations/20261105121341_hts_evaluation_read_access.sql" \
+          HTS_PREPACK_PROJECTION_MIGRATION_FILE="$RUNNER_TEMP/migrations/20261105143221_hts_private_prepack_qualification.sql" \
+            python scripts/test_hts_prepack_projection_postgres.py
 
 
       - name: Prove preview ledger reconciliation rolls back an in-lock failure

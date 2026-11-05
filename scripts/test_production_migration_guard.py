@@ -222,10 +222,10 @@ class AggregateReaderRetirementTests(unittest.TestCase):
         for remote in (set(), {"20261105042549"}):
             with self.assertRaisesRegex(GuardError, "general production lane blocks"):
                 parse_allowlist("20261105042549", remote)
-        self.assertIn("20261105061837", production_migration_guard.RETIRED_VERSION_REASONS["20261105042549"])
+        self.assertIn("20261105074303", production_migration_guard.RETIRED_VERSION_REASONS["20261105042549"])
 
     def test_self_contained_corrective_reader_successor_remains_eligible(self):
-        self.assertEqual(parse_allowlist("20261105061837"), ["20261105061837"])
+        self.assertEqual(parse_allowlist("20261105074303"), ["20261105074303"])
 
 
 class RemainingUsersStrandedOriginalTests(unittest.TestCase):

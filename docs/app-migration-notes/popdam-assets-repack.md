@@ -1,6 +1,6 @@
 # PopDAM: online repack of public.assets (claim #5742, work #5745, popdam3#804)
 
-**What.** Migration `20261105192654` installs `pg_repack` 1.5.2 (schema `repack`,
+**What.** Migration `20261105201736` installs `pg_repack` 1.5.2 (schema `repack`,
 revoked from `public`/`anon`/`authenticated`). The exact-index maintenance route
 gains a fixed `table-repack/v1` kind (`scripts/table_repack_maintenance.py`):
 allowlisted table `public.assets` only, sha256-pinned PGDG 1.5.2 client, fixed

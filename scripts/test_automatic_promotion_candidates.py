@@ -14,13 +14,23 @@ APPLIED = [{"steps": [{"name": m.APPLY_STEP, "conclusion": "success"}, {"name": 
 NOT_APPLIED = [{"steps": [{"name": m.APPLY_STEP, "conclusion": "failure"}, {"name": m.CATALOG_STEP, "conclusion": "failure"}]}]
 
 
-class AttemptsPerMainCommit(unittest.TestCase):
-    def test_a_new_main_commit_earns_fresh_attempts(self):
+class AttemptsPerChange(unittest.TestCase):
+    def test_a_new_main_commit_does_not_earn_fresh_attempts(self):
+        # #5686: per-main resets retried a stuck change after every unrelated merge.
         pr = {"number": 7, "merged_at": "2026-01-01", "versions": ["1"]}
-        runs = [{"display_title": "DB preview apply old PR7 1", "status": "completed", "conclusion": "failure", "created_at": "2026-01-02"}] * 3
+        runs = [{"display_title": f"DB preview apply {sha} PR7 1", "status": "completed", "conclusion": "failure", "created_at": "2026-01-02"}
+                for sha in ("a", "b", "c")]
         held = lambda n: False
         self.assertEqual(m.decide([pr], runs, held, main_sha="old")[0], "idle")
-        self.assertEqual(m.decide([pr], runs, held, main_sha="new")[0], "dispatch")
+        self.assertEqual(m.decide([pr], runs, held, main_sha="new")[0], "idle")
+
+    def test_a_stuck_change_is_passed_over_for_a_later_independent_one(self):
+        stuck = {"number": 7, "merged_at": "2026-01-01", "versions": ["1"]}
+        later = {"number": 8, "merged_at": "2026-01-01", "versions": ["2"]}
+        runs = [{"display_title": f"DB preview apply {sha} PR7 1", "status": "completed", "conclusion": "failure", "created_at": "2026-01-02"}
+                for sha in ("a", "b", "c")]
+        action, got, _ = m.decide([stuck, later], runs, lambda n: [], main_sha="d")
+        self.assertEqual((action, got["number"]), ("dispatch", 8))
 
     def test_production_failures_count_as_attempts(self):
         # A failed production apply re-enters through a historical recovery
@@ -132,6 +142,7 @@ class OverdueHoldAlert(unittest.TestCase):
         try:
             with contextlib.redirect_stdout(io.StringIO()) as out:
                 now = datetime(2026, 11, 2, 20, 0, tzinfo=timezone.utc)
+                # Step 2.2: overdue holds are expected states; exit success with the reason in the summary.
                 self.assertEqual(m.main(now), 0)
                 m.is_held = lambda repo, n: []
                 self.assertEqual(m.main(now), 0)
@@ -158,6 +169,7 @@ class ExhaustedAlert(unittest.TestCase):
         sys.argv, os.environ["GITHUB_REPOSITORY"] = ["x", "--dry-run"], "o/r"
         try:
             with contextlib.redirect_stdout(io.StringIO()) as out:
+                # Step 2.2: used-up attempts are expected states; exit success with the reason in the summary.
                 self.assertEqual(m.main(datetime(2026, 11, 2, 20, 0, tzinfo=timezone.utc)), 0)
             text = out.getvalue()
             self.assertIn("exhausted: PR #5460 out of automatic attempts", text)
@@ -204,6 +216,10 @@ class TriggerReactsToFailures(unittest.TestCase):
         self.assertIn("github.event.workflow_run.event == 'workflow_dispatch'", text)
         self.assertIn("github.event.workflow_run.conclusion == 'success'", text)
         self.assertIn("github.event.workflow_run.conclusion == 'failure'", text)
+        # Step 2.2: also trigger on cancelled and timed_out so the queue does
+        # not idle until the hourly timer.
+        self.assertIn("github.event.workflow_run.conclusion == 'cancelled'", text)
+        self.assertIn("github.event.workflow_run.conclusion == 'timed_out'", text)
 
 
 class MigrationsWorkflowPokesTheTrigger(unittest.TestCase):
@@ -362,6 +378,7 @@ class ProductionReRunAlert(unittest.TestCase):
         sys.argv, os.environ["GITHUB_REPOSITORY"] = ["x", "--dry-run"], "o/r"
         try:
             with contextlib.redirect_stdout(io.StringIO()) as out:
+                # Step 2.2: acknowledged history is an expected state; exit success with the reason in the summary.
                 self.assertEqual(m.main(m._time("2026-11-03T13:30:00Z")), 0)
             self.assertIn("::error title=ENGINEER ACTION REQUIRED: production apply re-run::run 41545991868",
                           out.getvalue())
@@ -674,6 +691,229 @@ class CanonicalDependencyResolution(unittest.TestCase):
                 applied.return_value = True
                 self.assertEqual(m.decide([child], [run], lambda n: [], applied=applied, refused=refused)[0], "dispatch")
                 self.assertEqual((applied.call_count, refused.call_count), (3, 3))
+
+
+class TriggerReporting(unittest.TestCase):
+    """Step 2.2: exit success for holds, waits, used-up attempts and acknowledged
+    history with the reason in the summary; exit failure only when the trigger
+    itself broke."""
+
+    def _run_main(self, *, prs, runs, held=None, summary_path=None):
+        saved = (m.gh, m.merged_migration_prs, m.workflow_runs, m.is_held,
+                 sys.argv, os.environ.get("GITHUB_REPOSITORY"), os.environ.get("GITHUB_STEP_SUMMARY"))
+        m.gh = lambda *a: {"sha": "abc"}
+        m.merged_migration_prs = lambda repo: prs
+        m.workflow_runs = lambda repo: runs
+        m.is_held = held or (lambda repo, n: [])
+        sys.argv, os.environ["GITHUB_REPOSITORY"] = ["x", "--dry-run"], "o/r"
+        if summary_path:
+            os.environ["GITHUB_STEP_SUMMARY"] = summary_path
+        else:
+            os.environ.pop("GITHUB_STEP_SUMMARY", None)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                code = m.main(datetime(2026, 11, 2, 20, 0, tzinfo=timezone.utc))
+            return code, out.getvalue()
+        finally:
+            (m.gh, m.merged_migration_prs, m.workflow_runs, m.is_held, sys.argv) = saved[:5]
+            for idx, key in ((5, "GITHUB_REPOSITORY"), (6, "GITHUB_STEP_SUMMARY")):
+                if saved[idx] is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = saved[idx]
+
+    def test_wait_state_exits_zero_with_reason(self):
+        runs = [{"status": "in_progress", "display_title": "DB preview apply x"}]
+        code, out = self._run_main(prs=[], runs=runs)
+        self.assertEqual(code, 0)
+        self.assertIn("wait:", out)
+
+    def test_idle_state_exits_zero_with_reason(self):
+        code, out = self._run_main(prs=[], runs=[])
+        self.assertEqual(code, 0)
+        self.assertIn("idle:", out)
+
+    def test_held_pr_exits_zero_with_reason(self):
+        pr = {"number": 7, "merged_at": "2026-01-01T00:00:00Z", "versions": ["20260101000000"]}
+        code, out = self._run_main(prs=[pr], runs=[], held=lambda repo, n: [{"number": 99}])
+        self.assertEqual(code, 0)
+        self.assertIn("held: PR #7", out)
+
+    def test_summary_written_on_hold(self):
+        import tempfile, os as _os
+        pr = {"number": 7, "merged_at": "2026-01-01T00:00:00Z", "versions": ["20260101000000"]}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            path = f.name
+        try:
+            code, _ = self._run_main(prs=[pr], runs=[], held=lambda repo, n: [{"number": 99}], summary_path=path)
+            self.assertEqual(code, 0)
+            summary = open(path, encoding="utf-8").read()
+            self.assertIn("Automatic promotion trigger", summary)
+            self.assertIn("Held: PR #7", summary)
+        finally:
+            _os.unlink(path)
+
+    def test_summary_written_on_exhausted(self):
+        import tempfile, os as _os
+        pr = {"number": 7, "merged_at": "2026-01-01T00:00:00Z", "versions": ["20260101000000"]}
+        fail = [{"steps": [{"name": m.APPLY_STEP, "conclusion": "failure"}]}]
+        runs = [{"display_title": "DB preview apply abc PR7 20260101000000", "status": "completed",
+                 "conclusion": "failure", "created_at": "2026-01-02"}] * 3
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            path = f.name
+        try:
+            code, _ = self._run_main(prs=[pr], runs=runs, summary_path=path)
+            self.assertEqual(code, 0)
+            summary = open(path, encoding="utf-8").read()
+            self.assertIn("Used-up attempts: PR #7", summary)
+        finally:
+            _os.unlink(path)
+
+
+class TriggerDefectExitsFailure(unittest.TestCase):
+    """Step 2.2: exit failure only when the trigger itself broke."""
+
+    def test_unhandled_exception_exits_failure(self):
+        saved = (m.gh, sys.argv, os.environ.get("GITHUB_REPOSITORY"))
+        m.gh = lambda *a: (_ for _ in ()).throw(RuntimeError("GitHub API down"))
+        sys.argv, os.environ["GITHUB_REPOSITORY"] = ["x"], "o/r"
+        try:
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                # Simulate the __main__ entry point which wraps main() with defect handling.
+                try:
+                    raise SystemExit(m.main(datetime(2026, 11, 2, 20, 0, tzinfo=timezone.utc)))
+                except SystemExit:
+                    raise
+                except Exception as exc:
+                    print(f"::error title=Trigger defect::automatic-promotion-candidates raised {type(exc).__name__}: {exc}")
+                    raise SystemExit(1)
+        except SystemExit as ctx:
+            self.assertEqual(ctx.code, 1)
+            self.assertIn("Trigger defect", out.getvalue())
+        finally:
+            m.gh, sys.argv = saved[:2]
+            if saved[2] is None:
+                os.environ.pop("GITHUB_REPOSITORY", None)
+            else:
+                os.environ["GITHUB_REPOSITORY"] = saved[2]
+class AdversarialUnmergedSource(unittest.TestCase):
+    """Adversarial table (plan section 9): wording removed from conditions must
+    not let an unmerged source through.  merged_migration_prs must refuse it."""
+
+    def test_unmerged_source_refused(self):
+        files = [[{"status": "added", "filename": "supabase/migrations/20261105120000_x.sql"}]]
+        pulls = [{"number": 5600, "merged_at": None}]
+        with mock.patch.object(m, "gh", side_effect=[pulls, files]):
+            self.assertEqual(m.merged_migration_prs("o/r"), [])
+
+    def test_closed_but_unmerged_source_refused(self):
+        files = [[{"status": "added", "filename": "supabase/migrations/20261105120000_x.sql"}]]
+        pulls = [{"number": 5601, "merged_at": ""}]
+        with mock.patch.object(m, "gh", side_effect=[pulls, files]):
+            self.assertEqual(m.merged_migration_prs("o/r"), [])
+
+
+class StuckChangeOwner(unittest.TestCase):
+    """Step 2.3: later changes promote past a failed one; exhausted PRs get one
+    owned tracking issue with delivery wording and merged-not-live duration."""
+
+    def test_later_changes_promote_past_a_failed_one(self):
+        # PR #7 exhausted, PR #8 independent (no dependency) — #8 must dispatch.
+        pr7 = {"number": 7, "merged_at": "2026-11-01T00:00:00Z", "versions": ["20261101000000"]}
+        pr8 = {"number": 8, "merged_at": "2026-11-02T00:00:00Z", "versions": ["20261102000000"]}
+        runs = [{"display_title": f"DB preview apply abc PR7 20261101000000", "status": "completed",
+                 "conclusion": "failure", "created_at": "2026-11-01T01:00:00Z"}] * 3
+        skipped = []
+        action, pr, reason = m.decide([pr7, pr8], runs, lambda n: [], lambda r: False,
+                                      "abc", skipped, lambda r: set())
+        self.assertEqual(action, "dispatch")
+        self.assertEqual(pr["number"], 8)
+        # The exhausted PR is in skipped, not blocking.
+        self.assertTrue(any(e.get("exhausted") for e in skipped))
+
+    def test_dependent_change_is_held(self):
+        # PR #8 depends on PR #7's base — #8 must wait, not dispatch.
+        pr7 = {"number": 7, "merged_at": "2026-11-01T00:00:00Z", "versions": ["20261101000000"]}
+        pr8 = {"number": 8, "merged_at": "2026-11-02T00:00:00Z", "versions": ["20261102000000"],
+               "production_dependencies": {"20261102000000": 7}}
+        runs = [{"display_title": "DB preview apply abc PR7 20261101000000", "status": "completed",
+                 "conclusion": "failure", "created_at": "2026-11-01T01:00:00Z"}] * 3
+        skipped = []
+        action, pr, reason = m.decide([pr7, pr8], runs, lambda n: [], lambda r: False,
+                                      "abc", skipped, lambda r: set())
+        self.assertEqual(action, "idle")
+
+    def test_failing_rehearsal_produces_one_owned_issue(self):
+        import subprocess as sp
+        pr = {"number": 7, "merged_at": "2026-11-01T00:00:00Z", "versions": ["20261101000000"]}
+        entries = [{**pr, "findings": [], "exhausted": 3}]
+        created = []
+        def fake_run(cmd, **kw):
+            created.append(cmd)
+            class R:
+                stdout = "https://github.com/o/r/issues/99\n"
+                stderr = ""
+            return R()
+        saved_run = sp.run
+        saved_gh = m.gh
+        sp.run = fake_run
+        m.gh = lambda *a: []  # no existing issue
+        try:
+            m.report_stuck_change("o/r", entries, datetime(2026, 11, 2, 20, 0, tzinfo=timezone.utc))
+        finally:
+            sp.run = saved_run
+            m.gh = saved_gh
+        # Exactly one issue created.
+        creates = [c for c in created if "issue" in c and "create" in c]
+        self.assertEqual(len(creates), 1)
+        # Body includes delivery wording and merged-not-live duration.
+        body = creates[0][creates[0].index("--body") + 1]
+        self.assertIn("Delivery needed", body)
+        self.assertIn("PR #7", body)
+        self.assertIn("merged", body)
+        self.assertIn("not live", body)
+
+    def test_existing_issue_is_updated_not_duplicated(self):
+        import subprocess as sp
+        pr = {"number": 7, "merged_at": "2026-11-01T00:00:00Z", "versions": ["20261101000000"]}
+        entries = [{**pr, "findings": [], "exhausted": 3}]
+        calls = []
+        def fake_run(cmd, **kw):
+            calls.append(cmd)
+            class R:
+                stdout = ""
+                stderr = ""
+            return R()
+        saved_run = sp.run
+        saved_gh = m.gh
+        sp.run = fake_run
+        m.gh = lambda *a: [{"number": 99, "title": m.STUCK_ISSUE_TITLE, "state": "open"}]
+        try:
+            m.report_stuck_change("o/r", entries, datetime(2026, 11, 2, 20, 0, tzinfo=timezone.utc))
+        finally:
+            sp.run = saved_run
+            m.gh = saved_gh
+        creates = [c for c in calls if "create" in c]
+        comments = [c for c in calls if "comment" in c]
+        self.assertEqual(len(creates), 0)
+        self.assertEqual(len(comments), 1)
+
+    def test_no_entries_no_issue(self):
+        import subprocess as sp
+        calls = []
+        def fake_run(cmd, **kw):
+            calls.append(cmd)
+            class R:
+                stdout = ""
+                stderr = ""
+            return R()
+        saved_run = sp.run
+        sp.run = fake_run
+        try:
+            m.report_stuck_change("o/r", [], datetime(2026, 11, 2, 20, 0, tzinfo=timezone.utc))
+        finally:
+            sp.run = saved_run
+        self.assertEqual(len(calls), 0)
 
 
 if __name__ == "__main__":

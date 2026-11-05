@@ -7,7 +7,9 @@ select to_regprocedure('public.await_style_guide_matview_refresh(uuid)') is not 
    and exists (select 1 from cron.job where jobname = 'refresh-style-guide-matviews' and active
      and schedule in ('*/15 * * * *', '7 * * * *')
      and username = 'postgres' and database = current_database()
-     and regexp_replace(lower(regexp_replace(command, '[[:space:]]', '', 'g')), chr(59) || '$', '') = 'selectpublic.refresh_style_guide_matviews()')
+     and regexp_replace(lower(regexp_replace(command, '[[:space:]]', '', 'g')), chr(59) || '$', '') in ('selectpublic.refresh_style_guide_matviews()',
+       -- shared-db #5726 (20261105165947): 10 minute bounded timeout around the change-gated job wrapper.
+       'setlocalstatement_timeout=''10min''' || chr(59) || 'selectpublic.refresh_style_guide_matviews_job()'))
    and to_regprocedure('public.refresh_style_guide_matviews()') is null
    and exists (select 1 from pg_proc p where p.oid = to_regprocedure('public.refresh_style_guide_matviews(uuid,integer)')
      and p.prosecdef and p.pronargdefaults = 2 and md5(p.prosrc) = '044a40244377bb9b64dc65efbc7ccf6a') as passed;

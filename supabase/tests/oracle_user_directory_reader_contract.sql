@@ -8,6 +8,7 @@
 do $catalog$
 declare
   v_priv text;
+  v_rel text;
 begin
   -- Role shape: NOLOGIN and nothing but the one EXECUTE.
   if not exists (select 1 from pg_roles where rolname = 'oracle_directory_reader') then
@@ -34,18 +35,25 @@ begin
   end loop;
 
   -- No direct reach into dflow_prod — the legacy passw column included.
+  -- Existence-guarded: the from-empty lane never creates dflow_prod.user_roles
+  -- (20261022182809 refuses without the real role-tree rows), and
+  -- has_*_privilege errors on a missing relation instead of returning false.
   if has_schema_privilege('oracle_directory_reader', 'dflow_prod', 'USAGE') then
     raise exception 'oracle_directory_reader has USAGE on dflow_prod';
   end if;
-  if has_column_privilege('oracle_directory_reader', 'dflow_prod.users', 'passw', 'SELECT') then
+  if to_regclass('dflow_prod.users') is not null
+     and has_column_privilege('oracle_directory_reader', 'dflow_prod.users', 'passw', 'SELECT') then
     raise exception 'oracle_directory_reader can read dflow_prod.users.passw';
   end if;
-  foreach v_priv in array array['SELECT', 'INSERT', 'UPDATE', 'DELETE'] loop
-    if has_table_privilege('oracle_directory_reader', 'dflow_prod.users', v_priv)
-       or has_table_privilege('oracle_directory_reader', 'dflow_prod.user_roles', v_priv)
-       or has_table_privilege('oracle_directory_reader', 'dflow_prod."Roles"', v_priv) then
-      raise exception 'oracle_directory_reader holds % on a dflow_prod table', v_priv;
+  foreach v_rel in array array['dflow_prod.users', 'dflow_prod.user_roles', 'dflow_prod."Roles"'] loop
+    if to_regclass(v_rel) is null then
+      continue;
     end if;
+    foreach v_priv in array array['SELECT', 'INSERT', 'UPDATE', 'DELETE'] loop
+      if has_table_privilege('oracle_directory_reader', v_rel, v_priv) then
+        raise exception 'oracle_directory_reader holds % on %', v_priv, v_rel;
+      end if;
+    end loop;
   end loop;
   if has_schema_privilege('oracle_directory_reader', 'api', 'CREATE') then
     raise exception 'oracle_directory_reader can CREATE in api';

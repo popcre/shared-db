@@ -63,6 +63,8 @@ CREATE POLICY hts_evaluation_read ON plm.customs_benchmark_observation
   FOR SELECT TO designflow_hts_evaluation_read USING (true);
 CREATE POLICY hts_evaluation_read ON plm.customs_benchmark_artifact
   FOR SELECT TO designflow_hts_evaluation_read USING (private_verified);
+CREATE POLICY hts_evaluation_read ON coldlion.item_detail
+  FOR SELECT TO designflow_hts_evaluation_read USING (true);
 
 COMMENT ON ROLE designflow_hts_evaluation_reader IS
   'Private bounded HTS evaluation only (#5447/#278); explicit SET ROLE designflow_hts_evaluation_read. No browser, classifier, migration or write authority.';

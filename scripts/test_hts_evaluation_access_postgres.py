@@ -23,20 +23,22 @@ class EvaluationPostgresTests(unittest.TestCase):
         env={**self.env,'PGUSER':os.environ.get('HTS_EVALUATION_TEST_CLEANUP_USER','postgres')}
         with atomic.credential_connection(env) as c:
             c.execute('DROP SCHEMA IF EXISTS plm CASCADE; DROP SCHEMA IF EXISTS coldlion CASCADE; DROP SCHEMA IF EXISTS dflow_prod CASCADE; DROP SCHEMA IF EXISTS supabase_migrations CASCADE;')
-            for r in [atomic.HTS_CREDENTIAL_ROLE,'designflow_hts_evaluation_read']:
+            for r in [atomic.HTS_CREDENTIAL_ROLE,'designflow_hts_evaluation_read','hts_evaluation_unauthorized']:
                 if c.execute('SELECT 1 FROM pg_roles WHERE rolname=%s',(r,)).fetchone():
                     c.execute('DROP OWNED BY '+r)
-            c.execute('DROP ROLE IF EXISTS designflow_hts_evaluation_reader; DROP ROLE IF EXISTS designflow_hts_evaluation_read;')
+            c.execute('DROP ROLE IF EXISTS designflow_hts_evaluation_reader; DROP ROLE IF EXISTS designflow_hts_evaluation_read; DROP ROLE IF EXISTS hts_evaluation_unauthorized;')
     def setUp(self):
         self.clean_fixture()
         with self.admin() as c:
             c.execute('''CREATE SCHEMA plm; CREATE SCHEMA coldlion; CREATE SCHEMA dflow_prod; CREATE SCHEMA supabase_migrations;
+            CREATE ROLE hts_evaluation_unauthorized NOLOGIN;
             CREATE TABLE supabase_migrations.schema_migrations(version text PRIMARY KEY,statements text[],name text);
             CREATE TABLE plm.customs_benchmark_observation(dataset_id text,section text,source_ordinal int,style_number text,historical_hts text,packet_reference text,evidence_status text,exact_historical_candidate bool,original_record jsonb,product_description text);
             CREATE TABLE plm.customs_benchmark_artifact(content_sha256 text,private_verified bool,storage_key text);
             ALTER TABLE plm.customs_benchmark_observation ENABLE ROW LEVEL SECURITY;
             ALTER TABLE plm.customs_benchmark_artifact ENABLE ROW LEVEL SECURITY;
             CREATE TABLE coldlion.item_detail(item_no text,pre_pack_code text,company_code text,division_code text,item_cost numeric);
+            ALTER TABLE coldlion.item_detail ENABLE ROW LEVEL SECURITY;
             CREATE TABLE dflow_prod."itemHeader"(item_id_pk int,item_num_id text);
             INSERT INTO plm.customs_benchmark_observation(style_number) VALUES ('SYNTHETIC');
             INSERT INTO plm.customs_benchmark_artifact VALUES ('test',true,'private-pointer'),('not-verified',false,'private-pointer');
@@ -63,6 +65,10 @@ class EvaluationPostgresTests(unittest.TestCase):
                 c.execute('SET ROLE designflow_hts_evaluation_read')
                 with self.assertRaises(self.pg.Error):c.execute(sql)
                 c.rollback()
+        with self.admin() as c:
+            c.execute('SET ROLE hts_evaluation_unauthorized')
+            with self.assertRaises(self.pg.Error):c.execute('SELECT pre_pack_code FROM coldlion.item_detail')
+            c.rollback()
         with self.admin() as c:self.assertEqual(c.execute('SELECT count(*) FROM supabase_migrations.schema_migrations').fetchone(),(1,))
     def test_statement_sampling_or_duration_logging_refuses_before_secret_bind(self):
         for setting in ['log_statement=all','log_min_duration_statement=0','log_min_duration_sample=0','log_transaction_sample_rate=1']:

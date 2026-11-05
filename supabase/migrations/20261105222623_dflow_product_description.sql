@@ -1,4 +1,5 @@
--- Issue #5020 (claim #5021): Core Product Type storage for DesignFlow —
+-- derived-from: none
+-- Issue #5020 (claim #5772): Core Product Type storage for DesignFlow —
 -- SANDBOX HALF of the matched pair (schema `dflow`, project
 -- xupnyeifmpsacrqahwwm: sandbox / dev / staging all point here).
 -- Work issue popcre/designflow-item-master#150; plan plan_core-product-type.md
@@ -44,19 +45,19 @@ set statement_timeout = '2min';
 do $$
 begin
   if to_regnamespace('dflow') is null then
-    raise exception '#5020/20261029161229 self-check: schema dflow is missing — wrong database for the sandbox half'
+    raise exception '#5020/20261105222623 self-check: schema dflow is missing — wrong database for the sandbox half'
       using errcode = 'feature_not_supported';
   end if;
   if to_regnamespace('dflow_prod') is not null then
-    raise exception '#5020/20261029161229 self-check: schema dflow_prod exists here — this is the production project; the paired dflow_prod version applies there, never this one'
+    raise exception '#5020/20261105222623 self-check: schema dflow_prod exists here — this is the production project; the paired dflow_prod version applies there, never this one'
       using errcode = 'feature_not_supported';
   end if;
   if to_regclass('core."merchGroup"') is null then
-    raise exception '#5020/20261029161229 self-check: core."merchGroup" is missing — cannot create the combination FKs'
+    raise exception '#5020/20261105222623 self-check: core."merchGroup" is missing — cannot create the combination FKs'
       using errcode = 'feature_not_supported';
   end if;
   if to_regclass('dflow."itemHeader"') is null then
-    raise exception '#5020/20261029161229 self-check: dflow."itemHeader" is missing — wrong database'
+    raise exception '#5020/20261105222623 self-check: dflow."itemHeader" is missing — wrong database'
       using errcode = 'feature_not_supported';
   end if;
 end $$;

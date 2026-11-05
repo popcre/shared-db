@@ -12,7 +12,7 @@ import sys
 import time
 import nontransactional_index_maintenance as maintenance
 
-ACTIVE_WAIT_S=240
+ACTIVE_WAIT_S=120
 ACTIVE_POLL_S=20
 
 

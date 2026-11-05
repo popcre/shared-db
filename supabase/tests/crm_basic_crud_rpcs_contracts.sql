@@ -177,6 +177,9 @@ begin
 
   -- ------------------------------------------------------------------
   -- crm_merge_contacts: self/missing/archived refusals, link moves.
+  -- Fixture DML on core.* needs the superuser role; the RPC calls below run
+  -- as authenticated like a real browser caller.
+  perform set_config('role', 'postgres', true);
   insert into crm.note (company_id, contact_id, body) values (v_customer_id, v_contact_drop, 'drop note');
   insert into crm.note (company_id, contact_id, body) values (v_customer_id, v_contact_keep, 'keep note');
   insert into crm.task (company_id, contact_id, title, status) values (v_customer_id, v_contact_drop, 'drop task', 'TODO');
@@ -184,6 +187,7 @@ begin
   update core.contact set phone = '555-0199', title = 'Senior Buyer' where id = v_contact_drop;
   insert into core.contact_company (contact_id, company_id, relationship_type)
   values (v_contact_drop, v_company_b, 'buyer');
+  perform set_config('role', 'authenticated', true);
 
   begin
     perform api.crm_merge_contacts(v_contact_keep, v_contact_keep);
@@ -263,7 +267,7 @@ begin
   perform api.crm_archive_customer(v_customer_id);
   perform api.crm_archive_customer(v_customer_id); -- idempotent
   if not exists (select 1 from crm.customer_ext xe
-                 where xe.customer_id = v_customer_id and xe.status = 'archived') then
+                 where xe.customer_id = v_customer_id and xe.archived_at is not null) then
     raise exception 'crm_archive_customer did not stamp the ext row';
   end if;
   if exists (select 1 from api.crm_customer_list where id = v_customer_id) then

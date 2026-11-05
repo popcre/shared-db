@@ -110,3 +110,41 @@ denied source-pointer/write access, and the sanitized prepack qualification.
 All raw query results and customs source values remain private. This is system
 readiness work, not a manual classification of the catalog or permission to
 tune on held-out items.
+
+### Canonical prepack qualification projection
+
+Forward migration `20261105143221` adds private
+`plm.hts_evaluation_prepack_membership`. Its constrained NOLOGIN/NOBYPASSRLS
+owner has only the canonical item-context, parent-marker and snapshot-provenance
+columns. Owner-specific restrictive RLS guards prevent unrelated permissive
+policies widening the source. The evaluator receives typed view columns, never
+base `raw`, request metadata, marker strings, prices, API schema access or
+membership in the source-owner role. The view has an explicit reviewed ownership
+boundary; no SECURITY DEFINER function is introduced. Temporary bootstrap SET
+and schema CREATE authority is removed before commit, preserving the original
+creator grantor and membership flags exactly.
+
+The parent marker is nonblank `coldlion.item_detail.pre_pack_code` at the exact
+canonical company/division/item context. Multiple legitimate detail grains are
+allowed: any current marker means `prepack`; all current blank markers mean
+`non_prepack`. Component linkage does not turn an ordinary component into a
+parent. A verified current marker remains `prepack` even if another detail grain is
+uncovered. Missing context/detail, incomplete negative provenance, filtered
+requests, an unproved producer, or a later incomplete full attempt means
+`unknown`. Callers
+also reject multiple canonical contexts for one requested style.
+
+`source_complete` proves coverage of a recorded succeeded canonical full snapshot,
+including company-wide and division identity checks and every matched row's
+run/timestamp provenance. `source_as_of` is that snapshot's finish time;
+`observed_at` is the query time. Neither asserts the ERP is current now, and the
+view invents no age cutoff. The coordinator must assess actual as-of evidence
+before enabling negative eligibility. Only confirmed `non_prepack` records with
+accepted completeness/currency evidence may enter an evaluation; parent and
+unknown records stay excluded with coverage reported. The private ID/state
+receipt is separate from the immutable benchmark key.
+
+Always filter the bounded requested normalized styles before aggregation. The
+existing normalized item lookup and exact ColdLion composite key support this
+route; first inspect an EXPLAIN without ANALYZE under the dedicated identity.
+Preparation, local fixture checks and source merge are not live qualification.

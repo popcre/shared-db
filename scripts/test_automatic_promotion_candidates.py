@@ -57,7 +57,7 @@ class ForeignTargetVersions(unittest.TestCase):
 
     def test_category_bug_reader_original_is_never_a_candidate(self):
         self.assertEqual(self.prs("20261105042549"), [])
-        self.assertEqual(self.prs("20261105042549", "20261105074303")[0]["versions"], ["20261105074303"])
+        self.assertEqual(self.prs("20261105042549", "20261105151427")[0]["versions"], ["20261105151427"])
 
     def test_sandbox_only_pr_is_never_a_production_candidate(self):
         self.assertEqual(self.prs("20261102215524"), [])

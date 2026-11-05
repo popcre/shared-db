@@ -113,7 +113,7 @@ tune on held-out items.
 
 ### Canonical prepack qualification projection
 
-Forward migration `20261105143221` adds private
+Forward migration `20261105161805` adds private
 `plm.hts_evaluation_prepack_membership`. Its constrained NOLOGIN/NOBYPASSRLS
 owner has only the canonical item-context, parent-marker and snapshot-provenance
 columns. Owner-specific restrictive RLS guards prevent unrelated permissive

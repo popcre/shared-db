@@ -10,7 +10,7 @@ class ProjectionPostgresTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         fixturemod.EvaluationPostgresTests.setUpClass()
-        cls.sql=Path(os.environ.get('HTS_PREPACK_PROJECTION_MIGRATION_FILE','supabase/migrations/20261105143221_hts_private_prepack_qualification.sql')).read_text()
+        cls.sql=Path(os.environ.get('HTS_PREPACK_PROJECTION_MIGRATION_FILE','supabase/migrations/20261105161805_hts_private_prepack_qualification.sql')).read_text()
     def setUp(self):
         self.fixture=fixturemod.EvaluationPostgresTests()
         self.fixture.setUp()
@@ -58,7 +58,7 @@ class ProjectionPostgresTests(unittest.TestCase):
         with self.fixture.admin() as c:
             c.execute(self.sql)
             if fail:c.execute("DO $$ BEGIN RAISE EXCEPTION 'synthetic transaction failure'; END $$")
-            c.execute("INSERT INTO supabase_migrations.schema_migrations(version) VALUES('20261105143221')")
+            c.execute("INSERT INTO supabase_migrations.schema_migrations(version) VALUES('20261105161805')")
     def reader(self):
         return atomic.credential_connection(self.fixture.env,reader=True)
     def test_typed_exact_context_membership_and_least_privilege(self):
@@ -100,7 +100,7 @@ class ProjectionPostgresTests(unittest.TestCase):
         with self.fixture.admin() as c:
             self.assertIsNone(c.execute("SELECT to_regclass('plm.hts_evaluation_prepack_membership')").fetchone()[0])
             self.assertEqual(c.execute("SELECT count(*) FROM pg_roles WHERE rolname='designflow_hts_prepack_projection_owner'").fetchone()[0],0)
-            self.assertEqual(c.execute("SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version='20261105143221'").fetchone()[0],0)
+            self.assertEqual(c.execute("SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version='20261105161805'").fetchone()[0],0)
             self.assertEqual(c.execute("SELECT count(*) FROM pg_policies WHERE policyname LIKE 'hts_prepack_projection_owner%'").fetchone()[0],0)
         self.apply()
     def test_incomplete_filtered_mismatched_and_latest_failed_are_unknown(self):

@@ -649,7 +649,10 @@ class CanonicalDependencyResolution(unittest.TestCase):
         version = "20260915015414"
         path = next((Path(m.HERE).parent / "supabase/migrations").glob(version + "_*.sql"))
         self.assertIsNone(parse_declaration(path.read_text(), version))
-        base, child = self.discover_real(["20260905104802", version])
+        # This historical overlay is now retired; isolate canonical dependency
+        # discovery from the separately tested production retirement filter.
+        with mock.patch.object(m, "HARD_BLOCKED", m.HARD_BLOCKED - {version}):
+            base, child = self.discover_real(["20260905104802", version])
         self.assertEqual(child["production_dependencies"], {"20260905104802": base["number"]})
 
     def test_dependency_receipts_share_only_one_decision_pass(self):

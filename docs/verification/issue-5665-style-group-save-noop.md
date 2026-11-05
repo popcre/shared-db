@@ -24,7 +24,7 @@ HNSW work remains an inference until the original real save succeeds after deliv
 
 ## Minimal change
 
-Fresh singleton20261105154021 changes only the existing group refresh function.
+Fresh singleton20261105182152 changes only the existing group refresh function.
 Before the original upsert it compares all original searchable fields and business
 metadata, excluding private lease/image-provenance keys, and requires the existing
 authoritative image-input match. Only an exact no-op returns early. It preserves
@@ -34,7 +34,7 @@ upsert. Same-URL renders, source-size changes, wrong models and image revisions
 still defeat the guard. Existing security/ACLs and source freshness behavior remain.
 
 The applied74126 source is immutable. Its historical reservation remains; new
-154021 uses its own permanent native reservation and exact both-target singleton
+182152 supersedes the unmerged/unapplied154021 source; both permanent reservations remain. It uses its own permanent native reservation and exact both-target singleton
 atomic policy. All other policy entries remain unchanged.
 
 ## Verification
@@ -53,3 +53,5 @@ production save latency.
 - [ ] Normal preview and automatic production receipts, installed definition/ACL.
 - [ ] Coordinator-authorized original one-asset save succeeds within unchanged budgets; independent T8 preimage/backup/search/vector/lease acceptance.
 - [ ] Natural render/poller and remaining application acceptance stay open on5666/5634/706.
+
+Forward preparation: actual approved read-only preview and production ledger reads at1:21:34/39PM EST November5 returned no154021 or160321 rows. Forward reservation182152 follows the original T9 owner's181637. SQL bytes and all semantic contracts remain unchanged; no delivery or T8 retry is inferred.

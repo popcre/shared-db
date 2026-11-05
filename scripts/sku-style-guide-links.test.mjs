@@ -73,7 +73,7 @@ test('migration invokes the historical backfill after restricting execution', ()
   assert.ok(invocation > resolver.indexOf('grant execute on function public.backfill_pdf_files_used_v2() to service_role, postgres;'));
 });
 
-const incremental = readFileSync(new URL('../supabase/migrations/20261105040055_sku_style_guide_resolution_incremental.sql', import.meta.url), 'utf8');
+const incremental = readFileSync(new URL('../supabase/migrations/20261105044255_sku_style_guide_resolution_incremental.sql', import.meta.url), 'utf8');
 test('incremental nightly uses committed restricted procedure and self-removing catch-up', () => {
   assert.match(incremental,/create or replace procedure public\.resolve_sku_style_guide_links_run/);
   const procedure = incremental.slice(incremental.indexOf('create or replace procedure'), incremental.indexOf('revoke all on function public.prepare_sku_style_guide_resolution', incremental.indexOf('create or replace procedure')));

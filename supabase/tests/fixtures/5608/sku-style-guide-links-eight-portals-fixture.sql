@@ -68,7 +68,7 @@ insert into public.sku_files_used values('SKU-ALL','Art.PSD','synthetic');
 create table expected_view as select * from plm.asset_file_style_guide_index;
 
 begin;
-\ir ../../../../supabase/migrations/20261105040055_sku_style_guide_resolution_incremental.sql
+\ir ../../../../supabase/migrations/20261105044255_sku_style_guide_resolution_incremental.sql
 commit;
 select count(*) as pending_differences from ((table expected_view except all table plm.asset_file_style_guide_index) union all (table plm.asset_file_style_guide_index except all table expected_view)) d;
 call public.resolve_sku_style_guide_links_run();

@@ -201,6 +201,13 @@
         "production"
       ],
       "admission_lock_contract": "curated-character-admission-5683-v1"
+    },
+    "20261105143221": {
+      "sha256": "ce6a82665746496a3501854bd940723dab9f0538891015cfcce36dca0a7ceb88",
+      "targets": [
+        "preview",
+        "production"
+      ]
     }
   }
 }

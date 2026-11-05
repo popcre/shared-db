@@ -33,8 +33,9 @@
 -- WHAT IT ASSERTS, AND WHY IT IS SHAPED THIS WAY
 --   A  The new policy exists on plm.item and is PERMISSIVE, cmd SELECT, to
 --      {authenticated}. It also asserts that plm.item's policy set is EXACTLY
---      {plm_read, plm_admin_write, item_popdam_read}: if some other policy were doing
---      the work, section C would pass for the wrong reason.
+--      the three baseline application policies plus the exact #5447 private
+--      NOLOGIN-owner SELECT pair. That pair cannot admit the application principal;
+--      no other policy may make section C pass for the wrong reason.
 --   B  api.dam_order_list is STILL security_invoker = true. 20260810110000:183 set that
 --      deliberately; reverting it would make the item columns populate again while
 --      silently re-exposing core.customer, core.factory and plm.item to every
@@ -113,12 +114,27 @@ begin
   select array_agg(policyname order by policyname) into v_policies
   from pg_policies where schemaname = 'plm' and tablename = 'item';
 
-  if v_policies is distinct from array['item_popdam_read','plm_admin_write','plm_read'] then
+  if v_policies is distinct from array['hts_prepack_projection_owner_select',
+      'hts_prepack_projection_owner_source_guard','item_popdam_read','plm_admin_write','plm_read'] then
     v_bad := v_bad + 1;
     raise warning 'FAIL A: plm.item policy set is %, expected exactly '
-      '{item_popdam_read, plm_admin_write, plm_read}. Either the additive change dropped '
+      'the three baseline policies and exact private-owner pair. Either the additive change dropped '
       'a baseline policy, or an unexpected policy exists -- in which case section C '
       'could pass for the wrong reason', v_policies;
+  end if;
+
+  if exists (select from pg_policies where schemaname='plm' and tablename='item'
+      and policyname in ('hts_prepack_projection_owner_select','hts_prepack_projection_owner_source_guard')
+      and (cmd is distinct from 'SELECT'
+        or roles is distinct from array['designflow_hts_prepack_projection_owner']::name[]
+        or with_check is not null
+        or permissive is distinct from case policyname
+          when 'hts_prepack_projection_owner_select' then 'PERMISSIVE' else 'RESTRICTIVE' end
+        or regexp_replace(qual,'[[:space:]()]','','g') is distinct from 'source_system=''coldlion''::text'))
+      or pg_has_role('authenticated','designflow_hts_prepack_projection_owner','MEMBER')
+      or pg_has_role('anon','designflow_hts_prepack_projection_owner','MEMBER') then
+    v_bad := v_bad + 1;
+    raise warning 'FAIL A: private-owner policy pair can affect an application principal or has changed scope';
   end if;
 
   if not (select relrowsecurity from pg_class where oid = 'plm.item'::regclass) then
@@ -139,8 +155,8 @@ begin
   end if;
 
   if v_bad > 0 then raise exception 'A FAILED (% failures)', v_bad; end if;
-  raise notice 'A passed: plm.item carries exactly {item_popdam_read, plm_admin_write, '
-    'plm_read}; item_popdam_read is a PERMISSIVE SELECT policy to {authenticated} using (true)';
+  raise notice 'A passed: baseline application policies and exact isolated private-owner pair; '
+    'item_popdam_read is a PERMISSIVE SELECT policy to {authenticated} using (true)';
 end;
 $$;
 

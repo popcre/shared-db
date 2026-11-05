@@ -1,5 +1,6 @@
 -- Pair a contact's CRM department with DEPARTMENT scope, and stop the
 -- department-only silent no-op. (#5801)
+-- derived-from: 20260626171000
 --
 -- Why:
 -- - popcrm-web's contact flyout saves a department through

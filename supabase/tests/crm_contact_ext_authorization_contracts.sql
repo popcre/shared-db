@@ -75,13 +75,13 @@ begin
       defunct_by = '57840000-0000-4000-8000-000000000001'
     where contact_id = '57840000-0000-4000-8000-000000000002';
     get diagnostics changed = row_count;
-    if changed <> case when allowed then 1 else 0 end then
+    if changed <> allowed::int then
       raise exception 'unexpected UPDATE authorization for %: % rows', role_name, changed;
     end if;
     delete from crm.contact_ext
     where contact_id = '57840000-0000-4000-8000-000000000002';
     get diagnostics changed = row_count;
-    if changed <> case when allowed then 1 else 0 end then
+    if changed <> allowed::int then
       raise exception 'unexpected DELETE authorization for %: % rows', role_name, changed;
     end if;
     reset role;

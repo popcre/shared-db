@@ -88,13 +88,13 @@ class ActualGitProducerTests(unittest.TestCase):
             (self.root/path).unlink()
 
     def test_formatted_terminal_namespace_direct_and_alias_refuse(self):
-        cases=["p=Path(f'{ROOT}/tools')/name", "directory=f'{ROOT}/tools';p=Path(directory)/name"]
+        cases=["p=Path(f'{ROOT}/tools')/name", "directory=f'{ROOT}/tools';p=Path(directory)/name", "directory=ROOT+'/tools';p=Path(directory)/name", "p=Path('/root/tools')/name"]
         for body in cases:
             self.write('scripts/runtime.py',"from pathlib import Path\n"+body)
             self.write('tools/runtime-guard.mjs','export const guard=1')
             self.base=self.commit();self.main=self.base
             self.write('tools/runtime-guard.mjs','export const guard=0');self.main=self.commit()
-            with self.subTest(body=body),self.assertRaisesRegex(source.RiskGateError,'tools-directory formatted prefix'):self.prove()
+            with self.subTest(body=body),self.assertRaisesRegex(source.RiskGateError,'tools-directory'):self.prove()
 
     def test_js_shell_terminal_namespaces_refuse_before_alias_reuse(self):
         cases=[('scripts/runtime.mjs',"const dir=`${ROOT}/tools`;const tool=path.join(dir,name);spawnSync('node',[tool])"),

@@ -35,16 +35,16 @@ def python_tools(syntax):
     # A formatted namespace can escape through any alias or Path constructor.
     # Reject it at its definition, including a terminal /tools component.
     for node in ast.walk(syntax):
-        if isinstance(node,ast.JoinedStr) and any(isinstance(v,ast.Constant) and namespace(v.value) for v in node.values):
+        if isinstance(node,(ast.JoinedStr,ast.BinOp)) and any(isinstance(v,ast.Constant) and namespace(v.value) and v.value.rstrip('/').endswith('/tools') for v in ast.walk(node)):
             raise RiskGateError('unresolved maintenance tools-directory formatted prefix')
     def parts(node):
         if isinstance(node,ast.BinOp) and isinstance(node.op,ast.Div):return parts(node.left)+[node.right]
         return [node]
     def suffix(values):
         for i,value in enumerate(values):
-            if literal(value) is None and any(isinstance(v,ast.Constant) and isinstance(v.value,str) and v.value.rstrip('/')=='tools' for v in ast.walk(value)):
+            if literal(value) is None and any(isinstance(v,ast.Constant) and isinstance(v.value,str) and v.value.rstrip('/').split('/')[-1]=='tools' for v in ast.walk(value)):
                 raise RiskGateError('unresolved maintenance tools-directory expression')
-            if literal(value) is not None and literal(value).rstrip('/')=='tools':
+            if literal(value) is not None and literal(value).rstrip('/').split('/')[-1]=='tools':
                 tail=values[i+1:]
                 if not tail or any(literal(v) is None for v in tail):
                     raise RiskGateError('unresolved maintenance tools-directory prefix')
@@ -56,7 +56,7 @@ def python_tools(syntax):
         if isinstance(node,ast.Call):
             name=getattr(node.func,'id',None) or getattr(node.func,'attr',None)
             if name in {'Path','PurePath','PurePosixPath','join','joinpath'} and not (name=='join' and isinstance(getattr(node.func,'value',None),ast.Constant)):suffix(node.args)
-        if isinstance(node,(ast.Assign,ast.AnnAssign)) and literal(node.value) in {'tools','tools/'}:
+        if isinstance(node,(ast.Assign,ast.AnnAssign)) and literal(node.value) is not None and literal(node.value).rstrip('/').split('/')[-1]=='tools':
             raise RiskGateError('unresolved maintenance tools-directory alias')
     return dependencies
 

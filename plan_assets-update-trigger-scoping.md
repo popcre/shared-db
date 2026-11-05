@@ -28,7 +28,7 @@ Albert asked to cut how much compute the shared database uses. The single bigges
 
 ## 2. The application
 
-- `popcre/shared-db` owns the shared Supabase Postgres (production ref `qsllyeztdwjgirsysgai`) used by DesignFlow, POP DAM, PIM, CRM. Schema changes are SQL migrations under `supabase/migrations/`, reach production only via the automatic promotion workflow (`.github/workflows/shared-supabase-migrations.yml`) after preview rehearsal, tests, and no open `review-finding` issue (owner ruling 2026-10-29, `docs/owner-rulings.md`). No manual production command, ever.
+- `popcre/shared-db` owns the shared Supabase Postgres (production target resolved from protected configuration) used by DesignFlow, POP DAM, PIM, CRM. Schema changes are SQL migrations under `supabase/migrations/`, reach production only via the automatic promotion workflow (`.github/workflows/shared-supabase-migrations.yml`) after preview rehearsal, tests, and no open `review-finding` issue (owner ruling 2026-10-29, `docs/owner-rulings.md`). No manual production command, ever.
 - `public.assets` (~150k live rows, ~3.4 GB with 46 indexes) is POP DAM's file catalogue. POP DAM lives in `u2giants/popdam3` (local clone `/home/ahazan/repos/popdam3`). Its Bridge Agent (`apps/bridge-agent/src/index.ts`, ~line 1221-1290) scans the NAS and posts each file to the `agent-api` edge function (`supabase/functions/agent-api/index.ts`, `handleIngest` at line 950), which writes `assets` through PostgREST as `service_role`.
 
 ## 3. Trigger

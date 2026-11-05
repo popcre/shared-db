@@ -47,7 +47,7 @@ class AtomicMigrationApplyTests(unittest.TestCase):
                 with patch.object(atomic,"POLICY",path), self.assertRaises(atomic.Refusal): atomic.read_policy()
 
     def test_curated_wrapper_refuses_wrong_version_hash_contract_and_missing_contract(self):
-        raw=(atomic.ROOT/'supabase/migrations/20261105125335_publisher_character_curation.sql').read_text()
+        raw=(atomic.ROOT/'supabase/migrations/20261105142616_publisher_character_curation.sql').read_text()
         for version, body, contract in [
             ("29990101000000",raw,atomic.CURATED_CHARACTER_LOCK_CONTRACT),
             (atomic.CURATED_CHARACTER_LOCK_VERSION,raw+" ",atomic.CURATED_CHARACTER_LOCK_CONTRACT),

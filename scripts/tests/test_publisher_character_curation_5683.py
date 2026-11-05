@@ -6,7 +6,7 @@ import re
 import subprocess
 import unittest
 
-SQL = (Path(__file__).resolve().parents[2] / 'supabase/migrations/20261105125335_publisher_character_curation.sql').read_text()
+SQL = (Path(__file__).resolve().parents[2] / 'supabase/migrations/20261105142616_publisher_character_curation.sql').read_text()
 URL = os.environ.get('T2_CURATION_TEST_DATABASE_URL', '')
 if not re.fullmatch(r'postgres(?:ql)?://postgres@127\.0\.0\.1:\d+/t2_curation', URL):
     raise RuntimeError('Dedicated localhost t2_curation database required')
@@ -73,7 +73,7 @@ class Curation(unittest.TestCase):
         self.assertEqual(self.apply().returncode,0)
         sys=__import__('sys');sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
         import production_catalog_verification as native
-        root=Path(__file__).resolve().parents[2];version='20261105125335'
+        root=Path(__file__).resolve().parents[2];version='20261105142616'
         checks=native.load_behavior_sidecars(root,{version:root/'supabase/migrations'/f'{version}_publisher_character_curation.sql'},[version])
         result=query(native.build_behavior_sql(checks))
         rows=json.loads(result.stdout)['behavior_checks']
@@ -100,9 +100,22 @@ class Curation(unittest.TestCase):
         query(f"insert into core.character_alias values(gen_random_uuid(),'{IDS[1]}','Chase','chase')")
         self.assert_abstain()
 
-    def test_global_source_identity_conflict_abstains_all(self):
-        query("insert into core.taxonomy_source_ref(entity_table,entity_id,source_system,source_table,source_id) values('property',gen_random_uuid(),'other','other','https://www.carebears.com/#cheer-bear')")
-        self.assert_abstain()
+    def test_global_source_identity_conflict_abstains_both_names_across_system_licensor_and_status(self):
+        query("insert into core.licensor values('00000000-0000-4000-8000-000000000099','Other','OT','active','{}','2020-01-01','2020-01-01');insert into core.character values('00000000-0000-4000-8000-000000000098','00000000-0000-4000-8000-000000000099','Unrelated',null,'inactive','{}')")
+        for source in ['https://www.paramountplus.com/sneak-peak/paw-patrol-characters-cast/#chase','https://www.carebears.com/#cheer-bear']:
+            with self.subTest(source=source):
+                query(f"insert into core.taxonomy_source_ref(entity_schema,entity_table,entity_id,source_system,source_table,source_id,source_licensor_id) values('core','character','00000000-0000-4000-8000-000000000098','foreign','other','{source}','00000000-0000-4000-8000-000000000099')")
+                self.assert_abstain()
+                query("delete from core.taxonomy_source_ref where source_system='foreign'")
+
+    def test_global_metadata_conflict_abstains_both_names_under_unrelated_inactive_character(self):
+        query("insert into core.licensor values('00000000-0000-4000-8000-000000000099','Other','OT','active','{}','2020-01-01','2020-01-01')")
+        for source in ['https://www.paramountplus.com/sneak-peak/paw-patrol-characters-cast/#chase','https://www.carebears.com/#cheer-bear']:
+            with self.subTest(source=source):
+                metadata=json.dumps({'source_id':source,'source_system':'foreign'})
+                query(f"insert into core.character values('00000000-0000-4000-8000-000000000098','00000000-0000-4000-8000-000000000099','Unrelated',null,'inactive','{metadata}')")
+                self.assert_abstain()
+                query("delete from core.character where id='00000000-0000-4000-8000-000000000098'")
 
     def test_source_name_code_and_metadata_keys_each_abstain(self):
         for key in ['source_name','source_code']:

@@ -22,8 +22,8 @@ ROOT = Path(__file__).resolve().parents[1]
 POLICY = ROOT / "config" / "atomic-migration-allowlist.json"
 # One reviewed curated source packet. No caller-selected table, mode or budget.
 CURATED_CHARACTER_LOCK_CONTRACT = "curated-character-admission-5683-v1"
-CURATED_CHARACTER_LOCK_VERSION = "20261105125335"
-CURATED_CHARACTER_LOCK_SHA256 = "0b14189a4bdb1dfab6e8488f0454cc5583afaf12b131e3a32f1babe15a0a3f6b"
+CURATED_CHARACTER_LOCK_VERSION = "20261105142616"
+CURATED_CHARACTER_LOCK_SHA256 = "faa341b2e472907f1e31275068b4c258272f6e0df782401cfaaec000faeb9059"
 CURATED_CHARACTER_LOCK_SQL = (
     "SET LOCAL TIME ZONE 'UTC';\n"
     "SET LOCAL lock_timeout='500ms';\n"

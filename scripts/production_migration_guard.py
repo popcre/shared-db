@@ -67,6 +67,8 @@ MIGRATION_LINE_RE = re.compile(r"^\s*(?:[•*\-]\s*)?(\d{14})_[^\s]+\.sql\s*$")
 # ever turns out NOT to be applied, that changes the count in AGENTS.md 6.8 and
 # this set must be revisited before anything is promoted.
 HARD_BLOCKED = {
+    # #5683: failed target-specific witness admission; immutable source must never replay.
+    "20261105142616",
     # #5622: immutable preview-applied health files; pending production blocking builds retired.
     "20261105073854", "20261105073903", "20261105073911", "20261105073920",
     # #5592: unsafe original and preview-only ambiguous-artifact predecessor.

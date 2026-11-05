@@ -7,7 +7,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from post_batch_app_verification import resolve_batch
-from production_migration_guard import classify_pending_version, RETIRED_VERSION_REASONS
+from production_migration_guard import classify_pending_version, RETIRED_VERSION_REASONS, parse_allowlist, GuardError
 
 VERSION = "20261105142616"
 
@@ -24,6 +24,13 @@ class FailedCurationRetirement(unittest.TestCase):
                 self.assertEqual(classify_pending_version(VERSION, set(), ROOT, target=target)["kind"], "retired")
         self.assertTrue(any("RETIRED MIGRATION" in p for p in resolve_batch(None, VERSION).problems))
         self.assertIn("42060060160", RETIRED_VERSION_REASONS[VERSION])
+
+    def test_explicit_allowlist_refuses_old_version_even_if_ledger_already_contains_it(self):
+        for target in ("preview", "production"):
+            for remote in (set(), {VERSION}):
+                with self.subTest(target=target, ledger_present=bool(remote)):
+                    with self.assertRaisesRegex(GuardError, "general production lane blocks: " + VERSION):
+                        parse_allowlist(VERSION, remote=remote, target=target)
 
 
 if __name__ == "__main__":

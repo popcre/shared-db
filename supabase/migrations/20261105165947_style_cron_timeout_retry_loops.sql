@@ -1,4 +1,5 @@
 -- Stop three pg_cron timeout-retry loops (u2giants/popdam3#804).
+-- derived-from: 20261012012727, 20261027012301, 20260917024050, 20261011175808
 --
 -- Measured Nov 5 2026 (production, read-only): every failed pass ran the full 120 s
 -- global statement_timeout, rolled back and repeated, wasting I/O and WAL.

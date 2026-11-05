@@ -3,6 +3,20 @@
 -- and reconciled with the live definition; no earlier migration rewrites this routine.
 -- #5662 / PopDAM #680, #706. Preserve visited-count and search catch-up contracts.
 -- Only redundant style_groups writes are removed; downstream refresh cost is unchanged.
+-- This is a replacement of a pre-adoption routine, not its first installation.
+-- Fail before replacing anything if its catalog prerequisites are absent. In the
+-- native two-pass replay this defers installation until AFTER the legacy baseline,
+-- which otherwise overwrites a PL/pgSQL body that can compile without its tables.
+DO $prerequisites$
+BEGIN
+  IF to_regclass('public.style_groups') IS NULL
+     OR to_regclass('public.assets') IS NULL
+     OR to_regprocedure('public.refresh_style_group_primaries(uuid[])') IS NULL THEN
+    RAISE EXCEPTION '5662: pre-adoption primary routine and source tables must exist before replacement';
+  END IF;
+END;
+$prerequisites$;
+
 CREATE OR REPLACE FUNCTION public.refresh_style_group_primaries(p_group_ids uuid[])
 RETURNS integer
 LANGUAGE plpgsql

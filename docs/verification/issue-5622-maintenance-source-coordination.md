@@ -59,7 +59,22 @@ allowed under changed controls. Owner-proven release can still clean up its own
 lease after a refusal; it neither invokes stale admission nor releases a foreign
 generation. Existing OID/definition/target/source/executor receipt checks stay.
 New executor bytes require genuine new preview evidence; no old SG receipt is
-renamed, relabelled, adopted or replayed by this change.
+renamed, relabelled, adopted or replayed by this change. Receipt identity retains
+the exact flat legacy3(+health2) path keys and adds only the new parity helper,
+new native proof bridge and changed native exclusive consumer. It does NOT add
+a global document/all-repository fingerprint to receipts. Helper-only changes
+invalidate preview consumption even when source-PR merge identity is unchanged;
+old immutable records are preserved. The conservative repository/current-policy
+comparison remains a fresh gate, not a replacement receipt schema.
+
+Unresolved Python tools-directory prefixes are rejected at their definition,
+including aliases and wrapped expressions, before a later variable can conceal
+the namespace. JavaScript unresolved directory/prefix aliases also refuse.
+Complete literal paths are pinned. A direct source-text read pins the exact read
+file as data; it does not pretend that merely reading JavaScript executes its
+imports. Actual imported/spawned tools are walked and unresolved namespaces in
+those programs refuse. Real Git fixtures cover both source-data and executed-tool
+roles, inline/aliased namespaces and unchanged reader/changed runtime guards.
 
 There is no atomic transaction across GitHub main and a hosted DDL statement.
 As before, the gate is reasserted immediately before each mutation; a change
@@ -93,3 +108,10 @@ object parity is a LOCAL regression only, never a current admission or receipt.
 - [ ] Normal protected source delivery, preserving any active foreign producer.
 - [ ] Genuine new-executor preview/production index receipts and live catalogues.
 - [ ] Health REST/reset/monitor, natural processing and real save acceptance on5622/706.
+
+
+Final focused source packet after current fae11e083 main rebase:79 Python tests
+PASS (including actual repository self-coverage),75 native/lease tests PASS.
+The full native suite on the new exact head remains pending; no queue or
+activation has been authorized. Intermediate local failures were preserved in
+private evidence and repaired without dropping tests or granting tool exemptions.

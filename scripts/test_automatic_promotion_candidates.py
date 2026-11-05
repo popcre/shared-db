@@ -602,10 +602,22 @@ class KnownProductionDependencies(unittest.TestCase):
     def test_unreadable_production_evidence_never_proves_base(self):
         def unreadable(run):
             raise OSError("evidence unreadable")
-        with self.assertRaisesRegex(OSError, "unreadable"):
-            m.decide([self.child], [self.run_for(conclusion="failure")], lambda n: [], applied=unreadable)
-        self.assertEqual(m.decide([self.child], [self.run_for(conclusion="failure")], lambda n: [],
-                                  applied=lambda r: False, refused=lambda r: set())[0], "idle")
+        failed = self.run_for(conclusion="failure")
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            skipped = []
+            action, pr, _ = m.decide([self.child, self.other], [failed], lambda n: [],
+                                     applied=unreadable, refused=unreadable, skipped=skipped)
+            self.assertEqual((action, pr["number"]), ("dispatch", self.other["number"]))
+            self.assertEqual(skipped[0]["pending_dependencies"], {self.BASE: 5619})
+            self.assertEqual(m.decide([self.child], [failed], lambda n: [],
+                                     applied=unreadable, refused=unreadable)[0], "idle")
+            self.assertEqual(m.decide([self.child], [failed, self.run_for()], lambda n: [],
+                                     applied=unreadable, refused=unreadable)[0], "dispatch")
+            # A readable alternative receipt on the same failed run still counts.
+            self.assertEqual(m.decide([self.child], [failed], lambda n: [],
+                                     applied=unreadable, refused=lambda r: {self.BASE})[0], "dispatch")
+        self.assertIn("receipt as unproved", output.getvalue())
+        self.assertNotIn("evidence unreadable\n", output.getvalue())
 
 
 if __name__ == "__main__":

@@ -244,9 +244,17 @@ def decide(prs: list[dict[str, Any]], runs: list[dict[str, Any]], held: callable
             if run.get("conclusion") == "success":
                 proven_bases |= named
             elif run.get("conclusion") == "failure":
-                if applied(run):
-                    proven_bases |= named
-                proven_bases |= refused(run)
+                # One unreadable dependency receipt proves nothing, but must not
+                # park unrelated releases or hide another trustworthy receipt.
+                try:
+                    if applied(run):
+                        proven_bases |= named
+                except (OSError, ValueError, subprocess.CalledProcessError):
+                    print("::warning::dependency apply evidence unreadable; treating this receipt as unproved")
+                try:
+                    proven_bases |= refused(run)
+                except (OSError, ValueError, subprocess.CalledProcessError):
+                    print("::warning::dependency ledger refusal evidence unreadable; treating this receipt as unproved")
         missing_bases = {v: owner for v, owner in dependencies.items() if v not in proven_bases}
         if missing_bases:
             passed_over += 1

@@ -55,7 +55,7 @@ select public.resolve_sku_style_guide_links();
 create table reference_output as select sku,file_name,source_system,source_style_guide_key,style_guide_label,match_method,match_confidence,matched_asset_count,core_style_guide_id from public.sku_style_guide_links;
 create table reference_view as select * from plm.asset_file_style_guide_index;
 begin;
-\ir ../../../../supabase/migrations/20261105033652_sku_style_guide_resolution_incremental.sql
+\ir ../../../../supabase/migrations/20261105040055_sku_style_guide_resolution_incremental.sql
 commit;
 select count(*) as pending_view_differences from ((table reference_view except all table plm.asset_file_style_guide_index) union all (table plm.asset_file_style_guide_index except all table reference_view)) d;
 set statement_timeout='60s';

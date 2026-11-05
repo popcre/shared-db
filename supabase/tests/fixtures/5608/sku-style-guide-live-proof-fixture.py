@@ -21,7 +21,7 @@ for original, fixture in [
 tag = 'call public.resolve_sku_style_guide_links_run() /* shared-db:20261105061627 */'
 setup = """BEGIN;
 DO $$BEGIN IF current_setting('app.sku_sg_disposable',true) IS DISTINCT FROM 'yes' THEN RAISE EXCEPTION 'Disposable fixture required';END IF;END$$;
-CREATE TEMP TABLE proof_job(jobid bigint,jobname text,command text);
+CREATE TEMP TABLE proof_job(jobid bigint,jobname text,command text,active boolean default true,username text default 'postgres',schedule text default '30 4 * * *');
 CREATE TEMP TABLE proof_runs(jobid bigint,status text,start_time timestamptz,end_time timestamptz,command text);
 CREATE TEMP TABLE proof_ledger(version text);
 CREATE TEMP TABLE proof_progress(active_link_ids uuid[]);
@@ -43,6 +43,10 @@ cases = [
     ('current job command mismatch', "DELETE FROM proof_job WHERE jobid=18;UPDATE proof_job SET command='old command';", False),
     ('forward ledger absent', "UPDATE proof_job SET command='TAG';DELETE FROM proof_ledger;", False),
     ('over budget nightly', "INSERT INTO proof_ledger VALUES('20261105061627');UPDATE proof_runs SET end_time=start_time+interval '61 seconds' WHERE start_time=(SELECT max(start_time) FROM proof_runs);", False),
+    ('inactive current job', "UPDATE proof_runs SET end_time=start_time+interval '1 second';UPDATE proof_job SET active=false;", False),
+    ('rescheduled current job', "UPDATE proof_job SET active=true,schedule='* * * * *';", False),
+    ('changed current owner', "UPDATE proof_job SET schedule='30 4 * * *',username='other';", False),
+    ('negative nightly duration', "UPDATE proof_job SET username='postgres';UPDATE proof_runs SET end_time=start_time-interval '1 second' WHERE start_time=(SELECT max(start_time) FROM proof_runs);", False),
 ]
 script = setup
 for name, change, expected in cases:

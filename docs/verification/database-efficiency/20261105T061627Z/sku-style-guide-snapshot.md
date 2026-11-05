@@ -156,3 +156,8 @@ current job false, current command mismatch false, missing forward ledger false,
 and over-budget nightly false. A complete fresh replay of the eight-portal fixture,
 forward snapshot fixture, post-DML cancellation/session harness and live-proof
 fixture passed after this acceptance correction.
+
+The final current-job assertion additionally requires active true, postgres username
+and the unchanged schedule, while run durations must be nonnegative. Four additional
+actual-probe negatives (disabled job, changed schedule/owner and negative duration)
+passed, bringing the isolated proof fixture to fourteen cases.

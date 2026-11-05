@@ -178,6 +178,14 @@
         "preview",
         "production"
       ]
+    },
+    "20261105125335": {
+      "sha256": "0b14189a4bdb1dfab6e8488f0454cc5583afaf12b131e3a32f1babe15a0a3f6b",
+      "targets": [
+        "preview",
+        "production"
+      ],
+      "admission_lock_contract": "curated-character-admission-5683-v1"
     }
   }
 }

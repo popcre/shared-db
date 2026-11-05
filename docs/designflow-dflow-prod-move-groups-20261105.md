@@ -6,6 +6,49 @@ Re-derive before acting. Foreign keys only catch database-declared links. Many l
 DesignFlow tables are joined in app code with no foreign key, so the groups below
 add the business-area links too.
 
+## The plan at a glance
+
+```mermaid
+flowchart LR
+  subgraph NOW["dflow_prod (temporary, today)"]
+    A[A Grid layouts]
+    B[B User-defined fields]
+    C[C Standardized product]
+    D[D Small lookups]
+    E[E Time tables]
+    F[F Merch group tree]
+    G[G Licensing status]
+    H[H Production-order timing]
+    I[I Logs and tokens]
+    J[J Items, RFQ, art, taxonomy - move last]
+    K[Stay: users, samples, customers, comments, Factory, artists, Roles]
+  end
+  subgraph PLM["plm"]
+    P1[PLM tables]
+  end
+  subgraph CORE["core"]
+    C1[Shared master data]
+  end
+  subgraph APP["app"]
+    A1[Shared app support]
+  end
+  A --> P1
+  B --> P1
+  C --> P1
+  D --> P1
+  D -. 5 lookup tables .-> C1
+  E --> P1
+  F --> C1
+  G --> P1
+  H --> P1
+  I --> A1
+  J --> P1
+  J -.-> C1
+  J -.-> A1
+```
+
+Order: A to I can each move on its own, easiest first. J moves last. K does not move.
+
 ## How a partial move works
 
 The DesignFlow services already decide each table's schema separately (`config/table-schema-map.js`).

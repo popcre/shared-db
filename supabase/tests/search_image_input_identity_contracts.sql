@@ -96,6 +96,9 @@ begin
  perform set_config('TimeZone','UTC',true);
  new_fp:=pg_temp.va_search_embedding_image_provenance(id,'https://example.invalid/stable.png','{}')->>'sha256';
  perform pg_temp.va_assert(old_fp=new_fp,'session timezone cannot change image identity');
+ perform pg_temp.va_assert(not pg_temp.va_search_embedding_inputs_match(
+   (select metadata from va_docs where entity_id=id),(select metadata from va_docs where entity_id=id),
+   'same','same',null,now(),now()),'unidentified vector model is not silently adopted');
  select ctid into old_tid from va_docs where entity_id=id;
  perform pg_temp.va_refresh_dam_search_asset_document(id);
  select ctid into new_tid from va_docs where entity_id=id;

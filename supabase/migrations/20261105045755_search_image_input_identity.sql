@@ -37,21 +37,21 @@ create or replace function dam.search_embedding_inputs_match(
  p_old jsonb,p_new jsonb,p_old_text_hash text,p_new_text_hash text,
  p_model text,p_vector_at timestamptz,p_indexed_at timestamptz)
 returns boolean language sql immutable set search_path=public as $$
- select case
+ select coalesce(case
  when p_new->'_embedding_input'->>'sha256' is not null and p_old->'_embedding_input'->>'sha256' is not null
  then p_new->'_embedding_input'->>'sha256'=p_old->'_embedding_input'->>'sha256'
-   and (p_model is null or p_model='google/siglip2-base-patch16-naflex')
+   and (p_model='google/siglip2-base-patch16-naflex' or (p_model is null and p_vector_at is null))
  when p_new->'_embedding_input'->>'sha256' is not null then
    -- Bootstrap only a proven same-image canonical vector or an existing job
    -- newer than the authoritative source/render revision; never library reset.
    p_old->>'thumbnail_url'=p_new->>'thumbnail_url'
-   and (p_model is null or p_model='google/siglip2-base-patch16-naflex')
+   and (p_model='google/siglip2-base-patch16-naflex' or (p_model is null and p_vector_at is null))
    and coalesce(p_vector_at,p_indexed_at)>=greatest(
      (p_new->'_embedding_input'->>'source_modified_at')::timestamptz,
      (p_new->'_embedding_input'->>'render_completed_at')::timestamptz)
  when p_old->'_embedding_input'->>'sha256' is not null then false
  else p_old_text_hash=p_new_text_hash and p_old->>'thumbnail_url' is not distinct from p_new->>'thumbnail_url'
- end
+ end,false)
 $$;
 revoke all on function dam.search_embedding_image_provenance(uuid,text,jsonb) from public,anon,authenticated;
 revoke all on function dam.search_embedding_inputs_match(jsonb,jsonb,text,text,text,timestamptz,timestamptz) from public,anon,authenticated;

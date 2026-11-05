@@ -115,6 +115,12 @@ class Maintenance:
                 if record.get(key)!=expected:raise Refusal('maintenance receipt binding refused')
             if record.get('target')!=(target or self.identity['target']):raise Refusal('maintenance receipt target refused')
             if target is None and record.get('project_ref')!=self.identity['project_ref']:raise Refusal('maintenance receipt project refused')
+            if target=='preview':
+                configured=self.identity.get('preview_project_ref')
+                if not isinstance(configured,str) or not re.fullmatch('[a-z]{20}',configured) or configured==PROD:
+                    raise Refusal('current configured preview reference required')
+                if record.get('project_ref')!=configured:
+                    raise Refusal('preview receipt project is not the currently configured preview')
         return record
 
     def save(self,phase,start,**extra):
@@ -252,6 +258,23 @@ def gh(endpoint):
 def workflow_gate(options,entry):
     if os.environ.get('GITHUB_ACTIONS')!='true' or os.environ.get('GITHUB_REPOSITORY')!=REPO or os.environ.get('GITHUB_EVENT_NAME')!='workflow_dispatch' or os.environ.get('GITHUB_RUN_ATTEMPT')!='1' or os.environ.get('GITHUB_ACTOR')!='github-actions[bot]' or os.environ.get('GITHUB_WORKFLOW_REF')!=REPO+'/.github/workflows/'+WORKFLOW+'@refs/heads/main':raise Refusal('canonical fresh automatic workflow context required')
     if not re.fullmatch('[a-f0-9]{40}',options.source_sha):raise Refusal('source SHA refused')
+    configured_preview=os.environ.get('PREVIEW_PROJECT_REF','')
+    if not re.fullmatch('[a-z]{20}',configured_preview) or configured_preview==PROD:
+        raise Refusal('current protected preview reference is missing or invalid')
+    if options.target=='preview' and options.expected_project_ref!=configured_preview:
+        raise Refusal('requested preview is not the currently configured preview')
+    run_id=os.environ.get('GITHUB_RUN_ID','')
+    if not re.fullmatch('[1-9][0-9]*',run_id):raise Refusal('current workflow run ID refused')
+    run=gh('actions/runs/'+run_id)
+    expected_title=f'INDEX {options.target} {options.dispatch_ref} {options.source_sha}'
+    if (run.get('id')!=int(run_id) or run.get('path')!='.github/workflows/'+WORKFLOW
+        or run.get('head_sha')!=options.source_sha or run.get('head_branch')!='main'
+        or run.get('event')!='workflow_dispatch' or run.get('status')!='in_progress'
+        or run.get('conclusion') is not None or run.get('run_attempt')!=1
+        or run.get('actor',{}).get('login')!='github-actions[bot]'
+        or run.get('triggering_actor',{}).get('login')!='github-actions[bot]'
+        or run.get('display_title')!=expected_title):
+        raise Refusal('live automatic workflow run proof refused')
     head=subprocess.run(['git','rev-parse','HEAD'],cwd=ROOT,text=True,capture_output=True,check=True).stdout.strip()
     if head!=options.source_sha or gh('commits/main')['sha']!=head:raise Refusal('exact current main required')
     expected_ref=f'refs/db-index-maintenance-operations/{options.operation}/{options.target}/{head}'
@@ -305,7 +328,7 @@ def main():
         if options.mode=='check':
             print(json.dumps({'operation':options.operation,'target':options.target,'preflight':'passed'}));return 0
         import psycopg
-        identity={'target':options.target,'project_ref':options.expected_project_ref,'source_sha':env['_SOURCE_MERGE_SHA'],'execution_sha':options.source_sha,'executor_digest':executor_digest(),
+        identity={'target':options.target,'project_ref':options.expected_project_ref,'preview_project_ref':os.environ['PREVIEW_PROJECT_REF'],'source_sha':env['_SOURCE_MERGE_SHA'],'execution_sha':options.source_sha,'executor_digest':executor_digest(),
                   'source_pr':entry['source_pr'],'work_issue':entry['work_issue'],'run_id':int(os.environ['GITHUB_RUN_ID'])}
         original,new,retired=names(options.operation)
         request={'target':options.target,'run_id':identity['run_id'],'source_pr':entry['source_pr'],'head_sha':options.source_sha,

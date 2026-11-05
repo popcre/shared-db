@@ -12,9 +12,13 @@ ROOT=Path(__file__).resolve().parents[1]
 
 class SelectionTests(unittest.TestCase):
     def test_empty_default_policy_enables_nothing(self):
-        policy=json.loads((ROOT/'config/nontransactional-index-maintenance.json').read_text())
-        self.assertEqual(policy,{'schema_version':1,'operations':{}})
+        policy={'schema_version':1,'operations':{}}
         self.assertIsNone(select(policy,lambda r:None,[],lambda pr:False,'a'*40))
+    def test_committed_policy_entries_are_valid_without_forbidding_future_activation(self):
+        policy=json.loads((ROOT/'config/nontransactional-index-maintenance.json').read_text())
+        self.assertEqual(set(policy),{'schema_version','operations'})
+        self.assertEqual(policy['schema_version'],1)
+        for operation_id in policy['operations']:maintenance.operation(policy,operation_id)
     def test_active_workflow_and_finding_hold_block_selection(self):
         policy={'schema_version':1,'operations':{'test-operation':entry()}}
         self.assertIsNone(select(policy,lambda r:None,[{'status':'in_progress'}],lambda pr:False,'a'*40))

@@ -184,6 +184,8 @@ jobs:
         run: |
           python scripts/test_nontransactional_index_maintenance.py
           python scripts/test_automatic_index_maintenance.py
+          python scripts/test_index_maintenance_workflow_gate.py
+          python scripts/test_prepare_index_maintenance_activation.py
           node --test scripts/index-maintenance-receipt.test.mjs
       - name: Refuse a mixed maintenance/migration dispatch
         if: github.event_name == 'workflow_dispatch' && startsWith(inputs.migration_train_ref, 'refs/db-index-maintenance-operations/')
@@ -2314,6 +2316,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       EXPECTED_PROJECT_REF: ${{ inputs.target == 'production' && 'qsllyeztdwjgirsysgai' || vars.PREVIEW_PROJECT_REF }}
+      PREVIEW_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ inputs.target == 'production' && secrets.SUPABASE_DB_PASSWORD_PRODUCTION || secrets.SUPABASE_DB_PASSWORD_PREVIEW }}
     steps:

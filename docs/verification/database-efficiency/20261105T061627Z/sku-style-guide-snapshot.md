@@ -161,3 +161,9 @@ The final current-job assertion additionally requires active true, postgres user
 and the unchanged schedule, while run durations must be nonnegative. Four additional
 actual-probe negatives (disabled job, changed schedule/owner and negative duration)
 passed, bringing the isolated proof fixture to fourteen cases.
+
+A final native-catalog check showed `cron.job_run_details.command` is nullable.
+The actual proof initially failed a new negative case: two tagged successes plus
+a NULL-command success passed because bool_and ignores NULL. Both all-run and
+current-job predicates now coalesce unknown values to false. The actual-proof
+fixture passes seventeen cases, including NULL historical/current commands.

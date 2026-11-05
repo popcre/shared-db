@@ -35,6 +35,8 @@ INSERT INTO proof_runs SELECT 17,'succeeded',date_trunc('day',now())-make_interv
 cases = [
     ('two historical plus one tagged', '', False),
     ('three tagged consecutive successes', "UPDATE proof_runs SET command='TAG';", True),
+    ('NULL stored command', "UPDATE proof_runs SET command=NULL WHERE start_time=(SELECT max(start_time) FROM proof_runs);", False),
+    ('restore tagged before failure', "UPDATE proof_runs SET command='TAG';", True),
     ('intervening failure', "UPDATE proof_runs SET status='failed' WHERE start_time=(SELECT start_time FROM proof_runs ORDER BY start_time DESC OFFSET 1 LIMIT 1);", False),
     ('intervening untagged command', "UPDATE proof_runs SET status='succeeded';UPDATE proof_runs SET command='old command' WHERE start_time=(SELECT start_time FROM proof_runs ORDER BY start_time DESC OFFSET 1 LIMIT 1);", False),
     ('untagged failure cannot be filtered to three older successes', "UPDATE proof_runs SET command='TAG';INSERT INTO proof_runs SELECT jobid,status,start_time-interval '3 days',end_time-interval '3 days',command FROM proof_runs ORDER BY start_time DESC LIMIT 1;UPDATE proof_runs SET command='old command',status='failed' WHERE start_time=(SELECT max(start_time) FROM proof_runs);", False),
@@ -46,7 +48,8 @@ cases = [
     ('inactive current job', "UPDATE proof_runs SET end_time=start_time+interval '1 second';UPDATE proof_job SET active=false;", False),
     ('rescheduled current job', "UPDATE proof_job SET active=true,schedule='* * * * *';", False),
     ('changed current owner', "UPDATE proof_job SET schedule='30 4 * * *',username='other';", False),
-    ('negative nightly duration', "UPDATE proof_job SET username='postgres';UPDATE proof_runs SET end_time=start_time-interval '1 second' WHERE start_time=(SELECT max(start_time) FROM proof_runs);", False),
+    ('NULL current command', "UPDATE proof_job SET username='postgres',command=NULL;", False),
+    ('negative nightly duration', "UPDATE proof_job SET username='postgres',command='TAG';UPDATE proof_runs SET end_time=start_time-interval '1 second' WHERE start_time=(SELECT max(start_time) FROM proof_runs);", False),
 ]
 script = setup
 for name, change, expected in cases:

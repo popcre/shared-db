@@ -15,10 +15,12 @@ insert into plm.sesame_asset_style_guide select * from plm.sesame_asset_style_gu
 select public.resolve_sku_style_guide_links();
 create table snapshot_expected_output as select sku,file_name,source_system,source_style_guide_key,style_guide_label,match_method,match_confidence,matched_asset_count,core_style_guide_id from public.sku_style_guide_links;
 create table snapshot_expected_portal as select * from plm.asset_file_style_guide_index;
+create table snapshot_expected_nightly as select jobid,jobname,schedule,username,active from cron.job where jobname='resolve-sku-style-guide-links-nightly';
 begin;
 \ir ../../../../supabase/migrations/20261105061627_sku_style_guide_resolution_snapshot.sql
 commit;
 do $$begin
+ if not exists(select from cron.job j join snapshot_expected_nightly e using(jobid) where j.jobname=e.jobname and j.schedule=e.schedule and j.username=e.username and j.active=e.active and j.command='call public.resolve_sku_style_guide_links_run() /* shared-db:20261105061627 */') then raise exception 'Existing nightly identity changed';end if;
  if exists((select source_system,file_name_norm,source_style_guide_key,style_guide_label,core_style_guide_id,matched_file_name from plm.asset_file_style_guide_keys except all table snapshot_expected_portal) union all (table snapshot_expected_portal except all select source_system,file_name_norm,source_style_guide_key,style_guide_label,core_style_guide_id,matched_file_name from plm.asset_file_style_guide_keys)) then raise exception 'Ready all-eight multiset changed';end if;
 end$$;
 select public.resolve_sku_style_guide_links();

@@ -387,3 +387,17 @@ revoke all on function public.prepare_sku_style_guide_resolution(boolean),
   public.resolve_sku_style_guide_batch(integer) from public, anon, authenticated;
 grant execute on function public.prepare_sku_style_guide_resolution(boolean),
   public.resolve_sku_style_guide_batch(integer) to service_role, postgres;
+
+-- Bind acceptance to this source version without replacing or rescheduling the job.
+do $nightly_identity$
+declare v_count integer; v_job_id bigint;
+begin
+  select count(*),min(jobid) into v_count,v_job_id from cron.job
+    where jobname='resolve-sku-style-guide-links-nightly';
+  if v_count<>1 then
+    raise exception 'Expected exactly one existing nightly SKU style-guide job, found %',v_count;
+  end if;
+  perform cron.alter_job(v_job_id,
+    command => 'call public.resolve_sku_style_guide_links_run() /* shared-db:20261105061627 */');
+end;
+$nightly_identity$;

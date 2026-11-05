@@ -83,7 +83,9 @@ unchanged. Preparation rebuilds an explicitly qualified `pg_temp` snapshot, safe
 replacing incompatible caller-created tables/views and preserving it across commits.
 Every batch and the portal fingerprint consume that same frozen relation. Nonunique
 temporary indexes are built only when work remains. No permanent tracking table,
-new exposed helper, global planner setting or cron change is added. A migration-first
+new exposed helper or global planner setting is added. The existing nightly command
+receives only an inert source-version comment; job ID, schedule, owner, active state
+and CALL behavior are preserved, without rescheduling or creating a job. A migration-first
 `pg_try_advisory_xact_lock(5608,2)` fences replacement against an in-flight old
 procedure/wrapper and remains held until the atomic file commits; busy fails 55P03
 before either index is created. A real old procedure with its session lock refused
@@ -123,3 +125,34 @@ The original source PR and forward repair must reach production in order through
 the existing automatic workflow. The closed NOT_PLANNED finding's existing hold
 expires November 5, 2026, 11:08:11 PM EST; expiry permits normal automatic selection,
 not a manual production apply. The original coordinator retains delivery custody.
+
+## Source-bound three-night acceptance
+
+The earlier acceptance query could combine pre-repair successes with a single new
+night. The forward migration now requires exactly one existing named nightly job
+and calls `cron.alter_job` only for its command, adding the inert comment
+`/* shared-db:20261105061627 */`. The read-only proof selects the latest three ALL
+runs first, then requires each recorded command and the current job command to
+match that exact source tag. It also requires the forward ledger version and
+retains success, <60s duration, consecutive-date, catchup, freshness and ACL checks.
+Untagged failures are never filtered away before selecting those three runs.
+
+A hash-bound typed sidecar proves the exact single cron row: name, unchanged
+`30 4 * * *` schedule, `postgres` owner, active true and exact tagged command.
+Actual pg_cron 1.6.4 tests on the full-schema native fixture proved command tagging
+preserves job ID/schedule/owner/active/database and rejects duplicate names; all
+fixture row changes rolled back. A fresh raw extension fixture lacked the standing
+postgres EXECUTE grant, so no grant was added. The canonical full-schema fixture,
+fresh read-only preview check and coordinator's fresh read-only production check
+all confirmed the existing grant. The synthetic fixture's minimal alter_job shim
+has the real signature and was tested in a newly created, network-isolated local
+cluster; no cron worker or background job was enabled for that shim.
+
+Ten cases execute the actual live-proof SQL over isolated synthetic relations:
+two historical plus one tagged false, three tagged consecutive successes true,
+intervening failure/untagged command false, an untagged failure before three older
+successes false, three latest tagged successes after older history true, duplicate
+current job false, current command mismatch false, missing forward ledger false,
+and over-budget nightly false. A complete fresh replay of the eight-portal fixture,
+forward snapshot fixture, post-DML cancellation/session harness and live-proof
+fixture passed after this acceptance correction.

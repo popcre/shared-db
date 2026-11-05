@@ -9,8 +9,8 @@ keep their names. This index links each old name to its group, so old and new ta
 one area are found together. A new table outside every group needs a new group added
 here first.
 
-The "Permanent home" column lists the same-name table in `plm` / `core` / `app`, or says it
-stays in `dflow_prod`. The move order is in
+The "Permanent home" column lists the same-name table in `plm` / `core` / `app`, or the new
+home to build. Nothing stays in `dflow_prod`: that schema is deleted at the end. The move order is in
 [designflow-dflow-prod-move-groups-20261105.md](designflow-dflow-prod-move-groups-20261105.md).
 
 ## Grid layouts — prefix for new tables: `grid_`
@@ -23,7 +23,7 @@ stays in `dflow_prod`. The move order is in
 | GridLayout | plm.GridLayout |
 | GridViewState | plm.GridViewState |
 | grid_cell_notes | plm.grid_cell_notes |
-| tracking_grid_archive | stays in dflow_prod |
+| tracking_grid_archive | plm (new table needed) |
 
 ## User-defined fields — prefix for new tables: `udf_`
 
@@ -54,33 +54,33 @@ stays in `dflow_prod`. The move order is in
 | Table today | Permanent home |
 |---|---|
 | sample | plm.sample |
-| sample_approval_event | stays in dflow_prod |
+| sample_approval_event | plm (new table needed) |
 | sample_attachment | plm.sample_attachment |
 | sample_box | plm.sample_box |
-| sample_carrier | stays in dflow_prod |
+| sample_carrier | plm (new table needed) |
 | sample_comments | plm.sample_comments |
-| sample_creation_batch | stays in dflow_prod |
+| sample_creation_batch | plm (new table needed) |
 | sample_event | plm.sample_event |
 | sample_factory_group | plm.sample_factory_group |
-| sample_factory_visit | stays in dflow_prod |
-| sample_factory_visit_event | stays in dflow_prod |
-| sample_import_job | stays in dflow_prod |
-| sample_import_row | stays in dflow_prod |
-| sample_inventory_balance | stays in dflow_prod |
-| sample_movement | stays in dflow_prod |
-| sample_path_revision | stays in dflow_prod |
-| sample_piece_lineage | stays in dflow_prod |
-| sample_remote_request | stays in dflow_prod |
-| sample_remote_request_history | stays in dflow_prod |
-| sample_remote_request_item | stays in dflow_prod |
-| sample_reservation | stays in dflow_prod |
-| sample_shipment | stays in dflow_prod |
+| sample_factory_visit | plm (new table needed) |
+| sample_factory_visit_event | plm (new table needed) |
+| sample_import_job | plm (new table needed) |
+| sample_import_row | plm (new table needed) |
+| sample_inventory_balance | plm (new table needed) |
+| sample_movement | plm (new table needed) |
+| sample_path_revision | plm (new table needed) |
+| sample_piece_lineage | plm (new table needed) |
+| sample_remote_request | plm (new table needed) |
+| sample_remote_request_history | plm (new table needed) |
+| sample_remote_request_item | plm (new table needed) |
+| sample_reservation | plm (new table needed) |
+| sample_shipment | plm (new table needed) |
 | sample_shipment_item | plm.sample_shipment_item |
-| sample_shipment_line | stays in dflow_prod |
-| sample_shipment_notice | stays in dflow_prod |
-| sample_shipment_notice_recipient | stays in dflow_prod |
-| sample_stop_closeout | stays in dflow_prod |
-| sample_workflow | stays in dflow_prod |
+| sample_shipment_line | plm (new table needed) |
+| sample_shipment_notice | plm (new table needed) |
+| sample_shipment_notice_recipient | plm (new table needed) |
+| sample_stop_closeout | plm (new table needed) |
+| sample_workflow | plm (new table needed) |
 
 ## RFQ — prefix for new tables: `rfq_`
 
@@ -108,7 +108,7 @@ stays in `dflow_prod`. The move order is in
 | itemSize | plm.itemSize |
 | itemType | plm.itemType |
 | item_character_associations | plm.item_character_associations |
-| item_customer_selling | stays in dflow_prod |
+| item_customer_selling | plm (new table needed) |
 | item_prod_order_detail_associations | plm.item_prod_order_detail_associations |
 | item_user_assignment | plm.item_user_assignment |
 | item_workflow_action | plm.item_workflow_action |
@@ -157,10 +157,10 @@ stays in `dflow_prod`. The move order is in
 | merchGroupHeaders | core.merchGroupHeaders |
 | merchGroupMaster | core.merchGroupMaster |
 | merchGroupRelations | core.merchGroupRelations |
-| merchGroup_04112026 | stays in dflow_prod |
-| merchGroup_pr90_bad | stays in dflow_prod |
+| merchGroup_04112026 | retire (old backup copy; archive then drop) |
+| merchGroup_pr90_bad | retire (old backup copy; archive then drop) |
 | product_category | core.product_category |
-| properties_and_characters | stays in dflow_prod |
+| properties_and_characters | core.property / core.character (owner ruling: shared core) |
 | property_character_associations | core.property_character_associations |
 
 ## Art — prefix for new tables: `art_`
@@ -171,7 +171,7 @@ stays in `dflow_prod`. The move order is in
 | art_piece_attachment | plm.art_piece_attachment |
 | art_types | core.art_types |
 | artist_types | core.artist_types |
-| artists | stays in dflow_prod |
+| artists | core.artist (owner ruling: shared core) |
 
 ## Design time — prefix for new tables: `design_`
 
@@ -186,25 +186,25 @@ stays in `dflow_prod`. The move order is in
 |---|---|
 | AdditionalUserEmail | app.AdditionalUserEmail |
 | RolePermissions | app.RolePermissions |
-| Roles | stays in dflow_prod |
+| Roles | app.role |
 | UIElements | app.UIElements |
 | auth_token | app.auth_token |
 | quote_auth_token | app.quote_auth_token |
 | user_notification | app.user_notification |
-| user_roles | stays in dflow_prod |
-| users | app.users |
+| user_roles | app.user_role |
+| users | core (owner ruling: shared core; replaces app.users copy) |
 
 ## Vendors, factories and customers — prefix for new tables: `party_`
 
 | Table today | Permanent home |
 |---|---|
-| Factory | stays in dflow_prod |
-| customers | stays in dflow_prod |
+| Factory | core.factory (owner ruling: shared core) |
+| customers | core.customer (owner ruling: shared core) |
 | externalCustomer | core.externalCustomer |
 | externalVendor | core.externalVendor |
 | vendor | core.vendor |
 | vendorGroup | core.vendorGroup |
-| vendor_wechat_identity | stays in dflow_prod |
+| vendor_wechat_identity | core (new table needed) |
 
 ## Logs and settings — prefix for new tables: `log_`
 
@@ -213,7 +213,7 @@ stays in `dflow_prod`. The move order is in
 | AuditLog | app.AuditLog |
 | ai_cache_events | app.ai_cache_events |
 | app_settings | app.app_settings |
-| comments | stays in dflow_prod |
+| comments | app.comment |
 | email_logs | app.email_logs |
 | externalApi | plm.externalApi |
 

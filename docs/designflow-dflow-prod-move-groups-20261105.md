@@ -21,7 +21,9 @@ flowchart LR
     H[H Production-order timing]
     I[I Logs and tokens]
     J[J Items, RFQ, art, taxonomy - move last]
-    K[Stay: users, samples, customers, comments, Factory, artists, Roles]
+    K[K Samples - whole set together]
+    L[L Shared people and companies: users, customers, Factory, artists, characters]
+    R[Retire: two old merchGroup backup copies]
   end
   subgraph PLM["plm"]
     P1[PLM tables]
@@ -45,9 +47,11 @@ flowchart LR
   J --> P1
   J -.-> C1
   J -.-> A1
+  K --> P1
+  L --> C1
 ```
 
-Order: A to I can each move on its own, easiest first. J moves last. K does not move.
+Order: A to I can each move on its own, easiest first. Then J, K and L. Nothing stays in `dflow_prod`; the schema is deleted at the end.
 
 ## How a partial move works
 
@@ -72,13 +76,15 @@ Each destination is the existing same-name table in that schema, as listed in
 | G | Licensing status | `plm` | licensingStatus, groups, licensingFeedbackReply | Linked to each other |
 | H | Production-order timing | `plm` | ProdOrderHeader, FactoryTime, prod_order_milestone_schedule, product_type_factory_time | Linked. ProdOrderDetail is in group J |
 | I | Logs and tokens | `app` | AuditLog, email_logs, ai_cache_events, auth_token, quote_auth_token, app_settings, AdditionalUserEmail | Tokens and extra emails belong to users, so move them only after a check that nothing joins them to users |
-| J | Core cluster (59 tables, linked) | `plm` for items, RFQ, art, orders, division/company/season codes; `core` for licenseList, merchGroup, age_group, art_types, artist_types, vendor, property_character_associations; `app` for RolePermissions, UIElements, user_notification; stays in `dflow_prod`: users, all sample tables (owner ruling: samples stay together), Factory, artists, Roles, user_roles, properties_and_characters | all sample tables, users, Roles, user_roles, RolePermissions, UIElements, user_notification, itemHeader, RFQItem, item_* links, art_piece(_attachment), artists, artist_types, art_types, Factory, properties_and_characters, property_character_associations, licenseList, merchGroup, age_group, vendor, divisionCode, companyCode, SeasonCode, RFQStep, ProdOrderDetail | Holds the blocked tables and those that must stay put (users, samples). Move last |
+| J | Items, RFQ, art, taxonomy (linked) | `plm` for items, RFQ, art, orders, division/company/season codes, item_customer_selling (new); `core` for licenseList, merchGroup, age_group, art_types, artist_types, vendor, property_character_associations, vendor_wechat_identity (new); `app` for RolePermissions, UIElements, user_notification, Roles → app.role, user_roles → app.user_role, comments → app.comment | itemHeader, RFQItem, item_* links, art_piece(_attachment), artist_types, art_types, licenseList, merchGroup, age_group, vendor, divisionCode, companyCode, SeasonCode, RFQStep, ProdOrderDetail, Roles, user_roles, RolePermissions, UIElements, user_notification, comments | Holds three of the four blocked tables. Move after A–I |
+| K | Samples | `plm` (about 20 new tables needed) | every sample_* table | Owner ruling: samples move together, in one step |
+| L | Shared people and companies | `core` (owner ruling: shared core) | users, customers, Factory, artists, properties_and_characters | Legacy shapes differ from the core tables, so each needs reshaping (tracked on #4705–#4710) |
 | J+ | Same area, no foreign key | `plm` | itemDetail, itemAttachment, RFQGroup, RFQVendor, RFQContainer, RFQItemDivision, RFQItemStatus, RFQWhse | Joined to items/RFQ in code. Move with J |
 
-## Must stay in `dflow_prod` (no permanent home)
+## Nothing stays in `dflow_prod`
 
-customers, comments, item_customer_selling, vendor_wechat_identity, tracking_grid_archive,
-merchGroup_04112026, merchGroup_pr90_bad (the last two look like old backup copies).
+The schema is deleted at the end. The two old backup copies (merchGroup_04112026,
+merchGroup_pr90_bad) are archived, then dropped. tracking_grid_archive moves to `plm` (new table).
 
 ## Data check still owed for every group
 

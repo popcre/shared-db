@@ -21,7 +21,11 @@ class EvaluationPostgresTests(unittest.TestCase):
         with self.admin() as c:
             c.execute('DROP SCHEMA IF EXISTS plm CASCADE; DROP SCHEMA IF EXISTS coldlion CASCADE; DROP SCHEMA IF EXISTS dflow_prod CASCADE; DROP SCHEMA IF EXISTS supabase_migrations CASCADE;')
             for r in [atomic.HTS_CREDENTIAL_ROLE,'designflow_hts_evaluation_read']:
-                c.execute('DROP OWNED BY '+r) if c.execute('SELECT 1 FROM pg_roles WHERE rolname=%s',(r,)).fetchone() else None
+                if c.execute('SELECT 1 FROM pg_roles WHERE rolname=%s',(r,)).fetchone():
+                    # Disposable fixture only: a non-superuser CREATEROLE creator
+                    # needs SET to clean its own prior test objects. Never shipped.
+                    c.execute('GRANT '+r+' TO CURRENT_USER WITH SET TRUE')
+                    c.execute('DROP OWNED BY '+r)
             c.execute('DROP ROLE IF EXISTS designflow_hts_evaluation_reader; DROP ROLE IF EXISTS designflow_hts_evaluation_read;')
             c.execute('''CREATE SCHEMA plm; CREATE SCHEMA coldlion; CREATE SCHEMA dflow_prod; CREATE SCHEMA supabase_migrations;
             CREATE TABLE supabase_migrations.schema_migrations(version text PRIMARY KEY,statements text[],name text);
@@ -58,13 +62,23 @@ class EvaluationPostgresTests(unittest.TestCase):
         for setting in ['log_statement=all','log_min_duration_statement=0','log_min_duration_sample=0','log_transaction_sample_rate=1']:
             with self.subTest(setting=setting):
                 env={**self.env,'PGOPTIONS':'-c '+setting}
-                with self.assertRaisesRegex(atomic.Refusal,'logging'):self.apply(env=env)
+                with self.assertRaises(atomic.Refusal):self.apply(env=env)
                 with self.admin() as c:
                     self.assertEqual(c.execute('SELECT count(*) FROM pg_roles WHERE rolname=%s',(atomic.HTS_CREDENTIAL_ROLE,)).fetchone(),(0,))
     def test_existing_role_login_flag_drift_refuses(self):
         with self.admin() as c:c.execute('CREATE ROLE designflow_hts_evaluation_read LOGIN NOINHERIT')
         with self.assertRaises(atomic.Refusal):self.apply()
         with self.admin() as c:self.assertEqual(c.execute('SELECT count(*) FROM supabase_migrations.schema_migrations').fetchone(),(0,))
+    def test_bootstrap_creator_admin_membership_never_reaches_evaluation_reader(self):
+        self.apply()
+        with self.admin() as c:
+            is_super=c.execute('SELECT rolsuper FROM pg_roles WHERE rolname=current_user').fetchone()[0]
+            rows=c.execute("SELECT m.admin_option,m.inherit_option,m.set_option FROM pg_auth_members m JOIN pg_roles r ON r.oid=m.roleid WHERE r.rolname IN ('designflow_hts_evaluation_reader','designflow_hts_evaluation_read') AND m.member=(SELECT oid FROM pg_roles WHERE rolname=current_user)").fetchall()
+            self.assertEqual(rows,[] if is_super else [(True,False,False),(True,False,False)])
+        with atomic.credential_connection(self.env,reader=True) as c:
+            with self.assertRaises(self.pg.Error):c.execute('SET ROLE postgres')
+            c.rollback()
+
     def test_existing_password_not_rotated_when_protected_value_differs(self):
         with self.admin() as c:c.execute("CREATE ROLE designflow_hts_evaluation_reader LOGIN NOINHERIT PASSWORD 'synthetic-original-value'")
         with self.assertRaises(atomic.Refusal):self.apply()

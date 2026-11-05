@@ -3,12 +3,16 @@
 -- The exact-hash atomic executor issues the initial credential in the same
 -- transaction. No password, private archive value or source pointer is stored here.
 DO $roles$
+DECLARE
+  created_roles text[] := ARRAY[]::text[];
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'designflow_hts_evaluation_read') THEN
     CREATE ROLE designflow_hts_evaluation_read NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+    created_roles := array_append(created_roles, 'designflow_hts_evaluation_read');
   END IF;
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'designflow_hts_evaluation_reader') THEN
     CREATE ROLE designflow_hts_evaluation_reader LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD NULL;
+    created_roles := array_append(created_roles, 'designflow_hts_evaluation_reader');
   END IF;
   IF EXISTS (SELECT FROM pg_roles WHERE rolname IN ('designflow_hts_evaluation_read', 'designflow_hts_evaluation_reader')
     AND (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls OR rolinherit)) THEN
@@ -23,8 +27,12 @@ BEGIN
     JOIN pg_roles parent ON parent.oid=m.roleid JOIN pg_roles member ON member.oid=m.member
     WHERE (parent.rolname IN ('designflow_hts_evaluation_read','designflow_hts_evaluation_reader')
        OR member.rolname IN ('designflow_hts_evaluation_read','designflow_hts_evaluation_reader'))
-      AND NOT (parent.rolname='designflow_hts_evaluation_read'
-        AND member.rolname='designflow_hts_evaluation_reader' AND NOT m.admin_option)) THEN
+      AND NOT ((parent.rolname='designflow_hts_evaluation_read'
+        AND member.rolname='designflow_hts_evaluation_reader' AND NOT m.admin_option)
+        -- PostgreSQL 16/17 gives a non-superuser role creator ADMIN only.
+        -- Accept only roles created above, without SET or inherited authority.
+        OR (parent.rolname=ANY(created_roles) AND member.rolname=current_user
+          AND m.admin_option AND NOT m.inherit_option AND NOT m.set_option))) THEN
     RAISE EXCEPTION 'evaluation identities have unexpected role memberships';
   END IF;
   -- Refuse reuse of identities with any prior object authority. A completed

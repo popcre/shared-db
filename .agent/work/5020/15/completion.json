@@ -2,7 +2,7 @@
   "schema_version": 1,
   "work_issue": 5020,
   "outcome": "ready-for-merge",
-  "pr": 5029,
+  "pr": 5812,
   "migration_versions": [
     "20261105231250"
   ],
@@ -72,7 +72,8 @@
     }
   ],
   "assumptions_resolved": [
-    "Two park-resume retimestamps were needed: 20261029161229 (parked Oct 29) was backdated behind main, and the first re-reservation 20261105222623 (claim #5772) went backdated within a minute behind main's 20261105222717. Current reservation is 20261105231250 under claim #5793 (PR #5029 closed and reopened around each claim per park-resume order; #5772 closed as superseded; both older version refs stay permanently reserved).",
+    "Two park-resume retimestamps were needed: 20261029161229 (parked Oct 29) was backdated behind main, and the first re-reservation 20261105222623 (claim #5772) went backdated within a minute behind main's 20261105222717. Current reservation is 20261105231250 under claim #5793 (PR closed and reopened around each claim per park-resume order; #5772 closed as superseded; both older version refs stay permanently reserved).",
+    "The pull request moved from #5029 to #5812 on the same branch and head: a queued run from the first push (42123894491) held the database-contract-tests concurrency group for over an hour, ignored cancellation (zero jobs spawned), and blocked the required supabase/tests context; a fresh pull request takes a fresh ref-scoped concurrency group. #5029 is closed with the reason recorded on it.",
     "Merging main conflicted in scripts/production_catalog_verification.py, scripts/production_migration_guard.py, config/production-verification-sidecar-registry.json and docs/verification/throughput-guard-truth-baseline-20260828.json (the parked branch's whole-file CRLF churn overlapped main's later edits). Resolution kept main's current content of those files and re-applied only this workstream's additive entries (three CATALOG_CONTRACTS probes, one FOREIGN_TARGET_MIGRATIONS entry, one sidecar registry row), retimestamped each time.",
     "supabase/tests/dflow_product_description_contracts.sql \\i-included the migration by its parked filename and failed once on the rename (psql: No such file or directory); the three references now carry the current version and the test passed afterwards.",
     "The Oct 29 owner ruling makes review advisory and never a merge gate, so this resume proceeded without a review round; generation-14's two muse APPROVEs are historical evidence only.",

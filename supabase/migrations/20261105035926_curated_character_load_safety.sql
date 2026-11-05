@@ -16,6 +16,7 @@ declare
   v_alias record;
   v_alias_id uuid;
   v_evidence jsonb;
+  v_source_alias text;
 begin
   select id into v_nb from core.licensor where code = 'NB';
   if exists (select 1 from public.style_guide_files where is_active and licensor_name = 'NBC UNIVERSAL') then
@@ -72,9 +73,10 @@ begin
   loop
     v_id := null;
     v_evidence := '{}'::jsonb;
+    v_source_alias := null;
     if n.source_system='pop_style_guides' then
-      select jsonb_build_object('files',jsonb_agg(jsonb_build_object('id',f.id,'path',f.relative_path,'filename',f.filename,'property_folder',split_part(f.relative_path,'/',2))), 'confidence','verified')
-      into v_evidence from public.style_guide_files f
+      select jsonb_build_object('files',jsonb_agg(jsonb_build_object('id',f.id,'path',f.relative_path,'filename',f.filename,'property_folder',split_part(f.relative_path,'/',2))), 'confidence','verified'), min((regexp_match(f.filename,'(?:^|[-_])(?:char[a-z-]*|cg|line-[a-z]+|ph|fs|kawaii)-s_([A-Za-z]+)_','i'))[1])
+      into v_evidence,v_source_alias from public.style_guide_files f
       where f.is_active and f.licensor_name='NBC UNIVERSAL' and
         (lower((regexp_match(f.filename,'(?:^|[-_])(?:char[a-z-]*|cg|line-[a-z]+|ph|fs|kawaii)-s_([A-Za-z]+)_','i'))[1])=split_part(n.source_id,':',2)
          or (n.source_table='public.style_guide_pdf_text' and f.id=v_clear));
@@ -87,6 +89,13 @@ begin
       returning id into v_id;
     end if;
     if v_id is null then raise exception 'Character load produced no target'; end if;
+    -- An NBC alias is the exact source filename label, never a truncated canonical name.
+    -- If another record already owns that label, leave it untouched and abstain.
+    if v_source_alias is not null and lower(v_source_alias)<>lower(n.name)
+      and not exists (select 1 from core.character_alias where lower(alias)=lower(v_source_alias)) then
+      insert into core.character_alias(character_id,licensor_id,alias,source_system,source_id,evidence_notes)
+      values(v_id,n.licensor_id,v_source_alias,'pop_style_guides',n.source_id,'Exact character token from licensor-issued filename; full canonical name retained');
+    end if;
     if exists (select 1 from core.taxonomy_source_ref where source_system=n.source_system and source_table=n.source_table and source_id=n.source_id and entity_id<>v_id) then
       raise exception 'Character source identity already belongs to another entity';
     end if;

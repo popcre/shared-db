@@ -65,8 +65,8 @@ BEGIN
       AND (status='pending' OR (status='claimed' AND claim_until<=clock_timestamp()))
     FOR UPDATE SKIP LOCKED LIMIT 1
   ) UPDATE dam.agent_directory_browse_requests b SET status='claimed',claim_until=LEAST(clock_timestamp()+interval '30 seconds',b.expires_at)
-    FROM candidate c WHERE b.request_id=c.request_id RETURNING b.* INTO r;
-  IF NOT FOUND THEN RETURN NULL; END IF;
+    FROM candidate c WHERE b.request_id=c.request_id AND b.expires_at>clock_timestamp() RETURNING b.* INTO r;
+  IF NOT FOUND OR r.expires_at<=clock_timestamp() THEN RETURN NULL; END IF;
   RETURN jsonb_build_object('request_id',r.request_id,'path',r.path);
 END $fn$;
 

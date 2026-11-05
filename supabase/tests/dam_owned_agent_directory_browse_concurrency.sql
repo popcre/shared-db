@@ -9,6 +9,7 @@ DECLARE
  outcome text;
  blocked boolean := false;
  contender_pid integer;
+ locked_preimage jsonb;
  i integer;
 BEGIN
  PERFORM dblink_connect('browse_setup',connection_string);
@@ -49,6 +50,7 @@ BEGIN
   UPDATE dam.agent_directory_browse_requests SET expires_at=clock_timestamp()+interval '3 seconds'
    WHERE request_id='56520000-0000-0000-0000-000000000121'
  $deadline$);
+ SELECT to_jsonb(b) INTO locked_preimage FROM dam.agent_directory_browse_requests b WHERE request_id='56520000-0000-0000-0000-000000000121';
  PERFORM dblink_exec('browse_winner','BEGIN');
  PERFORM request_id FROM dblink('browse_winner',$lock$
   SELECT request_id FROM dam.agent_directory_browse_requests WHERE request_id='56520000-0000-0000-0000-000000000121' FOR UPDATE
@@ -68,7 +70,7 @@ BEGIN
  PERFORM dblink_exec('browse_winner','COMMIT');
  SELECT status INTO outcome FROM dblink_get_result('browse_contender') AS t(status text);
  IF outcome IS DISTINCT FROM 'false' THEN RAISE EXCEPTION 'completion accepted after deadline while waiting on unchanged lock'; END IF;
- IF EXISTS(SELECT 1 FROM dam.agent_directory_browse_requests WHERE request_id='56520000-0000-0000-0000-000000000121' AND (entries IS NOT NULL OR status<>'claimed')) THEN RAISE EXCEPTION 'expired completion modified preimage'; END IF;
+ IF (SELECT to_jsonb(b) FROM dam.agent_directory_browse_requests b WHERE request_id='56520000-0000-0000-0000-000000000121') IS DISTINCT FROM locked_preimage THEN RAISE EXCEPTION 'expired completion modified preimage'; END IF;
  PERFORM dblink_disconnect('browse_winner');
  PERFORM dblink_disconnect('browse_contender');
  PERFORM dblink_exec('browse_setup',$cleanup$

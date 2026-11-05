@@ -20,6 +20,38 @@ SHA=re.compile(r'^[a-f0-9]{40}$')
 TOOL=re.compile(r'tools/[A-Za-z0-9_.@/-]+')
 
 
+def python_tools(syntax):
+    """Resolve complete static tool paths; reject directory-prefix aliases.
+
+    Rejecting a prefix at its definition is conservative dataflow: an alias
+    cannot later hide the namespace from this walk. Never infer variable values
+    or authorize a whole unknown tools directory.
+    """
+    dependencies=set()
+    parents={child:node for node in ast.walk(syntax) for child in ast.iter_child_nodes(node)}
+    def literal(node):return node.value if isinstance(node,ast.Constant) and isinstance(node.value,str) else None
+    def parts(node):
+        if isinstance(node,ast.BinOp) and isinstance(node.op,ast.Div):return parts(node.left)+[node.right]
+        return [node]
+    def suffix(values):
+        for i,value in enumerate(values):
+            if literal(value) is not None and literal(value).rstrip('/')=='tools':
+                tail=values[i+1:]
+                if not tail or any(literal(v) is None for v in tail):
+                    raise RiskGateError('unresolved maintenance tools-directory prefix')
+                dependencies.add('/'.join(['tools',*(literal(v).strip('/') for v in tail)]))
+    for node in ast.walk(syntax):
+        if isinstance(node,ast.BinOp) and isinstance(node.op,ast.Div):
+            parent=parents.get(node)
+            if not (isinstance(parent,ast.BinOp) and isinstance(parent.op,ast.Div) and parent.left is node):suffix(parts(node))
+        if isinstance(node,ast.Call):
+            name=getattr(node.func,'id',None) or getattr(node.func,'attr',None)
+            if name in {'Path','PurePath','PurePosixPath','join','joinpath'}:suffix(node.args)
+        if isinstance(node,(ast.Assign,ast.AnnAssign)) and literal(node.value) in {'tools','tools/'}:
+            raise RiskGateError('unresolved maintenance tools-directory alias')
+    return dependencies
+
+
 def pin_paths(tree, read):
     """Conservative coverage walk: all non-tools input, actual tool import closure.
 
@@ -44,20 +76,31 @@ def pin_paths(tree, read):
         body=read(path)
         # All explicit tool paths, including subprocess commands/runtime reads.
         dependencies=set(TOOL.findall(body))
+        executed=set(dependencies);data_only=set()
+        # A source-text read pins that file's bytes, but does not execute its
+        # imports. Other constructed references conservatively count as code.
+        for expression in re.finditer(r'''(?:\b[A-Za-z_$][\w$]*\.)?(?:join|resolve)\([^()\n]*?["']tools["']((?:\s*,\s*["'][A-Za-z0-9_.@/-]+["'])+)\s*\)''',body):
+            dep='/'.join(['tools',*re.findall(r'''["']([^"']+)["']''',expression.group(1))])
+            dependencies.add(dep)
+            parent=re.search(r'([A-Za-z_$][\w$.]*)\(\s*$',body[:expression.start()])
+            if parent and parent.group(1) in {'readFileSync','fs.readFileSync'}:data_only.add(dep)
+            else:executed.add(dep)
         # Python pathlib's / 'tools' / 'name.py' is also a runtime input.
         for expression in re.findall(r'''["']tools["'](?:\s*/\s*["'][A-Za-z0-9_.@/-]+["'])+''',body):
             dependencies.add('/'.join(re.findall(r'''["']([^"']+)["']''',expression)))
         if path.endswith('.py'):
             syntax=ast.parse(body)
+            python_dependencies=python_tools(syntax)
+            dependencies.update(python_dependencies);executed.update(python_dependencies)
             for node in ast.walk(syntax):
                 if isinstance(node,ast.JoinedStr) and any(isinstance(v,ast.Constant) and isinstance(v.value,str) and 'tools/' in v.value for v in node.values):
                     raise RiskGateError('unbounded dynamic maintenance tool dependency')
                 if isinstance(node,ast.BinOp) and isinstance(node.op,ast.Add) and isinstance(node.left,ast.Constant) and isinstance(node.left.value,str) and 'tools/' in node.left.value and not isinstance(node.right,ast.Constant):
                     raise RiskGateError('unbounded dynamic maintenance tool dependency')
-                if isinstance(node,ast.BinOp) and isinstance(node.op,ast.Div) and any(isinstance(v,ast.Constant) and v.value=='tools' for v in ast.walk(node.left)) and not isinstance(node.right,ast.Constant):
-                    raise RiskGateError('unbounded segmented maintenance tool dependency')
         elif re.search(r'''tools/(?:\$|\{|["'])''',body):
             raise RiskGateError('unbounded dynamic maintenance tool dependency')
+        elif re.search(r'''["']tools/?["']\s*(?:\)|,\s*(?!["'])[^\s])''',body):
+            raise RiskGateError('unresolved constructed maintenance tools-directory prefix')
         # Both import/export-from and dynamic literal imports; nested ../ works.
         for rel in re.findall(r'(?:from\s*|import\s*\()\s*[\'\"](\.{1,2}/[^\'\"]+)[\'\"]',body):
             parts=[]
@@ -67,7 +110,7 @@ def pin_paths(tree, read):
                     parts.pop()
                 elif bit not in ('','.'):parts.append(bit)
             resolved='/'.join(parts)
-            if resolved in blobs:dependencies.add(resolved)
+            if resolved in blobs:dependencies.add(resolved);executed.add(resolved)
         if path.endswith('.py'):
             for node in ast.walk(ast.parse(body)):
                 mods=[node.module] if isinstance(node,ast.ImportFrom) else [a.name for a in node.names] if isinstance(node,ast.Import) else []
@@ -82,7 +125,7 @@ def pin_paths(tree, read):
             if not matches:continue
             for resolved in matches:
                 pinned.add(resolved)
-                if resolved.endswith(('.py','.mjs','.js','.sh')):pending.append(resolved)
+                if resolved.endswith(('.py','.mjs','.js','.sh')) and (resolved in executed or dep not in data_only):pending.append(resolved)
     if not roots<=seen or not pinned:raise RiskGateError('maintenance coverage proved nothing')
     return pinned
 
@@ -130,3 +173,19 @@ def prove(source,entry,operation,api):
     if api(f'repos/{REPO}/commits/main').get('sha')!=main:
         raise RiskGateError('maintenance main advanced during producer proof')
     return {'source_sha':source,'current_main_sha':main,'compared':compared}
+
+
+def executor_inputs(root):
+    """Bind receipts to the same complete safety/runtime-input surface.
+
+    This returns actual working bytes just like the original three-file digest;
+    tracked membership comes from exact checkout Git, never an untracked file.
+    """
+    listed=subprocess.run(['git','ls-tree','-r','-z','HEAD'],cwd=root,capture_output=True,check=True).stdout
+    tree={}
+    for row in listed.split(b'\0'):
+        if not row:continue
+        metadata,path=row.split(b'\t',1);mode,kind,sha=metadata.decode().split()
+        tree[path.decode()]={'mode':mode,'type':kind,'sha':sha}
+    paths=pin_paths(tree,lambda p:(root/p).read_text())
+    return {p:hashlib.sha256((root/p).read_bytes()).hexdigest() for p in sorted(paths)}

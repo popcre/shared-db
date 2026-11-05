@@ -61,7 +61,21 @@ class ActualGitProducerTests(unittest.TestCase):
         self.write('tools/runtime-guard.mjs','export const guard=1')
         self.base=self.commit();self.main=self.base
         self.write('tools/runtime-guard.mjs','export const guard=0');self.main=self.commit()
-        with self.assertRaisesRegex(source.RiskGateError,'unbounded segmented'):self.prove()
+        with self.assertRaisesRegex(source.RiskGateError,'unresolved maintenance tools-directory prefix'):self.prove()
+
+    def test_unchanged_tools_directory_alias_and_changed_executed_tool_refuse(self):
+        self.write('scripts/runtime.py',"from pathlib import Path\nname='runtime-guard.mjs'\ntools_dir=Path(__file__).resolve().parents[1]/'tools'\ntool=tools_dir/name\n")
+        self.write('tools/runtime-guard.mjs','export const guard=1')
+        self.base=self.commit();self.main=self.base
+        self.write('tools/runtime-guard.mjs','export const guard=0');self.main=self.commit()
+        with self.assertRaisesRegex(source.RiskGateError,'tools-directory prefix'):self.prove()
+
+    def test_unchanged_javascript_tools_directory_alias_and_changed_tool_refuse(self):
+        self.write('scripts/runtime.mjs',"import path from 'node:path';const name='runtime-guard.mjs';const dir=path.join(ROOT,'tools');const tool=path.join(dir,name)")
+        self.write('tools/runtime-guard.mjs','export const guard=1')
+        self.base=self.commit();self.main=self.base
+        self.write('tools/runtime-guard.mjs','export const guard=0');self.main=self.commit()
+        with self.assertRaisesRegex(source.RiskGateError,'tools-directory prefix'):self.prove()
 
     def test_unchanged_relative_tool_importer_and_changed_nested_tool_refuse(self):
         self.write('tools/worker.mjs',"export {guard} from './nested/guard.mjs'\n")
@@ -76,6 +90,19 @@ class ActualGitProducerTests(unittest.TestCase):
         self.base=self.commit();self.main=self.base
         self.write('tools/runtime-guard.mjs','export const guard=0');self.main=self.commit()
         with self.assertRaisesRegex(source.RiskGateError,'producer/current policy changed'):self.prove()
+
+    def test_joined_source_text_read_pins_bytes_without_executing_read_source(self):
+        self.write('scripts/source_reader.mjs',"const source=readFileSync(path.join(ROOT,'tools','source-data.mjs'),'utf8')")
+        self.write('tools/source-data.mjs',"const dir=path.join(ROOT,'tools');const file=path.join(dir,name)")
+        self.base=self.commit();self.main=self.base
+        self.write('tools/source-data.mjs','// changed source text used by safety check');self.main=self.commit()
+        with self.assertRaisesRegex(source.RiskGateError,'producer/current policy changed'):self.prove()
+
+    def test_joined_executed_tool_is_walked_and_unknown_namespace_refuses(self):
+        self.write('scripts/source_reader.mjs',"spawnSync('node',[path.join(ROOT,'tools','executed.mjs')])")
+        self.write('tools/executed.mjs',"const dir=path.join(ROOT,'tools');const file=path.join(dir,name)")
+        self.base=self.commit();self.main=self.base
+        with self.assertRaisesRegex(source.RiskGateError,'tools-directory prefix'):self.prove()
 
     def test_current_disabled_policy_and_credential_sibling_change_refuse(self):
         self.write('scripts/sibling.py','# retired credential protection');self.main=self.commit()
@@ -94,6 +121,27 @@ class ActualGitProducerTests(unittest.TestCase):
         self.assertIn('scripts/lib/lanes/exclusive-policy.mjs',pinned)
         self.assertIn('tools/load-customs-benchmark.py',pinned)
         self.assertFalse(any(p.endswith('qualify-hts-prepacks.mjs') for p in pinned))
+
+    def test_helper_only_changes_invalidate_actual_executor_receipt_with_same_source_merge(self):
+        import nontransactional_index_maintenance as maintenance
+        from test_nontransactional_index_maintenance import FakeDB,MemoryReceipts,entry
+        legacy=['scripts/nontransactional_index_maintenance.py','scripts/index-maintenance-receipt.mjs']
+        producers=['scripts/index_maintenance_source.py','scripts/prove_index_maintenance_source.py','scripts/lib/lanes/exclusive-locks.mjs','scripts/atomic_migration_apply.py','scripts/review_finding_hold.py']
+        for p in legacy+producers:self.write(p,'# original safety input' if p.endswith('.py') else '// original safety input')
+        self.commit()
+        with patch.object(maintenance,'ROOT',self.root):before=maintenance.executor_digest()
+        identity=dict(target='production',project_ref=maintenance.PROD,preview_project_ref='a'*20,source_sha='b'*40,execution_sha='d'*40,executor_digest=before,source_pr=1,run_id=123)
+        for changed in producers:
+            original=(self.root/changed).read_text()
+            self.write(changed,'# changed producer' if changed.endswith('.py') else '// changed producer')
+            with patch.object(maintenance,'ROOT',self.root):after=maintenance.executor_digest()
+            self.assertNotEqual(after,before)
+            receipts=MemoryReceipts();runner=maintenance.Maintenance(FakeDB(),receipts,entry(),{**identity,'executor_digest':after},'fixed-op',lambda:None)
+            old={**identity,'target':'preview','project_ref':'a'*20,'execution_sha':'c'*40,'phase':'complete','operation_id':'fixed-op','policy_digest':maintenance.digest(entry())}
+            receipts.records[runner.receipt_ref('complete','preview')]=old.copy()
+            with self.assertRaisesRegex(maintenance.Refusal,'receipt binding'):runner.read('complete','preview')
+            self.assertEqual(receipts.records[runner.receipt_ref('complete','preview')],old)
+            self.write(changed,original)
 
     def test_truncated_tree_and_no_comparisons_fail_closed(self):
         self.truncated=True

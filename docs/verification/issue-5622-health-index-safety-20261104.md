@@ -102,15 +102,22 @@ is separate from the unchanged existing SG operation. Both use native exclusive
 target lanes and fencing; neither may adopt another operation's receipt or lease.
 
 Immutable started/built/completed receipts bind exact target, project, source,
-executor, definition and admitted owner scope. A committed valid build interrupted
-before its built receipt is reconciled only against the fixed prior-absence and
-started proof; subsequent cleanup pins its actual OID. Changed OIDs, wrong targets,
+executor, definition and admitted owner scope. Only the same process
+that successfully executes the exact CREATE may immediately capture its actual
+OID and persist the built receipt. A crash after CREATE but before that receipt
+leaves an ambiguous object: resumed execution refuses and preserves it, even if
+name/definition/owner match. Existing immutable built-OID receipts permit bounded
+cleanup recovery; prior absence or a started receipt alone never proves ownership. Changed OIDs, wrong targets,
 foreign preimages, invalid/incomplete builds and missing ownership refuse safely.
 An invalid interrupted index is preserved for governed investigation, never dropped
 by name alone. Preview canonical OIDs are checked again after shadow cleanup.
 
-Actual isolated PG17 tests passed eight build/crash/cleanup/concurrent-writer/target
-drills. Python regression passed 41 tests and receipt/claim regression passed 23.
+Actual isolated PG17 tests passed nine build/crash/cleanup/concurrent-writer/target
+drills, including started-then-foreign exact-valid index and crash-before-owned-OID
+receipt preservation. Dedicated Python ownership/retirement tests passed 19 and
+receipt/claim regression passed 23. A broader 623-test producer/guard/selector
+regression passed before the final ownership tightening; native current-head CI
+remains required.
 These are disposable fixture proofs, not a shared-preview rehearsal or production
 acceptance. No shared target was changed by these tests.
 
@@ -118,3 +125,24 @@ acceptance. No shared target was changed by these tests.
 - [ ] Author a fresh RPC-only successor with exact valid-index and expected function-prestate guards; preserve legacy reset overload and ACLs.
 - [ ] Review and activate separately pinned operations only after genuine foreign-claim/source-pin reconciliation.
 - [ ] Genuine shared-preview builder receipts, automatic production delivery, bounded REST proof and ordinary live pipeline acceptance.
+
+
+## Source-only retirement, producer pin and permanent test routing
+
+The candidate adds only the four own health versions to the native hard-block and
+retirement catalogues, preserving every historical SQL/reservation/preview ledger
+and all existing T1/T9 entries. It does not claim a replacement is delivered. The
+new fixed registry receives one additive PREVIEW_PRODUCER_PATHS pin; foreign
+reader exemptions and all upstream producer pins remain untouched.
+
+A distinct named database-contract step runs the existing health PG17 test file
+against a newly created localhost-only disposable database. It uses the existing
+test role, grants no privilege, creates no new role/helper/extension, and cleans
+only its exact newly owned database without FORCE or session termination. The
+actual local same-harness nine-test run passed. Foreign HTS/browse/actor steps
+and the existing SG operation policy remain unchanged.
+
+The fresh RPC-only successor is still pending source work. No health operation
+is enabled, and no shared target or production retirement has changed merely
+because this candidate exists. Coordinator source review and current native CI
+are required before any merge; live acceptance stays unchecked.

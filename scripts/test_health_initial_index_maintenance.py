@@ -86,12 +86,29 @@ class HealthTests(unittest.TestCase):
     def test_production_preexisting_index_is_not_adopted(self):
         self.runner().apply()
         with self.assertRaises(native.Refusal):self.runner('production').apply()
-    def test_crash_after_build_before_receipt_reconciles_exact_fixed_object(self):
+    def test_crash_after_build_before_receipt_preserves_ambiguous_object(self):
         self.db.crash_after_create=True
         with self.assertRaises(RuntimeError):self.runner().apply()
         self.db.crash_after_create=False
-        self.runner().apply()
-        self.assertEqual(sum(x.startswith('CREATE') for x in self.db.sql),1)
+        shadow=self.db.spec['preview_shadow'];before=copy.deepcopy(self.db.rows[shadow])
+        with self.assertRaises(native.Refusal):self.runner().apply()
+        self.assertEqual(self.db.rows[shadow],before)
+        self.assertIsNone(self.runner().read('built'))
+        self.assertFalse(any(x.startswith('DROP') for x in self.db.sql))
+    def test_started_receipt_then_foreign_valid_index_is_never_adopted(self):
+        execute=self.db.execute
+        def stop_before_create(sql,params=None):
+            if sql.startswith('CREATE'):raise RuntimeError('pause before own CREATE')
+            return execute(sql,params)
+        self.db.execute=stop_before_create
+        with self.assertRaises(RuntimeError):self.runner().apply()
+        self.db.execute=execute
+        shadow=self.db.spec['preview_shadow'];self.db.rows[shadow]=row(self.db.spec,shadow,99)
+        before=copy.deepcopy(self.db.rows[shadow])
+        with self.assertRaises(native.Refusal):self.runner().apply()
+        self.assertEqual(self.db.rows[shadow],before)
+        self.assertIsNone(self.runner().read('built'))
+        self.assertFalse(any(x.startswith('DROP') for x in self.db.sql))
     def test_crash_after_owned_cleanup_resumes_without_rebuild(self):
         self.receipts.fail_phase='complete'
         with self.assertRaises(RuntimeError):self.runner().apply()
@@ -99,9 +116,14 @@ class HealthTests(unittest.TestCase):
         self.runner().apply()
         self.assertEqual(sum(x.startswith('CREATE') for x in self.db.sql),1)
     def pause_before_cleanup(self):
-        self.receipts.fail_phase='built'
-        with self.assertRaises(RuntimeError):self.runner().apply()
-        self.receipts.fail_phase=None
+        execute=self.db.execute
+        def stop_before_drop(sql,params=None):
+            if sql.startswith('DROP'):raise RuntimeError('pause after immutable built receipt')
+            return execute(sql,params)
+        self.db.execute=stop_before_drop
+        try:
+            with self.assertRaises(RuntimeError):self.runner().apply()
+        finally:self.db.execute=execute
     def test_changed_preview_canonical_preimage_refused(self):
         self.pause_before_cleanup();self.db.rows[self.db.spec['canonical']]['oid']=90
         with self.assertRaises(native.Refusal):self.runner().apply()
@@ -152,5 +174,24 @@ class HealthTests(unittest.TestCase):
         with self.assertRaises(native.Refusal):health.definition('health-any-other')
         self.assertEqual(health.validate_operation(base,self.op),base)
 
+
+
+class RetiredHealthSourceTests(unittest.TestCase):
+    def test_original_preview_applied_sources_stay_immutable_and_pending_production_refuses(self):
+        import hashlib
+        import production_migration_guard as guard
+        expected={
+          '20261105073854':'6e7f4b4773794fbfa5d49bbcc5de24c3b6b63ff7d81bd5979ec3c48ee2b4bf50',
+          '20261105073903':'ceb0cc2d93e734ff82da0929e0e381cb96db2817f14add8eca8f14aa6c5f9ab5',
+          '20261105073911':'48dd5300cd792d01cf61c2777fe6e6245a7ad8449b8a635091b5a0487a710a1e',
+          '20261105073920':'499cc17b2d25d433d6da51b3e42055eb54885a55a7e6f5280acc48a2f281487a'}
+        for version,sha in expected.items():
+            with self.subTest(version=version):
+                self.assertIn(version,guard.HARD_BLOCKED)
+                self.assertEqual(guard.classify_pending_version(version,set(),native.ROOT)['kind'],'retired')
+                paths=list((native.ROOT/'supabase/migrations').glob(version+'_*.sql'))
+                self.assertEqual(len(paths),1)
+                self.assertEqual(hashlib.sha256(paths[0].read_bytes()).hexdigest(),sha)
+                self.assertIn('applied preview ledger',guard.RETIRED_VERSION_REASONS[version])
 
 if __name__=='__main__':unittest.main()

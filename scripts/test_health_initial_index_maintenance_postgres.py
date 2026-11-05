@@ -82,7 +82,7 @@ class PostgresHealthTests(unittest.TestCase):
         try:self.runner().apply()
         finally:self.db.execute=execute
         self.assertEqual(observed,[('500ms','10s'),('500ms','2s')])
-    def test_actual_committed_build_crash_recovers_oid_and_cleans_only_owned_shadow(self):
+    def test_actual_committed_build_crash_without_receipt_preserves_ambiguous_oid(self):
         execute=self.db.execute;once=[False]
         def crash(sql,params=None):
             result=execute(sql,params)
@@ -91,11 +91,23 @@ class PostgresHealthTests(unittest.TestCase):
         self.db.execute=crash
         with self.assertRaises(RuntimeError):self.runner().apply()
         self.db.execute=execute
-        built=self.db.health_catalog(health.definition(self.op)['preview_shadow'])
-        self.runner().apply()
-        proof=self.receipts.read(self.runner().receipt_ref('built'))
-        self.assertEqual(proof['new_oid'],built['oid'])
-        self.assertIsNone(self.db.health_catalog(health.definition(self.op)['preview_shadow']))
+        before=self.db.health_catalog(health.definition(self.op)['preview_shadow'])
+        with self.assertRaises(native.Refusal):self.runner().apply()
+        self.assertEqual(self.db.health_catalog(health.definition(self.op)['preview_shadow']),before)
+        self.assertIsNone(self.runner().read('built'))
+    def test_started_then_foreign_exact_valid_index_is_preserved(self):
+        execute=self.db.execute
+        def stop_before_create(sql,params=None):
+            if sql.startswith('CREATE INDEX CONCURRENTLY'):raise RuntimeError('pause before owned create')
+            return execute(sql,params)
+        self.db.execute=stop_before_create
+        with self.assertRaises(RuntimeError):self.runner().apply()
+        self.db.execute=execute;spec=health.definition(self.op)
+        self.db.execute('CREATE INDEX '+spec['preview_shadow']+' ON '+spec['table']+' '+spec['definition'])
+        before=self.db.health_catalog(spec['preview_shadow'])
+        with self.assertRaises(native.Refusal):self.runner().apply()
+        self.assertEqual(self.db.health_catalog(spec['preview_shadow']),before)
+        self.assertIsNone(self.runner().read('built'))
     def test_actual_cleanup_crash_resumes_without_rebuilding(self):
         self.receipts.fail_phase='complete'
         with self.assertRaises(RuntimeError):self.runner().apply()
@@ -141,4 +153,38 @@ class PostgresHealthTests(unittest.TestCase):
         self.assertTrue(any(started<=t<=ended for t in commits),'ordinary writer must commit during build/cleanup')
 
 
-if __name__=='__main__':unittest.main()
+def run_ci_disposable():
+    """Use only the existing localhost test role; never grant privileges or force cleanup."""
+    import subprocess
+    import tempfile
+    import uuid
+    import psycopg
+    from psycopg import sql
+    host=os.environ.get('PGHOST','');port=int(os.environ.get('PGPORT','0'))
+    if host not in ('127.0.0.1','localhost') or not 1024<=port<=65535:
+        raise RuntimeError('Explicit existing localhost disposable runner required')
+    kwargs=dict(host=host,port=port,user=os.environ['PGUSER'],password=os.environ.get('PGPASSWORD',''),
+                dbname=os.environ.get('PGDATABASE','postgres'),autocommit=True,connect_timeout=10)
+    name='health_initial_5622_ci_'+uuid.uuid4().hex
+    with psycopg.connect(**kwargs) as admin:
+        version=admin.execute("select current_setting('server_version_num')::integer").fetchone()[0]
+        if not 170000<=version<180000:raise RuntimeError('Actual PG17 disposable runner required')
+        if admin.execute('select 1 from pg_database where datname=%s',(name,)).fetchone():raise RuntimeError('New fixture name already exists')
+        admin.execute(sql.SQL('create database {} owner postgres').format(sql.Identifier(name)))
+        path=None
+        try:
+            fixture={**kwargs,'dbname':name,'user':'postgres'}
+            with tempfile.NamedTemporaryFile(mode='w',prefix='health-initial-5622-',suffix='.json',delete=False) as out:
+                os.chmod(out.name,0o600);json.dump(fixture,out);path=out.name
+            env={**os.environ,'HEALTH_INITIAL_TEST_CONFIG':path}
+            env.pop('HEALTH_INITIAL_CREATE_DISPOSABLE',None)
+            subprocess.run([sys.executable,__file__],env=env,check=True)
+        finally:
+            if path:Path(path).unlink(missing_ok=True)
+            # Exact newly created fixture only. No FORCE, session termination or shared DB cleanup.
+            admin.execute(sql.SQL('drop database {}').format(sql.Identifier(name)))
+
+
+if __name__=='__main__':
+    if os.environ.get('HEALTH_INITIAL_CREATE_DISPOSABLE')=='1':run_ci_disposable()
+    else:unittest.main()

@@ -664,7 +664,7 @@ jobs:
           fi
           test -n "$CLAIM_PR"; test -n "$CLAIM_HEAD_SHA"
           ADMITTED_ISSUE="$(node scripts/manage-migration-coordination.mjs --resolve-admitted-issue-for-pr "$CLAIM_PR" | jq -r '.issue // empty')"
-          # Step 2.1: a merged change is never refused for missing issue links.
+          # Step 2.1: a merged change is never refused for absent issue links.
           ADMIT_ARGS=()
           if [ -n "$ADMITTED_ISSUE" ] && [ "$ADMITTED_ISSUE" != "null" ]; then
             ADMIT_ARGS=(--admit-issue "$ADMITTED_ISSUE")
@@ -1932,7 +1932,7 @@ jobs:
           set -euo pipefail
           test -n "$SOURCE_PR"
           ADMITTED_ISSUE="$(node scripts/manage-migration-coordination.mjs --resolve-admitted-issue-for-pr "$SOURCE_PR" | jq -r '.issue // empty')"
-          # Step 2.1: a merged change is never refused for missing issue links.
+          # Step 2.1: a merged change is never refused for absent issue links.
           ADMIT_ARGS=()
           if [ -n "$ADMITTED_ISSUE" ] && [ "$ADMITTED_ISSUE" != "null" ]; then
             ADMIT_ARGS=(--admit-issue "$ADMITTED_ISSUE")

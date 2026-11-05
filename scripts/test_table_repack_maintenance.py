@@ -12,7 +12,7 @@ OP='repack-assets-804'
 
 
 def entry(**over):
-    value=dict(kind=repack.KIND,source_pr=1,work_issue=1966,claim_issue=5742,table='public.assets',
+    value=dict(kind=repack.KIND,source_pr=1,work_issue=5745,claim_issue=5742,table='public.assets',
                client_sha256='a'*64,wait_timeout_s=30,total_timeout_s=3000)
     value.update(over);return value
 
@@ -47,7 +47,7 @@ class FakeDB:
 def identity(target='preview'):
     return dict(target=target,project_ref='previewprojectrefabc' if target=='preview' else maintenance.PROD,
                 preview_project_ref='previewprojectrefabc',source_sha='b'*40,execution_sha='c'*40,
-                executor_digest='d'*64,source_pr=1,work_issue=1966,run_id=5)
+                executor_digest='d'*64,source_pr=1,work_issue=5745,run_id=5)
 
 
 def runner(db,receipts,target='preview',client=None,gate=lambda:None,value=None):

@@ -1,4 +1,4 @@
--- Claim #5742 (work issue #1966; u2giants/popdam3#804 cause 6).
+-- Claim #5742 (work issue #5745; u2giants/popdam3#804 cause 6).
 -- Installs pg_repack 1.5.2 so the governed table-repack maintenance operation
 -- can rewrite public.assets online (heap 2,024 MB for ~260 MB of live rows,
 -- which turns every DAM search visibility probe into a disk read).

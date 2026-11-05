@@ -1,3 +1,5 @@
+-- Requires the existing disposable initial superuser for real SESSION AUTHORIZATION.
+-- SET ROLE cannot substitute: SECURITY DEFINER must check the actual SESSION_USER.
 -- Actual installed function definitions over synthetic private tables only.
 begin;
 set local search_path=pg_temp,public,extensions;

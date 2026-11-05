@@ -10,7 +10,7 @@ begin
  where to_regprocedure(signature) is null;
  if missing is not null then
   raise exception using errcode='55000',
-   message='image identity prerequisites missing (install stages74126 then74135): '||array_to_string(missing,', ');
+   message='image identity prerequisites missing (install prerequisite74126 then revision142040): '||array_to_string(missing,', ');
  end if;
 end $$;
 do $$
@@ -37,7 +37,7 @@ begin
   raise exception 'missing prerequisite was silently accepted';
  exception when object_not_in_prerequisite_state then
   get stacked diagnostics missing_message=message_text;
-  if missing_message <> 'image identity prerequisites missing (install stages74126 then74135): public.va_image_identity_intentionally_missing_prerequisite()' then
+  if missing_message <> 'image identity prerequisites missing (install prerequisite74126 then revision142040): public.va_image_identity_intentionally_missing_prerequisite()' then
    raise exception 'incorrect prerequisite diagnostic: %',missing_message;
   end if;
  end;

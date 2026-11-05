@@ -100,6 +100,8 @@ class TargetBinding(unittest.TestCase):
         sidecar = json.loads((atomic.ROOT / 'scripts/production-verification-sidecars/20261105160717.json').read_text())
         self.assertEqual(sidecar['migration_sha256'], atomic.CURATED_TARGET_SHA256)
         self.assertEqual(len(sidecar['checks']), 4)
+        predecessor = json.loads((atomic.ROOT / 'scripts/production-verification-sidecars/20261105142616.json').read_text())
+        self.assertTrue({row['id'] for row in sidecar['checks']}.isdisjoint(row['id'] for row in predecessor['checks']))
 
 
 if __name__ == '__main__':

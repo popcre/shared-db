@@ -4,7 +4,7 @@
   "migration_sha256": "71cf9920249f4ac4df0ad5711d7bd276aba5825fa45676c4f4dc63d2b2912d5e",
   "checks": [
     {
-      "id": "publisher_character_1_singleton",
+      "id": "publisher_160717_character_1_singleton",
       "kind": "exact_row_count",
       "relation": "core.character",
       "filters": [
@@ -32,7 +32,7 @@
       "expected_count": 1
     },
     {
-      "id": "publisher_character_1_source",
+      "id": "publisher_160717_character_1_source",
       "kind": "exact_row_count",
       "relation": "core.taxonomy_source_ref",
       "filters": [
@@ -75,7 +75,7 @@
       "expected_count": 1
     },
     {
-      "id": "publisher_character_2_singleton",
+      "id": "publisher_160717_character_2_singleton",
       "kind": "exact_row_count",
       "relation": "core.character",
       "filters": [
@@ -103,7 +103,7 @@
       "expected_count": 1
     },
     {
-      "id": "publisher_character_2_source",
+      "id": "publisher_160717_character_2_source",
       "kind": "exact_row_count",
       "relation": "core.taxonomy_source_ref",
       "filters": [

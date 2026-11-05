@@ -6,6 +6,13 @@ set local transaction_timeout = '3s';
 
 do $guard$
 begin
+  if length('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789') <> 62
+     or 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA9999999999' <> repeat('A',52)||repeat('9',10)
+     or translate('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
+       'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
+       'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA9999999999') <> repeat('A',52)||repeat('9',10) then
+    raise exception '#5696 ASCII normalizer must map exactly 52 letters and 10 digits';
+  end if;
   if to_regclass('public.idx_style_groups_code_format') is not null
      or to_regprocedure('public.dam_catalog_code_format_exists(text)') is not null then
     raise exception '#5696 target already exists; reconcile its definition before proceeding';

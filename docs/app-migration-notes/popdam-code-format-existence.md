@@ -34,8 +34,8 @@ budget and test the actual RPC path. No global timeout is changed.
 
 Local validation uses an explicitly opted-in, isolated PostgreSQL 17 container:
 `DAM_CODE_FORMAT_DOCKER=1 python3 -m unittest scripts/test_dam_catalog_code_format.py`.
-It tests real plans, privilege/RLS preservation, input errors, replay refusal
-and an actual blocked reader cancelled by the outer server deadline. The
+It captures nested auto_explain from the installed parameterized RPC, with natural planner choices and no forced flags. It tests privilege/RLS preservation (including PostgreSQL 17 FORCE RLS with the existing service BYPASSRLS role), input errors, replay refusal
+and an actual blocked reader cancelled by the outer server deadline. The preview-only installed contract creates synthetic fixtures and rolls back the entire transaction; it proves actual service-role positive/independently absent negative behavior. Do not invoke fixture-writing contracts in production. The
 installed contract is `supabase/tests/dam_catalog_code_format_contracts.sql`.
 The separate protected catalog-derived proof exercises all 93 complete shapes
 without publishing actual product codes. Preview/live source-bound plans and

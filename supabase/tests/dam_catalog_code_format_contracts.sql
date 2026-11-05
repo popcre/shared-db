@@ -1,4 +1,4 @@
--- #5696: installed structure/ACL/input contracts. No catalog data is changed.
+-- #5696: preview contracts with synthetic fixtures; entire transaction rolls back.
 begin;
 set local search_path = pg_catalog, public;
 do $test$
@@ -47,6 +47,29 @@ begin
   if not ('statement_timeout=1000ms'=any(f.proconfig)) then
     raise exception 'function timeout hint changed; outer deadline proof remains separately required';
   end if;
+  -- Actual installed RPC behavior, not a separately handwritten reader.
+  insert into public.style_groups(sku,folder_path)
+    values (repeat('z',63)||'7','__contract_5696__') on conflict do nothing;
+end;
+$test$;
+set local role service_role;
+do $behavior$
+declare item text; negative_format text;
+begin
+  if public.dam_catalog_code_format_exists(repeat('A',63)||'9') is distinct from true then
+    raise exception 'installed format RPC missed synthetic complete shape';
+  end if;
+  select candidate into negative_format
+  from (select repeat('9',n)||repeat('A',64-n) candidate from generate_series(1,63) n) c
+  where not exists (select 1 from public.style_groups g
+    where g.sku collate "C" ~ '^[A-Za-z0-9]{7,64}$'
+      and translate(g.sku,'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
+        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA9999999999')=c.candidate)
+  limit 1;
+  if negative_format is null then raise exception 'no independently absent negative fixture shape'; end if;
+  if public.dam_catalog_code_format_exists(negative_format) is distinct from false then
+    raise exception 'installed format RPC returned true for independently absent shape';
+  end if;
   foreach item in array array[null::text,'','AAAAAAA','9999999','AAA99','A9.*AAAA','A9AAAAĀ',repeat('A',64)||'9'] loop
     begin
       perform public.dam_catalog_code_format_exists(item);
@@ -55,5 +78,5 @@ begin
     end;
   end loop;
 end;
-$test$;
+$behavior$;
 rollback;

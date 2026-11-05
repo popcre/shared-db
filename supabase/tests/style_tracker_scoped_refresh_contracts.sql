@@ -4,6 +4,8 @@ do $test$
 begin
   if has_function_privilege('anon', 'public.refresh_style_tracker_item_bridge_rows(uuid[])', 'execute')
      or not has_function_privilege('authenticated', 'public.refresh_style_tracker_item_bridge_rows(uuid[])', 'execute')
+     or has_function_privilege('service_role', 'public.refresh_style_tracker_item_bridge_rows(uuid[])', 'execute')
+     or not has_function_privilege('service_role', 'public.refresh_style_tracker_item_bridge()', 'execute')
      or has_function_privilege('authenticated', 'plm.refresh_style_tracker_item_bridge(uuid[])', 'execute')
      or has_function_privilege('authenticated', 'plm.apply_style_tracker_designer_resolutions(uuid[])', 'execute') then
     raise exception 'scoped refresh execution boundary is incorrect';
@@ -12,7 +14,8 @@ end $test$;
 
 insert into core.creative_designer(id, name) values
   ('00000000-5639-4000-8000-000000000001', 'ZZ5639 SharedOne'),
-  ('00000000-5639-4000-8000-000000000002', 'ZZ5639 SharedTwo');
+  ('00000000-5639-4000-8000-000000000002', 'ZZ5639 SharedTwo'),
+  ('00000000-5639-4000-8000-000000000003', 'ZZ5639 SharedThree');
 insert into plm.item(id, item_number, style_number, description, source_system, source_id)
 values ('00000000-5639-4000-8000-000000000010', 'ZZ5639-SHARED', 'ZZ5639-SHARED', 'ZZ5639 item', 'zztest', '5639-shared');
 insert into public.style_tracker_rows(id, source_sheet, source_row_number, tracker_type, sku, designer, description, row_data) values
@@ -29,12 +32,21 @@ begin
   end if;
 end $test$;
 
+-- New supported row has no bridge yet; unsupported sheet has a real bridge so
+-- rejection must prevent the old designer-only update, not merely return zero.
+insert into public.style_tracker_rows(id, source_sheet, source_row_number, tracker_type, sku, designer, description, row_data) values
+  ('00000000-5639-4000-8000-000000000104', 'License.Style', 9563904, 'licensed', 'ZZ5639-INSERT', 'ZZ5639 SharedOne', 'ZZ5639 insert', '{"origin":"user_added"}'),
+  ('00000000-5639-4000-8000-000000000105', 'Unexpected.Style', 9563905, 'other', 'ZZ5639-UNSUPPORTED', 'ZZ5639 SharedOne', 'ZZ5639 unsupported', '{"origin":"user_added"}');
+insert into plm.style_tracker_item_bridge(style_tracker_row_id, source_workbook_id, source_sheet, source_row_number, tracker_type, sku)
+select id, source_workbook_id, source_sheet, source_row_number, tracker_type, sku
+from public.style_tracker_rows where id='00000000-5639-4000-8000-000000000105';
+
 create temporary table zz5639_preimages as
 select style_tracker_row_id, to_jsonb(b) as preimage from plm.style_tracker_item_bridge b
-where style_tracker_row_id in ('00000000-5639-4000-8000-000000000102', '00000000-5639-4000-8000-000000000103');
+where style_tracker_row_id in ('00000000-5639-4000-8000-000000000102', '00000000-5639-4000-8000-000000000103', '00000000-5639-4000-8000-000000000105');
 create temporary table zz5639_item_preimage as
 select to_jsonb(i) as preimage from plm.item i where id='00000000-5639-4000-8000-000000000010';
-update public.style_tracker_rows set description='ZZ5639 changed'
+update public.style_tracker_rows set description='ZZ5639 changed', designer='ZZ5639 SharedThree'
 where id='00000000-5639-4000-8000-000000000101';
 
 -- The ordinary non-admin bootstrap user must retain settled Styles access.
@@ -45,8 +57,18 @@ do $test$
 declare result record;
 begin
   select * into result from public.refresh_style_tracker_item_bridge_rows(array['00000000-5639-4000-8000-000000000101'::uuid]);
-  if result.inserted_count <> 0 or result.updated_count <> 1 or result.total_count <> 1 then
+  if result.inserted_count is distinct from 0 or result.updated_count is distinct from 1 or result.total_count is distinct from 1
+     or result.inserted_count + result.updated_count is distinct from result.total_count then
     raise exception 'bounded result did not count exactly its one existing bridge row';
+  end if;
+end $test$;
+do $test$
+declare result record;
+begin
+  select * into result from public.refresh_style_tracker_item_bridge_rows(array['00000000-5639-4000-8000-000000000104'::uuid]);
+  if result.inserted_count is distinct from 1 or result.updated_count is distinct from 0 or result.total_count is distinct from 1
+     or result.inserted_count + result.updated_count is distinct from result.total_count then
+    raise exception 'insert plus designer counted its one row more than once';
   end if;
 end $test$;
 do $test$
@@ -78,8 +100,12 @@ reset role;
 do $test$
 begin
   if not exists(select 1 from plm.style_tracker_item_bridge where style_tracker_row_id='00000000-5639-4000-8000-000000000101'
-                and description='ZZ5639 changed' and creative_designer_id='00000000-5639-4000-8000-000000000001') then
+                and description='ZZ5639 changed' and creative_designer_id='00000000-5639-4000-8000-000000000003') then
     raise exception 'edited bridge row did not refresh with its designer';
+  end if;
+  if not exists(select 1 from plm.style_tracker_item_bridge where style_tracker_row_id='00000000-5639-4000-8000-000000000104'
+                and creative_designer_id='00000000-5639-4000-8000-000000000001') then
+    raise exception 'new scoped insert did not resolve its designer';
   end if;
   if exists(select 1 from zz5639_preimages p join plm.style_tracker_item_bridge b using(style_tracker_row_id)
             where p.preimage is distinct from to_jsonb(b)) then
@@ -92,6 +118,40 @@ begin
   if exists(select 1 from plm.style_tracker_item_bridge where style_tracker_row_id='00000000-5639-4000-8000-000000000103'
             and creative_designer_id is not null) then
     raise exception 'global ambiguous first-name evidence was hidden';
+  end if;
+end $test$;
+
+-- Unknown, unsupported-sheet and mixed valid/invalid inputs must all fail,
+-- with no bridge or canonical-item preimage changed by any rejected call.
+create temporary table zz5639_rejected_preimages as
+select id, to_jsonb(b) preimage from plm.style_tracker_item_bridge b;
+set local role authenticated;
+do $test$
+declare ids uuid[];
+begin
+  for ids in select value from (values
+    (array['00000000-5639-4000-8000-000000000199'::uuid]),
+    (array['00000000-5639-4000-8000-000000000105'::uuid]),
+    (array['00000000-5639-4000-8000-000000000101'::uuid,'00000000-5639-4000-8000-000000000199'::uuid]),
+    (array['00000000-5639-4000-8000-000000000101'::uuid,'00000000-5639-4000-8000-000000000105'::uuid])
+  ) invalid(value) loop
+    begin
+      perform public.refresh_style_tracker_item_bridge_rows(ids);
+      raise exception 'unknown, unsupported or mixed scoped IDs were accepted';
+    exception when invalid_parameter_value then null;
+    end;
+  end loop;
+end $test$;
+reset role;
+do $test$
+begin
+  if exists(select 1 from zz5639_rejected_preimages p full join plm.style_tracker_item_bridge b using(id)
+            where p.preimage is distinct from to_jsonb(b)) then
+    raise exception 'rejected scoped input modified a bridge row or timestamp';
+  end if;
+  if exists(select 1 from plm.item i, zz5639_item_preimage p where i.id='00000000-5639-4000-8000-000000000010'
+            and to_jsonb(i) is distinct from p.preimage) then
+    raise exception 'rejected scoped input changed canonical item';
   end if;
 end $test$;
 
@@ -109,6 +169,33 @@ begin
   if exists(select 1 from zz5639_full_preimages p join plm.style_tracker_item_bridge b using(id)
             where p.preimage is distinct from to_jsonb(b)) then
     raise exception 'zero-argument full-refresh compatibility changed';
+  end if;
+end $test$;
+
+-- Preserve the ORIGINAL full-refresh service capability without a user JWT.
+-- The new user-save endpoint is intentionally not a backend/service endpoint.
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select * from plm.refresh_style_tracker_item_bridge(null::uuid[]);
+select plm.apply_style_tracker_designer_resolutions(null::uuid[]);
+create temporary table zz5639_service_preimages as
+select id, to_jsonb(b) preimage from plm.style_tracker_item_bridge b;
+set local role service_role;
+select * from public.refresh_style_tracker_item_bridge();
+do $test$
+begin
+  begin
+    perform public.refresh_style_tracker_item_bridge_rows(array['00000000-5639-4000-8000-000000000101'::uuid]);
+    raise exception 'user-only scoped save accepted service role without a user';
+  exception when insufficient_privilege then null;
+  end;
+end $test$;
+reset role;
+do $test$
+begin
+  if exists(select 1 from zz5639_service_preimages p full join plm.style_tracker_item_bridge b using(id)
+            where p.preimage is distinct from to_jsonb(b)) then
+    raise exception 'original service full-refresh behavior differs';
   end if;
 end $test$;
 

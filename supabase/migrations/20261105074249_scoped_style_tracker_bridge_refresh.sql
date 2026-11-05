@@ -540,7 +540,7 @@ language plpgsql security definer set search_path = ''
 as $bounded$
 declare
   v_result record;
-  v_designer_updated integer;
+  v_validated integer;
 begin
   -- Settled Master Data access: every signed-in POP user may edit Styles.
   -- Match that access; do not introduce a designer/admin/DAM-role restriction.
@@ -555,15 +555,29 @@ begin
      or cardinality(p_row_ids) <> (select count(distinct id) from unnest(p_row_ids) as ids(id)) then
     raise exception 'Provide one to 25 distinct non-null Styles row IDs' using errcode = '22023';
   end if;
+  -- Lock only requested business rows, in a stable order, before any write.
+  -- Every requested ID must exist in the two supported Styles sheets.
+  perform r.id from public.style_tracker_rows r
+    where r.id = any(p_row_ids)
+      and r.source_sheet in ('License.Style', 'Generic.Style')
+    order by r.id for share;
+  get diagnostics v_validated = row_count;
+  if v_validated <> cardinality(p_row_ids) then
+    raise exception 'Every scoped ID must identify an existing supported Styles row' using errcode = '22023';
+  end if;
   select * into v_result from plm.refresh_style_tracker_item_bridge(p_row_ids);
-  v_designer_updated := plm.apply_style_tracker_designer_resolutions(p_row_ids);
+  perform plm.apply_style_tracker_designer_resolutions(p_row_ids);
+  -- Each validated row is already counted once by the upsert; designer work
+  -- touches that same subset and must not count the row a second time.
   inserted_count := v_result.inserted_count;
-  updated_count := v_result.updated_count + v_designer_updated;
+  updated_count := v_result.updated_count;
   total_count := v_result.total_count;
   return next;
 end;
 $bounded$;
-revoke all on function public.refresh_style_tracker_item_bridge_rows(uuid[]) from public, anon;
+-- This additive save endpoint is intentionally user-only. The original full
+-- public refresh retains its existing authenticated/service-role contract.
+revoke all on function public.refresh_style_tracker_item_bridge_rows(uuid[]) from public, anon, service_role;
 grant execute on function public.refresh_style_tracker_item_bridge_rows(uuid[]) to authenticated;
 comment on function public.refresh_style_tracker_item_bridge_rows(uuid[]) is
-  'Refresh one to 25 exact Styles rows and their bridge designer resolution; preserve every other bridge row. Full refresh callers retain the zero-argument RPC.';
+  'Signed-in user save: refresh one to 25 existing License.Style/Generic.Style rows and their designer resolution; count each row once. Original full refresh callers retain their zero-argument RPC and service-role access.';

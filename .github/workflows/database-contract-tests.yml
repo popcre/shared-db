@@ -383,6 +383,15 @@ jobs:
           PREVIEW_LEDGER_RECONCILE_POSTGRES_TEST: "1"
         run: python scripts/test_preview_ledger_orphan_reconcile_postgres.py
 
+      - name: Prove standalone health RPC prestate and atomic ledger safety
+        if: needs.classify.outputs.database_contract_tests == 'applicable'
+        env:
+          HEALTH_RPC_TEST_PORT: 54322
+          HEALTH_RPC_TEST_PASSWORD: postgres
+        run: |
+          HEALTH_RPC_MIGRATION_FILE="$RUNNER_TEMP/migrations/20261105160321_search_embedding_health_rpc_successor.sql" \
+            python scripts/test_health_rpc_successor_postgres.py
+
       - name: Replay every migration, recording failures (pass 1)
         if: needs.classify.outputs.database_contract_tests == 'applicable'
         id: replay

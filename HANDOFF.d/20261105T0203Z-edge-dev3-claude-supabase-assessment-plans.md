@@ -1,3 +1,9 @@
+---
+issue: 5608
+status: OPEN
+owner: unowned — next session claims
+---
+
 # Supabase assessment follow-up plans (2026-11-04 9:03 PM EST)
 
 A Supabase technician's assessment (2026-11-04) produced three open plans. None is started; read each plan's STATUS table first.

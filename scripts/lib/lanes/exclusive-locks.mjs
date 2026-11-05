@@ -196,6 +196,13 @@ export function recoverExclusive(kind, { holderId, apply = false, now = new Date
   } finally { releaseMutexOnExit(ownerCommit, io) }
 }
 
+function maintenanceSourceCurrent(metadata,tip,io){
+  if(!metadata.maintenanceClaim||typeof io.verifyMaintenanceSource!=='function')return false
+  const proof=io.verifyMaintenanceSource(metadata)
+  if(proof?.source_sha!==metadata.headSha||proof.current_main_sha!==tip||proof.source_pr!==metadata.pr||proof.run_id!==metadata.githubRunId)throw new LaneError('maintenance trusted-source proof mismatch')
+  return true
+}
+
 export function acquireExclusive(kind, metadata, io = githubIo) {
   const ref = EXCLUSIVE_REFS[kind]
   if (!ref) throw new LaneError(`unknown exclusive lane: ${kind}`)
@@ -233,10 +240,13 @@ export function acquireExclusive(kind, metadata, io = githubIo) {
       // only by production-inert paths or migrations appended strictly after its
       // ledger, proven from local git; any other move or git failure refuses.
       const tip = io.mainSha?.()
-      if (metadata.headSha !== tip && !(io.productionPrefixOk ?? productionPrefixOk)(metadata.headSha, tip)) throw new LaneError('production lane requires the exact current main SHA or a verified prefix of it')
+      if(metadata.maintenanceClaim){
+        if(!maintenanceSourceCurrent(metadata,tip,io))throw new LaneError('maintenance production requires authoritative trusted-source proof')
+      }else if (metadata.headSha !== tip && !(io.productionPrefixOk ?? productionPrefixOk)(metadata.headSha, tip)) throw new LaneError('production lane requires the exact current main SHA or a verified prefix of it')
       if (io.readRef(EXCLUSIVE_REFS.merge)) throw new LaneError(`a guarded merge is active; production promotion must wait; ${leaseHoldText('merge',io)}`)
     } else if (kind === 'preview-maintenance') {
-      if(metadata.headSha!==io.mainSha?.())throw new LaneError('preview maintenance requires exact current main')
+      const currentTip=io.mainSha?.()
+      if(!maintenanceSourceCurrent(metadata,currentTip,io))throw new LaneError('preview maintenance requires authoritative trusted-source proof')
       const pr=io.getPr?.(metadata.pr)
       if(pr?.merged!==true||!pr.merge_commit_sha)throw new LaneError('preview maintenance requires a merged source PR')
       assertMergeCommitInMainHistory(pr.merge_commit_sha,metadata.headSha,io)

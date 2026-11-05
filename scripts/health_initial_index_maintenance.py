@@ -74,6 +74,9 @@ class HealthInitial(Maintenance):
         return record
 
     def save(self,phase,start,**extra):
+        # Preserve immediate built-OID custody after CREATE, but never publish
+        # qualifying completion under code/policy that changed during the build.
+        if phase=='complete':self.gate()
         prior=self.read(phase)
         if prior is not None:return prior
         record={**self.identity,'operation_id':self.operation_id,'policy_digest':digest(self.entry),'kind':KIND,

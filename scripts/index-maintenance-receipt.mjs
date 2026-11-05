@@ -3,6 +3,8 @@ import {githubIo,parseAuthorLease,acquireExclusive,assertExclusive,releaseExclus
 import {claimWorkIssue} from './lib/lanes/claim-maintenance.mjs'
 import {readFileSync} from 'node:fs'
 import {createHash} from 'node:crypto'
+import {execFileSync} from 'node:child_process'
+import {fileURLToPath} from 'node:url'
 import {parseQueueScope} from './lib/lanes/queue-routing.mjs'
 import {conflicts} from './lib/hold-reason.mjs'
 const prefix='db-index-maintenance-v1 '
@@ -70,18 +72,24 @@ export function verifyHealthInitialClaim(request,io=githubIo){
  return {admitted:true,claim_issue:5622,work_issue:5622,kind:request.kind,
          scope_sha256:createHash('sha256').update(JSON.stringify(ownership)).digest('hex')}
 }
+export function verifyMaintenanceSource(request,execute=execFileSync){
+ const raw=execute('python3',[fileURLToPath(new URL('./prove_index_maintenance_source.py',import.meta.url))],{input:JSON.stringify(request),encoding:'utf8',maxBuffer:32768})
+ const proof=JSON.parse(raw)
+ if(proof.source_sha!==request.head_sha||proof.source_pr!==request.source_pr||proof.run_id!==request.run_id||!/^[a-f0-9]{40}$/.test(proof.current_main_sha??''))throw Error('native maintenance source proof binding refused')
+ return proof
+}
 export function maintenanceExclusive(mode,request,io=githubIo){
  if(!request||!['preview','production'].includes(request.target)||!Number.isSafeInteger(request.run_id)||request.run_id<=0||!Number.isSafeInteger(request.source_pr)||!/^([a-f0-9]{40})$/.test(request.head_sha??''))throw Error('maintenance exclusive request refused')
  const kind=request.target==='production'?'production':'preview-maintenance'
  if(mode==='acquire'){
   verifyMaintenanceClaim(request.claim,io)
   const metadata={owner:`github-actions:${request.run_id}:index-maintenance`,pr:request.source_pr,headSha:request.head_sha,githubRunId:request.run_id,githubRunAttempt:1,maintenanceClaim:request.claim}
-  return acquireExclusive(kind,metadata,{...io,verifyMaintenanceClaim:r=>verifyMaintenanceClaim(r,io)})
+  return acquireExclusive(kind,metadata,{...io,verifyMaintenanceClaim:r=>verifyMaintenanceClaim(r,io),verifyMaintenanceSource:()=>verifyMaintenanceSource(request,io.maintenanceSourceExecute)})
  }
  if(!request.lease?.holderId||!Number.isSafeInteger(request.lease.generation))throw Error('maintenance exclusive identity refused')
  if(request.claim?.kind==='health-initial/v1'&&request.lease.kind!==kind)throw Error('health exclusive target changed')
  const expected={holderId:request.lease.holderId,generation:request.lease.generation}
- if(mode==='assert')return assertExclusive(kind,expected,io)
+ if(mode==='assert'){verifyMaintenanceSource(request,io.maintenanceSourceExecute);return assertExclusive(kind,expected,io)}
  if(mode==='release')return releaseExclusive(kind,expected,io)
  throw Error('maintenance exclusive mode refused')
 }

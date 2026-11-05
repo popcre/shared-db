@@ -55,3 +55,6 @@ new passwords, role grants, `dblink_connect_u`, or any production/runtime change
 The extension is test-only. Both competitor sessions disconnect before committed
 fixtures are removed, including the normally retained app.profile history and
 its dependent access/role rows. Success and exception cleanup assert zero residue.
+
+
+Forward version continuity: prior unapplied reservation `20261105065814` remains permanently preserved. Both current preview and production ledgers were checked before the atomic forward reservation `20261105074314`; previous exact-head CI remains historical evidence, while the renamed source requires fresh checks. No legacy payload cleanup or caller cutover is performed by this migration.

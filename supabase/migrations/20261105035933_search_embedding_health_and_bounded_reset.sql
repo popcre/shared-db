@@ -1,6 +1,19 @@
 -- derived-from: none
 -- Issue #5622; application u2giants/popdam3#706 and #663.
 -- Additive health contract and bounded retry path; existing overload is unchanged.
+-- Compact partial indexes avoid the embedding heaps and the whole coverage
+-- meters, which both hit the live eight-second request ceiling on 2026-11-04.
+create index dam_search_health_pending_idx on public.dam_search_documents(indexed_at)
+where embedding is null and embedding_attempts < embedding_max_attempts
+  and embedding_error_category is distinct from 'permanent'
+  and nullif(metadata->>'thumbnail_url','') is not null;
+create index dam_search_health_errored_idx on public.dam_search_documents(entity_id)
+where embedding_error is not null;
+create index dam_search_health_last_write_idx on public.dam_search_documents(embedding_updated_at desc)
+where embedding_updated_at is not null;
+create index sg_search_health_last_write_idx on public.style_guide_search_documents(embedding_updated_at desc)
+where is_active and embedding_updated_at is not null;
+
 create function public.get_search_embedding_health()
 returns table(corpus text, pending bigint, errored bigint, last_write timestamptz,
               minutes_since_last_write numeric, stale boolean)
@@ -13,23 +26,34 @@ begin
     raise exception 'admin required' using errcode='42501';
   end if;
   return query
-  with meters as (
-    select 'dam'::text name, public.get_dam_search_embedding_status() meter,
-           (select max(d.embedding_updated_at) from public.dam_search_documents d) written
+  with counts as (
+    select 'dam'::text name,
+      (select count(*) from public.dam_search_documents d
+       where d.embedding is null and d.embedding_attempts<d.embedding_max_attempts
+         and d.embedding_error_category is distinct from 'permanent'
+         and nullif(d.metadata->>'thumbnail_url','') is not null) pending_count,
+      (select count(*) from public.dam_search_documents d where d.embedding_error is not null) error_count,
+      (select max(d.embedding_updated_at) from public.dam_search_documents d where d.embedding_updated_at is not null) written,
+      (select min(d.indexed_at) from public.dam_search_documents d
+       where d.embedding is null and d.embedding_attempts<d.embedding_max_attempts
+         and d.embedding_error_category is distinct from 'permanent'
+         and nullif(d.metadata->>'thumbnail_url','') is not null) oldest
     union all
-    select 'popsg', public.get_sg_search_embedding_status(),
-           (select max(d.embedding_updated_at) from public.style_guide_search_documents d where d.is_active)
-  ), health as (
-    select name, (meter->>'pending_documents')::bigint pending_count,
-           (meter->>'errored_documents')::bigint error_count, written,
-           coalesce(written, (meter->>'oldest_pending_indexed_at')::timestamptz,
-                    (meter->>'oldest_pending_updated_at')::timestamptz) activity
-    from meters
+    select 'popsg',
+      (select count(*) from public.style_guide_search_documents d
+       where d.is_active and d.content_sha256 is not null and d.embedding is null
+         and d.embedding_attempts<d.embedding_max_attempts and d.embedding_error_category is distinct from 'permanent'
+         and exists(select 1 from public.style_guide_files f where f.id=d.style_guide_file_id and f.thumbnail_url is not null)),
+      (select count(*) from public.style_guide_search_documents d where d.embedding_error is not null),
+      (select max(d.embedding_updated_at) from public.style_guide_search_documents d where d.is_active and d.embedding_updated_at is not null),
+      (select min(d.document_updated_at) from public.style_guide_search_documents d
+       where d.is_active and d.content_sha256 is not null and d.embedding is null
+         and d.embedding_attempts<d.embedding_max_attempts and d.embedding_error_category is distinct from 'permanent'
+         and exists(select 1 from public.style_guide_files f where f.id=d.style_guide_file_id and f.thumbnail_url is not null))
   )
-  select name, pending_count, error_count, written,
-         extract(epoch from (now()-written))/60,
-         pending_count > 0 and (activity is null or activity <= now()-interval '120 minutes')
-  from health;
+  select name,pending_count,error_count,written,extract(epoch from(now()-written))/60,
+    pending_count>0 and (coalesce(written,oldest) is null or coalesce(written,oldest)<=now()-interval '120 minutes')
+  from counts;
 end;
 $function$;
 revoke all on function public.get_search_embedding_health() from public,anon;

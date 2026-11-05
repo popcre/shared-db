@@ -92,6 +92,11 @@ class ProjectionPostgresTests(unittest.TestCase):
             self.assertEqual(c.execute("SELECT admin_option,inherit_option,set_option FROM pg_auth_members WHERE roleid='designflow_hts_prepack_projection_owner'::regrole AND member=current_user::regrole").fetchall(),[(True,False,False)])
     def test_failed_transaction_restores_every_object_and_retry(self):
         with self.assertRaises(self.fixture.pg.Error):self.apply(fail=True)
+        env={**self.fixture.env,'PGUSER':os.environ.get('HTS_EVALUATION_TEST_CLEANUP_USER','postgres')}
+        with atomic.credential_connection(env) as c:
+            c.execute('SET ROLE hts_evaluation_unauthorized')
+            with self.assertRaisesRegex(self.fixture.pg.Error,'must use exact native postgres actor'):c.execute(self.sql)
+            c.rollback()
         with self.fixture.admin() as c:
             self.assertIsNone(c.execute("SELECT to_regclass('plm.hts_evaluation_prepack_membership')").fetchone()[0])
             self.assertEqual(c.execute("SELECT count(*) FROM pg_roles WHERE rolname='designflow_hts_prepack_projection_owner'").fetchone()[0],0)

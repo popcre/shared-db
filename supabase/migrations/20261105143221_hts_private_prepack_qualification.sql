@@ -6,6 +6,9 @@ SET LOCAL statement_timeout = '8s';
 
 DO $guard$
 BEGIN
+  IF current_user<>'postgres' THEN
+    RAISE EXCEPTION 'REFUSED: projection migration must use exact native postgres actor';
+  END IF;
   IF EXISTS (SELECT FROM pg_roles WHERE rolname='designflow_hts_prepack_projection_owner') THEN
     RAISE EXCEPTION 'REFUSED: projection owner already exists; unexpected authority is not reusable';
   END IF;
@@ -57,7 +60,7 @@ BEGIN
   PERFORM set_config('hts.prepack_original_membership',coalesce(original::text,'null'),true);
 END
 $bootstrap$;
-GRANT designflow_hts_prepack_projection_owner TO CURRENT_USER WITH ADMIN FALSE, INHERIT FALSE, SET TRUE;
+GRANT designflow_hts_prepack_projection_owner TO postgres WITH ADMIN FALSE, INHERIT FALSE, SET TRUE;
 GRANT CREATE ON SCHEMA plm TO designflow_hts_prepack_projection_owner;
 
 CREATE VIEW plm.hts_evaluation_prepack_membership
@@ -137,7 +140,7 @@ COMMENT ON VIEW plm.hts_evaluation_prepack_membership IS
 ALTER VIEW plm.hts_evaluation_prepack_membership OWNER TO designflow_hts_prepack_projection_owner;
 REVOKE CREATE ON SCHEMA plm FROM designflow_hts_prepack_projection_owner;
 
-REVOKE designflow_hts_prepack_projection_owner FROM CURRENT_USER GRANTED BY CURRENT_USER;
+REVOKE designflow_hts_prepack_projection_owner FROM postgres GRANTED BY postgres;
 
 DO $verify$
 DECLARE original jsonb; actual jsonb;

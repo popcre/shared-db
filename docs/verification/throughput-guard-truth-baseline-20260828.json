@@ -631,8 +631,8 @@
       "marker_count": 1
     },
     {
-      "version": "20261105222623",
-      "path": "supabase/migrations/20261105222623_dflow_product_description.sql",
+      "version": "20261105231250",
+      "path": "supabase/migrations/20261105231250_dflow_product_description.sql",
       "marker_count": 1
     }
   ],

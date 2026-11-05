@@ -10,7 +10,7 @@ name: Automatic production promotion trigger
 on:
   push:
     branches: [main]
-    paths: ['supabase/migrations/**']
+    paths: ['supabase/migrations/**', 'config/nontransactional-index-maintenance.json']
   # Start the next PR as soon as a dispatched apply succeeds OR fails (#5532).
   # Failures used to wait for the hourly schedule or a merge, which idled the
   # whole queue for up to an hour (2026-11-02: a failed preview at 7:49 PM EST,
@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: read
+      contents: write
       actions: write
       issues: read
       pull-requests: read
@@ -58,3 +58,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Start the next automatic promotion
         run: python scripts/automatic_promotion_candidates.py
+      - name: Select an explicitly enabled exact-index maintenance operation
+        run: python scripts/automatic_index_maintenance.py

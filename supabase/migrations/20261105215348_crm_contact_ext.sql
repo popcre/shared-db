@@ -5,15 +5,15 @@
 -- derived-from: none
 create table crm.contact_ext (
   contact_id uuid primary key references core.contact(id) on delete cascade,
-  defunct_reason text check (defunct_reason in ('quit','transferred','retired')),
-  defunct_at timestamptz,
-  defunct_by uuid,
+  defunct_reason text not null check (defunct_reason in ('quit','transferred','retired')),
+  defunct_at timestamptz not null,
+  defunct_by uuid not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 comment on table crm.contact_ext is
-  'CRM-owned 1:1 extension of core.contact. Missing row or null defunct_reason means the contact is current. defunct_reason marks a contact who quit, transferred or retired.';
+  'CRM-owned 1:1 extension of core.contact. Missing row means the contact is current. defunct_reason marks a contact who quit, transferred or retired.';
 
 create trigger set_updated_at before update on crm.contact_ext
 for each row execute function app.set_updated_at();
@@ -22,8 +22,8 @@ alter table crm.contact_ext enable row level security;
 create policy crm_read on crm.contact_ext for select to authenticated
   using (app.has_app_access('crm') or app.has_role('administrator'));
 create policy crm_write on crm.contact_ext for all to authenticated
-  using (app.has_app_access('crm') or app.has_role('administrator'))
-  with check (app.has_app_access('crm') or app.has_role('administrator'));
+  using (app.has_role('administrator') or app.has_any_role(array['sales', 'licensing']::app.app_role[]))
+  with check (app.has_role('administrator') or app.has_any_role(array['sales', 'licensing']::app.app_role[]));
 
-grant select, insert, update, delete on crm.contact_ext to authenticated;
+grant select on crm.contact_ext to authenticated;
 grant all on crm.contact_ext to service_role;

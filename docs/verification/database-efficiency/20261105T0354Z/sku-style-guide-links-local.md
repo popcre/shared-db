@@ -16,7 +16,7 @@ Function-level SET statement_timeout does not impose a new budget on an already-
 
 ## Measured disposable workload
 
-`sku-style-guide-links-volume-fixture.sql` reproduces the volume shape. The timed workload concentrated 553,600 direct portal rows in DCP, used 10,000 guide rows, 27,915 PDF samples containing about 3.4 KB synthetic text each, 11,600 file-use rows and 12,821 SKU inputs. The local scaffold does not reproduce production row width, source-guard cost, concurrency or hardware. Shared-preview timing remains required.
+`supabase/tests/fixtures/5608/sku-style-guide-links-volume-fixture.sql` reproduces the volume shape. The timed workload concentrated 553,600 direct portal rows in DCP, used 10,000 guide rows, 27,915 PDF samples containing about 3.4 KB synthetic text each, 11,600 file-use rows and 12,821 SKU inputs. The local scaffold does not reproduce production row width, source-guard cost, concurrency or hardware. Shared-preview timing remains required.
 
 - Original full resolver: 23.535 seconds; 67,430 semantic result rows.
 - Revised atomic metadata/index migration: 116.695 milliseconds summed statement time, largest statement 51.793 milliseconds. No generated-column table rewrite.
@@ -28,7 +28,7 @@ Function-level SET statement_timeout does not impose a new budget on an already-
 
 ## Behavioral and recovery proof
 
-`sku-style-guide-links-eight-portals-fixture.sql` covers all eight portals independently of the concentrated volume case. Pending-view and ready-view EXCEPT ALL comparisons each returned zero differences, including a legitimately NULL normalized filename. All eight portals produced their filename and label links (16 links).
+`supabase/tests/fixtures/5608/sku-style-guide-links-eight-portals-fixture.sql` covers all eight portals independently of the concentrated volume case. Pending-view and ready-view EXCEPT ALL comparisons each returned zero differences, including a legitimately NULL normalized filename. All eight portals produced their filename and label links (16 links).
 
 The SQL contracts pass for existing parsing/matching/grants, bounded incremental work, new-portal/old-sheet matches, exact filename changes, new file-use rows, independent parser timestamp updates, external non-minimum label correction, failed-batch custody, and upsert-only history. Nine Node tests and the SQL safety guards pass.
 

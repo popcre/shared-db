@@ -96,6 +96,18 @@ class ActualGitProducerTests(unittest.TestCase):
             self.write('tools/runtime-guard.mjs','export const guard=0');self.main=self.commit()
             with self.subTest(body=body),self.assertRaisesRegex(source.RiskGateError,'tools-directory formatted prefix'):self.prove()
 
+    def test_js_shell_terminal_namespaces_refuse_before_alias_reuse(self):
+        cases=[('scripts/runtime.mjs',"const dir=`${ROOT}/tools`;const tool=path.join(dir,name);spawnSync('node',[tool])"),
+               ('scripts/runtime.sh','dir="$ROOT/tools";exec node "$dir/$name"'),
+               ('scripts/runtime.sh','dir=$ROOT/tools;exec node "$dir/$name"'),
+               ('scripts/runtime.mjs',"const dir=ROOT+'/tools';spawnSync('node',[dir+'/'+name])")]
+        for path,body in cases:
+            self.write(path,body);self.write('tools/runtime-guard.mjs','export const guard=1')
+            self.base=self.commit();self.main=self.base
+            self.write('tools/runtime-guard.mjs','export const guard=0');self.main=self.commit()
+            with self.subTest(path=path,body=body),self.assertRaisesRegex(source.RiskGateError,'tools-directory terminal component'):self.prove()
+            (self.root/path).unlink()
+
     def test_unchanged_relative_tool_importer_and_changed_nested_tool_refuse(self):
         self.write('tools/worker.mjs',"export {guard} from './nested/guard.mjs'\n")
         self.write('tools/nested/guard.mjs','export const guard=1')

@@ -109,6 +109,10 @@ def pin_paths(tree, read):
             raise RiskGateError('unresolved constructed maintenance tools-directory prefix')
         elif re.search(r'''(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*["']tools/?["']''',body):
             raise RiskGateError('unresolved maintenance tools-directory alias')
+        if path.endswith(('.mjs','.js','.sh')) and re.search(r"""/tools(?=["'`\s;]|$)""",body):
+            # A terminal namespace component has no proven static filename.
+            # Refuse at definition, before templates/shell aliases hide it.
+            raise RiskGateError('unresolved maintenance tools-directory terminal component')
         # Both import/export-from and dynamic literal imports; nested ../ works.
         for rel in re.findall(r'(?:from\s*|import\s*\()\s*[\'\"](\.{1,2}/[^\'\"]+)[\'\"]',body):
             parts=[]

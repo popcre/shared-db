@@ -118,7 +118,7 @@ relabel an old executor proof as current.
 
 ## Required release/acceptance sequence
 
-- [ ] Root reviews exact tooling and this actual source PR/current candidate; existing5681 ownership collision is resolved by its owner, without broad claim adoption.
+- [ ] Root reviews exact tooling and this actual two-DAM source/current candidate; fresh native admission covers both active DAM operations. SG remains inactive until its own5681 collision is resolved by its owner, without claim adoption.
 - [ ] Root authorizes only actually admitted entries; source PR authors identical policy, preserves foreign map, passes current native checks and merges with no active foreign source pin.
 - [ ] Existing automatic selector serially produces genuine preview shadow build+cleanup and canonical production completion for every activated operation; current catalogues/OIDs/definitions/owners/validity and immutable run receipts match.
 - [ ] After all three completed index receipts, root releases fresh RPC5719 normal preview/automatic production, preserving old preview history and retired pending production versions.

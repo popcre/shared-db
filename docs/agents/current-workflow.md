@@ -136,3 +136,10 @@ or turn the workflow-refactor program tracker into an application prerequisite.
 - [Scoped maintenance evidence](agent-work-contract-repo-maintenance-evidence.md)
 - [Coordination details and incident rationale](section-4-anti-collision-rules.md)
 - [Workflow refactor implementation plan](../../plan_shared_db_workflow_refactor.md)
+
+Character-load source reconciliation (#5592, PR5629): unmerged version
+`20261105043946` was verified absent from both current ledgers and forward-renamed
+to reserved successor `20261105074028` to satisfy source ordering. The old
+reservation/source history remains immutable; no historical restoration exception
+is used. Applied preview version `20261105035926` and original `20261104214842`
+remain natively retired by this producer.

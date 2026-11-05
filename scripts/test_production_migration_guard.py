@@ -213,10 +213,10 @@ class CharacterLoadRetirementTests(unittest.TestCase):
             for remote in (set(), {version}):
                 with self.assertRaisesRegex(GuardError, "general production lane blocks"):
                     parse_allowlist(version, remote)
-            self.assertIn("20261105043946", production_migration_guard.RETIRED_VERSION_REASONS[version])
+            self.assertIn("20261105074028", production_migration_guard.RETIRED_VERSION_REASONS[version])
 
     def test_complete_character_successor_remains_eligible(self):
-        self.assertEqual(parse_allowlist("20261105043946"), ["20261105043946"])
+        self.assertEqual(parse_allowlist("20261105074028"), ["20261105074028"])
 
 
 class RemainingUsersStrandedOriginalTests(unittest.TestCase):

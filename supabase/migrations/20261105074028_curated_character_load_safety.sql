@@ -7,7 +7,7 @@
 do $characters$
 declare
   v_issue constant text := 'popdam3#680';
-  v_actor constant text := 'shared-db migration 20261105043946';
+  v_actor constant text := 'shared-db migration 20261105074028';
   v_meta jsonb := jsonb_build_object('loaded_by', v_actor, 'issue', v_issue);
   v_cast constant uuid := '74225803-7815-48ae-a6cb-9ed38a8f8e43';
   v_clear constant uuid := '16f856cb-92c2-4d85-ba4b-c7f65d9f0ed0';

@@ -59,7 +59,7 @@ test('owner scope change changes receipt identity without depending on prose not
 })
 function lockIo(){
  const refs=new Map(),commits=new Map();let n=0
- return {refs,readRef:r=>refs.get(r)??null,getCommit:s=>({message:commits.get(s)}),
+ return {maintenanceSourceExecute:(_p,_a,opts)=>{const r=JSON.parse(opts.input);return JSON.stringify({source_sha:r.head_sha,current_main_sha:'a'.repeat(40),source_pr:r.source_pr,run_id:r.run_id})},refs,readRef:r=>refs.get(r)??null,getCommit:s=>({message:commits.get(s)}),
   makeOwnerCommit:m=>{const s=String(++n);commits.set(s,m);return s},
   createRef:(r,s)=>{if(refs.has(r))return false;refs.set(r,s);return true},deleteRef:r=>refs.delete(r),
   readCommitMessage:s=>commits.get(s),mainSha:()=> 'a'.repeat(40),getPr:()=>({merged:true,merge_commit_sha:'a'.repeat(40)}),

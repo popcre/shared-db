@@ -27,7 +27,7 @@ test('retired author lease clocks do not block an exact open object claim',()=>{
 
 import {maintenanceExclusive} from './index-maintenance-receipt.mjs'
 function lockIo(){
- const state=io();state.deleteRef=ref=>state.refs.delete(ref);state.readCommitMessage=sha=>state.commits.get(sha);state.mainSha=()=> 'a'.repeat(40);state.getPr=()=>({merged:true,merge_commit_sha:'a'.repeat(40)});state.compareCommits=()=>({status:'identical',behind_by:0});state.openClaims=()=>[claim()];return state
+ const state=io();state.maintenanceSourceExecute=(_p,_a,opts)=>{const r=JSON.parse(opts.input);return JSON.stringify({source_sha:r.head_sha,current_main_sha:state.mainSha(),source_pr:r.source_pr,run_id:r.run_id})};state.deleteRef=ref=>state.refs.delete(ref);state.readCommitMessage=sha=>state.commits.get(sha);state.mainSha=()=> 'a'.repeat(40);state.getPr=()=>({merged:true,merge_commit_sha:'a'.repeat(40)});state.compareCommits=()=>({status:'identical',behind_by:0});state.openClaims=()=>[claim()];return state
 }
 test('actual native exclusive manager acquires fences and releases the existing preview ref',()=>{
  const state=lockIo(),r={target:'preview',run_id:123,source_pr:1,head_sha:'a'.repeat(40),claim:request}
@@ -42,4 +42,54 @@ test('actual native production manager refuses overlapping merge and preserves t
  const r={target:'production',run_id:123,source_pr:1,head_sha:'a'.repeat(40),claim:request}
  assert.throws(()=>maintenanceExclusive('acquire',r,state),/guarded merge/)
  assert.equal(state.refs.get(EXCLUSIVE_REFS.merge),'foreign-merge')
+})
+
+
+import {execFileSync} from 'node:child_process'
+import {createHash} from 'node:crypto'
+import {fileURLToPath} from 'node:url'
+const nativeOp='sg-hnsw-rebuild-5616-v1'
+const nativeSuffix=createHash('sha256').update(nativeOp).digest('hex').slice(0,12)
+const nativeObjects=['table public.style_guide_search_documents','index public.idx_sg_search_documents_embedding_hnsw',`index public.sg_hnsw_${nativeSuffix}_new`,`index public.sg_hnsw_${nativeSuffix}_retired`]
+function actualGateIo(caseName='unrelated'){
+ const state=lockIo();state.testCase=caseName;state.mainSha=()=> 'd'.repeat(40)
+ state.getPr=()=>({merged:true,merge_commit_sha:'c'.repeat(40)})
+ state.compareCommits=()=>({status:'ahead',behind_by:0})
+ state.openClaims=()=>[claim(99,5616,nativeObjects)]
+ state.maintenanceSourceExecute=(_program,_args,opts)=>execFileSync('python3',[fileURLToPath(new URL('./test_index_maintenance_workflow_gate.py',import.meta.url)),'--native-fixture'],{...opts,input:JSON.stringify({...JSON.parse(opts.input),_test_case:state.testCase}),stdio:['pipe','pipe','pipe']})
+ return state
+}
+function actualRequest(target){return {target,run_id:123,source_pr:1,head_sha:'b'.repeat(40),dispatch_ref:`refs/db-index-maintenance-operations/${nativeOp}/${target}/${'b'.repeat(40)}`,claim:{claim_issue:99,work_issue:5616,objects:nativeObjects}}}
+test('actual native preview admission invokes full Python bot/source/claim/target gate; irrelevant HTS ancestor succeeds',()=>{
+ const state=actualGateIo(),r=actualRequest('preview')
+ r.lease=maintenanceExclusive('acquire',r,state)
+ assert.equal(state.refs.get(EXCLUSIVE_REFS.preview),r.lease.ownerSha)
+ assert.equal(maintenanceExclusive('assert',r,state).holderId,r.lease.holderId)
+ maintenanceExclusive('release',r,state);assert.equal(state.refs.has(EXCLUSIVE_REFS.preview),false)
+})
+test('actual native preview refuses changed guard/current policy/new dependency and nonancestor without creating lease',()=>{
+ for(const kind of ['guard','policy','dependency','atomic','forcepush']){
+  const state=actualGateIo(kind),r=actualRequest('preview')
+  assert.throws(()=>maintenanceExclusive('acquire',r,state))
+  assert.equal(state.refs.has(EXCLUSIVE_REFS.preview),false)
+ }
+})
+test('actual native gate rejects forged proof booleans and changed source/run/PR bindings',()=>{
+ for(const value of [true,{source_sha:'b'.repeat(40),current_main_sha:'d'.repeat(40),source_pr:99,run_id:123},{source_sha:'b'.repeat(40),current_main_sha:'d'.repeat(40),source_pr:1,run_id:999}]){
+  const state=actualGateIo();state.maintenanceSourceExecute=()=>JSON.stringify(value)
+  assert.throws(()=>maintenanceExclusive('acquire',actualRequest('preview'),state))
+  assert.equal(state.refs.has(EXCLUSIVE_REFS.preview),false)
+ }
+})
+
+test('actual native production admission re-derives full authority; normal production-prefix policy unchanged',()=>{
+ const state=actualGateIo(),r=actualRequest('production')
+ r.lease=maintenanceExclusive('acquire',r,state)
+ assert.equal(state.refs.get(EXCLUSIVE_REFS.production),r.lease.ownerSha)
+ assert.equal(maintenanceExclusive('assert',r,state).holderId,r.lease.holderId)
+ state.testCase='guard'
+ assert.throws(()=>maintenanceExclusive('assert',r,state))
+ assert.equal(state.refs.get(EXCLUSIVE_REFS.production),r.lease.ownerSha)
+ maintenanceExclusive('release',r,state)
+ assert.equal(state.refs.has(EXCLUSIVE_REFS.production),false)
 })

@@ -57,7 +57,7 @@ class SelectionTests(unittest.TestCase):
                  patch.object(maintenance,'Receipts',return_value=receipts),patch.object(maintenance,'gh',return_value={'sha':'a'*40}),\
                  patch.object(promotion,'workflow_runs',side_effect=runs) as fetch,patch.object(promotion,'is_held',return_value=False),\
                  patch.object(automatic.time,'monotonic',side_effect=clock),patch.object(automatic.time,'sleep') as sleep,\
-                 patch.object(automatic.subprocess,'run') as dispatch:
+                 patch.object(automatic.subprocess,'run') as dispatch,patch.object(sys,'argv',['automatic_index_maintenance.py']):
                 self.assertEqual(automatic.main(),0)
             return fetch.call_count,sleep.call_count,dispatch.call_count,output.read_text() if output.exists() else ''
     def test_waits_for_finishing_run_then_dispatches_and_signals_promotion_skip(self):

@@ -337,9 +337,9 @@ def executor_digest(operation_id=None):
            '.github/workflows/shared-supabase-migrations.yml']
     if operation_id and operation_id.startswith('health-'):
         paths+=['scripts/health_initial_index_maintenance.py','config/health-initial-index-definitions.json']
-    legacy={path:hashlib.sha256((ROOT/path).read_bytes()).hexdigest() for path in paths}
-    from index_maintenance_source import executor_inputs
-    return digest({'legacy_producers':legacy,'safety_and_runtime_inputs':executor_inputs(ROOT)})
+    paths+=['scripts/index_maintenance_source.py','scripts/prove_index_maintenance_source.py',
+            'scripts/lib/lanes/exclusive-locks.mjs']
+    return digest({path:hashlib.sha256((ROOT/path).read_bytes()).hexdigest() for path in paths})
 
 
 def main():

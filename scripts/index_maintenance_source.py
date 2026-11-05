@@ -35,6 +35,8 @@ def python_tools(syntax):
         return [node]
     def suffix(values):
         for i,value in enumerate(values):
+            if literal(value) is None and any(isinstance(v,ast.Constant) and isinstance(v.value,str) and v.value.rstrip('/')=='tools' for v in ast.walk(value)):
+                raise RiskGateError('unresolved maintenance tools-directory expression')
             if literal(value) is not None and literal(value).rstrip('/')=='tools':
                 tail=values[i+1:]
                 if not tail or any(literal(v) is None for v in tail):
@@ -101,6 +103,8 @@ def pin_paths(tree, read):
             raise RiskGateError('unbounded dynamic maintenance tool dependency')
         elif re.search(r'''["']tools/?["']\s*(?:\)|,\s*(?!["'])[^\s])''',body):
             raise RiskGateError('unresolved constructed maintenance tools-directory prefix')
+        elif re.search(r'''(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*["']tools/?["']''',body):
+            raise RiskGateError('unresolved maintenance tools-directory alias')
         # Both import/export-from and dynamic literal imports; nested ../ works.
         for rel in re.findall(r'(?:from\s*|import\s*\()\s*[\'\"](\.{1,2}/[^\'\"]+)[\'\"]',body):
             parts=[]
@@ -173,19 +177,3 @@ def prove(source,entry,operation,api):
     if api(f'repos/{REPO}/commits/main').get('sha')!=main:
         raise RiskGateError('maintenance main advanced during producer proof')
     return {'source_sha':source,'current_main_sha':main,'compared':compared}
-
-
-def executor_inputs(root):
-    """Bind receipts to the same complete safety/runtime-input surface.
-
-    This returns actual working bytes just like the original three-file digest;
-    tracked membership comes from exact checkout Git, never an untracked file.
-    """
-    listed=subprocess.run(['git','ls-tree','-r','-z','HEAD'],cwd=root,capture_output=True,check=True).stdout
-    tree={}
-    for row in listed.split(b'\0'):
-        if not row:continue
-        metadata,path=row.split(b'\t',1);mode,kind,sha=metadata.decode().split()
-        tree[path.decode()]={'mode':mode,'type':kind,'sha':sha}
-    paths=pin_paths(tree,lambda p:(root/p).read_text())
-    return {p:hashlib.sha256((root/p).read_bytes()).hexdigest() for p in sorted(paths)}

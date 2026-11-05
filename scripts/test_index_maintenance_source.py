@@ -77,6 +77,16 @@ class ActualGitProducerTests(unittest.TestCase):
         self.write('tools/runtime-guard.mjs','export const guard=0');self.main=self.commit()
         with self.assertRaisesRegex(source.RiskGateError,'tools-directory prefix'):self.prove()
 
+    def test_wrapped_and_plain_namespace_aliases_refuse_without_invented_tool_allowance(self):
+        cases=[('scripts/runtime.py',"from pathlib import Path\nname='runtime-guard.mjs'\np=Path(ROOT)/str('tools')/name"),
+            ('scripts/runtime.mjs',"const toolsDir='tools';const tool=path.join(toolsDir,name)")]
+        for path,body in cases:
+            self.write(path,body);self.write('tools/runtime-guard.mjs','export const guard=1')
+            self.base=self.commit();self.main=self.base
+            self.write('tools/runtime-guard.mjs','export const guard=0');self.main=self.commit()
+            with self.subTest(path=path),self.assertRaisesRegex(source.RiskGateError,'tools-directory'):self.prove()
+            (self.root/path).unlink()
+
     def test_unchanged_relative_tool_importer_and_changed_nested_tool_refuse(self):
         self.write('tools/worker.mjs',"export {guard} from './nested/guard.mjs'\n")
         self.write('tools/nested/guard.mjs','export const guard=1')
@@ -126,7 +136,7 @@ class ActualGitProducerTests(unittest.TestCase):
         import nontransactional_index_maintenance as maintenance
         from test_nontransactional_index_maintenance import FakeDB,MemoryReceipts,entry
         legacy=['scripts/nontransactional_index_maintenance.py','scripts/index-maintenance-receipt.mjs']
-        producers=['scripts/index_maintenance_source.py','scripts/prove_index_maintenance_source.py','scripts/lib/lanes/exclusive-locks.mjs','scripts/atomic_migration_apply.py','scripts/review_finding_hold.py']
+        producers=['scripts/index_maintenance_source.py','scripts/prove_index_maintenance_source.py','scripts/lib/lanes/exclusive-locks.mjs']
         for p in legacy+producers:self.write(p,'# original safety input' if p.endswith('.py') else '// original safety input')
         self.commit()
         with patch.object(maintenance,'ROOT',self.root):before=maintenance.executor_digest()

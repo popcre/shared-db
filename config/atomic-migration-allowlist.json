@@ -217,6 +217,14 @@
         "production"
       ],
       "strip_outer_transaction": true
+    },
+    "20261105171913": {
+      "sha256": "12aac1054c19f89495167c59d5e0ad83b676ef10ec7f793e8956b51b0bc7658d",
+      "targets": [
+        "preview",
+        "production"
+      ],
+      "strip_outer_transaction": true
     }
   }
 }

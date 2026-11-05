@@ -50,6 +50,16 @@ class ReceiptCompatibilityTests(unittest.TestCase):
             with self.subTest(kwargs=kwargs), self.assertRaises(RiskGateError):
                 self.prove(**kwargs)
 
+    def test_historical_no_write_recovery_preserves_stable_ledger_checks(self):
+        self.prove()  # its immutable original apply receipt must still pass
+        name = f'{VERSION}_synthetic.sql'
+        texts = {'preview-dry-run.txt': name, 'preview-apply.txt': name}
+        prove_preview_migration_contents(texts=texts, allowlist=[VERSION], repo_root=self.root,
+                                        before_versions={VERSION}, after_versions={VERSION}, historical=True)
+        with self.assertRaises(RiskGateError):
+            prove_preview_migration_contents(texts=texts, allowlist=[VERSION], repo_root=self.root,
+                                            before_versions={VERSION}, after_versions={VERSION, 'extra'}, historical=True)
+
     def test_hash_extra_text_multiline_or_unverified_suffix_stay_refused(self):
         for kwargs in ({'wrong_hash': True}, {'extra_line': True}, {'suffix': SUFFIX + ' extra'},
                        {'suffix': ' initial_credential=unverified'}, {'suffix': '\n' + SUFFIX},

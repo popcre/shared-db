@@ -56,7 +56,11 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-      - name: Start the next automatic promotion
-        run: python scripts/automatic_promotion_candidates.py
+      # Maintenance selects first: a promotion dispatched first would make every
+      # selection see an active run, and a held PR fails the promotion step.
       - name: Select an explicitly enabled exact-index maintenance operation
+        id: index_maintenance
         run: python scripts/automatic_index_maintenance.py
+      - name: Start the next automatic promotion
+        if: always() && steps.index_maintenance.outputs.dispatched != 'true'
+        run: python scripts/automatic_promotion_candidates.py

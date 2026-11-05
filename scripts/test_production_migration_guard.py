@@ -217,6 +217,8 @@ class CharacterLoadRetirementTests(unittest.TestCase):
 
     def test_complete_character_successor_remains_eligible(self):
         self.assertEqual(parse_allowlist("20261105074028"), ["20261105074028"])
+
+
 class AggregateReaderRetirementTests(unittest.TestCase):
     def test_category_bug_original_is_refused_even_with_preview_ledger(self):
         for remote in (set(), {"20261105042549"}):

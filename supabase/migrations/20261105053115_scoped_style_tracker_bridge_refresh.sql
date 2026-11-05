@@ -1,4 +1,5 @@
 -- Work issue #5639; application need u2giants/popdam3#469.
+-- derived-from: 20260911210844, 20260710135700
 -- Share the existing matching bodies through private overloads. Existing full
 -- callers keep their zero-argument entry points. No row is rewritten on apply.
 -- Global catalog/evidence reads are retained; only bridge write candidates scope.

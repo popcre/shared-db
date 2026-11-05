@@ -4,12 +4,15 @@ begin;
 set local lock_timeout='500ms';
 set local statement_timeout='2500ms';
 set local transaction_timeout='3s';
+set local search_path=pg_catalog,public,extensions;
 
 do $guard$
 begin
   if not exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)')
       and md5(p.prosrc)='5ad9960f79ef20074b0f93e2b589caf2' and pg_get_userbyid(p.proowner)='postgres'
       and p.prosecdef and p.provolatile='s' and p.proretset
+      and pg_get_function_arguments(p.oid)='p_query text, p_filters jsonb, p_limit integer, p_offset integer, p_document_types text[] DEFAULT NULL::text[], p_query_embedding vector DEFAULT NULL::vector, p_min_rank real DEFAULT 0, p_min_semantic_score real DEFAULT NULL::real'
+      and pg_get_function_result(p.oid)='TABLE(document_type text, entity_id uuid, asset_id uuid, style_group_id uuid, keyword_rank real, semantic_rank real, rank real, total_count bigint, has_more boolean, facets jsonb)'
       and p.proconfig=ARRAY['search_path=public, extensions','statement_timeout=30s']::text[]
       and p.proacl::text='{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}') then
     raise exception '#5730 original search contract differs; reconcile rather than overwrite';
@@ -313,6 +316,8 @@ begin
   if not exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)')
       and md5(p.prosrc)='1bede30349edd91071a493a6d5ff1203' and pg_get_userbyid(p.proowner)='postgres'
       and p.prosecdef and p.provolatile='s' and p.proretset
+      and pg_get_function_arguments(p.oid)='p_query text, p_filters jsonb, p_limit integer, p_offset integer, p_document_types text[] DEFAULT NULL::text[], p_query_embedding vector DEFAULT NULL::vector, p_min_rank real DEFAULT 0, p_min_semantic_score real DEFAULT NULL::real'
+      and pg_get_function_result(p.oid)='TABLE(document_type text, entity_id uuid, asset_id uuid, style_group_id uuid, keyword_rank real, semantic_rank real, rank real, total_count bigint, has_more boolean, facets jsonb)'
       and p.proconfig=ARRAY['search_path=public, extensions','statement_timeout=30s']::text[]
       and p.proacl::text='{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}') then
     raise exception '#5730 installed search contract differs; reconcile rather than overwrite';

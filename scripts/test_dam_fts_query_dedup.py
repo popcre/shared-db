@@ -134,6 +134,23 @@ class FullSearchParity(unittest.TestCase):
         self.assertNotEqual(refused.returncode, 0)
         self.assertIn('original search contract differs', refused.stderr)
 
+    def test_z_default_only_drift_refuses_atomically_without_overwriting_preimage(self):
+        drifted = original_definition().replace('p_min_rank real DEFAULT 0,', 'p_min_rank real DEFAULT 0.1,')
+        self.assertNotEqual(drifted, original_definition())
+        try:
+            self.sql(drifted)
+            before = self.metadata()
+            self.assertEqual(self.sql("SELECT md5(prosrc) FROM pg_proc WHERE oid='" + SIGNATURE + "'::regprocedure").stdout.strip(), '5ad9960f79ef20074b0f93e2b589caf2')
+            refused = self.sql(MIGRATION.read_text(), False)
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn('original search contract differs', refused.stderr)
+            self.assertEqual(self.metadata(), before)
+            arguments = self.sql("SELECT pg_get_function_arguments('" + SIGNATURE + "'::regprocedure)").stdout
+            self.assertIn('0.1', arguments)
+        finally:
+            self.sql(original_definition())
+            self.sql(MIGRATION.read_text())
+
 
 if __name__ == '__main__':
     unittest.main()

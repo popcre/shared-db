@@ -121,7 +121,7 @@ class OverdueHoldAlert(unittest.TestCase):
         pr = {**self.pr, "findings": []}
         self.assertEqual(len(m.overdue_holds([pr], self.at("2026-11-02T17:31:00Z"))), 1)
 
-    def test_main_reports_an_overdue_hold_as_success_with_reason(self):
+    def test_main_reports_an_overdue_hold_without_failing_the_run(self):
         pr = {k: v for k, v in self.pr.items() if k != "findings"}
         saved = (m.gh, m.merged_migration_prs, m.workflow_runs, m.is_held, sys.argv, os.environ.get("GITHUB_REPOSITORY"))
         m.gh = lambda *a: {"sha": "abc"}
@@ -150,7 +150,7 @@ class ExhaustedAlert(unittest.TestCase):
     fails = [{"display_title": "DB preview apply abc PR5460 20261102171000", "status": "completed",
               "conclusion": "failure", "created_at": "2026-11-02T18:00:00Z"}] * 3
 
-    def test_main_reports_exhausted_attempts_as_success_with_reason(self):
+    def test_main_reports_engineer_action_required_without_failing_the_run(self):
         saved = (m.gh, m.merged_migration_prs, m.workflow_runs, m.is_held, sys.argv, os.environ.get("GITHUB_REPOSITORY"))
         m.gh = lambda *a: {"sha": "abc"}
         m.merged_migration_prs = lambda repo: [self.pr]
@@ -357,7 +357,7 @@ class ProductionReRunAlert(unittest.TestCase):
         self.assertTrue(m.version_on_main("20261103174555"))
 
     @mock.patch.object(m, "ACKNOWLEDGED_RE_RUNS", {})
-    def test_main_reports_a_re_run_as_success_with_reason(self):
+    def test_main_reports_a_re_run_without_failing_the_run(self):
         saved = (m.gh, m.merged_migration_prs, m.workflow_runs, m.is_held, m.applied_in_any_attempt,
                  sys.argv, os.environ.get("GITHUB_REPOSITORY"))
         m.gh = lambda *a: {"sha": "abc"}
@@ -786,6 +786,21 @@ class TriggerDefectExitsFailure(unittest.TestCase):
                 os.environ.pop("GITHUB_REPOSITORY", None)
             else:
                 os.environ["GITHUB_REPOSITORY"] = saved[2]
+class AdversarialUnmergedSource(unittest.TestCase):
+    """Adversarial table (plan section 9): wording removed from conditions must
+    not let an unmerged source through.  merged_migration_prs must refuse it."""
+
+    def test_unmerged_source_refused(self):
+        files = [[{"status": "added", "filename": "supabase/migrations/20261105120000_x.sql"}]]
+        pulls = [{"number": 5600, "merged_at": None}]
+        with mock.patch.object(m, "gh", side_effect=[pulls, files]):
+            self.assertEqual(m.merged_migration_prs("o/r"), [])
+
+    def test_closed_but_unmerged_source_refused(self):
+        files = [[{"status": "added", "filename": "supabase/migrations/20261105120000_x.sql"}]]
+        pulls = [{"number": 5601, "merged_at": ""}]
+        with mock.patch.object(m, "gh", side_effect=[pulls, files]):
+            self.assertEqual(m.merged_migration_prs("o/r"), [])
 
 
 if __name__ == "__main__":

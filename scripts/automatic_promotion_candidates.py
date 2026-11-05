@@ -16,8 +16,12 @@ froze every release for hours on one finding). It waits while a migration
 workflow run is in flight (one dispatch at a time). A PR out of automatic
 attempts is passed over the same way, with a loud ENGINEER ACTION REQUIRED
 alert, so one dead PR cannot park every later promotion (#5532). A PR held
-longer than ALERT_AFTER fails this run as a loud advisory alert instead of
-skipping silently. It never writes a database.
+longer than ALERT_AFTER is reported as a loud advisory annotation instead of
+skipping silently. Advisory findings (holds, exhausted attempts, re-runs) are
+annotations, never exit status: this step starts the next promotion and a red
+run must mean the selector itself broke, not that findings exist (queue-hygiene
+idiom; #5558: an unactionable red hides real alerts). It never writes a
+database.
 
 Known cross-PR derivation bases wait for production evidence before a child
 consumes attempts (#5608/#5651). Canonical declared_bases resolves historical
@@ -442,6 +446,13 @@ def main(now: datetime | None = None) -> int:
     # Step 2.2 (plan_ci-process-repair): holds, waits, used-up attempts and
     # acknowledged history are expected states. Exit success with the reason in
     # the summary; exit failure only when the trigger itself broke.
+    #
+    # Advisory findings above are annotations, not exit status. A failing run
+    # used to be the alert channel, but these findings are long-lived PR states
+    # evaluated only on runs that reach queue selection -- runs that early-return
+    # "wait" (a migration workflow run in flight) never see them -- so the step
+    # flapped red/green on unrelated timing while the hold gate itself (checked
+    # at decide, again before dispatch, again before the apply) kept working.
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
         with open(summary_path, "a", encoding="utf-8") as fh:

@@ -1,22 +1,11 @@
 -- derived-from: none
 -- Issue #5622; application u2giants/popdam3#706 and #663.
--- Additive health contract and bounded retry path; existing overload is unchanged.
--- Index builds use the migration transaction budget; RPC request ceilings stay unchanged.
-set local statement_timeout = '15min';
+-- One atomic CLI file: fail closed rather than hold up normal tagging saves.
+set local lock_timeout = '500ms';
+set local statement_timeout = '2500ms';
+set local transaction_timeout = '3s';
 
--- Compact partial indexes avoid the embedding heaps and the whole coverage
--- meters, which both hit the live eight-second request ceiling on 2026-11-04.
-create index dam_search_health_pending_idx on public.dam_search_documents(indexed_at)
-where embedding is null and embedding_attempts < embedding_max_attempts
-  and embedding_error_category is distinct from 'permanent'
-  and nullif(metadata->>'thumbnail_url','') is not null;
-create index dam_search_health_errored_idx on public.dam_search_documents(entity_id)
-where embedding_error is not null;
-create index dam_search_health_last_write_idx on public.dam_search_documents(embedding_updated_at desc)
-where embedding_updated_at is not null;
-create index sg_search_health_last_write_idx on public.style_guide_search_documents(embedding_updated_at desc)
-where is_active and embedding_updated_at is not null;
-
+-- Existing reset overload is preserved; only compact indexed health reads.
 create function public.get_search_embedding_health()
 returns table(corpus text, pending bigint, errored bigint, last_write timestamptz,
               minutes_since_last_write numeric, stale boolean)

@@ -3,7 +3,7 @@ begin;
 do $test$
 declare health record; recovered integer;
 begin
-  if exists(select 1 from (values ('dam_search_health_pending_idx'),('dam_search_health_errored_idx'),
+  if exists(select 1 from (values ('dam_search_health_errored_idx'),
       ('dam_search_health_last_write_idx'),('sg_search_health_last_write_idx')) wanted(name)
       where to_regclass('public.'||wanted.name) is null) then
     raise exception 'compact health indexes are missing';

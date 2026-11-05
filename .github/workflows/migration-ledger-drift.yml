@@ -59,6 +59,11 @@ on:
         required: true
         default: production
         options: [production, preview]
+      bloat_post:
+        description: "Assets bloat monitor: post this reading as a new comment on #5747 (dry run)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -201,3 +206,43 @@ jobs:
 
           gh issue create --repo "${REPO}" --label db-work \
             --title "${TITLE}" --body-file /tmp/alarm-body.md
+
+  # -------------------------------------------------------------------------
+  # Re-bloat monitor for public.assets (popcre/shared-db#5747, plan Step 6).
+  # Lives here because this is the existing daily read-only production probe
+  # with the Management API token; it is a separate job so a drift failure and
+  # a bloat reading never mask each other. Read-only: one constant SELECT.
+  # Keeps one rolling ledger comment on #5747 and comments there only when the
+  # heap/live ratio > 2.0 or the 7-day HOT ratio < 70% (at most weekly), or on
+  # a dispatch with bloat_post=true. Owner: shared-db maintainers. Retire this
+  # job and scripts/assets-bloat-monitor*.mjs after 60 in-threshold days, with
+  # a note on #5747.
+  # -------------------------------------------------------------------------
+  assets-bloat:
+    name: Assets bloat monitor
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test the monitor
+        run: node --test scripts/assets-bloat-monitor.test.mjs
+      - name: Read public.assets bloat (production, read-only)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          POST: ${{ inputs.bloat_post && 'true' || 'false' }}
+        run: |
+          set -uo pipefail
+          node scripts/assets-bloat-monitor.mjs --target=production --issue=5747 --post="$POST" | tee /tmp/bloat.txt
+          CODE=${PIPESTATUS[0]}
+          { echo "## public.assets bloat"; echo; cat /tmp/bloat.txt; } >> "$GITHUB_STEP_SUMMARY"
+          case "$CODE" in
+            0) echo "Within thresholds." ;;
+            1) echo "::warning::public.assets is over a bloat threshold; reported on #5747." ;;
+            *) echo "::error::No bloat reading was taken (exit $CODE). This is not a clean result."; exit "$CODE" ;;
+          esac

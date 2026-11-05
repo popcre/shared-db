@@ -68,7 +68,7 @@ DECLARE role_name text; fn regprocedure;
 BEGIN
  FOREACH role_name IN ARRAY ARRAY['anon','authenticated'] LOOP
   IF has_table_privilege(role_name,'dam.agent_directory_browse_requests','SELECT,INSERT,UPDATE,DELETE') THEN RAISE EXCEPTION 'table access leaked to %',role_name; END IF;
-  FOREACH fn IN ARRAY ARRAY['public.admit_agent_directory_browse(uuid,uuid,uuid,text)'::regprocedure,'public.claim_agent_directory_browse(uuid)'::regprocedure,'public.complete_agent_directory_browse(uuid,uuid,jsonb) IS NOT FALSE'::regprocedure,'public.get_agent_directory_browse_result(uuid,uuid)'::regprocedure,'public.cancel_agent_directory_browse(uuid,uuid) IS NOT FALSE'::regprocedure] LOOP
+  FOREACH fn IN ARRAY ARRAY['public.admit_agent_directory_browse(uuid,uuid,uuid,text)'::regprocedure,'public.claim_agent_directory_browse(uuid)'::regprocedure,'public.complete_agent_directory_browse(uuid,uuid,jsonb)'::regprocedure,'public.get_agent_directory_browse_result(uuid,uuid)'::regprocedure,'public.cancel_agent_directory_browse(uuid,uuid)'::regprocedure] LOOP
    IF has_function_privilege(role_name,fn,'EXECUTE') OR NOT has_function_privilege('service_role',fn,'EXECUTE') THEN RAISE EXCEPTION 'service-only ACL failed % %',role_name,fn; END IF;
   END LOOP;
  END LOOP;

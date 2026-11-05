@@ -20,6 +20,14 @@ insert into public.style_tracker_rows(id, source_sheet, source_row_number, track
   ('00000000-5639-4000-8000-000000000102', 'Generic.Style', 9563902, 'generic', 'ZZ5639-SHARED', 'ZZ5639 SharedTwo', 'ZZ5639 unrelated', '{"origin":"user_added"}'),
   ('00000000-5639-4000-8000-000000000103', 'Generic.Style', 9563903, 'generic', 'ZZ5639-AMBIGUOUS', 'ZZ5639', 'ZZ5639 ambiguous', '{"origin":"user_added"}');
 select * from public.refresh_style_tracker_item_bridge();
+do $test$
+begin
+  if (select count(*) from plm.style_tracker_item_bridge
+      where style_tracker_row_id in ('00000000-5639-4000-8000-000000000101', '00000000-5639-4000-8000-000000000102')
+        and plm_item_id='00000000-5639-4000-8000-000000000010') <> 2 then
+    raise exception 'cross-row fixture must genuinely share its canonical PLM item';
+  end if;
+end $test$;
 
 create temporary table zz5639_preimages as
 select style_tracker_row_id, to_jsonb(b) as preimage from plm.style_tracker_item_bridge b

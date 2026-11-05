@@ -10,6 +10,28 @@
       "statement_timeout_ms": 900000,
       "swap_timeout_ms": 2000,
       "total_timeout_s": 3600
+    },
+    "health-dam-errored-5622": {
+      "kind": "health-initial/v1",
+      "source_pr": 5721,
+      "work_issue": 5622,
+      "claim_issue": 5622,
+      "definition_sha256": "ef5b8aa4b781ce0427d5447dc8b62c7a7e84a8093f70629da44e28701a05adda",
+      "lock_timeout_ms": 500,
+      "statement_timeout_ms": 900000,
+      "swap_timeout_ms": 2000,
+      "total_timeout_s": 3600
+    },
+    "health-dam-write-5622": {
+      "kind": "health-initial/v1",
+      "source_pr": 5721,
+      "work_issue": 5622,
+      "claim_issue": 5622,
+      "definition_sha256": "5fd72ff2aaf31bed0f380ed5301cd16dcfdd72b278a1a64fcc591417a5fc1ecc",
+      "lock_timeout_ms": 500,
+      "statement_timeout_ms": 900000,
+      "swap_timeout_ms": 2000,
+      "total_timeout_s": 3600
     }
   }
 }

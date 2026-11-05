@@ -2,18 +2,15 @@
 
 ## Status and authority
 
-DRAFT proposal only. No active policy entry is changed by this packet. Same
-health need/claim5622 and application706 remain open. Tooling5713 must genuinely
-merge and its exact native checks pass before any activation. RPC successor5719
-(version20261105160321) stays DRAFT until all three owned production index
-receipts and actual catalogues prove the prerequisites. No index ledger is forged.
-
-The source PR containing this packet will be the exact future activation source;
-its actual source number is5721. Only after root reviews
-that concrete packet may this same PR author the identical three policy entries.
-Normal protected merge and existing automatic maintenance selection then provide
-preview/production delivery. This document alone cannot satisfy the runtime
-source-policy authorship check.
+DRAFT activation source for the two admitted DAM operations only. The active policy
+adds health-dam-errored-5622 and health-dam-write-5622, bound to actual source
+PR5721. The SG health operation below remains an INACTIVE proposal; its policy
+key is absent while foreign5681 table WRITE remains protected. Root exact source
+review is required before merge/activation. Tooling5713 genuinely merged
+ ee28beb2dc97265c9ad585cf4b54d5bb99e0ea58. Same5622/application706 remain open.
+RPC5719/20261105160321 stays DRAFT until all three genuine owned production
+receipts and catalogues prove prerequisites. No index ledger is forged. Complete
+both DAM preview/production receipts before any later SG policy/source change.
 
 ## Exact definitions and claims
 
@@ -45,10 +42,10 @@ scope changes. SG remains HOLD until its actual owner safely completes/releases
 or canonically narrows its own claim. Fresh native admission is required for each
 operation; no blocked entry is enabled speculatively to exhaust automatic retries.
 
-## Inactive candidate entries
+## DAM activation entries and inactive SG proposal
 
-Merge only these owned entries into the actual current operations map after root
-release. Preserve every existing SG/foreign entry byte-for-byte; refresh the
+Only the first two DAM entries are authored in the policy. The SG entry is
+proposal-only and MUST stay absent until a separate admitted source release. Preserve every existing SG/foreign entry byte-for-byte; refresh the
 current-main preimage instead of replaying an old full policy snapshot. The
 hashes below are the native JSON-string definition digests, not raw-file hashes.
 
@@ -126,3 +123,20 @@ relabel an old executor proof as current.
 - [ ] Existing automatic selector serially produces genuine preview shadow build+cleanup and canonical production completion for every activated operation; current catalogues/OIDs/definitions/owners/validity and immutable run receipts match.
 - [ ] After all three completed index receipts, root releases fresh RPC5719 normal preview/automatic production, preserving old preview history and retired pending production versions.
 - [ ] Actual REST both-corpus count/latency accuracy, natural poller/render/T8 saves, real bounded reset, monitor alert/clear and timed acceptance remain open on5622/706. No full tagging/scan stop or restart is authorized.
+
+## Fresh first-stage release packet
+
+11:43:15 AM EST November5: actual native10-claim snapshot admits both DAM
+operations with no conflicting/malformed claim; SG still refuses protected5681.
+11:43:16 AM EST: approved correct-production bounded catalogue returns NO three
+canonical health indexes and only the unchanged legacy reset overload. No new
+health function is installed. 11:43:17 AM EST: current preview returns all three
+canonical indexes valid/ready with expected definitions/owner and the exact
+historical three health/reset bodies. Protected preimages retain full definitions,
+ACLs and target identity; no shared data was mutated. At actual activation these
+preimages and current exclusive lanes/source pins must be rechecked.
+
+Local native19 ownership/crash tests and12 claim/fencing tests pass. Exact policy
+assertion proves only the two DAM keys added, existing SG entry deep-equal to
+current main, and health-sg-write-5622 ABSENT. This is source preparation, not
+permission to merge or execute. Root reviews this concrete source before release.

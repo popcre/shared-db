@@ -54,7 +54,7 @@ class ActualGitProducerTests(unittest.TestCase):
         self.write('tools/worker.mjs','export const x=9');self.main=self.commit()
         with self.assertRaisesRegex(source.RiskGateError,'producer/current policy changed'):self.prove()
         with self.assertRaisesRegex(source.RiskGateError,'unbounded dynamic'):
-            source.pin_paths({'.github/workflows/shared-supabase-migrations.yml':{'type':'blob'},'scripts/run.py':{'type':'blob'}},lambda p:'const p=`tools/${name}`')
+            source.pin_paths({'.github/workflows/shared-supabase-migrations.yml':{'type':'blob'},'scripts/run.mjs':{'type':'blob'}},lambda p:'const p=`tools/${name}`')
 
     def test_current_disabled_policy_and_credential_sibling_change_refuse(self):
         self.write('scripts/sibling.py','# retired credential protection');self.main=self.commit()
@@ -62,6 +62,18 @@ class ActualGitProducerTests(unittest.TestCase):
     def test_new_tool_dependency_and_removed_existing_dependency_refuse(self):
         self.write('tools/worker.mjs','export {y} from "./new.mjs"');self.write('tools/new.mjs','export const y=1');self.main=self.commit()
         with self.assertRaises(source.RiskGateError):self.prove()
+    def test_current_repository_execution_and_test_fixtures_have_complete_self_coverage(self):
+        repository=Path(__file__).resolve().parents[1]
+        rows=subprocess.check_output(['git','ls-tree','-r','HEAD'],cwd=repository,text=True)
+        tree={}
+        for line in rows.splitlines():
+            meta,path=line.split('\t');mode,kind,sha=meta.split();tree[path]={'mode':mode,'type':kind,'sha':sha}
+        pinned=source.pin_paths(tree,lambda p:subprocess.check_output(['git','show','HEAD:'+p],cwd=repository,text=True))
+        self.assertIn('scripts/atomic_migration_apply.py',pinned)
+        self.assertIn('scripts/lib/lanes/exclusive-policy.mjs',pinned)
+        self.assertIn('tools/load-customs-benchmark.py',pinned)
+        self.assertNotIn('tools/coldlion-landing/qualify-hts-prepacks.mjs',pinned)
+
     def test_truncated_tree_and_no_comparisons_fail_closed(self):
         self.truncated=True
         with self.assertRaisesRegex(source.RiskGateError,'truncated'):self.prove()

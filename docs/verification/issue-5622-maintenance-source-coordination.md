@@ -84,7 +84,8 @@ Health tests prove relevant drift during CREATE preserves built OID but publishe
 no qualifying completion. All original claim/OID/fencing tests remain.
 
 Local offline suite before the final segmented-path regression addition:
-2012 tests PASS,93 skipped. Targeted final regressions and fresh native CI must
+2013 tests PASS,93 skipped. The final repository-self-coverage regression and
+Python syntax-aware dynamic-path handling also pass targeted tests; fresh native CI must
 pass on the exact final head; CI is not live delivery. Historical d281→bc3 Git
 object parity is a LOCAL regression only, never a current admission or receipt.
 

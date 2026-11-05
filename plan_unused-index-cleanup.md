@@ -96,7 +96,7 @@ drop index if exists public.idx_sgf_directory_path_trgm;
 ```
 Gate: `supabase db lint` / repo CI SQL checks pass; no `concurrently` keyword in executable SQL.
 
-**Step 4 — Preview rehearsal.** Open PR (body: `Refs popcre/shared-db#5610`); CI applies to preview. Run EXPLAIN on preview for representative queries of each affected feature (style-guide tag filter, style-guide path search, DAM full-text search, AI tag candidate claim) and confirm plans don't regress to a Seq Scan on large tables. Gate: CI green and EXPLAIN outputs saved in `.../unused-index-preview.md`.
+**Step 4 — Preview rehearsal.** Open PR (body: `Refs popcre/shared-db#5610`) and pass required checks; after merge, the supported merged-main workflow rehearses the exact allowlisted migration on the configured preview. Do not persist a pre-merge migration manually. Under the current rehearsal ownership rules, run EXPLAIN on preview for representative queries of each affected feature (style-guide tag filter, style-guide path search, DAM full-text search, AI tag candidate claim) and confirm plans don't regress to a Seq Scan on large tables. Gate: CI green and EXPLAIN outputs saved in `.../unused-index-preview.md`.
 
 **Step 5 — Land.** Merge when required checks pass; automatic promotion applies to production. Never run it manually. Gate: promotion workflow run succeeded.
 
@@ -108,7 +108,7 @@ Gate: `supabase db lint` / repo CI SQL checks pass; no `concurrently` keyword in
 Add `supabase/tests/unused_index_cleanup_contracts.sql` asserting each dropped name is absent (`to_regclass(...) is null`) and each KEEP index in §6 still exists — so a future cleanup can't silently remove a vector index. Existing `supabase test db` suite (including `popdam_image_similarity_contracts.sql`) stays green.
 
 ## 11. Constraints
-Load `shared-db-change` skill; claim the exact index names on popcre/shared-db#5610 before writing the migration; `ai-task-gates start --class shared-db`. Production is read-only except via automatic promotion; an open `review-finding` issue blocks promotion. Forward-only migrations; never edit an applied one. Don't hand-edit `types/database.types.ts` (indexes produce no type change). Times in EST. Gotcha: any server restart resets scan counts — always check postmaster start time before trusting `idx_scan`. Gotcha: two indexes share the name `hts_rag_rulings_search_trgm_idx` (public and hts_rag) — always schema-qualify.
+Load `shared-db-change`, read [current-workflow.md](docs/agents/current-workflow.md), document exact index scope on popcre/shared-db#5610, start the shared-db task class and use an owned current-upstream worktree with the surviving version/lock/promotion tooling. Retired author-claim/admission commands are not a delivery step. Production is read-only except via automatic promotion; an open `review-finding` issue blocks promotion. Forward-only migrations; never edit an applied one. Don't hand-edit `types/database.types.ts` (indexes produce no type change). Times in EST. Gotcha: any server restart resets scan counts — always check postmaster start time before trusting `idx_scan`. Gotcha: two indexes share the name `hts_rag_rulings_search_trgm_idx` (public and hts_rag) — always schema-qualify.
 
 ## 12. Access
 Supabase MCP `execute_sql` (read-only use) on the shared project; `gh` authenticated for `popcre`; CI provides preview branch. No secrets needed in this plan.

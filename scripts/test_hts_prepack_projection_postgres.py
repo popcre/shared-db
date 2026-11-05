@@ -141,4 +141,31 @@ class ProjectionPostgresTests(unittest.TestCase):
             self.assertEqual(len(source),1)
             self.assertIn('PARENT',json.dumps(source[0]))
 
+    def test_existing_closed_contracts_accept_only_the_exact_private_pair(self):
+        self.apply()
+        def section(path,heading):
+            text=Path(path).read_text();start=text.index('do $$',text.index(heading))
+            return text[start:text.index('$$;',start)+3]
+        spine=section('supabase/tests/coldlion_raw_landing_spine_contracts.sql','-- C. RLS')
+        application=section('supabase/tests/dam_order_list_item_columns_contract.sql','-- A. THE POLICY ITSELF')
+        with self.fixture.admin() as c:
+            c.execute('''CREATE TABLE coldlion.window_ledger(id int); CREATE TABLE coldlion.change_log(id int);
+              ALTER TABLE coldlion.window_ledger ENABLE ROW LEVEL SECURITY;
+              ALTER TABLE coldlion.change_log ENABLE ROW LEVEL SECURITY;
+              GRANT ALL ON coldlion.sync_run,coldlion.window_ledger,coldlion.change_log TO service_role;
+              DROP POLICY synthetic_public_broad ON plm.item;
+              CREATE POLICY item_popdam_read ON plm.item FOR SELECT TO authenticated USING(true);
+              CREATE POLICY plm_read ON plm.item FOR SELECT TO authenticated USING(false);
+              CREATE POLICY plm_admin_write ON plm.item FOR ALL TO authenticated USING(false) WITH CHECK(false);
+              GRANT SELECT ON plm.item TO authenticated;''')
+            c.execute(spine);c.execute(application)
+            for mutate,contract in [
+                ('CREATE POLICY unexpected_application_read ON plm.item FOR SELECT TO authenticated USING(true)',application),
+                ('ALTER POLICY hts_prepack_projection_owner_select ON coldlion.sync_run TO authenticated',spine),
+                ('ALTER POLICY hts_prepack_projection_owner_select ON coldlion.sync_run USING(true)',spine),
+                ('CREATE POLICY unexpected_spine_read ON coldlion.window_ledger FOR SELECT TO PUBLIC USING(true)',spine),
+            ]:
+                with self.subTest(mutation=mutate),self.assertRaises(self.fixture.pg.Error),c.transaction():
+                    c.execute(mutate);c.execute(contract)
+
 if __name__=='__main__':unittest.main()

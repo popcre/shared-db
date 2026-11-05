@@ -512,10 +512,6 @@ class AlreadyInProduction(unittest.TestCase):
             self.assertEqual(m.refused_as_applied("o/r", {"id": 1}), set())
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class KnownProductionDependencies(unittest.TestCase):
     BASE = "20261105044255"
     CHILD = "20261105061627"
@@ -610,3 +606,7 @@ class KnownProductionDependencies(unittest.TestCase):
             m.decide([self.child], [self.run_for(conclusion="failure")], lambda n: [], applied=unreadable)
         self.assertEqual(m.decide([self.child], [self.run_for(conclusion="failure")], lambda n: [],
                                   applied=lambda r: False, refused=lambda r: set())[0], "idle")
+
+
+if __name__ == "__main__":
+    unittest.main()

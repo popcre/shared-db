@@ -38,6 +38,16 @@ class EvaluationPostgresTests(unittest.TestCase):
             INSERT INTO plm.customs_benchmark_observation(style_number) VALUES ('SYNTHETIC');
             INSERT INTO plm.customs_benchmark_artifact VALUES ('test',true,'private-pointer'),('not-verified',false,'private-pointer');
             INSERT INTO coldlion.item_detail(item_no,pre_pack_code) VALUES ('SYNTHETIC','PPKTEST');''')
+    def tearDown(self):
+        # Leave no synthetic role/schema behind for the later full replay job.
+        with self.admin() as c:
+            c.execute('DROP SCHEMA IF EXISTS plm CASCADE; DROP SCHEMA IF EXISTS coldlion CASCADE; DROP SCHEMA IF EXISTS dflow_prod CASCADE; DROP SCHEMA IF EXISTS supabase_migrations CASCADE;')
+            for r in [atomic.HTS_CREDENTIAL_ROLE,'designflow_hts_evaluation_read']:
+                if c.execute('SELECT 1 FROM pg_roles WHERE rolname=%s',(r,)).fetchone():
+                    c.execute('GRANT '+r+' TO CURRENT_USER WITH SET TRUE')
+                    c.execute('DROP OWNED BY '+r)
+            c.execute('DROP ROLE IF EXISTS designflow_hts_evaluation_reader; DROP ROLE IF EXISTS designflow_hts_evaluation_read;')
+
     def apply(self,raw=None,env=None):
         atomic.initial_credential_apply(env or self.env,atomic.HTS_CREDENTIAL_VERSION,'hts_evaluation_read_access',raw or self.raw,atomic.split_sql(self.raw))
     def test_atomic_rollback_retry_login_reads_and_column_write_denials(self):

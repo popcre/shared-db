@@ -51,6 +51,10 @@ class ForeignTargetVersions(unittest.TestCase):
         with mock.patch.object(m, "gh", side_effect=[pulls, files]):
             return m.merged_migration_prs("o/r")
 
+    def test_retired_character_originals_never_reenter_the_automatic_queue(self):
+        self.assertEqual(self.prs("20261104214842", "20261105035926"), [])
+        self.assertEqual(self.prs("20261104214842", "20261105043946")[0]["versions"], ["20261105043946"])
+
     def test_sandbox_only_pr_is_never_a_production_candidate(self):
         self.assertEqual(self.prs("20261102215524"), [])
 

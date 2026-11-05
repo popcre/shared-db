@@ -71,9 +71,9 @@ temporary DDL and unknown calls remain refused. The forward loader introduced
 by [#5624](https://github.com/popcre/shared-db/pull/5624) fails closed when its
 required source records are absent, resolves exact source codes before a unique
 name fallback, and retains source file evidence. Its aliases are exact source
-filename labels; full decorated canonical labels are never truncated. The old
-unsafe migration remains immutable and refused; promote only the replacement
-version through the normal workflow. See [#5592](https://github.com/popcre/shared-db/issues/5592)
+filename labels; full decorated canonical labels are never truncated. The unsafe original and preview-only predecessor remain immutable and are
+natively retired; the automatic candidate selector also excludes hard-blocked
+versions. Promote only the fresh replacement through the normal workflow. See [#5592](https://github.com/popcre/shared-db/issues/5592)
 for the original finding and verification.
 
 **Self-service additive work:** an eligible additive change wholly inside the

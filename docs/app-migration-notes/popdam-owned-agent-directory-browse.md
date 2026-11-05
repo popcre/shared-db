@@ -44,3 +44,14 @@ on both success and error for cross-session committed fixtures.
 No scan, render, tagging, asset or existing admin_config object changes. No agent
 update is required. Backend promotion precedes dependent caller edits; production
 acceptance remains open until ordinary selected-agent browsing is proved live.
+
+Test-runner custody: the ordinary functional suite runs as the normal default
+contract-test role, and explicitly exercises service_role, anon and authenticated.
+Only the concurrency filename uses the workflow's existing disposable
+`supabase_admin` whitelist. Default `postgres` refuses passwordless dblink with
+“Non-superusers must provide a password in the connection string or send
+ delegated GSSAPI credentials.” The existing disposable superuser route avoids
+new passwords, role grants, `dblink_connect_u`, or any production/runtime change.
+The extension is test-only. Both competitor sessions disconnect before committed
+fixtures are removed, including the normally retained app.profile history and
+its dependent access/role rows. Success and exception cleanup assert zero residue.

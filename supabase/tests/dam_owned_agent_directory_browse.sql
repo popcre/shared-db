@@ -41,8 +41,9 @@ BEGIN
  IF public.complete_agent_directory_browse(bridge,r1,'{}') IS NOT FALSE OR public.complete_agent_directory_browse(bridge,r1,'[{}]') IS NOT FALSE
     OR public.complete_agent_directory_browse(bridge,r1,'[{"name":1,"is_dir":true}]') IS NOT FALSE
     OR public.complete_agent_directory_browse(bridge,r1,'[{"name":"x","is_dir":"yes"}]') IS NOT FALSE THEN RAISE EXCEPTION 'malformed result accepted'; END IF;
- UPDATE dam.agent_directory_browse_requests SET claim_until=clock_timestamp()-interval '1 second' WHERE request_id=r1;
+ UPDATE dam.agent_directory_browse_requests SET claim_until=clock_timestamp()-interval '1 second',expires_at=clock_timestamp()+interval '10 seconds' WHERE request_id=r1;
  IF public.claim_agent_directory_browse(bridge) IS NULL THEN RAISE EXCEPTION 'lease not redelivered'; END IF;
+ IF EXISTS(SELECT 1 FROM dam.agent_directory_browse_requests WHERE request_id=r1 AND claim_until IS DISTINCT FROM expires_at) THEN RAISE EXCEPTION 'delivery lease outlived deadline'; END IF;
  IF public.complete_agent_directory_browse(bridge,r1,payload) IS NOT TRUE THEN RAISE EXCEPTION 'completion rejected'; END IF;
  original:=public.get_agent_directory_browse_result(r1,a);
  IF original->>'agent_id' IS DISTINCT FROM bridge::text OR original->'listed_at' IS DISTINCT FROM original->'completed_at' THEN RAISE EXCEPTION 'wire aliases'; END IF;

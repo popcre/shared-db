@@ -10,6 +10,7 @@ DECLARE
  blocked boolean := false;
  contender_pid integer;
  locked_preimage jsonb;
+ fixture_profile uuid;
  i integer;
 BEGIN
  PERFORM dblink_connect('browse_setup',connection_string);
@@ -18,6 +19,7 @@ BEGIN
   INSERT INTO auth.users(id,email,raw_user_meta_data,raw_app_meta_data) VALUES('56520000-0000-0000-0000-000000000101','browse-5652-race@fixture.invalid','{}','{}');
   INSERT INTO public.agent_registrations(id,agent_name,agent_type,agent_key_hash) VALUES('56520000-0000-0000-0000-000000000111','browse-5652-race','bridge','fixture-browse-5652-race');
  $setup$);
+ SELECT id INTO fixture_profile FROM app.profile WHERE email='browse-5652-race@fixture.invalid';
  PERFORM dblink_connect('browse_winner',connection_string);
  PERFORM dblink_connect('browse_contender',connection_string);
  SELECT pid INTO contender_pid FROM dblink('browse_contender','SELECT pg_backend_pid()') AS t(pid integer);
@@ -75,10 +77,22 @@ BEGIN
  PERFORM dblink_disconnect('browse_contender');
  PERFORM dblink_exec('browse_setup',$cleanup$
   DELETE FROM public.agent_registrations WHERE id='56520000-0000-0000-0000-000000000111';
-  DELETE FROM auth.users WHERE id='56520000-0000-0000-0000-000000000101';
+  DELETE FROM app.profile WHERE email='browse-5652-race@fixture.invalid';
+   DELETE FROM auth.users WHERE id='56520000-0000-0000-0000-000000000101';
   DELETE FROM public.invitations WHERE email='browse-5652-race@fixture.invalid';
  $cleanup$);
  PERFORM dblink_disconnect('browse_setup');
+ IF EXISTS(SELECT 1 FROM public.agent_registrations WHERE id='56520000-0000-0000-0000-000000000111')
+  OR EXISTS(SELECT 1 FROM dam.agent_directory_browse_requests WHERE agent_id='56520000-0000-0000-0000-000000000111')
+  OR EXISTS(SELECT 1 FROM auth.users WHERE id='56520000-0000-0000-0000-000000000101')
+  OR EXISTS(SELECT 1 FROM public.invitations WHERE email='browse-5652-race@fixture.invalid')
+  OR EXISTS(SELECT 1 FROM app.profile WHERE email='browse-5652-race@fixture.invalid')
+  OR EXISTS(SELECT 1 FROM public.profiles WHERE email='browse-5652-race@fixture.invalid' OR user_id='56520000-0000-0000-0000-000000000101')
+  OR EXISTS(SELECT 1 FROM public.user_roles WHERE user_id='56520000-0000-0000-0000-000000000101')
+  OR EXISTS(SELECT 1 FROM public.app_access WHERE user_id='56520000-0000-0000-0000-000000000101')
+  OR EXISTS(SELECT 1 FROM app.app_access WHERE profile_id=fixture_profile)
+  OR EXISTS(SELECT 1 FROM app.user_role WHERE profile_id=fixture_profile)
+ THEN RAISE EXCEPTION 'committed browse fixture residue'; END IF;
  RAISE NOTICE 'PASS: two genuine sessions overlapped; contender waited on lock; exactly one admission won';
 EXCEPTION WHEN OTHERS THEN
  -- Release the winner first; close the competing connection before fixture cleanup.
@@ -91,11 +105,23 @@ EXCEPTION WHEN OTHERS THEN
  IF 'browse_setup'=ANY(COALESCE(dblink_get_connections(),ARRAY[]::text[])) THEN
   PERFORM dblink_exec('browse_setup',$cleanup$
    DELETE FROM public.agent_registrations WHERE id='56520000-0000-0000-0000-000000000111';
+   DELETE FROM app.profile WHERE email='browse-5652-race@fixture.invalid';
    DELETE FROM auth.users WHERE id='56520000-0000-0000-0000-000000000101';
    DELETE FROM public.invitations WHERE email='browse-5652-race@fixture.invalid';
   $cleanup$);
   PERFORM dblink_disconnect('browse_setup');
  END IF;
+ IF EXISTS(SELECT 1 FROM public.agent_registrations WHERE id='56520000-0000-0000-0000-000000000111')
+  OR EXISTS(SELECT 1 FROM dam.agent_directory_browse_requests WHERE agent_id='56520000-0000-0000-0000-000000000111')
+  OR EXISTS(SELECT 1 FROM auth.users WHERE id='56520000-0000-0000-0000-000000000101')
+  OR EXISTS(SELECT 1 FROM public.invitations WHERE email='browse-5652-race@fixture.invalid')
+  OR EXISTS(SELECT 1 FROM app.profile WHERE email='browse-5652-race@fixture.invalid')
+  OR EXISTS(SELECT 1 FROM public.profiles WHERE email='browse-5652-race@fixture.invalid' OR user_id='56520000-0000-0000-0000-000000000101')
+  OR EXISTS(SELECT 1 FROM public.user_roles WHERE user_id='56520000-0000-0000-0000-000000000101')
+  OR EXISTS(SELECT 1 FROM public.app_access WHERE user_id='56520000-0000-0000-0000-000000000101')
+  OR EXISTS(SELECT 1 FROM app.app_access WHERE profile_id=fixture_profile)
+  OR EXISTS(SELECT 1 FROM app.user_role WHERE profile_id=fixture_profile)
+ THEN RAISE EXCEPTION 'committed browse fixture residue'; END IF;
  RAISE;
 END $concurrency$;
 RESET search_path;

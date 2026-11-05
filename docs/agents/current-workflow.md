@@ -154,3 +154,7 @@ and production-only ledger disposition. Use the existing read-only catalog
 recovery workflow bound to the original apply artifact; never rerun the migration
 or annotate a non-no-op as a no-op. Actual character actor counts and source-text
 fingerprints remain independent live evidence on the same issue.
+The source-population assertions describe the verified post-apply snapshot; they
+are not a permanent cap on future curated imports. The 98 character-row actor
+count is independent protected live evidence because the existing typed sidecar
+accepts neither JSONB filters nor JSON-path column expressions.

@@ -1,6 +1,6 @@
 # Digital-asset classification, tags, and source evidence
 
-**Status:** Proposed
+**Status:** Proposed, except the explicitly Settled subsection below.
 
 ## Purpose
 
@@ -34,10 +34,27 @@ Removing an automatic tag records a rejection; it does not erase evidence. Manua
 
 Search uses canonical names and reviewed aliases. Users must be able to distinguish manual, folder, filename, metadata, document, relationship, and AI sources. A Style Guide must not be described by a tag supported by only one outlier file unless the aggregation rule explicitly says so.
 
+### Product-code searches
+
+**Status:** Settled — Albert Hazan, November 3, 2026. The
+[owner-decision record on PopDAM #689](https://github.com/u2giants/popdam3/issues/689#issuecomment-6621834367)
+says to “Keep picture guesses” for code-looking searches absent from the catalog.
+
+A real product code, or a catalog-confirmed start of one, uses keyword matches
+without picture guesses. Determine whether it exists from the current catalog,
+not from the shape of the typed text. The
+[completed code and prefix checks](https://github.com/u2giants/popdam3/issues/689#issuecomment-6621791572)
+record that distinction.
+
+A code-looking query that does not match the catalog keeps picture guesses.
+Those guesses do not establish product identity, and arbitrary nonsense must
+not be classified as a product code. Recognition of an unfamiliar query may
+retain picture search; it must never suppress it or create a catalog identity.
+
 ## Unknown or Proposed decisions
 
 Who may create new manual vocabulary, which non-taxonomy facets are official, propagation thresholds, year treatment, and the threshold for AI enrichment remain Proposed until approved. Application plans may test options but must not present them as Settled.
 
 ## Implementation and evidence
 
-PopDAM and PopSG implementation plans, including [the tagging plan](https://github.com/u2giants/popdam3/blob/main/fix_add_tags.md), may contain pipelines, thresholds, performance goals, and UI designs. Those are implementation proposals or evidence. The rules on this page remain Proposed until approved.
+PopDAM and PopSG implementation plans, including [the tagging plan](https://github.com/u2giants/popdam3/blob/main/fix_add_tags.md), may contain pipelines, thresholds, performance goals, and UI designs. Those are implementation proposals or evidence. Apart from the explicitly Settled product-code subsection above, the rules on this page remain Proposed until approved.

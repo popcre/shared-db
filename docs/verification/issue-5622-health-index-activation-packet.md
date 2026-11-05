@@ -9,7 +9,7 @@ merge and its exact native checks pass before any activation. RPC successor5719
 receipts and actual catalogues prove the prerequisites. No index ledger is forged.
 
 The source PR containing this packet will be the exact future activation source;
-its actual number replaces SELF_PR below before review. Only after root reviews
+its actual source number is5721. Only after root reviews
 that concrete packet may this same PR author the identical three policy entries.
 Normal protected merge and existing automatic maintenance selection then provide
 preview/production delivery. This document alone cannot satisfy the runtime
@@ -52,7 +52,43 @@ release. Preserve every existing SG/foreign entry byte-for-byte; refresh the
 current-main preimage instead of replaying an old full policy snapshot. The
 hashes below are the native JSON-string definition digests, not raw-file hashes.
 
-CANDIDATE_ENTRIES
+```json
+{
+  "health-dam-errored-5622": {
+    "kind": "health-initial/v1",
+    "source_pr": 5721,
+    "work_issue": 5622,
+    "claim_issue": 5622,
+    "definition_sha256": "ef5b8aa4b781ce0427d5447dc8b62c7a7e84a8093f70629da44e28701a05adda",
+    "lock_timeout_ms": 500,
+    "statement_timeout_ms": 900000,
+    "swap_timeout_ms": 2000,
+    "total_timeout_s": 3600
+  },
+  "health-dam-write-5622": {
+    "kind": "health-initial/v1",
+    "source_pr": 5721,
+    "work_issue": 5622,
+    "claim_issue": 5622,
+    "definition_sha256": "5fd72ff2aaf31bed0f380ed5301cd16dcfdd72b278a1a64fcc591417a5fc1ecc",
+    "lock_timeout_ms": 500,
+    "statement_timeout_ms": 900000,
+    "swap_timeout_ms": 2000,
+    "total_timeout_s": 3600
+  },
+  "health-sg-write-5622": {
+    "kind": "health-initial/v1",
+    "source_pr": 5721,
+    "work_issue": 5622,
+    "claim_issue": 5622,
+    "definition_sha256": "4ea06d18a7c7beddea64999138c37b61a61f48b6c1b424bc9582157be67272da",
+    "lock_timeout_ms": 500,
+    "statement_timeout_ms": 900000,
+    "swap_timeout_ms": 2000,
+    "total_timeout_s": 3600
+  }
+}
+```
 
 Build statements remain nonblocking CREATE INDEX CONCURRENTLY with500ms lock,
 at most900000ms statement and3600s total bounds. Metadata/owned-shadow cleanup

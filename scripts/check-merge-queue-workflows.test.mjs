@@ -34,7 +34,7 @@ const KNOWN_LIVE_ADDITIONS = []
 // Contexts still present in the dated mirror but no longer live-required and no
 // longer emitted: the Orchestrator marker guard was retired with the role (#3874);
 // live branch protection already omitted it (made advisory 2026-09-28).
-const RETIRED_MIRROR_CONTEXTS = new Set(['Orchestrator marker guard', 'Agent work contract', 'Migration author lease', 'Migration guarded merge authorization', 'Cross-PR object collision', 'Queue-sensitive checks (aggregate)'])
+const RETIRED_MIRROR_CONTEXTS = new Set(['Orchestrator marker guard', 'Agent work contract', 'Migration author lease', 'Migration guarded merge authorization', 'Cross-PR object collision'])
 
 // context -> emitter. kind 'check-run': the workflow job named `job` reports
 // the context on whatever commit it runs on, so merge_group coverage means the
@@ -48,6 +48,7 @@ const CONTEXT_MAP = {
   'Handoff contract': { workflow: 'pr-guards.yml', kind: 'check-run', job: 'Handoff contract' },
   'Intake pointer guard': { workflow: 'pr-guards.yml', kind: 'check-run', job: 'Intake pointer guard' },
   'Promotion contract tests (offline)': { workflow: 'coldlion-promotion-contract-tests.yml', kind: 'check-run', job: 'Promotion contract tests (offline)' },
+  'Queue-sensitive checks (aggregate)': { workflow: 'pr-guards.yml', kind: 'check-run', job: 'Queue-sensitive checks (aggregate)' },
   'SQL migration guards': { workflow: 'shared-supabase-migrations.yml', kind: 'check-run', job: 'SQL migration guards' },
   'supabase/tests against an ephemeral database': { workflow: 'database-contract-tests.yml', kind: 'check-run', job: 'supabase/tests against an ephemeral database' },
   'Tools offline tests': { workflow: 'tools-offline-tests.yml', kind: 'check-run', job: 'Tools offline tests' },
@@ -148,7 +149,9 @@ test('pr-guards.yml uses default pull_request types: no ready_for_review (#3746 
   const text = readWorkflow('pr-guards.yml')
   const onBlock = /^on:\n([\s\S]*?)^\w/m.exec(text)?.[1] ?? ''
   assert.match(onBlock, /^ {2}pull_request:\n {2}merge_group:$/m, 'pull_request must carry no types list')
-  assert.ok(!/ready_for_review/.test(onBlock.replace(/^\s*#.*$/gm, '')), 'ready_for_review would start lane checks that event never starts')
+  assert.ok(!/ready_for_review/.test(onBlock.replace(/^\s*#.*$/gm, '')), 'ready_for_review would start the required aggregate for lane checks it never starts')
+  const aggregate = jobEvents(jobBlockByName(text, 'Queue-sensitive checks (aggregate)'))
+  assert.deepEqual(aggregate, ['pull_request', 'merge_group'])
 })
 
 test('no required-context workflow is path-filtered (a filtered required check stays pending forever)', () => {

@@ -11,7 +11,7 @@ declare
   v_cast constant uuid := '74225803-7815-48ae-a6cb-9ed38a8f8e43';
   v_clear constant uuid := '16f856cb-92c2-4d85-ba4b-c7f65d9f0ed0';
   v_nb uuid;
-  n record;
+  candidate record;
   v_id uuid;
   v_alias record;
   v_alias_id uuid;
@@ -25,7 +25,7 @@ begin
       raise exception 'Character load source prerequisites absent; no partial load';
     end if;
   end if;
-  for n in
+  for candidate in
   select v_nb as licensor_id, l.name, 'pop_style_guides:nb:' || l.key as code,
          'pop_style_guides'::text as source_system, 'public.style_guide_files'::text as source_table,
          'nb:' || l.key as source_id
@@ -74,33 +74,38 @@ begin
     v_id := null;
     v_evidence := '{}'::jsonb;
     v_source_alias := null;
-    if n.source_system='pop_style_guides' then
-      select jsonb_build_object('files',jsonb_agg(jsonb_build_object('id',f.id,'path',f.relative_path,'filename',f.filename,'property_folder',split_part(f.relative_path,'/',2))), 'confidence','verified'), min((regexp_match(f.filename,'(?:^|[-_])(?:char[a-z-]*|cg|line-[a-z]+|ph|fs|kawaii)-s_([A-Za-z]+)_','i'))[1])
+    if candidate.source_system='pop_style_guides' then
+      select jsonb_build_object('files',coalesce(jsonb_agg(jsonb_build_object('id',f.id,'path',f.relative_path,'filename',f.filename,'property_folder',split_part(f.relative_path,'/',2))),'[]'::jsonb), 'confidence','verified'), min((regexp_match(f.filename,'(?:^|[-_])(?:char[a-z-]*|cg|line-[a-z]+|ph|fs|kawaii)-s_([A-Za-z]+)_','i'))[1])
       into v_evidence,v_source_alias from public.style_guide_files f
       where f.is_active and f.licensor_name='NBC UNIVERSAL' and
-        (lower((regexp_match(f.filename,'(?:^|[-_])(?:char[a-z-]*|cg|line-[a-z]+|ph|fs|kawaii)-s_([A-Za-z]+)_','i'))[1])=split_part(n.source_id,':',2)
-         or (n.source_table='public.style_guide_pdf_text' and f.id=v_clear));
+        (lower((regexp_match(f.filename,'(?:^|[-_])(?:char[a-z-]*|cg|line-[a-z]+|ph|fs|kawaii)-s_([A-Za-z]+)_','i'))[1])=split_part(candidate.source_id,':',2)
+         or (candidate.source_table='public.style_guide_pdf_text' and f.id=v_clear));
     end if;
-    select id into v_id from core.character where licensor_id=n.licensor_id and
-      (code=n.code or lower(name)=lower(n.name));
+    select id into v_id from core.character where licensor_id=candidate.licensor_id and code=candidate.code;
+    if v_id is null then
+      if (select count(*) from core.character where licensor_id=candidate.licensor_id and lower(name)=lower(candidate.name))>1 then
+        raise exception 'Multiple canonical characters match source name; refusing ambiguous link';
+      end if;
+      select id into v_id from core.character where licensor_id=candidate.licensor_id and lower(name)=lower(candidate.name);
+    end if;
     if v_id is null then
       insert into core.character (licensor_id,name,code,status,metadata)
-      values (n.licensor_id,n.name,n.code,'active',v_meta || coalesce(v_evidence,'{}'::jsonb) || jsonb_build_object('source_system',n.source_system,'source_table',n.source_table,'source_id',n.source_id))
+      values (candidate.licensor_id,candidate.name,candidate.code,'active',v_meta || coalesce(v_evidence,'{}'::jsonb) || jsonb_build_object('source_system',candidate.source_system,'source_table',candidate.source_table,'source_id',candidate.source_id))
       returning id into v_id;
     end if;
     if v_id is null then raise exception 'Character load produced no target'; end if;
     -- An NBC alias is the exact source filename label, never a truncated canonical name.
-    -- If another record already owns that label, leave it untouched and abstain.
-    if v_source_alias is not null and lower(v_source_alias)<>lower(n.name)
+    -- If another record already owns that label, leave it untouched and abstaicandidate.
+    if v_source_alias is not null and lower(v_source_alias)<>lower(candidate.name)
       and not exists (select 1 from core.character_alias where lower(alias)=lower(v_source_alias)) then
       insert into core.character_alias(character_id,licensor_id,alias,source_system,source_id,evidence_notes)
-      values(v_id,n.licensor_id,v_source_alias,'pop_style_guides',n.source_id,'Exact character token from licensor-issued filename; full canonical name retained');
+      values(v_id,candidate.licensor_id,v_source_alias,'pop_style_guides',candidate.source_id,'Exact character token from licensor-issued filename; full canonical name retained');
     end if;
-    if exists (select 1 from core.taxonomy_source_ref where source_system=n.source_system and source_table=n.source_table and source_id=n.source_id and entity_id<>v_id) then
+    if exists (select 1 from core.taxonomy_source_ref where source_system=candidate.source_system and source_table=candidate.source_table and source_id=candidate.source_id and entity_id<>v_id) then
       raise exception 'Character source identity already belongs to another entity';
     end if;
     insert into core.taxonomy_source_ref (entity_schema,entity_table,entity_id,source_system,source_table,source_id,source_name,confidence,raw)
-    values ('core','character',v_id,n.source_system,n.source_table,n.source_id,n.name,'verified',v_meta || coalesce(v_evidence,'{}'::jsonb))
+    values ('core','character',v_id,candidate.source_system,candidate.source_table,candidate.source_id,candidate.name,'verified',v_meta || coalesce(v_evidence,'{}'::jsonb))
     on conflict (source_system,source_table,source_id) do nothing;
   end loop;
   -- Never truncate decorated portal labels into bare character-name aliases.

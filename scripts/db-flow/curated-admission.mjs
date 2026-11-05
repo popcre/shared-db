@@ -235,7 +235,7 @@ function checkSource(tokens, k) {
       }
     } else {
       const target = qualifiedTarget(tokens, i)
-      if (!target?.schema || !(READ_SCHEMAS.has(target.schema) || READ_SOURCE_TABLES.has(`${target.schema}.${target.name}`)) || (tokens[target.next]?.type === 'punct' && tokens[target.next].value === '(')) throw new CuratedSqlError(`read source ${target?.schema ? `${target.schema}.${target.name}` : (target?.name ?? 'expression')} is outside curated Master Data and its licensing sources (core.*, plm.*)`)
+      if (!target?.schema || !(READ_SCHEMAS.has(target.schema) || READ_SOURCE_TABLES.has(`${target.schema}.${target.name}`)) || (tokens[target.next]?.type === 'punct' && tokens[target.next].value === '(')) throw new CuratedSqlError(`read source ${target?.schema ? `${target.schema}.${target.name}` : (target?.name ?? 'expression')} is outside curated Master Data and its licensing sources (core.*, plm.*, public.style_guide_files, public.style_guide_pdf_text)`)
       reads.push(`table ${target.schema}.${target.name}`)
       i = target.next
     }

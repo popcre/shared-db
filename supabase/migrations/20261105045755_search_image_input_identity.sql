@@ -6,7 +6,7 @@ set local transaction_timeout = '3s';
 -- own immutable input hash through the existing claim/completion parameter.
 create or replace function dam.search_embedding_image_provenance(
   p_asset_id uuid, p_thumbnail_url text, p_previous jsonb default '{}'::jsonb)
-returns jsonb language plpgsql stable security definer
+returns jsonb language plpgsql volatile security definer
 set search_path = public, dam, extensions set timezone = 'UTC' as $$
 declare a record; v_render timestamptz; v_cached jsonb; v_input jsonb;
 begin

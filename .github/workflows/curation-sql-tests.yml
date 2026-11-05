@@ -4,7 +4,8 @@
 # committed with curation packets (e.g. #5683) but no workflow ran them, so the
 # abstain-on-conflict identity guards had no CI coverage. This job runs every
 # such suite against a throwaway service database: no secrets, no project
-# contact. Advisory only; it is not a required check.
+# contact. A second job runs the opt-in Docker drills for #5703 (#5722).
+# Advisory only; it is not a required check.
 name: Curation SQL Tests
 
 on:
@@ -63,3 +64,20 @@ jobs:
             python -m unittest -v "${suite%.py}"
             echo "::endgroup::"
           done
+
+  # #5722: the #5703 batched-anchor equivalence, NaN, scope, permission and
+  # one-pass drills start their own network-less pgvector container and were
+  # opt-in only, so default CI never ran them.
+  semantic-anchor-drills:
+    name: Batched semantic anchor drills
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run the isolated pgvector drills
+        env:
+          DAM_BATCH_ANCHOR_DOCKER: '1'
+        run: python -m unittest -v scripts/test_dam_batched_semantic_anchors.py

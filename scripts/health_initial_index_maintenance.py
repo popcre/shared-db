@@ -145,6 +145,15 @@ class HealthInitial(Maintenance):
                                   preview_builder_executed=True,shadow_cleanup_complete=True)
                         return
                     self.execute('CREATE INDEX CONCURRENTLY '+self.build_name+' ON '+self.spec['table']+' '+self.spec['definition'])
+                    # Only this process's successful exact CREATE may establish
+                    # ownership. A resumed exact-name row without this immutable
+                    # OID receipt is ambiguous and must never be adopted/dropped.
+                    created=self.db.health_catalog(self.build_name)
+                    validate_index(created,self.build_name,self.spec,table_oid)
+                    if not created['valid'] or not created['ready']:
+                        raise Refusal('new health build incomplete; preserve for governed recovery')
+                    self.checked_start(start,table_oid)
+                    self.save('built',start,new_oid=created['oid'],definition_sha256=self.entry['definition_sha256'])
                     continue
                 validate_index(row,self.build_name,self.spec,table_oid)
                 if built is not None and row['oid']!=built['new_oid']:
@@ -154,8 +163,7 @@ class HealthInitial(Maintenance):
                     # Preserve it for governed investigation, never drop by name alone.
                     raise Refusal('incomplete health build; preserve object and receipts for owned-OID recovery')
                 if built is None:
-                    self.save('built',start,new_oid=row['oid'],definition_sha256=self.entry['definition_sha256'])
-                    continue
+                    raise Refusal('ambiguous resumed health index without immutable owned-OID receipt; preserve object')
                 if self.identity['target']=='preview':
                     # Only this exact immutable owned OID can be removed. Recheck
                     # canonical preimage and fencing immediately before mutation.

@@ -85,12 +85,15 @@ begin
  insert into va_groups(id,sku,folder_path,primary_asset_id,primary_thumbnail_url,updated_at)
  values(gid,'FIXTURE','fixture',id,'https://example.invalid/stable.png',now());
  perform pg_temp.va_refresh_dam_search_style_group_document(gid);
- perform pg_temp.va_assert((select embedding is not null from va_docs where entity_id=gid),'new nightly group reuses exact asset image');
+ perform pg_temp.va_assert((select embedding=v and embedding_model='google/siglip2-base-patch16-naflex' from va_docs where entity_id=gid),'new nightly group reuses exact original canonical asset vector');
  update va_groups set group_ai_description='group keywords'; perform pg_temp.va_refresh_dam_search_style_group_document(gid);
  perform pg_temp.va_assert((select embedding is not null from va_docs where entity_id=gid),'group text preserves vector');
  update va_docs set metadata=metadata-'_embedding_input' where entity_id=id;
  perform pg_temp.va_refresh_dam_search_asset_document(id);
- perform pg_temp.va_assert((select embedding is not null from va_docs where entity_id=id),'proven legacy image bootstrap avoids re-embedding');
+ perform pg_temp.va_assert((select embedding=v and embedding_model='google/siglip2-base-patch16-naflex' from va_docs where entity_id=id),'bounded legacy bootstrap retains exact original canonical vector');
+ perform pg_temp.va_assert(not pg_temp.va_search_embedding_inputs_match(
+   (select metadata-'_embedding_input' from va_docs where entity_id=id),(select metadata from va_docs where entity_id=id),
+   'same','same','google/siglip2-base-patch16-naflex',now()-interval '2 days',now()),'legacy vector older than known image revision is not adopted');
  perform set_config('TimeZone','America/New_York',true);
  old_fp:=pg_temp.va_search_embedding_image_provenance(id,'https://example.invalid/stable.png','{}')->>'sha256';
  perform set_config('TimeZone','UTC',true);

@@ -40,3 +40,13 @@ Read-only production statistics showed about 147,000 search rows, 38,000 dead ro
 A private preview fixture with 147,002 documents and 15,002 sparse vectors plus HNSW/pending indexes measured twenty unchanged group refreshes: original 26.334ms, 6,430 local buffer hits and 19 reads; replacement 42.406ms, 560 local hits and zero reads. Both were fast; the additional provenance logic costs CPU while avoiding heap/index work. This does not reproduce cold production IO or prove its latency repaired. A larger 75,002 dense-vector HNSW fixture hit its bounded 55-second build timeout and its temporary objects were dropped on disconnect. No production query ceiling or trigger was changed to conceal that failure.
 
 Representative save-path and actual dependent-cleanup retry evidence remain required. Source heap/index density and cache conditions materially differ from the compact fixture.
+
+A skipped no-op upsert deliberately preserves `source_updated_at` as well as `indexed_at`: those timestamps describe the last actual search-document/image change, not unrelated asset edits such as designer normalization. Actual keyword changes still update `source_updated_at`. No downstream consumer should interpret it as an unconditional mirror of every asset update.
+
+## Bounded successful-render lookup
+
+Read-only production metadata reports about 1,207 render rows, 475,136 heap bytes and 1,916,928 total bytes. The exact latest-completion query currently plans a sequential scan plus sort: the proposed helper must not be deployed without its earlier partial index.
+
+A private temporary preview copy of the real render schema tested the exact index predicate and query. At 1,207 synthetic rows the bounded index transaction committed in 18ms and the query took 0.08ms; at 150,000 rows it committed in 197ms and queried in 0.06ms. Both plans were `Limit -> Index Only Scan`, returning one row from `(asset_id, completed_at DESC)` with the completed/non-NULL predicate. The transaction used the actual 500ms lock, 2500ms statement and three-second transaction settings. These are fixture measurements; the same indexed plan and actual runtime remain required after automatic production delivery. No production index was created manually.
+
+The SQL contract additionally checks exact original canonical vector equality during asset-to-new-group reuse and historical bootstrap, rejects a legacy vector older than a known revision, and rejects an unidentified legacy vector model. Unknown already-pruned historical provenance remains unverified.

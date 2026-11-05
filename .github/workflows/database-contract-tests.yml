@@ -822,9 +822,13 @@ jobs:
               esac
             fi
             contract_user="$PGUSER"
-            # This contract needs the existing disposable superuser's replica setting;
-            # no role grants or production changes are made.
-            if [ "$base" = "popdam_dense_group_vectors_contracts.sql" ]; then
+            # Dense vectors needs the disposable superuser's replica setting.
+            # Browse concurrency needs test-only passwordless dblink connections.
+            # Actor identity needs genuine SESSION AUTHORIZATION, not SET ROLE.
+            # Existing disposable admin only; no new grants or runtime authority.
+            if [ "$base" = "popdam_dense_group_vectors_contracts.sql" ] || \
+               [ "$base" = "dam_owned_agent_directory_browse_concurrency.sql" ] || \
+               [ "$base" = "search_image_identity_lease_actor_contracts.sql" ]; then
               contract_user=supabase_admin
             fi
             echo "::group::$base"

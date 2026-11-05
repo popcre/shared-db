@@ -47,6 +47,8 @@ class SelectionTests(unittest.TestCase):
         text=(ROOT/'.github/workflows/automatic-production-trigger.yml').read_text()
         self.assertIn('python scripts/automatic_promotion_candidates.py',text)
         self.assertIn('python scripts/automatic_index_maintenance.py',text)
+        self.assertLess(text.index('python scripts/automatic_index_maintenance.py'),text.index('python scripts/automatic_promotion_candidates.py'))
+        self.assertIn("if: always() && steps.index_maintenance.outputs.dispatched != 'true'",text)
 
 
 if __name__=='__main__':unittest.main()

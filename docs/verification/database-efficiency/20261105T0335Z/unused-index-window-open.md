@@ -1,7 +1,7 @@
 # Issue #5610 — opening index observation
 
 Observed: November 4, 2026, 10:35 PM EST (America/New_York).
-Production target verified immediately before read: `qsllyeztdwjgirsysgai`.
+Production target verified immediately before read: the configured shared production project (project URL checked through the connected read-only tool).
 Read-only catalog queries; no database changes or statistics resets.
 
 Postmaster started: November 4, 2026, 12:52:59 PM EST.

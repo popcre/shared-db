@@ -217,6 +217,15 @@ class CharacterLoadRetirementTests(unittest.TestCase):
 
     def test_complete_character_successor_remains_eligible(self):
         self.assertEqual(parse_allowlist("20261105074028"), ["20261105074028"])
+class AggregateReaderRetirementTests(unittest.TestCase):
+    def test_category_bug_original_is_refused_even_with_preview_ledger(self):
+        for remote in (set(), {"20261105042549"}):
+            with self.assertRaisesRegex(GuardError, "general production lane blocks"):
+                parse_allowlist("20261105042549", remote)
+        self.assertIn("20261105061837", production_migration_guard.RETIRED_VERSION_REASONS["20261105042549"])
+
+    def test_self_contained_corrective_reader_successor_remains_eligible(self):
+        self.assertEqual(parse_allowlist("20261105061837"), ["20261105061837"])
 
 
 class RemainingUsersStrandedOriginalTests(unittest.TestCase):
@@ -374,6 +383,7 @@ class GuardTests(unittest.TestCase):
                 "20261105073854", "20261105073903", "20261105073911", "20261105073920",
                 "20261104214842",
                 "20261105035926",
+                "20261105042549",
                 "20261022221940",
                 "20261023014911",
                 "20261005025111",

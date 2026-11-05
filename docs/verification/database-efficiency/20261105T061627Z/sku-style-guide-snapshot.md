@@ -112,8 +112,11 @@ The retained disposable eight-portal snapshot fixture proves ready and pending
 resolver, and extension-only filenames whose normalized NULL keys still participate
 in all eight label-match arms. Its session harness proves a separate connection's
 portal rename after preparation commit cannot change current batches but invalidates
-the next invocation. A real 150-ms cancellation during batch two preserves exactly
-100 committed SKUs, releases the session advisory lock and retains catchup. The same
+the next invocation. The initial cancellation trial paused before batch-two DML, proving entry cancellation
+only. The strengthened trial executes batch-two progress and filename-link DML before
+a post-DML sleep. A real 150-ms timeout rolls those 100 pending SKU/link writes back
+while preserving exactly 100 committed SKU/link pairs from batch one, releases the
+session advisory lock and retains catchup. The same
 session resumes all 201 SKUs; repeated same-session and fresh-session CALLs converge.
 
 The original source PR and forward repair must reach production in order through

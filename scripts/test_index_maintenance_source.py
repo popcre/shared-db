@@ -101,12 +101,13 @@ class ActualGitProducerTests(unittest.TestCase):
         self.write('tools/runtime-guard.mjs','export const guard=0');self.main=self.commit()
         with self.assertRaisesRegex(source.RiskGateError,'producer/current policy changed'):self.prove()
 
-    def test_joined_source_text_read_pins_bytes_without_executing_read_source(self):
-        self.write('scripts/source_reader.mjs',"const source=readFileSync(path.join(ROOT,'tools','source-data.mjs'),'utf8')")
-        self.write('tools/source-data.mjs',"const dir=path.join(ROOT,'tools');const file=path.join(dir,name)")
+    def test_eval_source_read_cannot_hide_nested_dynamic_tool(self):
+        self.write('scripts/source_reader.mjs',"eval(readFileSync(path.join(ROOT,'tools','source-data.mjs'),'utf8'))")
+        self.write('tools/source-data.mjs',"const dir=path.join(ROOT,'tools');const file=path.join(dir,'runtime-guard.mjs');spawnSync('node',[file])")
+        self.write('tools/runtime-guard.mjs','export const guard=1')
         self.base=self.commit();self.main=self.base
-        self.write('tools/source-data.mjs','// changed source text used by safety check');self.main=self.commit()
-        with self.assertRaisesRegex(source.RiskGateError,'producer/current policy changed'):self.prove()
+        self.write('tools/runtime-guard.mjs','export const guard=0');self.main=self.commit()
+        with self.assertRaisesRegex(source.RiskGateError,'tools-directory prefix'):self.prove()
 
     def test_joined_executed_tool_is_walked_and_unknown_namespace_refuses(self):
         self.write('scripts/source_reader.mjs',"spawnSync('node',[path.join(ROOT,'tools','executed.mjs')])")

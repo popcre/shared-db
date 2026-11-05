@@ -78,15 +78,12 @@ def pin_paths(tree, read):
         body=read(path)
         # All explicit tool paths, including subprocess commands/runtime reads.
         dependencies=set(TOOL.findall(body))
-        executed=set(dependencies);data_only=set()
-        # A source-text read pins that file's bytes, but does not execute its
-        # imports. Other constructed references conservatively count as code.
+        executed=set(dependencies)
+        # Reads may execute their contents; traverse them conservatively.
         for expression in re.finditer(r'''(?:\b[A-Za-z_$][\w$]*\.)?(?:join|resolve)\([^()\n]*?["']tools["']((?:\s*,\s*["'][A-Za-z0-9_.@/-]+["'])+)\s*\)''',body):
             dep='/'.join(['tools',*re.findall(r'''["']([^"']+)["']''',expression.group(1))])
             dependencies.add(dep)
-            parent=re.search(r'([A-Za-z_$][\w$.]*)\(\s*$',body[:expression.start()])
-            if parent and parent.group(1) in {'readFileSync','fs.readFileSync'}:data_only.add(dep)
-            else:executed.add(dep)
+            executed.add(dep)
         # Python pathlib's / 'tools' / 'name.py' is also a runtime input.
         for expression in re.findall(r'''["']tools["'](?:\s*/\s*["'][A-Za-z0-9_.@/-]+["'])+''',body):
             dependencies.add('/'.join(re.findall(r'''["']([^"']+)["']''',expression)))
@@ -129,7 +126,7 @@ def pin_paths(tree, read):
             if not matches:continue
             for resolved in matches:
                 pinned.add(resolved)
-                if resolved.endswith(('.py','.mjs','.js','.sh')) and (resolved in executed or dep not in data_only):pending.append(resolved)
+                if resolved.endswith(('.py','.mjs','.js','.sh')):pending.append(resolved)
     if not roots<=seen or not pinned:raise RiskGateError('maintenance coverage proved nothing')
     return pinned
 

@@ -10,7 +10,8 @@ acceptance, not production delivery or three-night acceptance.
 ## Authoritative producer and source
 
 - Source PR [#5649](https://github.com/popcre/shared-db/pull/5649), merged main
-  `51c366fa534a7182e3318405e0aa49398c6ba827`.
+  `51c366fa534a7182e3318405e0aa49398c6ba827`; source PR author head
+  `05a69e8b6fc472544f9d502104282066a8bf2930`.
 - Governed merged-main preview run
   [41987714096](https://github.com/popcre/shared-db/actions/runs/41987714096) succeeded
   for forward version `20261105061627`; prerequisite `20261105044255` was already
@@ -19,7 +20,8 @@ acceptance, not production delivery or three-night acceptance.
 - Original preview artifact **13397091481**, named
   `preview-migration-apply-51c366fa534a7182e3318405e0aa49398c6ba827`, digest
   `sha256:91730b63c6eb13a26dab411c4f654af30812f9f7eb1f40371707fd91f2033727`.
-  Its ID/name/digest/source head were independently read from GitHub.
+  Its ID/name/digest/workflow main head were independently read from GitHub;
+  the source PR author head is recorded separately.
 - Automatic review artifact **13397176861** is a different artifact and does not
   replace that original preview producer. The separate automatic production run
   [41988158724](https://github.com/popcre/shared-db/actions/runs/41988158724) refused

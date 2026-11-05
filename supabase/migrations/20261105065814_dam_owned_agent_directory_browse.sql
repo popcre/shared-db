@@ -72,17 +72,21 @@ END $fn$;
 
 CREATE FUNCTION public.complete_agent_directory_browse(p_agent_id uuid,p_request_id uuid,p_entries jsonb)
 RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' SET statement_timeout = '8s' AS $fn$
+DECLARE r dam.agent_directory_browse_requests%ROWTYPE;
 BEGIN
   IF p_entries IS NULL OR jsonb_typeof(p_entries)<>'array' THEN RETURN false; END IF;
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(p_entries) e
     WHERE jsonb_typeof(e)<>'object' OR jsonb_typeof(e->'name') IS DISTINCT FROM 'string'
       OR jsonb_typeof(e->'is_dir') IS DISTINCT FROM 'boolean') THEN RETURN false; END IF;
+  -- Check the absolute deadline AFTER any row-lock wait, not before it.
+  SELECT * INTO r FROM dam.agent_directory_browse_requests
+    WHERE request_id=p_request_id AND agent_id=p_agent_id FOR UPDATE;
+  IF NOT FOUND THEN RETURN false; END IF;
+  IF r.status='completed' THEN RETURN r.entries IS NOT DISTINCT FROM p_entries; END IF;
+  IF r.status<>'claimed' OR r.expires_at<=clock_timestamp() THEN RETURN false; END IF;
   UPDATE dam.agent_directory_browse_requests SET status='completed',completed_at=clock_timestamp(),entries=p_entries,claim_until=NULL
-    WHERE request_id=p_request_id AND agent_id=p_agent_id AND status='claimed' AND expires_at>clock_timestamp();
-  IF FOUND THEN RETURN true; END IF;
-  -- Accept only an identical retry; the original result and timestamps never change.
-  RETURN EXISTS (SELECT 1 FROM dam.agent_directory_browse_requests
-    WHERE request_id=p_request_id AND agent_id=p_agent_id AND status='completed' AND entries=p_entries);
+    WHERE request_id=p_request_id AND agent_id=p_agent_id;
+  RETURN true;
 END $fn$;
 
 CREATE FUNCTION public.get_agent_directory_browse_result(p_request_id uuid,p_requested_by uuid)

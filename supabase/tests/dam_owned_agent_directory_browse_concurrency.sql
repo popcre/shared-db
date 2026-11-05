@@ -39,6 +39,36 @@ BEGIN
  SELECT status INTO outcome FROM dblink_get_result('browse_contender') AS t(status text);
  IF outcome IS DISTINCT FROM 'busy' THEN RAISE EXCEPTION 'concurrent loser did not return busy: %',outcome; END IF;
  IF (SELECT count(*) FROM dam.agent_directory_browse_requests WHERE agent_id='56520000-0000-0000-0000-000000000111' AND status IN ('pending','claimed')) IS DISTINCT FROM 1 THEN RAISE EXCEPTION 'not exactly one active winner'; END IF;
+ -- Consume the terminal empty async result before reusing the connection.
+ PERFORM status FROM dblink_get_result('browse_contender') AS t(status text);
+ SELECT status INTO outcome FROM dblink('browse_setup',
+  $claim$SELECT public.claim_agent_directory_browse('56520000-0000-0000-0000-000000000111')->>'request_id'$claim$
+ ) AS t(status text);
+ IF outcome IS DISTINCT FROM '56520000-0000-0000-0000-000000000121' THEN RAISE EXCEPTION 'expiry fixture claim'; END IF;
+ PERFORM dblink_exec('browse_setup',$deadline$
+  UPDATE dam.agent_directory_browse_requests SET expires_at=clock_timestamp()+interval '3 seconds'
+   WHERE request_id='56520000-0000-0000-0000-000000000121'
+ $deadline$);
+ PERFORM dblink_exec('browse_winner','BEGIN');
+ PERFORM request_id FROM dblink('browse_winner',$lock$
+  SELECT request_id FROM dam.agent_directory_browse_requests WHERE request_id='56520000-0000-0000-0000-000000000121' FOR UPDATE
+ $lock$) AS t(request_id uuid);
+ PERFORM dblink_send_query('browse_contender',$complete$
+  SELECT public.complete_agent_directory_browse('56520000-0000-0000-0000-000000000111','56520000-0000-0000-0000-000000000121','[]')::text
+ $complete$);
+ blocked:=false;
+ FOR i IN 1..100 LOOP
+  PERFORM pg_stat_clear_snapshot();
+  SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=contender_pid AND wait_event_type='Lock') INTO blocked;
+  EXIT WHEN blocked;
+  PERFORM pg_sleep(0.02);
+ END LOOP;
+ IF NOT blocked THEN RAISE EXCEPTION 'expiry completion did not overlap lock'; END IF;
+ PERFORM pg_sleep(3.1);
+ PERFORM dblink_exec('browse_winner','COMMIT');
+ SELECT status INTO outcome FROM dblink_get_result('browse_contender') AS t(status text);
+ IF outcome IS DISTINCT FROM 'false' THEN RAISE EXCEPTION 'completion accepted after deadline while waiting on unchanged lock'; END IF;
+ IF EXISTS(SELECT 1 FROM dam.agent_directory_browse_requests WHERE request_id='56520000-0000-0000-0000-000000000121' AND (entries IS NOT NULL OR status<>'claimed')) THEN RAISE EXCEPTION 'expired completion modified preimage'; END IF;
  PERFORM dblink_disconnect('browse_winner');
  PERFORM dblink_disconnect('browse_contender');
  PERFORM dblink_exec('browse_setup',$cleanup$

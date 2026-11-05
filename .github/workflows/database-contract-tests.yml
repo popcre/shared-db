@@ -365,6 +365,7 @@ jobs:
         env:
           HTS_EVALUATION_TEST_PORT: 54322
           HTS_EVALUATION_TEST_PASSWORD: postgres
+          HTS_EVALUATION_TEST_CLEANUP_USER: supabase_admin
         run: |
           python -m pip install 'psycopg[binary]==3.2.13'
           HTS_EVALUATION_MIGRATION_FILE="$RUNNER_TEMP/migrations/20261105121341_hts_evaluation_read_access.sql" \

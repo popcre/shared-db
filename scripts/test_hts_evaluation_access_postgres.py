@@ -17,16 +17,19 @@ class EvaluationPostgresTests(unittest.TestCase):
             'PGSSLMODE':'disable',atomic.HTS_CREDENTIAL_ENV:'synthetic-credential-only-for-disposable-postgres-0000000000000000'}
         cls.raw=Path(os.environ.get('HTS_EVALUATION_MIGRATION_FILE','supabase/migrations/20261105121341_hts_evaluation_read_access.sql')).read_text()
     def admin(self):return atomic.credential_connection(self.env)
-    def setUp(self):
-        with self.admin() as c:
+    def clean_fixture(self):
+        # Disposable local cluster only. Issuance still runs as constrained postgres;
+        # native fixture cleanup must not change the creator's bootstrap flags.
+        env={**self.env,'PGUSER':os.environ.get('HTS_EVALUATION_TEST_CLEANUP_USER','postgres')}
+        with atomic.credential_connection(env) as c:
             c.execute('DROP SCHEMA IF EXISTS plm CASCADE; DROP SCHEMA IF EXISTS coldlion CASCADE; DROP SCHEMA IF EXISTS dflow_prod CASCADE; DROP SCHEMA IF EXISTS supabase_migrations CASCADE;')
             for r in [atomic.HTS_CREDENTIAL_ROLE,'designflow_hts_evaluation_read']:
                 if c.execute('SELECT 1 FROM pg_roles WHERE rolname=%s',(r,)).fetchone():
-                    # Disposable fixture only: a non-superuser CREATEROLE creator
-                    # needs SET to clean its own prior test objects. Never shipped.
-                    c.execute('GRANT '+r+' TO CURRENT_USER WITH SET TRUE')
                     c.execute('DROP OWNED BY '+r)
             c.execute('DROP ROLE IF EXISTS designflow_hts_evaluation_reader; DROP ROLE IF EXISTS designflow_hts_evaluation_read;')
+    def setUp(self):
+        self.clean_fixture()
+        with self.admin() as c:
             c.execute('''CREATE SCHEMA plm; CREATE SCHEMA coldlion; CREATE SCHEMA dflow_prod; CREATE SCHEMA supabase_migrations;
             CREATE TABLE supabase_migrations.schema_migrations(version text PRIMARY KEY,statements text[],name text);
             CREATE TABLE plm.customs_benchmark_observation(dataset_id text,section text,source_ordinal int,style_number text,historical_hts text,packet_reference text,evidence_status text,exact_historical_candidate bool,original_record jsonb,product_description text);
@@ -39,14 +42,7 @@ class EvaluationPostgresTests(unittest.TestCase):
             INSERT INTO plm.customs_benchmark_artifact VALUES ('test',true,'private-pointer'),('not-verified',false,'private-pointer');
             INSERT INTO coldlion.item_detail(item_no,pre_pack_code) VALUES ('SYNTHETIC','PPKTEST');''')
     def tearDown(self):
-        # Leave no synthetic role/schema behind for the later full replay job.
-        with self.admin() as c:
-            c.execute('DROP SCHEMA IF EXISTS plm CASCADE; DROP SCHEMA IF EXISTS coldlion CASCADE; DROP SCHEMA IF EXISTS dflow_prod CASCADE; DROP SCHEMA IF EXISTS supabase_migrations CASCADE;')
-            for r in [atomic.HTS_CREDENTIAL_ROLE,'designflow_hts_evaluation_read']:
-                if c.execute('SELECT 1 FROM pg_roles WHERE rolname=%s',(r,)).fetchone():
-                    c.execute('GRANT '+r+' TO CURRENT_USER WITH SET TRUE')
-                    c.execute('DROP OWNED BY '+r)
-            c.execute('DROP ROLE IF EXISTS designflow_hts_evaluation_reader; DROP ROLE IF EXISTS designflow_hts_evaluation_read;')
+        self.clean_fixture()
 
     def apply(self,raw=None,env=None):
         atomic.initial_credential_apply(env or self.env,atomic.HTS_CREDENTIAL_VERSION,'hts_evaluation_read_access',raw or self.raw,atomic.split_sql(self.raw))

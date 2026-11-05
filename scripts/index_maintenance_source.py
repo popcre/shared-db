@@ -44,6 +44,12 @@ def pin_paths(tree, read):
         body=read(path)
         # All explicit tool paths, including subprocess commands/runtime reads.
         dependencies=set(TOOL.findall(body))
+        constructed=list(re.finditer(r'''(?:\bjoin|\bresolve)\([^()\n]*?["']tools["']((?:\s*,\s*["'][A-Za-z0-9_.@/-]+["'])+)\s*\)''',body))
+        for expression in constructed:
+            dependencies.add('tools/'+'/'.join(re.findall(r'''["']([^"']+)["']''',expression.group(1))))
+        remaining=body
+        for expression in reversed(constructed):
+            remaining=remaining[:expression.start()]+remaining[expression.end():]
         # Python pathlib's / 'tools' / 'name.py' is also a runtime input.
         for expression in re.findall(r'''["']tools["'](?:\s*/\s*["'][A-Za-z0-9_.@/-]+["'])+''',body):
             dependencies.add('/'.join(re.findall(r'''["']([^"']+)["']''',expression)))
@@ -54,8 +60,12 @@ def pin_paths(tree, read):
                     raise RiskGateError('unbounded dynamic maintenance tool dependency')
                 if isinstance(node,ast.BinOp) and isinstance(node.op,ast.Add) and isinstance(node.left,ast.Constant) and isinstance(node.left.value,str) and 'tools/' in node.left.value and not isinstance(node.right,ast.Constant):
                     raise RiskGateError('unbounded dynamic maintenance tool dependency')
+                if isinstance(node,ast.BinOp) and isinstance(node.op,ast.Div) and any(isinstance(v,ast.Constant) and v.value=='tools' for v in ast.walk(node.left)) and not isinstance(node.right,ast.Constant):
+                    raise RiskGateError('unbounded segmented maintenance tool dependency')
         elif re.search(r'''tools/(?:\$|\{|["'])''',body):
             raise RiskGateError('unbounded dynamic maintenance tool dependency')
+        elif re.search(r'''(?:join|resolve)\([^\n]*["']tools["']''',remaining):
+            raise RiskGateError('unresolved constructed maintenance tool dependency')
         # Both import/export-from and dynamic literal imports; nested ../ works.
         for rel in re.findall(r'(?:from\s*|import\s*\()\s*[\'\"](\.{1,2}/[^\'\"]+)[\'\"]',body):
             parts=[]

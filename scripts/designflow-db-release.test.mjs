@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { canonicalJson, sha256 } from './db-flow/evidence-bundle.mjs';
 import { proposeTrain, trainRecordRef } from './db-flow/migration-train.mjs';
 import { manifestDigest } from './lib/designflow-db-release.mjs';
-import { sourceFacts, assessRelease, runObserver, releasePolicy, dispatchTitle, verifyApplyReceipt, verifyAppliedFiles, workflowRuns, artifactContainsSource, assertObserverSource, publishAppStatus, prepareReleaseReady, productionRunMatches, verifyBatchProductionFiles, batchRunCandidate, validatedTrainRefFromLog, currentLiveRecoveryCommandFrom } from './designflow-db-release.mjs';
+import { sourceFacts, assessRelease, runObserver, releasePolicy, dispatchTitle, verifyApplyReceipt, verifyAppliedFiles, workflowRuns, artifactContainsSource, assertObserverSource, publishAppStatus, prepareReleaseReady, productionRunMatches, verifyBatchProductionFiles, batchRunCandidate, validatedTrainRefFromLog, currentLiveRecoveryCommandFrom, staleCertificateRecoveryCommand, writeRecoverySummary } from './designflow-db-release.mjs';
 
 const head = 'a'.repeat(40), repository = 'popcre/designflow-tracking';
 const path = 'supabase/migrations/20261022194647_synthetic.sql', content = '-- synthetic only\n';
@@ -517,4 +517,71 @@ test('open work without production evidence still promotes', async () => {
   const result = await assess(f);
   assert.equal(result.status, 'waiting');
   assert.deepEqual(f.effects, ['promote']);
+});
+
+
+test('optional recovery lookup failure preserves waiting and pending status', async () => {
+  const f = fixture(), statuses = [];
+  f.io.productionEvidence = async () => null;
+  f.io.workIssue = async () => ({ state: 'closed', state_reason: 'completed' });
+  f.io.currentLiveRecovery = async () => { throw Error('transport failed'); };
+  f.io.status = async (...args) => statuses.push(args[2]);
+  const results = await runObserver(f.policy, f.io);
+  assert.equal(results[0].status, 'waiting');
+  assert.equal(results[0].progress.recovery_command, undefined);
+  assert.deepEqual(statuses, ['pending', 'pending']);
+});
+
+test('recovery commands refuse duplicate versions and sort unique versions', () => {
+  const binding = { producer: { original: { id: 1, run_attempt: 1, head_sha: head },
+    upload: { artifact_id: 2, digest: 'sha256:' + 'b'.repeat(64) } } };
+  assert.throws(() => currentLiveRecoveryCommandFrom(binding, { ...requirement,
+    migrations: [...requirement.migrations, ...requirement.migrations] }), /ordered_allowlist/);
+  assert.match(currentLiveRecoveryCommandFrom(binding, { ...requirement,
+    migrations: [{ version: '20261022194648' }, ...requirement.migrations] }),
+    /ordered_allowlist=20261022194647,20261022194648/);
+});
+
+test('stale guidance authenticates the package and requires exact source identity', () => {
+  const facts = { head_sha40: head, merge_sha40: 'b'.repeat(40) };
+  const source = { work_issue: requirement.work_issue, source_pr: requirement.source_pr,
+    head_sha: head, merge_sha: facts.merge_sha40, migrations: requirement.migrations };
+  const binding = { source, producer: { original: { id: 1, run_attempt: 1, head_sha: head },
+    upload: { artifact_id: 2, digest: 'sha256:' + 'b'.repeat(64) } } };
+  let signedSource = source, refuse = false, opened = 0;
+  const io = {
+    githubIo: { listRefs: () => [{ sha: head }], mergeCommitInMain: () => true,
+      getCommit: () => ({ message: 'designflow-db-current-live-receipt ' + JSON.stringify({ proof: { reverification_run_id: 3 } }) }) },
+    api: path => path.endsWith('/3') ? { id: 3, run_attempt: 2, status: 'completed', conclusion: 'success',
+      path: '.github/workflows/production-catalog-verification-recovery.yml', head_branch: 'main', head_sha: head }
+      : path.endsWith('/main') ? { sha: 'c'.repeat(40) } : { full_name: 'popcre/shared-db', id: 4, owner: { id: 5 } },
+    content: (repo, path, sha) => sha,
+    retainedCurrentLivePackage: () => new Map(),
+    openCurrentLivePackage: (files, expected) => {
+      opened++;
+      assert.deepEqual(expected, { repositoryId: 4, ownerId: 5, verifierSha: head, runId: 3, runAttempt: 2 });
+      if (refuse) throw Error('invalid attestation');
+      return new Map([['current-live-binding.json', JSON.stringify({ ...binding, source: signedSource })]]);
+    },
+  };
+  assert.ok(staleCertificateRecoveryCommand(requirement, facts, io));
+  for (const mismatch of [{ work_issue: 9 }, { source_pr: 9 }, { head_sha: 'd'.repeat(40) },
+    { merge_sha: 'd'.repeat(40) }, { migrations: [] },
+    { migrations: [{ ...requirement.migrations[0], sha256: 'e'.repeat(64) }] }]) {
+    signedSource = { ...source, ...mismatch };
+    assert.equal(staleCertificateRecoveryCommand(requirement, facts, io), null);
+  }
+  signedSource = source; refuse = true;
+  assert.equal(staleCertificateRecoveryCommand(requirement, facts, io), null);
+  assert.equal(opened, 8);
+});
+
+test('summary failures are best effort and shell guidance is accurate', () => {
+  const results = [{ progress: { recovery_command: 'example' } }];
+  let text;
+  writeRecoverySummary(results, 'summary', (path, value) => { text = value; });
+  assert.match(text, /Works in bash and zsh/);
+  assert.doesNotMatch(text, /PowerShell/);
+  assert.doesNotThrow(() => writeRecoverySummary(results, '/nonexistent-parent/summary'));
+  assert.doesNotThrow(() => writeRecoverySummary(results, 'summary', () => { throw Error('permission denied'); }));
 });

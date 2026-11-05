@@ -237,7 +237,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           POST: ${{ inputs.bloat_post && 'true' || 'false' }}
         run: |
-          set -uo pipefail
+          set +e -uo pipefail
           node scripts/assets-bloat-monitor.mjs --target=production --issue=5747 --post="$POST" | tee /tmp/bloat.txt
           CODE=${PIPESTATUS[0]}
           { echo "## public.assets bloat"; echo; cat /tmp/bloat.txt; } >> "$GITHUB_STEP_SUMMARY"

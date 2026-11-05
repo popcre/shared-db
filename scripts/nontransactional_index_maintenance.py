@@ -124,11 +124,15 @@ class Maintenance:
                 'phase':phase,'original_oid':start['original_oid'],'table_oid':start['table_oid'],**extra}
         return self.receipts.create(self.receipt_ref(phase),record)
 
+    def remaining_ms(self):
+        remaining=int((self.entry['total_timeout_s']-(self.clock()-self.started))*1000)
+        if remaining<=0:raise Refusal('maintenance total deadline reached')
+        return remaining
+
     def execute(self,sql,params=None):
         # Re-prove target/custody/finding immediately before each generated mutation.
         self.gate()
-        remaining=int((self.entry['total_timeout_s']-(self.clock()-self.started))*1000)
-        if remaining<=0:raise Refusal('maintenance total deadline reached')
+        remaining=self.remaining_ms()
         self.db.settings(self.entry['lock_timeout_ms'],min(remaining,self.entry['statement_timeout_ms']))
         return self.db.execute(sql,params)
 
@@ -178,7 +182,9 @@ class Maintenance:
                         raise Refusal('replacement OID disagrees with immutable build proof')
                     self.save('built',start,new_oid=new['oid'])
                     # Transaction is only bounded catalog renames, never the build.
-                    self.gate();self.db.swap(self.original,self.new,self.retired,self.entry['lock_timeout_ms'],self.entry['swap_timeout_ms'])
+                    self.gate()
+                    swap_ms=min(self.remaining_ms(),self.entry['swap_timeout_ms'])
+                    self.db.swap(self.original,self.new,self.retired,min(self.entry['lock_timeout_ms'],swap_ms),swap_ms)
                     self.save('swapped',start,new_oid=new['oid'])
                     continue
                 if action=='remove_retired':

@@ -157,6 +157,22 @@ class MaintenanceTests(unittest.TestCase):
         with self.assertRaises(maintenance.Refusal):runner.apply()
         self.assertFalse(db.sql)
 
+    def test_deadline_expiring_during_build_preserves_original_without_swap(self):
+        runner,db,_,_=self.fixture()
+        execute=db.execute
+        def build_then_expire(sql,params=None):
+            result=execute(sql,params)
+            if sql.startswith('CREATE INDEX CONCURRENTLY'):
+                runner.clock=lambda:runner.started+121
+            return result
+        db.execute=build_then_expire
+        with self.assertRaisesRegex(maintenance.Refusal,'total deadline'):
+            runner.apply()
+        self.assertEqual(db.rows[db.old]['oid'],10)
+        self.assertTrue(db.rows[db.new]['valid'])
+        self.assertNotIn('BOUNDED_ATOMIC_RENAME',db.sql)
+        self.assertNotIn(db.retired,db.rows)
+
     def test_foreign_retired_oid_never_dropped(self):
         runner,db,_,_=self.fixture();runner.save('started',{'original_oid':10,'table_oid':20})
         db.rows[db.old]=row(db.old,11);db.rows[db.retired]=row(db.retired,88)

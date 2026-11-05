@@ -15,7 +15,7 @@ on:
   # Failures used to wait for the hourly schedule or a merge, which idled the
   # whole queue for up to an hour (2026-11-02: a failed preview at 7:49 PM EST,
   # nothing dispatched until 8:57 PM EST). Prompt reaction is not a retry loop:
-  # the selector caps every PR at three automatic attempts per main commit,
+  # the selector caps every PR at three automatic attempts since its merge,
   # counting failed preview AND production runs, and passes a PR out of attempts
   # over with a loud ENGINEER ACTION REQUIRED alert so later PRs keep promoting.
   #

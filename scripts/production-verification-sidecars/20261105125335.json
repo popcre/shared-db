@@ -25,7 +25,7 @@
         },
         {
           "column": "status",
-          "type": "text",
+          "type": "app.entity_status",
           "equals": "active"
         }
       ],
@@ -96,7 +96,7 @@
         },
         {
           "column": "status",
-          "type": "text",
+          "type": "app.entity_status",
           "equals": "active"
         }
       ],

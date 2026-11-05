@@ -24,9 +24,9 @@ class Curation(unittest.TestCase):
     def setUpClass(cls):
         version = int(query('show server_version_num').stdout.strip())
         assert 170000 <= version < 180000
-        query('''create schema core;
-        create table core.licensor(id uuid primary key,name text,code text,status text,metadata jsonb,created_at timestamptz,updated_at timestamptz);
-        create table core.character(id uuid primary key default gen_random_uuid(),licensor_id uuid references core.licensor,name text,code text,status text,metadata jsonb);
+        query('''create schema if not exists app; do $$begin create type app.entity_status as enum ('active','inactive','archived','deleted','potential'); exception when duplicate_object then null;end$$;create schema core;
+        create table core.licensor(id uuid primary key,name text,code text,status app.entity_status,metadata jsonb,created_at timestamptz,updated_at timestamptz);
+        create table core.character(id uuid primary key default gen_random_uuid(),licensor_id uuid references core.licensor,name text,code text,status app.entity_status,metadata jsonb);
         create unique index character_licensor_code_key on core.character(licensor_id,code) nulls not distinct where code is not null;
         create table core.character_alias(character_id uuid,licensor_id uuid,alias text,normalized_alias text);
         create table core.taxonomy_source_ref(id uuid primary key default gen_random_uuid(),entity_schema text,entity_table text,entity_id uuid,source_system text,source_table text,source_id text,source_name text,source_code text,confidence text,source_licensor_id uuid,raw jsonb,unique(source_system,source_table,source_id));''')
@@ -68,6 +68,25 @@ class Curation(unittest.TestCase):
         self.assertEqual(len(after['refs']),6)
         self.assertIsNone(after['aliases'])
         self.assert_abstain()
+
+    def test_native_typed_sidecar_executes_against_real_enum_column_contract(self):
+        self.assertEqual(self.apply().returncode,0)
+        sys=__import__('sys');sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+        import production_catalog_verification as native
+        root=Path(__file__).resolve().parents[2];version='20261105125335'
+        checks=native.load_behavior_sidecars(root,{version:root/'supabase/migrations'/f'{version}_publisher_character_curation.sql'},[version])
+        result=query(native.build_behavior_sql(checks))
+        rows=json.loads(result.stdout)['behavior_checks']
+        self.assertEqual(len(rows),4)
+        self.assertTrue(all(row['actual_count']==row['expected_count']==1 for row in rows))
+        # Prior text descriptor passes offline shape validation but fails actual enum equality.
+        wrong=__import__('copy').deepcopy(checks)
+        for check in wrong:
+            for filt in check['filters']:
+                if filt['column']=='status':filt['type']='text'
+        rejected=query('\\set VERBOSITY verbose\n'+native.build_behavior_sql(wrong),ok=False)
+        self.assertNotEqual(rejected.returncode,0)
+        self.assertIn('42883',rejected.stderr)
 
     def test_inactive_normalized_name_abstains_all(self):
         query(f"insert into core.character values(gen_random_uuid(),'{IDS[3]}','CHEER-BEAR',null,'inactive','{{\"keep\":true}}')")

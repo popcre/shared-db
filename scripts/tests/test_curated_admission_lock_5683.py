@@ -91,4 +91,16 @@ class LockedCuration(unittest.TestCase):
         self.assertEqual(fixture.query('select count(*) from supabase_migrations.schema_migrations').stdout.strip(),'0')
         self.assertEqual(fixture.query("select count(*) from core.taxonomy_source_ref where entity_table='character'").stdout.strip(),'0')
 
+    def test_statement_and_total_transaction_ceilings_rollback_and_release_barrier(self):
+        for pause,expected in [("select pg_sleep(2.8);",'57014'),("select pg_sleep(1.6);select pg_sleep(1.6);",'transaction timeout')]:
+            with self.subTest(expected=expected):
+                self.setUp();before=self.snapshot()
+                wrapper=self.wrapper().replace(atomic.CURATED_CHARACTER_LOCK_SQL,atomic.CURATED_CHARACTER_LOCK_SQL+pause+"\n",1)
+                result=fixture.query('\\set VERBOSITY verbose\n'+wrapper,ok=False)
+                self.assertNotEqual(result.returncode,0)
+                self.assertIn(expected,result.stderr)
+                self.assertEqual(self.snapshot(),before)
+                self.assertEqual(fixture.query('select count(*) from supabase_migrations.schema_migrations').stdout.strip(),'0')
+                fixture.query("begin;set local lock_timeout='100ms';lock table core.licensor,core.character,core.character_alias,core.taxonomy_source_ref in share row exclusive mode;rollback;")
+
 if __name__=='__main__': unittest.main()

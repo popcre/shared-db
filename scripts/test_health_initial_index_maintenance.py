@@ -164,7 +164,26 @@ class HealthTests(unittest.TestCase):
     def test_fencing_checked_before_each_generated_mutation(self):
         calls=[]
         self.runner(gate=lambda:calls.append(True)).apply()
-        self.assertEqual(len(calls),3)
+        self.assertEqual(len(calls),4)  # initial, CREATE, DROP, qualifying completion
+    def test_relevant_source_change_during_build_preserves_owned_oid_without_qualifying_completion(self):
+        self.runner().apply()  # genuine isolated preview build/cleanup prerequisite
+        self.db.rows={};self.db.sql=[]
+        original=self.db.execute;changed=False
+        def during_build(sql,params=None):
+            nonlocal changed
+            result=original(sql,params)
+            if sql.startswith('CREATE INDEX CONCURRENTLY'):changed=True
+            return result
+        self.db.execute=during_build
+        def gate():
+            if changed:raise native.Refusal('relevant current source changed during build')
+        runner=self.runner('production',gate)
+        with self.assertRaisesRegex(native.Refusal,'source changed'):runner.apply()
+        self.assertIsNotNone(runner.read('built'))
+        self.assertIsNone(runner.read('complete'))
+        self.assertEqual(self.db.rows[self.db.spec['canonical']]['oid'],runner.read('built')['new_oid'])
+        self.assertEqual(len(self.db.sql),1)
+
     def test_policy_rejects_arbitrary_identity_hash_target_budget_fields(self):
         base=entry(self.op)
         for key,value in [('work_issue',999),('claim_issue',999),('kind','arbitrary'),('definition_sha256','0'*64),('lock_timeout_ms',501),('sql','drop table x')]:

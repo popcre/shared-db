@@ -128,6 +128,9 @@ class Maintenance:
         return record
 
     def save(self,phase,start,**extra):
+        # Preserve immediate built-OID custody after CREATE, but never publish
+        # qualifying completion under code/policy that changed during the build.
+        if phase=='complete':self.gate()
         prior=self.read(phase)
         if prior is not None:return prior
         record={**self.identity,'operation_id':self.operation_id,'policy_digest':digest(self.entry),
@@ -289,7 +292,10 @@ def workflow_gate(options,entry):
         or run.get('display_title')!=expected_title):
         raise Refusal('live automatic workflow run proof refused')
     head=subprocess.run(['git','rev-parse','HEAD'],cwd=ROOT,text=True,capture_output=True,check=True).stdout.strip()
-    if head!=options.source_sha or gh('commits/main')['sha']!=head:raise Refusal('exact current main required')
+    if head!=options.source_sha:raise Refusal('exact dispatched checkout required')
+    from index_maintenance_source import prove
+    try:source_proof=prove(head,entry,options.operation,lambda endpoint:gh(endpoint.removeprefix('repos/'+REPO+'/')))
+    except Exception as exc:raise Refusal('maintenance trusted-source parity refused: '+str(exc)) from exc
     expected_ref=f'refs/db-index-maintenance-operations/{options.operation}/{options.target}/{head}'
     if options.dispatch_ref!=expected_ref:raise Refusal('dispatch ref/source/target mismatch')
     dispatch=Receipts().read(expected_ref)
@@ -320,6 +326,7 @@ def workflow_gate(options,entry):
     _,env=linked_connection(options.linked_dir,options.expected_project_ref)
     if env.get('PGPORT','5432')!='5432':raise Refusal('session connection required for nontransactional maintenance')
     env['_SOURCE_MERGE_SHA']=pr['merge_commit_sha']
+    env['_CURRENT_MAIN_SHA']=source_proof['current_main_sha']
     if entry.get('kind')=='health-initial/v1':
         env['_HEALTH_CLAIM_SCOPE']=admission_result['scope_sha256']
     return env
@@ -330,6 +337,8 @@ def executor_digest(operation_id=None):
            '.github/workflows/shared-supabase-migrations.yml']
     if operation_id and operation_id.startswith('health-'):
         paths+=['scripts/health_initial_index_maintenance.py','config/health-initial-index-definitions.json']
+    paths+=['scripts/index_maintenance_source.py','scripts/prove_index_maintenance_source.py',
+            'scripts/lib/lanes/exclusive-locks.mjs']
     return digest({path:hashlib.sha256((ROOT/path).read_bytes()).hexdigest() for path in paths})
 
 
@@ -361,7 +370,7 @@ def main():
             selected_claim={'claim_issue':entry['claim_issue'],'work_issue':entry['work_issue'],
                             'objects':['table '+TABLE,*['index public.'+name for name in (original,new,retired)]]}
         request={'target':options.target,'run_id':identity['run_id'],'source_pr':entry['source_pr'],'head_sha':options.source_sha,
-                 'claim':selected_claim}
+                 'claim':selected_claim,'dispatch_ref':options.dispatch_ref}
         receipts=Receipts()
         request['lease']=receipts.exclusive('acquire',request)
         def fenced_gate():

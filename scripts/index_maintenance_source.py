@@ -30,6 +30,13 @@ def python_tools(syntax):
     dependencies=set()
     parents={child:node for node in ast.walk(syntax) for child in ast.iter_child_nodes(node)}
     def literal(node):return node.value if isinstance(node,ast.Constant) and isinstance(node.value,str) else None
+    def namespace(value):
+        return isinstance(value,str) and re.search(r'(?:^|/)tools(?:/|$)',value) is not None
+    # A formatted namespace can escape through any alias or Path constructor.
+    # Reject it at its definition, including a terminal /tools component.
+    for node in ast.walk(syntax):
+        if isinstance(node,ast.JoinedStr) and any(isinstance(v,ast.Constant) and namespace(v.value) for v in node.values):
+            raise RiskGateError('unresolved maintenance tools-directory formatted prefix')
     def parts(node):
         if isinstance(node,ast.BinOp) and isinstance(node.op,ast.Div):return parts(node.left)+[node.right]
         return [node]

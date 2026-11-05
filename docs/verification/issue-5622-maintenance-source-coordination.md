@@ -8,7 +8,7 @@ This supersedes the early-lock proposal: the native merge queue retired its
 lease interlock, so merely acquiring a lock earlier cannot fence an already-green
 queue entry. No retired interlock, required check or new lease/ref is introduced.
 
-Base is actual merged foreign5728/fa5f87acb0f5b1196bb908a1cd77e2b32c1e3fe5.
+Base is actual merged foreign5726/fae11e0831fa1a03ec46b23292a03cd6d45f0688.
 Its SG706b policy,2000ms lock/3000ms swap and history are unchanged. Health fixed
 500ms lock and2500ms/3s RPC budgets are unchanged. Distinct PostgreSQL
 LockNotAvailable remains the original SG owner's obstruction.
@@ -70,11 +70,11 @@ comparison remains a fresh gate, not a replacement receipt schema.
 Unresolved Python tools-directory prefixes are rejected at their definition,
 including aliases and wrapped expressions, before a later variable can conceal
 the namespace. JavaScript unresolved directory/prefix aliases also refuse.
-Complete literal paths are pinned. A direct source-text read pins the exact read
-file as data; it does not pretend that merely reading JavaScript executes its
-imports. Actual imported/spawned tools are walked and unresolved namespaces in
-those programs refuse. Real Git fixtures cover both source-data and executed-tool
-roles, inline/aliased namespaces and unchanged reader/changed runtime guards.
+Complete literal paths are pinned and every resolved source read is traversed
+conservatively: reading source can feed later execution. There is no data-only
+reader exemption. Formatted Python namespace components, including a terminal
+`/tools` passed directly to Path or stored in an alias, fail closed. Genuine
+Git fixtures cover both forms and unchanged readers with changed runtime guards.
 
 There is no atomic transaction across GitHub main and a hosted DDL statement.
 As before, the gate is reasserted immediately before each mutation; a change

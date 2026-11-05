@@ -87,6 +87,15 @@ class ActualGitProducerTests(unittest.TestCase):
             with self.subTest(path=path),self.assertRaisesRegex(source.RiskGateError,'tools-directory'):self.prove()
             (self.root/path).unlink()
 
+    def test_formatted_terminal_namespace_direct_and_alias_refuse(self):
+        cases=["p=Path(f'{ROOT}/tools')/name", "directory=f'{ROOT}/tools';p=Path(directory)/name"]
+        for body in cases:
+            self.write('scripts/runtime.py',"from pathlib import Path\n"+body)
+            self.write('tools/runtime-guard.mjs','export const guard=1')
+            self.base=self.commit();self.main=self.base
+            self.write('tools/runtime-guard.mjs','export const guard=0');self.main=self.commit()
+            with self.subTest(body=body),self.assertRaisesRegex(source.RiskGateError,'tools-directory formatted prefix'):self.prove()
+
     def test_unchanged_relative_tool_importer_and_changed_nested_tool_refuse(self):
         self.write('tools/worker.mjs',"export {guard} from './nested/guard.mjs'\n")
         self.write('tools/nested/guard.mjs','export const guard=1')

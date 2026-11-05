@@ -65,7 +65,7 @@ class EvaluationPostgresTests(unittest.TestCase):
                 c.execute('SET ROLE designflow_hts_evaluation_read')
                 with self.assertRaises(self.pg.Error):c.execute(sql)
                 c.rollback()
-        with self.admin() as c:
+        with atomic.credential_connection({**self.env,'PGUSER':os.environ.get('HTS_EVALUATION_TEST_CLEANUP_USER','postgres')}) as c:
             c.execute('SET ROLE hts_evaluation_unauthorized')
             with self.assertRaises(self.pg.Error):c.execute('SELECT pre_pack_code FROM coldlion.item_detail')
             c.rollback()

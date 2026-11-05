@@ -217,6 +217,14 @@
         "production"
       ],
       "strip_outer_transaction": true
+    },
+    "20261105160717": {
+      "sha256": "71cf9920249f4ac4df0ad5711d7bd276aba5825fa45676c4f4dc63d2b2912d5e",
+      "targets": [
+        "preview",
+        "production"
+      ],
+      "admission_lock_contract": "curated-character-admission-5683-target-v2"
     }
   }
 }

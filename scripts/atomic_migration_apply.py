@@ -31,6 +31,11 @@ CURATED_CHARACTER_LOCK_SQL = (
     "SET LOCAL transaction_timeout='3s';\n"
     "LOCK TABLE core.licensor, core.character, core.character_alias, core.taxonomy_source_ref IN SHARE ROW EXCLUSIVE MODE;\n"
 )
+# The successor admits only the two reviewed complete target witness packets.
+CURATED_TARGET_CONTRACT = "curated-character-admission-5683-target-v2"
+CURATED_TARGET_VERSION = "20261105160717"
+CURATED_TARGET_SHA256 = "71cf9920249f4ac4df0ad5711d7bd276aba5825fa45676c4f4dc63d2b2912d5e"
+CURATED_TARGET_PROJECTS = {"preview": "mvpkijzfmfcxhnzqogzs", "production": "qsllyeztdwjgirsysgai"}
 VERSION_RE = re.compile(r"^(\d{14})_(.+)\.sql$")
 VERSION_VALUE_RE = re.compile(r"^\d{14}$")
 TX_RE = re.compile(
@@ -87,11 +92,14 @@ def read_policy() -> dict[str, dict[str, object]]:
         validate_version(version)
         if not isinstance(entry, dict):
             raise Refusal(f"atomic policy entry {version} is not an object")
-        if version == CURATED_CHARACTER_LOCK_VERSION or "admission_lock_contract" in entry:
+        if version in {CURATED_CHARACTER_LOCK_VERSION, CURATED_TARGET_VERSION} or "admission_lock_contract" in entry:
+            expected_contract, expected_hash = {
+                CURATED_CHARACTER_LOCK_VERSION: (CURATED_CHARACTER_LOCK_CONTRACT, CURATED_CHARACTER_LOCK_SHA256),
+                CURATED_TARGET_VERSION: (CURATED_TARGET_CONTRACT, CURATED_TARGET_SHA256),
+            }.get(version, (None, None))
             if (set(entry) != {"sha256", "targets", "admission_lock_contract"}
-                    or entry["admission_lock_contract"] != CURATED_CHARACTER_LOCK_CONTRACT
-                    or version != CURATED_CHARACTER_LOCK_VERSION
-                    or entry.get("sha256") != CURATED_CHARACTER_LOCK_SHA256):
+                    or entry.get("admission_lock_contract") != expected_contract
+                    or expected_contract is None or entry.get("sha256") != expected_hash):
                 raise Refusal("curated admission lock contract must bind the one exact version/hash without custom tables, modes or budgets")
         if "batch_group" in entry and (not isinstance(entry["batch_group"], str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,79}", entry["batch_group"])):
             raise Refusal(f"atomic policy batch group is invalid for {version}")
@@ -533,12 +541,44 @@ select count(*) from supabase_migrations.schema_migrations where version = '""" 
         raise Refusal(f"version {version} is already applied")
 
 
-def build_wrapper(version: str, name: str, raw: str, statements: list[str], *, admission_lock_contract: str | None = None) -> str:
+def verified_curated_target(target: str, expected_ref: str, linked_url: str, env: dict[str, str]) -> tuple[str, str]:
+    """Bind the fixed target to the already-validated actual linked connection.
+
+    Called only after linked_connection strips ambient libpq routing overrides.
+    No CLI option, environment marker or SQL-selected target can replace this proof.
+    """
+    if CURATED_TARGET_PROJECTS.get(target) != expected_ref:
+        raise Refusal("curated target and expected project contradict the fixed target binding")
+    parsed = urlparse(linked_url)
+    if (parsed.scheme not in {"postgres", "postgresql"} or parsed.password is not None
+            or parsed.username != env.get("PGUSER")
+            or parsed.username != "postgres." + expected_ref
+            or parsed.hostname != env.get("PGHOST")
+            or parsed.path.removeprefix("/") != env.get("PGDATABASE")
+            or env.get("PGDATABASE") != "postgres"
+            or str(parsed.port or "") != env.get("PGPORT", "")
+            or env.get("PGSSLMODE") not in {"require", "verify-ca", "verify-full"}
+            or env.get("EXPECTED_PROJECT_REF") != expected_ref):
+        raise Refusal("curated target differs from the proved linked database connection")
+    return target, expected_ref
+
+
+def build_wrapper(version: str, name: str, raw: str, statements: list[str], *, admission_lock_contract: str | None = None, curated_target: tuple[str, str] | None = None) -> str:
     validate_version(version)
     prelude = ""
-    if version == CURATED_CHARACTER_LOCK_VERSION and admission_lock_contract is None:
+    if version in {CURATED_CHARACTER_LOCK_VERSION, CURATED_TARGET_VERSION} and admission_lock_contract is None:
         raise Refusal("curated admission wrapper requires its named lock contract")
-    if admission_lock_contract is not None:
+    if admission_lock_contract == CURATED_TARGET_CONTRACT:
+        if (version != CURATED_TARGET_VERSION
+                or hashlib.sha256(raw.encode("utf-8")).hexdigest() != CURATED_TARGET_SHA256
+                or not isinstance(curated_target, tuple) or len(curated_target) != 2
+                or CURATED_TARGET_PROJECTS.get(curated_target[0]) != curated_target[1]):
+            raise Refusal("curated target wrapper requires exact source and verified target context")
+        prelude = CURATED_CHARACTER_LOCK_SQL + (
+            "SET LOCAL app.curated_character_target = '" + curated_target[0] + "';\n"
+            "SET LOCAL app.curated_character_project = '" + curated_target[1] + "';\n"
+        )
+    elif admission_lock_contract is not None:
         if (admission_lock_contract != CURATED_CHARACTER_LOCK_CONTRACT
                 or version != CURATED_CHARACTER_LOCK_VERSION
                 or hashlib.sha256(raw.encode("utf-8")).hexdigest() != CURATED_CHARACTER_LOCK_SHA256):
@@ -673,6 +713,9 @@ def main() -> int:
         # Validate every byte, target and ledger before the first mutation.
         candidates = [(version, *load_candidate(args.migrations_dir, version, args.target)) for version in versions]
         url, env = linked_connection(args.linked_dir, args.expected_project_ref)
+        curated_target = None
+        if CURATED_TARGET_VERSION in versions:
+            curated_target = verified_curated_target(args.target, args.expected_project_ref, url, env)
         for version, path, name, raw, statements in candidates:
             credential = read_policy()[version].get("initial_credential_role")
             if credential and args.mode == "apply" and len(env.get(HTS_CREDENTIAL_ENV, "")) < 32:
@@ -698,7 +741,7 @@ def main() -> int:
                     raise Refusal("evaluation access committed but login verification failed; preserve ledger and recover without rerun or rotation") from None
                 print(f"ATOMIC APPLY OK: target={args.target} version={version} ledger_row=1 statements={len(statements)} initial_credential=login_verified")
                 continue
-            wrapper = build_wrapper(version, name, raw, statements, admission_lock_contract=read_policy()[version].get("admission_lock_contract"))
+            wrapper = build_wrapper(version, name, raw, statements, admission_lock_contract=read_policy()[version].get("admission_lock_contract"), curated_target=curated_target)
             with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".sql", delete=False) as handle:
                 handle.write(wrapper)
                 temp_name = handle.name

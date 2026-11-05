@@ -65,7 +65,7 @@ class AtomicMigrationApplyTests(unittest.TestCase):
 
     def test_every_existing_noncontract_wrapper_remains_byte_identical(self):
         for version,entry in atomic.read_policy().items():
-            if version==atomic.CURATED_CHARACTER_LOCK_VERSION: continue
+            if version in {atomic.CURATED_CHARACTER_LOCK_VERSION, atomic.CURATED_TARGET_VERSION}: continue
             raw="select 1;";statements=[raw];name="unchanged"
             expected=("\\set ON_ERROR_STOP on\nBEGIN;\n"+raw+"\nINSERT INTO supabase_migrations.schema_migrations(version, statements, name) VALUES (\n"+atomic.dollar_quote(version,"version")+", ARRAY[\n"+atomic.dollar_quote(raw,"s0")+"\n]::text[], "+atomic.dollar_quote(name,"name")+");\nCOMMIT;\n")
             self.assertEqual(atomic.build_wrapper(version,name,raw,statements),expected)

@@ -1,6 +1,9 @@
 -- derived-from: none
 -- Issue #5622; application u2giants/popdam3#706 and #663.
 -- Additive health contract and bounded retry path; existing overload is unchanged.
+-- Index builds use the migration transaction budget; RPC request ceilings stay unchanged.
+set local statement_timeout = '15min';
+
 -- Compact partial indexes avoid the embedding heaps and the whole coverage
 -- meters, which both hit the live eight-second request ceiling on 2026-11-04.
 create index dam_search_health_pending_idx on public.dam_search_documents(indexed_at)

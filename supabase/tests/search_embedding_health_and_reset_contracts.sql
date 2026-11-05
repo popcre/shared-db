@@ -3,6 +3,11 @@ begin;
 do $test$
 declare health record; recovered integer;
 begin
+  if exists(select 1 from (values ('dam_search_health_pending_idx'),('dam_search_health_errored_idx'),
+      ('dam_search_health_last_write_idx'),('sg_search_health_last_write_idx')) wanted(name)
+      where to_regclass('public.'||wanted.name) is null) then
+    raise exception 'compact health indexes are missing';
+  end if;
   if has_function_privilege('anon','public.get_search_embedding_health()','execute')
      or not has_function_privilege('authenticated','public.get_search_embedding_health()','execute')
      or has_function_privilege('authenticated','public.reset_dam_search_embedding_errors(text,integer)','execute')

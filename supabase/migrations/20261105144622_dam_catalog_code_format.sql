@@ -1,7 +1,8 @@
 -- #5696: complete format existence only; never product identity.
 begin;
-set local lock_timeout = '1s';
-set local statement_timeout = '5s';
+set local lock_timeout = '500ms';
+set local statement_timeout = '2500ms';
+set local transaction_timeout = '3s';
 
 do $guard$
 begin

@@ -94,6 +94,22 @@ class CatalogCodeFormat(unittest.TestCase):
     def test_installed_preview_contract(self):
         self.run_sql((ROOT / "supabase/tests/dam_catalog_code_format_contracts.sql").read_text())
 
+    def test_preview_contract_refuses_wrong_index_expression_and_predicate(self):
+        contract = (ROOT / "supabase/tests/dam_catalog_code_format_contracts.sql").read_text()
+        for expression, predicate in [("lower(sku)", "sku IS NOT NULL"),
+                                      ("translate(sku,'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789','AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA9999999999')", "sku IS NOT NULL")]:
+            changed = "BEGIN; DROP INDEX public.idx_style_groups_code_format; CREATE INDEX idx_style_groups_code_format ON public.style_groups (" + expression + ") WHERE " + predicate + ";"
+            result = self.run_sql(changed + contract, success=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("index expression/predicate changed", result.stderr)
+
+    def test_preview_contract_refuses_owner_and_acl_drift(self):
+        contract = (ROOT / "supabase/tests/dam_catalog_code_format_contracts.sql").read_text()
+        for changed in ["CREATE ROLE format_owner; ALTER FUNCTION public.dam_catalog_code_format_exists(text) OWNER TO format_owner;",
+                        "GRANT EXECUTE ON FUNCTION public.dam_catalog_code_format_exists(text) TO authenticated;"]:
+            result = self.run_sql("BEGIN;" + changed + contract, success=False)
+            self.assertNotEqual(result.returncode, 0)
+
     def test_existing_outer_statement_budget_cancels_a_blocked_reader(self):
         # This tests the REAL outer server deadline. A function-local SET alone
         # is deliberately not treated as a hard nested statement deadline.

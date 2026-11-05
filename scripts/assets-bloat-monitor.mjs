@@ -39,7 +39,7 @@ export async function fetchReading(projectRef, token = process.env.SUPABASE_ACCE
   const rows = JSON.parse(body)
   if (!Array.isArray(rows) || rows.length !== 1) throw new Unknown('expected exactly one reading row')
   const r = rows[0]
-  const n = (k) => { const v = Number(r[k]); if (!Number.isFinite(v)) throw new Unknown(`reading column ${k} is missing`); return v }
+  const n = (k) => { const v = Number(r[k]); if (!Number.isFinite(v)) throw new Unknown(`reading column ${k} is absent`); return v }
   return { read_at: new Date(r.read_at).toISOString(), heap_bytes: n('heap_bytes'), live_bytes: n('live_bytes'), live_rows: n('live_rows'),
     index_bytes: n('index_bytes'), n_tup_upd: n('n_tup_upd'), n_tup_hot_upd: n('n_tup_hot_upd'), n_dead_tup: n('n_dead_tup'),
     last_autovacuum: r.last_autovacuum ?? null }

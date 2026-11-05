@@ -210,7 +210,7 @@ CREATE OR REPLACE FUNCTION public.claim_dam_search_embedding_documents(p_limit i
  SET search_path TO 'public'
 AS $function$
 begin
-  if (select auth.role()) <> 'service_role' or nullif(btrim(p_worker_id),'') is null then raise exception 'service_role and worker id required' using errcode='42501'; end if;
+  if (coalesce((select auth.role()) = 'service_role', false) or pg_has_role(session_user, 'dam_image_embed_worker', 'MEMBER')) is not true or nullif(btrim(p_worker_id),'') is null then raise exception 'authorized embedding actor and worker id required' using errcode='42501'; end if;
   return query with candidates as (
     select d.document_type,d.entity_id from public.dam_search_documents d
     where d.embedding is null and d.embedding_attempts<d.embedding_max_attempts
@@ -239,7 +239,7 @@ CREATE OR REPLACE FUNCTION public.upsert_dam_search_embedding(p_document_type te
  SET search_path TO 'public'
 AS $function$
 begin
-  if (select auth.role()) <> 'service_role' then raise exception 'service_role required' using errcode='42501'; end if;
+  if (coalesce((select auth.role()) = 'service_role', false) or pg_has_role(session_user, 'dam_image_embed_worker', 'MEMBER')) is not true then raise exception 'authorized embedding actor required' using errcode='42501'; end if;
   update public.dam_search_documents set embedding=p_embedding,embedding_model=p_embedding_model,embedding_updated_at=now(),
     embedding_error=null,embedding_error_category=null,embedding_next_retry_at=null,embedding_lease_token=null,
     embedding_lease_owner=null,embedding_lease_expires_at=null where document_type=p_document_type and entity_id=p_entity_id
@@ -255,7 +255,8 @@ CREATE OR REPLACE FUNCTION public.mark_dam_search_embedding_error(p_document_typ
  SET search_path TO 'public'
 AS $function$
 begin
-  if (select auth.role()) <> 'service_role' or p_category not in ('transient','permanent') then raise exception 'invalid embedding error'; end if;
+  if (coalesce((select auth.role()) = 'service_role', false) or pg_has_role(session_user, 'dam_image_embed_worker', 'MEMBER')) is not true then raise exception 'authorized embedding actor required' using errcode='42501'; end if;
+  if p_category is null or p_category not in ('transient','permanent') then raise exception 'invalid embedding error category' using errcode='22023'; end if;
   update public.dam_search_documents set embedding_error=left(coalesce(p_error,'unknown embedding error'),1000),
     embedding_error_category=case when p_category='permanent' or embedding_attempts>=embedding_max_attempts then 'permanent' else 'transient' end,
     embedding_next_retry_at=case when p_category='transient' and embedding_attempts<embedding_max_attempts

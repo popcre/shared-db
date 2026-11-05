@@ -121,6 +121,13 @@ CI is the authority for the full matrix (`tools-offline-tests.yml`,
 `database-contract-tests.yml`, `pr-guards.yml`, `guarded-migration-merge.yml`).
 Do not assume a green laptop equals a green PR.
 
+*Superseded 2026-11-05: `guarded-migration-merge.yml` no longer exists — removed
+from `main` on 2026-10-31 (PR #5234, Stage C2c, popcre/ai-devops#2172). The live
+required checks on `main` are `SQL migration guards`,
+`supabase/tests against an ephemeral database`, and `Destructive SQL outside
+migrations` (lean required checks, owner ruling 2026-10-30); everything else is
+advisory.*
+
 ### Generated database types
 
 The ordinary `database-types` download is generated from the configured preview
@@ -137,7 +144,11 @@ and runs only `supabase gen types`; it does not link a project or run a migratio
 
 1. Confirm it is **structure** (or gated curated Master Data), not ordinary rows.
 2. Check in-flight work: [`docs/agents/in-flight-check.md`](agents/in-flight-check.md).
-3. Reserve a version: `node scripts/manage-migration-author-lanes.mjs --claim …`
+3. Reserve a version, then file its claim body (do not open the migration file
+   first): `node scripts/check-dispatch-collision.mjs --objects "<every exact
+   object written>" --reserve-version`, then the same command with `--task
+   "<issue and outcome>" --objects "…" --version <reserved> --claim-body-file
+   claim.md`, then `gh issue create --body-file claim.md`.
 4. Write only the new `supabase/migrations/<timestamp>_<name>.sql`.
 5. Run `scripts/check-sql.sh` and the relevant `scripts/*.test.mjs`.
 6. Branch + PR; start CI **and** the governed review in parallel

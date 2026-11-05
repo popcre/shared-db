@@ -13,6 +13,17 @@ export const DATA_ONLY_NOTICE=/^the allowlisted migrations named no catalog obje
 const namedAssertion=(c)=>c?.kind==='catalog_contract'?typeof c.contract==='string'&&c.contract.length>0
   :c?.kind==='exact_row_count'?typeof c.relation==='string'&&/^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$/.test(c.relation)&&Array.isArray(c.filters)&&c.filters.length>0
   :false
+// A zero-row absence check supplements, but cannot replace, positive proof of
+// this exact version and SQL hash. Use the same rule in both certificate paths.
+function boundAssertionsPass(catalog,version,hash){
+  if(!Array.isArray(catalog.behavior_checks)||!Array.isArray(catalog.behavior_results?.behavior_checks))return false
+  const checks=catalog.behavior_checks.filter(c=>namedAssertion(c)&&c.migration_version===version&&c.migration_sha256===hash&&typeof c.id==='string'&&c.id.length>0)
+  if(!checks.some(c=>Number.isSafeInteger(c.expected_count)&&c.expected_count>0))return false
+  return checks.every(c=>{
+    const results=catalog.behavior_results.behavior_checks.filter(r=>r?.id===c.id)
+    return Number.isSafeInteger(c.expected_count)&&c.expected_count>=0&&(c.expected_count>0||c.kind==='exact_row_count')&&results.length===1&&Number.isSafeInteger(results[0].actual_count)&&Number.isSafeInteger(results[0].expected_count)&&results[0].actual_count===c.expected_count&&results[0].expected_count===c.expected_count
+  })
+}
 export function matchesCatalogRecovery({evidence,applyRun,recoveryRun,recoveryArtifact,binding,catalog,versions,manifest,jobs,ledgerBefore,ledgerAfter,ledgerLive}) {
   if(applyRun?.status!=='completed'||applyRun.conclusion!=='failure'||applyRun.event!=='workflow_dispatch'||applyRun.path!==APPLY_PATH||applyRun.head_sha!==evidence.production_commit_sha)return false
   if(recoveryRun?.status!=='completed'||recoveryRun.conclusion!=='success'||recoveryRun.event!=='workflow_dispatch'||recoveryRun.path!==RECOVERY_PATH||recoveryRun.head_sha!==evidence.production_recovery_commit_sha)return false
@@ -36,9 +47,7 @@ export function matchesCatalogRecovery({evidence,applyRun,recoveryRun,recoveryAr
   // may be proved by a catalog contract or a hash-bound exact row count.
   if(catalog?.enforcing!==true||!Array.isArray(catalog.errors)||catalog.errors.some(e=>!(typeof e==='string'&&DATA_ONLY_NOTICE.test(e)))||!same(catalog.allowlist,wanted))return false
   for(const version of wanted){
-    const checks=(catalog.behavior_checks??[]).filter(c=>namedAssertion(c)&&c.migration_version===version&&c.migration_sha256===binding.migration_hashes[version]&&typeof c.id==='string'&&c.id.length>0)
-    if(!checks.length)return false
-    for(const check of checks){const results=(catalog.behavior_results?.behavior_checks??[]).filter(r=>r.id===check.id);if(!Number.isSafeInteger(check.expected_count)||check.expected_count<1||results.length!==1||results[0].actual_count!==check.expected_count||results[0].expected_count!==check.expected_count)return false}
+    if(!boundAssertionsPass(catalog,version,binding.migration_hashes[version]))return false
   }
   return true
 }
@@ -69,6 +78,7 @@ export function verifyProductionEvidence(evidence,io,read=ghJson,repository=curr
 
 // Separate present-state evidence. Never interprets this as a historical apply delta.
 export const CURRENT_LIVE_KIND='shared-db-current-live-reverification/v1'
+export const CURRENT_LIVE_TRUSTED_PATHS=['.github/workflows/production-catalog-verification-recovery.yml','scripts/designflow-db-release.mjs','scripts/lib/production-catalog-recovery.mjs','scripts/lib/current-live-attestation.mjs','scripts/production_catalog_recovery_evidence.py','scripts/production_catalog_verification.py','scripts/review_finding_hold.py','scripts/check-applied-migration-edit.mjs','scripts/atomic_migration_apply.py']
 const SHA=/^[a-f0-9]{40}$/
 const HEX=/^[a-f0-9]{64}$/
 const APPLY_JOBS=['SQL migration guards','Production apply review (immutable evidence + hard guards)','Production apply (automatic evidence gates)']
@@ -101,18 +111,22 @@ export function validateCurrentLiveBinding(binding,{source,ledger,catalog,produc
   if(new Set(source.migrations.map(m=>m.version)).size!==source.migrations.length||new Set(source.migrations.map(m=>m.path)).size!==source.migrations.length)throw Error('Duplicate current-live source')
   for(const m of source.migrations){
     if(!/^\d{14}$/.test(m.version)||!HEX.test(m.sha256))throw Error('Malformed current-live migration')
-    const checks=(catalog.behavior_checks??[]).filter(c=>namedAssertion(c)&&typeof c.id==='string'&&c.id.length>0&&c.migration_version===m.version&&c.migration_sha256===m.sha256)
-    if(!checks.length)throw Error('Current-live source has no hash-bound catalogue assertion')
-    for(const c of checks){const results=(catalog.behavior_results?.behavior_checks??[]).filter(r=>r.id===c.id);if(!Number.isSafeInteger(c.expected_count)||c.expected_count<1||results.length!==1||results[0].actual_count!==c.expected_count||results[0].expected_count!==c.expected_count)throw Error('Current-live catalogue assertion failed')}
+    if(!boundAssertionsPass(catalog,m.version,m.sha256))throw Error('Current-live catalogue assertion failed')
   }
   return true
 }
 
 // GitHub-only native acceptance. Live ledger/catalogue contact belongs exclusively
 // to the trusted read-only certificate producer and the central readiness observer.
+// Advisory review (popcre/ai-devops plan_skinny-review.md rule 8.6, #2074): the
+// source PR must be merged and no blocking review-finding issue may reference it.
 export function proveCurrentLiveAssignedSource(pr){
- const program=`import {gatherApprovalInput,requireDurableVerdictInput,evaluateExactHeadApproval} from './scripts/check-exact-head-approval.mjs';const input=requireDurableVerdictInput(gatherApprovalInput({...process.env,PR_NUMBER:process.env.CURRENT_LIVE_SOURCE_PR,APPROVAL_AUDIT:''}));const result=evaluateExactHeadApproval(input);if(result.approved!==true||result.owner_no_reviewer||result.documents_only)throw Error('Actual assigned approval required');console.log(JSON.stringify({result,verdicts:input.verdicts.map(({ref,sha,assignment_sha,findings_digest,reviewer,head_sha,verdict})=>({ref,sha,assignment_sha,findings_digest,reviewer,head_sha,verdict})).sort((a,b)=>a.ref.localeCompare(b.ref))}));`;
- return execFileSync(process.execPath,['--input-type=module','-e',program],{encoding:'utf8',env:{...process.env,CURRENT_LIVE_SOURCE_PR:String(pr)},timeout:180000,maxBuffer:4*1024*1024});
+ const n=Number(pr);if(!Number.isSafeInteger(n)||n<1)throw Error('Current-live source PR is malformed')
+ const repo=process.env.GITHUB_REPOSITORY||'popcre/shared-db'
+ const view=ghJson(['api',`repos/${repo}/pulls/${n}`])
+ if(view?.number!==n||view.merged!==true||!SHA.test(view.merge_commit_sha??'')||!SHA.test(view.head?.sha??''))throw Error('Merged source PR required')
+ execFileSync('python3',['scripts/review_finding_hold.py','--pr',String(n),'--repo',repo],{encoding:'utf8',timeout:180000,maxBuffer:1024*1024})
+ return JSON.stringify({source_pr:n,merge_sha:view.merge_commit_sha,head_sha:view.head.sha,review_finding_hold:'clear'})+'\n'
 }
 const currentLiveApproval=e=>proveCurrentLiveAssignedSource(e.merge_pr)
 export const CURRENT_LIVE_RECEIPT_PREFIX='designflow-db-current-live-receipt '
@@ -180,7 +194,7 @@ export function verifyCurrentLiveEvidence(e,io,read=ghJson,repository=currentRep
   if(run.id!==id||run.status!=='completed'||run.conclusion!=='success'||run.event!=='workflow_dispatch'||run.path!==RECOVERY_PATH||run.head_branch!=='main'||run.head_sha!==e.production_reverification_commit_sha||!io.mergeCommitInMain(run.head_sha))return false
   const main=get('commits/main').sha
   if(!SHA.test(main))return false
-  for(const path of ['.github/workflows/production-catalog-verification-recovery.yml','scripts/designflow-db-release.mjs','scripts/lib/production-catalog-recovery.mjs','scripts/lib/current-live-attestation.mjs','scripts/production_catalog_recovery_evidence.py','scripts/production_catalog_verification.py','scripts/check-exact-head-approval.mjs','scripts/check-applied-migration-edit.mjs','scripts/atomic_migration_apply.py']){
+  for(const path of CURRENT_LIVE_TRUSTED_PATHS){
    const producer=get(`contents/${path}?ref=${run.head_sha}`),current=get(`contents/${path}?ref=${main}`)
    if(producer.encoding!=='base64'||current.encoding!=='base64'||producer.content!==current.content)return false
   }

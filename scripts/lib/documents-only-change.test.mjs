@@ -46,8 +46,8 @@ test('standalone implementation plans are documents', () => {
 // ONE non-document file removes the exemption for the whole pull request.
 for (const path of [
   'supabase/migrations/20260902120000_add_thing.sql',
-  'scripts/manage-migration-author-lanes.mjs',
-  'scripts/check-exact-head-approval.test.mjs',
+  'scripts/manage-migration-coordination.mjs',
+  'scripts/check-applied-migration-edit.test.mjs',
   '.github/workflows/guarded-migration-merge.yml',
   'scripts/check-sql.sh',
   'tools/load.py',
@@ -108,7 +108,7 @@ const CODE_PATHS = [
   'scripts/test_production_catalog_verification.py',
   'tools/load.py',
   'app.py',
-  'scripts/manage-migration-author-lanes.mjs',
+  'scripts/manage-migration-coordination.mjs',
   'scripts/check-sql.sh',
   'config/settings.json',
   '.github/workflows/guarded-migration-merge.yml',

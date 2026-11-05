@@ -2123,14 +2123,14 @@ Verbatim from Albert's chat (2026-10-02):
 at the exact reviewed head (the post-merge production-risk-assessment slot), with that merged
 state proven through the verified merged-PR issue binding (`SHARED_DB_MERGED_PR_ISSUE_BINDING`).
 The allocator still prefers any independent reviewer; only when none is left may
-`--assign-reviewer` or `--replace-failed-reviewer` draw one that already holds another slot on
+`--assign-reviewer` or `--replace-failed-reviewer` (both retired by #5409) draw one that already holds another slot on
 that head, in the ordinary rotation order. It never draws a reviewer that failed on this head, is
 unusable or preflight-excluded, conflicts with the implementing engine, or is retired. Both
 approval gates, `assertDurableReviewApproval` and `scripts/check-exact-head-approval.mjs` (the
 automatic-promotion re-proof), accept that shared reviewer only when the pull request is merged
 (not open) at the exact head. Once every independent reviewer is used, a reviewer may be reused
 for more than one later slot; slot 1 is not kept independent of slots 2 and above collectively. Open pull requests keep strict slot independence. Code:
-`mergedPrReviewerReuseAllowed` in `scripts/manage-migration-author-lanes.mjs`.
+`mergedPrReviewerReuseAllowed` in `scripts/lib/lanes/review-approval.mjs` (re-exported through `scripts/manage-migration-coordination.mjs`).
 
 **Promotion merge freeze.** Cap: 60 minutes. Owner rule, Albert Hazan in his chat 2026-10-21 (verbatim): "no session is allowed to freeze merges for more than 1hr. that's the new rule" `--acquire-promotion-freeze --issue <n> --pr <n> --owner <text>
 --ttl-minutes <1-60>` sets the create-only ref `refs/db-coordination/promotion-freeze` before the
@@ -2163,7 +2163,7 @@ Verbatim from Albert's chat:
 
 > "i allow one assignment to bootstrap that policy onto main" (2026-10-16)
 
-**Effect.** For `popcre/shared-db` only: this repository has no working reviewers (standing premise from the 2026-10-15 quote), so the exact-head approval gate (`scripts/check-exact-head-approval.mjs`) skips the external reviewer APPROVE requirement. This is not a per-run liveness probe. This ruling does not by itself change `--assign-reviewer` drawing rules. The exemption is from the reviewer POOL only. Every other required check, the guarded merge lane, the merge lock, and a durable refusal already recorded at the head still bind. One assignment is authorized to bootstrap this policy onto main. The policy is the committed file `config/owner-no-reviewer-policy.json` (schema-1) so the decision is auditable and cannot be toggled by a pull-request author or environment variable. This retires the one-review minimum from §6.27 for this repository only; §6.27 remains the rule for every other repository.
+**Effect.** For `popcre/shared-db` only: this repository has no working reviewers (standing premise from the 2026-10-15 quote), so the exact-head approval gate (`scripts/check-exact-head-approval.mjs`) skips the external reviewer APPROVE requirement. This is not a per-run liveness probe. This ruling does not by itself change `--assign-reviewer` (retired by #5409) drawing rules. The exemption is from the reviewer POOL only. Every other required check, the guarded merge lane, the merge lock, and a durable refusal already recorded at the head still bind. One assignment is authorized to bootstrap this policy onto main. The policy is the committed file `config/owner-no-reviewer-policy.json` (schema-1) so the decision is auditable and cannot be toggled by a pull-request author or environment variable. This retires the one-review minimum from §6.27 for this repository only; §6.27 remains the rule for every other repository.
 
 Posted by MiMo chat 0ffe5ebedd0b70ffe on edge-dev
 
@@ -2220,3 +2220,27 @@ Verbatim from Albert's chat (2026-10-28):
 **Effect.** DesignFlow PLM is the single source of truth for user data, permissions, and roles across all POP applications (CRM, PopPIM, PopDAM/PopSG). Each app's Settings keeps its user card, but that card is only a frontend to DesignFlow's user administration — no application owns a separate role or permission authority. Login does not move: Microsoft SSO through Supabase Auth stays; this ruling is about who owns authorization data, not how anyone authenticates. Whatever DesignFlow's canonical model turns out to be, its authority must land in the shared rows row-level security already evaluates (`app.profile`, `app.user_role`, `app.app_access`) or every app's RLS breaks; *how* it lands there is the Phase-1 ownership contract recorded on the master issue. Master tracking issue: popcre/designflow-backend#250. Cutover plan (read its STATUS table first): u2giants/popdam3 `plan_user_permissions_designflow_cutover.md`. Business-map row: [application-map.md](business-rules/application-map.md).
 
 Posted by MiMo chat unknown on edge-dev
+
+### 6.34 OWNER RULING — DC and Harry Potter are properties under Warner Bros (Albert Hazan, 2026-11-01)
+
+Verbatim from Albert, relayed from the PopDAM session (2026-11-01):
+
+> "DC and Harry Potter were not left out. they used to (Wrongly) be listed as their own licensors. that was wrong, they are properties under Warner Bros, which is how it is now. document that everywhere it needs to be documented"
+
+**Effect.** DC and Harry Potter are not licensors. Their Properties belong to `WB` WARNER BROS, and their Characters resolve through the Warner scrape. Migration `20261101153043` moves their `core.property` rows to `WB`.
+
+Albert confirmed the move of existing rows, verbatim (2026-11-01): "Yes, move them".
+
+**SKU codes stay.** `DC` and `HP` remain valid ColdLion codes and SKU characters 6-7. They resolve to `WB`; the two `core.licensor` rows stay `inactive` so those codes and old history still have a referent. Every prior row is archived in `archive.dc_hp_wb_repoint_20261101`.
+
+Posted by Claude chat 8b15975b-42fa-4ebc-acab-6338808d482a on hetz
+
+### 6.35 OWNER RULING — A claim idle for 10 days may be taken over (Albert Hazan, 2026-11-02)
+
+Verbatim from Albert, relayed to the takeover session (2026-11-02):
+
+> "If a session is idle for 10 days it obviously is not coming back. spin up a nested session to take it over"
+
+**Effect.** A claim with no activity for 10 days does not need its old owner. A successor session first checks for unpublished work, then records the takeover on the claim, quoting this ruling, and releases it. Applied to claim #4723, which held up #5436 and #5079.
+
+**Case notes (#5436).** Items absent from the ColdLion feed are not reached by the import, so a licensor move needs a live count of items left on the old licensor, and a direct fix for the remainder. A data-only migration can end its production run red at post-apply catalog verification although the rows changed: judge it by a live read of the rows and the ledger.

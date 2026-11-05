@@ -1,6 +1,14 @@
 {
   "schema_version": 1,
   "migrations": {
+    "20261102003027": {
+      "sha256": "1b6de5834005b8ace1a829d2f53e91adda59cbc333743a568d4f7671af8b62d4",
+      "targets": [
+        "preview",
+        "production"
+      ],
+      "strip_outer_transaction": true
+    },
     "20260816110750": {
       "sha256": "0b178fab222aec93b0c06cd676c83a6d4cdfdeac62a0af68184e6ed24c08eca2",
       "targets": [
@@ -17,6 +25,193 @@
     },
     "20261009073649": {
       "sha256": "bbe83b7db3ac4eb67a1468da83f32d1d9a5a75695decdf09a2957bcf6b31e590",
+      "targets": [
+        "preview",
+        "production"
+      ],
+      "strip_outer_transaction": true
+    },
+    "20261030042314": {
+      "sha256": "a88d21aefb7a7bb7e7c32a373deb71a366602267e22f85537e04ff4bb3928b28",
+      "targets": [
+        "preview",
+        "production"
+      ]
+    },
+    "20261030043848": {
+      "sha256": "ff4a9d7396e3805a322e446cd05ab5905caa71a0529133dfb6f0a603dc8c9d5c",
+      "targets": [
+        "preview",
+        "production"
+      ]
+    },
+    "20261030125352": {
+      "sha256": "626629af4ecbe6c01af8e2ec5778c0ab5ad5a2530eefccdb3113c2551867fdcf",
+      "targets": [
+        "preview",
+        "production"
+      ],
+      "strip_outer_transaction": true
+    },
+    "20261030224046": {
+      "sha256": "0cd9e90c94465c0565de92516a664e381a83316b8aa5ac829849dab495f83ef2",
+      "targets": [
+        "preview",
+        "production"
+      ]
+    },
+    "20261031031837": {
+      "sha256": "a85a4401953ea11069f06bb9e479a82d9fcdc6cceacb6a006bc414b6d8cb8a65",
+      "targets": [
+        "preview",
+        "production"
+      ],
+      "strip_outer_transaction": true
+    },
+    "20261101065326": {
+      "sha256": "42ee7e69f98c8af2b14988687676defc1f55f1c7284d9255451e6a14a12369db",
+      "targets": [
+        "preview",
+        "production"
+      ]
+    },
+    "20261101074415": {
+      "sha256": "8fc472ec0cd780b26076c098b2245c139de055f5c50b9dc155cd1d19f448f213",
+      "targets": [
+        "preview",
+        "production"
+      ]
+    },
+    "20261101182210": {
+      "sha256": "9d255c0409f383d0639629b60f430aa303e6e858845a8ccdd076e76cb9858b5c",
+      "targets": [
+        "preview",
+        "production"
+      ]
+    },
+    "20261101161640": {
+      "sha256": "1555fdc368bdb864f6dac86a9c070db8d973bccf536f002b958f8fb60edfcb86",
+      "targets": [
+        "preview",
+        "production"
+      ]
+    },
+    "20261101123510": {
+      "sha256": "c2e8680c46c4e3a7ed1dd35478bc3c08dbebe671e3aa17bbe09556f16878b02e",
+      "targets": [
+        "preview",
+        "production"
+      ]
+    },
+    "20261101125528": {
+      "sha256": "3278da074e4cf7f8c887e27372e5d477fe92c8048f29697c94c84775cf2c6220",
+      "targets": [
+        "preview",
+        "production"
+      ]
+    },
+    "20261102003158": {
+      "sha256": "b984bb7900162d25e6410f9a802215cfccf2b40efdd8d8d39155a47f65f89c20",
+      "targets": [
+        "preview",
+        "production"
+      ],
+      "strip_outer_transaction": true
+    },
+    "20261102020822": {
+      "sha256": "9e619caa99822566703a34dbcf56a227a322be5cfdfabe3b87316d1e95ebb848",
+      "targets": [
+        "preview",
+        "production"
+      ],
+      "strip_outer_transaction": true
+    },
+    "20261105073854": {
+      "sha256": "6e7f4b4773794fbfa5d49bbcc5de24c3b6b63ff7d81bd5979ec3c48ee2b4bf50",
+      "targets": [
+        "preview",
+        "production"
+      ],
+      "batch_group": "popdam-health-5622"
+    },
+    "20261105073903": {
+      "sha256": "ceb0cc2d93e734ff82da0929e0e381cb96db2817f14add8eca8f14aa6c5f9ab5",
+      "targets": [
+        "preview",
+        "production"
+      ],
+      "batch_group": "popdam-health-5622"
+    },
+    "20261105073911": {
+      "sha256": "48dd5300cd792d01cf61c2777fe6e6245a7ad8449b8a635091b5a0487a710a1e",
+      "targets": [
+        "preview",
+        "production"
+      ],
+      "batch_group": "popdam-health-5622"
+    },
+    "20261105073920": {
+      "sha256": "499cc17b2d25d433d6da51b3e42055eb54885a55a7e6f5280acc48a2f281487a",
+      "targets": [
+        "preview",
+        "production"
+      ],
+      "batch_group": "popdam-health-5622"
+    },
+    "20261105074028": {
+      "sha256": "b9770eb9337ac10af30ceb53d27f77eb64822b0818c172000e2f7f478a43c4d2",
+      "targets": [
+        "preview",
+        "production"
+      ]
+    },
+    "20261105074117": {
+      "sha256": "14eb003f9fca0b4d05c2667bf5c8732357e79721aa15cbbf8790984f545dc359",
+      "targets": [
+        "preview",
+        "production"
+      ]
+    },
+    "20261105074126": {
+      "sha256": "4c7b3a7eb16ed2f7c76a98986593e69d34613063b203f8444834a0068d27da61",
+      "targets": [
+        "preview",
+        "production"
+      ]
+    },
+    "20261105121341": {
+      "sha256": "25fe2107bc43341595b1a1f9a8855e1ec740a98257ef4d2c2107f2da07b7b598",
+      "targets": [
+        "preview",
+        "production"
+      ],
+      "initial_credential_role": "designflow_hts_evaluation_reader"
+    },
+    "20261105142040": {
+      "sha256": "a0b94b7ca07e72b0fdb29c1bd70f86137b8a6691e5a0974a0c00c7dfdcb5f7d6",
+      "targets": [
+        "preview",
+        "production"
+      ]
+    },
+    "20261105142616": {
+      "sha256": "faa341b2e472907f1e31275068b4c258272f6e0df782401cfaaec000faeb9059",
+      "targets": [
+        "preview",
+        "production"
+      ],
+      "admission_lock_contract": "curated-character-admission-5683-v1"
+    },
+    "20261105144622": {
+      "sha256": "a0785c344594a50d1233caa70735f59e904dffe5c9e116aa48a86b64ad79ca5f",
+      "targets": [
+        "preview",
+        "production"
+      ],
+      "strip_outer_transaction": true
+    },
+    "20261105150450": {
+      "sha256": "6a42d62919fa0ddc5069a017dc4aeaf66143f468f3d0fcffaabf769ec9e0cb76",
       "targets": [
         "preview",
         "production"

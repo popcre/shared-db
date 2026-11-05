@@ -1,4 +1,4 @@
-// Split from scripts/manage-migration-author-lanes.mjs (issue #3726). Behavior-preserving move:
+// Split from scripts/manage-migration-coordination.mjs (issue #3726). Behavior-preserving move:
 // the entrypoint re-exports every public name defined here. Edit here, not there.
 import { reviewTargetIsRecordable } from './admission.mjs'
 import { SERVICE_CLASSES, CHANGE_TYPES, evaluateAdmission, parseImpactBlock } from '../../db-flow/admission.mjs'
@@ -7,7 +7,7 @@ import { conflicts } from '../../lib/hold-reason.mjs'
 import { validateDependencyDeclaration, classifyDependencies, findDependencyCycles } from '../../lib/work-dependencies.mjs'
 import { LaneError, parseAuthorLease, validateClaimObjects } from './claims.mjs'
 import { REPO } from './constants.mjs'
-import { githubIo } from '../../manage-migration-author-lanes.mjs'
+import { githubIo } from '../../manage-migration-coordination.mjs'
 import { parseDependencyDeclarations } from '../work-dependencies.mjs'
 import { dependencyIssue } from '../work-dependencies.mjs'
 import { createStageEvidenceVerifier } from '../work-stage-evidence.mjs'
@@ -26,6 +26,8 @@ export const EXCLUSIVE_REFS = Object.freeze({
   // unchanged; an earlier comment here claimed the exclusion existed (#1213
   // round 7 audit).
   'preview-rehearsal': 'refs/db-coordination/preview',
+  // Exact-index maintenance shares the existing preview exclusion, never a new lane.
+  'preview-maintenance': 'refs/db-coordination/preview',
   merge: 'refs/db-coordination/merge',
   production: 'refs/db-coordination/production',
 })

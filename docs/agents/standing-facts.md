@@ -36,7 +36,7 @@ have already happened in this repo, more than once.
    error. This has happened twice — `20260722220000` and `20260728160000`. CI
    now blocks duplicate versions and backdated versions, but do not rely on CI
    to save you; reserve the version atomically through
-   `scripts/manage-migration-author-lanes.mjs --claim` before creating the file.
+   `scripts/check-dispatch-collision.mjs --reserve-version` before creating the file.
 5. **Never create background task chips for this repo — banned.** Four
    chip-spawned sessions recently authored competing `CREATE OR REPLACE`
    migrations against the *same* database function, three of them sharing
@@ -127,7 +127,7 @@ have already happened in this repo, more than once.
     finishes, then release it.** This is standard practice, not an improvisation.
     **The mechanism (owner instruction 2026-10-02, "assign someone to pause merges during
     production runs"; [owner rulings §6.26](../owner-rulings.md)):** before drawing the risk
-    assessment, run `node scripts/manage-migration-author-lanes.mjs --acquire-promotion-freeze
+    assessment, run `node scripts/manage-migration-coordination.mjs --acquire-promotion-freeze
     --issue <n> --pr <source-pr> --owner <text> --ttl-minutes <1-60>`. Every `--acquire-merge`
     and repository-maintenance (documents-only) authorization then refuses until the freeze is
     released (`--release-promotion-freeze --owner <text>`), the production run's cleanup releases
@@ -162,7 +162,7 @@ have already happened in this repo, more than once.
     **It did not touch curated Master Data.** `curated-master-data` still exits by `fork` under
     §6.4 and is still governed inside this repository. Extending the ruling to it needs a separate
     explicit decision from Albert. See `NON_STRUCTURAL_EXITS` in
-    `scripts/manage-migration-author-lanes.mjs` for the enforced form.
+    `scripts/manage-migration-coordination.mjs` for the enforced form.
 
 17. **`required_status_checks.strict` is FALSE on purpose (owner ruling, 2026-08-19, issue #1286).**
     Requiring every branch to be up to date before merging restarted the full check suite on every
@@ -185,6 +185,15 @@ have already happened in this repo, more than once.
     `plan_orchestrator-workflow-gaps.md` — describe the earlier `strict: true` state. That history
     is real and is preserved; it is **superseded** as a current instruction. Only issue #1286
     governs whether strict mode is ever reconsidered.
+
+    **SUPERSEDED 2026-11-05 (guarded merge lane removed):** the second paragraph above is
+    historical. `.github/workflows/guarded-migration-merge.yml` was removed from `main` on
+    2026-10-31 (PR #5234, Stage C2c, popcre/ai-devops#2172). What merges a pull request today is
+    GitHub's merge queue (ruleset `main merge queue`, active; `merge-queue-gate.yml`), and the
+    only required checks on `main` are `SQL migration guards`,
+    `supabase/tests against an ephemeral database`, and `Destructive SQL outside migrations`
+    (lean required checks, owner ruling 2026-10-30). The `strict: false` ruling itself
+    (2026-08-19, #1286) is untouched and still stands.
 
 18. **A DOCUMENTS-ONLY PULL REQUEST DRAWS NO DATABASE REVIEWER (owner decision, 2026-09-02, issue
     #2102; lightweight status path #2715).** A pull request whose changed files are **all** prose
@@ -233,13 +242,13 @@ have already happened in this repo, more than once.
     never acquires preview, merge, or production, and emits no structural lifecycle event. Unknown or
     non-document changes receive no status from that path. `scripts/check-exact-head-approval.mjs`
     — the gate the guarded merge waits on — uses the classifier to skip the reviewer requirement, and
-    `--assign-reviewer` in `scripts/manage-migration-author-lanes.mjs` refuses to draw for such a
+    `--assign-reviewer` (retired by #5409) in `scripts/manage-migration-coordination.mjs` refuses to draw for such a
     pull request. `scripts/lib/documents-only-change.test.mjs` fails if the classifier exempts a
     rulebook file or a mixed change.
 
 ---
 
-19. **CI RUNS ON BLACKSMITH (owner ruling, Albert Hazan, 2026-09-23).** "anything that's queued and not actually running, send to blacksmith. the merge rules are hereby changed: a Blacksmith run produces a main check" — Albert Hazan, chat, 2026-09-23. GitHub hosted runners were starved (62 runs queued). Workflows use `blacksmith-2vcpu-ubuntu-2404`; a check produced on a Blacksmith runner satisfies the same required status as a hosted-runner check. **Credential-holding jobs run there too:** "the outside runner is not run by an outlaw. we can send production-credential jobs there." — Albert Hazan, chat, 2026-09-24 (issue #3473). Staying on `ubuntu-latest`: the two registered queue-sensitive lanes, their `Queue-sensitive aggregate` (it must not share a pool it exists to watch), and `database-contract-tests.yml`'s `classify` job. `scripts/orchestrator-flow/runner-lanes.*` governs only those registered lanes, which remain GitHub-hosted, so it is unchanged.
+19. **BLACKSMITH IS RETIRED (owner, 2026-11-03: "we took blacksmith out of the rotation").** shared-db jobs use GitHub runners (`ubuntu-latest`) or the self-hosted router, and credential-holding jobs use GitHub runners. Earlier ruling, superseded: **CI RUNS ON BLACKSMITH (owner ruling, Albert Hazan, 2026-09-23).** "anything that's queued and not actually running, send to blacksmith. the merge rules are hereby changed: a Blacksmith run produces a main check" — Albert Hazan, chat, 2026-09-23. GitHub hosted runners were starved (62 runs queued). Workflows use `blacksmith-2vcpu-ubuntu-2404`; a check produced on a Blacksmith runner satisfies the same required status as a hosted-runner check. **Credential-holding jobs run there too:** "the outside runner is not run by an outlaw. we can send production-credential jobs there." — Albert Hazan, chat, 2026-09-24 (issue #3473). Staying on `ubuntu-latest`: the two registered queue-sensitive lanes, their `Queue-sensitive aggregate` (it must not share a pool it exists to watch), and `database-contract-tests.yml`'s `classify` job. `scripts/orchestrator-flow/runner-lanes.*` governs only those registered lanes, which remain GitHub-hosted, so it is unchanged.
 
 20. **REVIEW SLOTS: ONE FOR EVERY CHANGE; VALID REVIEWS CARRY ONLY WHEN CONTENT IS EQUIVALENT (owner 2026-10-14: "change the rules so that we don't need 2 reviews").** `scripts/check-exact-head-approval.mjs` requires **one** independent exact-head APPROVE for every pull request, including migrations. The former two-slot migration minimum is retired. No gate, test or helper may demand two slots. A tree-identical re-push — same git tree, or same pull request diff ignoring `.agent/` — keeps valid prior reviews: slot 1 is not re-drawn and no paid attempt is burned to re-pin the same bytes. For equivalent content, the newest valid historical slot-1 assignment may carry; its replacement must have exact failure evidence. A returned or refused slot is never revived from an older assignment. The newest valid assignment controls the slot; an ancestor approval never fills a returned or refused new-head slot. **Owner-quoted widening** (source history includes PR #4294): a fresh later slot may use a recorded verbatim owner quote to widen the earliest live peer's allowlist by a strict superset. Each slot's own policy stays exact for retry and replacement. Branch protection is never disabled.
 

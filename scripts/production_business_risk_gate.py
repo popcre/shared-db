@@ -47,9 +47,9 @@ PREVIEW_HISTORICAL_REBIND_ARTIFACT = re.compile(r"^preview-migration-dry-run-([0
 PREVIEW_WORKFLOW = ".github/workflows/shared-supabase-migrations.yml"
 ACTIVATION_SCHEMA = "shared-db-production-risk-activation/v1"
 ACTIVE_SCHEMA = "shared-db-production-risk-activation/v2"
+# popcre/ai-devops#2172: only the production-data core checks are required at
+# the exact PR head; claim, lease and guarded-authorization evidence is retired.
 REQUIRED_CHECKS = {
-    "Cross-PR object collision",
-    "Migration author lease",
     "SQL migration guards",
     "supabase/tests against an ephemeral database",
 }
@@ -650,7 +650,15 @@ def prove_preview_migration_contents(
         expected_apply = (
             f"ATOMIC APPLY OK: target=preview version={version} ledger_row=1 statements={count}"
         )
-        if apply_lines[1] != expected_apply:
+        # Preserve the one already-produced initial-login receipt byte-for-byte.
+        # This exception follows all original policy/hash/ledger/two-line checks;
+        # it does not accept suffixes for another migration or credential role.
+        legacy_initial_login = (
+            version == "20261105121341"
+            and entry.get("initial_credential_role") == "designflow_hts_evaluation_reader"
+            and apply_lines[1] == expected_apply + " initial_credential=login_verified"
+        )
+        if apply_lines[1] != expected_apply and not legacy_initial_login:
             raise RiskGateError(f"atomic preview apply proof is incomplete or forged for {version}")
 
 
@@ -680,6 +688,9 @@ def prove_preview_migration_contents(
 # silently fall behind.
 PREVIEW_PRODUCER_PATHS = (
     PREVIEW_WORKFLOW,
+    # Exact maintenance policy is runtime input to automatic preview selection.
+    "config/nontransactional-index-maintenance.json",
+    "config/health-initial-index-definitions.json",
     "scripts/production_migration_guard.py",
     # Hash-bound verification declarations are read by the catalog verifier in
     # preview. Contents API directory responses are arrays, so pin each reviewed
@@ -692,18 +703,19 @@ PREVIEW_PRODUCER_PATHS = (
     "scripts/atomic_migration_apply.py",
     # Runs FIRST in the preview job, to acquire the lane, before any evidence
     # byte exists. Unpinned, it was a complete forgery path.
-    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-coordination.mjs",
     # Statically imported by the manager and read by its re-qualified preview
     # admission (#4464/#4486); unpinned, an edited pin table would be trusted.
     "scripts/db-flow/requalified-preview-runs.mjs",
     "scripts/generated-types-proof.mjs",
+    # Run by the manager's preview gate (#5130): the review-finding hold.
+    "scripts/review_finding_hold.py",
     # Existing normal canonical validators now used by authenticated nonclosing routing.
     "scripts/agent-work-contract-git-evidence.mjs",
     "scripts/agent-work-contract.mjs",
     # Existing explicit PR-data boundary now executes transitively from protected source.
     "scripts/lib/agent-evidence-paths.mjs",
     "scripts/refresh-code-pr-branch.mjs",
-    "scripts/run-governed-review.mjs",
     # The manager's cohesive modules, split out of it without behavior change.
     # They are statically imported and run inside the same process, so each is
     # pinned exactly like the manager itself.
@@ -910,7 +922,7 @@ PREVIEW_RUNTIME_DATA_EXEMPTIONS = {
     ),
     "docs": (
         "Named by a producer, but never OPENED by one, in exactly three places. "
-        "scripts/manage-migration-author-lanes.mjs passes 'docs' to `git grep -l` "
+        "scripts/manage-migration-coordination.mjs passes 'docs' to `git grep -l` "
         "and `git add` as a PATHSPEC when it renames an author's migration "
         "version, so git decides which files exist there and the process opens "
         "nothing; that rename also runs inside a temporary author worktree, not "
@@ -1159,14 +1171,13 @@ def independent_sidecar_paths(
 # stays compared byte for byte, and a tolerated path is never counted as a
 # comparison, so the zero-comparison refusal still holds.
 PREVIEW_CUSTODY_ONLY_PATHS = frozenset((
-    "scripts/manage-migration-author-lanes.mjs",
+    "scripts/manage-migration-coordination.mjs",
     # Read only by the lane manager's re-qualified preview admission
     # (#4464/#4486); it never shapes the apply. Added after the pinned run
     # 39173012894 checked out fe39316, so it must be tolerated as absent there.
     "scripts/db-flow/requalified-preview-runs.mjs",
     # Owner-authorized 2026-10-14 ("i authorize loosening that rule"):
     # review tooling and sidecar registry shipped after a pre-merge preview.
-    "scripts/run-governed-review.mjs",
     "config/production-verification-sidecar-registry.json",
     "scripts/lib/lanes/admission.mjs",
     "scripts/lib/lanes/claim-maintenance.mjs",
@@ -2411,30 +2422,8 @@ def prove_pr_and_checks(
         name: row.get("conclusion") for name, row in select_newest_check_runs(checks).items()
     }
     missing = sorted(name for name in REQUIRED_CHECKS if conclusions.get(name) != "success")
-    historical_source = is_pinned_historical_disney_source(
-        pr_number, head, merge_commit_sha, allowlist
-    )
-    if historical_source:
-        # The author-lease workflow did not exist when this exact PR merged. Its
-        # historical source proof is verified later against current main and the
-        # preview artifact; every contemporary safety check remains mandatory.
-        missing = [name for name in missing if name != "Migration author lease"]
     if missing:
         raise RiskGateError(f"required exact-head checks are not successful: {', '.join(missing)}")
-    status_endpoint = f"repos/{REPOSITORY}/commits/{head}/status"
-    statuses = api_sublist(api_object(api, status_endpoint), "statuses", status_endpoint)
-    guarded = next(
-        (
-            row for row in statuses
-            if isinstance(row, dict)
-            and row.get("context") == "Migration guarded merge authorization"
-        ),
-        None,
-    )
-    if not isinstance(guarded, dict) or guarded.get("state") != "success":
-        raise RiskGateError(
-            "the latest Migration guarded merge authorization is not successful at the exact PR head"
-        )
     return head, str(merge_commit_sha)
 
 
@@ -3562,8 +3551,17 @@ def prove_ai_risk_acceptance(
 def enforce_automatic_risk_decision(
     review: dict[str, Any], decision: dict[str, Any], acceptance: Callable[[list[str]], dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
-    """An automatic v2 verdict proceeds when every risk class is clear, or when every
-    flagged class is accepted by the durable exact-head AI reviewer assessment."""
+    """An automatic v2 promotion proceeds when every risk class is clear, or when every
+    flagged class is one of the SQL-derived classes.
+
+    popcre/ai-devops plan_skinny-review.md rule 8.6 (stage G, #2075): production
+    promotion is automatic once the change merged, its preview rehearsal passed,
+    its tests passed and no blocking review-finding issue references it. AI review
+    is advisory, so no stored reviewer verdict is read here any more; flagged SQL
+    classes are disclosed in the evidence instead of blocking. An unproven
+    recovery or an unresolved objection still refuses. `acceptance` is ignored and
+    kept only for call compatibility.
+    """
     if (
         review.get("schema_version") == "shared-db-production-apply-review/v2"
         and decision.get("automaticPromotionAllowed") is not True
@@ -3577,15 +3575,9 @@ def enforce_automatic_risk_decision(
             keys = derived_risk_keys(decision)
         except RiskGateError as exc:
             raise RiskGateError(f"{prefix} ({exc})") from exc
-        if acceptance is None or not keys or any(key not in AI_ACCEPTABLE_RISKS for key in keys):
+        if not keys or any(key not in AI_ACCEPTABLE_RISKS for key in keys):
             raise RiskGateError(prefix)
-        try:
-            return acceptance(keys)
-        except RiskGateError as exc:
-            raise RiskGateError(
-                f"{prefix}. These classes are accepted only by the allocator-assigned AI reviewer's durable "
-                f"exact-head APPROVE assessing each of them at this exact main SHA, never by a human: {exc}"
-            ) from exc
+        return {"disclosedSqlRisks": keys, "acceptedBy": "plan_skinny-review rule 8.6 (advisory review)"}
     return None
 
 
@@ -3643,7 +3635,7 @@ def assess(args: argparse.Namespace, *, api=gh_json, downloader=download_artifac
                     "automatic review evidence is not bound to an authoring PR of the migration "
                     "train and its exact head"
                 )
-        if review.get("work_issue") != args.work_issue:
+        if args.work_issue is not None and review.get("work_issue") != args.work_issue:
             raise RiskGateError("automatic review evidence names a different admitted structural work issue")
         if not ephemeral_text:
             if review.get("preview_run_id") != int(preview_run_text):
@@ -3690,7 +3682,7 @@ def assess(args: argparse.Namespace, *, api=gh_json, downloader=download_artifac
     ai_risk_acceptance = enforce_automatic_risk_decision(
         review, decision,
         lambda keys: prove_ai_risk_acceptance(
-            issue=args.work_issue, pr=args.pr, head_sha=pr_head, main_sha=args.main_sha,
+            issue=args.work_issue or 0, pr=args.pr, head_sha=pr_head, main_sha=args.main_sha,
             allowlist=allowlist, risks=keys,
         ),
     )
@@ -3769,7 +3761,7 @@ def main() -> int:
     parser.add_argument("--main-sha", required=True)
     parser.add_argument("--allowlist", required=True)
     parser.add_argument("--pr", type=int, required=True)
-    parser.add_argument("--work-issue", type=int, required=True)
+    parser.add_argument("--work-issue", type=int, default=None)
     parser.add_argument("--review-run-id", type=int, required=True)
     parser.add_argument("--review-digest", required=True)
     # EXACTLY ONE ROUTE (#2758): preview evidence (--preview-run-id, --preview-digest,
@@ -3832,10 +3824,6 @@ PREVIEW_PRODUCER_PATHS += (
     # protected static check cannot be changed independently of the PR head.
     "scripts/check-expected-count-patterns.mjs",
     "scripts/check-migration-verify-cost.mjs",
-    # Read by scripts/check-exact-head-approval.mjs (owner no-reviewer policy,
-    # docs/owner-rulings.md §6.28). That gate runs in the preview/merge jobs,
-    # so the policy file is a producer input and is pinned like the gate itself.
-    "config/owner-no-reviewer-policy.json",
 )
 
 # THE SINGLE SIDECAR DECLARATION REGISTRY (#3028, popcre/ai-devops#401 Step 5).

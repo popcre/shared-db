@@ -1,9 +1,9 @@
 {
   "detector_schema_version": 1,
-  "detector_source_sha256": "223819eaac53da02763ed3be5e9fb555fd0a5f344614424da8e8bb4ab0c2ac59",
+  "detector_source_sha256": "4eba2588482c5a50c1766fcfff861ae3f22b724bf8f9fe0096159ac47cebbe28",
   "command": "node scripts/check-production-verification-sidecars.mjs",
-  "total_migration_files": 880,
-  "matched_count": 120,
+  "total_migration_files": 979,
+  "matched_count": 126,
   "matched_paths": [
     {
       "version": "20260621150815",
@@ -601,8 +601,38 @@
       "marker_count": 1
     },
     {
-      "version": "20261029161229",
-      "path": "supabase/migrations/20261029161229_dflow_product_description.sql",
+      "version": "20261101153102",
+      "path": "supabase/migrations/20261101153102_retire_dc_hp_licensors_into_wb.sql",
+      "marker_count": 1
+    },
+    {
+      "version": "20261102180759",
+      "path": "supabase/migrations/20261102180759_orderlist_find_occurrence.sql",
+      "marker_count": 1
+    },
+    {
+      "version": "20261102215524",
+      "path": "supabase/migrations/20261102215524_sandbox_sample_tracking_baseline.sql",
+      "marker_count": 2
+    },
+    {
+      "version": "20261104231707",
+      "path": "supabase/migrations/20261104231707_popsg_search_keyword_outranks_meaning.sql",
+      "marker_count": 1
+    },
+    {
+      "version": "20261105023331",
+      "path": "supabase/migrations/20261105023331_popsg_search_pdf_body_breaks_ties.sql",
+      "marker_count": 1
+    },
+    {
+      "version": "20261105044255",
+      "path": "supabase/migrations/20261105044255_sku_style_guide_resolution_incremental.sql",
+      "marker_count": 1
+    },
+    {
+      "version": "20261105222623",
+      "path": "supabase/migrations/20261105222623_dflow_product_description.sql",
       "marker_count": 1
     }
   ],

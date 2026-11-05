@@ -135,7 +135,7 @@ Everything else requires justification before touching.
 | Change database shape (table/column/view/function/RLS/index) | New `supabase/migrations/<timestamp>_<name>.sql` only | Any migration already on a ledger; consumer-repo schema copies |
 | Change shared API contract / browser view | New migration + `docs/architecture.md` / schema map if ownership changes | Ad-hoc SQL against production |
 | Change CI, merge, promotion, or task gates | Relevant `.github/workflows/*.yml`, `scripts/` guards + tests | Live production settings except via reviewed workflow |
-| Change author-lane / claim / review mechanics | `scripts/manage-migration-author-lanes.mjs`, `scripts/lib/lanes/**`, tests | Bypassing `check-exact-head-approval.mjs` |
+| Change author-lane / claim / review mechanics | `scripts/manage-migration-coordination.mjs`, `scripts/lib/lanes/**`, tests | Bypassing lease, ordering, or production authorization checks |
 | Change business meaning / permissions / workflows | `docs/business-rules/` topic file via the business-rules process | Competing copies inside app repos |
 | Change operating rules / owner rulings | `AGENTS.md` and the matching `docs/agents/` chapter **together** | Silent edits that contradict `scripts/check-*.mjs` guards |
 | Add or change a tool/loader | `tools/**` + its `*.test.mjs` | Hand-built Windows direct-invocation guards without testing |
@@ -241,7 +241,7 @@ Root cause: parallel chip-spawned sessions without claims/reservation.
 Recovery: fix forward; CI now blocks duplicate and backdated versions.
 
 Rule added: never spawn background task chips here; reserve versions through
-`scripts/manage-migration-author-lanes.mjs --claim` (standing facts 4–5).
+`scripts/check-dispatch-collision.mjs --reserve-version` (standing facts 4–5).
 
 ### [2026-08-11] Production apply pin refused two approved runs
 
@@ -281,13 +281,13 @@ Looks like:
 A PR that only touches `AGENTS.md`, `CLAUDE.md`, `skills/`, or `plan_*.md` looks like a docs PR.
 
 Actually:
-`scripts/lib/documents-only-change.mjs` excludes those paths. They get full engineering treatment (branch, checks, independent review).
+`scripts/lib/documents-only-change.mjs` excludes those paths. They get full engineering treatment (branch, checks; review is advisory since 2026-10-29).
 
 Why:
 Agent instructions change behavior. Treating them as prose would skip the review that keeps instructions from drifting from enforcement.
 
 Do not change because:
-The merge lane and `check-exact-head-approval.mjs` depend on this classification.
+The documents-only merge lane depends on this classification.
 
 ### Migration history is not a clean replay
 
@@ -374,6 +374,13 @@ Re-derive state from `git` and `gh`. A heading in a markdown file is not a backl
 
 ## Current operating route
 
+Author-lane and reviewer-assignment commands were retired by #5409. The
+surviving lock, promotion and recovery CLI is
+`scripts/manage-migration-coordination.mjs` (#5426). Older claim-first command
+examples are historical; do not reintroduce those commands. Historical contract
+identifiers resolve to preserved evidence storage as documented in
+[`docs/contract-ref-retirement.md`](docs/contract-ref-retirement.md).
+
 - [current-workflow.md](docs/agents/current-workflow.md)
 - [plan_shared_db_workflow_refactor.md](plan_shared_db_workflow_refactor.md)
 - [plan_shared_release_hold_reduction.md](plan_shared_release_hold_reduction.md)
@@ -415,11 +422,17 @@ The withdrawal-confirmation question is **settled** in [`docs/business-rules/lic
 
 ### The owner rulings, one line each (full text in the linked file)
 
-- **Never ask a human to approve (Albert Hazan, 2026-09-28).** Allocator-assigned AI review
-  gates technical actions; the AI performs every manual step itself. Full text: §1 below.
+- **Review is advisory, never a merge gate (Albert Hazan, 2026-10-29, verbatim: "this past week
+  where i didn't have to deal with reviewer errors was the first time in 10 months where things
+  actually got done ... you need to find a way to cut more reviewer 'fat'.").** No PR here, migrations
+  included, waits for or needs an AI verdict to merge. Lease, migration ordering, collision checks,
+  tests, preview rehearsal and production owner authorization still bind. Supersedes the review
+  parts of the three rulings below. Full text: [`docs/agents/owner-rulings.md`](docs/agents/owner-rulings.md).
+- **Never ask a human to approve (Albert Hazan, 2026-09-28).** The AI performs every manual
+  step itself. AI review is advice only (2026-10-29). Full text: §1 below.
 - **Albert is not a technical reviewer, now or in the future (Albert Hazan, 2026-09-30).**
-  Production risk classes are accepted by the allocator-assigned AI reviewer's durable exact-head
-  assessment, never by Albert. Full text: [`owner-rulings.md` §6.23](docs/owner-rulings.md).
+  Production risk classes are accepted by the automatic promotion workflow (plan_skinny-review
+  rule 8.6: preview rehearsal, tests, no open review-finding issue), never by Albert. Full text: [`owner-rulings.md` §6.23](docs/owner-rulings.md).
 - **One independent review is enough for every change (Albert Hazan, 2026-10-14, verbatim:
   "change the rules so that we don't need 2 reviews").** The two-slot migration minimum is
   retired. Full text: [`owner-rulings.md` §6.27](docs/owner-rulings.md).
@@ -430,8 +443,8 @@ The withdrawal-confirmation question is **settled** in [`docs/business-rules/lic
   dispatch, or label tickets orchestrator / non-orchestrator. A session needing a SHAPE change
   claims the exact objects on the existing issue and starts, doing the change itself: own
   worktree and branch, migration version via the lane tool, pull request, the assigned AI
-  reviewer's APPROVE of the exact apply, and proof of the target before every write. Every
-  safety rule (exact-object claims, version reservation, review, guarded merge, serial
+  and proof of the target before every write. Every
+  safety rule (exact-object claims, version reservation, guarded merge, serial
   production lane, live proof) still binds. Where older text below says "the orchestrator",
   read "the session doing the structural work"; marker and dispatch steps are historical.
   Tooling follows (#3874): new structural issues use `route: claim-first`
@@ -492,8 +505,8 @@ code, manage branches, or merge pull requests. Therefore:
   i am a solo vibe coder with no technical knowledge. ai has to do everything
   for me without asking me to do manual things. institute that.").** Before
   anything hard to undo (dropping a column, applying to production, deleting
-  data), make it recoverable and get the allocator-assigned AI reviewer's
-  exact-head APPROVE; that review is the gate. The AI performs every manual
+  data), make it recoverable first. AI review is advice only and never a gate
+  (owner rulings 2026-10-29). The AI performs every manual
   step itself (access, tooling, keys). Ask Albert only genuine business-meaning
   questions, and report risk in plain English afterwards.
 
@@ -548,32 +561,7 @@ to "spend" only one review.
    event-aware waiter, concurrently. Never end a turn to report that something
    is still running.
 
-**What this does NOT change — and must never be traded for speed:**
-
-- The exact-head APPROVE requirement stands exactly as enforced by
-  `scripts/check-exact-head-approval.mjs`. A review
-  bound to an earlier head does not authorize a later head, and the only
-  equivalence permitted is the narrow, already-enforced #2758 rule
-  (`scripts/lib/pr-content-equivalence.mjs`): an ancestor head whose pull-request
-  diff is byte-identical, ignoring only `.agent/` evidence files. A tree-identical
-  re-push keeps every existing review (slot 1 is not re-drawn). A returned or refused
-  slot cannot be revived from an older assignment; the newest valid assignment
-  controls. **Owner ruling 2026-10-14: one independent exact-head APPROVE is
-  enough for every change, including migrations.**
-- **The proposal in #3002 to accept a review bound to a head whose only later
-  change is test or evidence files is REFUSED.** Tests are code: a changed test
-  changes what the change proves, and a reviewer who never saw it never reviewed
-  it. Widening equivalence beyond `.agent/` would be reviewing less, not
-  reviewing faster.
-- **Retiring a required check is an AI decision with evidence (owner ruling
-  2026-09-28, see `docs/agents/owner-rulings.md`).** A required check may be
-  retired, merged into another, or made advisory when measured evidence shows it
-  mostly fails for reasons unrelated to the change; the pull request carrying it
-  states the exact before/after required-check list and gets an assigned AI
-  reviewer's APPROVE before branch protection changes. On any single pull
-  request no gate is skipped, and no reviewer
-  requirement is dropped. Speed comes from parallelising; do not delete the
-  exact-head review.
-
-`scripts/check-review-parallelism-brief.mjs` holds this brief and this refusal in
-place, and fails the tools-offline check if either is removed or contradicted.
+**Superseded (owner rulings 2026-10-29, 2026-10-29 night, 2026-10-30 #2172):** no exact-head
+APPROVE is required anywhere; `scripts/check-exact-head-approval.mjs` and
+`check-review-parallelism-brief.mjs` are deleted. The one advisory CI review runs once per PR;
+its findings become `review-finding` issues, which hold only automatic production promotion.

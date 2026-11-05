@@ -328,7 +328,6 @@ class WorkflowWiringTests(unittest.TestCase):
     def setUpClass(cls):
         cls.repo = Path(__file__).resolve().parents[1]
         cls.apply = (cls.repo / ".github/workflows/shared-supabase-migrations.yml").read_text(encoding="utf-8")
-        cls.review = (cls.repo / ".github/workflows/production-apply-review-evidence.yml").read_text(encoding="utf-8")
 
     def test_inputs_and_old_pointer_gate_are_replaced(self):
         self.assertIn("review_run_id:", self.apply)
@@ -341,14 +340,10 @@ class WorkflowWiringTests(unittest.TestCase):
         self.assertGreaterEqual(self.apply.count("actions: read"), 2)
         self.assertIn("environment: production", self.apply)
 
-    def test_review_workflow_is_non_writing_and_provider_neutral(self):
-        self.assertIn("production_review_allowlist import normalize_review_allowlist", self.review)
-        self.assertIn("github.actor", self.review)
-        self.assertIn('Path(os.environ["RUNNER_TEMP"]', self.review)
-        self.assertIn("actions/upload-artifact@v4", self.review)
-        self.assertIn('"reviewer_actor"', self.review)
-        self.assertIn('"reviewer_label"', self.review)
-        self.assertNotRegex(self.review, r"supabase|db push|psql")
+    def test_manual_review_evidence_workflow_is_retired(self):
+        # plan_skinny-review.md rule 8.6 (popcre/ai-devops #2075): production is
+        # promoted only by the automatic workflow; no manual verdict recorder remains.
+        self.assertFalse((self.repo / ".github/workflows/production-apply-review-evidence.yml").exists())
 
     def test_production_lane_keeps_ledger_aware_guard(self):
         self.assertIn("production_migration_guard.py preflight", self.apply)
@@ -357,13 +352,13 @@ class WorkflowWiringTests(unittest.TestCase):
     def test_automatic_path_dispatches_only_after_governed_preview_evidence(self):
         self.assertIn("automatic-production-promotion:", self.apply)
         self.assertIn("needs: [validate, preview]", self.apply)
-        self.assertIn("check-exact-head-approval.mjs", self.apply)
-        self.assertIn("Migration guarded merge authorization", self.apply)
+        self.assertNotIn("Migration guarded merge authorization", self.apply)
+        self.assertIn('merge-base --is-ancestor "$SOURCE_MERGE_SHA" "$MAIN_SHA"', self.apply)
         self.assertIn("steps.preview_evidence.outputs.digest", self.apply)
         self.assertIn("automatic-production-apply-review-evidence", self.apply)
         self.assertIn("--resolve-admitted-issue-for-pr", self.apply)
         self.assertIn("work_issue:$work_issue", self.apply)
-        self.assertIn('--admit-issue "$ADMITTED_ISSUE" --pr "$SOURCE_PR"', self.apply)
+        self.assertIn('"${ADMIT_ARGS[@]}" --pr "$SOURCE_PR"', self.apply)
         self.assertIn('confirmation:("APPLY " + $sha)', self.apply)
         self.assertIn("ENGINEER ACTION REQUIRED", self.apply)
         self.assertIn("HISTORICAL_SOURCE_MAP", self.apply.split("automatic-production-promotion:", 1)[1].split("production-dry-run:", 1)[0])

@@ -13,9 +13,9 @@
 //      silently degrades into "no findings".
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { claimBody, WORK_LABEL } from './manage-migration-author-lanes.mjs'
+import { claimBody, WORK_LABEL } from './manage-migration-coordination.mjs'
 import { main, hygieneReportIo, dependencyHygiene } from './queue-hygiene-report.mjs'
-import { githubIo } from './manage-migration-author-lanes.mjs'
+import { githubIo } from './manage-migration-coordination.mjs'
 import { stageEventKey } from './lib/work-stage-evidence.mjs'
 import { expectedOperatorAssociation } from './lib/repository-identity.mjs'
 import { createHash } from 'node:crypto'
@@ -53,6 +53,9 @@ const KNOWN_READ_HOOKS = new Set([
   'databasePreviewClassification', 'pullRequestFiles', 'handoffCollisions', 'readReviewerOperationRoute', 'countLogicalReviewRequests',
   'readPrWithReviewContext', 'observedReviewQuota', 'getRateLimit', 'previewApplyRun', 'verifyPreviewApplyArtifact',
   'readActiveReviewLeases', 'readActiveReviewLeasesOverGit', 'readActiveReviewLeasesOverGraphql', 'readReviewStates',
+  // #5141: read-only ledger SELECTs behind the unapplied-migration-edit subset
+  // proof (child process over the same library code the edit guard runs).
+  'appliedMigrationVersions', 'previewLedgerStatements', 'runLedgerQuery',
   'readReviewRefs', 'readReviewRecords', 'readReviewFailureCommit', 'readPaidReviewStarts', 'reviewContentComparison', 'openClaims', 'closedClaimsForWork', 'openWorkIssues', 'openIssueNumbers', 'openIssueRows',
   'dependencyStates', 'mergeCommitInMain', 'prSources', 'openPulls', 'readPullStates', 'mergeTouchesMigrations',
   'branchPulls', 'getPr', 'getPrFiles', 'databasePreviewFileSnapshot', 'comparePullRequestFiles', 'getCommitStatus',

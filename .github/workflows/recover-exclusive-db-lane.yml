@@ -54,7 +54,7 @@ concurrency:
 jobs:
   recover:
     name: Recover exclusive DB lane
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -71,7 +71,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          node scripts/manage-migration-author-lanes.mjs \
+          node scripts/manage-migration-coordination.mjs \
             --recover-exclusive "${{ inputs.lane }}" \
             --holder-id "${{ inputs.holder_id }}" | tee /tmp/dry-run.json
           {
@@ -88,7 +88,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          node scripts/manage-migration-author-lanes.mjs \
+          node scripts/manage-migration-coordination.mjs \
             --recover-exclusive "${{ inputs.lane }}" \
             --holder-id "${{ inputs.holder_id }}" \
             --apply-recovery | tee /tmp/applied.json

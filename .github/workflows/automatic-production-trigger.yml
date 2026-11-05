@@ -1,0 +1,66 @@
+name: Automatic production promotion trigger
+
+# popcre/ai-devops plan_skinny-review.md rule 8.6 (stage G, #2075). No session
+# or person starts production promotion: this starts the existing post-merge
+# preview rehearsal for the oldest merged migration PR not yet in production,
+# whose automatic-production-promotion job then dispatches the production
+# apply. A blocking review-finding issue holds the PR (checked here, again
+# before dispatch, and again immediately before the apply step).
+
+on:
+  push:
+    branches: [main]
+    paths: ['supabase/migrations/**', 'config/nontransactional-index-maintenance.json']
+  # Start the next PR as soon as a dispatched apply succeeds OR fails (#5532).
+  # Failures used to wait for the hourly schedule or a merge, which idled the
+  # whole queue for up to an hour (2026-11-02: a failed preview at 7:49 PM EST,
+  # nothing dispatched until 8:57 PM EST). Prompt reaction is not a retry loop:
+  # the selector caps every PR at three automatic attempts since its merge,
+  # counting failed preview AND production runs, and passes a PR out of attempts
+  # over with a loud ENGINEER ACTION REQUIRED alert so later PRs keep promoting.
+  #
+  # This listener only sees completions of runs a USER dispatched with their own
+  # token: GitHub never delivers workflow_run events for completions of runs the
+  # GITHUB_TOKEN dispatched, which is how the selector's own dispatches start
+  # (verified 2026-11-03). The migrations workflow's notify-production-queue
+  # job therefore emits one `production-queue-nudge` repository_dispatch per
+  # dispatched run, whatever the outcome -- a repository_dispatch created by
+  # the token DOES create a run. The hourly schedule stays as the backstop.
+  workflow_run:
+    workflows: ['Shared Supabase Migrations']
+    types: [completed]
+  repository_dispatch:
+    types: [production-queue-nudge]
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: automatic-production-trigger
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.event == 'workflow_dispatch' && (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.conclusion == 'timed_out'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: write
+      issues: read
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      # Maintenance selects first: a promotion dispatched first would make every
+      # selection see an active run, and a held PR fails the promotion step.
+      - name: Select an explicitly enabled exact-index maintenance operation
+        id: index_maintenance
+        run: python scripts/automatic_index_maintenance.py
+      - name: Start the next automatic promotion
+        if: always() && steps.index_maintenance.outputs.dispatched != 'true'
+        run: python scripts/automatic_promotion_candidates.py

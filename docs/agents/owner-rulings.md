@@ -11,6 +11,22 @@
 > session (#3874).
 > Moved verbatim from `AGENTS.md` by issue #3481 so that file stays a short router. Section numbers and headings are unchanged; a citation of "AGENTS.md §X" resolves here. Relative link targets were re-pointed from this folder; no rule text changed.
 
+## 0.0-R OWNER RULING — review is advisory, never a merge gate (Albert Hazan, 2026-10-29)
+
+Recorded by #5054; proven by #5056 (docs PR merged with no verdict).
+
+Verbatim: "this past week where i didn't have to deal with reviewer errors was the first time in
+10 months where things actually got done ... you need to find a way to cut more reviewer 'fat'."
+
+Meaning: no pull request in this repository, migrations and production promotion included, waits
+for or requires an AI review verdict. `check-exact-head-approval.mjs` is no longer called by any
+merge or promotion workflow; the reviewer start watch and verdict auto-archive schedules are off;
+review-only required contexts leave the `main` ruleset. Still binding: author lease, migration
+version ordering, object-collision checks, tests, preview rehearsal, the guarded merge lock, and
+production owner authorization. **Supersedes** every earlier ruling or rule in this repository that
+makes an AI review, APPROVE, verdict or review slot a gate (including 2026-09-28, 2026-09-30 and
+2026-10-14 review wording). Source: popcre/ai-devops#2041 (phase C).
+
 ## 0. Shared-db gatekeeper rule for consumer repos
 
 ### Stopped-session ownership and confirmation (2026-10-13, #3618)
@@ -336,3 +352,11 @@ First use (2026-09-28): `Agent work contract` and `Orchestrator marker guard` we
 (the workflows still run and report; they no longer block merging). Evidence: 24/43 and 14/42
 failed in the 14 days to 2026-09-28, sampled failures being API-quota refusals or missing
 evidence files, not defects in the change (`docs/plans/plan_gate_cutback.md` §5–§6).
+
+### Lean required checks (2026-10-30, popcre/ai-devops#2172)
+
+Albert, verbatim: "can we bypass/eliminate some or all of the automatic checks?"
+then "yes. and do it in a permanent way in the ai-devops repo so that it hits all
+apps/harnesses on all machines". Only checks that stop production-data damage
+block a merge; everything else is advisory. The rule "one licensor per change"
+for curated Master Data loads is withdrawn permanently.

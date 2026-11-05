@@ -37,8 +37,8 @@ objects listed, dispatched to a sub-agent in an isolated worktree as usual.
 is additive and every named object lives in the app-owned `{crm, pim, dam, plm}` schemas. The boundary
 is enforced AT MERGE TIME by `scripts/check-self-service-additive-lane.mjs` inside the guarded
 merge, pre-lock — a declared route whose pull request fails the classifier never merges. The
-author session claims the lane (`--claim --admit-issue`), draws one reviewer itself
-(`--assign-reviewer`), and dispatches the guarded merge itself; every existing gate (collision
+author session claims the lane (reserve and file a claim via `check-dispatch-collision.mjs`), draws one reviewer itself
+(`--assign-reviewer` was retired by #5409; there is no replacement), and dispatches the guarded merge itself; every existing gate (collision
 locks, version reservation, exact-head review, serial preview/merge/promotion) is unchanged. The
 orchestrator never dispatches, refills or reviews this route; `--queue-audit` prints it in its own
 section. Out of the lane: `api`/`core`/`public`/`ingest`/`storage`/`dflow`/`app`, any
@@ -47,7 +47,7 @@ browser roles on `crm`/`pim` objects without RLS.
 
 **No → `accept` is never one of the exits. Each non-structural work type names where it goes
 instead.** The machine-readable form of this table is `NON_STRUCTURAL_EXITS` in
-`scripts/manage-migration-author-lanes.mjs`; the two must agree.
+`scripts/manage-migration-coordination.mjs`; the two must agree.
 
 - **REJECT** — the work belongs to another repository and must leave this queue. `application-data`
   and `source-data`. **Rejection FORWARDS the task; it never merely closes it** — see "A reject is
@@ -124,7 +124,7 @@ therefore moves the task to the repository that owns it:
    makes the audit exit `2`, so an unaddressed reject cannot sit quietly.
 2. **Return it with the guarded command**, never by hand:
 
-       node scripts/manage-migration-author-lanes.mjs --return-issue <n>
+       node scripts/manage-migration-coordination.mjs --return-issue <n>
 
    It files the full issue body in the owning repository **first**, then comments the new issue's
    URL here, then closes this one. **That order is the safety property** — any failure at any step
@@ -143,7 +143,7 @@ work — structural or forked — happens in a sub-agent's context, not this one
 
 ### How it is enforced
 
-`node scripts/manage-migration-author-lanes.mjs --queue-audit` prints a **`NOT ORCHESTRATOR WORK`**
+`node scripts/manage-migration-coordination.mjs --queue-audit` prints a **`NOT ORCHESTRATOR WORK`**
 block listing every open issue that fails the shape test, each stamped `REJECT` or `FORK`, with
 `[blocked on owner decision]` where the route is `owner-only`. These items previously sat silently
 in `skipped` and accumulated. The block is a worklist, not a failure — it does not change the exit
@@ -157,6 +157,21 @@ Every live claim, reviewer assignment, preview, merge, and production acquisitio
 only actual shared-database structure work proceeds. A sender's label never admits documentation,
 application code or data, CI, reviewer/workflow work, or repository maintenance. Rejection is
 recorded as a typed `rejected_non_structural` event without consuming any lane or shared stage.
+
+**Edited-migration admission (issue #5141).** A pull request that EDITS a migration file can
+never satisfy the ordinary rule that the PR's actual structural objects exactly match the issue's
+`writes:` — for a modified file admission reads only the patch's added lines, a fragment of the
+migration's whole object set. The one governed lane through: when every migration file in the PR
+carries a version ABSENT from both the preview and production ledgers (everywhere-unapplied), and
+every patch-derived object is declared in the issue's `writes:` AND held by the PR's branch-bound
+active claim, the fragment is admitted as a SUBSET of the admitted writes. The preview ledger
+excuses a version only when its recorded statements are reproduced exactly by the file at the PR
+head (the edit guard's own byte-exact rule, PR #2933), because admission re-runs at this same PR's
+promotion after its own rehearsal applied the edited body. Production presence is never excused.
+Every unknown fact — unreadable ledger, absent token, zero or several matching claims, an object
+nobody declared or claimed — refuses (fail closed). Added-migration pull requests keep exact
+equality unchanged. The outcome-completion gate (`--complete-outcome`) still demands exact match;
+closing the work issue of an edited migration needs its own governed rule.
 
 ### Queue priority
 

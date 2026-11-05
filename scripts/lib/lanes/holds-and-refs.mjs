@@ -1,4 +1,4 @@
-// Split from scripts/manage-migration-author-lanes.mjs (issue #3726). Behavior-preserving move:
+// Split from scripts/manage-migration-coordination.mjs (issue #3726). Behavior-preserving move:
 // the entrypoint re-exports every public name defined here. Edit here, not there.
 import { describeLeaseHolder, assertNamedHold, HoldReasonError, formatHoldReason } from '../../lib/hold-reason.mjs'
 import { normalizeObject } from '../../check-dispatch-collision.mjs'
@@ -6,8 +6,8 @@ import { EXCLUSIVE_REFS, parseQueueScope } from './queue-routing.mjs'
 import { LaneError, parseAuthorLease } from './claims.mjs'
 import { migrationVersions } from './claim-maintenance.mjs'
 import { MUTEX_RECOVERY_ACTIVE_REF, MUTEX_REF, MUTEX_STALE_AFTER_MS } from './constants.mjs'
-import { githubIo } from '../../manage-migration-author-lanes.mjs'
-import { gitRemoteRefs } from '../../manage-migration-author-lanes.mjs'
+import { githubIo } from '../../manage-migration-coordination.mjs'
+import { gitRemoteRefs } from '../../manage-migration-coordination.mjs'
 import { GIT_COMMAND_TIMEOUT_MS } from './github-wire.mjs'
 import { execFileSync } from 'node:child_process'
 import { assertRefDeletable } from '../release-hold-evidence.mjs'
@@ -202,7 +202,7 @@ export function recoverStaleAuthorMutex({ expectedSha, confirmStale, serializedR
     const message=commit?.message ?? commit?.commit?.message ?? ''
     const dateText=commit?.committer?.date ?? commit?.commit?.committer?.date
     const acquiredAt=new Date(dateText)
-    if(!/^db-coordination (?:admission(?:-operation)?|outcome-(?:advance|complete|repair)|author-acquisition|author-capacity-relinquish|author-capacity-resume|preview|preview-recovery|preview-rehearsal|preview-ready-preparation|merge|production|repository-maintenance-authorization|queue-scope-status|claim-release|duplicate-claim-release|claim-split-recovery|claim-object-expansion|claim-reversion|claim-version-supersession|claim-worktree-rebind|claim-author-transfer-mutex|claim-lease-renewal|expired-claim-recovery|reviewer-assignment-lock|reviewer-replacement-lock|reviewer-queue-lock|reviewer-silence-release-lock|reviewer-replacement|reviewer-failure-replacement|reviewer-index-cutover-activation-audit|reviewer-exclusion-lock|reviewer-reinstatement-lock|reviewer-release-lock|reviewer-abandoned-lease-reap-lock|reviewer-verdict-archive-lock|merged-claim-reissue-lock|promotion-freeze)(?: |$)/.test(message.split('\n')[0]))throw new LaneError('refusing recovery: mutex owner commit is not a recognized coordination lock')
+    if(!/^db-coordination (?:admission(?:-operation)?|outcome-(?:advance|complete|repair)|author-acquisition|author-capacity-relinquish|author-capacity-resume|preview|preview-maintenance|preview-recovery|preview-rehearsal|preview-ready-preparation|merge|production|repository-maintenance-authorization|queue-scope-status|claim-release|duplicate-claim-release|claim-split-recovery|claim-object-expansion|claim-reversion|claim-version-supersession|claim-worktree-rebind|claim-author-transfer-mutex|claim-lease-renewal|expired-claim-recovery|reviewer-assignment-lock|reviewer-replacement-lock|reviewer-queue-lock|reviewer-silence-release-lock|reviewer-replacement|reviewer-failure-replacement|reviewer-index-cutover-activation-audit|reviewer-exclusion-lock|reviewer-reinstatement-lock|reviewer-release-lock|reviewer-abandoned-lease-reap-lock|reviewer-verdict-archive-lock|merged-claim-reissue-lock|promotion-freeze)(?: |$)/.test(message.split('\n')[0]))throw new LaneError('refusing recovery: mutex owner commit is not a recognized coordination lock')
     if(Number.isNaN(acquiredAt.valueOf()))throw new LaneError('refusing recovery: mutex owner time is unreadable')
     const age=now-acquiredAt
     if(age<minAgeMs)throw new LaneError(`refusing recovery: mutex is only ${Math.max(0,Math.floor(age/1000))} seconds old`)

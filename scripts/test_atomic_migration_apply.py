@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import atomic_migration_apply as atomic
+import production_business_risk_gate as risk
 
 
 class AtomicMigrationApplyTests(unittest.TestCase):
@@ -30,6 +31,44 @@ class AtomicMigrationApplyTests(unittest.TestCase):
         policy_path = self.root / "policy.json"
         policy_path.write_text(json.dumps(policy), encoding="utf-8")
         return path, policy_path
+
+    def test_curated_lock_policy_refuses_wrong_version_hash_contract_tables_mode_and_missing_contract(self):
+        base = {"sha256": atomic.CURATED_CHARACTER_LOCK_SHA256, "targets": ["preview"], "admission_lock_contract": atomic.CURATED_CHARACTER_LOCK_CONTRACT}
+        cases = [
+            ("29990101000000", dict(base)),
+            (atomic.CURATED_CHARACTER_LOCK_VERSION, {**base, "sha256": "0"*64}),
+            (atomic.CURATED_CHARACTER_LOCK_VERSION, {**base, "admission_lock_contract": "arbitrary"}),
+            (atomic.CURATED_CHARACTER_LOCK_VERSION, {**base, "tables": ["public.assets"]}),
+            (atomic.CURATED_CHARACTER_LOCK_VERSION, {**base, "mode": "ACCESS EXCLUSIVE"}),
+            (atomic.CURATED_CHARACTER_LOCK_VERSION, {k:v for k,v in base.items() if k!="admission_lock_contract"}),
+        ]
+        for version, entry in cases:
+            with self.subTest(version=version,entry=entry):
+                path=self.root/'typed-policy.json';path.write_text(json.dumps({"schema_version":1,"migrations":{version:entry}}))
+                with patch.object(atomic,"POLICY",path), self.assertRaises(atomic.Refusal): atomic.read_policy()
+
+    def test_curated_wrapper_refuses_wrong_version_hash_contract_and_missing_contract(self):
+        raw=(atomic.ROOT/'supabase/migrations/20261105142616_publisher_character_curation.sql').read_text()
+        for version, body, contract in [
+            ("29990101000000",raw,atomic.CURATED_CHARACTER_LOCK_CONTRACT),
+            (atomic.CURATED_CHARACTER_LOCK_VERSION,raw+" ",atomic.CURATED_CHARACTER_LOCK_CONTRACT),
+            (atomic.CURATED_CHARACTER_LOCK_VERSION,raw,"wrong"),
+            (atomic.CURATED_CHARACTER_LOCK_VERSION,raw,None),
+        ]:
+            with self.subTest(version=version,contract=contract), self.assertRaises(atomic.Refusal):
+                atomic.build_wrapper(version,"test",body,[body],admission_lock_contract=contract)
+        wrapper=atomic.build_wrapper(atomic.CURATED_CHARACTER_LOCK_VERSION,"test",raw,[raw],admission_lock_contract=atomic.CURATED_CHARACTER_LOCK_CONTRACT)
+        self.assertLess(wrapper.index(atomic.CURATED_CHARACTER_LOCK_SQL),wrapper.index('do $curation$'))
+        self.assertIn("lock_timeout='500ms'",wrapper)
+        self.assertIn("statement_timeout='2500ms'",wrapper)
+        self.assertIn("transaction_timeout='3s'",wrapper)
+
+    def test_every_existing_noncontract_wrapper_remains_byte_identical(self):
+        for version,entry in atomic.read_policy().items():
+            if version==atomic.CURATED_CHARACTER_LOCK_VERSION: continue
+            raw="select 1;";statements=[raw];name="unchanged"
+            expected=("\\set ON_ERROR_STOP on\nBEGIN;\n"+raw+"\nINSERT INTO supabase_migrations.schema_migrations(version, statements, name) VALUES (\n"+atomic.dollar_quote(version,"version")+", ARRAY[\n"+atomic.dollar_quote(raw,"s0")+"\n]::text[], "+atomic.dollar_quote(name,"name")+");\nCOMMIT;\n")
+            self.assertEqual(atomic.build_wrapper(version,name,raw,statements),expected)
 
     def test_split_preserves_semicolons_in_quotes_comments_and_dollar_blocks(self):
         sql = "select ';'; -- ;\n do $$ begin perform ';'; end $$; select 2;"
@@ -187,6 +226,66 @@ class AtomicMigrationApplyTests(unittest.TestCase):
                 with self.subTest(raw=raw), self.assertRaises(atomic.Refusal):
                     atomic.classify_allowlist(raw)
 
+    def test_classifier_respects_target_and_preserves_targetless_api(self):
+        _, policy = self.authorize()
+        value = json.loads(policy.read_text(encoding="utf-8"))
+        entry = value["migrations"]["29990101000000"]
+        for targets in (["preview"], ["preview", "production"]):
+            entry["targets"] = targets
+            policy.write_text(json.dumps(value), encoding="utf-8")
+            with patch.object(atomic, "POLICY", policy):
+                self.assertEqual(atomic.classify_allowlist("29990101000000"), "29990101000000")
+                for target in ("preview", "production"):
+                    with self.subTest(target=target, targets=targets):
+                        expected = "29990101000000" if target in targets else ""
+                        if expected:
+                            self.assertEqual(atomic.classify_allowlist("29990101000000", target), expected)
+                        else:
+                            with self.assertRaises(atomic.Refusal):
+                                atomic.classify_allowlist("29990101000000", target)
+                        if expected:
+                            for raw in ("29990101000000,29990101000001", "29990101000000,29990101000000"):
+                                with self.assertRaises(atomic.Refusal):
+                                    atomic.classify_allowlist(raw, target)
+                        for raw in ("", "29990101000000,", ",29990101000000", "invalid"):
+                            with self.assertRaises(atomic.Refusal):
+                                atomic.classify_allowlist(raw, target)
+                with self.assertRaises(atomic.Refusal):
+                    atomic.classify_allowlist("29990101000000", "other")
+
+    def test_explicit_batch_is_sorted_and_mixed_unpinned_target_duplicate_refused(self):
+        _, policy = self.authorize()
+        value = json.loads(policy.read_text())
+        first = value["migrations"]["29990101000000"]
+        first["batch_group"] = "health"
+        value["migrations"]["29990101000001"] = dict(first)
+        policy.write_text(json.dumps(value))
+        with patch.object(atomic, "POLICY", policy):
+            self.assertEqual(atomic.classify_allowlist("29990101000001,29990101000000", "preview"),
+                             "29990101000000,29990101000001")
+            for raw in ("29990101000000,29990101000000", "29990101000000,29990101000002"):
+                with self.assertRaises(atomic.Refusal):
+                    atomic.classify_allowlist(raw, "preview")
+            with self.assertRaises(atomic.Refusal):
+                atomic.classify_allowlist("29990101000000,29990101000001", "production")
+            value["migrations"]["29990101000001"]["batch_group"] = "other"
+            policy.write_text(json.dumps(value))
+            with self.assertRaises(atomic.Refusal):
+                atomic.classify_allowlist("29990101000000,29990101000001", "preview")
+
+    def test_classifier_cli_passes_target(self):
+        for target in (None, "preview", "production"):
+            argv = ["atomic_migration_apply.py", "--migrations-dir", str(self.root),
+                    "--classify-allowlist", "29990101000000"]
+            if target:
+                argv.extend(["--target", target])
+            with patch.object(sys, "argv", argv), patch.object(
+                atomic, "classify_allowlist", return_value="29990101000000"
+            ) as classifier, redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(atomic.main(), 0)
+                classifier.assert_called_once_with("29990101000000", target)
+                self.assertEqual(output.getvalue(), "29990101000000\n")
+
     def test_policy_entries_bind_exactly_one_matching_committed_file(self):
         path, policy = self.authorize()
         with patch.object(atomic, "POLICY", policy):
@@ -197,6 +296,39 @@ class AtomicMigrationApplyTests(unittest.TestCase):
 
     def test_repository_policy_entries_are_bound_to_committed_migrations(self):
         atomic.validate_policy_bindings(atomic.ROOT / "supabase" / "migrations")
+
+    def test_popdam_format_and_batch_singletons_bind_hash_budgets_and_one_ledger_transaction(self):
+        expected={"20261105144622":"a0785c344594a50d1233caa70735f59e904dffe5c9e116aa48a86b64ad79ca5f",
+                  "20261105150450":"6a42d62919fa0ddc5069a017dc4aeaf66143f468f3d0fcffaabf769ec9e0cb76"}
+        migration_dir=atomic.ROOT/'supabase/migrations'
+        for version,digest in expected.items():
+            self.assertEqual(atomic.read_policy()[version],{'sha256':digest,'targets':['preview','production'],'strip_outer_transaction':True})
+            for target in ['preview','production']:
+                self.assertEqual(atomic.classify_allowlist(version,target),version)
+                path,name,raw,statements=atomic.load_candidate(migration_dir,version,target)
+                self.assertEqual(hashlib.sha256(atomic.canonical_migration_bytes(path)).hexdigest(),digest)
+                controls=[atomic.control_tokens(x) for x in statements]
+                self.assertNotIn(['BEGIN'],controls);self.assertNotIn(['COMMIT'],controls)
+                self.assertIn("set local lock_timeout = '500ms'",raw.lower())
+                self.assertIn("set local statement_timeout = '2500ms'",raw.lower())
+                self.assertIn("set local transaction_timeout = '3s'",raw.lower())
+                wrapper=atomic.build_wrapper(version,name,raw,statements)
+                top=[atomic.control_tokens(x) for x in atomic.split_sql(wrapper.replace('\\set ON_ERROR_STOP on\n',''))]
+                self.assertEqual([x for x in top if x and x[0] in ['BEGIN','COMMIT']],[['BEGIN'],['COMMIT']])
+                self.assertLess(wrapper.lower().index("set local transaction_timeout"),wrapper.index('INSERT INTO supabase_migrations'))
+                self.assertLess(wrapper.index('INSERT INTO supabase_migrations'),wrapper.rindex('COMMIT;'))
+        with self.assertRaises(atomic.Refusal):atomic.classify_allowlist(','.join(expected),'preview')
+        with self.assertRaises(atomic.Refusal):atomic.classify_allowlist(','.join(expected),'production')
+
+    def test_popdam_atomic_policy_refuses_wrong_hash_or_unstripped_outer_control(self):
+        original=atomic.read_policy()
+        for version in ['20261105144622','20261105150450']:
+            for mutation in ['hash','outer']:
+                changed=json.loads(json.dumps(original))
+                if mutation=='hash':changed[version]['sha256']='0'*64
+                else:changed[version]['strip_outer_transaction']=False
+                with patch.object(atomic,'read_policy',return_value=changed):
+                    with self.assertRaises(atomic.Refusal):atomic.load_candidate(atomic.ROOT/'supabase/migrations',version,'preview')
 
     def test_orderlist_migration_is_exactly_allowlisted_for_both_targets(self):
         version = "20261009073649"
@@ -337,6 +469,26 @@ class AtomicMigrationApplyTests(unittest.TestCase):
         self.assertNotIn("secret", stderr.getvalue())
         self.assertNotIn("host", stderr.getvalue())
         self.assertIn("REDACTED", stderr.getvalue())
+
+    def test_policy_upgrade_requires_fresh_current_main_producer_not_original_source_producer(self):
+        original, current = "1" * 40, "3" * 40
+        policy_path = "config/atomic-migration-allowlist.json"
+        self.assertIn(policy_path, risk.PREVIEW_PRODUCER_PATHS)
+
+        def api(endpoint):
+            ref, _, query = endpoint.partition("?")
+            self.assertIn("recursive=1", query)
+            ref = ref.split("/git/trees/", 1)[1]
+            return {"truncated": False, "tree": [
+                {"path": path, "type": "blob", "sha":
+                 ("original-policy" if ref == original else "upgraded-policy")
+                 if path == policy_path else "unchanged"}
+                for path in risk.PREVIEW_PRODUCER_PATHS
+            ]}
+
+        risk.prove_preview_producer_matches_main(current, risk.exact_main(current), current, api)
+        with self.assertRaisesRegex(risk.RiskGateError, "different config/atomic-migration-allowlist.json"):
+            risk.prove_preview_producer_matches_main(original, risk.exact_main(current), current, api)
 
     def test_wrapper_places_sql_and_exact_ledger_row_in_one_transaction(self):
         wrapper = atomic.build_wrapper("29990101000000", "test", "create table x(id int);", ["create table x(id int)"])

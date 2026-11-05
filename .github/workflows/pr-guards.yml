@@ -9,8 +9,8 @@
 # job `name:` as its check-run context, so every required context emitted
 # here ("Agent work contract", "Cancelled work guard", "Domain ownership",
 # "Handoff contract", "Intake pointer guard", "Destructive SQL outside
-# migrations", "Cross-PR object collision", "Orchestrator marker guard",
-# "Queue-sensitive checks (aggregate)") is byte-identical to before. Jobs are
+# migrations", "Destructive SQL outside migrations",
+# "Orchestrator marker guard") is byte-identical to before. Jobs are
 # moved in directly, never called through `workflow_call`, because a reusable
 # workflow call prefixes the context ("caller / callee") and would break every
 # required check.
@@ -73,244 +73,11 @@ jobs:
   route:
     uses: ./.github/workflows/runner-route.yml
     with:
-      fallback: blacksmith-2vcpu-ubuntu-2404
+      fallback: ubuntu-latest
 
 
-  # ---- moved from .github/workflows/agent-work-contract.yml (#3746) ----
-  # Guard: does an agent's completion report actually satisfy the contract it was
-  # given? (Step 4, issue #1366)
-  #
-  # NO `paths:` FILTER, ON PURPOSE (AGENTS.md 5.2). This is a repository-wide check.
-  # A path filter would leave the context permanently pending on any pull request
-  # that did not touch the filtered files, and GitHub can then reuse a stale verdict
-  # for a repository-wide required check. That failure mode is recorded in issue
-  # #1286 and in AGENTS.md 5.2; do not "optimise" it back in.
-  #
-  # REPORT-ONLY IS NOT "IGNORE ERRORS". While
-  # config/agent-work-contract-activation.json says mode=report-only, a pull request
-  # with NO contract passes. A pull request WITH a malformed contract or a report
-  # that contradicts its contract FAILS either way — shipping a broken guard in a
-  # quiet mode is how a guard gets trusted without ever having worked.
-  agent-work-contract:
-    name: Agent work contract
-    # #3536: retain manual replay and queue admission; ordinary PRs already
-    # receive independent guarded review and the offline proof suite.
-    needs: route
-    if: ${{ !cancelled() && contains(fromJSON('["merge_group", "workflow_dispatch"]'), github.event_name) }}
-    permissions:
-      contents: read
-      pull-requests: read
-    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"blacksmith-2vcpu-ubuntu-2404"') }}
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.sha }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      # The offline unit tests come first. A guard whose own logic is broken must
-      # never render a verdict on somebody else's pull request.
-      - name: Prove the contract logic itself
-        run: >-
-          node --test
-          scripts/agent-work-contract.test.mjs
-          scripts/agent-work-contract-activation.test.mjs
-          scripts/agent-work-contract-git-evidence.test.mjs
-          scripts/lib/agent-evidence-paths.test.mjs
-          scripts/lib/evidence-generation-lineage.test.mjs
-          scripts/check-documents-only-pull-request.test.mjs
-          scripts/check-closeout-readiness.test.mjs
-
-      - name: Resolve the exact queued or manually selected pull request
-        id: queue
-        env:
-          GH_TOKEN: ${{ github.token }}
-          MERGE_GROUP_REF: ${{ github.event.merge_group.head_ref }}
-          SELECTED_PR: ${{ inputs.agent_contract_pr_number }}
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          set -euo pipefail
-          if [ "$EVENT_NAME" = "merge_group" ]; then
-            facts="$(node scripts/merge-queue-contract.mjs --resolve-queue-pr)"
-            PR_NUMBER="$(echo "$facts" | jq -r .number)"
-          else
-            [[ "$SELECTED_PR" =~ ^[1-9][0-9]*$ ]] || { echo "::error::Manual contract replay requires an exact PR number."; exit 1; }
-            PR_NUMBER="$SELECTED_PR"
-          fi
-          facts="$(node scripts/gh-read.mjs api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
-          echo "$facts" | jq -e --arg repo "$GITHUB_REPOSITORY" --argjson number "$PR_NUMBER" '
-            .number == $number and .state == "open" and
-            .base.ref == "main" and .base.repo.full_name == $repo and
-            (.base.sha | test("^[a-f0-9]{40}$")) and
-            (.head.sha | test("^[a-f0-9]{40}$"))' > /dev/null
-          BASE_SHA="$(echo "$facts" | jq -r .base.sha)"
-          HEAD_SHA="$(echo "$facts" | jq -r .head.sha)"
-          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA"
-          # Replay must read the selected pair, not inherited main files.
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then git checkout --detach "$HEAD_SHA"; fi
-          {
-            echo "pr_number=$PR_NUMBER"
-            echo "pr_head_sha=$HEAD_SHA"
-            echo "pr_base_sha=$BASE_SHA"
-          } >> "$GITHUB_OUTPUT"
-
-      # Classified from protected base policy whenever the pull request is known,
-      # including the one queued PR on merge_group, so the documents-only
-      # exemption behaves identically on both paths (#2596 review).
-      - name: Check out the protected base policy for the documents-only decision
-        if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch'
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.base.sha || steps.queue.outputs.pr_base_sha }}
-          path: trusted-policy
-          fetch-depth: 1
-
-      - name: Classify documents-only status from protected base policy
-        id: documents_only
-        if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number || steps.queue.outputs.pr_number }}
-        run: |
-          set -euo pipefail
-          test -n "$PR_NUMBER"
-          set +e
-          node trusted-policy/scripts/check-documents-only-pull-request.mjs "$GITHUB_REPOSITORY" "$PR_NUMBER"
-          status=$?
-          set -e
-          # 0 = documents only. Anything else, including an unreadable file list,
-          # is NOT documents only: the pair stays required (fail closed).
-          if [ "$status" -eq 0 ]; then echo "value=true" >> "$GITHUB_OUTPUT"; else echo "value=false" >> "$GITHUB_OUTPUT"; fi
-
-      - name: Report the activation mode, so nobody has to guess
-        run: |
-          set -euo pipefail
-          MODE=$(node trusted-policy/scripts/agent-work-contract-activation.mjs --mode --config-file trusted-policy/config/agent-work-contract-activation.json)
-          echo "mode=$MODE" >> "$GITHUB_ENV"
-          {
-            echo "## Agent work contract — $MODE"
-            echo
-            if [ "$MODE" = "report-only" ]; then
-              echo "A pull request with no contract passes. A malformed contract or a"
-              echo "report that contradicts its contract still FAILS."
-            else
-              echo "Enforced. Every non-grandfathered pull request must carry a valid"
-              echo "contract and a report that satisfies it."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Validate any contract and report carried by this pull request
-        env:
-          MODE: ${{ env.mode }}
-          PR_NUMBER: ${{ github.event.pull_request.number || steps.queue.outputs.pr_number }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || steps.queue.outputs.pr_base_sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || steps.queue.outputs.pr_head_sha }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          # Convention: a PR that declares a contract changes both evidence
-          # files under .agent/. The activation PR's pair remains on main, so
-          # mere filesystem presence is not current-PR evidence. Compare the
-          # exact PR base and head before reading either file.
-          #
-          # THE PAIR'S PATHS ARE NO LONGER FIXED (#2708). Each pull request writes
-          # .agent/work/<work_issue>/<generation>/{contract,completion}.json, so two
-          # unrelated pull requests cannot collide on one path and force each other
-          # through a full re-review. The legacy .agent/contract.json pair is still
-          # accepted. The resolver -- not this shell -- decides which two files this
-          # pull request's evidence is, and it fails closed on more than one pair.
-          CONTRACT=.agent/contract.json
-          REPORT=.agent/completion.json
-
-          if [ -n "$PR_NUMBER" ]; then
-            RESOLVED=$(node trusted-policy/scripts/agent-work-contract-git-evidence.mjs \
-              --resolve-evidence-pair \
-              --pr-base-sha "$PR_BASE_SHA" \
-              --pr-head-sha "$PR_HEAD_SHA")
-            PAIR_STATE=$(echo "$RESOLVED" | cut -d' ' -f1)
-            RESOLVED_CONTRACT=$(echo "$RESOLVED" | cut -d' ' -f2)
-            RESOLVED_REPORT=$(echo "$RESOLVED" | cut -d' ' -f3)
-            if [ -n "$RESOLVED_CONTRACT" ] && [ -n "$RESOLVED_REPORT" ]; then
-              CONTRACT="$RESOLVED_CONTRACT"
-              REPORT="$RESOLVED_REPORT"
-            fi
-          else
-            # A manual dispatch has no PR diff. Validate the checked-out pair as
-            # repository evidence, but do not render a PR gate verdict.
-            PAIR_STATE=current
-          fi
-
-          case "$PAIR_STATE" in
-            inherited|current) ;;
-            partial)
-              echo "::error::A pull request must change its contract and its completion report together."
-              exit 1
-              ;;
-            conflicted)
-              echo "::error::This pull request carries more than one agent evidence pair. Exactly one pair, at .agent/work/<work_issue>/<generation>/, may be present (#2708)."
-              exit 1
-              ;;
-            *)
-              echo "::error::Evidence classification returned an unknown state: $PAIR_STATE"
-              exit 1
-              ;;
-          esac
-
-          if [ "$PAIR_STATE" = "inherited" ] || { [ ! -f "$CONTRACT" ] && [ ! -f "$REPORT" ]; }; then
-            if [ "$MODE" = "report-only" ]; then
-              echo "No current contract on this pull request; report-only mode allows it."
-              exit 0
-            fi
-            if node trusted-policy/scripts/agent-work-contract-activation.mjs --is-grandfathered --config-file trusted-policy/config/agent-work-contract-activation.json --pr "$PR_NUMBER" --head-sha "$PR_HEAD_SHA"; then
-              exit 0
-            fi
-            # THE DOCUMENTS-ONLY EXEMPTION (issue #2591, owner approved 2026-09-08).
-            #
-            # The reviewer draw already exempts a prose-only pull request from the
-            # small external database-reviewer pool (#2102). This gate did not know
-            # that rule, so it demanded the evidence pair from a pull request that
-            # changes nothing but documents -- and adding the pair then CANCELLED
-            # the reviewer exemption, because `.json` is not a document extension.
-            # A prose-only change could satisfy either gate but never both, so every
-            # handoff paid a full two-reviewer round. Both gates now ask the same
-            # classifier the same question.
-            #
-            # RULEBOOK FILES ARE NOT DOCUMENTS. AGENTS.md, CLAUDE.md, skills and
-            # plan_*.md keep the full treatment: a bad edit to one of them is as
-            # dangerous as a bad migration, because every later session obeys it.
-            #
-            # FAIL CLOSED. An unreadable or empty file list is never documents-only,
-            # and a failed API read refuses rather than exempts. Every other
-            # automated check and the guarded merge lane are unchanged by this.
-            # The GitHub read happens INSIDE the script, through the one shared
-            # transport library (#2342), never directly from this step.
-            if [ "${{ steps.documents_only.outputs.value }}" = "true" ]; then
-              echo "This pull request changes only prose documents, so the agent work contract pair is not required (#2591)."
-              exit 0
-            fi
-            echo "::error::Enforced mode requires this pull request to change both .agent/work/<work_issue>/<generation>/contract.json and .agent/work/<work_issue>/<generation>/completion.json (#2708). Inherited main evidence does not count. A documents-only pull request is exempt; this one is not."
-            exit 1
-          fi
-
-          # HALF A PAIR IS ALWAYS AN ERROR, in either mode. A report with no
-          # contract cannot be checked against anything, and a contract with no
-          # report is work that never proved itself.
-          if [ ! -f "$CONTRACT" ]; then echo "::error::$REPORT exists but $CONTRACT does not; a report with no contract cannot be checked."; exit 1; fi
-          if [ ! -f "$REPORT" ]; then echo "::error::$CONTRACT exists but $REPORT does not; the work never reported against its contract."; exit 1; fi
-
-          node trusted-policy/scripts/agent-work-contract.mjs --validate-contract --contract-file "$CONTRACT"
-          PR_ARGS=()
-          if [ -n "$PR_NUMBER" ]; then
-            PR_ARGS+=(--expected-pr "$PR_NUMBER" --expected-head-sha "$PR_HEAD_SHA")
-          fi
-          node trusted-policy/scripts/agent-work-contract.mjs --validate-completion --report-file "$REPORT" --contract-file "$CONTRACT" "${PR_ARGS[@]}"
-          if [ -n "$PR_NUMBER" ]; then
-            node trusted-policy/scripts/agent-work-contract-git-evidence.mjs --contract-file "$CONTRACT" --report-file "$REPORT" --pr-base-sha "$PR_BASE_SHA" --pr-head-sha "$PR_HEAD_SHA"
-          fi
+  # popcre/ai-devops#2172 stage C2: the Agent work contract (evidence-pair)
+  # job is retired.
 
   # ---- moved from .github/workflows/cancelled-work-guard.yml (#3746) ----
   # Guard: a PR must not reintroduce work an owner ruling has CANCELLED.
@@ -339,7 +106,7 @@ jobs:
     if: ${{ !cancelled() && contains(fromJSON('["pull_request", "merge_group", "workflow_dispatch"]'), github.event_name) }}
     permissions:
       contents: read
-    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"blacksmith-2vcpu-ubuntu-2404"') }}
+    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"ubuntu-latest"') }}
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     steps:
@@ -377,7 +144,7 @@ jobs:
     if: ${{ !cancelled() && contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) }}
     permissions:
       contents: read
-    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"blacksmith-2vcpu-ubuntu-2404"') }}
+    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"ubuntu-latest"') }}
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     steps:
@@ -423,7 +190,7 @@ jobs:
       contents: read
       issues: read
       pull-requests: read
-    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"blacksmith-2vcpu-ubuntu-2404"') }}
+    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"ubuntu-latest"') }}
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     steps:
@@ -509,7 +276,7 @@ jobs:
     if: ${{ !cancelled() && contains(fromJSON('["pull_request", "merge_group", "push", "workflow_dispatch"]'), github.event_name) }}
     permissions:
       contents: read
-    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"blacksmith-2vcpu-ubuntu-2404"') }}
+    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"ubuntu-latest"') }}
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     steps:
@@ -545,7 +312,7 @@ jobs:
     permissions:
       contents: read
       issues: read
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -592,173 +359,10 @@ jobs:
           fi
           node scripts/check-destructive-analysis.mjs --diff-base "${BASE_SHA}"
 
-  # ---- moved from .github/workflows/pr-object-collision.yml (#3746) ----
-  # CROSS-PR OBJECT COLLISION GUARD — HANDOFF.md backlog item B6.
-  #
-  # WHY IT EXISTS: on 2026-07-31 four independent sessions each authored a
-  # migration doing `create or replace function plm.promote_coldlion_source_owned`.
-  # `create or replace` is last-writer-wins, so merging any two would have silently
-  # erased the other. All four passed CI, because scripts/check-sql.sh only ever
-  # sees one branch at a time. This workflow is the only check that looks across
-  # open pull requests.
-  #
-  # WHY THERE IS NO `paths:` FILTER — read AGENTS.md §5.2 before adding one.
-  #
-  #   The checker inspects OTHER pull requests' migration files, not just this
-  #   one's. There is therefore no set of paths in THIS pull request that
-  #   determines whether the check is relevant: PR #A can become a collision the
-  #   moment PR #B is opened, without PR #A changing at all. A `paths:` filter
-  #   would produce exactly the §5.2 failure — a stale verdict that cannot be
-  #   re-run, because the fix (or the collision) lives in a different branch.
-  #   Same design rule as .github/workflows/backlog-queue-sync.yml and
-  #   .github/workflows/tools-offline-tests.yml. The job is a few seconds of Node
-  #   plus a handful of read-only API calls; there is nothing to optimise.
-  #
-  # LIMITS OF THE TRIGGER, stated honestly: `pull_request` fires on this PR's own
-  # events (opened/synchronize/reopened) and `workflow_dispatch` allows a manual
-  # re-run. GitHub will NOT re-run a green check because a SIBLING pull request
-  # appeared afterwards. The last member of a colliding set to merge is therefore
-  # the one that must be re-checked.
-  #
-  # WHAT ACTUALLY PROVIDES THAT RE-CHECK — corrected 2026-08-23, issue #1366.
-  # THIS JOB IS A DETECTOR, NOT THE GATE. Earlier text here said the re-check came
-  # from branch protection's "require branches to be up to date before merging"
-  # (`required_status_checks.strict`). That is NOT how this repository works and
-  # reading it that way has already produced one unsafe change proposal.
-  #
-  #   * `required_status_checks.strict` is deliberately FALSE. Albert ruled this on
-  #     2026-08-19 in issue #1286, after strict mode restarted the full check suite
-  #     on every branch after every unrelated merge, costing roughly 50 minutes a
-  #     day. It is an owner-authorized throughput decision, NOT configuration drift.
-  #     Do not "fix" it. Issue #1286 alone governs whether it is ever reconsidered.
-  #
-  #   * The real re-check for a MIGRATION pull request (database objects; see
-  #     the PROTECTED COORDINATION SOURCES note below for source files) is
-  #     `.github/workflows/guarded-migration-merge.yml`, whose required context
-  #     `Migration guarded merge authorization` re-runs collision and lease
-  #     validation against a head that already contains current `main`, and does so
-  #     while holding the merge lock.
-  #
-  #   * A pull request with NO migrations is auto-authorized by
-  #     `.github/workflows/migration-author-lease.yml`, because there is no
-  #     structural collision for it to have.
-  #
-  # So: this guard gives early feedback to honest authors; guarded merge is what
-  # actually holds the line at merge time.
-  #
-  # PROTECTED COORDINATION SOURCES are different (#3721): the PR-time step only
-  # reports overlap; the merge-time gate is the merge_group step below, which
-  # proves the group is its base plus exactly one PR, while this same job
-  # runs the lane-manager suites on that tree.
-  #
-  # NO DATABASE CONTACT: this job reads GitHub pull-request metadata and committed
-  # .sql text. It needs no database credentials and must never be given any.
-  pr-object-collision:
-    name: Cross-PR object collision
-    if: contains(fromJSON('["pull_request", "merge_group", "workflow_dispatch"]'), github.event_name)
-    permissions:
-      contents: read
-      pull-requests: read
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      # B7: the guard ships with a test that COMMITS THE VIOLATION (a replay of
-      # the real four-way collision) and asserts the guard fails on it.
-      - name: Unit-test the checker itself (includes the negative path)
-        run: node --test scripts/check-pr-object-collisions.test.mjs
-
-      # The DISPATCH-time checker imports extractObjects from the script above,
-      # so a change to that parser can silently break it. Both suites run in
-      # this one job precisely so they cannot drift apart. This step adds no new
-      # required status context -- the job name is unchanged.
-      - name: Unit-test the dispatch-time collision checker (shares the parser)
-        run: node --test scripts/check-dispatch-collision.test.mjs scripts/check-pr-source-collisions.test.mjs scripts/manage-migration-author-lanes.test.mjs scripts/claim-author-transfer.test.mjs scripts/expired-merged-claim-adoption.test.mjs scripts/stopped-merged-claim-adoption.test.mjs scripts/manage-migration-author-lanes-surface.test.mjs scripts/route-lane-manager-patch.test.mjs scripts/reviewer-wire-budget.test.mjs scripts/lib/lanes/phase-trace.test.mjs scripts/lib/lanes/assignment-hold-phases.test.mjs scripts/lib/lanes/section-deadline.test.mjs scripts/lib/lanes/assignment-hostile-matrix.test.mjs scripts/mutex-release-on-refusal.test.mjs scripts/lib/open-pr-files.test.mjs scripts/check-actions-quota.test.mjs
-
-      # Read-only token from the pop-ai-watchers GitHub App: its own API budget, separate
-      # from the per-repository Actions installation limit. Writes keep github.token.
-      # Absent secret or mint failure -> empty output -> read steps fall back to github.token.
-      - name: Mint read-only API token (pop-ai-watchers app)
-        id: read_token
-        continue-on-error: true
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ secrets.POP_AI_WATCHERS_APP_ID }}
-          private-key: ${{ secrets.POP_AI_WATCHERS_PRIVATE_KEY }}
-          permission-actions: read
-          permission-checks: read
-          permission-contents: read
-          permission-issues: read
-          permission-pull-requests: read
-          permission-statuses: read
-      - name: Check the GitHub API quota before scanning open pull requests
-        env:
-          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
-          # Holds no lock: a GitHub quota exhaustion may wait up to 2 minutes.
-          # 2026-10-23: the former 15-minute wait silently stalled merges behind
-          # pure throttling (zero guard value); a faster refusal re-runs cheaply.
-          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '120'
-        run: node scripts/check-actions-quota.mjs
-
-      # ONE read of every open pull request's complete file list, shared by both
-      # checks below. They used to fetch it twice, which was most of this job's
-      # quota spend. Each check still refuses an incomplete list exactly as before.
-      - name: Gather the open pull request file lists once
-        if: github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          # Holds no lock: a GitHub quota exhaustion may wait up to 2 minutes.
-          # 2026-10-23: the former 15-minute wait silently stalled merges behind
-          # pure throttling (zero guard value); a faster refusal re-runs cheaply.
-          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '120'
-        run: node scripts/lib/open-pr-files.mjs --out "$RUNNER_TEMP/open-pr-files.json"
-
-      - name: Report earlier open PRs editing the same protected coordination source (overlap queues; unreadable audit refuses)
-        if: github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          OPEN_PR_FILES_SNAPSHOT: ${{ runner.temp }}/open-pr-files.json
-          # Holds no lock: a GitHub quota exhaustion may wait up to 2 minutes.
-          # 2026-10-23: the former 15-minute wait silently stalled merges behind
-          # pure throttling (zero guard value); a faster refusal re-runs cheaply.
-          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '120'
-        run: node scripts/check-pr-source-collisions.mjs
-
-      # Merge-time twin of the step above (#3721): overlapping protected-source
-      # pull requests are queued, not refused, so every merge group must be
-      # its base plus exactly one pull request; the lane-manager suites run
-      # above on that same tree. A stacked group or unreadable facts
-      # refuse. Uses only the event payload and local git.
-      - name: Merge group is its base plus exactly one PR (protected-source queueing proof)
-        if: github.event_name == 'merge_group'
-        env:
-          SOURCE_COLLISION_MODE: merge-group
-        run: node scripts/check-pr-source-collisions.mjs
-
-      - name: No other open PR replaces the same database object
-        # On merge_group the pull_request payload does not exist; the Merge
-        # queue gate re-runs this same script against the resolved queued PR,
-        # so the proof still happens exactly once per merge (#2530).
-        if: github.event_name != 'merge_group'
-        env:
-          GH_TOKEN: ${{ steps.read_token.outputs.token || github.token }}
-          OPEN_PR_FILES_SNAPSHOT: ${{ github.event_name == 'pull_request' && format('{0}/open-pr-files.json', runner.temp) || '' }}
-          # Holds no lock: a GitHub quota exhaustion may wait up to 2 minutes.
-          # 2026-10-23: the former 15-minute wait silently stalled merges behind
-          # pure throttling (zero guard value); a faster refusal re-runs cheaply.
-          GITHUB_RATE_LIMIT_MAX_WAIT_SECONDS: '120'
-        run: node scripts/check-pr-object-collisions.mjs
-
+  # The Cross-PR object collision job and the Queue-sensitive checks (aggregate)
+  # job were retired (popcre/ai-devops#2172 step 1.6; owner ruling 2026-10-30):
+  # they were retired-process detectors, not production-data or secret-leak
+  # guards. Claim/lane code and its suites remain owned by popcre/shared-db#5228.
   # The Orchestrator marker guard was retired with the coordinator role (#3874).
   # ---- moved from .github/workflows/queue-sensitive-aggregate.yml (#3746) ----
   # Stable aggregate context for queue-sensitive required checks (issue #2729, ai-devops#401 Step 7).
@@ -845,7 +449,7 @@ jobs:
     if: ${{ !cancelled() && contains(fromJSON('["pull_request", "workflow_dispatch"]'), github.event_name) }}
     permissions:
       contents: read
-    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"blacksmith-2vcpu-ubuntu-2404"') }}
+    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"ubuntu-latest"') }}
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     steps:
@@ -1063,7 +667,7 @@ jobs:
     if: ${{ !cancelled() && contains(fromJSON('["pull_request", "push", "workflow_dispatch"]'), github.event_name) }}
     permissions:
       contents: read
-    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"blacksmith-2vcpu-ubuntu-2404"') }}
+    runs-on: ${{ fromJSON(needs.route.outputs.runs_on || '"ubuntu-latest"') }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

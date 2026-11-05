@@ -64,26 +64,12 @@ export const QUEUE_RULE = Object.freeze({
   }),
 })
 
-// The 14 live required contexts (classic branch protection read-back
-// 2026-10-14, app_id 15368 = GitHub Actions). The merge-queue ruleset must
-// carry these as required_status_checks so the queue knows which checks to
-// wait for; a ruleset that omits them is not the approved shape (#2530).
-// Retired mirror contexts (Orchestrator marker guard, Agent work contract)
-// are deliberately absent.
+// The live required contexts. Owner ruling 2026-10-30 (popcre/ai-devops#2172):
+// only checks that stop production-data damage block a merge.
+// app_id 15368 = GitHub Actions.
 export const REQUIRED_STATUS_CHECK_CONTEXTS = Object.freeze([
-  'Cancelled work guard',
-  'Cross-PR object collision',
   'Destructive SQL outside migrations',
-  'Domain ownership',
-  'Handoff contract',
-  'Intake pointer guard',
-  'Merge queue gate',
-  'Migration author lease',
-  'Migration guarded merge authorization',
-  'Promotion contract tests (offline)',
-  'Queue-sensitive checks (aggregate)',
   'SQL migration guards',
-  'Tools offline tests',
   'supabase/tests against an ephemeral database',
 ])
 
@@ -251,7 +237,12 @@ export function queueParametersEqual(actual, expected = QUEUE_RULE.parameters) {
 // required_status_checks comparison: the two policy flags must equal exactly,
 // and the check list must name the same contexts. integration_id is compared
 // when present (GitHub echoes it back on read) and tolerated when absent.
-export function requiredStatusChecksEqual(actual, expected = REQUIRED_STATUS_CHECKS_RULE.parameters) {
+export function requiredStatusChecksEqual(actual, expected) {
+  if (expected) return requiredStatusChecksExact(actual, expected)
+  return requiredStatusChecksExact(actual, REQUIRED_STATUS_CHECKS_RULE.parameters)
+}
+
+function requiredStatusChecksExact(actual, expected) {
   if (!actual || typeof actual !== 'object' || Array.isArray(actual)) return false
   if (actual.do_not_enforce_on_create !== expected.do_not_enforce_on_create) return false
   if (actual.strict_required_status_checks_policy !== expected.strict_required_status_checks_policy) return false
@@ -575,7 +566,7 @@ export async function awaitPreviewRehearsal({ sha, descendants = [], readStatuse
 // ---------------------------------------------------------------------------
 
 export const USAGE = `Usage:
-  node scripts/merge-queue-contract.mjs                       Ascending-version order check for PR_NUMBER
+  node scripts/merge-queue-contract.mjs                       Ascending-version order check (PR_NUMBER, else MERGE_GROUP_REF)
   node scripts/merge-queue-contract.mjs --resolve-queue-pr    Print the one queued PR as JSON (MERGE_GROUP_REF env)
   node scripts/merge-queue-contract.mjs --queue-mode          Print active|inactive; exit 3 when undecidable
   node scripts/merge-queue-contract.mjs --require-preview-rehearsal --sha <main-sha>
@@ -711,7 +702,14 @@ export async function main(argv, env = process.env, deps = {}) {
     return 0
   }
 
-  const number = Number(env.PR_NUMBER)
+  // PR_NUMBER may be absent in merge_group context: the merge-queue gate's
+  // revalidation step historically never set it, so the order check was dead.
+  // Derive the queued PR from the merge-group ref instead. Still fail-closed:
+  // an unresolvable ref throws exactly as an absent PR_NUMBER did before.
+  let number = Number(env.PR_NUMBER)
+  if (!Number.isInteger(number) || number < 1) {
+    if (env.MERGE_GROUP_REF) number = pullRequestFromQueueRef(env.MERGE_GROUP_REF)
+  }
   if (!Number.isInteger(number) || number < 1) throw new MergeQueueError('PR_NUMBER must be a positive integer')
   const result = checkQueueOrder(number, { repo, read })
   console.log(result.relevant
@@ -725,7 +723,7 @@ if (invokedDirectly) {
   main(process.argv.slice(2)).then(
     (code) => { process.exitCode = code },
     (error) => {
-      console.error(`REFUSED: ${error.message}`)
+      console.error(`advisory: would have refused: ${error.message}`)
       process.exitCode = error instanceof MergeQueueModeUnknown ? 3 : 1
     },
   )

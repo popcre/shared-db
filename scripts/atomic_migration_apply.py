@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply one exceptional migration and its Supabase ledger row atomically.
+"""Apply explicitly pinned migrations, each with its ledger row atomically.
 
 The normal migration lane remains Supabase CLI. This tool is fail-closed and only
 accepts an exact version+SHA256 entry in config/atomic-migration-allowlist.json.
@@ -20,6 +20,17 @@ from urllib.parse import parse_qsl, unquote, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = ROOT / "config" / "atomic-migration-allowlist.json"
+# One reviewed curated source packet. No caller-selected table, mode or budget.
+CURATED_CHARACTER_LOCK_CONTRACT = "curated-character-admission-5683-v1"
+CURATED_CHARACTER_LOCK_VERSION = "20261105142616"
+CURATED_CHARACTER_LOCK_SHA256 = "faa341b2e472907f1e31275068b4c258272f6e0df782401cfaaec000faeb9059"
+CURATED_CHARACTER_LOCK_SQL = (
+    "SET LOCAL TIME ZONE 'UTC';\n"
+    "SET LOCAL lock_timeout='500ms';\n"
+    "SET LOCAL statement_timeout='2500ms';\n"
+    "SET LOCAL transaction_timeout='3s';\n"
+    "LOCK TABLE core.licensor, core.character, core.character_alias, core.taxonomy_source_ref IN SHARE ROW EXCLUSIVE MODE;\n"
+)
 VERSION_RE = re.compile(r"^(\d{14})_(.+)\.sql$")
 VERSION_VALUE_RE = re.compile(r"^\d{14}$")
 TX_RE = re.compile(
@@ -31,6 +42,9 @@ EXPECTED_COLUMNS = {
     "statements": ({"ARRAY"}, "YES", {"_text"}),
     "name": ({"text", "character varying"}, "YES", {"text", "varchar"}),
 }
+HTS_CREDENTIAL_VERSION = "20261105121341"
+HTS_CREDENTIAL_ROLE = "designflow_hts_evaluation_reader"
+HTS_CREDENTIAL_ENV = "DESIGNFLOW_HTS_EVALUATION_PASSWORD"
 LIBPQ_ENV_KEYS = frozenset({
     "PGHOST", "PGHOSTADDR", "PGPORT", "PGDATABASE", "PGUSER", "PGPASSWORD",
     "PGPASSFILE", "PGSERVICE", "PGSERVICEFILE", "PGSYSCONFDIR", "PGOPTIONS",
@@ -73,25 +87,46 @@ def read_policy() -> dict[str, dict[str, object]]:
         validate_version(version)
         if not isinstance(entry, dict):
             raise Refusal(f"atomic policy entry {version} is not an object")
+        if version == CURATED_CHARACTER_LOCK_VERSION or "admission_lock_contract" in entry:
+            if (set(entry) != {"sha256", "targets", "admission_lock_contract"}
+                    or entry["admission_lock_contract"] != CURATED_CHARACTER_LOCK_CONTRACT
+                    or version != CURATED_CHARACTER_LOCK_VERSION
+                    or entry.get("sha256") != CURATED_CHARACTER_LOCK_SHA256):
+                raise Refusal("curated admission lock contract must bind the one exact version/hash without custom tables, modes or budgets")
+        if "batch_group" in entry and (not isinstance(entry["batch_group"], str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,79}", entry["batch_group"])):
+            raise Refusal(f"atomic policy batch group is invalid for {version}")
         if "strip_outer_transaction" in entry and not isinstance(entry["strip_outer_transaction"], bool):
             raise Refusal(f"atomic policy transaction flag is invalid for {version}")
+        if (version == HTS_CREDENTIAL_VERSION and entry.get("initial_credential_role") != HTS_CREDENTIAL_ROLE) or (
+            "initial_credential_role" in entry and (version != HTS_CREDENTIAL_VERSION or entry["initial_credential_role"] != HTS_CREDENTIAL_ROLE)
+        ):
+            raise Refusal("initial credential policy is outside the fixed HTS identity allowlist")
     return migrations
 
 
-def classify_allowlist(raw: str) -> str:
-    """Return the sole atomic version, or an empty string for the normal CLI lane."""
+def classify_allowlist(raw: str, target: str | None = None) -> str:
+    """Return sorted explicitly grouped versions, or empty for the normal CLI lane."""
     items = raw.split(",")
     if not items or any(not item.strip() for item in items):
         raise Refusal("allowlist contains an empty or malformed entry")
     versions = [validate_version(item.strip()) for item in items]
-    atomic = sorted(set(versions) & set(read_policy()))
-    if not atomic:
+    if target not in (None, "preview", "production"):
+        raise Refusal("atomic classification target is invalid")
+    policy = read_policy()
+    eligible = {version for version, entry in policy.items()
+                if target is None or target in entry.get("targets", [])}
+    if len(versions) != len(set(versions)):
+        raise Refusal("allowlist contains duplicate versions")
+    opted = set(versions) & set(policy)
+    if not opted:
         return ""
-    if len(versions) != 1 or len(atomic) != 1:
-        raise Refusal(
-            "an atomically authorized migration must be the only allowlisted version"
-        )
-    return atomic[0]
+    if opted != set(versions) or not opted <= eligible:
+        raise Refusal("atomic allowlist mixes unpinned or unauthorized target versions")
+    if len(versions) > 1:
+        groups = {policy[v].get("batch_group") for v in versions}
+        if len(groups) != 1 or None in groups or not next(iter(groups)):
+            raise Refusal("an atomically authorized migration must be the only allowlisted version unless all share an explicit batch group")
+    return ",".join(sorted(versions))
 
 
 def validate_policy_bindings(migrations_dir: Path) -> None:
@@ -498,15 +533,106 @@ select count(*) from supabase_migrations.schema_migrations where version = '""" 
         raise Refusal(f"version {version} is already applied")
 
 
-def build_wrapper(version: str, name: str, raw: str, statements: list[str]) -> str:
+def build_wrapper(version: str, name: str, raw: str, statements: list[str], *, admission_lock_contract: str | None = None) -> str:
     validate_version(version)
+    prelude = ""
+    if version == CURATED_CHARACTER_LOCK_VERSION and admission_lock_contract is None:
+        raise Refusal("curated admission wrapper requires its named lock contract")
+    if admission_lock_contract is not None:
+        if (admission_lock_contract != CURATED_CHARACTER_LOCK_CONTRACT
+                or version != CURATED_CHARACTER_LOCK_VERSION
+                or hashlib.sha256(raw.encode("utf-8")).hexdigest() != CURATED_CHARACTER_LOCK_SHA256):
+            raise Refusal("curated admission wrapper contract/version/hash mismatch")
+        prelude = CURATED_CHARACTER_LOCK_SQL
     values = ",\n".join(dollar_quote(s, f"s{i}") for i, s in enumerate(statements))
     return (
-        "\\set ON_ERROR_STOP on\nBEGIN;\n" + raw.rstrip() + "\n"
+        "\\set ON_ERROR_STOP on\nBEGIN;\n" + prelude + raw.rstrip() + "\n"
         "INSERT INTO supabase_migrations.schema_migrations(version, statements, name) VALUES (\n"
         + dollar_quote(version, "version") + ", ARRAY[\n" + values + "\n]::text[], "
         + dollar_quote(name, "name") + ");\nCOMMIT;\n"
     )
+
+
+def credential_connection(env: dict[str, str], *, reader: bool = False):
+    """Use exactly the already-proved libpq target, with no ambient overrides."""
+    import psycopg
+    saved = {key: os.environ[key] for key in LIBPQ_ENV_KEYS if key in os.environ}
+    try:
+        for key in LIBPQ_ENV_KEYS:
+            os.environ.pop(key, None)
+        os.environ.update({key: value for key, value in env.items() if key in LIBPQ_ENV_KEYS})
+        if reader:
+            # Pooler usernames retain the project suffix of the proved operator.
+            suffix = "." + env["PGUSER"].split(".", 1)[1] if "." in env["PGUSER"] else ""
+            os.environ["PGUSER"] = HTS_CREDENTIAL_ROLE + suffix
+            os.environ["PGPASSWORD"] = env[HTS_CREDENTIAL_ENV]
+        return psycopg.connect(connect_timeout=15)
+    finally:
+        for key in LIBPQ_ENV_KEYS:
+            os.environ.pop(key, None)
+        os.environ.update(saved)
+
+
+def initial_credential_apply(env: dict[str, str], version: str, name: str, raw: str,
+                             statements: list[str]) -> None:
+    """Initial password, approved DDL and ledger commit together; never rotate."""
+    if version != HTS_CREDENTIAL_VERSION or read_policy()[version].get("initial_credential_role") != HTS_CREDENTIAL_ROLE:
+        raise Refusal("initial credential request is outside the fixed HTS identity allowlist")
+    secret = env.get(HTS_CREDENTIAL_ENV, "")
+    if len(secret) < 32 or "\x00" in secret or "\n" in secret or "\r" in secret:
+        raise Refusal("protected initial HTS evaluation credential is missing or invalid")
+    try:
+        with credential_connection(env) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_advisory_xact_lock(hashtextextended('designflow_hts_evaluation_reader',0))")
+                # Do not weaken logging. Refuse configurations that could log bind
+                # values, and never send a password in SQL text, files or argv.
+                cursor.execute("SELECT (current_setting('log_parameter_max_length') = '0' OR ("
+                    "current_setting('log_statement') IN ('none','ddl') "
+                    "AND current_setting('log_min_duration_statement') = '-1' "
+                    "AND current_setting('log_min_duration_sample') = '-1' "
+                    "AND current_setting('log_transaction_sample_rate') = '0')) "
+                    "AND current_setting('log_parameter_max_length_on_error') = '0' "
+                    "AND coalesce(current_setting('pgaudit.log',true),'none') IN ('','none') "
+                    "AND coalesce(current_setting('pgaudit.log_parameter',true),'off') = 'off' "
+                    "AND coalesce(current_setting('pgaudit.role',true),'') = ''")
+                if cursor.fetchone() != (True,):
+                    raise Refusal("database logging does not satisfy protected credential transport")
+                cursor.execute("SELECT rolpassword IS NOT NULL FROM pg_authid WHERE rolname=%s", (HTS_CREDENTIAL_ROLE,))
+                prior = cursor.fetchone()
+                provision = prior is None or prior == (False,)
+                if not provision:
+                    # Existing credentials are never overwritten. Only successful
+                    # authentication with this exact protected value permits reuse.
+                    with credential_connection(env, reader=True) as reader:
+                        with reader.cursor() as check:
+                            check.execute("SELECT current_user")
+                            if check.fetchone() != (HTS_CREDENTIAL_ROLE,):
+                                raise Refusal("existing evaluation credential identity is unverified")
+                cursor.execute(raw, prepare=False)
+                if provision:
+                    cursor.execute("SELECT set_config('app.hts_evaluation_initial_password', %s, true)", (secret,))
+                    # SQL text contains no value. The exception boundary prevents
+                    # nested dynamic SQL from returning a password-bearing context.
+                    cursor.execute("""DO $credential$
+                    BEGIN
+                      EXECUTE format('ALTER ROLE designflow_hts_evaluation_reader PASSWORD %L',
+                        current_setting('app.hts_evaluation_initial_password'));
+                    EXCEPTION WHEN OTHERS THEN
+                      RAISE EXCEPTION 'initial evaluation credential issuance failed';
+                    END $credential$;""")
+                    cursor.execute("SELECT set_config('app.hts_evaluation_initial_password', '', true)")
+                cursor.execute("SELECT rolpassword IS NOT NULL FROM pg_authid WHERE rolname=%s", (HTS_CREDENTIAL_ROLE,))
+                if cursor.fetchone() != (True,):
+                    raise Refusal("initial evaluation credential verification failed")
+                cursor.execute("INSERT INTO supabase_migrations.schema_migrations(version,statements,name) VALUES (%s,%s,%s)",
+                    (version, statements, name))
+    except Refusal:
+        raise
+    except Exception:
+        # Driver errors may contain parameters, DSNs or provider diagnostics.
+        # The transaction context has rolled everything back before this result.
+        raise Refusal("initial evaluation access apply failed; DDL, credential and ledger rolled back together") from None
 
 
 def main() -> int:
@@ -515,19 +641,20 @@ def main() -> int:
     parser.add_argument("--classify-allowlist")
     parser.add_argument("--linked-dir", type=Path)
     parser.add_argument("--version")
+    parser.add_argument("--versions")
     parser.add_argument("--target", choices=["preview", "production"])
     parser.add_argument("--expected-project-ref")
     parser.add_argument("--mode", choices=["check", "apply"])
     args = parser.parse_args()
     try:
         if args.classify_allowlist is not None:
-            print(classify_allowlist(args.classify_allowlist))
+            print(classify_allowlist(args.classify_allowlist, args.target))
             return 0
         missing = [
             flag
             for flag, value in (
                 ("--linked-dir", args.linked_dir),
-                ("--version", args.version),
+                ("--version or --versions", args.version or args.versions),
                 ("--target", args.target),
                 ("--expected-project-ref", args.expected_project_ref),
                 ("--mode", args.mode),
@@ -536,38 +663,66 @@ def main() -> int:
         ]
         if missing:
             raise Refusal("missing required apply arguments: " + ", ".join(missing))
-        validate_version(args.version)
-        path, name, raw, statements = load_candidate(args.migrations_dir, args.version, args.target)
+        if args.version and args.versions:
+            raise Refusal("name --version OR --versions")
+        requested = args.versions or args.version
+        classified = classify_allowlist(requested, args.target)
+        if not classified:
+            raise Refusal("requested versions are not atomically authorized")
+        versions = classified.split(",")
+        # Validate every byte, target and ledger before the first mutation.
+        candidates = [(version, *load_candidate(args.migrations_dir, version, args.target)) for version in versions]
         url, env = linked_connection(args.linked_dir, args.expected_project_ref)
-        validate_remote(url, env, args.version)
-        print(f"ATOMIC PREFLIGHT OK: target={args.target} version={args.version} sha256={hashlib.sha256(path.read_bytes()).hexdigest()} statements={len(statements)}")
+        for version, path, name, raw, statements in candidates:
+            credential = read_policy()[version].get("initial_credential_role")
+            if credential and args.mode == "apply" and len(env.get(HTS_CREDENTIAL_ENV, "")) < 32:
+                raise Refusal("protected initial HTS evaluation credential is missing or invalid")
+            validate_remote(url, env, version)
+            print(f"ATOMIC PREFLIGHT OK: target={args.target} version={version} sha256={hashlib.sha256(canonical_migration_bytes(path)).hexdigest()} statements={len(statements)}")
         if args.mode == "check":
             return 0
-        wrapper = build_wrapper(args.version, name, raw, statements)
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".sql", delete=False) as handle:
-            handle.write(wrapper)
-            temp_name = handle.name
-        try:
-            result = subprocess.run(["psql", "-X", "-v", "ON_ERROR_STOP=1", "-f", temp_name], env=env, text=True, capture_output=True)
-            if result.returncode:
-                raise Refusal(
-                    "atomic apply failed; PostgreSQL rolled back DDL and ledger together:\n"
-                    + redact_psql_error(result.stderr or "", url, env)
-                )
-        finally:
-            Path(temp_name).unlink(missing_ok=True)
-        verify = psql(
-            url,
-            env,
-            "select count(*)||'|'||coalesce(max(cardinality(statements)),-1)||'|'||"
-            "coalesce(max(name),'') from supabase_migrations.schema_migrations where version='"
-            + args.version
-            + "';\n",
-        )
-        expected = f"1|{len(statements)}|{name}"
-        if verify != expected:
-            raise Refusal("post-commit ledger verification failed")
-        print(f"ATOMIC APPLY OK: target={args.target} version={args.version} ledger_row=1 statements={len(statements)}")
+        for version, path, name, raw, statements in candidates:
+            if read_policy()[version].get("initial_credential_role"):
+                initial_credential_apply(env, version, name, raw, statements)
+                verify = psql(url, env, "select count(*)||'|'||coalesce(max(cardinality(statements)),-1)||'|'||"
+                    "coalesce(max(name),'') from supabase_migrations.schema_migrations where version='" + version + "';\n")
+                if verify != f"1|{len(statements)}|{name}":
+                    raise Refusal("evaluation access committed but post-commit ledger verification failed; do not rerun or rotate")
+                try:
+                    with credential_connection(env, reader=True) as reader:
+                        with reader.cursor() as check:
+                            check.execute("SELECT current_user")
+                            if check.fetchone() != (HTS_CREDENTIAL_ROLE,):
+                                raise Refusal("evaluation identity differs")
+                except Exception:
+                    raise Refusal("evaluation access committed but login verification failed; preserve ledger and recover without rerun or rotation") from None
+                print(f"ATOMIC APPLY OK: target={args.target} version={version} ledger_row=1 statements={len(statements)} initial_credential=login_verified")
+                continue
+            wrapper = build_wrapper(version, name, raw, statements, admission_lock_contract=read_policy()[version].get("admission_lock_contract"))
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".sql", delete=False) as handle:
+                handle.write(wrapper)
+                temp_name = handle.name
+            try:
+                result = subprocess.run(["psql", "-X", "-v", "ON_ERROR_STOP=1", "-f", temp_name], env=env, text=True, capture_output=True)
+                if result.returncode:
+                    raise Refusal(
+                        "atomic apply failed; PostgreSQL rolled back DDL and ledger together:\n"
+                        + redact_psql_error(result.stderr or "", url, env)
+                    )
+            finally:
+                Path(temp_name).unlink(missing_ok=True)
+            verify = psql(
+                url,
+                env,
+                "select count(*)||'|'||coalesce(max(cardinality(statements)),-1)||'|'||"
+                "coalesce(max(name),'') from supabase_migrations.schema_migrations where version='"
+                + version
+                + "';\n",
+            )
+            expected = f"1|{len(statements)}|{name}"
+            if verify != expected:
+                raise Refusal("post-commit ledger verification failed")
+            print(f"ATOMIC APPLY OK: target={args.target} version={version} ledger_row=1 statements={len(statements)}")
         return 0
     except Refusal as exc:
         print(f"REFUSED: {exc}", file=sys.stderr)

@@ -1,4 +1,4 @@
-// Split from scripts/manage-migration-author-lanes.mjs (issue #3726). Behavior-preserving move:
+// Split from scripts/manage-migration-coordination.mjs (issue #3726). Behavior-preserving move:
 // the entrypoint re-exports every public name defined here. Edit here, not there.
 import { REVIEW_VERDICTS, verdictRef, parseVerdictCommit, validateVerdictArtifact, assertFindingsRefForPr, findingsDigest, formatVerdictMessage, REVIEW_VERDICT_REF_PREFIX, REVIEW_VERDICT_REPLACEMENT_REF_PREFIX, parseVerdictRef } from '../../lib/review-verdict-artifact.mjs'
 import { createHash } from 'node:crypto'
@@ -9,7 +9,7 @@ import { reviewSlotSuffix } from './review-leases.mjs'
 import { reviewTargetIsRecordable } from './admission.mjs'
 import { reviewActiveLeaseCause } from './review-assignment.mjs'
 import { readRefAfterWrite } from './holds-and-refs.mjs'
-import { githubIo } from '../../manage-migration-author-lanes.mjs'
+import { githubIo } from '../../manage-migration-coordination.mjs'
 
 export function parseReviewCursor(commit) {
   if (!commit) return null
@@ -126,7 +126,7 @@ export function recordReviewVerdict(options,io=githubIo){
   const existing=io.readRef(ref)
   // #2710. IDEMPOTENCY OUTLIVES THE LEASE, SO THE STANDING ARTIFACT IS READ
   // FIRST. A verdict releases its own lease on the way out (see
-  // `releaseRecordedVerdictLease`), and `run-governed-review.mjs` re-runs the
+  // `releaseRecordedVerdictLease`), and the retired run governed review (deleted #2074) re-runs the
   // whole recording with no existing-verdict pre-check. With the lease gate
   // ahead of this read, the SECOND identical run of a review that had already
   // succeeded was refused as a "late or conflicting verdict" for a verdict whose
@@ -265,10 +265,10 @@ export function recordReviewVerdict(options,io=githubIo){
 // This builds the command that actually runs, so the message names a route
 // rather than a direction.
 export function nonVerdictReviewerReplacementCommand({issue,pr,headSha,slot=1},failedSequence){
-  return `node scripts/manage-migration-author-lanes.mjs --replace-failed-reviewer --issue ${issue} --pr ${pr} --head-sha ${headSha} --review-slot ${slot} --failed-sequence ${failedSequence} --failure-code reviewer_cannot_emit_governed_verdict --confirm-no-verdict --confirm-no-artifact`
+  return `node scripts/manage-migration-coordination.mjs --replace-failed-reviewer --issue ${issue} --pr ${pr} --head-sha ${headSha} --review-slot ${slot} --failed-sequence ${failedSequence} --failure-code reviewer_cannot_emit_governed_verdict --confirm-no-verdict --confirm-no-artifact`
 }
 export function nonReadingReviewerReplacementCommand({issue,pr,headSha,slot=1},failedSequence){
-  return `node scripts/manage-migration-author-lanes.mjs --replace-failed-reviewer --issue ${issue} --pr ${pr} --head-sha ${headSha} --review-slot ${slot} --failed-sequence ${failedSequence} --failure-code reviewer_cannot_read_repository --confirm-no-verdict --confirm-no-artifact`
+  return `node scripts/manage-migration-coordination.mjs --replace-failed-reviewer --issue ${issue} --pr ${pr} --head-sha ${headSha} --review-slot ${slot} --failed-sequence ${failedSequence} --failure-code reviewer_cannot_read_repository --confirm-no-verdict --confirm-no-artifact`
 }
 
 // THE READ SIDE OF THE SAME FACT (#2079).
@@ -293,7 +293,7 @@ export function nonReadingReviewerReplacementCommand({issue,pr,headSha,slot=1},f
 // all -- a disregarded APPROVE still authorized there, and a disregarded REVISE
 // still blocked the head permanently, which is exactly the deadlock this
 // treat-as-absent choice exists to avoid. `evaluateExactHeadApproval` in
-// `check-exact-head-approval.mjs` now disregards both directions the same way,
+// the retired check exact head approval (deleted #2074) now disregards both directions the same way,
 // so the two gates agree. Do not remove it there on the assumption that this
 // function covers it.
 //
@@ -538,7 +538,7 @@ export function reviewerExclusions(issue,pr,io,{fresh=false}={}){
   // On the fallback path the second listing is only paid when there is an
   // exclusion that could be lifted. No exclusions, no reinstatement read, and
   // the measured request budget of the ordinary assignment path is unchanged
-  // (scripts/manage-migration-author-lanes.test.mjs pins it at 23).
+  // (scripts/manage-migration-coordination.test.mjs pins it at 23).
   const reinstateRows=exact
     ? reinstateRefs.map((ref)=>{const row=exact.get(ref);return row?{ref,...row}:null}).filter(Boolean)
     : rows.length?((fresh?io.__freshListRefs(reinstatePrefix):io.listRefs(reinstatePrefix))??[]):[]

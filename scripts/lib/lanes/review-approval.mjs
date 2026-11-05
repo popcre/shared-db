@@ -1,4 +1,4 @@
-// Split from scripts/manage-migration-author-lanes.mjs (issue #3726). Behavior-preserving move:
+// Split from scripts/manage-migration-coordination.mjs (issue #3726). Behavior-preserving move:
 // the entrypoint re-exports every public name defined here. Edit here, not there.
 import { verdictOpensLine as sharedVerdictOpensLine, evidenceTiedToHead as sharedEvidenceTiedToHead, isApprovalFor as sharedIsApprovalFor, isVerdictFor as sharedIsVerdictFor, anyVerdictFor as sharedAnyVerdictFor } from '../../lib/review-verdict.mjs'
 import { parseVerdictRef, REVIEW_VERDICT_REF_PREFIX, REVIEW_VERDICT_REPLACEMENT_REF_PREFIX, archivedVerdictMirrorPrefix, mergeArchivedVerdictRows } from '../../lib/review-verdict-artifact.mjs'
@@ -9,7 +9,7 @@ import { LaneError } from './claims.mjs'
 import { reviewTargetIsRecordable } from './admission.mjs'
 import { reviewSlotSuffix } from './review-leases.mjs'
 import { reviewerKnownNonReading } from './reviewer-roster.mjs'
-import { githubIo, listDurableVerdictRefs, main } from '../../manage-migration-author-lanes.mjs'
+import { githubIo, listDurableVerdictRefs, main } from '../../manage-migration-coordination.mjs'
 
 // Bounded readback ladder for the atomic mutex release (issues #2457, #2844): same
 // shape as releaseOwnedRef's, ~10.5s instead of the former ~3s.
@@ -152,7 +152,7 @@ export function gateAuthorizes(evidence,headSha,bundleId,readAssignments){
 // text remains evidence for a human; it is no longer an input to any decision.
 //
 // ONE REQUEST, NOT ONE PER LEASE. `git/matching-refs` is a plain string-prefix
-// match (measured 2026-08-30, see check-exact-head-approval.mjs), and both
+// match (measured 2026-08-30, see the retired check exact head approval (deleted #2074)), and both
 // namespaces share the prefix `refs/db-review-verdict`, so a single listing
 // answers for every (issue, pr, head) tuple an operation asks about and
 // `reviewOperationIo` caches it for the rest of that operation.
@@ -434,7 +434,7 @@ export function assertExactDurableReviewApproval(issue,pr,headSha,io){
     // that is the 2026-10-02 reuse ruling, and the check is order-independent.
     // Merged-at-head is enough here because every verdict this loop counts was
     // recorded through the binding: recordReviewVerdict refuses any verdict on a merged PR unless
-    // reviewTargetIsRecordable passes (scripts/manage-migration-author-lanes.mjs, the
+    // reviewTargetIsRecordable passes (scripts/manage-migration-coordination.mjs, the
     // `if(!reviewTargetIsRecordable(live,{pr,issue,headSha},io))throw` line), which for a
     // merged PR requires io.mergedPrReviewTarget(pr,issue) === true -- the verified
     // merged-PR issue binding. Pinned by scripts/merged-pr-issue-binding.test.mjs.

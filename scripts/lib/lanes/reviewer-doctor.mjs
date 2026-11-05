@@ -1,4 +1,4 @@
-// Split from scripts/manage-migration-author-lanes.mjs (issue #3726). Behavior-preserving move:
+// Split from scripts/manage-migration-coordination.mjs (issue #3726). Behavior-preserving move:
 // the entrypoint re-exports every public name defined here. Edit here, not there.
 import { execFileSync } from 'node:child_process'
 import { LaneError } from './claims.mjs'
@@ -115,7 +115,7 @@ export function doctorSpawnPlan(resolved,platform=process.platform){
 // ISSUE #2828: a doctor timeout names the wrapper and, where that provider runs a
 // local server, the exact repair -- a bare "did not answer" left the operator
 // guessing while a healthy server sat undrawable. The leading text is load-bearing:
-// run-governed-review's DOCTOR_TIMEOUT regex matches `doctor did not answer within`
+// the retired run governed review (deleted #2074)'s DOCTOR_TIMEOUT regex matches `doctor did not answer within`
 // to decide the retry-then-reroute path, so only append after it, never reword it.
 export function doctorTimeoutFailingChecks(wrapper,timeoutMs=REVIEWER_DOCTOR_TIMEOUT_MS){
   const repair=wrapper==='ai-glm'

@@ -5,6 +5,14 @@ they do not override the current implementation or Albert's later rulings.
 The matrix below is checked by `scripts/check-current-workflow-policy.mjs`.
 It documents existing authority; it does not activate a new release route.
 
+Stage C2 supersedes the historical claim-first/guarded-merge instructions below:
+#5409 retired author and reviewer lifecycle commands. #5426 moves the surviving
+lock, promotion and recovery CLI to `scripts/manage-migration-coordination.mjs`.
+The removed guarded-merge/author-lease workflows are not prerequisites. Preserve
+the existing merge queue, SQL safety checks, preview evidence and automatic
+serial production route. See [contract-ref-retirement.md](../contract-ref-retirement.md)
+for the historical evidence storage move; it activates no contract gate.
+
 ## Policy matrix
 
 | Policy | Current value | Authority |
@@ -13,13 +21,13 @@ It documents existing authority; it does not activate a new release route.
 | ordinary-rows | application-owner | AGENTS.md section 0.0-B |
 | authors | unlimited | Owner ruling 2026-09-16 |
 | reviewer-concurrency | unlimited | Owner ruling 2026-09-16 |
-| migration-reviews | 1 | scripts/check-exact-head-approval.mjs |
-| governed-code-reviews | 1 | scripts/check-exact-head-approval.mjs |
+| migration-reviews | advisory | .github/workflows/ai-review.yml (owner ruling 2026-10-29, ai-devops #2104) |
+| governed-code-reviews | advisory | .github/workflows/ai-review.yml (owner ruling 2026-10-29, ai-devops #2104) |
 | standalone-plans | documentation | scripts/lib/documents-only-change.mjs |
 | agent-instructions | guarded | scripts/lib/documents-only-change.mjs |
 | automatic-production-policy | active | config/production-risk-policy-activation.json |
 | preview-target | repository-variable-PREVIEW_PROJECT_REF | AGENTS.md target identity rule |
-| exclusive-mutation-lanes | preview,merge,production | scripts/manage-migration-author-lanes.mjs EXCLUSIVE_REFS |
+| exclusive-mutation-lanes | preview,merge,production | scripts/manage-migration-coordination.mjs EXCLUSIVE_REFS |
 | completion-closure | issue-opener-or-explicit-authority | AGENTS.md closure authority |
 
 ## Select the route once
@@ -30,6 +38,16 @@ the task gate, the applicable scoped evidence and independent code review, and
 the guarded merge path. A maintenance change does not claim database objects or
 wait for structural intake. A merged loader repair still requires
 its stated runtime acceptance; merged code is not automatically delivered work.
+
+**Superseded 2026-11-05 — the paragraph below this note is historical.**
+`guarded-migration-merge.yml` was removed from `main` on 2026-10-31
+(PR #5234, Stage C2c, popcre/ai-devops#2172). Landing a ready pull request today
+means green required checks plus the merge queue: ruleset `main merge queue` is
+active, and the only required checks on `main` are `SQL migration guards`,
+`supabase/tests against an ephemeral database`, and `Destructive SQL outside
+migrations` (lean required checks, owner ruling 2026-10-30). There is no
+guarded-merge dispatch to run and no `Migration guarded merge authorization`
+gate to wait for.
 
 **Landing a ready pull request (do not skip):** green required checks and an
 exact-head approval do **not** merge the PR by themselves. The required
@@ -54,6 +72,19 @@ the existing issue and start; no orchestrator, marker, or dispatch. Preserve exa
 reservation, independent review, qualified rehearsal, guarded merge, and the
 existing serial production lane. Do not infer a routing destination from an old
 handoff or invent a migration to test a workflow.
+
+**Curated character loads:** the data-only admission inspector permits reads of the
+existing licensor extracts `public.style_guide_files` and
+`public.style_guide_pdf_text`, alongside `core.*` and `plm.*`. This is an exact
+source-table exception: arbitrary public reads, writes to the source tables,
+temporary DDL and unknown calls remain refused. The forward loader introduced
+by [#5624](https://github.com/popcre/shared-db/pull/5624) fails closed when its
+required source records are absent, resolves exact source codes before a unique
+name fallback, and retains source file evidence. Its aliases are exact source
+filename labels; full decorated canonical labels are never truncated. The unsafe original and preview-only predecessor remain immutable and are
+natively retired; the automatic candidate selector also excludes hard-blocked
+versions. Promote only the fresh replacement through the normal workflow. See [#5592](https://github.com/popcre/shared-db/issues/5592)
+for the original finding and verification.
 
 **Self-service additive work:** an eligible additive change wholly inside the
 existing `crm`, `pim`, `dam` or `plm` boundary may use the implemented self-service
@@ -115,3 +146,42 @@ or turn the workflow-refactor program tracker into an application prerequisite.
 - [Scoped maintenance evidence](agent-work-contract-repo-maintenance-evidence.md)
 - [Coordination details and incident rationale](section-4-anti-collision-rules.md)
 - [Workflow refactor implementation plan](../../plan_shared_db_workflow_refactor.md)
+
+Character-load source reconciliation (#5592, PR5629): unmerged version
+`20261105043946` was verified absent from both current ledgers and forward-renamed
+to reserved successor `20261105074028` to satisfy source ordering. The old
+reservation/source history remains immutable; no historical restoration exception
+is used. Applied preview version `20261105035926` and original `20261104214842`
+remain natively retired by this producer.
+
+Character-load production verification (#5621): version `20261105074028`
+committed its 98 character rows, 98 source references and 19 exact aliases through
+automatic atomic apply run `42010986376`. Its final catalog-only check failed
+because the data-only DO body had no readable catalog target. Keep that failure,
+SQL bytes and ledger immutable. The hash-bound production-verification sidecar asserts the three source-reference
+populations, exact aliases, two extracted source rows, production-only ledger
+disposition, and the pre-existing scoped unique alias index as a safety
+precondition. It does not run during preview migration rehearsal: the retired
+preview-only version is intentionally present in preview but absent in production.
+The index assertion does not claim this data-only migration created that index;
+future index maintenance must preserve or explicitly requalify its safety proof.
+Use the existing read-only catalog recovery workflow bound to the original apply
+artifact; never rerun the migration or annotate a non-no-op as a no-op.
+
+The eleventh named behavioral assertion joins this migration actor's 98 source
+references to 98 distinct, active, actor-marked canonical characters with matching
+source identities (94 filename, one extracted-PDF, three portal-tag references).
+It cannot be satisfied by polymorphic references to absent or archived rows.
+Its actor-specific population does not cap unrelated future curation. Source-text
+fingerprints remain independent protected live evidence. Original recovery
+`42021465321` proved its immutable ten-check artifact; the new eleven-check
+sidecar requires a fresh official read-only verification and does not rewrite that
+historical receipt.
+
+Verification-only catalog recovery requires at least one positive, named,
+SQL-hash-bound assertion for every applied version. Exact zero-row absence
+assertions may accompany that proof and must match too; zero-only evidence,
+non-integer counts and missing or duplicate results remain refused. Both downstream
+JavaScript certificate consumers enforce the same per-version/hash rule as the
+Python evidence producer; zero-valued opaque catalog contracts remain refused
+(#5621, #5668).

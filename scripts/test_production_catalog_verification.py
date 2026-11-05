@@ -45,6 +45,7 @@ from production_catalog_verification import (  # noqa: E402
     parse_dynamic_acl,
     load_behavior_sidecars,
     mark_superseded_contract_checks,
+    normalize_function_acl_signature,
     render_report,
     split_statements,
     verify,
@@ -1171,6 +1172,144 @@ class PrivilegeDerivationTests(unittest.TestCase):
             _objtype_array(["r; drop table x"])
 
 
+class MultilineGrantStatementTests(unittest.TestCase):
+    """Issue #5514: a GRANT whose routine list spans lines must derive targets.
+
+    Production apply run 41545991868 (migration `20261102202014`) applied green
+    and the post-apply catalog verification failed ONLY because the lexer could
+    not cross a newline inside one statement, derived nothing, and enforcing
+    mode refused to report evidence it never gathered. These tests pin the exact
+    statement shape from that migration plus the edges around it; anything the
+    lexer still cannot read keeps refusing (fail-closed is unchanged).
+    """
+
+    # Verbatim object-list shape of 20261102202014 (types as written in the
+    # migration, including the schema-qualified extensions.vector).
+    WORKER_GRANT_SQL = (
+        "grant execute on function public.claim_dam_search_embedding_documents(integer, text, integer),\n"
+        "                      public.upsert_dam_search_embedding(text, uuid, text, uuid, extensions.vector, text),\n"
+        "                      public.mark_dam_search_embedding_error(text, uuid, text, uuid, text, text),\n"
+        "                      public.get_dam_search_embedding_status()\n"
+        "  to dam_image_embed_worker;\n"
+    )
+
+    def test_the_20261102202014_statement_derives_all_four_routines(self):
+        t = targets_for(self.WORKER_GRANT_SQL)
+        self.assertEqual(
+            t.functions,
+            [
+                "public.claim_dam_search_embedding_documents",
+                "public.get_dam_search_embedding_status",
+                "public.mark_dam_search_embedding_error",
+                "public.upsert_dam_search_embedding",
+            ],
+        )
+        self.assertFalse(t.is_empty())
+        self.assertEqual(
+            {(e.target, e.function_signature) for e in t.privileges},
+            {
+                ("public.claim_dam_search_embedding_documents",
+                 "public.claim_dam_search_embedding_documents(integer, text, integer)"),
+                ("public.upsert_dam_search_embedding",
+                 "public.upsert_dam_search_embedding(text, uuid, text, uuid, extensions.vector, text)"),
+                ("public.mark_dam_search_embedding_error",
+                 "public.mark_dam_search_embedding_error(text, uuid, text, uuid, text, text)"),
+                ("public.get_dam_search_embedding_status",
+                 "public.get_dam_search_embedding_status()"),
+            },
+        )
+        for e in t.privileges:
+            self.assertEqual((e.kind, e.grantee, e.privileges, e.expect_held),
+                             ("function", "dam_image_embed_worker", ("EXECUTE",), True))
+        self.assertFalse([n for n in t.notes if "unparseable" in n or "unreadable" in n])
+
+    def test_multiline_and_collapsed_forms_derive_identically(self):
+        collapsed = targets_for(" ".join(self.WORKER_GRANT_SQL.split()))
+        spread = targets_for(self.WORKER_GRANT_SQL)
+        self.assertEqual(spread.functions, collapsed.functions)
+        self.assertEqual(spread.tables, collapsed.tables)
+        self.assertEqual(spread.roles, collapsed.roles)
+        self.assertEqual(
+            sorted(e.key for e in spread.privileges),
+            sorted(e.key for e in collapsed.privileges),
+        )
+
+    def test_single_line_multi_function_grant_is_unchanged(self):
+        t = targets_for(
+            "grant execute on function plm.f(bigint), plm.g(text) to anon;"
+        )
+        self.assertEqual(t.functions, ["plm.f", "plm.g"])
+        self.assertEqual(
+            sorted((e.target, e.grantee) for e in t.privileges),
+            [("plm.f", "anon"), ("plm.g", "anon")],
+        )
+
+    def test_multiline_revoke_over_routine_list_is_derived(self):
+        t = targets_for(
+            "revoke all on function plm.f(bigint),\n"
+            "                      plm.g(text)\n"
+            "  from anon, authenticated;"
+        )
+        self.assertEqual(t.functions, ["plm.f", "plm.g"])
+        self.assertEqual({e.grantee for e in t.privileges}, {"anon", "authenticated"})
+        self.assertTrue(all(not e.expect_held for e in t.privileges))
+
+    def test_routine_argument_list_wrapped_across_lines_is_derived(self):
+        t = targets_for(
+            "grant execute on function plm.load_pmt_capture_chunk(bigint,\n"
+            "                                                jsonb)\n"
+            "  to service_role;"
+        )
+        self.assertEqual(t.functions, ["plm.load_pmt_capture_chunk"])
+        # The expectation keeps the literal argument text; the catalog SQL
+        # round-trips it through normalize_function_acl_signature before
+        # to_regprocedure, so the wrapped form must normalize cleanly.
+        normalized, unassertable = normalize_function_acl_signature(
+            t.privileges[0].function_signature
+        )
+        self.assertIsNone(unassertable)
+        self.assertEqual(normalized, "plm.load_pmt_capture_chunk(bigint,jsonb)")
+
+    def test_multiline_relation_grant_is_derived(self):
+        t = targets_for(
+            "grant select, update on plm.widget,\n"
+            "                    plm.widget_part\n"
+            "  to authenticated;"
+        )
+        self.assertEqual(sorted(t.tables), ["plm.widget", "plm.widget_part"])
+        self.assertEqual(
+            sorted((e.target, e.grantee, e.privileges) for e in t.privileges),
+            [
+                ("plm.widget", "authenticated", ("SELECT", "UPDATE")),
+                ("plm.widget_part", "authenticated", ("SELECT", "UPDATE")),
+            ],
+        )
+
+    def test_multiline_alter_default_privileges_is_derived(self):
+        t = targets_for(
+            "alter default privileges for role postgres in schema plm\n"
+            "  revoke truncate on tables\n"
+            "  from service_role;"
+        )
+        self.assertEqual(t.default_acls, [("plm", "postgres", "r")])
+        self.assertTrue(t.privileges)
+        self.assertTrue(all(not e.expect_held for e in t.privileges))
+
+    def test_quoted_identifier_grant_still_refuses(self):
+        # Fail-closed is untouched: a quoted or mixed-case identifier stays
+        # outside this lexer and must keep refusing, never silently pass.
+        t = targets_for(
+            'grant execute on function public."Odd Name"(int)\n  to worker;'
+        )
+        self.assertEqual(t.privileges, [])
+        self.assertTrue(any("unparseable" in n or "unreadable" in n for n in t.notes))
+
+    def test_column_level_privileges_still_refuse_across_lines(self):
+        t = targets_for("grant select (a, b) on plm.widget\n  to anon;")
+        self.assertEqual(t.privileges, [])
+        self.assertTrue(any("column-level" in n for n in t.notes))
+
+
 class PrivilegeAssertionTests(unittest.TestCase):
     """Issue #790 point 2: assert the end state, do not merely print an ACL."""
 
@@ -1489,6 +1628,43 @@ class NoopDeclarationTests(unittest.TestCase):
         targets, (markdown, failures) = self.render("update plm.widget set a = 1;")
         self.assertTrue(targets.is_empty())
         self.assertEqual(len(failures), 1)
+        self.assertIn("proved nothing", failures[0])
+
+    def test_a_schema_comment_only_batch_checks_the_exact_comment(self):
+        targets = targets_for("comment on schema core is 'it''s core';")
+        self.assertFalse(targets.is_empty())
+        good = {"schemas": [{"name": "core", "exists": True, "comment": "it's core"}]}
+        _, failures = render_report(["20260810140000"], targets, good, None, [], True)
+        self.assertEqual(failures, [])
+        for bad in (
+            {"schemas": []},
+            {"schemas": [{"name": "core", "exists": False, "comment": None}]},
+            {"schemas": [{"name": "core", "exists": True, "comment": "other"}]},
+        ):
+            with self.subTest(bad=bad):
+                _, failures = render_report(["20260810140000"], targets, bad, None, [], True)
+                self.assertTrue(failures)
+        self.assertIn("'core'", build_catalog_sql(targets))
+
+    def test_a_comment_only_batch_requires_the_commented_objects(self):
+        targets = targets_for(
+            "comment on table plm.a is 'x';\n"
+            "comment on column plm.b.c is 'x';\n"
+            "comment on function plm.f(int) is 'x';\n"
+        )
+        self.assertEqual(targets.required_relations, ["plm.a", "plm.b"])
+        self.assertEqual(targets.functions, ["plm.f"])
+
+    def test_a_comment_on_an_unreadable_object_still_proves_nothing(self):
+        targets, (_, failures) = self.render("comment on policy p on plm.a is 'x';")
+        self.assertTrue(targets.is_empty())
+        self.assertIn("proved nothing", failures[0])
+
+    def test_a_comment_beside_a_data_statement_adds_no_target(self):
+        targets, (_, failures) = self.render(
+            "comment on schema core is 'x';\nupdate plm.widget set a = 1;"
+        )
+        self.assertTrue(targets.is_empty())
         self.assertIn("proved nothing", failures[0])
 
     def test_a_declared_and_checked_no_op_passes_with_its_reason_recorded(self):
@@ -3706,7 +3882,10 @@ class OrderSheetsIntegrationContractTests(unittest.TestCase):
             sidecar = root / "scripts/production-verification-sidecars" / (version + ".json")
             sidecar.parent.mkdir(parents=True)
             payload = {"schema_version": 1, "migration_version": version,
-                       "migration_sha256": hashlib.sha256(migration.read_bytes()).hexdigest(),
+                       # Same canonical form as the loader: a Windows
+                       # `write_text` materialises CRLF, and the loader binds
+                       # to LF bytes so one hash holds on both platforms.
+                       "migration_sha256": hashlib.sha256(migration.read_bytes().replace(b"\r\n", b"\n")).hexdigest(),
                        "checks": [{"id": "sheets_exact_shape", "kind": "catalog_contract", "contract": "dam_order_sheets_integration_v1", "expected_count": 1}]}
             sidecar.write_text(json.dumps(payload))
             checks = load_behavior_sidecars(root, {version: migration}, [version])
@@ -3870,6 +4049,70 @@ class StyleDifferentialInstalledDeclarationTests(unittest.TestCase):
         self.assertEqual(sidecar["checks"], [{"id":"style_group_differential_installed", "kind":"catalog_contract", "contract":"style_group_differential_installed_v1", "expected_count":1}])
         registry = json.loads((REPO / "config/production-verification-sidecar-registry.json").read_text())
         self.assertEqual([row for row in registry["sidecars"] if row["version"] == version], [{"version":version,"issue":2421}])
+
+
+class CharacterLoadActorContractTests(unittest.TestCase):
+    """Execute the complete named relational contract over synthetic populations.
+
+    SQLite's JSON arrows/CTEs/counts/IS DISTINCT FROM execute this exact SQL
+    unchanged. The same expression is additionally rehearsed on PostgreSQL17
+    and live production through the trusted read-only verifier.
+    """
+    def setUp(self):
+        import sqlite3
+        self.db = sqlite3.connect(':memory:')
+        self.db.execute("attach database ':memory:' as core")
+        self.db.execute('create table core.character(id text,status text,metadata text)')
+        self.db.execute('create table core.taxonomy_source_ref(entity_schema text,entity_table text,entity_id text,source_system text,source_table text,source_id text,raw text)')
+        marker = {'loaded_by': 'shared-db migration 20261105074028', 'issue': 'popdam3#680'}
+        for i in range(98):
+            system, table = ('pop_style_guides', 'public.style_guide_files') if i < 94 else ('pop_style_guides', 'public.style_guide_pdf_text') if i == 94 else ('coke', 'plm.coke_tag')
+            meta = {**marker, 'source_system': system, 'source_table': table, 'source_id': str(i)}
+            self.db.execute('insert into core.character values (?,?,?)', (str(i), 'active', json.dumps(meta)))
+            self.db.execute('insert into core.taxonomy_source_ref values (?,?,?,?,?,?,?)', ('core', 'character', str(i), system, table, str(i), json.dumps(marker)))
+
+    def tearDown(self):
+        self.db.close()
+
+    def passes(self):
+        return self.db.execute(CATALOG_CONTRACTS['character_load_20261105074028_active_rows_v1']).fetchone()[0] == 1
+
+    def test_exact_active_actor_rows_and_source_refs_pass(self):
+        self.assertTrue(self.passes())
+
+    def test_unrelated_future_curation_does_not_impose_a_global_cap(self):
+        self.db.execute('insert into core.character values (?,?,?)', ('future', 'active', json.dumps({'loaded_by': 'another authorized publisher'})))
+        self.db.execute('insert into core.taxonomy_source_ref values (?,?,?,?,?,?,?)', ('core', 'character', 'future', 'other', 'private.source', 'new', '{}'))
+        self.assertTrue(self.passes())
+
+    def test_refs_alone_cannot_prove_missing_or_inactive_character_rows(self):
+        for sql in ["delete from core.character where id='0'", "update core.character set status='archived' where id='0'"]:
+            with self.subTest(sql=sql):
+                self.db.execute('savepoint scenario')
+                self.db.execute(sql)
+                self.assertFalse(self.passes())
+                self.db.execute('rollback to scenario')
+                self.db.execute('release scenario')
+
+    def test_wrong_duplicate_or_foreign_source_identity_refuses(self):
+        for sql in [
+            "update core.taxonomy_source_ref set entity_id='missing' where entity_id='0'",
+            "update core.taxonomy_source_ref set entity_id='1' where entity_id='0'",
+            "update core.taxonomy_source_ref set source_id='wrong' where entity_id='0'",
+            "update core.taxonomy_source_ref set source_system='wrong' where entity_id='0'",
+            "update core.taxonomy_source_ref set source_table='public.style_guide_pdf_text' where entity_id='0'",
+            "update core.taxonomy_source_ref set raw='{}' where entity_id='0'",
+            "update core.character set metadata='{}' where id='0'",
+            "update core.character set metadata=json_set(metadata,'$.source_id','wrong') where id='0'",
+            "update core.character set metadata=json_remove(metadata,'$.source_id') where id='0'",
+        ]:
+            with self.subTest(sql=sql):
+                self.db.execute('savepoint scenario')
+                self.db.execute(sql)
+                self.assertFalse(self.passes())
+                self.db.execute('rollback to scenario')
+                self.db.execute('release scenario')
+
 
 if __name__ == "__main__":
     unittest.main()

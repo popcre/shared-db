@@ -1,7 +1,8 @@
-// Split from scripts/manage-migration-author-lanes.mjs (issue #3726). Behavior-preserving move:
+// Split from scripts/manage-migration-coordination.mjs (issue #3726). Behavior-preserving move:
 // the entrypoint re-exports every public name defined here. Edit here, not there.
 import { isTrustedOperatorComment } from '../../lib/repository-identity.mjs'
-import { AdmissionError, STRUCTURAL_ROUTES, evaluateAdmission, parseImpactBlock, inspectPrStructuralChange, inspectPrCuratedDataChange, structuralWritesMatch, NON_STRUCTURAL_CHANGE_TYPES } from '../../db-flow/admission.mjs'
+import { AdmissionError, STRUCTURAL_ROUTES, evaluateAdmission, parseImpactBlock, inspectPrStructuralChange, inspectPrCuratedDataChange, structuralWritesMatch, structuralWritesMatchUnappliedEdit, unappliedEditMigrationFiles, NON_STRUCTURAL_CHANGE_TYPES } from '../../db-flow/admission.mjs'
+import { appliedLedgerVersions, branchBoundClaimWrites, previewVerifiedIdentical } from './unapplied-edit-subset.mjs'
 import { findCompletionRecord } from '../../lib/work-dependencies.mjs'
 import { outcomeHistory, OutcomeError, OUTCOME_STATES, advanceOutcome } from '../../db-flow/outcome-lifecycle.mjs'
 import { coordinationEvent, formatEventComment } from '../../db-coordination-events.mjs'
@@ -13,7 +14,7 @@ import { REPO } from './constants.mjs'
 import { parseQueueScope } from './queue-routing.mjs'
 import { LaneError } from './claims.mjs'
 import { migrationVersions } from './claim-maintenance.mjs'
-import { githubIo } from '../../manage-migration-author-lanes.mjs'
+import { githubIo } from '../../manage-migration-coordination.mjs'
 
 // Issues created at or after this instant must carry change_type and the other
 // admission fields; only earlier in-flight work may use the legacy path.
@@ -23,7 +24,7 @@ export function trustedCompletionComments(comments=[]){return comments.filter((c
   return isTrustedOperatorComment(comment,REPO)
 })}
 
-export function admitIssue(number, io = githubIo, { pr = null, actor = 'manage-migration-author-lanes', allowLegacy = false, timestamp } = {}) {
+export function admitIssue(number, io = githubIo, { pr = null, actor = 'manage-migration-coordination', allowLegacy = false, timestamp } = {}) {
   let issue = io.getIssue(Number(number))
   let livePr=null
   let scope=null
@@ -64,13 +65,43 @@ export function admitIssue(number, io = githubIo, { pr = null, actor = 'manage-m
       const files=io.getPrFiles(Number(pr)).map((file)=>/^supabase\/migrations\/\d{14}_[^/]+\.sql$/.test(String(file?.filename??file?.path??''))&&file?.status!=='removed'
         ?{...file,content:io.getFileAt(file.filename??file.path,head)}:file)
       if(admitted.curated){
-        const inspection=inspectPrCuratedDataChange(files,issue,scope)
+        // A curated migration that merged but is applied NOWHERE (an atomic
+        // rollback) may be edited in place, like the structural #5141 lane: the
+        // version must be absent from both the preview and production ledgers,
+        // and the whole edited file is then inspected exactly as if newly added.
+        const curatedEdits=unappliedEditMigrationFiles(files).filter((row)=>row.status==='modified')
+        if(curatedEdits.length){
+          let ledgers
+          try{ledgers=appliedLedgerVersions(io)}catch(error){throw new AdmissionError(`pull request #${pr} cannot prove its edited curated migration is unapplied: ${error.message}`)}
+          const applied=curatedEdits.filter((row)=>ledgers.preview.has(row.version)||ledgers.production.has(row.version))
+          if(applied.length)throw new AdmissionError(`pull request #${pr} edits applied curated migration(s) ${applied.map((row)=>row.version).join(', ')}; fix forward instead`)
+        }
+        const curatedFiles=curatedEdits.length?files.map((file)=>curatedEdits.some((row)=>row.name===(file.filename??file.path))?{...file,status:'added'}:file):files
+        const inspection=inspectPrCuratedDataChange(curatedFiles,issue,scope)
         admitted={...admitted,actual_objects:[],reads:inspection.reads,row_writes:inspection.row_writes,row_reads:inspection.row_reads,migrations:inspection.migrations}
       }else{
       const inspection=inspectPrStructuralChange(files)
       const declared=[...scope.writes].sort()
-      if(!structuralWritesMatch(inspection,declared))throw new AdmissionError(`pull request #${pr} structural objects must exactly match admitted issue #${number} writes`)
-      admitted={...admitted,actual_objects:inspection.objects,migrations:inspection.migrations}
+      if(!structuralWritesMatch(inspection,declared)){
+        // #5141: an EDITED migration's patch holds a fragment of the migration's
+        // objects, so exact equality is unsatisfiable by construction. The subset
+        // lane runs ONLY for a modified migration file; every other pull request
+        // keeps the exact-match refusal verbatim.
+        const editFiles=unappliedEditMigrationFiles(files)
+        if(!editFiles.some((row)=>row.status==='modified'))throw new AdmissionError(`pull request #${pr} structural objects must exactly match admitted issue #${number} writes`)
+        let claim,ledgers
+        try{
+          claim=branchBoundClaimWrites(livePr?.head?.ref,io)
+          ledgers=appliedLedgerVersions(io)
+          ledgers.previewIdentical=previewVerifiedIdentical(editFiles,ledgers,io,{readFileAt:(name)=>io.getFileAt(name,head)})
+        }catch(error){
+          throw error instanceof AdmissionError?error:new AdmissionError(`pull request #${pr} cannot prove the unapplied-migration-edit subset conditions: ${error.message}`)
+        }
+        structuralWritesMatchUnappliedEdit(inspection,declared,editFiles,ledgers,claim.writes)
+        admitted={...admitted,actual_objects:inspection.objects,migrations:inspection.migrations,unapplied_edit_subset:{claim:claim.claimNumber,versions:editFiles.map((row)=>row.version)}}
+      }else{
+        admitted={...admitted,actual_objects:inspection.objects,migrations:inspection.migrations}
+      }
       }
     }
     if(reopenAfterValidation){

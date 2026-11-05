@@ -207,6 +207,18 @@ def _run_block_commands(step: str) -> list[str]:
     return commands
 
 
+class CharacterLoadRetirementTests(unittest.TestCase):
+    def test_originals_remain_refused_even_when_preview_recorded_them(self):
+        for version in ("20261104214842", "20261105035926"):
+            for remote in (set(), {version}):
+                with self.assertRaisesRegex(GuardError, "general production lane blocks"):
+                    parse_allowlist(version, remote)
+            self.assertIn("20261105074028", production_migration_guard.RETIRED_VERSION_REASONS[version])
+
+    def test_complete_character_successor_remains_eligible(self):
+        self.assertEqual(parse_allowlist("20261105074028"), ["20261105074028"])
+
+
 class RemainingUsersStrandedOriginalTests(unittest.TestCase):
     def test_stranded_original_refuses_even_if_recorded_remotely(self):
         for remote in (set(), {"20261006221530"}):
@@ -359,6 +371,10 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(
             HARD_BLOCKED,
             {
+                "20261105142616",
+                "20261105073854", "20261105073903", "20261105073911", "20261105073920",
+                "20261104214842",
+                "20261105035926",
                 "20261022221940",
                 "20261023014911",
                 "20261005025111",
@@ -2538,14 +2554,11 @@ class ApplyLaneTests(unittest.TestCase):
         self.assertIn("derivation_override:$derivation_override", dispatch)
 
     def test_admission_workflows_can_reopen_only_the_validated_linked_issue(self) -> None:
-        for workflow, job in (("guarded-migration-merge.yml", "merge"), ("preview-ledger-orphan-reconciliation.yml", "reconcile")):
+        # guarded-migration-merge.yml retired (popcre/ai-devops#2172 C2).
+        for workflow, job in (("preview-ledger-orphan-reconciliation.yml", "reconcile"),):
             text = (REPO / ".github" / "workflows" / workflow).read_text(encoding="utf-8")
             self.assertEqual(_effective_permission(text, job, "issues"), "write", workflow)
-            if workflow == "guarded-migration-merge.yml":
-                self.assertIn("--acquire-merge", text)
-                self.assertNotIn("--admit-issue", text)
-            else:
-                self.assertIn("--admit-issue", text, workflow)
+            self.assertIn("--admit-issue", text, workflow)
         self.assertIn("--resolve-admitted-issue-for-pr", WORKFLOW_TEXT)
         for job_name in ("preview", "production-apply"):
             self.assertEqual(_effective_permission(WORKFLOW_TEXT, job_name, "issues"), "write", job_name)
@@ -4281,7 +4294,7 @@ class AbandonmentAuditWorkflowPolicyTests(unittest.TestCase):
 
     def test_the_audit_calls_the_read_only_command_and_no_mutating_one(self) -> None:
         self.assertIn(
-            "node scripts/manage-migration-author-lanes.mjs --abandonment-audit",
+            "node scripts/manage-migration-coordination.mjs --abandonment-audit",
             self.jobs,
         )
         for flag in MUTATING_LANE_FLAGS:
@@ -4381,7 +4394,7 @@ class AbandonmentDocumentationAgreementTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         cls.template = ABANDONMENT_ISSUE_TEMPLATE.read_text(encoding="utf-8")
         cls.workflow = ABANDONMENT_AUDIT_WORKFLOW.read_text(encoding="utf-8")
-        cls.cli = (REPO / "scripts" / "manage-migration-author-lanes.mjs").read_text(
+        cls.cli = (REPO / "scripts" / "manage-migration-coordination.mjs").read_text(
             encoding="utf-8"
         )
         cls.reconcile = (

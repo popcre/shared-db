@@ -1,6 +1,6 @@
 name: Shared Supabase Migrations
 # Deterministic dispatch identity uses existing inputs; no new apply authority.
-run-name: ${{ github.event_name == 'workflow_dispatch' && format('DB {0} {1} {2} PR{3} {4}', inputs.target, inputs.mode, inputs.commit_sha, inputs.merged_preview_source_pr || inputs.source_pr || inputs.merged_preview_source_pr_map, inputs.preview_allowlist || inputs.production_allowlist) || github.workflow }}
+run-name: ${{ startsWith(inputs.migration_train_ref, 'refs/db-index-maintenance-operations/') && format('INDEX {0} {1} {2}', inputs.target, inputs.migration_train_ref, inputs.commit_sha) || github.event_name == 'workflow_dispatch' && format('DB {0} {1} {2} PR{3} {4}', inputs.target, inputs.mode, inputs.commit_sha, inputs.merged_preview_source_pr || inputs.source_pr || inputs.merged_preview_source_pr_map, inputs.preview_allowlist || inputs.production_allowlist) || github.workflow }}
 
 on:
   # DELIBERATELY NO `paths:` FILTER. A path-filtered workflow creates NO check run
@@ -51,7 +51,7 @@ on:
         type: string
         required: false
       confirmation:
-        description: "Production: DRY-RUN <sha>, APPLY <sha>, or OWNER-OVERRIDE <sha> (owner-authorized, skips reviewer evidence)"
+        description: "Production: DRY-RUN <sha> or APPLY <sha>"
         type: string
         required: false
       review_run_id:
@@ -115,7 +115,7 @@ on:
         type: string
         required: false
       migration_train_ref:
-        description: "Approved-migration train dispatch only: the exact refs/db-migration-trains/<id>/<generation>-dispatched record. Its target, main commit and exact version list must equal this run's inputs, or the run refuses before any job."
+        description: "Approved-migration train or exact-index maintenance dispatch: the exact refs/db-migration-trains/<id>/<generation>-dispatched record. Its target, main commit and exact version list must equal this run's inputs, or the run refuses before any job."
         type: string
         required: false
 
@@ -141,7 +141,7 @@ concurrency:
 jobs:
   validate:
     name: SQL migration guards
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
     steps:
@@ -170,16 +170,32 @@ jobs:
       # version list, and no later record. Every other job needs this job, so a
       # refusal here stops preview and production before they start.
       - name: Refuse a migration-train dispatch that is not the exact recorded train
-        if: github.event_name == 'workflow_dispatch' && inputs.migration_train_ref != ''
+        if: github.event_name == 'workflow_dispatch' && inputs.migration_train_ref != '' && startsWith(inputs.migration_train_ref, 'refs/db-index-maintenance-operations/') == false
         env:
           GH_TOKEN: ${{ github.token }}
           TRAIN_REF: ${{ inputs.migration_train_ref }}
           TRAIN_TARGET: ${{ inputs.target == 'preview' && inputs.mode == 'apply' && inputs.historical_preview_source_pr_map != '' && inputs.historical_preview_source_pr == '' && inputs.merged_preview_source_pr == '' && inputs.merged_preview_source_pr_map == '' && inputs.claim_pr == '' && inputs.claim_head_sha == '' && inputs.source_pr == '' && 'production' || inputs.target }}
           TRAIN_COMMIT: ${{ inputs.commit_sha }}
           TRAIN_ALLOWLIST: ${{ inputs.target == 'production' && inputs.production_allowlist || inputs.preview_allowlist }}
-        run: node scripts/manage-migration-author-lanes.mjs --verify-train-dispatch "$TRAIN_REF" --target "$TRAIN_TARGET" --commit-sha "$TRAIN_COMMIT" --allowlist "$TRAIN_ALLOWLIST"
+        run: node scripts/manage-migration-coordination.mjs --verify-train-dispatch "$TRAIN_REF" --target "$TRAIN_TARGET" --commit-sha "$TRAIN_COMMIT" --allowlist "$TRAIN_ALLOWLIST"
       - name: Test the migration-train manifest and manager commands
         run: node --test scripts/db-flow/migration-train.test.mjs
+      - name: Test disabled exact-index maintenance safety
+        run: |
+          python scripts/test_nontransactional_index_maintenance.py
+          python scripts/test_automatic_index_maintenance.py
+          python scripts/test_index_maintenance_workflow_gate.py
+          python scripts/test_prepare_index_maintenance_activation.py
+          python scripts/test_table_repack_maintenance.py
+          node --test scripts/index-maintenance-receipt.test.mjs
+      - name: Refuse a mixed maintenance/migration dispatch
+        if: github.event_name == 'workflow_dispatch' && startsWith(inputs.migration_train_ref, 'refs/db-index-maintenance-operations/')
+        env:
+          MIGRATION_ALLOWLIST: ${{ inputs.production_allowlist }}${{ inputs.preview_allowlist }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          test -z "$MIGRATION_ALLOWLIST"
+          test "$MODE" = apply
       - name: Run SQL checks
         run: bash scripts/check-sql.sh
       - name: Validate hash-bound production verification sidecars
@@ -340,9 +356,9 @@ jobs:
   #     target and does not carry it. Do not add it here.
   # ===========================================================================
   preview:
-    if: github.event_name == 'workflow_dispatch' && inputs.target == 'preview'
+    if: startsWith(inputs.migration_train_ref, 'refs/db-index-maintenance-operations/') == false && github.event_name == 'workflow_dispatch' && inputs.target == 'preview'
     needs: validate
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 90
     permissions:
@@ -594,6 +610,10 @@ jobs:
         id: preview_lock
         env:
           GH_TOKEN: ${{ github.token }}
+          # #5141: admission of a pull request that EDITS an unapplied migration
+          # proves the version is ledger-absent; the same read-only SELECT the
+          # edit guard runs. Ordinary (added-migration) admissions never read it.
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           CLAIM_PR: ${{ inputs.claim_pr }}
           CLAIM_HEAD_SHA: ${{ inputs.claim_head_sha }}
           HISTORICAL_SOURCE_PR: ${{ inputs.historical_preview_source_pr }}
@@ -644,13 +664,17 @@ jobs:
             fi
           fi
           test -n "$CLAIM_PR"; test -n "$CLAIM_HEAD_SHA"
-          ADMITTED_ISSUE="$(node scripts/manage-migration-author-lanes.mjs --resolve-admitted-issue-for-pr "$CLAIM_PR" | jq -r .issue)"
-          test "$ADMITTED_ISSUE" -gt 0
+          ADMITTED_ISSUE="$(node scripts/manage-migration-coordination.mjs --resolve-admitted-issue-for-pr "$CLAIM_PR" | jq -r '.issue // empty')"
+          # Step 2.1: a merged change is never refused for absent issue links.
+          ADMIT_ARGS=()
+          if [ -n "$ADMITTED_ISSUE" ] && [ "$ADMITTED_ISSUE" != "null" ]; then
+            ADMIT_ARGS=(--admit-issue "$ADMITTED_ISSUE")
+          fi
           LOCK_KIND=preview
           if [ -n "$HISTORICAL_SOURCE_PR" ]; then LOCK_KIND=preview-recovery; fi
           if [ -n "${MERGED_SOURCE_PR:-}" ]; then LOCK_KIND=preview-rehearsal; fi
-          node scripts/manage-migration-author-lanes.mjs --acquire-$LOCK_KIND \
-            --admit-issue "$ADMITTED_ISSUE" \
+          node scripts/manage-migration-coordination.mjs --acquire-$LOCK_KIND \
+            "${ADMIT_ARGS[@]}" \
             --owner "github-actions:${GITHUB_RUN_ID}" --pr "$CLAIM_PR" --head-sha "$CLAIM_HEAD_SHA" \
             "${LANE_VERSIONS[@]}" \
             > "$RUNNER_TEMP/preview-lock.json"
@@ -804,6 +828,7 @@ jobs:
         if: inputs.mode == 'dry-run' && (inputs.historical_preview_source_pr == '' && inputs.historical_preview_source_pr_map == '')
         env:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_PREVIEW }}
+          DESIGNFLOW_HTS_EVALUATION_PASSWORD: ${{ secrets.DESIGNFLOW_HTS_EVALUATION_PASSWORD_PREVIEW }}
           PREVIEW_ALLOWLIST: ${{ inputs.preview_allowlist }}
         run: |
           cd "$RUNNER_TEMP/bounded-preview"
@@ -823,12 +848,12 @@ jobs:
           # `supabase db push` that runs in $GITHUB_WORKSPACE.
           ATOMIC_VERSION="$(python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
             --migrations-dir "$RUNNER_TEMP/bounded-preview/supabase/migrations" \
-            --classify-allowlist "$PREVIEW_ALLOWLIST")"
+            --target preview --classify-allowlist "$PREVIEW_ALLOWLIST")"
           if [ -n "$ATOMIC_VERSION" ]; then
             psql --version
             EXPECTED_PROJECT_REF="$PREVIEW_PROJECT_REF" python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
               --migrations-dir "$RUNNER_TEMP/bounded-preview/supabase/migrations" \
-              --linked-dir "$RUNNER_TEMP/bounded-preview" --version "$ATOMIC_VERSION" \
+              --linked-dir "$RUNNER_TEMP/bounded-preview" --versions "$ATOMIC_VERSION" \
               --target preview --expected-project-ref "$PREVIEW_PROJECT_REF" --mode check \
               | tee "$RUNNER_TEMP/preview-dry-run.txt"
           else
@@ -843,6 +868,7 @@ jobs:
         if: inputs.mode == 'apply' && (inputs.historical_preview_source_pr == '' && inputs.historical_preview_source_pr_map == '')
         env:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_PREVIEW }}
+          DESIGNFLOW_HTS_EVALUATION_PASSWORD: ${{ secrets.DESIGNFLOW_HTS_EVALUATION_PASSWORD_PREVIEW }}
           PREVIEW_ALLOWLIST: ${{ inputs.preview_allowlist }}
         run: |
           cd "$RUNNER_TEMP/bounded-preview"
@@ -857,17 +883,20 @@ jobs:
           # inheriting an earlier job's claim.
           ATOMIC_VERSION="$(python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
             --migrations-dir "$RUNNER_TEMP/bounded-preview/supabase/migrations" \
-            --classify-allowlist "$PREVIEW_ALLOWLIST")"
+            --target preview --classify-allowlist "$PREVIEW_ALLOWLIST")"
           if [ -n "$ATOMIC_VERSION" ]; then
+            if [ "$ATOMIC_VERSION" = "20261105121341" ]; then
+              python -m pip install 'psycopg[binary]==3.2.13'
+            fi
             psql --version
             EXPECTED_PROJECT_REF="$PREVIEW_PROJECT_REF" python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
               --migrations-dir "$RUNNER_TEMP/bounded-preview/supabase/migrations" \
-              --linked-dir "$RUNNER_TEMP/bounded-preview" --version "$ATOMIC_VERSION" \
+              --linked-dir "$RUNNER_TEMP/bounded-preview" --versions "$ATOMIC_VERSION" \
               --target preview --expected-project-ref "$PREVIEW_PROJECT_REF" --mode check \
               | tee "$RUNNER_TEMP/preview-dry-run.txt"
             EXPECTED_PROJECT_REF="$PREVIEW_PROJECT_REF" python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
               --migrations-dir "$RUNNER_TEMP/bounded-preview/supabase/migrations" \
-              --linked-dir "$RUNNER_TEMP/bounded-preview" --version "$ATOMIC_VERSION" \
+              --linked-dir "$RUNNER_TEMP/bounded-preview" --versions "$ATOMIC_VERSION" \
               --target preview --expected-project-ref "$PREVIEW_PROJECT_REF" --mode apply \
               | tee "$RUNNER_TEMP/preview-apply.txt"
           else
@@ -1015,19 +1044,35 @@ jobs:
       # cancelled apply never publishes it, the SHA is the proven checkout
       # commit (inputs.commit_sha == HEAD, freshness-checked above), and the
       # project was asserted to be preview in this job's first step.
+      # (#5086) The historical-recovery lane posts the SAME signal. When the
+      # claim-lane already applied every allowlisted version pre-merge, the
+      # hard guard refuses a merged-main apply ("already applied on preview")
+      # and itself directs to the historical-recovery lane for fresh evidence
+      # at exact main; without this posting the queue holds every migration
+      # group forever. The historical run proves the identical facts on the
+      # identical commit — exact-SHA freshness-checked checkout, preview
+      # project asserted, ledger carries every version — by no-write proof
+      # instead of by applying, and that difference is named in the
+      # description. A failed or cancelled recovery still never publishes.
       - name: Publish the exact-SHA preview rehearsal status for the merge queue
-        if: success() && inputs.mode == 'apply' && (inputs.merged_preview_source_pr != '' || inputs.merged_preview_source_pr_map != '')
+        if: success() && inputs.mode == 'apply' && (inputs.merged_preview_source_pr != '' || inputs.merged_preview_source_pr_map != '' || inputs.historical_preview_source_pr != '' || inputs.historical_preview_source_pr_map != '')
         env:
           GH_TOKEN: ${{ github.token }}
           REHEARSED_SHA: ${{ inputs.commit_sha }}
+          IS_MERGED_LANE: ${{ inputs.merged_preview_source_pr != '' || inputs.merged_preview_source_pr_map != '' }}
         run: |
           set -euo pipefail
           case "$REHEARSED_SHA" in *[!0-9a-f]* | "") echo "REFUSED: rehearsed SHA is not a 40-hex commit: ${REHEARSED_SHA:-empty}" >&2; exit 1 ;; esac
           test "${#REHEARSED_SHA}" -eq 40
+          if [ "$IS_MERGED_LANE" = "true" ]; then
+            DESCRIPTION="Exact main commit rehearsed on preview by run $GITHUB_RUN_ID"
+          else
+            DESCRIPTION="Exact main commit proven on preview by historical recovery run $GITHUB_RUN_ID (already applied; no database write)"
+          fi
           gh api "repos/${GITHUB_REPOSITORY}/statuses/$REHEARSED_SHA" \
             -f state=success \
             -f context='Post-merge preview rehearsal' \
-            -f description="Exact main commit rehearsed on preview by run $GITHUB_RUN_ID" \
+            -f description="$DESCRIPTION" \
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
       - name: Save preview evidence
         if: always()
@@ -1052,7 +1097,7 @@ jobs:
           OWNER_SHA: ${{ steps.preview_lock.outputs.owner_sha }}
         # Every preview lane kind writes the SAME ref, so one release covers all
         # three. Named --release-preview because that is the ref's name.
-        run: node scripts/manage-migration-author-lanes.mjs --release-preview --owner-sha "$OWNER_SHA"
+        run: node scripts/manage-migration-coordination.mjs --release-preview --owner-sha "$OWNER_SHA"
 
   # A successful merged-main rehearsal already carries every fact needed to
   # decide whether the existing production lane may start. This job performs
@@ -1063,12 +1108,12 @@ jobs:
   automatic-production-promotion:
     name: Automatic production qualification and dispatch
     if: >-
-      github.event_name == 'workflow_dispatch' &&
+      startsWith(inputs.migration_train_ref, 'refs/db-index-maintenance-operations/') == false && github.event_name == 'workflow_dispatch' &&
       inputs.target == 'preview' &&
       inputs.mode == 'apply' &&
       (inputs.merged_preview_source_pr != '' || inputs.merged_preview_source_pr_map != '' || (inputs.historical_preview_source_pr != '' && inputs.historical_preview_source_pr_map == '') || (inputs.migration_train_ref != '' && inputs.historical_preview_source_pr_map != ''))
     needs: [validate, preview]
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       # write: admission creates a db-coordination commit object and ref via the
@@ -1195,7 +1240,7 @@ jobs:
             --historical-pr "$HISTORICAL_PR" --claim-pr "$CLAIM_PR" --claim-head "$CLAIM_HEAD" --production-pr "$PRODUCTION_PR" \
             --recovery "$RUNNER_TEMP/recovery-evidence/historical-preview-source.json" \
             --train-output "$RUNNER_TEMP/automatic-production-train.json" >> "$GITHUB_OUTPUT"
-      - name: Re-prove current main, guarded merge, and durable exact-head verdict
+      - name: Re-prove current main and the merged source PR
         id: governed_review
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1228,18 +1273,18 @@ jobs:
             echo "::error::ENGINEER ACTION REQUIRED: source PR has no exact head. Nothing was dispatched." >&2
             exit 2
           fi
-          # Newest-by-timestamp Migration guarded merge authorization, via the
-          # shared paginated /statuses helper (never combined /status + first).
-          GUARDED_STATE="$(node scripts/merge-queue-contract.mjs --authorization-state --head-sha "$SOURCE_HEAD")"
-          if [ "$GUARDED_STATE" != success ]; then
-            echo "::error::ENGINEER ACTION REQUIRED: the newest guarded-merge authorization is not successful at source head ${SOURCE_HEAD} (state: ${GUARDED_STATE:-none}). Nothing was dispatched." >&2
+          # popcre/ai-devops#2172 stage C2: the merged PR's merge commit on exact
+          # main plus the preview evidence is the source of truth; the guarded-merge
+          # authorization status is no longer read.
+          SOURCE_MERGE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${SOURCE_PR}" --jq 'if .merged == true then .merge_commit_sha else "" end')"
+          if ! [[ "$SOURCE_MERGE_SHA" =~ ^[0-9a-f]{40}$ ]] || ! git merge-base --is-ancestor "$SOURCE_MERGE_SHA" "$MAIN_SHA"; then
+            echo "::error::ENGINEER ACTION REQUIRED: source PR ${SOURCE_PR} has no merge commit on exact main. Nothing was dispatched." >&2
             exit 2
           fi
-          PR_NUMBER="$SOURCE_PR" REQUESTED_SHA="$SOURCE_HEAD" node scripts/check-exact-head-approval.mjs
           echo "source_head=$SOURCE_HEAD" >> "$GITHUB_OUTPUT"
-          ADMISSION="$(node scripts/manage-migration-author-lanes.mjs --resolve-admitted-issue-for-pr "$SOURCE_PR")"
-          WORK_ISSUE="$(jq -r 'if (.issue | type) == "number" and .issue >= 1 then .issue else error("resolver returned no positive issue") end' <<<"$ADMISSION")"
-          if [ -n "${TRAIN_WORK_ISSUE:-}" ]; then test "$WORK_ISSUE" = "$TRAIN_WORK_ISSUE"; fi
+          ADMISSION="$(node scripts/manage-migration-coordination.mjs --resolve-admitted-issue-for-pr "$SOURCE_PR")"
+          WORK_ISSUE="$(jq -r '.issue // empty' <<<"$ADMISSION")"
+          if [ -n "${TRAIN_WORK_ISSUE:-}" ] && [ -n "$WORK_ISSUE" ]; then test "$WORK_ISSUE" = "$TRAIN_WORK_ISSUE"; fi
           echo "work_issue=$WORK_ISSUE" >> "$GITHUB_OUTPUT"
       # ISSUE #3039. Ask the production gate's own evidence question BEFORE
       # dispatching. A historical rebind whose original apply ran on an older
@@ -1298,7 +1343,7 @@ jobs:
               actor=os.environ["GITHUB_ACTOR"],
               source_pr=int(os.environ["SOURCE_PR"]),
               source_pr_head=os.environ["SOURCE_HEAD"],
-              work_issue=int(os.environ["WORK_ISSUE"]),
+              work_issue=int(os.environ["WORK_ISSUE"]) if os.environ.get("WORK_ISSUE") else None,
               preview_run_id=int(os.environ["GITHUB_RUN_ID"]),
               preview_artifact_digest=os.environ["PREVIEW_DIGEST"],
               created_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -1315,6 +1360,14 @@ jobs:
           path: ${{ runner.temp }}/automatic-production-apply-review-evidence.json
           if-no-files-found: error
           retention-days: 90
+      # plan_skinny-review.md rule 8.6 (popcre/ai-devops #2075): a blocking
+      # review-finding issue (open, or closed as not planned within 24 hours)
+      # that names the source PR holds it out of production. Queried live.
+      - name: Hold for a blocking review finding
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_PR: ${{ steps.source_guard.outputs.source_pr || steps.train_source_guard.outputs.source_pr }}
+        run: python scripts/review_finding_hold.py --pr "$SOURCE_PR"
       - name: Dispatch the existing serial production lane
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1369,9 +1422,9 @@ jobs:
   # `supabase link` and `supabase migration list` are reads. If you ever add a
   # mutating command to this job, put the environment back FIRST.
   production-dry-run:
-    if: github.event_name == 'workflow_dispatch' && inputs.target == 'production' && inputs.mode == 'dry-run'
+    if: startsWith(inputs.migration_train_ref, 'refs/db-index-maintenance-operations/') == false && github.event_name == 'workflow_dispatch' && inputs.target == 'production' && inputs.mode == 'dry-run'
     needs: validate
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 90
     env:
@@ -1508,12 +1561,12 @@ jobs:
           # a `supabase db push` that runs in $GITHUB_WORKSPACE.
           ATOMIC_VERSION="$(python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
             --migrations-dir "$RUNNER_TEMP/bounded-production/supabase/migrations" \
-            --classify-allowlist "$PRODUCTION_ALLOWLIST")"
+            --target production --classify-allowlist "$PRODUCTION_ALLOWLIST")"
           if [ -n "$ATOMIC_VERSION" ]; then
             psql --version
             EXPECTED_PROJECT_REF="$PRODUCTION_PROJECT_REF" python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
               --migrations-dir "$RUNNER_TEMP/bounded-production/supabase/migrations" \
-              --linked-dir "$RUNNER_TEMP/bounded-production" --version "$ATOMIC_VERSION" \
+              --linked-dir "$RUNNER_TEMP/bounded-production" --versions "$ATOMIC_VERSION" \
               --target production --expected-project-ref "$PRODUCTION_PROJECT_REF" --mode check \
               | tee "$RUNNER_TEMP/production-dry-run.txt"
           else
@@ -1556,9 +1609,9 @@ jobs:
   # ===========================================================================
   production-apply-review:
     name: Production apply review (immutable evidence + hard guards)
-    if: github.event_name == 'workflow_dispatch' && inputs.target == 'production' && inputs.mode == 'apply'
+    if: startsWith(inputs.migration_train_ref, 'refs/db-index-maintenance-operations/') == false && github.event_name == 'workflow_dispatch' && inputs.target == 'production' && inputs.mode == 'apply'
     needs: validate
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 90
     permissions:
@@ -1580,11 +1633,19 @@ jobs:
         run: |
           test -n "$REQUESTED_SHA"
           test -n "$PRODUCTION_ALLOWLIST"
-          if [ "$REQUESTED_CONFIRMATION" = "OWNER-OVERRIDE $REQUESTED_SHA" ]; then
-            echo "OWNER OVERRIDE confirmation accepted (Albert Hazan 2026-10-22)."
-            exit 0
-          fi
           test "$REQUESTED_CONFIRMATION" = "APPLY $REQUESTED_SHA"
+      # A production apply run is never RE-RUN (issue #5532). A re-run hides
+      # what earlier attempts did: run 41545991868 attempt 1 applied its
+      # versions and the re-run blinded the queue into retrying an applied
+      # batch. The automatic queue dispatches a FRESH run with fresh evidence;
+      # that is the only retry path.
+      - name: Refuse a re-run of a production apply run
+        if: github.run_attempt > 1
+        env:
+          ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          echo "::error::REFUSED: a production apply run is never re-run (this is attempt $ATTEMPT). A re-run hides what earlier attempts did - run 41545991868 attempt 1 applied its versions and the re-run blinded the queue (#5532). The automatic queue dispatches a fresh run with fresh evidence. NO MIGRATION WAS APPLIED."
+          exit 1
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.commit_sha }}
@@ -1694,20 +1755,6 @@ jobs:
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
           CONFIRMATION: ${{ inputs.confirmation }}
         run: |
-          # Owner-authorized override (Albert Hazan 2026-10-22): confirmation
-          # "OWNER-OVERRIDE <sha>" skips reviewer evidence. Typed SHA must match.
-          # All other hard guards still run.
-          if [[ "$CONFIRMATION" == OWNER-OVERRIDE* ]]; then
-            EXPECTED="OWNER-OVERRIDE $REQUESTED_SHA"
-            if [ "$CONFIRMATION" != "$EXPECTED" ]; then
-              echo "REFUSED: confirmation must be exactly: $EXPECTED" >&2
-              exit 1
-            fi
-            echo "OWNER OVERRIDE ACCEPTED: $CONFIRMATION"
-            echo "Owner Albert Hazan directed production apply without reviewer evidence on 2026-10-22."
-            echo "Allowlist: $PRODUCTION_ALLOWLIST  SHA: $REQUESTED_SHA"
-            exit 0
-          fi
           python scripts/production_apply_review_evidence.py \
             --review-run-id "$REVIEW_RUN_ID" \
             --expected-artifact-digest "$REVIEW_ARTIFACT_DIGEST" \
@@ -1762,24 +1809,13 @@ jobs:
           CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
-          # Owner override (Albert Hazan 2026-10-22): skip automated risk gate.
-          if [[ "$CONFIRMATION" == OWNER-OVERRIDE* ]]; then
-            EXPECTED="OWNER-OVERRIDE $REQUESTED_SHA"
-            if [ "$CONFIRMATION" != "$EXPECTED" ]; then
-              echo "REFUSED: confirmation must be exactly: $EXPECTED" >&2
-              exit 1
-            fi
-            echo "OWNER OVERRIDE: skipping automated business-risk gate."
-            echo '{"schema":"shared-db-production-risk-assessment/v1","owner_override":true,"owner":"Albert Hazan","date":"2026-10-22","main_sha":"'"$REQUESTED_SHA"'","allowlist":"'"$PRODUCTION_ALLOWLIST"'","note":"Owner directed apply without reviewer evidence; automated risk gate skipped by typed override."}' \
-              | tee "$RUNNER_TEMP/production-business-risk-evidence.json"
-            exit 0
-          fi
           test -n "$SOURCE_PR"
-          test -n "$WORK_ISSUE"
           TRAIN_ARGS=()
           if [ -n "$TRAIN_REF" ]; then
             TRAIN_ARGS=(--migration-train-record "$RUNNER_TEMP/migration-train-record.json")
           fi
+          WORK_ISSUE_ARGS=()
+          if [ -n "${WORK_ISSUE:-}" ]; then WORK_ISSUE_ARGS=(--work-issue "$WORK_ISSUE"); fi
           # EXACTLY ONE EVIDENCE ROUTE (#2758). Preview evidence, or -- for a
           # migration the gate classifies as NOT high-risk to live data -- the
           # successful ephemeral-database CI job on the source PR head. The gate
@@ -1821,7 +1857,7 @@ jobs:
           # wait up to 15 minutes for its reset. The lane-held run fails fast.
           python scripts/production_business_risk_gate.py \
             --main-sha "$REQUESTED_SHA" --allowlist "$PRODUCTION_ALLOWLIST" \
-            --pr "$SOURCE_PR" --work-issue "$WORK_ISSUE" --review-run-id "$REVIEW_RUN_ID" \
+            --pr "$SOURCE_PR" "${WORK_ISSUE_ARGS[@]}" --review-run-id "$REVIEW_RUN_ID" \
             --review-digest "$REVIEW_ARTIFACT_DIGEST" \
             "${ROUTE_ARGS[@]}" "${TRAIN_ARGS[@]}" \
             --owner-decision-run-id "$OWNER_DECISION_RUN_ID" \
@@ -1841,9 +1877,9 @@ jobs:
           retention-days: 90
   production-apply:
     name: Production apply (automatic evidence gates)
-    if: github.event_name == 'workflow_dispatch' && inputs.target == 'production' && inputs.mode == 'apply'
+    if: startsWith(inputs.migration_train_ref, 'refs/db-index-maintenance-operations/') == false && github.event_name == 'workflow_dispatch' && inputs.target == 'production' && inputs.mode == 'apply'
     needs: [validate, production-apply-review]
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 90
     permissions:
@@ -1866,11 +1902,18 @@ jobs:
           REQUESTED_CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           test -n "$REQUESTED_SHA"
-          if [ "$REQUESTED_CONFIRMATION" = "OWNER-OVERRIDE $REQUESTED_SHA" ]; then
-            echo "OWNER OVERRIDE confirmation accepted (Albert Hazan 2026-10-22)."
-            exit 0
-          fi
           test "$REQUESTED_CONFIRMATION" = "APPLY $REQUESTED_SHA"
+      # A production apply run is never RE-RUN (issue #5532): a re-run hides
+      # what earlier attempts did and is never the retry path. The automatic
+      # queue dispatches a fresh run with fresh evidence. Same guard as the
+      # review job above; see the comment there.
+      - name: Refuse a re-run of a production apply run
+        if: github.run_attempt > 1
+        env:
+          ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          echo "::error::REFUSED: a production apply run is never re-run (this is attempt $ATTEMPT). A re-run hides what earlier attempts did - run 41545991868 attempt 1 applied its versions and the re-run blinded the queue (#5532). The automatic queue dispatches a fresh run with fresh evidence. NO MIGRATION WAS APPLIED."
+          exit 1
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.commit_sha }}
@@ -1879,15 +1922,24 @@ jobs:
         id: production_lock
         env:
           GH_TOKEN: ${{ github.token }}
+          # #5141: admission re-runs at promotion, after this same pull request's
+          # rehearsal applied the edited body to preview; the ledger read plus the
+          # byte-exact preview-statements match prove that applied body is THIS
+          # body. Read-only, exactly like the edit guard's own SELECTs.
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           REQUESTED_SHA: ${{ inputs.commit_sha }}
           SOURCE_PR: ${{ inputs.source_pr }}
         run: |
           set -euo pipefail
           test -n "$SOURCE_PR"
-          ADMITTED_ISSUE="$(node scripts/manage-migration-author-lanes.mjs --resolve-admitted-issue-for-pr "$SOURCE_PR" | jq -r .issue)"
-          test "$ADMITTED_ISSUE" -gt 0
-          node scripts/manage-migration-author-lanes.mjs --acquire-production \
-            --admit-issue "$ADMITTED_ISSUE" --pr "$SOURCE_PR" \
+          ADMITTED_ISSUE="$(node scripts/manage-migration-coordination.mjs --resolve-admitted-issue-for-pr "$SOURCE_PR" | jq -r '.issue // empty')"
+          # Step 2.1: a merged change is never refused for absent issue links.
+          ADMIT_ARGS=()
+          if [ -n "$ADMITTED_ISSUE" ] && [ "$ADMITTED_ISSUE" != "null" ]; then
+            ADMIT_ARGS=(--admit-issue "$ADMITTED_ISSUE")
+          fi
+          node scripts/manage-migration-coordination.mjs --acquire-production \
+            "${ADMIT_ARGS[@]}" --pr "$SOURCE_PR" \
             --owner "github-actions:${GITHUB_RUN_ID}" --head-sha "$REQUESTED_SHA" \
             > "$RUNNER_TEMP/production-lock.json"
           echo "owner_sha=$(jq -r .ownerSha "$RUNNER_TEMP/production-lock.json")" >> "$GITHUB_OUTPUT"
@@ -1903,38 +1955,6 @@ jobs:
           # The production freshness rule tolerates only documentation, .agent
           # evidence and test files; every other move still refuses.
           MAIN_SHA="$REQUESTED_SHA" node scripts/check-main-tip-freshness.mjs --production
-      # The freeze revokes authorization on the head of EVERY open pull request,
-      # including PRs with nothing to do with this promotion. Two things were wrong
-      # with the first version of this step (issue #2116):
-      #
-      #   1. The description said only "production promotion is active", so once the
-      #      promotion ended the leftover red check was indistinguishable from a
-      #      genuine merge failure or a stale review. An operator could not tell
-      #      "your authorization was taken by a freeze" from "your head moved".
-      #   2. The freeze is bounded; the revocation was not. Nothing put the
-      #      authorizations back, so every affected lane had to be re-authorized by
-      #      hand without ever being told so.
-      #
-      # The description now names THIS run and the exact recovery command, the status
-      # links to this run, and the promotion restores what it took -- see the paired
-      # step after the production lane is released.
-      - name: Revoke every pre-existing merge authorization while frozen
-        id: revoke_frozen_authorizations
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" \
-            api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
-            --jq '.[].head.sha' | sort -u > "$RUNNER_TEMP/open-pr-heads"
-          while IFS= read -r head_sha; do
-            [ -n "$head_sha" ] || continue
-            gh api "repos/${GITHUB_REPOSITORY}/statuses/$head_sha" \
-              -f state=failure \
-              -f context='Migration guarded merge authorization' \
-              -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
-              -f description="Revoked by production freeze run ${GITHUB_RUN_ID}; re-run guarded-migration-merge.yml"
-          done < "$RUNNER_TEMP/open-pr-heads"
       # Re-verify after the environment wait. GitHub artifacts are retention-
       # bound, so this both pins the original ZIP digest and copies the verified
       # canonical JSON into the final apply evidence artifact.
@@ -1947,15 +1967,6 @@ jobs:
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
           CONFIRMATION: ${{ inputs.confirmation }}
         run: |
-          if [[ "$CONFIRMATION" == OWNER-OVERRIDE* ]]; then
-            EXPECTED="OWNER-OVERRIDE $REQUESTED_SHA"
-            if [ "$CONFIRMATION" != "$EXPECTED" ]; then
-              echo "REFUSED: confirmation must be exactly: $EXPECTED" >&2
-              exit 1
-            fi
-            echo "OWNER OVERRIDE: skipping re-verify review evidence."
-            exit 0
-          fi
           python scripts/production_apply_review_evidence.py \
             --review-run-id "$REVIEW_RUN_ID" \
             --expected-artifact-digest "$REVIEW_ARTIFACT_DIGEST" \
@@ -2007,24 +2018,13 @@ jobs:
           CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
-          # Owner override (Albert Hazan 2026-10-22): skip automated risk gate.
-          if [[ "$CONFIRMATION" == OWNER-OVERRIDE* ]]; then
-            EXPECTED="OWNER-OVERRIDE $REQUESTED_SHA"
-            if [ "$CONFIRMATION" != "$EXPECTED" ]; then
-              echo "REFUSED: confirmation must be exactly: $EXPECTED" >&2
-              exit 1
-            fi
-            echo "OWNER OVERRIDE: skipping automated business-risk gate."
-            echo '{"schema":"shared-db-production-risk-assessment/v1","owner_override":true,"owner":"Albert Hazan","date":"2026-10-22","main_sha":"'"$REQUESTED_SHA"'","allowlist":"'"$PRODUCTION_ALLOWLIST"'","note":"Owner directed apply without reviewer evidence; automated risk gate skipped by typed override."}' \
-              | tee "$RUNNER_TEMP/production-business-risk-evidence.json"
-            exit 0
-          fi
           test -n "$SOURCE_PR"
-          test -n "$WORK_ISSUE"
           TRAIN_ARGS=()
           if [ -n "$TRAIN_REF" ]; then
             TRAIN_ARGS=(--migration-train-record "$RUNNER_TEMP/migration-train-record.json")
           fi
+          WORK_ISSUE_ARGS=()
+          if [ -n "${WORK_ISSUE:-}" ]; then WORK_ISSUE_ARGS=(--work-issue "$WORK_ISSUE"); fi
           # EXACTLY ONE EVIDENCE ROUTE (#2758). Preview evidence, or -- for a
           # migration the gate classifies as NOT high-risk to live data -- the
           # successful ephemeral-database CI job on the source PR head. The gate
@@ -2057,7 +2057,7 @@ jobs:
           fi
           python scripts/production_business_risk_gate.py \
             --main-sha "$REQUESTED_SHA" --allowlist "$PRODUCTION_ALLOWLIST" \
-            --pr "$SOURCE_PR" --work-issue "$WORK_ISSUE" --review-run-id "$REVIEW_RUN_ID" \
+            --pr "$SOURCE_PR" "${WORK_ISSUE_ARGS[@]}" --review-run-id "$REVIEW_RUN_ID" \
             --review-digest "$REVIEW_ARTIFACT_DIGEST" \
             "${ROUTE_ARGS[@]}" "${TRAIN_ARGS[@]}" \
             --owner-decision-run-id "$OWNER_DECISION_RUN_ID" \
@@ -2144,11 +2144,18 @@ jobs:
             --allowlist "$PRODUCTION_ALLOWLIST" \
             --remote-ledger "$RUNNER_TEMP/production-ledger-before.txt" \
             "${DERIVATION_ARGS[@]}"
+      # Rule 8.6 again, live, immediately before the apply step (#2075).
+      - name: Hold for a blocking review finding (immediately before apply)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_PR: ${{ inputs.source_pr }}
+        run: python scripts/review_finding_hold.py --pr "$SOURCE_PR"
       - name: Fresh dry-run, then apply
         id: apply
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_PRODUCTION }}
+          DESIGNFLOW_HTS_EVALUATION_PASSWORD: ${{ secrets.DESIGNFLOW_HTS_EVALUATION_PASSWORD_PRODUCTION }}
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
           DERIVATION_OVERRIDE: ${{ inputs.derivation_override }}
         run: |
@@ -2173,17 +2180,20 @@ jobs:
           # about to write to.
           ATOMIC_VERSION="$(python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
             --migrations-dir "$RUNNER_TEMP/bounded-production/supabase/migrations" \
-            --classify-allowlist "$PRODUCTION_ALLOWLIST")"
+            --target production --classify-allowlist "$PRODUCTION_ALLOWLIST")"
           if [ -n "$ATOMIC_VERSION" ]; then
+            if [ "$ATOMIC_VERSION" = "20261105121341" ]; then
+              python -m pip install 'psycopg[binary]==3.2.13'
+            fi
             psql --version
             EXPECTED_PROJECT_REF="$PRODUCTION_PROJECT_REF" python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
               --migrations-dir "$RUNNER_TEMP/bounded-production/supabase/migrations" \
-              --linked-dir "$RUNNER_TEMP/bounded-production" --version "$ATOMIC_VERSION" \
+              --linked-dir "$RUNNER_TEMP/bounded-production" --versions "$ATOMIC_VERSION" \
               --target production --expected-project-ref "$PRODUCTION_PROJECT_REF" --mode check \
               | tee "$RUNNER_TEMP/production-dry-run.txt"
             EXPECTED_PROJECT_REF="$PRODUCTION_PROJECT_REF" python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
               --migrations-dir "$RUNNER_TEMP/bounded-production/supabase/migrations" \
-              --linked-dir "$RUNNER_TEMP/bounded-production" --version "$ATOMIC_VERSION" \
+              --linked-dir "$RUNNER_TEMP/bounded-production" --versions "$ATOMIC_VERSION" \
               --target production --expected-project-ref "$PRODUCTION_PROJECT_REF" --mode apply \
               | tee "$RUNNER_TEMP/production-apply.txt"
           else
@@ -2266,7 +2276,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           OWNER_SHA: ${{ steps.production_lock.outputs.owner_sha }}
-        run: node scripts/manage-migration-author-lanes.mjs --release-production --owner-sha "$OWNER_SHA"
+        run: node scripts/manage-migration-coordination.mjs --release-production --owner-sha "$OWNER_SHA"
       # PROMOTION MERGE FREEZE (owner instruction 2026-10-02, "assign someone to
       # pause merges during production runs"). A session may set the freeze for
       # this source PR before drawing the risk assessment; the run ending ends it.
@@ -2278,68 +2288,123 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_PR: ${{ inputs.source_pr }}
-        run: node scripts/manage-migration-author-lanes.mjs --release-promotion-freeze --pr "$SOURCE_PR"
-      # THE FREEZE PUTS BACK WHAT IT TOOK (issue #2116). Runs on `always()`, after the
-      # lane is released, so a failed or cancelled promotion cannot leave every open
-      # pull request in the repository red forever.
-      #
-      # Only revocations written by THIS run are cleared: the current state must still
-      # be `failure` AND its description must still name this run id. A head that has
-      # since been re-authorized, or revoked for a real reason by
-      # `guarded-migration-merge.yml`, is left exactly as it is.
-      #
-      # Cleared to `pending`, NEVER to `success`. Authorization means "the exclusive
-      # merge lock is held and this exact head was revalidated", which is not true
-      # after a freeze, and only `guarded-migration-merge.yml` may assert it. Clearing
-      # to pending restores the ability to tell a freeze from a real failure and names
-      # the one command that grants authorization, without granting it. A pending
-      # required check still blocks an unguarded merge, so this fails safe.
-      - name: Restore the merge authorizations this freeze revoked
-        # UNCONDITIONAL, and it must stay that way. The revoke loop runs under
-        # `set -e`, so one bad POST aborts it with earlier heads already revoked --
-        # exactly the partial damage this step exists to repair -- and a CANCELLED
-        # revoke (workflow cancelled, runner killed, job timeout) does the same thing
-        # while reporting neither success nor failure. An earlier version named the
-        # two outcomes it wanted and therefore skipped itself on `cancelled`, leaving
-        # every open pull request in the repository red forever: the precise failure
-        # issue #2116 exists to end, reintroduced by the repair for it.
-        #
-        # Running when there was nothing to revoke is free: the heads file is absent
-        # or empty and the step exits 0 immediately. Running when the revocations are
-        # not this run's is free too: the description match below leaves them alone.
-        # There is no outcome of the revoke step under which NOT running is safer.
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
+        run: node scripts/manage-migration-coordination.mjs --release-promotion-freeze --pr "$SOURCE_PR"
+
+  # ===========================================================================
+  # NUDGE THE PRODUCTION QUEUE (issue #5532, added 2026-11-03).
+  #
+  # The queue-selection trigger listens on `workflow_run`, but GitHub never
+  # delivers workflow_run events for the completion of a run that the
+  # repository's GITHUB_TOKEN dispatched -- which is how every selector-
+  # dispatched preview, recovery and production apply here starts. Verified
+  # 2026-11-03: three token-dispatched completions produced no trigger run at
+  # all, while a user-dispatched failure was delivered (and then skipped by the
+  # old success-only filter). A repository_dispatch event created by the token
+  # DOES create a run, so this job emits one generic nudge per dispatched run,
+  # whatever the outcome, and the queue-selection automation -- which this lane
+  # deliberately never names (see check-main-tip-freshness) -- decides what to
+  # start next. That is what keeps the queue moving after a failure instead of
+  # idling until the hourly schedule or a merge (2026-11-02: 7:49 PM EST to
+  # 8:57 PM EST).
+  #
+  # Validation runs (pull_request / merge_group) do not nudge: their completions
+  # already reach the workflow_run listener, and they carry no queue outcome.
+  # The nudge never fails the run it reports on: a poisoned workflow conclusion
+  # would burn an automatic attempt for a run that actually applied, so the step
+  # is continue-on-error and the hourly schedule remains the backstop if a
+  # nudge is ever lost.
+  #
+  # WHEN ADDING A JOB TO THIS WORKFLOW, ADD IT TO THE needs LIST BELOW. The
+  # nudge must fire only after every job has reached its outcome, and the
+  # queue-selection test suite refuses a job this list does not cover.
+  # ===========================================================================
+  # Same target-qualified workflow lock as every migration. No operation is
+  # enabled by this code: the committed policy starts empty. Root must separately
+  # review and admit each exact descriptor with all maintenance safety proofs.
+  index-maintenance:
+    name: Exact concurrent index maintenance
+    if: github.event_name == 'workflow_dispatch' && startsWith(inputs.migration_train_ref, 'refs/db-index-maintenance-operations/') && inputs.mode == 'apply'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    environment: ${{ inputs.target == 'production' && 'production' || 'preview' }}
+    permissions:
+      contents: write
+      actions: read
+      issues: read
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      EXPECTED_PROJECT_REF: ${{ inputs.target == 'production' && 'qsllyeztdwjgirsysgai' || vars.PREVIEW_PROJECT_REF }}
+      PREVIEW_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ inputs.target == 'production' && secrets.SUPABASE_DB_PASSWORD_PRODUCTION || secrets.SUPABASE_DB_PASSWORD_PREVIEW }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.105.0
+      - name: Install the existing pinned protected database driver
+        run: python -m pip install 'psycopg[binary]==3.2.13'
+      # Table-repack operations only (popdam3#804, shared-db#5742): the pg_repack
+      # client must equal the server extension (1.5.2). Fixed archived PGDG
+      # package, sha256-pinned, extracted without installing anything.
+      - name: Fetch the pinned pg_repack 1.5.2 client
+        if: contains(inputs.migration_train_ref, '/repack-')
         run: |
           set -euo pipefail
-          heads="$RUNNER_TEMP/open-pr-heads"
-          if [ ! -s "$heads" ]; then echo 'this freeze revoked no authorizations'; exit 0; fi
-          # EXACT, not a substring. Matching on the run id alone lets run 8812345
-          # claim a revocation written by run 881234567, because the shorter id is a
-          # prefix of the longer one. Comparing the whole description anchors both
-          # ends for free, and it must stay byte-identical to the revoke step's.
-          expected="Revoked by production freeze run ${GITHUB_RUN_ID}; re-run guarded-migration-merge.yml"
-          while IFS= read -r head_sha; do
-            [ -n "$head_sha" ] || continue
-            # NO `|| echo ''` here. An unreadable status is NOT "no status":
-            # swallowing the failure would print "left as-is" and exit 0 while a head
-            # this run revoked stays red forever -- the exact outcome #2116 exists to
-            # kill, with a misleading audit line on top. Fail the step and say why.
-            if ! current="$(node scripts/merge-queue-contract.mjs --authorization-row --head-sha "$head_sha")"; then
-              echo "$head_sha: could not READ the authorization status, so this freeze's revocation may still stand. Re-run guarded-migration-merge.yml for this head." >&2
-              exit 1
-            fi
-            state="${current%%|*}"
-            description="${current#*|}"
-            if [ "$state" != 'failure' ] || [ "$description" != "$expected" ]; then
-              echo "$head_sha: left as-is (state='${state:-none}')"
-              continue
-            fi
-            gh api "repos/${GITHUB_REPOSITORY}/statuses/$head_sha" \
-              -f state=pending \
-              -f context='Migration guarded merge authorization' \
-              -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
-              -f description="Production freeze ${GITHUB_RUN_ID} ended; re-run guarded-migration-merge.yml"
-            echo "$head_sha: freeze revocation cleared to pending"
-          done < "$heads"
+          dir="$RUNNER_TEMP/pg_repack"; mkdir -p "$dir"
+          curl -fsSL --retry 3 --max-time 120 -o "$dir/client.deb" \
+            'https://apt-archive.postgresql.org/pub/repos/apt/pool/main/p/pg-repack/postgresql-17-repack_1.5.2-2.pgdg24.04%2B1_amd64.deb'
+          echo 'f7924f0c5916fcb913085ba0a0998960b582c27627769481cced56224616e94f  '"$dir/client.deb" | sha256sum -c -
+          dpkg-deb -x "$dir/client.deb" "$dir/x"
+          bin="$dir/x/usr/lib/postgresql/17/bin/pg_repack"
+          test "$("$bin" --version)" = 'pg_repack 1.5.2'
+          echo "PG_REPACK_BIN=$bin" >> "$GITHUB_ENV"
+      - name: Link the exact protected target
+        env:
+          DISPATCH_REF: ${{ inputs.migration_train_ref }}
+        run: |
+          python - <<'PYCODE'
+          import json, os, sys
+          sys.path.insert(0, 'scripts')
+          from nontransactional_index_maintenance import operation, operation_from_dispatch_ref
+          operation(json.load(open('config/nontransactional-index-maintenance.json')), operation_from_dispatch_ref(os.environ['DISPATCH_REF']))
+          PYCODE
+          test -n "$EXPECTED_PROJECT_REF"
+          supabase link --project-ref "$EXPECTED_PROJECT_REF"
+      - name: Re-prove exact source, target, receipts and findings then execute
+        env:
+          DISPATCH_REF: ${{ inputs.migration_train_ref }}
+          TARGET: ${{ inputs.target }}
+          SOURCE_SHA: ${{ inputs.commit_sha }}
+        run: |
+          python scripts/nontransactional_index_maintenance.py \
+            --dispatch-ref "$DISPATCH_REF" --target "$TARGET" \
+            --source-sha "$SOURCE_SHA" --expected-project-ref "$EXPECTED_PROJECT_REF" \
+            --linked-dir "$GITHUB_WORKSPACE" --mode check
+          python scripts/nontransactional_index_maintenance.py \
+            --dispatch-ref "$DISPATCH_REF" --target "$TARGET" \
+            --source-sha "$SOURCE_SHA" --expected-project-ref "$EXPECTED_PROJECT_REF" \
+            --linked-dir "$GITHUB_WORKSPACE" --mode apply
+
+  notify-production-queue:
+    name: Nudge the production queue
+    if: always() && github.event_name == 'workflow_dispatch'
+    needs: [validate, preview, automatic-production-promotion, production-dry-run, production-apply-review, production-apply, index-maintenance]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Emit the production-queue nudge (reaction to this run's outcome)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=production-queue-nudge

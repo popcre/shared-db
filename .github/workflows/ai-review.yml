@@ -1,0 +1,26 @@
+name: ai-review
+
+# Advisory AI review (popcre/ai-devops plan_skinny-review.md, stage G, #2075).
+# One rotating reviewer, runs once per PR, never blocks merge. A REJECT or
+# REVISE opens a `review-finding` issue; an open one holds the change out of
+# production (scripts/review_finding_hold.py). The reviewer runs on this repo's
+# edge-dev3 runners, which hold the provider keys locally.
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    uses: popcre/ai-devops/.github/workflows/ai-review.yml@main
+    with:
+      runner_labels: '["self-hosted", "shared-db-linux"]'
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+      issues: write
+      actions: write

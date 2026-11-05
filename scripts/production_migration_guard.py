@@ -6,10 +6,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import urllib.request
 
 from migration_derivation import (
     DerivationError,
@@ -65,6 +67,13 @@ MIGRATION_LINE_RE = re.compile(r"^\s*(?:[•*\-]\s*)?(\d{14})_[^\s]+\.sql\s*$")
 # ever turns out NOT to be applied, that changes the count in AGENTS.md 6.8 and
 # this set must be revisited before anything is promoted.
 HARD_BLOCKED = {
+    # #5683: failed target-specific witness admission; immutable source must never replay.
+    "20261105142616",
+    # #5622: immutable preview-applied health files; pending production blocking builds retired.
+    "20261105073854", "20261105073903", "20261105073911", "20261105073920",
+    # #5592: unsafe original and preview-only ambiguous-artifact predecessor.
+    "20261104214842",
+    "20261105035926",
     # #3869: production uses reviewed successor4735; preserve historical SQL/preview ledgers.
     "20261022221940",
     "20261023014911",
@@ -305,6 +314,13 @@ HARD_BLOCKED = {
 # verifier imports these names from here; pending-status policy must not import
 # that application verifier back into the production guard's execution closure.
 RETIRED_VERSION_REASONS = {
+    "20261105142616": "never applied: merged source5686/c266d0145cec1618dbd26b2f3b4a9f1a840e4ea2 failed native preview42060060160 with complete parent/source-witness mismatch and atomic rollback; preview and production ledger absence independently confirmed. Preserve immutable SQL faa341b2e472907f1e31275068b4c258272f6e0df782401cfaaec000faeb9059 and failed receipt; never replay. Reserved target-bound successor20261105160717 remains separate and is not live; same work issue5683.",
+    "20261105073854": "#5622: PR5623 preview41997690714 genuinely applied the immutable original. Production42052416454 failed first73854 with atomic lock-timeout rollback; approved production ledger read November5 at10:18:15AM EST found all four absent. Retire only the pending production route in favor of exact concurrent initial-index receipts and a fresh RPC-only successor, not yet delivered. Preserve SQL, reservations, applied preview ledger, original artifacts and every failed production attempt; never manufacture an old ledger row.",
+    "20261105073903": "#5622: PR5623 preview41997690714 genuinely applied the immutable original. Production42052416454 failed first73854 with atomic lock-timeout rollback; approved production ledger read November5 at10:18:15AM EST found all four absent. Retire only the pending production route in favor of exact concurrent initial-index receipts and a fresh RPC-only successor, not yet delivered. Preserve SQL, reservations, applied preview ledger, original artifacts and every failed production attempt; never manufacture an old ledger row.",
+    "20261105073911": "#5622: PR5623 preview41997690714 genuinely applied the immutable original. Production42052416454 failed first73854 with atomic lock-timeout rollback; approved production ledger read November5 at10:18:15AM EST found all four absent. Retire only the pending production route in favor of exact concurrent initial-index receipts and a fresh RPC-only successor, not yet delivered. Preserve SQL, reservations, applied preview ledger, original artifacts and every failed production attempt; never manufacture an old ledger row.",
+    "20261105073920": "#5622: PR5623 preview41997690714 genuinely applied the immutable original. Production42052416454 failed first73854 with atomic lock-timeout rollback; approved production ledger read November5 at10:18:15AM EST found all four absent. Retire only the pending production route in favor of exact concurrent initial-index receipts and a fresh RPC-only successor, not yet delivered. Preserve SQL, reservations, applied preview ledger, original artifacts and every failed production attempt; never manufacture an old ledger row.",
+    "20261104214842": "#5592: PR5590 original has inadmissible temporary DDL and truncated aliases; never applied to production. Preserve immutable SQL and reservation. Qualified safe successor20261105074028 replaces it; never apply original.",
+    "20261105035926": "#5592: PR5624 preview run41967916454 attempt2 applied this safe load, but automatic qualification refused two immutable same-name artifacts after the failed first attempt. Never applied to production. Preserve both artifacts, SQL and preview ledger. Complete replay-safe successor20261105074028 is authored with native retirement and its own producer binding.",
     "20261022221940": "#3869: historical PR4648 source eaeb970ff29a1badc8fccac63284ecc521d2e8c4 retains its durable reviewer refusals and immutable SQL; preview run 39879949104 applied this original, but production received the combined idempotent successor20261024234538 from PR4735 (merge75691064b17f0cef76835453c7ec29a979d3ec7a), production apply40151562831 attempt1 SUCCESS. Root independently verified exact successor source and actual runtime login/ledger. Preserve original source, review/refusal history and preview ledger; never apply this historical version again.",
     "20261023014911": "#3869: historical PR4673 source b20da395e92bfbca1744f72fc2ced63996935ec6 retains its durable reviewer refusals and immutable SQL; preview run 40011713642 applied this original, but production received the combined idempotent successor20261024234538 from PR4735 (merge75691064b17f0cef76835453c7ec29a979d3ec7a), production apply40151562831 attempt1 SUCCESS. Root independently verified exact successor source and actual runtime login/ledger. Preserve original source, review/refusal history and preview ledger; never apply this historical version again.",
     "20261005025111": "#2176 merged-stranded: immutable PR3839 head dd269428fc3953e98366142cec24c71e25d71b09 carries slot7 REVISE verdict45d5766e4e3d62d777c19d057e3d59825f150a1c; preview and production never applied original; claim3838 supported reissue retirement6328e126316baca16b7f3d842f79a769599f478c reserves standalone safe replacement20261011224904, not yet installed. Preserve original SQL and all reviews; never apply original.",
@@ -393,6 +409,12 @@ PREVIEW_ONLY_HISTORICAL_RESTORATIONS = {
 KNOWN_MIGRATION_TARGETS = frozenset({"production", "preview", "designflow-nonprod"})
 
 FOREIGN_TARGET_MIGRATIONS = {
+    "20261102215524": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#4578",
+        "note": "Complete sandbox Sample Tracking baseline; source and issue explicitly exclude shared preview and production.",
+    },
     "20261002135053": {
         "target": "designflow-nonprod",
         "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
@@ -418,11 +440,11 @@ FOREIGN_TARGET_MIGRATIONS = {
         "note": "PR#4143, source issue #3869 and immutable generation 9 contract scope this link change to DesignFlow sandbox only. Source instructions prohibit shared production/preview apply. Exact version confirmed in sandbox ledger October11,2026. This is target scope, not retirement; it remains in-scope on designflow-nonprod.",
     },
 
-    "20261029161229": {
+    "20261105222623": {
         "target": "designflow-nonprod",
         "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
         "issue": "#5020",
-        "note": "PR#5029, claim #5027. Core Product Type sandbox half: creates the dflow.mg_combination_description / dflow.item_product_description pairs with audit and human-override guard triggers on the DesignFlow non-production project only. The migration's own self-check refuses to run where dflow_prod exists, and the paired production half is version 20261029054534 (issue #5026). This is target scope, not retirement.",
+        "note": "PR#5029, claim #5772. Core Product Type sandbox half: creates the dflow.mg_combination_description / dflow.item_product_description pairs with audit and human-override guard triggers on the DesignFlow non-production project only. The migration's own self-check refuses to run where dflow_prod exists, and the paired production half is issue #5026 (version re-reserved on resume). This is target scope, not retirement.",
     },
     "20260909121403": {
         "target": "designflow-nonprod",
@@ -2378,7 +2400,8 @@ def _created_by_applied_dynamic_ddl(
 
 
 def preflight_batch(
-    migrations: dict[str, Path], allowlist: list[str], remote: set[str]
+    migrations: dict[str, Path], allowlist: list[str], remote: set[str],
+    existing_relations: frozenset[str] = frozenset(),
 ) -> None:
     """Reject a batch that cannot run end to end. Never an approval."""
     creators: dict[str, list[str]] = {}
@@ -2392,7 +2415,7 @@ def preflight_batch(
     # `removed_by` remembers WHICH version removed an object, so the refusal can
     # say "dropped by X" instead of the misleading "created by X, which is not
     # applied" the creation-only model would have printed.
-    available: set[str] = set()
+    available: set[str] = set(existing_relations)
     removed_by: dict[str, str] = {}
     for version in sorted(remote):
         path = migrations.get(version)
@@ -2508,12 +2531,15 @@ def preflight(
     ledger: Path,
     derivation_overrides: dict[tuple[str, str], str] | None = None,
     ledger_name: str = "production",
+    existing_relations: frozenset[str] = frozenset(),
 ) -> None:
     remote = parse_remote_versions(ledger)
     allowlist = parse_allowlist(raw_allowlist, remote, migration_target_for_ledger(ledger_name))
     migrations = local_migrations(repo)
     validate_candidates(migrations, allowlist, remote, derivation_overrides, ledger_name)
-    preflight_batch(migrations, allowlist, remote)
+    if existing_relations and ledger_name != "sandbox":
+        raise GuardError("live dependency catalog is supported only for sandbox")
+    preflight_batch(migrations, allowlist, remote, existing_relations)
     print(
         f"PREFLIGHT OK: {len(allowlist)} migrations, no missing non-deferrable "
         "dependency. This is a pre-filter, NOT an approval -- the rehearsal "
@@ -2529,6 +2555,7 @@ def prepare(
     ledger: Path,
     derivation_overrides: dict[tuple[str, str], str] | None = None,
     ledger_name: str = "production",
+    existing_relations: frozenset[str] = frozenset(),
 ) -> None:
     remote = parse_remote_versions(ledger)
     allowlist = parse_allowlist(raw_allowlist, remote, migration_target_for_ledger(ledger_name))
@@ -2536,7 +2563,9 @@ def prepare(
     validate_candidates(migrations, allowlist, remote, derivation_overrides, ledger_name)
     # AGENTS.md section 6.8: the whole batch must be proven runnable end to end
     # before anything is applied, never one migration at a time.
-    preflight_batch(migrations, allowlist, remote)
+    if existing_relations and ledger_name != "sandbox":
+        raise GuardError("live dependency catalog is supported only for sandbox")
+    preflight_batch(migrations, allowlist, remote, existing_relations)
     if output.exists():
         raise GuardError(f"bounded checkout already exists: {output}")
     subprocess.run(
@@ -2652,6 +2681,56 @@ def _add_derivation_override(sub: argparse.ArgumentParser) -> None:
     )
 
 
+def read_sandbox_dependencies(ledger_name, project_ref, token, query=None, fetch=None):
+    """Read current relations, never invent ledger entries for pre-ledger tables."""
+    if ledger_name != "sandbox" or project_ref != "xupnyeifmpsacrqahwwm":
+        raise GuardError("live dependency reads require the exact DesignFlow sandbox target")
+    if not token:
+        raise GuardError("sandbox live dependency read requires SUPABASE_ACCESS_TOKEN")
+    # This reader uses only stdlib so sandbox-only inspection cannot expand
+    # the production preview producer's pinned executable/data closure.
+    def read_api(suffix, payload=None):
+        request = urllib.request.Request(
+            f"https://api.supabase.com/v1/projects/{project_ref}{suffix}",
+            data=None if payload is None else json.dumps(payload).encode(),
+            headers={"Authorization": f"Bearer {token}",
+                     "User-Agent": "shared-db-sandbox-dependency-proof/1",
+                     "Content-Type": "application/json"})
+        with urllib.request.urlopen(request, timeout=60) as response:
+            body = response.read()
+        try:
+            return json.loads(body.decode("utf-8"))
+        except ValueError as exc:
+            raise GuardError(f"sandbox Management API returned unreadable JSON: {exc}") from exc
+    if fetch:
+        project = fetch(project_ref, token)
+    else:
+        project = read_api("")
+    if not isinstance(project, dict) or (project.get("id") or project.get("ref")) != project_ref:
+        raise GuardError("Management API returned a different sandbox project identity")
+    statement = """
+            SELECT n.nspname || '.' || c.relname AS name
+            FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+            WHERE n.nspname='dflow' AND c.relkind IN ('r','p','v','m','f')
+            ORDER BY 1
+        """
+    rows = query(project_ref, token, statement) if query else read_api(
+        "/database/query", {"query": statement, "read_only": True})
+    if not isinstance(rows, list) or not rows:
+        raise GuardError("sandbox dependency catalog is missing or empty")
+    names = []
+    for row in rows:
+        name = row.get("name") if isinstance(row, dict) else None
+        if not isinstance(name, str) or not re.fullmatch(r"dflow\.[A-Za-z_][A-Za-z_0-9]*", name):
+            raise GuardError("sandbox dependency catalog contains an invalid relation")
+        names.append(name)
+    if len(names) != len(set(names)):
+        raise GuardError("sandbox dependency catalog contains duplicate relations")
+    print(f"LIVE SANDBOX DEPENDENCIES: {len(names)} relations, sha256=" +
+          hashlib.sha256(json.dumps(sorted(names)).encode()).hexdigest())
+    return frozenset(names)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     subs = parser.add_subparsers(dest="command", required=True)
@@ -2662,12 +2741,14 @@ def main() -> int:
     prep.add_argument("--allowlist", required=True)
     prep.add_argument("--remote-ledger", type=Path, required=True)
     prep.add_argument("--ledger-name", choices=LEDGER_NAMES, default="production")
+    prep.add_argument("--sandbox-live-dependencies", action="store_true")
     _add_derivation_override(prep)
     pre = subs.add_parser("preflight")
     pre.add_argument("--repo", type=Path, required=True)
     pre.add_argument("--allowlist", required=True)
     pre.add_argument("--remote-ledger", type=Path, required=True)
     pre.add_argument("--ledger-name", choices=LEDGER_NAMES, default="production")
+    pre.add_argument("--sandbox-live-dependencies", action="store_true")
     _add_derivation_override(pre)
     bounded = subs.add_parser("assert-bounded")
     bounded.add_argument("--dir", dest="directory", type=Path, required=True)
@@ -2690,6 +2771,11 @@ def main() -> int:
     args = parser.parse_args()
     try:
         overrides = parse_overrides(getattr(args, "derivation_override", []))
+        existing_relations = frozenset()
+        if getattr(args, "sandbox_live_dependencies", False):
+            existing_relations = read_sandbox_dependencies(
+                args.ledger_name, os.environ.get("SANDBOX_PROJECT_REF", ""),
+                os.environ.get("SUPABASE_ACCESS_TOKEN", ""))
         if args.command == "prepare":
             prepare(
                 args.repo.resolve(),
@@ -2699,11 +2785,13 @@ def main() -> int:
                 args.remote_ledger,
                 overrides,
                 args.ledger_name,
+                existing_relations,
             )
         elif args.command == "preflight":
             preflight(
                 args.repo.resolve(), args.allowlist, args.remote_ledger, overrides,
                 args.ledger_name,
+                existing_relations,
             )
         elif args.command == "assert-bounded":
             assert_bounded(

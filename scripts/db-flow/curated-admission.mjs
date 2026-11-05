@@ -168,15 +168,23 @@ function codeUnits(sql) {
 }
 
 // Expression-level calls are an ALLOWLIST too: only these side-effect-free
-// builtins may be called. Anything else (pg_net, vault, SECURITY DEFINER
+// builtins may be called, plus the one accounted writer plm.set_source_resolution()
+// (RESOLUTION_TABLE below). Anything else (pg_net, vault, SECURITY DEFINER
 // helpers, extension functions) refuses, because its body is never seen here.
-const CALLABLE = new Set(['count', 'coalesce', 'nullif', 'greatest', 'least', 'lower', 'upper', 'trim', 'btrim', 'ltrim', 'rtrim',
+const CALLABLE = new Set(['initcap', 'regexp_match', 'regexp_replace', 'unnest', 'count', 'coalesce', 'nullif', 'greatest', 'least', 'lower', 'upper', 'trim', 'btrim', 'ltrim', 'rtrim',
   'length', 'char_length', 'concat', 'concat_ws', 'replace', 'split_part', 'left', 'right', 'substr', 'position',
   'jsonb_build_object', 'jsonb_build_array', 'json_build_object', 'json_build_array', 'to_jsonb', 'jsonb_agg', 'jsonb_object_agg',
   'array_agg', 'string_agg', 'min', 'max', 'sum', 'avg', 'bool_and', 'bool_or', 'array_length', 'cardinality', 'abs', 'round',
   'now', 'clock_timestamp', 'statement_timestamp', 'transaction_timestamp', 'gen_random_uuid', 'encode', 'decode', 'md5',
   'digest', 'pg_backend_pid', 'txid_current'])
-const QUALIFIED_CALLABLE = new Set(['extensions.digest', 'extensions.gen_random_uuid'])
+const QUALIFIED_CALLABLE = new Set(['extensions.digest', 'extensions.gen_random_uuid', 'plm.set_source_resolution'])
+// #5079: plm.set_source_resolution() is the only documented write path for a source
+// row's canonical resolution (plm.source_resolution), which is how a curated Character
+// or Property promotion records which source identity it came from. A call is a row
+// write into plm.source_resolution and is reported as one, so the claim must hold it.
+// Only the bare spelling plm.set_source_resolution( is admitted; any quoted spelling of
+// the setter is refused so a call can never escape the write accounting.
+export const RESOLUTION_TABLE = 'table plm.source_resolution'
 // Words that take a parenthesis without being a function call.
 const PAREN_KEYWORDS = new Set(['values', 'in', 'exists', 'not', 'and', 'or', 'any', 'all', 'some', 'row', 'filter', 'over', 'as',
   'select', 'from', 'where', 'on', 'conflict', 'using', 'when', 'then', 'else', 'if', 'elsif', 'case', 'returning', 'into', 'join',
@@ -185,6 +193,8 @@ const PAREN_KEYWORDS = new Set(['values', 'in', 'exists', 'not', 'and', 'or', 'a
 // Read sources a curated load may use: curated Master Data and the licensing
 // source extracts it is curated from.
 const READ_SCHEMAS = new Set(['core', 'plm'])
+// These are existing licensor-issued source extracts, never arbitrary public data.
+const READ_SOURCE_TABLES = new Set(['public.style_guide_files', 'public.style_guide_pdf_text'])
 
 function checkCall(tokens, k, declaring) {
   const t = tokens[k], name = t.type === 'word' ? t.value : t.value
@@ -225,7 +235,7 @@ function checkSource(tokens, k) {
       }
     } else {
       const target = qualifiedTarget(tokens, i)
-      if (!target?.schema || !READ_SCHEMAS.has(target.schema) || (tokens[target.next]?.type === 'punct' && tokens[target.next].value === '(')) throw new CuratedSqlError(`read source ${target?.schema ? `${target.schema}.${target.name}` : (target?.name ?? 'expression')} is outside curated Master Data and its licensing sources (core.*, plm.*)`)
+      if (!target?.schema || !(READ_SCHEMAS.has(target.schema) || READ_SOURCE_TABLES.has(`${target.schema}.${target.name}`)) || (tokens[target.next]?.type === 'punct' && tokens[target.next].value === '(')) throw new CuratedSqlError(`read source ${target?.schema ? `${target.schema}.${target.name}` : (target?.name ?? 'expression')} is outside curated Master Data and its licensing sources (core.*, plm.*, public.style_guide_files, public.style_guide_pdf_text)`)
       reads.push(`table ${target.schema}.${target.name}`)
       i = target.next
     }
@@ -275,6 +285,7 @@ export function inspectCuratedSql(sql) {
         // bare spelling (case aside), so it gets the same forbidden checks.
         const name = token.value.toLowerCase(), member = tokens[k - 1]?.type === 'punct' && tokens[k - 1].value === '.'
         if (FORBIDDEN_WORDS.has(name) || FORBIDDEN_IDENTS.has(name) || (FORBIDDEN_PREFIXES.some((prefix) => name.startsWith(prefix)) && !ALLOWED_PG_WORDS.has(name))) throw new CuratedSqlError(`forbidden quoted identifier "${token.value}"`)
+        if (name === 'set_source_resolution') throw new CuratedSqlError('plm.set_source_resolution must be called by its bare name so its write is accounted')
         if (tokens[k + 1]?.type === 'punct' && tokens[k + 1].value === '(') checkCall(tokens, k, plpgsql && declaring)
         continue
       }
@@ -283,7 +294,10 @@ export function inspectCuratedSql(sql) {
       if (FORBIDDEN_WORDS.has(word)) throw new CuratedSqlError(`forbidden word ${word.toUpperCase()}`)
       if (FORBIDDEN_IDENTS.has(word)) throw new CuratedSqlError(`forbidden function ${word}`)
       if (FORBIDDEN_PREFIXES.some((prefix) => word.startsWith(prefix)) && !ALLOWED_PG_WORDS.has(word)) throw new CuratedSqlError(`forbidden function or catalog ${word}`)
-      if (next?.type === 'punct' && next.value === '(') checkCall(tokens, k, plpgsql && declaring)
+      if (next?.type === 'punct' && next.value === '(') {
+        checkCall(tokens, k, plpgsql && declaring)
+        if (word === 'set_source_resolution' && prev?.type === 'punct' && prev.value === '.' && tokens[k - 2]?.type === 'word' && tokens[k - 2].value === 'plm') { writes.add(RESOLUTION_TABLE); dml++ }
+      }
       if (['from', 'join'].includes(word)) for (const read of checkSource(tokens, k)) reads.add(read)
       if (word === 'do' && !(next?.type === 'word' && ['nothing', 'update'].includes(next.value))) {
         throw new CuratedSqlError('nested or non-leading DO is refused')

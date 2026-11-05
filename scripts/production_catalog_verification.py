@@ -241,9 +241,29 @@ ALTER_ROUTINE_HEAD_RE = re.compile(r"^\s*alter\s+(?:function|procedure|routine)\
 ALTER_SCHEMA_RENAME_RE = re.compile(
     rf"^\s*alter\s+schema\s+({IDENT})\s+rename\s+to\s+({IDENT})\s*$"
 )
+# `is null` (comment removal) is as much a comment statement as a literal, and
+# a final statement needs no trailing semicolon -- both spellings name a schema
+# and must be read, or a comment-only migration of that shape still lands in the
+# "proved nothing" refusal (#5349 follow-up). Group 2 is None for the `null`
+# form, which the schema-comment assertion then compares against an absent
+# catalog comment.
 COMMENT_SCHEMA_RE = re.compile(
-    rf"^\s*comment\s+on\s+schema\s+({IDENT})\s+is\s+'((?:''|[^'])*)'\s*;",
+    rf"^\s*comment\s+on\s+schema\s+({IDENT})\s+is\s+(?:'((?:''|[^'])*)'|null)\s*;?",
     re.IGNORECASE | re.MULTILINE | re.DOTALL,
+)
+COMMENT_ON_RE = re.compile(r"^\s*comment\s+on\b")
+COMMENT_RELATION_RE = re.compile(
+    rf"^\s*comment\s+on\s+(?:table|view|materialized\s+view|foreign\s+table)\s+{QUALIFIED}\s+is\b"
+)
+COMMENT_COLUMN_RE = re.compile(
+    rf"^\s*comment\s+on\s+column\s+{QUALIFIED}\s*\.\s*{IDENT}\s+is\b"
+)
+# The argument list is optional in Postgres: `comment on function f is '...'`
+# names `f` every bit as much as `comment on function f(int) is '...'` does, so
+# the paren-less spelling must derive the routine too instead of falling into
+# "proved nothing" (#5349 follow-up).
+COMMENT_ROUTINE_RE = re.compile(
+    rf"^\s*comment\s+on\s+(?:function|procedure|routine)\s+{QUALIFIED}(?:\s*\(|\s+is\b)"
 )
 ROW_SECURITY_RE = re.compile(r"\brow\s+level\s+security\b")
 CREATE_POLICY_RE = re.compile(rf"^\s*create\s+policy\b[\s\S]*?\bon\s+{QUALIFIED}")
@@ -294,15 +314,25 @@ GRANT_ROLES_RE = re.compile(r"\b(?:to|from)\s+([a-z0-9_,\s]+?)(?:\bwith\b|$)")
 ALTER_DEFAULT_PRIVILEGES_RE = re.compile(r"^\s*alter\s+default\s+privileges\b")
 ADP_FOR_ROLE_RE = re.compile(r"\bfor\s+(?:role|user)\s+([a-z0-9_,\s]+?)\s+(?=in\s+schema\b|grant\b|revoke\b)")
 ADP_IN_SCHEMA_RE = re.compile(r"\bin\s+schema\s+([a-z0-9_,\s]+?)\s+(?=grant\b|revoke\b)")
+# Issue #5514: statements are already `;`-split with comments, string literals
+# and dollar-quoted bodies stripped (see strip_sql/split_statements), so a
+# newline inside one statement is ordinary whitespace -- a grant whose routine
+# list spans lines is the canonical migration shape (20261102202014). `re.DOTALL`
+# lets the lazy groups cross those newlines; it changes nothing for single-line
+# statements, and anything still unmatched keeps refusing loudly as before.
 ADP_ACTION_RE = re.compile(
     r"\b(grant|revoke)\s+(?:grant\s+option\s+for\s+)?(.*?)\s+on\s+"
-    r"(tables|sequences|functions|routines|types|schemas)\b\s+(to|from)\s+(.*)$"
+    r"(tables|sequences|functions|routines|types|schemas)\b\s+(to|from)\s+(.*)$",
+    re.DOTALL,
 )
 # A whole GRANT/REVOKE statement, split into privileges / object list / roles.
 GRANT_STATEMENT_RE = re.compile(
-    r"^\s*(grant|revoke)\s+(?:grant\s+option\s+for\s+)?(.*?)\s+on\s+(.*?)\s+(to|from)\s+(.*)$"
+    r"^\s*(grant|revoke)\s+(?:grant\s+option\s+for\s+)?(.*?)\s+on\s+(.*?)\s+(to|from)\s+(.*)$",
+    re.DOTALL,
 )
-ROUTINE_OBJECT_RE = re.compile(r"^\s*(?:function|procedure|routine)\s+(.*)$")
+ROUTINE_OBJECT_RE = re.compile(
+    r"^\s*(?:function|procedure|routine)\s+(.*)$", re.DOTALL
+)
 PLAIN_OBJECT_RE = re.compile(rf"^\s*(?:table\s+|view\s+)?{QUALIFIED}\s*$")
 
 # `alter default privileges ... on <what>` -> the pg_default_acl `defaclobjtype`
@@ -1014,7 +1044,7 @@ POPDAM_FORWARD_RECOVERY_CONTRACT = _shape_contract(
     constraints=tuple((('public.asset_tags' if name.startswith('asset_tags_') else 'public.dam_search_embeddings'),name) for name in """asset_tags_category_check asset_tags_confidence_check asset_tags_rejection_check asset_tags_source_normalized_check asset_tags_status_check asset_tags_tag_normalized_check dam_search_embedding_attempts_check dam_search_embedding_error_category_check""".split()),
     routines=tuple('public.'+value for value in "claim_dam_search_embedding_documents get_dam_search_embedding_status get_effective_asset_metadata mark_dam_search_embedding_error refresh_dam_search_asset_document refresh_dam_search_documents_batch refresh_dam_search_style_group_document replace_asset_ai_tag_result replace_style_group_ai_profile reset_dam_search_embedding_errors sync_asset_tags_to_array trg_refresh_dam_tag_or_character upsert_dam_search_embedding".split()),
     policies=(('public.style_group_tags','Authenticated read style_group_tags'),('public.style_group_tags','Admin manage style_group_tags')),
-    triggers=(('public.asset_tags','asset_tags_sync_assets_tags'),('public.asset_tags','asset_tags_dam_search_refresh'),('public.style_group_tags','style_group_tags_dam_search_refresh'),('public.asset_characters','asset_characters_dam_search_refresh')),
+    triggers=(('public.asset_tags','asset_tags_sync_assets_tags'),('public.asset_tags','asset_tags_dam_search_refresh_ins'),('public.asset_tags','asset_tags_dam_search_refresh_upd'),('public.asset_tags','asset_tags_dam_search_refresh_del'),('public.style_group_tags','style_group_tags_dam_search_refresh_ins'),('public.style_group_tags','style_group_tags_dam_search_refresh_upd'),('public.style_group_tags','style_group_tags_dam_search_refresh_del'),('public.asset_characters','asset_characters_dam_search_refresh_ins'),('public.asset_characters','asset_characters_dam_search_refresh_upd'),('public.asset_characters','asset_characters_dam_search_refresh_del')),
 )
 def designflow_fk_contract(expected: tuple[tuple[str, str, str, str, str], ...]) -> str:
     """Closed, verifier-owned exact foreign-key inventory; no external inputs."""
@@ -1120,7 +1150,38 @@ SELECT coalesce(
  and (select passed from helper_proof) and (select passed from archive_proof),false) AS passed
 """
 
+# Production character-load74028: prove this actor's concrete active rows and
+# one-to-one source identity, not the size of the global curated character set.
+CHARACTER_LOAD_20261105074028_ACTIVE_ROWS = r"""
+with actor_characters as (
+ select id,status,metadata from core.character
+ where metadata->>'loaded_by'='shared-db migration 20261105074028'
+   and metadata->>'issue'='popdam3#680'
+), actor_refs as (
+ select entity_id,source_system,source_table,source_id
+ from core.taxonomy_source_ref
+ where entity_schema='core' and entity_table='character'
+   and raw->>'loaded_by'='shared-db migration 20261105074028'
+   and raw->>'issue'='popdam3#680'
+)
+select (select count(*) from actor_characters)=98
+ and (select count(*) from actor_characters where status='active')=98
+ and (select count(*) from actor_refs)=98
+ and (select count(distinct entity_id) from actor_refs)=98
+ and (select count(*) from actor_refs where source_system='pop_style_guides' and source_table='public.style_guide_files')=94
+ and (select count(*) from actor_refs where source_system='pop_style_guides' and source_table='public.style_guide_pdf_text')=1
+ and (select count(*) from actor_refs where source_system='coke' and source_table='plm.coke_tag')=3
+ and not exists (
+   select 1 from actor_refs r left join actor_characters c on c.id=r.entity_id
+   where c.id is null or c.status<>'active'
+     or c.metadata->>'source_system' is distinct from r.source_system
+     or c.metadata->>'source_table' is distinct from r.source_table
+     or c.metadata->>'source_id' is distinct from r.source_id
+ )
+"""
+
 CATALOG_CONTRACTS = {
+    "character_load_20261105074028_active_rows_v1": CHARACTER_LOAD_20261105074028_ACTIVE_ROWS,
     "rls_public_admin_install_v1": RLS_PUBLIC_ADMIN_INSTALL_CONTRACT,
     # Issue2336: selected current/history lifecycle and private physical engine.
     "licensing_support_forward_v2": r"""
@@ -1314,6 +1375,8 @@ and (select count(*) from pg_constraint c where c.conrelid=to_regclass('plm.lice
     # Issue #4784: migration 20261025121119 adds statement_timeout=30s. Compared
     # sorted, exactly as the migration's own guard does, so setting order is irrelevant.
     "popsg_search_v2_statement_timeout_v1": """exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer,extensions.vector(768),real)') and p.prorettype='jsonb'::regtype and p.prosecdef and p.provolatile='s' and (select coalesce(array_agg(s order by s),'{}') from unnest(coalesce(p.proconfig,'{}'::text[])) s)=array['search_path=pg_catalog, auth','statement_timeout=30s','work_mem=64MB']::text[] and md5(p.prosrc)='1dfc9194a2288feb3a0feace89487f78' and not has_function_privilege('anon',p.oid,'EXECUTE') and has_function_privilege('authenticated',p.oid,'EXECUTE') and has_function_privilege('service_role',p.oid,'EXECUTE'))""",
+    "popsg_search_v2_keyword_first_v1": """exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer,extensions.vector(768),real)') and p.prorettype='jsonb'::regtype and p.prosecdef and p.provolatile='s' and (select coalesce(array_agg(s order by s),'{}') from unnest(coalesce(p.proconfig,'{}'::text[])) s)=array['search_path=pg_catalog, auth','statement_timeout=30s','work_mem=64MB']::text[] and md5(p.prosrc)='a1dbe67fc41616c5dc50712fee69dd3d' and not has_function_privilege('anon',p.oid,'EXECUTE') and has_function_privilege('authenticated',p.oid,'EXECUTE') and has_function_privilege('service_role',p.oid,'EXECUTE'))""",
+    "popsg_search_v2_pdf_body_ties_v1": """exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer,extensions.vector(768),real)') and p.prorettype='jsonb'::regtype and p.prosecdef and p.provolatile='s' and (select coalesce(array_agg(s order by s),'{}') from unnest(coalesce(p.proconfig,'{}'::text[])) s)=array['search_path=pg_catalog, auth','statement_timeout=30s','work_mem=64MB']::text[] and md5(p.prosrc)='99cb8f8bfa4037ee6f022672a1902bdc' and not has_function_privilege('anon',p.oid,'EXECUTE') and has_function_privilege('authenticated',p.oid,'EXECUTE') and has_function_privilege('service_role',p.oid,'EXECUTE'))""",
     "api_rls_realtime_v1": API_RLS_REALTIME_CONTRACT,
     "core_person_role_lookups_v1": """
       not exists (
@@ -1579,10 +1642,10 @@ and (select count(*) from pg_constraint c where c.conrelid=to_regclass('plm.lice
       and to_regprocedure('public.mark_dam_search_embedding_error(text,uuid,text,uuid,text,text)') is not null
       and to_regprocedure('public.get_dam_search_embedding_status()') is not null
       and to_regprocedure('public.reset_dam_search_embedding_errors(text,uuid[])') is not null
-      and (select count(*) = 4 from pg_trigger where not tgisinternal and tgenabled <> 'D' and (
-        (tgrelid=to_regclass('public.asset_tags') and tgname in ('asset_tags_sync_assets_tags','asset_tags_dam_search_refresh'))
-        or (tgrelid=to_regclass('public.style_group_tags') and tgname='style_group_tags_dam_search_refresh')
-        or (tgrelid=to_regclass('public.asset_characters') and tgname='asset_characters_dam_search_refresh')))
+      and (select count(*) = 10 from pg_trigger where not tgisinternal and tgenabled <> 'D' and (
+        (tgrelid=to_regclass('public.asset_tags') and tgname in ('asset_tags_sync_assets_tags','asset_tags_dam_search_refresh_ins','asset_tags_dam_search_refresh_upd','asset_tags_dam_search_refresh_del'))
+        or (tgrelid=to_regclass('public.style_group_tags') and tgname in ('style_group_tags_dam_search_refresh_ins','style_group_tags_dam_search_refresh_upd','style_group_tags_dam_search_refresh_del'))
+        or (tgrelid=to_regclass('public.asset_characters') and tgname in ('asset_characters_dam_search_refresh_ins','asset_characters_dam_search_refresh_upd','asset_characters_dam_search_refresh_del'))))
     """,
     "popdam_1427_security_v1": """
       (select relrowsecurity from pg_class where oid=to_regclass('public.style_group_tags'))
@@ -1777,6 +1840,7 @@ class Targets:
         indexes: set[tuple[str, str]] | None = None,
         schema_renames: set[tuple[str, str, str | None]] | None = None,
         function_settings: list[tuple[str, str | None, str, str]] | None = None,
+        schema_comments: dict[str, str | None] | None = None,
     ) -> None:
         # ORDER IS LOAD-BEARING and must be the order the statements appear in,
         # not sorted: a batch may `grant` a privilege and then `revoke` it, and
@@ -1799,6 +1863,8 @@ class Targets:
         self.seeded = sorted(seeded)
         self.indexes = sorted(indexes or set())
         self.schema_renames = sorted(schema_renames or set())
+        # Filled only for a batch of nothing but `comment on` statements.
+        self.schema_comments = sorted((schema_comments or {}).items())
         # (family, normalized signature or None, setting, "set"|"reset"), in
         # statement order with only the last word per routine+setting kept.
         self.function_settings = list(function_settings or [])
@@ -1835,6 +1901,7 @@ class Targets:
             or self.privileges
             or self.indexes
             or self.schema_renames
+            or self.schema_comments
             or self.function_settings
         )
 
@@ -1852,6 +1919,7 @@ class Targets:
                 f"{source}|{destination}|{comment if comment is not None else ''}"
                 for source, destination, comment in self.schema_renames
             ],
+            "schema_comments": [name for name, _ in self.schema_comments],
             "function_settings": [
                 f"{signature or family}|{action}|{setting}"
                 for family, signature, setting, action in self.function_settings
@@ -2493,7 +2561,10 @@ def normalize_function_acl_signature(signature: str) -> tuple[str | None, str | 
     unassertable, never mapped to another overload or represented as a success.
     A supported exact signature that resolves to no routine remains a hard FAIL.
     """
-    match = re.fullmatch(rf"\s*{QUALIFIED}\s*\((.*)\)\s*", signature)
+    # `(?s)` (issue #5514): a routine signature wrapped across lines carries the
+    # same meaning as the collapsed form, and the argument loop below already
+    # whitespace-normalizes each type.
+    match = re.fullmatch(rf"(?s)\s*{QUALIFIED}\s*\((.*)\)\s*", signature)
     if not match: return None, "routine signature syntax is outside the conservative type lexer"
     arguments = match.group(3)
     builtin = set("bigint int8 bigserial serial8 bit bool boolean bytea char character cidr date decimal float float4 float8 double inet int int2 int4 integer interval json jsonb macaddr macaddr8 money name numeric oid real record regclass regcollation regconfig regdictionary regnamespace regoper regoperator regproc regprocedure regrole regtype serial serial2 serial4 smallint smallserial text time timestamp timestamptz timetz tsquery tsvector uuid varchar varbit void xml anyelement anyarray anynonarray anyenum anyrange anymultirange anycompatible anycompatiblearray anycompatiblenonarray anycompatiblerange anycompatiblemultirange".split())
@@ -2555,7 +2626,7 @@ def parse_grant_statement(
 
     routine_match = ROUTINE_OBJECT_RE.match(objects)
     if routine_match:
-        routine_rows = [re.fullmatch(rf"\s*{QUALIFIED}\s*(\(.*\))?\s*", part) for part in split_routine_acl_targets(routine_match.group(1))]
+        routine_rows = [re.fullmatch(rf"(?s)\s*{QUALIFIED}\s*(\(.*\))?\s*", part) for part in split_routine_acl_targets(routine_match.group(1))]
         if not routine_rows or any(row is None for row in routine_rows):
             return [], set(), set(), notes + ["unreadable routine target list: `" + statement.strip() + "`"]
         # Preserve each literal argument list. PostgreSQL resolves type aliases
@@ -2919,8 +2990,9 @@ def derive_targets(migrations: dict[str, Path], allowlist: list[str]) -> Targets
     noop: dict | None = None
     indexes: set[tuple[str, str]] = set()
     schema_rename_pairs: set[tuple[str, str]] = set()
-    schema_comments: dict[str, str] = {}
+    schema_comments: dict[str, str | None] = {}
     settings: dict[tuple[str, str | None, str], tuple[str, str | None, str, str]] = {}
+    batch_statements: list[str] = []
 
     for version in allowlist:
         path = migrations.get(version)
@@ -2931,11 +3003,15 @@ def derive_targets(migrations: dict[str, Path], allowlist: list[str]) -> Targets
         # must be read from the comment-stripped raw text. This still avoids
         # matching prose in SQL comments while preserving the exact literal.
         for match in COMMENT_SCHEMA_RE.finditer(_strip_sql_comments(raw)):
-            schema_comments[match.group(1)] = match.group(2).replace("''", "'")
+            literal = match.group(2)
+            schema_comments[match.group(1)] = (
+                literal.replace("''", "'") if literal is not None else None
+            )
         declaration = read_noop_declaration(raw, version)
         if declaration is not None and (noop is None or not declaration["accepted"]):
             noop = declaration
         text = strip_sql(raw)
+        batch_statements.extend(split_statements(text))
         for statement in split_statements(text):
             if match := ALTER_SCHEMA_RENAME_RE.match(statement):
                 schema_rename_pairs.add((match.group(1), match.group(2)))
@@ -3116,6 +3192,19 @@ def derive_targets(migrations: dict[str, Path], allowlist: list[str]) -> Targets
         (source, destination, schema_comments.get(destination))
         for source, destination in schema_rename_pairs
     }
+    # A batch of nothing but `comment on` still names real objects, so it can
+    # prove something: the schema and its exact comment, or that the commented
+    # relation or routine exists. Restricted to such a batch so that no other
+    # migration gains a target; a comment on anything else stays unreadable and
+    # the "proved nothing" refusal still applies.
+    verified_schema_comments: dict[str, str | None] = {}
+    if batch_statements and all(COMMENT_ON_RE.match(s) for s in batch_statements):
+        verified_schema_comments = schema_comments
+        for statement in batch_statements:
+            if match := COMMENT_RELATION_RE.match(statement) or COMMENT_COLUMN_RE.match(statement):
+                views.add(f"{match.group(1)}.{match.group(2)}")
+            elif match := COMMENT_ROUTINE_RE.match(statement):
+                functions.add(f"{match.group(1)}.{match.group(2)}")
     return Targets(
         tables,
         views,
@@ -3130,6 +3219,7 @@ def derive_targets(migrations: dict[str, Path], allowlist: list[str]) -> Targets
         indexes=indexes,
         schema_renames=schema_renames,
         function_settings=list(settings.values()),
+        schema_comments=verified_schema_comments,
     )
 
 
@@ -3239,7 +3329,10 @@ def build_catalog_sql(targets: Targets) -> str:
     index_names = _sql_array([row[0] for row in targets.indexes])
     index_relations = _sql_array([row[1] for row in targets.indexes])
     schema_names = _sql_array(
-        sorted({name for source, destination, _ in targets.schema_renames for name in (source, destination)})
+        sorted(
+            {name for source, destination, _ in targets.schema_renames for name in (source, destination)}
+            | {name for name, _ in targets.schema_comments}
+        )
     )
     defacl = targets.default_acls
     defacl_schemas = _sql_array([row[0] for row in defacl])
@@ -4277,6 +4370,22 @@ def render_report(
         add("| _no ALTER SCHEMA RENAME target was derived_ | | | | |")
     add("")
 
+    if targets.schema_comments:
+        add("## Schema comment assertions (`pg_namespace`)")
+        add("")
+        add("| schema | present | comment matches |")
+        add("| --- | --- | --- |")
+        for name, expected_comment in targets.schema_comments:
+            row = schema_rows.get(name)
+            present = row is not None and row.get("exists") is True
+            matches = row is not None and row.get("comment") == expected_comment
+            add(f"| `{name}` | {present} | {matches} |")
+            if not present:
+                failures.append(f"schema comment on {name}: schema must be present")
+            if not matches:
+                failures.append(f"schema comment on {name}: comment does not match the migration")
+        add("")
+
     add("## Indexes (`pg_index` / `pg_get_indexdef`)")
     add("")
     add("| name | expected table | actual table | valid | ready | exact live definition |")
@@ -4609,7 +4718,7 @@ CATEGORY_DFLOW_SAMPLE_QUANTITY_STATE = """
 CATALOG_CONTRACTS["dflow_sample_quantity_state_v1"] = CATEGORY_DFLOW_SAMPLE_QUANTITY_STATE
 
 
-# Durable catalog outcome of migration 20261029161229 (issue #5020,
+# Durable catalog outcome of migration 20261105222623 (issue #5020,
 # Core Product Type): exactly one arm's four
 # product-description tables and four indexes exist. The sandbox project
 # (xupnyeifmpsacrqahwwm) carries only schema dflow; the production project
@@ -5819,6 +5928,28 @@ SELECT coalesce(
   AND EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations
     WHERE version='20261026150931'),false)
 )"""
+
+# #5609 verification-only recovery: exact PostgreSQL 17 deparser prefixes bind
+# event coverage and every WHEN predicate; routine OIDs are checked separately
+# so caller search_path cannot affect function-name qualification. No source DDL.
+CATALOG_CONTRACTS["assets_update_trigger_scoping_v1"] = """(SELECT coalesce((SELECT count(*)=10 FROM (VALUES
+    ('trg_auto_queue_render','public.auto_queue_render()',17,'6d292c5ad846cc05bb3290b926bf1d20'),
+    ('trg_auto_queue_render_ins_del','public.auto_queue_render()',5,'caa4f524dd84c8e24d36fc8d68c59c89'),
+    ('trg_dam_search_assets_refresh','public.trg_refresh_dam_asset_search_document()',17,'3adf740fb4f20406f6620052b23e28c3'),
+    ('trg_dam_search_assets_refresh_ins_del','public.trg_refresh_dam_asset_search_document()',13,'9fb1930126a935df0ff11d05bbcfdd4b'),
+    ('trg_sync_cover_description_to_style_group','public.sync_cover_description_to_style_group()',17,'dac32eaf299fd77dfa9ac6827a18211a'),
+    ('trg_sync_cover_description_to_style_group_ins_del','public.sync_cover_description_to_style_group()',5,'b4ddc43b9e60e91649c6fca65ad10f6e'),
+    ('trg_sync_designer_to_style_group','public.sync_designer_to_style_group()',17,'a2037258e3fd300113b8489f25ee62a9'),
+    ('trg_sync_designer_to_style_group_ins_del','public.sync_designer_to_style_group()',5,'24a12b32508aee5a6b24075d011e6897'),
+    ('trg_sync_primary_on_thumbnail','public.sync_primary_asset_on_thumbnail()',17,'224aa60d20a0b9f58a052b6f603598b8'),
+    ('trg_sync_primary_on_thumbnail_ins_del','public.sync_primary_asset_on_thumbnail()',5,'f7870cdb13d8aedf4901696cf1bc5622')
+  ) expected(name,signature,event_type,definition_md5)
+  JOIN pg_trigger t ON t.tgrelid=to_regclass('public.assets') AND t.tgname=expected.name
+  WHERE NOT t.tgisinternal AND t.tgenabled='O' AND NOT t.tgdeferrable AND NOT t.tginitdeferred
+    AND t.tgnargs=0 AND t.tgattr=''::int2vector AND t.tgtype=expected.event_type
+    AND t.tgfoid=to_regprocedure(expected.signature)
+    AND md5(split_part(pg_get_triggerdef(t.oid,false),' EXECUTE FUNCTION ',1))=expected.definition_md5
+),false))"""
 
 if __name__ == "__main__":
     raise SystemExit(main())

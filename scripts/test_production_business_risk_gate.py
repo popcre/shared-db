@@ -893,7 +893,8 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
                          "head": {"sha": head}}, {"check_runs": []}), root,
             )
 
-    def test_production_rechecks_the_latest_guarded_merge_authorization(self):
+    def test_production_no_longer_reads_guarded_merge_authorization(self):
+        """popcre/ai-devops#2172 stage C2: core checks plus merge commit on main suffice."""
         head = "1" * 40
         temp, root, main, merge_sha = self.historical_repo()
         checks = {"check_runs": [
@@ -901,32 +902,17 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
         ]}
         pr = {"merged": True, "merge_commit_sha": merge_sha, "head": {"sha": head}}
 
-        def api_with(state):
-            def api(endpoint):
-                if "check-runs" in endpoint:
-                    return checks
-                if endpoint.endswith("/status"):
-                    statuses = [] if state is None else [{
-                        "context": "Migration guarded merge authorization", "state": state,
-                    }]
-                    return {"statuses": statuses}
-                return pr
-            return api
+        def api(endpoint):
+            if endpoint.endswith("/status"):
+                raise AssertionError("guarded-merge authorization must not be read")
+            return checks if "check-runs" in endpoint else pr
 
         with temp:
             self.assertEqual(
-                prove_pr_and_checks(
-                    1, main, ["20260814000000"], api_with("success"), root,
-                ),
+                prove_pr_and_checks(1, main, ["20260814000000"], api, root),
                 (head, merge_sha),
             )
-            for state in (None, "failure", "pending"):
-                with self.subTest(state=state), self.assertRaisesRegex(
-                    RiskGateError, "latest Migration guarded merge authorization"
-                ):
-                    prove_pr_and_checks(
-                        1, main, ["20260814000000"], api_with(state), root,
-                    )
+        self.assertEqual(REQUIRED_CHECKS, {"SQL migration guards", "supabase/tests against an ephemeral database"})
 
     # ------------------------------------------------------------------
     # Issue #2730: one head can carry several same-name check runs -- a
@@ -957,14 +943,14 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
     def issue_2730_rows(self, duplicated):
         others = [
             {"name": name, "conclusion": "success"}
-            for name in REQUIRED_CHECKS if name != "Cross-PR object collision"
+            for name in REQUIRED_CHECKS if name != "SQL migration guards"
         ]
         return others + duplicated
 
     def test_the_newest_same_name_check_is_selected_in_either_api_order(self):
         temp, root, main, merge_sha = self.historical_repo()
-        older = {"name": "Cross-PR object collision", "id": 103152255159, "conclusion": "cancelled"}
-        newer = {"name": "Cross-PR object collision", "id": 103152259453, "conclusion": "success"}
+        older = {"name": "SQL migration guards", "id": 103152255159, "conclusion": "cancelled"}
+        newer = {"name": "SQL migration guards", "id": 103152259453, "conclusion": "success"}
         with temp:
             for rows in ([older, newer], [newer, older]):
                 with self.subTest(order=[row["id"] for row in rows]):
@@ -975,10 +961,10 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
 
     def test_a_newer_unsuccessful_check_refuses_over_an_older_success(self):
         temp, root, main, merge_sha = self.historical_repo()
-        older = {"name": "Cross-PR object collision", "id": 103152255159, "conclusion": "success"}
+        older = {"name": "SQL migration guards", "id": 103152255159, "conclusion": "success"}
         with temp:
             for newer_conclusion in ("failure", "cancelled", "timed_out", None):
-                newer = {"name": "Cross-PR object collision", "id": 103152259453}
+                newer = {"name": "SQL migration guards", "id": 103152259453}
                 if newer_conclusion is not None:
                     newer["conclusion"] = newer_conclusion
                 with self.subTest(newer_conclusion=newer_conclusion), self.assertRaisesRegex(
@@ -991,9 +977,9 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
     def test_same_name_rows_without_usable_ids_refuse_rather_than_guess(self):
         temp, root, main, merge_sha = self.historical_repo()
         with temp:
-            for bad in ({"name": "Cross-PR object collision", "conclusion": "success"},
-                        {"name": "Cross-PR object collision", "id": "103152259453", "conclusion": "success"},
-                        {"name": "Cross-PR object collision", "id": 0, "conclusion": "success"}):
+            for bad in ({"name": "SQL migration guards", "conclusion": "success"},
+                        {"name": "SQL migration guards", "id": "103152259453", "conclusion": "success"},
+                        {"name": "SQL migration guards", "id": 0, "conclusion": "success"}):
                 duplicate = dict(bad, conclusion="cancelled")
                 with self.subTest(bad=bad), self.assertRaisesRegex(
                     RiskGateError, "newest cannot be selected"
@@ -1005,8 +991,8 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
     def test_one_check_run_id_with_two_conclusions_refuses_as_ambiguous(self):
         temp, root, main, merge_sha = self.historical_repo()
         rows = self.issue_2730_rows([
-            {"name": "Cross-PR object collision", "id": 103152259453, "conclusion": "success"},
-            {"name": "Cross-PR object collision", "id": 103152259453, "conclusion": "failure"},
+            {"name": "SQL migration guards", "id": 103152259453, "conclusion": "success"},
+            {"name": "SQL migration guards", "id": 103152259453, "conclusion": "failure"},
         ])
         with temp, self.assertRaisesRegex(RiskGateError, "different conclusions"):
             self.prove_with_check_rows(root, main, merge_sha, rows)
@@ -1802,7 +1788,7 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
         So this walks the closure instead of trusting a hand-written list.
         """
         closure = self.executed_closure()
-        self.assertIn("scripts/manage-migration-author-lanes.mjs", closure,
+        self.assertIn("scripts/manage-migration-coordination.mjs", closure,
                       "closure walk missed a known preview-job script; the parser has rotted")
         self.assertIn("scripts/check-pr-object-collisions.mjs", closure,
                       "closure walk did not follow imports; that is the hop-three defect")
@@ -2197,9 +2183,9 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
     #   message-citation -- named inside a string a human reads, in a raised
     #                      error or a printed line. Nothing is opened.
     DOCS_NAMING_SITES = {
-        ("scripts/manage-migration-author-lanes.mjs", "git-pathspec"): 2,
+        ("scripts/manage-migration-coordination.mjs", "git-pathspec"): 2,
         # Added for issue #1812. The budget constants on line 46 of
-        # manage-migration-author-lanes.mjs carry a trailing comment citing
+        # manage-migration-coordination.mjs carry a trailing comment citing
         # docs/verification/reviewer-assignment-api-budget-2026-08-28.md, where
         # the 9 + 13 = 22 derivation is written out. Classified deliberately, as
         # this test asks: it is a CITATION in a comment and opens nothing. The
@@ -2210,14 +2196,14 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
         # opened one without looking, so every new mention is made to argue for
         # itself. If this citation ever becomes a read, this entry must go and
         # docs must be pinned in PREVIEW_PRODUCER_PATHS instead.
-        ("scripts/manage-migration-author-lanes.mjs", "message-citation"): 2,
+        ("scripts/manage-migration-coordination.mjs", "message-citation"): 2,
         ("scripts/production_migration_guard.py", "message-citation"): 1,
     }
 
     def test_the_docs_exemption_is_verified_against_every_producer_that_names_it(self):
         """#1213 round 9, finding 2. `docs` claims to be NAMED but never OPENED.
 
-        The claim is true today. scripts/manage-migration-author-lanes.mjs passes
+        The claim is true today. scripts/manage-migration-coordination.mjs passes
         the string `docs` to `git grep -l` and to `git add` as a PATHSPEC, after
         the `--` separator, and scripts/production_migration_guard.py cites a docs
         filename inside a GuardError message. Neither opens a file. Nothing
@@ -2487,41 +2473,35 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
                 self.assertFalse(result["automaticPromotionAllowed"])
                 self.assertEqual(len(result["ownerDecisionReasons"]), 1)
 
-    def test_automatic_v2_blocks_every_derived_risk_but_legacy_recovery_is_unchanged(self):
+    def test_automatic_v2_blocks_non_sql_risks_but_legacy_recovery_is_unchanged(self):
         automatic = {"schema_version": "shared-db-production-apply-review/v2"}
         legacy = {"schema_version": "shared-db-production-apply-review/v1"}
         clear = decide_business_risk([], recovery_proven=True, review_approved=True)
         enforce_automatic_risk_decision(automatic, clear)
-        for reason in RISK_TEXT.values():
+        import production_business_risk_gate as gate
+        for key, reason in RISK_TEXT.items():
             decision = {"automaticPromotionAllowed": False, "ownerDecisionReasons": [reason]}
-            with self.subTest(reason=reason), self.assertRaisesRegex(
-                RiskGateError, "ENGINEER ACTION REQUIRED"
-            ):
-                enforce_automatic_risk_decision(automatic, decision)
+            if key in gate.AI_ACCEPTABLE_RISKS:
+                self.assertEqual(enforce_automatic_risk_decision(automatic, decision)["disclosedSqlRisks"], [key])
+            else:
+                with self.subTest(reason=reason), self.assertRaisesRegex(
+                    RiskGateError, "ENGINEER ACTION REQUIRED"
+                ):
+                    enforce_automatic_risk_decision(automatic, decision)
             enforce_automatic_risk_decision(legacy, decision)
 
-    def test_ai_reviewer_assessment_accepts_flagged_sql_risks_never_a_human(self):
-        # Owner ruling 2026-09-30: Albert is not a technical reviewer. A flagged SQL
-        # risk class is accepted only by the durable exact-head AI reviewer assessment.
+    def test_flagged_sql_risks_are_disclosed_not_blocking_under_rule_8_6(self):
+        # plan_skinny-review.md rule 8.6 (#2075): AI review is advisory, so no stored
+        # verdict accepts a flagged SQL class; it is disclosed and promotion proceeds.
         automatic = {"schema_version": "shared-db-production-apply-review/v2"}
         flagged = decide_business_risk(
             [RISK_TEXT["material_access_change"], RISK_TEXT["permanent_data_rewrite_or_loss"]],
             recovery_proven=True, review_approved=True,
         )
-        seen = []
-        evidence = {"verdictRef": "refs/db-review-verdicts/1-2-" + "a" * 40 + "-slot3"}
-        self.assertEqual(
-            enforce_automatic_risk_decision(automatic, flagged, lambda keys: seen.append(keys) or evidence),
-            evidence,
-        )
-        self.assertEqual(seen, [["material_access_change", "permanent_data_rewrite_or_loss"]])
-        with self.assertRaisesRegex(RiskGateError, "ENGINEER ACTION REQUIRED.*never by a human: no durable"):
-            enforce_automatic_risk_decision(
-                automatic, flagged,
-                lambda keys: (_ for _ in ()).throw(RiskGateError("no durable APPROVE")),
-            )
-        with self.assertRaisesRegex(RiskGateError, "ENGINEER ACTION REQUIRED"):
-            enforce_automatic_risk_decision(automatic, flagged)
+        result = enforce_automatic_risk_decision(automatic, flagged, lambda keys: self.fail("must not ask"))
+        self.assertEqual(result["disclosedSqlRisks"], ["material_access_change", "permanent_data_rewrite_or_loss"])
+        self.assertEqual(enforce_automatic_risk_decision(automatic, flagged)["disclosedSqlRisks"],
+                         result["disclosedSqlRisks"])
         for key in ("recovery_unproven", "unresolved_material_objection"):
             decision = {"automaticPromotionAllowed": False, "ownerDecisionReasons": [RISK_TEXT[key]]}
             with self.subTest(key=key), self.assertRaisesRegex(RiskGateError, "ENGINEER ACTION REQUIRED"):
@@ -4791,7 +4771,6 @@ class MainLineCustodyOnlyProducerDriftTests(unittest.TestCase):
     def test_review_tooling_and_sidecar_registry_are_custody_only(self):
         # Owner-authorized 2026-10-14 ("i authorize loosening that rule").
         self.prove(self.api(changed=(
-            "scripts/run-governed-review.mjs",
             "config/production-verification-sidecar-registry.json",
         )))
 
@@ -4806,7 +4785,7 @@ class MainLineCustodyOnlyProducerDriftTests(unittest.TestCase):
     def test_custody_only_edits_and_additions_after_a_main_line_preview_pass(self):
         self.prove(self.api(
             changed=("scripts/check-main-tip-freshness.mjs",
-                     "scripts/manage-migration-author-lanes.mjs"),
+                     "scripts/manage-migration-coordination.mjs"),
             absent_at_ref=("scripts/lib/repository-identity.mjs",
                            "scripts/repository_identity.py"),
         ))

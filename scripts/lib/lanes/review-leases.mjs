@@ -1,4 +1,4 @@
-// Split from scripts/manage-migration-author-lanes.mjs (issue #3726). Behavior-preserving move:
+// Split from scripts/manage-migration-coordination.mjs (issue #3726). Behavior-preserving move:
 // the entrypoint re-exports every public name defined here. Edit here, not there.
 import { REVIEW_VERDICT_REF_PREFIX, REVIEW_VERDICT_REPLACEMENT_REF_PREFIX, REVIEW_ARCHIVED_VERDICT_REF_PREFIX, parseVerdictRef } from '../../lib/review-verdict-artifact.mjs'
 import { REVIEW_ACTIVE_CUTOVER_REF, REVIEW_ACTIVE_PARALLEL_REF_PREFIX, REVIEW_LEASE_SUSPECT_HOURS, REVIEW_SILENCE_PROBE_REF_PREFIX, REVIEW_SILENCE_RELEASE_REF_PREFIX, SILENCE_CONFIRM_HOURS, SILENCE_MIN_AGE_HOURS, isLeaseReadFailure, isReviewRefListingRefusal, leaseReadFailureError, reviewStartMarkerPresent } from './constants.mjs'
@@ -9,7 +9,7 @@ import { parseReviewLease, resolveAssignmentLeaseRef, reviewActiveRef, reviewLea
 import { hasVerdictForHead, leaseVerdictOptions } from './review-approval.mjs'
 import { resolveFailedReviewRecord } from './review-replacement.mjs'
 import { liveReviewerQueue } from './review-assignment.mjs'
-import { activityFingerprintForLease } from '../../manage-migration-author-lanes.mjs'
+import { activityFingerprintForLease } from '../../manage-migration-coordination.mjs'
 import { orderedReviewers } from './reviewer-roster.mjs'
 
 // WHICH REVIEWERS HOLD LIVE REVIEW LEASES IN THIS REPOSITORY RIGHT NOW.
@@ -239,7 +239,7 @@ export function abandonedLeases(io){
 // that changed nothing under supabase/migrations/. Kept: every open pull request
 // (the merge gate and #2758 carry-forward read prior-head verdicts), every pull
 // request an active reviewer lease names, and every merged migration pull request
-// because production promotion re-runs check-exact-head-approval against the merged
+// because production promotion re-runs the retired check exact head approval (deleted #2074) against the merged
 // source pull request -- kept only until it has been merged 72 hours; after that it is
 // archived too, because every promotion-time reader also reads the archive mirror
 // for its exact prefix (#3806). An unknown pull request or an unreadable merge commit is
@@ -280,7 +280,7 @@ export function classifyVerdictForArchive(ref,{pulls,leasedPrs,touchesMigrations
   if(touches===false)return {archive:true,reason:'merged-no-migration'}
   // Issue #3806: a merged migration pull request's verdict is archivable once it has
   // been merged for MERGED_MIGRATION_ARCHIVE_MIN_HOURS. Every reader that can still ask
-  // for it (check-exact-head-approval for a merged PR, assertDurableReviewApproval with
+  // for it (the retired check exact head approval (deleted #2074) for a merged PR, assertDurableReviewApproval with
   // includeArchived) reads the archive mirror, so moving it hides nothing.
   if(touches===true){
     const mergedAt=Date.parse(String(pull.mergedAt??''))
@@ -380,7 +380,7 @@ export function reviewerCapacityReportOperation(io,now){
 }
 
 // ISSUE #3027 STEP 7 -- read-only lease view for the reviewer start watcher
-// (scripts/db-flow/reviewer-start-watch.mjs). Every lease reports its exact
+// (the retired reviewer start watch (deleted #2074)). Every lease reports its exact
 // slot, draw time, whether a durable start marker exists after the draw, and the last
 // PR activity. Anything unreadable is reported as `unknown`, which the watcher never
 // reroutes. Leases younger than the start SLO are listed without further reads.

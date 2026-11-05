@@ -8,8 +8,9 @@ lanes. `.github/workflows/designflow-sandbox-migrations.yml` is the only caller.
 
 The ordinary bounded-apply machinery (`production_migration_guard.py` preflight /
 prepare / assert-bounded / verify-dry-run and `production_catalog_verification.py`)
-is REUSED unchanged by that workflow. This file adds only what the sandbox needs
-and the shared guard does not provide:
+is REUSED by that workflow; the guard's one sandbox-only gate is its live
+dependency catalog (`--sandbox-live-dependencies`, issue #4578). This file adds
+only what the sandbox needs and the shared guard does not provide:
 
   identity       prove the target ref is the sandbox, is not production or
                  preview, and is the project the Management API returns.
@@ -33,6 +34,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -287,6 +289,23 @@ def _token() -> str:
     return token
 
 
+def source_proof(repo: Path, source_pr: int, commit_sha: str, raw_allowlist: str) -> tuple[str, str]:
+    """Reuse production's current merged-source and exact-head check proof.
+
+    The retired guarded-merge status has no producer for native queue merges.
+    Version attribution remains the separate sandbox-migration-binding check.
+    This function never reads or writes a database.
+    """
+    if source_pr <= 0 or not re.fullmatch(r"[0-9a-f]{40}", commit_sha):
+        raise Refusal("source PR and exact main commit are required")
+    allowlist = parse_sandbox_allowlist(raw_allowlist, local_migrations(repo))
+    from production_business_risk_gate import RiskGateError, gh_json, prove_pr_and_checks
+    try:
+        return prove_pr_and_checks(source_pr, commit_sha, allowlist, gh_json, repo)
+    except (RiskGateError, subprocess.CalledProcessError) as exc:
+        raise Refusal(f"merged source or required exact-head checks were not proved: {exc}") from None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     subs = parser.add_subparsers(dest="command", required=True)
@@ -308,6 +327,11 @@ def main(argv: list[str] | None = None) -> int:
     led.add_argument("--before", type=Path, required=True)
     led.add_argument("--after", type=Path, required=True)
     led.add_argument("--allowlist", required=True)
+    source = subs.add_parser("source-proof")
+    source.add_argument("--repo", type=Path, required=True)
+    source.add_argument("--source-pr", type=int, required=True)
+    source.add_argument("--commit-sha", required=True)
+    source.add_argument("--allowlist", required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == "identity":
@@ -317,6 +341,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "allowlist":
             values = parse_sandbox_allowlist(args.allowlist, local_migrations(args.repo))
             print(f"SANDBOX ALLOWLIST OK: {', '.join(values)}")
+        elif args.command == "source-proof":
+            head, merge = source_proof(args.repo, args.source_pr, args.commit_sha, args.allowlist)
+            print(f"SOURCE OK: merged PR {args.source_pr}, head {head}, merge {merge}, required checks passed.")
         elif args.command == "collisions":
             collisions(args.repo, args.allowlist, args.project_ref, _token())
         elif args.command == "condition":

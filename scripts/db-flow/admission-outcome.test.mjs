@@ -3,10 +3,10 @@ import { currentRepository, expectedOperatorAssociation } from '../lib/repositor
 // Fixtures follow the resolved repository identity and its operator association (#3255).
 const THIS_REPO = currentRepository(), OPERATOR_ASSOCIATION = expectedOperatorAssociation()
 import assert from 'node:assert/strict'
-import { evaluateAdmission, parseImpactBlock, STRUCTURAL_CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, assertPrCarriesStructuralChange, inspectPrStructuralChange, structuralWritesMatch, inspectPrCuratedDataChange } from './admission.mjs'
+import { evaluateAdmission, parseImpactBlock, STRUCTURAL_CHANGE_TYPES, NON_STRUCTURAL_CHANGE_TYPES, assertPrCarriesStructuralChange, inspectPrStructuralChange, structuralWritesMatch, inspectPrCuratedDataChange, structuralWritesMatchUnappliedEdit, unappliedEditMigrationFiles } from './admission.mjs'
 import { OutcomeError, advanceOutcome, completeOutcome, outcomeEvent, outcomeHistory, repairOutcomeHistory, trustedOutcomeComments, OUTCOME_STATES, parseOutcomeEvidence } from './outcome-lifecycle.mjs'
 import { coordinationEvent, formatEventComment, parseEventComment } from '../db-coordination-events.mjs'
-import { githubIo, admitIssue, buildDynamicQueues, claimBody, derivePrOperationRoute, EXCLUSIVE_REFS, main as managerMain, matchesGeneratedTypesArtifact, matchesGeneratedTypesProof, matchesLiveProof, MUTEX_REF, parseQueueScope, resolveAdmittedIssueForPr } from '../manage-migration-author-lanes.mjs'
+import { githubIo, admitIssue, buildDynamicQueues, claimBody, derivePrOperationRoute, EXCLUSIVE_REFS, main as managerMain, matchesGeneratedTypesArtifact, matchesGeneratedTypesProof, matchesLiveProof, MUTEX_REF, parseQueueScope, resolveAdmittedIssueForPr } from '../manage-migration-coordination.mjs'
 import { generatedTypesSha256, PRODUCTION_PROJECT_REF, PRODUCTION_PROJECT_URL, GENERATED_TYPES_SCHEMAS } from '../generated-types-proof.mjs'
 import { findCompletionRecord } from '../lib/work-dependencies.mjs'
 
@@ -208,16 +208,6 @@ test('unrelated structural authors can dispatch concurrently while object confli
   assert.equal(buildDynamicQueues(conflicting,[]).dispatchable.length,1)
 })
 
-test('manager requires explicit admission before claim and database-only shared stages', () => {
-  const io={enforceAdmission:true}
-  const calls=[
-    ['--claim','--task','x','--owner','o','--branch','b','--worktree','w','--objects','table core.x'],
-    ['--acquire-preview','--owner','o','--pr','1','--head-sha','a'.repeat(40)],
-  ]
-  const old=console.error;const messages=[];console.error=(m)=>messages.push(String(m))
-  try { for (const args of calls) assert.equal(managerMain(args,new Date('2026-09-11T00:00:00Z'),io),2) } finally { console.error=old }
-  assert.equal(messages.filter((m)=>m.includes('--admit-issue')).length,2,messages.join(' | '))
-})
 
 test('production admission requires the source PR so actual SQL is rechecked',()=>{
   const io={enforceAdmission:true}
@@ -237,12 +227,10 @@ test('workflow resolver and PR-backed acquire preserve the same bounded legacy a
   const legacy=issue(['```db-work-scope','status: ready','work_type: structural','route: claim-first','priority: 5','depends_on:','writes:','  - table core.example','```'].join('\n'))
   const base={getIssue:()=>legacy,closingIssuesForPr:()=>[{number:41,state:'open'}],getPr:()=>({head:{sha:'a'.repeat(40)}}),getPrFiles:()=>[{filename:'supabase/migrations/20260911120000_example.sql',status:'added'}],getFileAt:()=>'create table core.example(id bigint);'}
   assert.equal(admitIssue(41,base,{pr:7,allowLegacy:true}).legacy,true)
-  assert.equal(resolveAdmittedIssueForPr(7,serializedIo(base)).admission,'admitted')
-  for(const mutate of [
-    io=>io.getIssue=()=>({...legacy,createdAt:'2026-09-11T18:00:00Z'}),
-    io=>io.closingIssuesForPr=()=>[{number:41},{number:42}],
-    io=>io.getFileAt=()=>'create table core.other(id bigint);',
-  ]){const io={...base};mutate(io);assert.throws(()=>resolveAdmittedIssueForPr(7,serializedIo(io)),/legacy admission|exactly one structural|exactly match/)}
+  // popcre/ai-devops#2172 stage C2: the resolver reads the closing issue and admits nothing.
+  assert.equal(resolveAdmittedIssueForPr(7,serializedIo(base)).admission,'not-required')
+  const io={...base,closingIssuesForPr:()=>[{number:41},{number:42}]}
+  assert.throws(()=>resolveAdmittedIssueForPr(7,serializedIo(io)),/exactly one structural/)
 })
 
 test('standalone PR-backed admission preserves bounded legacy parity',()=>{
@@ -345,31 +333,84 @@ test('legacy issues remain protected if already claimed but are never offered as
   assert.equal(result.skipped.find((row)=>row.issue===41)?.reason,'missing-required-admission-fields')
 })
 
-test('an admitted issue cannot authorize a claim for different objects',()=>{
-  const comments=[];let claims=0
-  const io=serializedIo({enforceAdmission:true,getIssue:()=>issue(scopeBody({object:'table core.authorized'})),issueComments:()=>comments,commentIssue:(_n,body)=>comments.push(ownerComment(body)),createClaim:()=>{claims++}})
-  const old=console.error;let message='';console.error=(value)=>{message=String(value)}
-  try{
-    assert.equal(managerMain(['--claim','--admit-issue','41','--task','x','--owner','o','--branch','b','--worktree','w','--objects','table core.unrelated'],new Date('2026-09-11T00:00:00Z'),io),2)
-  }finally{console.error=old}
-  assert.match(message,/must exactly match admitted issue/);assert.equal(claims,0)
+
+
+// #5141 — the unapplied-migration-edit subset proof. A pull request that EDITS
+// a migration can never satisfy exact equality (the inspection reads only the
+// patch's added lines), so without this lane a merged-but-unapplied migration
+// whose rehearsal rolled back could never be fixed: the fix edits the file,
+// admission compares the fragment against the whole, and no edit can pass.
+const editPatch=(added)=>`@@ -1,2 +1,${2+added.split('\n').length} @@\n-create function public.old_one() returns void;\n+${added.split('\n').join('\n+')}`
+const modifiedMigrationFile=(version,added)=>({filename:`supabase/migrations/${version}_recovery.sql`,status:'modified',patch:editPatch(added)})
+// Background rows every real ledger has; the fail-closed empty-ledger refusal
+// is exercised separately below.
+const subsetLedgers=({preview=['20260101000000'],production=['20260101000000'],previewIdentical=[]}={})=>({preview:new Set(preview),production:new Set(production),previewIdentical:new Set(previewIdentical)})
+
+test('an edited everywhere-unapplied migration admits as a claim-held subset of the issue writes',()=>{
+  const inspected=inspectPrStructuralChange([modifiedMigrationFile('20261030043848','alter function public.backfill_pdf_files_used_v2() set statement_timeout = \'30min\';')])
+  const declared=['function public.backfill_pdf_files_used_v2','table public.sku_style_guide_links'].sort()
+  const files=unappliedEditMigrationFiles([{filename:'supabase/migrations/20261030043848_recovery.sql',status:'modified'},{filename:'config/atomic-migration-allowlist.json',status:'modified'}])
+  assert.equal(structuralWritesMatchUnappliedEdit(inspected,declared,files,subsetLedgers(),['function public.backfill_pdf_files_used_v2']),true)
+  assert.equal(structuralWritesMatch(inspected,declared),false,'the ordinary exact-match comparator still refuses the fragment')
 })
 
-test('source PR resolves exactly one linked open issue and independently admits its files', () => {
+test('the subset lane refuses applied versions, unheld objects and unknown facts',()=>{
+  const inspected=inspectPrStructuralChange([modifiedMigrationFile('20261030043848','alter function public.backfill_pdf_files_used_v2() set statement_timeout = \'30min\';')])
+  const declared=['function public.backfill_pdf_files_used_v2']
+  const files=unappliedEditMigrationFiles([{filename:'supabase/migrations/20261030043848_recovery.sql',status:'modified'}])
+  assert.throws(()=>structuralWritesMatchUnappliedEdit(inspected,declared,files,subsetLedgers({production:['20261030043848']}),declared),/already applied on production/)
+  assert.throws(()=>structuralWritesMatchUnappliedEdit(inspected,declared,files,subsetLedgers({preview:['20261030043848']}),declared),/already applied on preview with a body this pull request does not reproduce exactly/)
+  assert.equal(structuralWritesMatchUnappliedEdit(inspected,declared,files,subsetLedgers({preview:['20261030043848'],previewIdentical:['20261030043848']}),declared),true,'the byte-exact preview continuation of this same pull request is excused')
+  assert.throws(()=>structuralWritesMatchUnappliedEdit(inspected,declared,files,subsetLedgers(),[]),/branch-bound active claim holds no writes/)
+  assert.throws(()=>structuralWritesMatchUnappliedEdit(inspected,['table public.sku_style_guide_links'],files,subsetLedgers(),['table public.sku_style_guide_links']),/not declared in the admitted issue writes/)
+  assert.throws(()=>structuralWritesMatchUnappliedEdit(inspected,declared,files,subsetLedgers(),['table public.sku_style_guide_links']),/not held by the pull request's branch-bound active claim/)
+  assert.throws(()=>structuralWritesMatchUnappliedEdit(inspected,declared,files,subsetLedgers({preview:[]}),declared),/preview ledger came back empty/)
+  assert.throws(()=>structuralWritesMatchUnappliedEdit(inspected,declared,[...files,{filename:'supabase/migrations/20261030043848b_recovery.sql',status:'modified'}],subsetLedgers(),declared),/unreadable version/)
+  assert.equal(structuralWritesMatchUnappliedEdit(inspected,declared,unappliedEditMigrationFiles([{filename:'supabase/migrations/20261030043848_recovery.sql',status:'added'}]),subsetLedgers(),declared),false,'an added-only pull request never enters the subset lane')
+})
+
+test('admitIssue accepts a modified-migration pull request only through the proven subset lane',()=>{
+  // The issue declares the migration's WHOLE object set; the edit's patch holds
+  // a fragment of it — exactly the shape exact equality can never accept.
+  const body=scopeBody({object:'function public.backfill_pdf_files_used_v2'}).replace('writes:\n  - function public.backfill_pdf_files_used_v2','writes:\n  - function public.backfill_pdf_files_used_v2\n  - table public.sku_style_guide_links')
+  const claim=claimBody({version:'20261030043848',objects:['function public.backfill_pdf_files_used_v2'],owner:'ZCode chat test on hetz',branch:'zcode/recovery-5141',worktree:'/worksp/shared-db/.wt-test',expiresAt:new Date(Date.now()+3600*1000)})
+  const files=[{filename:'supabase/migrations/20261030043848_recovery.sql',status:'modified',patch:editPatch('alter function public.backfill_pdf_files_used_v2() set statement_timeout = \'30min\';')}]
+  const io=(extra={})=>{
+    const comments=[]
+    return {
+    closingIssuesForPr:()=>[{number:41,state:'open'}],getIssue:()=>issue(body),issueComments:()=>comments,commentIssue:(_n,value)=>comments.push(ownerComment(value)),
+    getPr:()=>({head:{sha:'a'.repeat(40),ref:'zcode/recovery-5141'}}),
+    getPrFiles:()=>files,getFileAt:()=>'alter function public.backfill_pdf_files_used_v2() set statement_timeout = \'30min\';',
+    openClaims:()=>[{number:12,body:claim}],
+    appliedMigrationVersions:()=>({preview:new Set(['20260101000000']),production:new Set(['20260101000000'])}),
+    previewLedgerStatements:()=>{throw new Error('must not be read while preview holds no version')},
+    ...extra,
+  }}
+  const admitted=admitIssue(41,io(),{pr:7})
+  assert.equal(admitted.admitted,true)
+  assert.deepEqual(admitted.unapplied_edit_subset,{claim:12,versions:['20261030043848']})
+  assert.deepEqual(admitted.actual_objects,['function public.backfill_pdf_files_used_v2'])
+  // The claim must be the pull request branch's own active claim: another
+  // branch's claim, an expired lease, or several matches all refuse.
+  assert.throws(()=>admitIssue(41,io({openClaims:()=>[{number:13,body:claimBody({version:'20261030043848',objects:['function public.backfill_pdf_files_used_v2'],owner:'o',branch:'other/branch',worktree:'w',expiresAt:new Date(Date.now()+3600*1000)})}]}),{pr:7}),/exactly one active branch-bound claim is required for branch zcode\/recovery-5141; found 0/)
+  assert.throws(()=>admitIssue(41,io({openClaims:()=>[{number:12,body:claimBody({version:'20261030043848',objects:['function public.backfill_pdf_files_used_v2'],owner:'o',branch:'zcode/recovery-5141',worktree:'w',expiresAt:new Date(Date.now()-1000)})}]}),{pr:7}),/found 0/)
+  // A version already applied on production stays refused even with the claim.
+  assert.throws(()=>admitIssue(41,io({appliedMigrationVersions:()=>({preview:new Set(['20260101000000']),production:new Set(['20260101000000','20261030043848'])})}),{pr:7}),/already applied on production/)
+  // An unreadable ledger fails closed into a refusal, never a silent pass.
+  assert.throws(()=>admitIssue(41,io({appliedMigrationVersions:()=>{throw new Error('SUPABASE_ACCESS_TOKEN is not set')}}),{pr:7}),/ledger read failed \(fail closed\)/)
+  // An added-only migration pull request keeps the exact-match refusal verbatim.
+  assert.throws(()=>admitIssue(41,io({getPrFiles:()=>[{filename:'supabase/migrations/20261030043848_recovery.sql',status:'added'}]}),{pr:7}),/structural objects must exactly match admitted issue #41 writes/)
+})
+
+test('source PR resolves exactly one linked open issue and admits nothing (#2172 C2)', () => {
   const comments=[]
   const io=serializedIo({
     closingIssuesForPr:()=>[{number:41,state:'open'}],getIssue:()=>issue(scopeBody()),issueComments:()=>comments,commentIssue:(_n,body)=>comments.push(ownerComment(body)),
     getPr:()=>({head:{sha:'a'.repeat(40)}}),getFileAt:()=> 'create table core.example(id bigint);',getPrFiles:()=>[{filename:'supabase/migrations/20260911120000_example.sql',status:'added'}],
   })
-  assert.deepEqual(resolveAdmittedIssueForPr(7,io),{issue:41,pr:7,admission:'admitted'})
+  assert.deepEqual(resolveAdmittedIssueForPr(7,io),{issue:41,pr:7,admission:'not-required'})
   io.closingIssuesForPr=()=>[{number:41,state:'open'},{number:42,state:'open'}]
   assert.throws(()=>resolveAdmittedIssueForPr(7,io),/exactly one structural work issue/)
-  io.closingIssuesForPr=()=>[{number:41,state:'open'}]
-  io.getFileAt=()=>'create table core.example(id bigint); create table core.undeclared(id bigint);'
-  assert.throws(()=>admitIssue(41,io,{pr:7}),/structural objects must exactly match/)
-  io.getFileAt=()=> 'create table core.example(id bigint);'
-  io.closingIssuesForPr=()=>[{number:99,state:'open'}]
-  assert.throws(()=>admitIssue(41,io,{pr:7}),/must close exactly admitted issue #41/)
 })
 
 test('a merge-closed admitted issue reopens only for a merged linked PR', () => {
@@ -454,7 +495,7 @@ test('forged or stale refusal comments cannot suppress current owner refusal pro
   const body=scopeBody({change:'application-code'});let result
   try{evaluateAdmission(issue(body),parseQueueScope(body),null)}catch(error){result=error.result}
   const make=(overrides,association)=>({author_association:association,body:formatEventComment(coordinationEvent({
-    eventType:'rejected_non_structural',workIssue:41,actor:'manage-migration-author-lanes',timestamp:'2026-09-11T00:00:00Z',result:'refused',detail:result.reason,return_to:result.return_to,evidence_required:result.evidence_required,...overrides,
+    eventType:'rejected_non_structural',workIssue:41,actor:'manage-migration-coordination',timestamp:'2026-09-11T00:00:00Z',result:'refused',detail:result.reason,return_to:result.return_to,evidence_required:result.evidence_required,...overrides,
   }))})
   const comments=[make({},'NONE'),make({return_to:'u2giants/stale-app'},OPERATOR_ASSOCIATION),make({},OPERATOR_ASSOCIATION)]
   const io=serializedIo({enforceAdmission:true,getIssue:()=>issue(body),issueComments:()=>comments,commentIssue:(_n,value)=>comments.push(ownerComment(value))})
@@ -549,71 +590,9 @@ test('initial admission events are serialized under the author mutex',()=>{
   assert.equal(outcomeHistory(comments,41).state,'classified')
 })
 
-test('claim admission and dispatched event share one author-mutex ownership interval',()=>{
-  const comments=[],refs=new Map(),labels=[]
-  const io={
-    enforceAdmission:true,getIssue:()=>issue(scopeBody()),issueComments:()=>comments,
-    makeOwnerCommit:()=> 'claim-owner',readRef:(ref)=>refs.get(ref)??null,listRefs:(prefix)=>[...refs].filter(([name])=>name===prefix||name.startsWith(`${prefix}/`)).map(([ref,sha])=>({ref,sha})),readCommitMessage:()=>null,
-    createRef:(ref,sha)=>{labels.push('lock');if(refs.has(ref))return false;refs.set(ref,sha);return true},
-    deleteRef:(ref)=>{labels.push('unlock');refs.delete(ref)},openClaims:()=>[],prSources:()=>[],
-    reserveVersion:()=>({version:'20260911133700'}),
-    createClaim:()=>{assert.equal(refs.size,1);labels.push('claim');return 'https://github.com/u2giants/shared-db/issues/99'},closeClaim:()=>{},
-    commentIssue:(_n,body)=>{assert.equal(refs.size,1);labels.push('event');comments.push(ownerComment(body))},
-  }
-  const old=console.log;console.log=()=>{}
-  try{assert.equal(managerMain(['--claim','--admit-issue','41','--task','x','--owner','o','--branch','b','--worktree','w','--objects','table core.example'],new Date('2026-09-11T00:00:00Z'),io),0)}finally{console.log=old}
-  assert.deepEqual(labels,['lock','event','event','claim','event','unlock'])
-  assert.equal(outcomeHistory(comments,41).state,'dispatched')
-  const history=outcomeHistory(comments,41)
-  assert.equal(history.valid,true)
-  assert.ok(Date.parse(history.events.at(-1).timestamp)>=Date.parse(history.events[1].timestamp),'claim dispatch must follow admission publication, not command-start clock')
-})
 
-test('lost dispatched-comment response tolerates delayed exact-event visibility and preserves the claim',()=>{
-  const comments=[],refs=new Map();let closed=0,hiddenReads=0,waits=0
-  const io={
-    enforceAdmission:true,getIssue:()=>issue(scopeBody()),issueComments:()=>hiddenReads-->0?comments.filter((comment)=>parseEventComment(comment.body)[0]?.event_type!=='dispatched'):comments,
-    makeOwnerCommit:()=> 'claim-owner',readRef:(ref)=>refs.get(ref)??null,listRefs:(prefix)=>[...refs].filter(([name])=>name===prefix||name.startsWith(`${prefix}/`)).map(([ref,sha])=>({ref,sha})),readCommitMessage:()=>null,
-    createRef:(ref,sha)=>{if(refs.has(ref))return false;refs.set(ref,sha);return true},deleteRef:(ref)=>refs.delete(ref),
-    openClaims:()=>[],prSources:()=>[],reserveVersion:()=>({version:'20260911133800'}),
-    createClaim:()=> 'https://github.com/u2giants/shared-db/issues/99',closeClaim:()=>{closed++},wait:()=>{waits++},
-    commentIssue:(_n,body)=>{comments.push(ownerComment(body));if(parseEventComment(body)[0]?.event_type==='dispatched'){hiddenReads=2;throw new Error('response lost')}},
-  }
-  const old=console.log;console.log=()=>{}
-  try{assert.equal(managerMain(['--claim','--admit-issue','41','--task','x','--owner','o','--branch','b','--worktree','w','--objects','table core.example'],new Date('2026-09-11T00:00:00Z'),io),0)}finally{console.log=old}
-  assert.equal(closed,0);assert.equal(waits,2);assert.equal(outcomeHistory(comments,41).state,'dispatched')
-})
 
-test('exhausted dispatch visibility remains ambiguous and never closes the claim',()=>{
-  const comments=[],refs=new Map();let closed=0,hiddenReads=100,message=''
-  const io={
-    enforceAdmission:true,getIssue:()=>issue(scopeBody()),issueComments:()=>hiddenReads>0?comments.filter((comment)=>parseEventComment(comment.body)[0]?.event_type!=='dispatched'):comments,
-    makeOwnerCommit:()=> 'claim-owner',readRef:(ref)=>refs.get(ref)??null,listRefs:(prefix)=>[...refs].filter(([name])=>name===prefix||name.startsWith(`${prefix}/`)).map(([ref,sha])=>({ref,sha})),readCommitMessage:()=>null,
-    createRef:(ref,sha)=>{if(refs.has(ref))return false;refs.set(ref,sha);return true},deleteRef:(ref)=>refs.delete(ref),
-    openClaims:()=>[],prSources:()=>[],reserveVersion:()=>({version:'20260911133801'}),wait:()=>{},
-    createClaim:()=> 'https://github.com/u2giants/shared-db/issues/99',closeClaim:()=>{closed++},
-    commentIssue:(_n,body)=>{comments.push(ownerComment(body));if(parseEventComment(body)[0]?.event_type==='dispatched')throw new Error('response lost')},
-  }
-  const old=console.error;console.error=(value)=>{message=String(value)}
-  try{assert.equal(managerMain(['--claim','--admit-issue','41','--task','x','--owner','o','--branch','b','--worktree','w','--objects','table core.example'],new Date('2026-09-11T00:00:00Z'),io),2)}finally{console.error=old}
-  assert.match(message,/readback remained ambiguous.*remains protected/);assert.equal(closed,0)
-  hiddenReads=0;assert.equal(outcomeHistory(comments,41).state,'dispatched')
-})
 
-test('lost mutex ownership never closes the newly created claim',()=>{
-  const comments=[],refs=new Map();let closed=0,message=''
-  const io={
-    enforceAdmission:true,getIssue:()=>issue(scopeBody()),issueComments:()=>comments,
-    makeOwnerCommit:()=> 'claim-owner',readRef:(ref)=>refs.get(ref)??null,listRefs:(prefix)=>[...refs].filter(([name])=>name===prefix||name.startsWith(`${prefix}/`)).map(([ref,sha])=>({ref,sha})),readCommitMessage:()=>null,
-    createRef:(ref,sha)=>{if(refs.has(ref))return false;refs.set(ref,sha);return true},deleteRef:(ref)=>refs.delete(ref),
-    openClaims:()=>[],prSources:()=>[],reserveVersion:()=>({version:'20260911133900'}),
-    createClaim:()=> 'https://github.com/u2giants/shared-db/issues/99',closeClaim:()=>{closed++},
-    commentIssue:(_n,body)=>{comments.push(ownerComment(body));if(parseEventComment(body)[0]?.event_type==='dispatched'){for(const ref of refs.keys())refs.set(ref,'successor-owner');throw new Error('response lost after ownership changed')}},
-  }
-  const old=console.error;console.error=(value)=>{message=String(value)}
-  try{assert.equal(managerMain(['--claim','--admit-issue','41','--task','x','--owner','o','--branch','b','--worktree','w','--objects','table core.example'],new Date('2026-09-11T00:00:00Z'),io),2)}finally{console.error=old}
-  assert.match(message,/claim .* remains protected for explicit recovery/);assert.equal(closed,0);assert.deepEqual([...refs.values()],['successor-owner'])
-})
 
 test('advance validation and lifecycle mutation share one author-mutex interval',()=>{
   const comments=eventComments('classified',41),refs=new Map();let writes=0
@@ -943,15 +922,6 @@ test('admission never silently replaces another requested primary operation',()=
   assert.equal(touched,false)
 })
 
-test('zero-valued primary operations cannot disappear from command cardinality',()=>{
-  const old=console.error;console.error=()=>{}
-  try{
-    assert.equal(managerMain(['--prepare-preview-dispatch','0'],new Date(),{}),2)
-    assert.equal(managerMain(['--prepare-preview-dispatch','0','--assign-reviewer'],new Date(),{}),2)
-    assert.equal(managerMain(['--admit-issue','0'],new Date(),{}),2)
-    assert.equal(managerMain(['--admit-issue','0','--complete-work','--issue','7','--report-file','x'],new Date(),{}),2)
-  }finally{console.error=old}
-})
 
 test('two concurrent completion commands serialize to one authoritative completion',()=>{
   const fixture=completionFixture();let owner=null,sequence=0,second=null,attempted=false
@@ -1168,6 +1138,17 @@ test('curated master data admission still refuses schema DDL, non-migration chan
   const table = curatedBody({ change:'table' })
   assert.throws(() => evaluateAdmission(issue(table,4172), parseQueueScope(table), null), /change_type table is not admissible/)
   assert.throws(() => parseQueueScope(curatedBody({ extra:['  - table core.property'] })), /must not claim database objects/)
+})
+
+test('an edited curated migration is admitted only while it is applied nowhere (#5079)', () => {
+  const body = curatedBody()
+  const edited = (ledgers) => ({ ...curatedIo(body, curatedSql), getPrFiles:()=>[{filename:'supabase/migrations/20261011164757_curated_warner_property_the_exorcist_1973.sql',status:'modified'}], appliedMigrationVersions:()=>ledgers })
+  const none = { preview:new Set(['20260101000000']), production:new Set(['20260101000000']) }
+  assert.equal(admitIssue(4172, edited(none), { pr: 4176, allowLegacy: true }).admitted, true)
+  assert.throws(() => admitIssue(4172, edited({ ...none, production:new Set(['20261011164757']) }), { pr: 4176, allowLegacy: true }), /edits applied curated migration/)
+  assert.throws(() => admitIssue(4172, edited({ ...none, preview:new Set(['20261011164757']) }), { pr: 4176, allowLegacy: true }), /edits applied curated migration/)
+  assert.throws(() => admitIssue(4172, { ...edited(none), appliedMigrationVersions:()=>{ throw new Error('no token') } }, { pr: 4176, allowLegacy: true }), /cannot prove its edited curated migration is unapplied/)
+  assert.throws(() => admitIssue(4172, edited(none), { pr: 4176, allowLegacy: true }) && admitIssue(4172, { ...edited(none), getFileAt:()=>curatedSql+'alter table core.property add column x int;\n' }, { pr: 4176, allowLegacy: true }), /changes database structure/)
 })
 
 test('structural route still refuses a data-only migration (gate unchanged)', () => {

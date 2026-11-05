@@ -1,7 +1,7 @@
 import {mergedPrSourceIssues} from './lib/lanes/admission.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseMergedPrIssueBinding, verifyMergedPrIssueBinding, withMergedPrIssueBinding, resolveAdmittedIssueForPr, reviewTargetIsRecordable } from './manage-migration-author-lanes.mjs'
+import { parseMergedPrIssueBinding, verifyMergedPrIssueBinding, withMergedPrIssueBinding, resolveAdmittedIssueForPr, reviewTargetIsRecordable } from './manage-migration-coordination.mjs'
 
 test('verdict recording accepts a merged PR only through the same verified binding',()=>{
   const open={state:'open',head:{sha:HEAD}}
@@ -140,8 +140,13 @@ test('every mismatch refuses the binding',()=>{
   }
 })
 
-test('the resolver still refuses a merged PR with no link and no binding',()=>{
-  assert.throws(()=>resolveAdmittedIssueForPr(2726,fixture().io),/must close exactly one structural work issue; found 0/)
+test('the resolver returns issue:null for a merged PR with no link and no binding (step 2.1)',()=>{
+  assert.equal(resolveAdmittedIssueForPr(2726,fixture().io).issue,null)
+})
+
+test('the resolver reads the work issue from a merged PR title',()=>{
+  const {io}=fixture({pr:{...fixture().state.pr,title:'Reissue a migration (#5315)'}})
+  assert.equal(resolveAdmittedIssueForPr(2726,io).issue,5315)
 })
 
 test('reviewer assignment snapshot accepts the same verified binding and nothing looser',()=>{

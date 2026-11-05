@@ -35,7 +35,7 @@ concurrency:
 jobs:
   route:
     name: Documents fast CI route
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Prove the protected base identity before checkout

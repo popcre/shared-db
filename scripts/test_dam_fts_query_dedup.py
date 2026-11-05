@@ -129,6 +129,22 @@ class FullSearchParity(unittest.TestCase):
             self.assertIn('original search contract differs', result.stderr)
         self.assertEqual(self.metadata(), self.before)
 
+    def test_existing_ranked_guard_accepts_dedup_and_refuses_missing_dedup_or_maxrank(self):
+        source = (ROOT / 'supabase/tests/popdam_authorized_ranked_search_contracts.sql').read_text()
+        start = source.index("  if position('d.search_tsv @@ any(array(")
+        guard = source[start:source.index('  end if;', start) + len('  end if;')]
+        actual = self.sql("SELECT pg_get_functiondef('" + SIGNATURE + "'::regprocedure)").stdout
+        variants = [
+            (actual, True),
+            (actual.replace('array(select distinct q.tsq from queries q)', 'array(select q.tsq from queries q)'), False),
+            (actual.replace('(select max(', '(select sum(', 1), False),
+        ]
+        for definition, accepted in variants:
+            result = self.sql('DO $guard_test$ DECLARE v_definition text := $candidate$' + definition + '$candidate$; BEGIN ' + guard + ' END $guard_test$;', False)
+            self.assertEqual(result.returncode == 0, accepted)
+            if not accepted:
+                self.assertIn('ranked search must retain the measured indexable scan and maximum synonym rank', result.stderr)
+
     def test_replay_or_source_drift_is_refused(self):
         refused = self.sql(MIGRATION.read_text(), False)
         self.assertNotEqual(refused.returncode, 0)

@@ -55,8 +55,27 @@ class ActualGitProducerTests(unittest.TestCase):
         with self.assertRaisesRegex(source.RiskGateError,'producer/current policy changed'):self.prove()
         with self.assertRaisesRegex(source.RiskGateError,'unbounded dynamic'):
             source.pin_paths({'.github/workflows/shared-supabase-migrations.yml':{'type':'blob'},'scripts/run.mjs':{'type':'blob'}},lambda p:'const p=`tools/${name}`')
-        with self.assertRaisesRegex(source.RiskGateError,'unbounded segmented'):
-            source.pin_paths({'.github/workflows/shared-supabase-migrations.yml':{'type':'blob'},'scripts/run.py':{'type':'blob'}},lambda p:"p=ROOT / 'tools' / runtime_name" if p.endswith('.py') else '')
+
+    def test_unchanged_dynamic_pathlib_code_and_changed_actual_tool_refuse(self):
+        self.write('scripts/runtime.py',"from pathlib import Path\nname='runtime-guard.mjs'\np=Path(__file__).resolve().parents[1]/'tools'/name\n")
+        self.write('tools/runtime-guard.mjs','export const guard=1')
+        self.base=self.commit();self.main=self.base
+        self.write('tools/runtime-guard.mjs','export const guard=0');self.main=self.commit()
+        with self.assertRaisesRegex(source.RiskGateError,'unbounded segmented'):self.prove()
+
+    def test_unchanged_relative_tool_importer_and_changed_nested_tool_refuse(self):
+        self.write('tools/worker.mjs',"export {guard} from './nested/guard.mjs'\n")
+        self.write('tools/nested/guard.mjs','export const guard=1')
+        self.base=self.commit();self.main=self.base
+        self.write('tools/nested/guard.mjs','export const guard=0');self.main=self.commit()
+        with self.assertRaisesRegex(source.RiskGateError,'producer/current policy changed'):self.prove()
+
+    def test_unchanged_static_pathlib_code_and_changed_actual_tool_refuse(self):
+        self.write('scripts/runtime.py',"from pathlib import Path\np=Path(__file__).resolve().parents[1]/'tools'/'runtime-guard.mjs'\n")
+        self.write('tools/runtime-guard.mjs','export const guard=1')
+        self.base=self.commit();self.main=self.base
+        self.write('tools/runtime-guard.mjs','export const guard=0');self.main=self.commit()
+        with self.assertRaisesRegex(source.RiskGateError,'producer/current policy changed'):self.prove()
 
     def test_current_disabled_policy_and_credential_sibling_change_refuse(self):
         self.write('scripts/sibling.py','# retired credential protection');self.main=self.commit()

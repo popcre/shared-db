@@ -1,6 +1,9 @@
 -- #5662: primary refresh visits every group and preserves search catch-up while
 -- writing only changed cached primary fields. Synthetic fixtures; rollback only.
 begin;
+-- Transaction-local function statistics count invocations even when a future
+-- canonical no-op refresh performs no document write. Throwaway database only.
+set local track_functions = 'all';
 create temporary table primary_noop_group_writes(id uuid);
 create temporary table primary_noop_search_writes(id uuid);
 create function pg_temp.primary_noop_group_counter() returns trigger language plpgsql as $$
@@ -22,6 +25,8 @@ declare
   ids uuid[];
   n integer;
   unchanged integer;
+  calls_before bigint;
+  calls_after bigint;
 begin
   insert into public.style_groups(id,sku,folder_path)
   select ('ffffffff-5662-4000-8000-' || lpad(i::text,12,'0'))::uuid,
@@ -51,7 +56,16 @@ begin
   where document_type='style_group' and entity_id=any(ids);
   truncate pg_temp.primary_noop_group_writes, pg_temp.primary_noop_search_writes;
 
+  select coalesce((select calls from pg_stat_xact_user_functions
+    where funcid='public.refresh_dam_search_style_group_document(uuid)'::regprocedure),0)
+  into calls_before;
   n := public.refresh_style_group_primaries(ids);
+  select coalesce((select calls from pg_stat_xact_user_functions
+    where funcid='public.refresh_dam_search_style_group_document(uuid)'::regprocedure),0)
+  into calls_after;
+  if calls_after-calls_before <> 25 then
+    raise exception '5662: canonical refresh invocations %, expected25',calls_after-calls_before;
+  end if;
   if n <> 25 then raise exception '5662: visited count %, expected25', n; end if;
   if (select count(*) from pg_temp.primary_noop_group_writes) <> 5 then
     raise exception '5662: expected exactly5 primary row updates';

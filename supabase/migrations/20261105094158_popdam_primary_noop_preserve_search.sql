@@ -1,3 +1,6 @@
+-- derived-from: none
+-- Source: pre-ledger routine captured in ci-bootstrap/010_pre_adoption_baseline.sql
+-- and reconciled with the live definition; no earlier migration rewrites this routine.
 -- #5662 / PopDAM #680, #706. Preserve visited-count and search catch-up contracts.
 -- Only redundant style_groups writes are removed; downstream refresh cost is unchanged.
 CREATE OR REPLACE FUNCTION public.refresh_style_group_primaries(p_group_ids uuid[])

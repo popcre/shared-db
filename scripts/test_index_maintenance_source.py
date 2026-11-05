@@ -55,6 +55,8 @@ class ActualGitProducerTests(unittest.TestCase):
         with self.assertRaisesRegex(source.RiskGateError,'producer/current policy changed'):self.prove()
         with self.assertRaisesRegex(source.RiskGateError,'unbounded dynamic'):
             source.pin_paths({'.github/workflows/shared-supabase-migrations.yml':{'type':'blob'},'scripts/run.mjs':{'type':'blob'}},lambda p:'const p=`tools/${name}`')
+        with self.assertRaisesRegex(source.RiskGateError,'unbounded segmented'):
+            source.pin_paths({'.github/workflows/shared-supabase-migrations.yml':{'type':'blob'},'scripts/run.py':{'type':'blob'}},lambda p:"p=ROOT / 'tools' / runtime_name" if p.endswith('.py') else '')
 
     def test_current_disabled_policy_and_credential_sibling_change_refuse(self):
         self.write('scripts/sibling.py','# retired credential protection');self.main=self.commit()
@@ -72,7 +74,7 @@ class ActualGitProducerTests(unittest.TestCase):
         self.assertIn('scripts/atomic_migration_apply.py',pinned)
         self.assertIn('scripts/lib/lanes/exclusive-policy.mjs',pinned)
         self.assertIn('tools/load-customs-benchmark.py',pinned)
-        self.assertNotIn('tools/coldlion-landing/qualify-hts-prepacks.mjs',pinned)
+        self.assertFalse(any(p.endswith('qualify-hts-prepacks.mjs') for p in pinned))
 
     def test_truncated_tree_and_no_comparisons_fail_closed(self):
         self.truncated=True

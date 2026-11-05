@@ -89,7 +89,9 @@ class ProjectionPostgresTests(unittest.TestCase):
             self.assertFalse(c.execute("SELECT has_schema_privilege('designflow_hts_prepack_projection_owner','plm','CREATE')").fetchone()[0])
             for role in ['anon','authenticated']:
                 self.assertFalse(c.execute("SELECT has_table_privilege(%s,'plm.hts_evaluation_prepack_membership','SELECT')",(role,)).fetchone()[0])
-            self.assertEqual(c.execute("SELECT admin_option,inherit_option,set_option FROM pg_auth_members WHERE roleid='designflow_hts_prepack_projection_owner'::regrole AND member=current_user::regrole").fetchall(),[(True,False,False)])
+            self.assertEqual(c.execute("SELECT attname FROM pg_attribute WHERE attrelid='plm.item'::regclass AND attnum>0 AND NOT attisdropped AND has_column_privilege('designflow_hts_prepack_projection_owner','plm.item',attname,'SELECT') ORDER BY attname").fetchall(),[('item_number',),('raw',),('source_system',)])
+            is_super=c.execute("SELECT rolsuper FROM pg_roles WHERE rolname=current_user").fetchone()[0]
+            self.assertEqual(c.execute("SELECT admin_option,inherit_option,set_option FROM pg_auth_members WHERE roleid='designflow_hts_prepack_projection_owner'::regrole AND member=current_user::regrole").fetchall(),[] if is_super else [(True,False,False)])
     def test_failed_transaction_restores_every_object_and_retry(self):
         with self.assertRaises(self.fixture.pg.Error):self.apply(fail=True)
         env={**self.fixture.env,'PGUSER':os.environ.get('HTS_EVALUATION_TEST_CLEANUP_USER','postgres')}
@@ -167,5 +169,19 @@ class ProjectionPostgresTests(unittest.TestCase):
             ]:
                 with self.subTest(mutation=mutate),self.assertRaises(self.fixture.pg.Error),c.transaction():
                     c.execute(mutate);c.execute(contract)
+
+    def test_ep001_missing_canonical_master_coverage_and_explicit_source_filter(self):
+        with self.fixture.admin() as c:
+            c.execute("INSERT INTO plm.item(item_number,raw,source_system) VALUES ('EPFIXTURE','{\"companyCode\":\"C\",\"divisionCode\":\"EP001\"}','coldlion')")
+            c.execute("INSERT INTO coldlion.item_detail(item_no,company_code,division_code,pre_pack_code,item_pkey,run_id,fetched_at,last_seen_at) VALUES ('EPFIXTURE','C','EP001','','one','11111111-1111-4111-8111-111111111111','2026-01-01T00:01:00Z','2026-01-01T00:01:00Z')")
+        self.apply()
+        with self.reader() as c:
+            c.execute('SET ROLE designflow_hts_evaluation_read')
+            self.assertEqual(c.execute("SELECT state,source_complete FROM plm.hts_evaluation_prepack_membership WHERE style_number='EPFIXTURE'").fetchall(),[('unknown',False)])
+        with self.fixture.admin() as c:
+            c.execute('DROP POLICY hts_prepack_projection_owner_source_guard ON plm.item')
+        with self.reader() as c:
+            c.execute('SET ROLE designflow_hts_evaluation_read')
+            self.assertEqual(c.execute("SELECT style_number FROM plm.hts_evaluation_prepack_membership WHERE style_number='OTHER'").fetchall(),[])
 
 if __name__=='__main__':unittest.main()

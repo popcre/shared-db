@@ -148,3 +148,5 @@ Always filter the bounded requested normalized styles before aggregation. The
 existing normalized item lookup and exact ColdLion composite key support this
 route; first inspect an EXPLAIN without ANALYZE under the dedicated identity.
 Preparation, local fixture checks and source merge are not live qualification.
+
+The canonical masters collector excludes division `EP001` from landed item-detail coverage. Its missing canonical full-snapshot proof therefore remains `unknown`; this is a source-coverage limit, not a new classification exclusion. The view also explicitly restricts item contexts to `source_system='coldlion'` in addition to the owner-specific restrictive RLS pair.

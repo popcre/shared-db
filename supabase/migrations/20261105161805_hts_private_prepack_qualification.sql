@@ -28,7 +28,7 @@ $guard$;
 CREATE ROLE designflow_hts_prepack_projection_owner NOLOGIN NOINHERIT NOSUPERUSER
   NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 GRANT USAGE ON SCHEMA plm,coldlion TO designflow_hts_prepack_projection_owner;
-GRANT SELECT (item_number,raw) ON plm.item TO designflow_hts_prepack_projection_owner;
+GRANT SELECT (item_number,raw,source_system) ON plm.item TO designflow_hts_prepack_projection_owner;
 GRANT SELECT (item_no,company_code,division_code,pre_pack_code,run_id,fetched_at,last_seen_at)
   ON coldlion.item_detail TO designflow_hts_prepack_projection_owner;
 GRANT SELECT (id,endpoint,company_code,division_code,request_params,status,started_at,finished_at,requested_by)
@@ -71,6 +71,7 @@ WITH contexts AS (
     nullif(i.raw->>'companyCode','') AS company_code,
     nullif(i.raw->>'divisionCode','') AS division_code
   FROM plm.item i
+  WHERE i.source_system='coldlion'
 )
 SELECT c.style_number,c.company_code,c.division_code,
   d.matched_count AS detail_matched_count,

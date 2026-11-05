@@ -203,7 +203,7 @@
       "admission_lock_contract": "curated-character-admission-5683-v1"
     },
     "20261105161805": {
-      "sha256": "ce6a82665746496a3501854bd940723dab9f0538891015cfcce36dca0a7ceb88",
+      "sha256": "086ad2c7e17545d8523a5691ff71ef4da0ff6626ea3a6e6174c7586d86fce7c6",
       "targets": [
         "preview",
         "production"

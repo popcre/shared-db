@@ -88,5 +88,15 @@ begin
  update va_groups set asset_count=42;
  perform pg_temp.va_refresh_dam_search_style_group_document(gid);
  perform pg_temp.va_assert((select metadata->>'asset_count'='42' from va_docs where entity_id=gid),'business metadata update is retained');
+ -- Direct group-path negatives: do not rely on asset-only refresh coverage.
+ update va_docs set embedding=v,embedding_model='google/siglip2-base-patch16-naflex',embedding_updated_at=now()+interval '2 seconds' where entity_id=gid;
+ update va_assets set modified_at=now()+interval '3 seconds' where id=aid;
+ perform pg_temp.va_refresh_dam_search_style_group_document(gid);
+ perform pg_temp.va_assert((select embedding is null from va_docs where entity_id=gid),'changed authoritative source modified_at defeats group no-op');
+ update va_docs set embedding=v,embedding_model='google/siglip2-base-patch16-naflex',embedding_updated_at=now()+interval '4 seconds' where entity_id=gid;
+ update va_assets set thumbnail_url='https://example.invalid/new-thumbnail.png' where id=aid;
+ update va_groups set primary_thumbnail_url='https://example.invalid/new-thumbnail.png' where id=gid;
+ perform pg_temp.va_refresh_dam_search_style_group_document(gid);
+ perform pg_temp.va_assert((select embedding is null and metadata->>'thumbnail_url'='https://example.invalid/new-thumbnail.png' from va_docs where entity_id=gid),'changed group thumbnail defeats group no-op and refreshes metadata');
 end $$;
 rollback;

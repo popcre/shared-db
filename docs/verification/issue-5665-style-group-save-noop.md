@@ -40,10 +40,11 @@ atomic policy. All other policy entries remain unchanged.
 ## Verification
 
 Actual isolated PostgreSQL17 reproduces the original failure of the unchanged
-legacy full-row/ctid assertion. The new eight-assertion contract passes with a real
+legacy full-row/ctid assertion. The new ten-assertion contract passes with a real
 HNSW index on its synthetic temporary documents, including zero document updates,
 complete pending legacy lease preservation, real keyword and metadata refresh,
-same-URL render invalidation, wrong-model rejection and the actual size trigger.
+same-URL render invalidation, wrong-model rejection, changed source mtime/thumbnail
+and the actual size trigger.
 It runs under the original500ms/2500ms/3s ceilings. The original45-case contract
 is byte-identical and passes against the replacement. These prove semantics, not
 production save latency.

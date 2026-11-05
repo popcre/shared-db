@@ -1,6 +1,8 @@
 # Digital-asset classification, tags, and source evidence
 
-**Status:** Proposed, except the explicitly Settled subsection below.
+**Status:** Proposed
+
+Only the explicitly Settled product-code subsection below is settled; all other rules remain Proposed.
 
 ## Purpose
 

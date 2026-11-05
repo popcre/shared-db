@@ -1,8 +1,8 @@
 # Plan: drop provably unused large indexes on the shared database
-Handoff: [HANDOFF.d/20261105T0203Z-edge-dev3-claude-supabase-assessment-plans.md](HANDOFF.d/20261105T0203Z-edge-dev3-claude-supabase-assessment-plans.md)
-Owning issue: popcre/shared-db#popcre/shared-db#5610. Related: #2427 (large-index findings), #1966 (high-churn tables), [plan_database_efficiency_and_api_security.md](plan_database_efficiency_and_api_security.md) Step 7 ("dated index observation" — this plan executes that step for the largest candidates; tick it there when done), [plan_dam-embedding-claim-speed.md](plan_dam-embedding-claim-speed.md) (#5482, house style).
+Historical assessment handoff (write-once; current state is this plan and #5610): [HANDOFF.d/20261105T0203Z-edge-dev3-claude-supabase-assessment-plans.md](HANDOFF.d/20261105T0203Z-edge-dev3-claude-supabase-assessment-plans.md)
+Owning issue: popcre/shared-db#5610. Related: #2427 (large-index findings), #1966 (high-churn tables), [plan_database_efficiency_and_api_security.md](plan_database_efficiency_and_api_security.md) Step 7 ("dated index observation" — this plan executes that step for the largest candidates; tick it there when done), [plan_dam-embedding-claim-speed.md](plan_dam-embedding-claim-speed.md) (#5482, house style).
 
-## STATUS (2026-11-04 8:55 PM EST)
+## STATUS (2026-11-05 03:44 AM EST)
 | Step | State | Evidence |
 |---|---|---|
 | 0 Open a trustworthy observation window | ✅ complete | [Opening snapshot](docs/verification/database-efficiency/20261105T0335Z/unused-index-window-open.md), November 4, 2026, 10:35 PM EST |
@@ -12,14 +12,14 @@ Owning issue: popcre/shared-db#popcre/shared-db#5610. Related: #2427 (large-inde
 | 4 Preview rehearsal | ⬜ open | — |
 | 5 Land via automatic promotion | ⬜ open | — |
 | 6 Live proof (size freed, no regressions) | ⬜ open | — |
-| 7 Old DAM claim index follow-up | ⬜ open | — |
-Resume at step 1. Opening snapshot found reads on `idx_style_guide_file_tags_tag_status` (72), `idx_assets_ai_tag_untagged_candidates` (2), and old `dam_search_embedding_claim_idx` (18): KEEP all three; no removal is authorized. Four original zero-scan candidates remain (~329 MiB), subject to the full observation and code-path proof. Coordinator owns the existing issue through completion; no date-based background wake is installed. Steps 1–6 cannot start before **2026-11-18 8:55 PM EST** (14 days after the window opened).
+| 7 Old DAM claim index decision | KEEP; no removal | Opening snapshot proved 18 scans; any separate #5482 investigation does not authorize a drop |
+Resume at step 1. Opening snapshot found reads on `idx_style_guide_file_tags_tag_status` (72), `idx_assets_ai_tag_untagged_candidates` (2), and old `dam_search_embedding_claim_idx` (18): KEEP all three; no removal is authorized. Four original zero-scan candidates remain (~329 MiB), subject to the full observation and code-path proof. Coordinator owns the existing issue through completion; no date-based background wake is installed. Steps 1–6 cannot start before **2026-11-18 8:55 PM EST** (the predeclared observation cutoff; reset continuity must still be proved).
 
 ## 1. Ultimate goal
-Albert wants the shared database to cost less and stay fast. Large indexes nobody reads still cost disk, memory (they compete for cache with useful data), backup size, and slow every insert/update on their table. Done means: every index we drop was demonstrably unused over a long, trustworthy window and by every code path we can find, about 1 GB+ of storage is freed, and **no app feature (DAM search, DAM image similarity, style-guide search, HTS ruling search, AI tagging) gets slower or breaks**. A wrongly dropped vector index turns a millisecond search into a full table scan — that is far worse than keeping a useless index. **If a step conflicts with this goal, the goal wins — keep the index, stop, and flag it on #popcre/shared-db#5610.**
+Albert wants the shared database to cost less and stay fast. Large indexes nobody reads still cost disk, memory (they compete for cache with useful data), backup size, and slow every insert/update on their table. Done means: every index we drop was demonstrably unused over a long, trustworthy window and by every code path we can find, the storage occupied by genuinely eligible indexes is freed, with no removal quota, and **no app feature (DAM search, DAM image similarity, style-guide search, HTS ruling search, AI tagging) gets slower or breaks**. A wrongly dropped vector index turns a millisecond search into a full table scan — that is far worse than keeping a useless index. **If a step conflicts with this goal, the goal wins — keep the index, stop, and flag it on popcre/shared-db#5610.**
 
 ## 2. The application
-`popcre/shared-db` owns the shared Supabase Postgres used by DesignFlow (`popcre/designflow-*`), POP DAM (`u2giants/popdam3`, photo/artwork library), PIM, CRM and HTS tariff ruling search. Schema changes are SQL files in `supabase/migrations/`; CI applies each PR to a preview branch, and the automatic promotion workflow applies merged migrations to production (`docs/production-promotion-procedure.md`). No manual production DDL ever.
+`popcre/shared-db` owns the shared Supabase Postgres used by DesignFlow (`popcre/designflow-*`), POP DAM (`u2giants/popdam3`, photo/artwork library), PIM, CRM and HTS tariff ruling search. Schema changes are SQL files in `supabase/migrations/`; the supported workflow rehearses merged-main migrations on the configured preview, and automatic promotion applies them to production (`docs/production-promotion-procedure.md`). No manual production DDL ever.
 
 ## 3. Trigger
 A Supabase technician's report (`/home/ahazan/Dropbox/ai/analysis-detail.md` §4, private, on Albert's machine) listed ~30 indexes with zero scans totalling >1.5 GB. Read-only re-check on 2026-11-04 8:53 PM EST (Supabase MCP `execute_sql`) showed **the report's numbers cover only a few hours**: `pg_postmaster_start_time()` = 2026-11-04 12:52:59 PM EST (server restart wipes cumulative statistics; `pg_stat_database.stats_reset` is NULL, so the restart is the reset). Several "unused" indexes in the report are in fact busy.
@@ -84,7 +84,7 @@ where not i.indisunique and not i.indisprimary and pg_relation_size(s.indexrelid
 ```
 Gate: file committed with both timestamps (EST) and every §6 row.
 
-**Step 1 — Re-measure at ≥14 days.** Re-run step 0's queries. If `pg_postmaster_start_time()` changed, the window restarted — wait again. Save as `.../unused-index-window-close.md`. Gate: same postmaster start time; every candidate still `idx_scan = 0`. Any candidate with scans → move to KEEP.
+**Step 1 — Re-measure at ≥14 days.** Re-run step 0's queries. If `pg_postmaster_start_time()` or the statistics-reset identity changed, the observation is invalid — restart the full interval. Save as `.../unused-index-window-close.md`. Gate: unchanged postmaster and reset identities with monotonic counters; every candidate still `idx_scan = 0`. Any candidate with scans → move to KEEP.
 
 **Step 2 — Code-path proof.** For each surviving candidate: `grep -rn` `supabase/migrations` and `supabase/functions` for the column with `ilike`, `%`, `@>`, `&&`, `to_tsvector('simple'`, `text_hash =`, `tag_id`; run `gh search code "<column>" --repo u2giants/popdam3 --repo popcre/designflow-backend --repo u2giants/popcrm-web --repo u2giants/poppim-web` (consumer ownership follows `.github/workflows/sync.yml`; DesignFlow remains under `popcre`). For `idx_assets_full_text_search` confirm no query uses the *identical* tsvector expression and `where is_deleted = false`; the three proven KEEP indexes in §5 are excluded from this drop-candidate proof. Record each hit/no-hit in `.../unused-index-code-proof.md`. Gate: every drop has a "no reader" line with the searches run.
 
@@ -96,11 +96,11 @@ drop index if exists public.idx_sgf_directory_path_trgm;
 ```
 Gate: `supabase db lint` / repo CI SQL checks pass; no `concurrently` keyword in executable SQL.
 
-**Step 4 — Preview rehearsal.** Open PR (body: `Refs #popcre/shared-db#5610`); CI applies to preview. Run EXPLAIN on preview for representative queries of each affected feature (style-guide tag filter, style-guide path search, DAM full-text search, AI tag candidate claim) and confirm plans don't regress to a Seq Scan on large tables. Gate: CI green and EXPLAIN outputs saved in `.../unused-index-preview.md`.
+**Step 4 — Preview rehearsal.** Open PR (body: `Refs popcre/shared-db#5610`); CI applies to preview. Run EXPLAIN on preview for representative queries of each affected feature (style-guide tag filter, style-guide path search, DAM full-text search, AI tag candidate claim) and confirm plans don't regress to a Seq Scan on large tables. Gate: CI green and EXPLAIN outputs saved in `.../unused-index-preview.md`.
 
 **Step 5 — Land.** Merge when required checks pass; automatic promotion applies to production. Never run it manually. Gate: promotion workflow run succeeded.
 
-**Step 6 — Live proof.** On production: indexes gone (`select to_regclass('public.<name>')` is NULL), `pg_total_relation_size` of each table dropped by roughly the index size, `pg_stat_statements` for the affected features shows no new slow queries over 24 h. Save `.../unused-index-live-proof.md`; tick checklist on #popcre/shared-db#5610 and Step 7 on the efficiency plan.
+**Step 6 — Live proof.** On production: indexes gone (`select to_regclass('public.<name>')` is NULL), `pg_total_relation_size` of each table dropped by roughly the index size, `pg_stat_statements` for the affected features shows no new slow queries over 24 h. Save `.../unused-index-live-proof.md`; tick checklist on popcre/shared-db#5610 and Step 7 on the efficiency plan.
 
 **Step 7 — Old DAM claim index.** Current KEEP: `dam_search_embedding_claim_idx` has 18 scans in the opening snapshot (the earlier historical measurement was 9 by November 4, 2026, 8:41 PM EST). It cannot satisfy this observation window's zero-scan condition and is not in the current drop set. Any query-use follow-up on #5482 remains separate from removal authorization.
 
@@ -108,7 +108,7 @@ Gate: `supabase db lint` / repo CI SQL checks pass; no `concurrently` keyword in
 Add `supabase/tests/unused_index_cleanup_contracts.sql` asserting each dropped name is absent (`to_regclass(...) is null`) and each KEEP index in §6 still exists — so a future cleanup can't silently remove a vector index. Existing `supabase test db` suite (including `popdam_image_similarity_contracts.sql`) stays green.
 
 ## 11. Constraints
-Load `shared-db-change` skill; claim the exact index names on #popcre/shared-db#5610 before writing the migration; `ai-task-gates start --class shared-db`. Production is read-only except via automatic promotion; an open `review-finding` issue blocks promotion. Forward-only migrations; never edit an applied one. Don't hand-edit `types/database.types.ts` (indexes produce no type change). Times in EST. Gotcha: any server restart resets scan counts — always check postmaster start time before trusting `idx_scan`. Gotcha: two indexes share the name `hts_rag_rulings_search_trgm_idx` (public and hts_rag) — always schema-qualify.
+Load `shared-db-change` skill; claim the exact index names on popcre/shared-db#5610 before writing the migration; `ai-task-gates start --class shared-db`. Production is read-only except via automatic promotion; an open `review-finding` issue blocks promotion. Forward-only migrations; never edit an applied one. Don't hand-edit `types/database.types.ts` (indexes produce no type change). Times in EST. Gotcha: any server restart resets scan counts — always check postmaster start time before trusting `idx_scan`. Gotcha: two indexes share the name `hts_rag_rulings_search_trgm_idx` (public and hts_rag) — always schema-qualify.
 
 ## 12. Access
 Supabase MCP `execute_sql` (read-only use) on the shared project; `gh` authenticated for `popcre`; CI provides preview branch. No secrets needed in this plan.

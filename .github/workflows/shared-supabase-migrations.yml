@@ -170,7 +170,7 @@ jobs:
       # version list, and no later record. Every other job needs this job, so a
       # refusal here stops preview and production before they start.
       - name: Refuse a migration-train dispatch that is not the exact recorded train
-        if: startsWith(inputs.migration_train_ref, 'refs/db-index-maintenance-operations/') == false && github.event_name == 'workflow_dispatch' && inputs.migration_train_ref != ''
+        if: github.event_name == 'workflow_dispatch' && inputs.migration_train_ref != '' && startsWith(inputs.migration_train_ref, 'refs/db-index-maintenance-operations/') == false
         env:
           GH_TOKEN: ${{ github.token }}
           TRAIN_REF: ${{ inputs.migration_train_ref }}

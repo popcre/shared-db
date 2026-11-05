@@ -265,6 +265,41 @@ begin
      or not exists(select 1 from pg_temp.sku_sg_pending where sku='#5091-inline') then
     raise exception 'Failed batch advanced or discarded progress';
   end if;
+
+  -- Removed portal inputs invalidate progress without deleting quarantine rows.
+  select count(*) into n from public.sku_style_guide_links where sku like '#5091-%';
+  delete from public.sku_style_contract_index;
+  perform public.prepare_sku_style_guide_resolution(false);
+  while (public.resolve_sku_style_guide_batch(1)->>'sku_rows')::integer > 0 loop null; end loop;
+  if (select count(*) from public.sku_style_guide_links where sku like '#5091-%') <> n then
+    raise exception 'Incremental portal deletion removed quarantined evidence';
+  end if;
+  update public.sku_style_guide_links set last_seen_at='2000-01-01'
+    where sku='#5091-inline' and source_system='contract';
+  perform public.prepare_sku_style_guide_resolution(false);
+  if exists(select 1 from public.sku_style_guide_links where sku='#5091-inline'
+    and source_system='contract' and last_seen_at<>'2000-01-01'::timestamptz) then
+    raise exception 'Unchanged run refreshed removed portal evidence';
+  end if;
+
+  -- Changing a saved sheet label computes new keys and queues its existing SKU.
+  update public.pdf_text_samples set extracted_text='CORE/STYLE GUIDE USED: The Changed Guide'
+    where asset_id='50910000-0000-0000-0000-000000000001';
+  n := public.prepare_sku_style_guide_resolution(false);
+  if n <> 1 then raise exception 'Changed PDF label must queue its SKU: %',n;end if;
+  perform public.resolve_sku_style_guide_batch(1);
+  if not exists(select 1 from public.sku_style_guide_links where sku='#5091-inline'
+    and source_system='sheet_declared' and source_style_guide_key='changed guide') then
+    raise exception 'Changed sheet key did not converge';
+  end if;
+  update public.sku_style_guide_links set last_seen_at='2000-01-01'
+    where sku='#5091-inline' and source_system='sheet_declared' and source_style_guide_key='hero guide';
+  n := public.prepare_sku_style_guide_resolution(false);
+  if n <> 0 or exists(select 1 from public.sku_style_guide_links where sku='#5091-inline'
+    and source_system='sheet_declared' and source_style_guide_key='hero guide'
+    and last_seen_at<>'2000-01-01'::timestamptz) then
+    raise exception 'Removed sheet declaration was refreshed or deleted';
+  end if;
 end;
 $incremental$;
 

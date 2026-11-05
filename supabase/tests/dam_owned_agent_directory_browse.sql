@@ -22,6 +22,7 @@ DECLARE
  result jsonb;
  payload jsonb := '[{"name":"日本語 directory","is_dir":true,"extra":{"preserved":"yes"}},{"name":"art.ai","is_dir":false,"size":123}]';
  original jsonb;
+ next_before jsonb;
  role_name text;
  fn regprocedure;
 BEGIN
@@ -44,12 +45,15 @@ BEGIN
  IF public.claim_agent_directory_browse(bridge) IS NULL THEN RAISE EXCEPTION 'lease not redelivered'; END IF;
  IF public.complete_agent_directory_browse(bridge,r1,payload) IS NOT TRUE THEN RAISE EXCEPTION 'completion rejected'; END IF;
  original:=public.get_agent_directory_browse_result(r1,a);
+ IF original->>'agent_id' IS DISTINCT FROM bridge::text OR original->'listed_at' IS DISTINCT FROM original->'completed_at' THEN RAISE EXCEPTION 'wire aliases'; END IF;
  IF original->'entries' IS DISTINCT FROM payload OR original->>'path' IS DISTINCT FROM '' OR original->>'status' IS DISTINCT FROM 'completed' THEN RAISE EXCEPTION 'full original result not preserved'; END IF;
  IF public.complete_agent_directory_browse(bridge,r1,payload) IS NOT TRUE OR public.complete_agent_directory_browse(bridge,r1,'[]') IS NOT FALSE
     OR public.get_agent_directory_browse_result(r1,a) IS DISTINCT FROM original THEN RAISE EXCEPTION 'duplicate changed first result'; END IF;
  IF public.admit_agent_directory_browse(bridge,r2,b,E'\\\\server\\share\\日本語')->>'status' IS DISTINCT FROM 'admitted' THEN RAISE EXCEPTION 'next request'; END IF;
  IF public.get_agent_directory_browse_result(r1,a) IS DISTINCT FROM original OR public.get_agent_directory_browse_result(NULL,a) IS DISTINCT FROM original THEN RAISE EXCEPTION 'next actor erased prior result'; END IF;
+ next_before:=public.get_agent_directory_browse_result(r2,b);
  IF public.complete_agent_directory_browse(bridge,r1,'[]') IS NOT FALSE THEN RAISE EXCEPTION 'old report replaced result'; END IF;
+ IF public.get_agent_directory_browse_result(r1,a) IS DISTINCT FROM original OR public.get_agent_directory_browse_result(r2,b) IS DISTINCT FROM next_before THEN RAISE EXCEPTION 'changed old response modified either preimage'; END IF;
  IF public.cancel_agent_directory_browse(r2,b) IS NOT TRUE OR public.complete_agent_directory_browse(bridge,r2,payload) IS NOT FALSE THEN RAISE EXCEPTION 'cancel/late report'; END IF;
  IF public.admit_agent_directory_browse(win,r3,a,'Unicode 日本語')->>'status' IS DISTINCT FROM 'admitted' OR public.claim_agent_directory_browse(win) IS NULL THEN RAISE EXCEPTION 'Windows independent claim'; END IF;
  UPDATE dam.agent_directory_browse_requests SET expires_at=clock_timestamp()-interval '1 second' WHERE request_id=r3;
@@ -84,6 +88,10 @@ RESET ROLE;
 SET LOCAL ROLE service_role;
 DO $$ BEGIN
  IF public.get_agent_directory_browse_result('56520000-0000-0000-0000-000000000021','56520000-0000-0000-0000-000000000001')->>'status' IS DISTINCT FROM 'completed' THEN RAISE EXCEPTION 'actual service role invocation failed'; END IF;
+ IF public.admit_agent_directory_browse('56520000-0000-0000-0000-000000000011','56520000-0000-0000-0000-000000000026','56520000-0000-0000-0000-000000000001','service')->>'status' IS DISTINCT FROM 'admitted' THEN RAISE EXCEPTION 'service admission'; END IF;
+ IF public.claim_agent_directory_browse('56520000-0000-0000-0000-000000000011')->>'request_id' IS DISTINCT FROM '56520000-0000-0000-0000-000000000026' THEN RAISE EXCEPTION 'service claim'; END IF;
+ IF public.complete_agent_directory_browse('56520000-0000-0000-0000-000000000011','56520000-0000-0000-0000-000000000026','[]') IS NOT TRUE THEN RAISE EXCEPTION 'service completion'; END IF;
+ IF public.cancel_agent_directory_browse('56520000-0000-0000-0000-000000000026','56520000-0000-0000-0000-000000000001') IS NOT FALSE THEN RAISE EXCEPTION 'service cancel terminal'; END IF;
 END $$;
 RESET ROLE;
 -- At most 100 old own-agent terminal rows are removed, never another agent's.

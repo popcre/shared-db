@@ -186,6 +186,7 @@ jobs:
           python scripts/test_automatic_index_maintenance.py
           python scripts/test_index_maintenance_workflow_gate.py
           python scripts/test_prepare_index_maintenance_activation.py
+          python scripts/test_table_repack_maintenance.py
           node --test scripts/index-maintenance-receipt.test.mjs
       - name: Refuse a mixed maintenance/migration dispatch
         if: github.event_name == 'workflow_dispatch' && startsWith(inputs.migration_train_ref, 'refs/db-index-maintenance-operations/')
@@ -2351,6 +2352,21 @@ jobs:
           version: 2.105.0
       - name: Install the existing pinned protected database driver
         run: python -m pip install 'psycopg[binary]==3.2.13'
+      # Table-repack operations only (popdam3#804, shared-db#5742): the pg_repack
+      # client must equal the server extension (1.5.2). Fixed archived PGDG
+      # package, sha256-pinned, extracted without installing anything.
+      - name: Fetch the pinned pg_repack 1.5.2 client
+        if: contains(inputs.migration_train_ref, '/repack-')
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/pg_repack"; mkdir -p "$dir"
+          curl -fsSL --retry 3 --max-time 120 -o "$dir/client.deb" \
+            'https://apt-archive.postgresql.org/pub/repos/apt/pool/main/p/pg-repack/postgresql-17-repack_1.5.2-2.pgdg24.04%2B1_amd64.deb'
+          echo 'f7924f0c5916fcb913085ba0a0998960b582c27627769481cced56224616e94f  '"$dir/client.deb" | sha256sum -c -
+          dpkg-deb -x "$dir/client.deb" "$dir/x"
+          bin="$dir/x/usr/lib/postgresql/17/bin/pg_repack"
+          test "$("$bin" --version)" = 'pg_repack 1.5.2'
+          echo "PG_REPACK_BIN=$bin" >> "$GITHUB_ENV"
       - name: Link the exact protected target
         env:
           DISPATCH_REF: ${{ inputs.migration_train_ref }}

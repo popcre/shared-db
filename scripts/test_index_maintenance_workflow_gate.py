@@ -3,6 +3,8 @@
 All data is synthetic. No GitHub, secret service, network or database calls occur.
 """
 import argparse
+import io
+from contextlib import redirect_stdout
 import copy
 import json
 import os
@@ -15,6 +17,8 @@ from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 import nontransactional_index_maintenance as maintenance
 import review_finding_hold
+import automatic_index_maintenance as automatic
+import automatic_promotion_candidates as promotion
 from test_nontransactional_index_maintenance import entry,FakeDB,MemoryReceipts
 
 PREVIEW='a'*20
@@ -73,6 +77,28 @@ class WorkflowGateTests(unittest.TestCase):
         self.assertEqual(result['PGPORT'],'5432')
         self.assertEqual(result['_SOURCE_MERGE_SHA'],MERGE)
         self.assertTrue(any(args[0]=='node' and args[-1]=='admit' for args in self.calls))
+
+    def test_enabled_automatic_selector_dispatch_is_consumed_by_real_preview_gate(self):
+        policy_path=self.root/'synthetic-policy.json';policy_path.write_text(json.dumps(self.policy))
+        records={};dispatches=[]
+        def read(ref):return records.get(ref)
+        def create(ref,value):records[ref]=value;return value
+        def dispatch_process(args,**kwargs):
+            self.assertEqual(args[:3],['gh','workflow','run'])
+            fields=dict(args[i+1].split('=',1) for i,value in enumerate(args) if value=='-f')
+            dispatches.append(fields)
+            return subprocess.CompletedProcess(args,0,'','')
+        with patch.dict(os.environ,self.env,clear=True),patch.object(maintenance,'POLICY',policy_path),patch.object(maintenance,'gh',side_effect=self.api),patch.object(promotion,'workflow_runs',return_value=[]),patch.object(promotion,'is_held',return_value=False),patch.object(maintenance.Receipts,'read',side_effect=read),patch.object(maintenance.Receipts,'create',side_effect=create),patch.object(automatic.subprocess,'run',side_effect=dispatch_process),patch.object(sys,'argv',['automatic_index_maintenance.py']),redirect_stdout(io.StringIO()):
+            self.assertEqual(automatic.main(),0)
+        self.assertEqual(len(dispatches),1)
+        fields=dispatches[0]
+        self.assertEqual(fields['target'],'preview')
+        self.assertEqual(fields['mode'],'apply')
+        self.assertNotIn('preview_allowlist',fields)
+        self.options.dispatch_ref=fields['migration_train_ref']
+        self.options.source_sha=fields['commit_sha']
+        self.dispatch=records[self.options.dispatch_ref]
+        self.assertEqual(self.execute_gate()['_SOURCE_MERGE_SHA'],MERGE)
 
     def test_each_wrong_live_run_binding_refuses_before_native_admission_or_credentials(self):
         cases=[('id',999),('path','.github/workflows/other.yml'),('head_sha','d'*40),('head_branch','other'),

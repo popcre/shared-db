@@ -5,6 +5,8 @@ import os
 import pathlib
 import re
 import subprocess
+import selectors
+import time
 import unittest
 import uuid
 
@@ -127,15 +129,28 @@ class BatchedAnchors(unittest.TestCase):
             self.assertIn('#5703 installed',r.stderr)
 
     def test_outer_existing_five_second_budget_cancels_blocked_batch(self):
-        locker=subprocess.Popen(['docker','exec','-i',self.container,'psql','-X','-At','-v','ON_ERROR_STOP=1','-U','postgres'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        locker=subprocess.Popen(['docker','exec','-i',self.container,'psql','-X','-At','-q','-v','ON_ERROR_STOP=1','-U','postgres'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
         try:
-            locker.stdin.write("BEGIN;LOCK dam.search_group_vectors IN ACCESS EXCLUSIVE MODE;SELECT 'lock-ready';SELECT pg_sleep(6);ROLLBACK;\n");locker.stdin.flush()
-            for _ in range(4):
-                if locker.stdout.readline().strip()=='lock-ready':break
-            else:self.fail('owned test lock was not observable')
+            locker.stdin.write("BEGIN;LOCK dam.search_group_vectors IN ACCESS EXCLUSIVE MODE;SELECT 'lock-ready';\n");locker.stdin.flush()
+            ready=selectors.DefaultSelector();buffer=b'';deadline=time.monotonic()+3
+            try:
+                os.set_blocking(locker.stdout.fileno(),False)
+                ready.register(locker.stdout,selectors.EVENT_READ)
+                while b'\n' not in buffer:
+                    remaining=deadline-time.monotonic()
+                    if remaining<=0 or not ready.select(timeout=remaining):self.fail('owned lock readiness deadline expired')
+                    chunk=os.read(locker.stdout.fileno(),4096)
+                    if not chunk:self.fail('owned locker exited before readiness')
+                    buffer+=chunk
+                self.assertEqual(buffer.split(b'\n',1)[0],b'lock-ready')
+            finally:ready.close()
             r=self.sql("SET statement_timeout='5s';SELECT * FROM public.dam_search_semantic_anchors("+vector(0)+','+vector(1)+",ARRAY['style_group'])",False)
             self.assertNotEqual(r.returncode,0);self.assertIn('canceling statement due to statement timeout',r.stderr)
         finally:
-            locker.stdin.close();locker.wait(timeout=8);locker.stdout.close();locker.stderr.close()
+            try:locker.stdin.write('ROLLBACK;\n');locker.stdin.flush()
+            finally:locker.stdin.close()
+            try:locker.wait(timeout=5)
+            except subprocess.TimeoutExpired:locker.kill();locker.wait(timeout=2)
+            locker.stdout.close();locker.stderr.close()
 
 if __name__=='__main__':unittest.main()

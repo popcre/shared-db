@@ -823,6 +823,7 @@ jobs:
         if: inputs.mode == 'dry-run' && (inputs.historical_preview_source_pr == '' && inputs.historical_preview_source_pr_map == '')
         env:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_PREVIEW }}
+          DESIGNFLOW_HTS_EVALUATION_PASSWORD: ${{ secrets.DESIGNFLOW_HTS_EVALUATION_PASSWORD_PREVIEW }}
           PREVIEW_ALLOWLIST: ${{ inputs.preview_allowlist }}
         run: |
           cd "$RUNNER_TEMP/bounded-preview"
@@ -862,6 +863,7 @@ jobs:
         if: inputs.mode == 'apply' && (inputs.historical_preview_source_pr == '' && inputs.historical_preview_source_pr_map == '')
         env:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_PREVIEW }}
+          DESIGNFLOW_HTS_EVALUATION_PASSWORD: ${{ secrets.DESIGNFLOW_HTS_EVALUATION_PASSWORD_PREVIEW }}
           PREVIEW_ALLOWLIST: ${{ inputs.preview_allowlist }}
         run: |
           cd "$RUNNER_TEMP/bounded-preview"
@@ -878,6 +880,9 @@ jobs:
             --migrations-dir "$RUNNER_TEMP/bounded-preview/supabase/migrations" \
             --target preview --classify-allowlist "$PREVIEW_ALLOWLIST")"
           if [ -n "$ATOMIC_VERSION" ]; then
+            if [ "$ATOMIC_VERSION" = "20261105121341" ]; then
+              python -m pip install 'psycopg[binary]==3.2.13'
+            fi
             psql --version
             EXPECTED_PROJECT_REF="$PREVIEW_PROJECT_REF" python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
               --migrations-dir "$RUNNER_TEMP/bounded-preview/supabase/migrations" \
@@ -2139,6 +2144,7 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_PRODUCTION }}
+          DESIGNFLOW_HTS_EVALUATION_PASSWORD: ${{ secrets.DESIGNFLOW_HTS_EVALUATION_PASSWORD_PRODUCTION }}
           PRODUCTION_ALLOWLIST: ${{ inputs.production_allowlist }}
           DERIVATION_OVERRIDE: ${{ inputs.derivation_override }}
         run: |
@@ -2165,6 +2171,9 @@ jobs:
             --migrations-dir "$RUNNER_TEMP/bounded-production/supabase/migrations" \
             --target production --classify-allowlist "$PRODUCTION_ALLOWLIST")"
           if [ -n "$ATOMIC_VERSION" ]; then
+            if [ "$ATOMIC_VERSION" = "20261105121341" ]; then
+              python -m pip install 'psycopg[binary]==3.2.13'
+            fi
             psql --version
             EXPECTED_PROJECT_REF="$PRODUCTION_PROJECT_REF" python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
               --migrations-dir "$RUNNER_TEMP/bounded-production/supabase/migrations" \

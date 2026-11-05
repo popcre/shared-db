@@ -35,7 +35,7 @@ $function$;
 revoke all on function public.get_search_embedding_health() from public,anon;
 grant execute on function public.get_search_embedding_health() to authenticated,service_role;
 
-create function public.reset_dam_search_embedding_errors(p_category text,p_limit integer)
+create function public.reset_dam_search_embedding_errors(p_category text,p_limit integer,p_document_type text)
 returns integer language plpgsql security definer set search_path = public
 as $function$
 declare affected integer;
@@ -52,6 +52,7 @@ begin
     from public.dam_search_documents d
     where d.embedding is null and d.embedding_error is not null
       and (p_category is null or d.embedding_error_category=p_category)
+      and (p_document_type is null or d.document_type=p_document_type)
       and nullif(btrim(d.metadata->>'thumbnail_url'),'') is not null
       and (d.embedding_lease_expires_at is null or d.embedding_lease_expires_at <= now())
     order by d.indexed_at,d.document_type,d.entity_id
@@ -65,6 +66,16 @@ begin
   get diagnostics affected=row_count;
   return affected;
 end;
+$function$;
+revoke all on function public.reset_dam_search_embedding_errors(text,integer,text) from public,anon,authenticated;
+grant execute on function public.reset_dam_search_embedding_errors(text,integer,text) to service_role;
+
+-- Keep the plan's two-argument contract, while the explicit three-argument
+-- form preserves the existing admin action's optional document-type filter.
+create function public.reset_dam_search_embedding_errors(p_category text,p_limit integer)
+returns integer language sql security invoker set search_path = public
+as $function$
+  select public.reset_dam_search_embedding_errors(p_category,p_limit,null::text);
 $function$;
 revoke all on function public.reset_dam_search_embedding_errors(text,integer) from public,anon,authenticated;
 grant execute on function public.reset_dam_search_embedding_errors(text,integer) to service_role;

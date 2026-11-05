@@ -6,7 +6,8 @@ begin
   if has_function_privilege('anon','public.get_search_embedding_health()','execute')
      or not has_function_privilege('authenticated','public.get_search_embedding_health()','execute')
      or has_function_privilege('authenticated','public.reset_dam_search_embedding_errors(text,integer)','execute')
-     or not has_function_privilege('service_role','public.reset_dam_search_embedding_errors(text,integer)','execute') then
+     or not has_function_privilege('service_role','public.reset_dam_search_embedding_errors(text,integer)','execute')
+     or has_function_privilege('authenticated','public.reset_dam_search_embedding_errors(text,integer,text)','execute') then
     raise exception 'search health/reset grants invalid';
   end if;
   perform set_config('request.jwt.claims','{"role":"authenticated"}',true);
@@ -46,6 +47,8 @@ begin
   if health.pending <> 1 or not health.stale or health.errored <> 5 then
     raise exception 'health ignores eligibility or missing-write age: %',row_to_json(health);
   end if;
+  recovered := public.reset_dam_search_embedding_errors('permanent',1,'style_group');
+  if recovered <> 0 then raise exception 'document-type filter ignored'; end if;
   recovered := public.reset_dam_search_embedding_errors('permanent',1);
   if recovered <> 1 or (select count(*) from public.dam_search_documents where embedding_error is null) <> 1 then
     raise exception 'bounded reset did not recover exactly one';

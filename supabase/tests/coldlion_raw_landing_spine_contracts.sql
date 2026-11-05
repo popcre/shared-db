@@ -76,11 +76,35 @@ begin
       raise exception 'C FAILED: RLS is not enabled on coldlion.%', v_table;
     end if;
 
-    -- No policies at all: this layer is not row-filtered for applications, it is
-    -- closed to them.
-    if exists (select 1 from pg_policies
-               where schemaname = 'coldlion' and tablename = v_table) then
-      raise exception 'C FAILED: coldlion.% carries an RLS policy; the spine is closed, not filtered', v_table;
+    -- #5447 adds exactly two server-owner SELECT guards on sync_run. The
+    -- NOLOGIN owner is not an application role and exposes only a typed view.
+    -- Other spine tables remain completely closed; browser/loader checks below
+    -- are unchanged. No generic policy exemption is permitted.
+    if v_table='sync_run' then
+      if (select array_agg(policyname::text order by policyname) from pg_policies
+          where schemaname='coldlion' and tablename=v_table)
+         is distinct from array['hts_prepack_projection_owner_select','hts_prepack_projection_owner_source_guard'] then
+        raise exception 'C FAILED: sync_run does not have exactly the private source-owner policy pair';
+      end if;
+      if exists (select from pg_policies where schemaname='coldlion' and tablename=v_table
+        and (cmd is distinct from 'SELECT' or roles is distinct from array['designflow_hts_prepack_projection_owner']::name[]
+          or with_check is not null
+          or permissive is distinct from case policyname when 'hts_prepack_projection_owner_select' then 'PERMISSIVE' else 'RESTRICTIVE' end
+          or regexp_replace(qual,'[[:space:]()]','','g') is distinct from 'endpoint=''/itemDetails''::text')) then
+        raise exception 'C FAILED: private source-owner policy widened its command, role, predicate or mode';
+      end if;
+      if not exists (select from pg_roles where rolname='designflow_hts_prepack_projection_owner'
+          and not (rolcanlogin or rolinherit or rolsuper or rolcreatedb or rolcreaterole or rolreplication or rolbypassrls))
+         or not exists (select from pg_class where oid=to_regclass('plm.hts_evaluation_prepack_membership')
+           and relowner='designflow_hts_prepack_projection_owner'::regrole
+           and reloptions @> array['security_barrier=true','security_invoker=false'])
+         or pg_has_role('designflow_hts_evaluation_read','designflow_hts_prepack_projection_owner','SET')
+         or has_column_privilege('designflow_hts_evaluation_read','coldlion.sync_run','request_params','SELECT') then
+        raise exception 'C FAILED: private projection owner/view/metadata boundary is not intact';
+      end if;
+    elsif exists (select 1 from pg_policies
+                  where schemaname = 'coldlion' and tablename = v_table) then
+      raise exception 'C FAILED: coldlion.% carries an unexpected RLS policy', v_table;
     end if;
 
     foreach v_role in array array['anon', 'authenticated'] loop
@@ -111,7 +135,7 @@ begin
     end loop;
   end loop;
 
-  raise notice 'C PASSED: RLS on, no policies, no application grants, loader can write.';
+  raise notice 'C PASSED: RLS on, exact private-owner guards only, no application grants, loader can write.';
 end;
 $$;
 

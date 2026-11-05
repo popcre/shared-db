@@ -45,6 +45,10 @@ begin
   where id = any(ids[1:5]);
   create temporary table primary_noop_preimages as
     select * from public.style_groups where id = any(ids);
+  -- Force stale search hashes so independently owned no-op search guards can
+  -- still demonstrate one necessary repair for every visited group.
+  update public.dam_search_documents set content_sha256=repeat('0',64)
+  where document_type='style_group' and entity_id=any(ids);
   truncate pg_temp.primary_noop_group_writes, pg_temp.primary_noop_search_writes;
 
   n := public.refresh_style_group_primaries(ids);
@@ -85,6 +89,8 @@ begin
         and search_text like '%ZZ5662 Renamed%') then
     raise exception '5662: character-name-only search catch-up';
   end if;
+  update public.dam_search_documents set content_sha256=repeat('0',64)
+  where document_type='style_group' and entity_id=ids[1];
   truncate pg_temp.primary_noop_group_writes,pg_temp.primary_noop_search_writes;
   n := public.refresh_style_group_primaries(array[ids[1],ids[1]]);
   if n <> 1

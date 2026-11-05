@@ -4,7 +4,6 @@
 -- derived-from: none
 -- These are complete reader definitions over existing canonical tables/access checks.
 -- The superseded source is provenance only: none of its objects or ledger entry is required.
-begin;
 create or replace function public.get_dam_asset_taxonomy_counts()
 returns jsonb language plpgsql stable security definer set search_path = '' set statement_timeout = '8s'
 as $$
@@ -74,4 +73,3 @@ revoke all on function public.get_dam_style_group_asset_count(jsonb,timestamptz,
 grant execute on function public.get_dam_asset_taxonomy_counts() to authenticated,service_role;
 grant execute on function public.get_dam_order_list_status_counts() to authenticated,service_role;
 grant execute on function public.get_dam_style_group_asset_count(jsonb,timestamptz,uuid[],text[]) to authenticated,service_role;
-commit;

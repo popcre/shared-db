@@ -44,3 +44,11 @@ The committed read-only live-proof probe requires three consecutive scheduled ni
 ## Delivery still required
 
 Shared-preview real-data timing and equivalence; publication and automatic promotion; generated-type workflow artifact; actual catch-up; three consecutive successful nightly runs. Track all of these on #5608. These local observations do not claim production acceptance.
+
+## Shared-preview read-only baseline — November 4, 2026, 11:05 PM EST
+
+The configured preview target was resolved from the repository variable and matched against the live parent-project branch metadata immediately before each query. Approved privileged API requests explicitly used BEGIN READ ONLY, SET LOCAL statement_timeout='55s', EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) of only the extracted SELECT arm, and ROLLBACK. A preliminary transaction check confirmed role postgres and transaction_read_only=on. No resolver was invoked and no shared database row/schema was modified.
+
+The three committed sku-arm-*-baseline.sql files are the original resolver's SELECT-only arm queries. Their corresponding JSON plans contain execution metadata, not returned licensed rows. Filename arm: 10,231.344 ms; sheet-declared arm: 404.224 ms; declared-label-to-portal arm: 13,315.944 ms. Planning times: 155.290 / 83.202 / 69.886 ms, respectively. Live count queries showed 565,210 portal-view rows and 3,132 PDF samples; this preview has realistic portal cardinality but substantially fewer PDF samples than production, so the separate synthetic full-PDF workload remains necessary.
+
+These are pre-migration baselines, not revised preview acceptance. The unapplied source migration was routinely re-reserved as 20261105040055 to stay above the sibling migration landing first; SQL bytes and measured local behavior are unchanged. Its registered hash-bound sidecar pins the exact fixed-list key-only backfill function body.

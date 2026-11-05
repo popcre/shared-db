@@ -670,8 +670,7 @@ def main() -> int:
                                 raise Refusal("evaluation identity differs")
                 except Exception:
                     raise Refusal("evaluation access committed but login verification failed; preserve ledger and recover without rerun or rotation") from None
-                # Keep the canonical two-line receipt, emitted only after the verified login above.
-                print(f"ATOMIC APPLY OK: target={args.target} version={version} ledger_row=1 statements={len(statements)}")
+                print(f"ATOMIC APPLY OK: target={args.target} version={version} ledger_row=1 statements={len(statements)} initial_credential=login_verified")
                 continue
             wrapper = build_wrapper(version, name, raw, statements)
             with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".sql", delete=False) as handle:

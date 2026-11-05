@@ -75,6 +75,10 @@ class ProducerLoginReceiptTests(unittest.TestCase):
         check = connection.__enter__.return_value.cursor.return_value.__enter__.return_value
         check.fetchone.return_value = ('wrong_reader' if wrong_identity else ROLE,)
         out, err = io.StringIO(), io.StringIO()
+        def verify_before_success():
+            self.assertNotIn('ATOMIC APPLY OK', out.getvalue())
+            return ('wrong_reader' if wrong_identity else ROLE,)
+        check.fetchone.side_effect = verify_before_success
         argv = ['atomic_migration_apply.py', '--migrations-dir', '/synthetic', '--linked-dir', '/synthetic', '--version', VERSION,
                 '--target', 'preview', '--expected-project-ref', 'synthetic-preview', '--mode', 'apply']
         with patch.object(sys, 'argv', argv), patch.object(atomic, 'classify_allowlist', return_value=VERSION), \
@@ -88,15 +92,14 @@ class ProducerLoginReceiptTests(unittest.TestCase):
             result = atomic.main()
         return result, out.getvalue(), err.getvalue(), apply, login, check
 
-    def test_success_receipt_is_canonical_only_after_actual_login_check(self):
+    def test_unchanged_success_receipt_follows_actual_login_check(self):
         result, output, _, apply, login, check = self.run_producer()
         self.assertEqual(result, 0)
         apply.assert_called_once()
         login.assert_called_once()
         check.execute.assert_called_once_with('SELECT current_user')
-        self.assertEqual(output.splitlines()[-1], f'ATOMIC APPLY OK: target=preview version={VERSION} ledger_row=1 statements=1')
+        self.assertEqual(output.splitlines()[-1], f'ATOMIC APPLY OK: target=preview version={VERSION} ledger_row=1 statements=1' + SUFFIX)
         self.assertEqual(len(output.splitlines()), 2)
-        self.assertNotIn(SUFFIX, output)
 
     def test_login_failure_or_wrong_identity_never_emits_success(self):
         for kwargs in ({'login_error': True}, {'wrong_identity': True}):

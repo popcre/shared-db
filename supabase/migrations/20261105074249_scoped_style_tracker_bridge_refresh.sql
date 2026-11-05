@@ -3,7 +3,6 @@
 -- Share the existing matching bodies through private overloads. Existing full
 -- callers keep their zero-argument entry points. No row is rewritten on apply.
 -- Global catalog/evidence reads are retained; only bridge write candidates scope.
-begin;
 
 CREATE OR REPLACE FUNCTION plm.refresh_style_tracker_item_bridge(p_row_ids uuid[])
  RETURNS TABLE(inserted_count integer, updated_count integer, total_count integer)
@@ -568,5 +567,3 @@ revoke all on function public.refresh_style_tracker_item_bridge_rows(uuid[]) fro
 grant execute on function public.refresh_style_tracker_item_bridge_rows(uuid[]) to authenticated;
 comment on function public.refresh_style_tracker_item_bridge_rows(uuid[]) is
   'Refresh one to 25 exact Styles rows and their bridge designer resolution; preserve every other bridge row. Full refresh callers retain the zero-argument RPC.';
-
-commit;

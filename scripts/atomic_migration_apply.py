@@ -33,7 +33,7 @@ CURATED_CHARACTER_LOCK_SQL = (
 )
 # The successor admits only the two reviewed complete target witness packets.
 CURATED_TARGET_CONTRACT = "curated-character-admission-5683-target-v2"
-CURATED_TARGET_VERSION = "20261105160717"
+CURATED_TARGET_VERSION = "20261105182200"
 CURATED_TARGET_SHA256 = "71cf9920249f4ac4df0ad5711d7bd276aba5825fa45676c4f4dc63d2b2912d5e"
 CURATED_TARGET_PROJECTS = {"preview": "mvpkijzfmfcxhnzqogzs", "production": "qsllyeztdwjgirsysgai"}
 VERSION_RE = re.compile(r"^(\d{14})_(.+)\.sql$")

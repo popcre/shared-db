@@ -20,7 +20,7 @@ import atomic_migration_apply as atomic
 URL = os.environ.get('T2_TARGET_TEST_DATABASE_URL', '')
 if not re.fullmatch(r'postgres(?:ql)?://postgres@127\.0\.0\.1:\d+/t2_curated_target', URL):
     raise RuntimeError('Dedicated localhost t2_curated_target database required')
-RAW = (atomic.ROOT / 'supabase/migrations/20261105160717_target_bound_publisher_character_curation.sql').read_text()
+RAW = (atomic.ROOT / 'supabase/migrations/20261105182200_target_bound_publisher_character_curation.sql').read_text()
 PARENTS = ['a03fff4b-65f4-4fd6-98ad-c9db3216b140', 'b96edc00-9261-46ec-af93-9de0f5b88d48']
 PARENT_HASHES = ['c60b4b8c468491a776eeaa2055107d1f', '90251184f71c72503ec125057f347349']
 WITNESS_HASHES = {'preview': ['39c07e12bf848133109e25c159b1dc77', 'ac4126d56fdae4ae0548e350d7fbeb48'],
@@ -135,7 +135,7 @@ class TargetCuration(unittest.TestCase):
                     parent = PARENTS.index(row['licensor_id'])
                     expected = WITNESS_HASHES[target][parent]
                     self.assertEqual(row['metadata']['coldlion_witness_md5'], self.replacements.get(expected, expected))
-                path = atomic.ROOT / 'supabase/migrations/20261105160717_target_bound_publisher_character_curation.sql'
+                path = atomic.ROOT / 'supabase/migrations/20261105182200_target_bound_publisher_character_curation.sql'
                 checks = native.load_behavior_sidecars(atomic.ROOT, {atomic.CURATED_TARGET_VERSION:path}, [atomic.CURATED_TARGET_VERSION])
                 rows = json.loads(query(native.build_behavior_sql(checks)).stdout)['behavior_checks']
                 self.assertEqual(len(rows),4); self.assertTrue(all(r['actual_count']==r['expected_count']==1 for r in rows))

@@ -13,7 +13,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import atomic_migration_apply as atomic
 
-RAW = (atomic.ROOT / 'supabase/migrations/20261105160717_target_bound_publisher_character_curation.sql').read_text()
+RAW = (atomic.ROOT / 'supabase/migrations/20261105182200_target_bound_publisher_character_curation.sql').read_text()
 
 
 class TargetBinding(unittest.TestCase):
@@ -97,7 +97,7 @@ class TargetBinding(unittest.TestCase):
 
     def test_exact_source_and_four_check_sidecar(self):
         self.assertEqual(hashlib.sha256(RAW.encode()).hexdigest(), atomic.CURATED_TARGET_SHA256)
-        sidecar = json.loads((atomic.ROOT / 'scripts/production-verification-sidecars/20261105160717.json').read_text())
+        sidecar = json.loads((atomic.ROOT / 'scripts/production-verification-sidecars/20261105182200.json').read_text())
         self.assertEqual(sidecar['migration_sha256'], atomic.CURATED_TARGET_SHA256)
         self.assertEqual(len(sidecar['checks']), 4)
         predecessor = json.loads((atomic.ROOT / 'scripts/production-verification-sidecars/20261105142616.json').read_text())

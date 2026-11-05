@@ -66,6 +66,8 @@ begin
   end if;
 
   if pg_get_functiondef('plm.refresh_style_tracker_item_bridge()'::regprocedure)
+       not like '%select * from plm.refresh_style_tracker_item_bridge(null::uuid[])%'
+     or pg_get_functiondef('plm.refresh_style_tracker_item_bridge(uuid[])'::regprocedure)
        not like '%FROM plm.legacy_erp_item_identity%'
      or pg_get_functiondef('public.resolve_product_category_prediction_item_identity()'::regprocedure)
        not like '%from plm.legacy_erp_item_identity legacy%'

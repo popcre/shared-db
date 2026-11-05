@@ -34,7 +34,12 @@ begin
     raise exception '#2482: erp_item_id column was dropped; it must be kept';
   end if;
 
-  select pg_get_functiondef('plm.refresh_style_tracker_item_bridge()'::regprocedure)
+  -- The legacy entry point delegates full mode; inspect the implementation as well.
+  if pg_get_functiondef('plm.refresh_style_tracker_item_bridge()'::regprocedure)
+       not like '%select * from plm.refresh_style_tracker_item_bridge(null::uuid[])%' then
+    raise exception 'legacy bridge wrapper no longer delegates full refresh';
+  end if;
+  select pg_get_functiondef('plm.refresh_style_tracker_item_bridge(uuid[])'::regprocedure)
   into function_body;
 
   if function_body not like '%CASE WHEN count(*) = 1 THEN min(id::text)::uuid END AS id%'

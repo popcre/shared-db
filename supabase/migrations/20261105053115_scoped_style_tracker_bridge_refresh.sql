@@ -14,7 +14,9 @@ DECLARE
   v_before integer;
   v_after integer;
 BEGIN
-  SELECT count(*) INTO v_before FROM plm.style_tracker_item_bridge;
+  IF p_row_ids IS NULL THEN
+    SELECT count(*) INTO v_before FROM plm.style_tracker_item_bridge;
+  END IF;
 
   WITH erp_matches AS (
     SELECT upper(trim(style_number)) AS normalized_sku, CASE WHEN count(*) = 1 THEN min(id::text)::uuid END AS id, count(*) AS candidate_count
@@ -58,6 +60,16 @@ BEGIN
     WHERE coalesce(style_number, item_number) IS NOT NULL AND trim(coalesce(style_number, item_number)) <> ''
     GROUP BY upper(trim(coalesce(style_number, item_number)))
   ),
+  row_source AS (
+    -- Separate branches keep bounded mode eligible for the primary-key index,
+    -- including a cached generic plan; NULL retains the original full caller.
+    SELECT r.* FROM public.style_tracker_rows r
+    WHERE p_row_ids IS NULL AND r.source_sheet IN ('License.Style', 'Generic.Style')
+    UNION ALL
+    SELECT r.* FROM public.style_tracker_rows r
+    WHERE p_row_ids IS NOT NULL AND r.id = ANY(p_row_ids)
+      AND r.source_sheet IN ('License.Style', 'Generic.Style')
+  ),
   row_values AS (
     SELECT
       r.*,
@@ -65,23 +77,38 @@ BEGIN
       plm.normalize_style_tracker_value('customer', r.customer) AS customer_norm,
       plm.normalize_style_tracker_value('licensor', r.licensor) AS licensor_norm,
       plm.normalize_style_tracker_value('factory', r.default_vendor) AS factory_norm
+    FROM row_source r
+  ),
+  fuzzy_source_values AS (
+    -- Full mode retains the original source. Bounded mode reads only the
+    -- narrow evidence columns globally, never every complete Styles row.
+    SELECT customer, licensor, default_vendor, customer_norm, licensor_norm, factory_norm
+    FROM row_values WHERE p_row_ids IS NULL
+    UNION ALL
+    SELECT r.customer, r.licensor, r.default_vendor,
+      plm.normalize_style_tracker_value('customer', r.customer),
+      plm.normalize_style_tracker_value('licensor', r.licensor),
+      plm.normalize_style_tracker_value('factory', r.default_vendor)
     FROM public.style_tracker_rows r
-    WHERE r.source_sheet IN ('License.Style', 'Generic.Style')
+    WHERE p_row_ids IS NOT NULL AND r.source_sheet IN ('License.Style', 'Generic.Style')
   ),
   customer_values AS (
     SELECT DISTINCT customer_norm, customer
-    FROM row_values
+    FROM fuzzy_source_values
     WHERE customer_norm IS NOT NULL
+      AND (p_row_ids IS NULL OR customer_norm IN (SELECT customer_norm FROM row_values))
   ),
   licensor_values AS (
     SELECT DISTINCT licensor_norm, licensor
-    FROM row_values
+    FROM fuzzy_source_values
     WHERE licensor_norm IS NOT NULL
+      AND (p_row_ids IS NULL OR licensor_norm IN (SELECT licensor_norm FROM row_values))
   ),
   factory_values AS (
     SELECT DISTINCT factory_norm, default_vendor
-    FROM row_values
+    FROM fuzzy_source_values
     WHERE factory_norm IS NOT NULL
+      AND (p_row_ids IS NULL OR factory_norm IN (SELECT factory_norm FROM row_values))
   ),
   fuzzy_customers AS (
     SELECT DISTINCT ON (v.customer_norm)
@@ -324,8 +351,11 @@ BEGIN
   INTO inserted_count, updated_count, total_count
   FROM upserted;
 
-  SELECT count(*) INTO v_after FROM plm.style_tracker_item_bridge;
-  inserted_count := greatest(v_after - v_before, 0);
+  IF p_row_ids IS NULL THEN
+    -- Preserve legacy full-refresh accounting only for that original mode.
+    SELECT count(*) INTO v_after FROM plm.style_tracker_item_bridge;
+    inserted_count := greatest(v_after - v_before, 0);
+  END IF;
 
   RETURN NEXT;
 END;
@@ -518,8 +548,10 @@ begin
     raise exception 'Styles access requires a signed-in user' using errcode = '42501';
   end if;
   if p_row_ids is null or cardinality(p_row_ids) = 0
-     or cardinality(p_row_ids) > 25 or array_ndims(p_row_ids) <> 1
-     or array_position(p_row_ids, null) is not null
+     or cardinality(p_row_ids) > 25 or array_ndims(p_row_ids) <> 1 then
+    raise exception 'Provide one to 25 distinct non-null Styles row IDs' using errcode = '22023';
+  end if;
+  if array_position(p_row_ids, null) is not null
      or cardinality(p_row_ids) <> (select count(distinct id) from unnest(p_row_ids) as ids(id)) then
     raise exception 'Provide one to 25 distinct non-null Styles row IDs' using errcode = '22023';
   end if;

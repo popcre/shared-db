@@ -33,7 +33,14 @@ where id='00000000-5639-4000-8000-000000000101';
 select set_config('request.jwt.claim.sub', '00000000-7541-4000-8000-000000000002', true);
 select set_config('request.jwt.claims', '{"sub":"00000000-7541-4000-8000-000000000002","role":"authenticated"}', true);
 set local role authenticated;
-select * from public.refresh_style_tracker_item_bridge_rows(array['00000000-5639-4000-8000-000000000101'::uuid]);
+do $test$
+declare result record;
+begin
+  select * into result from public.refresh_style_tracker_item_bridge_rows(array['00000000-5639-4000-8000-000000000101'::uuid]);
+  if result.inserted_count <> 0 or result.updated_count <> 1 or result.total_count <> 1 then
+    raise exception 'bounded result did not count exactly its one existing bridge row';
+  end if;
+end $test$;
 do $test$
 declare ids uuid[];
 begin

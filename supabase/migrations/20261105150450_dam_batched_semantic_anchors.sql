@@ -9,7 +9,7 @@ begin
   if to_regprocedure('public.dam_search_semantic_anchors(extensions.vector,extensions.vector,text[])') is not null then
     raise exception '#5703 target already exists; reconcile rather than overwrite';
   end if;
-  if (select md5(prosrc) from pg_proc where oid='public.dam_search_semantic_anchor(extensions.vector,text[])'::regprocedure)
+  if (select md5(prosrc) from pg_proc where oid=to_regprocedure('public.dam_search_semantic_anchor(extensions.vector,text[])'))
        is distinct from 'dd26e420c8dbd998696b4db95d5d7091' then
     raise exception '#5703 original anchor changed; rebase and prove equivalence first';
   end if;

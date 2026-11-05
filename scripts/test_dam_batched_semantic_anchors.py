@@ -1,4 +1,4 @@
-"""Opt-in isolated real pgvector equivalence/permission/one-pass drills (#5703)."""
+"""Always-run scope contracts and opt-in isolated pgvector drills (#5703)."""
 import json
 import hashlib
 import os
@@ -15,6 +15,38 @@ MIGRATION=ROOT/'supabase/migrations/20261105150450_dam_batched_semantic_anchors.
 
 def vector(axis=None):
     return "'["+','.join('1' if i==axis else '0' for i in range(768))+"]'::extensions.vector"
+
+class ScopeContracts(unittest.TestCase):
+    def test_scope_gates_match_original(self):
+        old=(ROOT/'supabase/migrations/20261102003027_dam_dense_group_vectors.sql').read_text()
+        old=old[old.index('create or replace function public.dam_search_semantic_anchor('):]
+        batch=MIGRATION.read_text()
+        def normalized(text):
+            return re.sub(r'\s+', '', text).lower()
+        def gates(source):
+            ann=re.search(r"p_document_types is null\s+or exists \(select 1 from unnest\(p_document_types\) t where t is distinct from 'style_group'\)",source)
+            exact=re.search(r"where (p_document_types is not null.*?and d.document_type\s*=\s*'style_group')",source,re.S)
+            document=re.search(r"\(p_document_types is null or d.document_type\s*=\s*any\(p_document_types\)\)",source)
+            self.assertIsNotNone(ann, 'ANN scope gate missing')
+            self.assertIsNotNone(exact, 'exact scope gate missing')
+            self.assertIsNotNone(document, 'document scope filter missing')
+            # The original has a planner comment after its literal type filter.
+            exact_text=re.sub(r'--[^\n]*', '', exact.group(1))
+            return tuple(normalized(text) for text in (ann.group(),exact_text,document.group()))
+        self.assertEqual(gates(batch),gates(old))
+
+    def test_missing_original_guard_is_null_safe(self):
+        guard=MIGRATION.read_text().split('$guard$;')[0]
+        self.assertIn("oid=to_regprocedure('public.dam_search_semantic_anchor(extensions.vector,text[])')",guard)
+        self.assertNotIn('::regprocedure',guard)
+        self.assertIn("is distinct from 'dd26e420c8dbd998696b4db95d5d7091'",guard)
+        self.assertIn('#5703 original anchor changed',guard)
+
+    def test_acl_contract_checks_non_owner_grants(self):
+        contract=(ROOT/'supabase/tests/dam_batched_semantic_anchors_contracts.sql').read_text()
+        self.assertIn("aclexplode(coalesce(f.proacl,acldefault('f',f.proowner)))",contract)
+        self.assertIn('where x.grantee<>f.proowner',contract)
+        self.assertIn("a is distinct from array['authenticated:EXECUTE','service_role:EXECUTE']",contract)
 
 @unittest.skipUnless(os.environ.get('DAM_BATCH_ANCHOR_DOCKER')=='1','explicit isolated Docker drill required')
 class BatchedAnchors(unittest.TestCase):

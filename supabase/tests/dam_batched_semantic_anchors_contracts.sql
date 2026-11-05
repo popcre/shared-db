@@ -10,8 +10,9 @@ begin
    raise exception '#5703 installed function metadata drift';
  end if;
  select array_agg(coalesce(r.rolname,'PUBLIC')||':'||x.privilege_type order by coalesce(r.rolname,'PUBLIC'),x.privilege_type)
- into a from aclexplode(f.proacl) x left join pg_roles r on r.oid=x.grantee;
- if a is distinct from array['authenticated:EXECUTE','postgres:EXECUTE','service_role:EXECUTE'] then
+ into a from aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) x
+ left join pg_roles r on r.oid=x.grantee where x.grantee<>f.proowner;
+ if a is distinct from array['authenticated:EXECUTE','service_role:EXECUTE'] then
    raise exception '#5703 installed execute ACL drift';
  end if;
  if (select md5(prosrc) from pg_proc where oid='public.dam_search_semantic_anchor(extensions.vector,text[])'::regprocedure)

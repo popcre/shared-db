@@ -50,6 +50,10 @@ begin
   ) v(id,n,file_date,licensed,customer,program,category,preview,error)
   where g.id=v.id;
 
+  -- Follow the ordinary invitation-only signup path; both signup triggers stay enabled.
+  insert into public.invitations(email)
+  values('audit-count-entitled-'||suffix||'@example.invalid'),
+    ('audit-count-denied-'||suffix||'@example.invalid');
   insert into auth.users(id,email)
   values(entitled,'audit-count-entitled-'||suffix||'@example.invalid'),(denied,'audit-count-denied-'||suffix||'@example.invalid');
   insert into app.profile(auth_user_id,email,display_name,status)

@@ -48,6 +48,14 @@ class ActualGitProducerTests(unittest.TestCase):
     def test_actual_tracked_nested_tool_change_refuses_even_when_three_old_producers_unchanged(self):
         self.write('tools/worker.mjs','export const x=2');self.main=self.commit()
         with self.assertRaisesRegex(source.RiskGateError,'producer/current policy changed'):self.prove()
+    def test_segmented_pathlib_runtime_tool_read_is_pinned_and_unbounded_tool_read_refuses(self):
+        self.write('scripts/runtime.py',"from pathlib import Path\np=Path(__file__)/'tools'/'worker.mjs'\n")
+        self.base=self.commit();self.main=self.base
+        self.write('tools/worker.mjs','export const x=9');self.main=self.commit()
+        with self.assertRaisesRegex(source.RiskGateError,'producer/current policy changed'):self.prove()
+        with self.assertRaisesRegex(source.RiskGateError,'unbounded dynamic'):
+            source.pin_paths({'.github/workflows/shared-supabase-migrations.yml':{'type':'blob'},'scripts/run.py':{'type':'blob'}},lambda p:'const p=`tools/${name}`')
+
     def test_current_disabled_policy_and_credential_sibling_change_refuse(self):
         self.write('scripts/sibling.py','# retired credential protection');self.main=self.commit()
         with self.assertRaisesRegex(source.RiskGateError,'producer/current policy changed'):self.prove()

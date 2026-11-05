@@ -44,6 +44,11 @@ def pin_paths(tree, read):
         body=read(path)
         # All explicit tool paths, including subprocess commands/runtime reads.
         dependencies=set(TOOL.findall(body))
+        # Python pathlib's / 'tools' / 'name.py' is also a runtime input.
+        for expression in re.findall(r'''["']tools["'](?:\s*/\s*["'][A-Za-z0-9_.@/-]+["'])+''',body):
+            dependencies.add('/'.join(re.findall(r'''["']([^"']+)["']''',expression)))
+        if re.search(r'''tools/(?:\$|\{|["'])''',body):
+            raise RiskGateError('unbounded dynamic maintenance tool dependency')
         # Both import/export-from and dynamic literal imports; nested ../ works.
         for rel in re.findall(r'(?:from\s*|import\s*\()\s*[\'\"](\.{1,2}/[^\'\"]+)[\'\"]',body):
             parts=[]

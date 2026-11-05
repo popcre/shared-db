@@ -372,6 +372,17 @@ jobs:
             python scripts/test_hts_evaluation_access_postgres.py
 
 
+      - name: Prove exact initial health index crash and concurrent-writer safety
+        if: needs.classify.outputs.database_contract_tests == 'applicable'
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 54322
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGDATABASE: postgres
+          HEALTH_INITIAL_CREATE_DISPOSABLE: "1"
+        run: python scripts/test_health_initial_index_maintenance_postgres.py
+
       - name: Prove preview ledger reconciliation rolls back an in-lock failure
         if: needs.classify.outputs.database_contract_tests == 'applicable'
         env:

@@ -847,7 +847,7 @@ jobs:
             psql --version
             EXPECTED_PROJECT_REF="$PREVIEW_PROJECT_REF" python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
               --migrations-dir "$RUNNER_TEMP/bounded-preview/supabase/migrations" \
-              --linked-dir "$RUNNER_TEMP/bounded-preview" --version "$ATOMIC_VERSION" \
+              --linked-dir "$RUNNER_TEMP/bounded-preview" --versions "$ATOMIC_VERSION" \
               --target preview --expected-project-ref "$PREVIEW_PROJECT_REF" --mode check \
               | tee "$RUNNER_TEMP/preview-dry-run.txt"
           else
@@ -881,12 +881,12 @@ jobs:
             psql --version
             EXPECTED_PROJECT_REF="$PREVIEW_PROJECT_REF" python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
               --migrations-dir "$RUNNER_TEMP/bounded-preview/supabase/migrations" \
-              --linked-dir "$RUNNER_TEMP/bounded-preview" --version "$ATOMIC_VERSION" \
+              --linked-dir "$RUNNER_TEMP/bounded-preview" --versions "$ATOMIC_VERSION" \
               --target preview --expected-project-ref "$PREVIEW_PROJECT_REF" --mode check \
               | tee "$RUNNER_TEMP/preview-dry-run.txt"
             EXPECTED_PROJECT_REF="$PREVIEW_PROJECT_REF" python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
               --migrations-dir "$RUNNER_TEMP/bounded-preview/supabase/migrations" \
-              --linked-dir "$RUNNER_TEMP/bounded-preview" --version "$ATOMIC_VERSION" \
+              --linked-dir "$RUNNER_TEMP/bounded-preview" --versions "$ATOMIC_VERSION" \
               --target preview --expected-project-ref "$PREVIEW_PROJECT_REF" --mode apply \
               | tee "$RUNNER_TEMP/preview-apply.txt"
           else
@@ -1556,7 +1556,7 @@ jobs:
             psql --version
             EXPECTED_PROJECT_REF="$PRODUCTION_PROJECT_REF" python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
               --migrations-dir "$RUNNER_TEMP/bounded-production/supabase/migrations" \
-              --linked-dir "$RUNNER_TEMP/bounded-production" --version "$ATOMIC_VERSION" \
+              --linked-dir "$RUNNER_TEMP/bounded-production" --versions "$ATOMIC_VERSION" \
               --target production --expected-project-ref "$PRODUCTION_PROJECT_REF" --mode check \
               | tee "$RUNNER_TEMP/production-dry-run.txt"
           else
@@ -2168,12 +2168,12 @@ jobs:
             psql --version
             EXPECTED_PROJECT_REF="$PRODUCTION_PROJECT_REF" python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
               --migrations-dir "$RUNNER_TEMP/bounded-production/supabase/migrations" \
-              --linked-dir "$RUNNER_TEMP/bounded-production" --version "$ATOMIC_VERSION" \
+              --linked-dir "$RUNNER_TEMP/bounded-production" --versions "$ATOMIC_VERSION" \
               --target production --expected-project-ref "$PRODUCTION_PROJECT_REF" --mode check \
               | tee "$RUNNER_TEMP/production-dry-run.txt"
             EXPECTED_PROJECT_REF="$PRODUCTION_PROJECT_REF" python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
               --migrations-dir "$RUNNER_TEMP/bounded-production/supabase/migrations" \
-              --linked-dir "$RUNNER_TEMP/bounded-production" --version "$ATOMIC_VERSION" \
+              --linked-dir "$RUNNER_TEMP/bounded-production" --versions "$ATOMIC_VERSION" \
               --target production --expected-project-ref "$PRODUCTION_PROJECT_REF" --mode apply \
               | tee "$RUNNER_TEMP/production-apply.txt"
           else

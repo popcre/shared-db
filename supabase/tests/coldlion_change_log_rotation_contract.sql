@@ -1,4 +1,4 @@
--- Issue #5758 — contract for coldlion.rotate_change_log (migration 20261106015340).
+-- Issue #5758 — contract for coldlion.rotate_change_log (migration 20261106021547).
 -- Albert 2026-11-05: "everything for the past 7 days, then once a day for the
 -- previous 2 months, then once a week for year". Each record's newest entry is
 -- never deleted. Everything below is synthetic (ZZ*) and rolled back.

@@ -98,6 +98,7 @@ jobs:
           echo "::error::CI INFRASTRUCTURE: PostgreSQL client unavailable after ${attempts} attempts (apt mirror stall on the hosted runner -- NOT a fault in the change under review); NO RECONCILIATION WAS PERFORMED"
           exit 1
       - name: Prove exact current main and preview-only intent
+        id: intent
         env:
           MAIN_SHA: ${{ inputs.main_sha }}
           ORPHAN: ${{ inputs.orphan_version }}
@@ -128,7 +129,24 @@ jobs:
               raise SystemExit('REFUSED: reconciliation tuple is not uniquely allowlisted by the reviewed manifest')
           PY
           [[ "$ORPHAN" =~ ^[0-9]{14}$ && "$REPLACEMENT" =~ ^[0-9]{14}$ ]]
-          if [ "$ORPHAN" = "$REPLACEMENT" ]; then
+          # Issue #5816: a statements-NULL preview row written outside the governed
+          # apply has no preview-run artifact. Its manifest case is keyed by issue,
+          # claim, open source PR and version; the same-version confirmation names
+          # it, and the version must have NO file on current main.
+          NULL_CASE="$(python - "$ISSUE" "$CLAIM" "$SOURCE_PR" "$ORPHAN" <<'PY'
+          import json,sys
+          data=json.load(open('config/preview-ledger-orphan-reconciliations.json',encoding='utf-8'))
+          issue,claim,source_pr=int(sys.argv[1]),int(sys.argv[2]),int(sys.argv[3]); version=sys.argv[4]
+          rows=[r for r in data.get('cases',[]) if r.get('mode')=='preview_null_statements_orphan' and r.get('issue')==issue and r.get('claim')==claim and r.get('source_pr')==source_pr and r.get('orphan_version')==version]
+          print('yes' if len(rows)==1 else 'no')
+          PY
+          )"
+          if [ "$NULL_CASE" = "yes" ]; then
+            test "$ORPHAN" = "$REPLACEMENT"
+            test -z "$(find supabase/migrations -maxdepth 1 -name "${ORPHAN}_*.sql" -print -quit)"
+            echo "kind=null-statements" >> "$GITHUB_OUTPUT"
+          elif [ "$ORPHAN" = "$REPLACEMENT" ]; then
+            echo "kind=replacement" >> "$GITHUB_OUTPUT"
             python - "$ISSUE" "$CLAIM" "$SOURCE_PR" "$ORPHAN" <<'PY'
           import json,sys
           data=json.load(open('config/preview-ledger-orphan-reconciliations.json',encoding='utf-8'))
@@ -138,12 +156,27 @@ jobs:
           PY
             test -n "$(find supabase/migrations -maxdepth 1 -name "${ORPHAN}_*.sql" -print -quit)"
           else
+            echo "kind=replacement" >> "$GITHUB_OUTPUT"
             test -z "$(find supabase/migrations -maxdepth 1 -name "${ORPHAN}_*.sql" -print -quit)"
           fi
       - name: Acquire exclusive preview recovery lock
         env: {MAIN_SHA: "${{ inputs.main_sha }}", SOURCE_PR: "${{ inputs.source_pr }}", ISSUE: "${{ inputs.issue }}"}
         run: node scripts/manage-migration-coordination.mjs --acquire-preview-recovery --admit-issue "$ISSUE" --owner "github-actions:${GITHUB_RUN_ID}" --pr "$SOURCE_PR" --head-sha "$MAIN_SHA" > "$RUNNER_TEMP/preview-lock.json"
+      - name: Fetch GitHub evidence for a statements-NULL orphan
+        if: steps.intent.outputs.kind == 'null-statements'
+        env:
+          ISSUE: ${{ inputs.issue }}
+          CLAIM: ${{ inputs.claim }}
+          SOURCE_PR: ${{ inputs.source_pr }}
+        run: |
+          set -euo pipefail
+          node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" --out "$RUNNER_TEMP/issue.json" api "repos/${GITHUB_REPOSITORY}/issues/$ISSUE"
+          node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" --out "$RUNNER_TEMP/claim.json" api "repos/${GITHUB_REPOSITORY}/issues/$CLAIM"
+          node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" --out "$RUNNER_TEMP/pr.json" api "repos/${GITHUB_REPOSITORY}/pulls/$SOURCE_PR"
+          node "$GITHUB_WORKSPACE/scripts/gh-read.mjs" --out "$RUNNER_TEMP/pr-files-pages.json" api --paginate "repos/${GITHUB_REPOSITORY}/pulls/$SOURCE_PR/files?per_page=100"
+          python -c 'import json,sys; p=json.load(open(sys.argv[1])); json.dump([x for page in p for x in page] if p and isinstance(p[0],list) else p,open(sys.argv[2],"w"))' "$RUNNER_TEMP/pr-files-pages.json" "$RUNNER_TEMP/pr-files.json"
       - name: Fetch immutable GitHub evidence
+        if: steps.intent.outputs.kind == 'replacement'
         env:
           ISSUE: ${{ inputs.issue }}
           CLAIM: ${{ inputs.claim }}
@@ -168,6 +201,7 @@ jobs:
           mkdir "$RUNNER_TEMP/preview-evidence"
           unzip -q "$RUNNER_TEMP/preview.zip" -d "$RUNNER_TEMP/preview-evidence"
       - name: Materialize exact reviewed and applied source commits
+        if: steps.intent.outputs.kind == 'replacement'
         run: |
           set -euo pipefail
           PR_HEAD="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["head"]["sha"])' "$RUNNER_TEMP/pr.json")"
@@ -187,7 +221,29 @@ jobs:
           supabase link --project-ref "$PREVIEW_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
           grep -F "$PREVIEW_PROJECT_REF" supabase/.temp/pooler-url
           ! grep -F "$PRODUCTION_PROJECT_REF_NEVER_WRITE_HERE" supabase/.temp/pooler-url
+      - name: Exact proof with no write (statements-NULL orphan)
+        if: steps.intent.outputs.kind == 'null-statements'
+        env: {MAIN_SHA: "${{ inputs.main_sha }}", ORPHAN: "${{ inputs.orphan_version }}", ISSUE: "${{ inputs.issue }}", CLAIM: "${{ inputs.claim }}", SOURCE_PR: "${{ inputs.source_pr }}"}
+        run: |
+          python scripts/preview_ledger_orphan_reconcile.py --mode check --reconciliation preview-null-statements \
+            --repo "$GITHUB_WORKSPACE" --linked-dir "$GITHUB_WORKSPACE" --expected-project-ref "$PREVIEW_PROJECT_REF" \
+            --main-sha "$MAIN_SHA" --orphan-version "$ORPHAN" --issue "$ISSUE" --claim "$CLAIM" --source-pr "$SOURCE_PR" \
+            --issue-json "$RUNNER_TEMP/issue.json" --claim-json "$RUNNER_TEMP/claim.json" --pr-json "$RUNNER_TEMP/pr.json" --pr-files-json "$RUNNER_TEMP/pr-files.json" \
+            --evidence-out "$RUNNER_TEMP/reconciliation-check.json"
+      - name: Transactional one-row reconciliation (statements-NULL orphan)
+        if: steps.intent.outputs.kind == 'null-statements'
+        env: {MAIN_SHA: "${{ inputs.main_sha }}", ORPHAN: "${{ inputs.orphan_version }}", ISSUE: "${{ inputs.issue }}", CLAIM: "${{ inputs.claim }}", SOURCE_PR: "${{ inputs.source_pr }}"}
+        run: |
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$MAIN_SHA"
+          MAIN_SHA="$MAIN_SHA" node scripts/check-main-tip-freshness.mjs
+          python scripts/preview_ledger_orphan_reconcile.py --mode apply --reconciliation preview-null-statements \
+            --repo "$GITHUB_WORKSPACE" --linked-dir "$GITHUB_WORKSPACE" --expected-project-ref "$PREVIEW_PROJECT_REF" \
+            --main-sha "$MAIN_SHA" --orphan-version "$ORPHAN" --issue "$ISSUE" --claim "$CLAIM" --source-pr "$SOURCE_PR" \
+            --issue-json "$RUNNER_TEMP/issue.json" --claim-json "$RUNNER_TEMP/claim.json" --pr-json "$RUNNER_TEMP/pr.json" --pr-files-json "$RUNNER_TEMP/pr-files.json" \
+            --evidence-out "$RUNNER_TEMP/reconciliation-apply.json"
       - name: Exact proof with no write
+        if: steps.intent.outputs.kind == 'replacement'
         env:
           MAIN_SHA: ${{ inputs.main_sha }}
           ORPHAN: ${{ inputs.orphan_version }}
@@ -208,6 +264,7 @@ jobs:
             --run-json "$RUNNER_TEMP/run.json" --run-jobs-json "$RUNNER_TEMP/run-jobs.json" --artifact-json "$RUNNER_TEMP/artifact.json" --preview-evidence-dir "$RUNNER_TEMP/preview-evidence" \
             --evidence-out "$RUNNER_TEMP/reconciliation-check.json"
       - name: Transactional one-row reconciliation
+        if: steps.intent.outputs.kind == 'replacement'
         env:
           MAIN_SHA: ${{ inputs.main_sha }}
           ORPHAN: ${{ inputs.orphan_version }}

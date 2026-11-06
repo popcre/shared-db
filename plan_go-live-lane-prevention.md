@@ -2,7 +2,7 @@
 
 Freeze the merge window across the whole go-live · classify infrastructure failures so they stop burning a change's attempts · make every stall loud within the hour.
 
-Session handoff (read together with this plan): [`HANDOFF.d/20261105T2302Z-edge-dev-mimo-go-live-prevention-plan.md`](HANDOFF.d/20261105T2302Z-edge-dev-mimo-go-live-prevention-plan.md). Tracking issue (carries `- [ ] live proof`): [#5782](https://github.com/popcre/shared-db/issues/5782).
+Session handoff retired at closeout (see row 4.3); the former `HANDOFF.d/20261105T2302Z-edge-dev-mimo-go-live-prevention-plan.md` remains available in git history. Tracking issue (carries `- [ ] live proof`): [#5782](https://github.com/popcre/shared-db/issues/5782).
 
 ## STATUS
 

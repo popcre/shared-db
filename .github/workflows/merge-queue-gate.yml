@@ -11,8 +11,9 @@ name: Merge Queue Gate
 #   1. single-PR identity: resolves the ONE pull request the merge_group ref
 #      names and re-verifies it against the live API, and proves its head is
 #      contained in the synthetic group commit;
-#   2. ascending migration versions: re-runs the SQL guards, production
-#      sidecars, live-proof probe and version ordering;
+#   2. collision-free migration versions (step 2.7: crossed versions land in
+#      merge order): re-runs the SQL guards, production sidecars, live-proof
+#      probe and the duplicate-version check;
 #   3. the preview hold: when the PRECEDING main commit added migrations, the
 #      group waits until that exact commit carries
 #      `Post-merge preview rehearsal: success`.

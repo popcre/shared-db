@@ -1,4 +1,4 @@
--- Contract tests for 20261106145649_plm_security_definer_execute_lockdown.sql
+-- Contract tests for 20261106163507_plm_security_definer_execute_lockdown.sql
 -- (issue #4474, claim #5880). Self-contained begin/rollback: nothing persists
 -- even when run directly; CI additionally wraps it
 -- (.github/workflows/database-contract-tests.yml).

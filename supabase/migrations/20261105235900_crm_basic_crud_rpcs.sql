@@ -1,3 +1,6 @@
+-- Version renamed from 20261105231500 (applied to preview under that number; the preview
+-- ledger row was renamed with it) because the base branch advanced past it.
+-- Body is otherwise byte-identical to what preview ran.
 -- Claim and work issue #5791 (popcrm-web #24, plan_crm_basic_crud.md Step 1).
 -- CRM basic add/archive/merge RPCs. Archive state is CRM-owned:
 --   contacts  -> crm.contact_ext.archived_at (mirrors the defunct marking of

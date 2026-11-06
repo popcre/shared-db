@@ -26,6 +26,10 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    # Step 2.8 (#2367): every job gets its own budget. This suite runs shell
+    # tests that never wait on external state; twenty minutes is far above its
+    # observed run time and a hang must fail on its own budget (#1266).
+    timeout-minutes: 20
     steps:
       - name: Check out shared-db
         uses: actions/checkout@v4

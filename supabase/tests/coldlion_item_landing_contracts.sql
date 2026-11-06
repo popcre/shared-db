@@ -411,7 +411,7 @@ begin
   insert into coldlion.item_header
     (company_code, division_code, item_no, run_id, fetched_at,
      source_hash, first_seen_at, last_seen_at)
-  values ('ZZTEST', 'ZZ003', 'ZZLABEL', v_run, v_now, repeat('g', 64), v_now, v_now);
+  values ('ZZTEST', 'ZZ003', 'ZZLABEL', v_run, v_now, repeat('a1b2', 16), v_now, v_now);
 
   insert into coldlion.item_merch_group
     (company_code, division_code, item_no, item_pkey, slot_no, mg_code,

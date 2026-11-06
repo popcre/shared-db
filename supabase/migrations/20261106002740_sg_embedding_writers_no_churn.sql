@@ -39,7 +39,9 @@ begin
      or extensions.vector_dims(p_embedding) is distinct from 768 then
     raise exception 'unsupported embedding model or dimension' using errcode = '22023';
   end if;
-  select (embedding is not distinct from p_embedding
+  -- pgvector has no equality operator; the text cast is the canonical exact
+  -- value comparison ('[v1,v2,...]' with the same formatting on both sides).
+  select (embedding::text is not distinct from p_embedding::text
           and embedding_model is not distinct from p_embedding_model
           and embedding_error is null
           and embedding_error_category is null

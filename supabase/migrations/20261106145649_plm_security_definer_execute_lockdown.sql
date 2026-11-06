@@ -6,7 +6,7 @@
 -- `plm.apply_style_tracker_designer_resolutions()` and
 -- `plm.refresh_style_tracker_item_bridge()` are SECURITY DEFINER, owned by
 -- `postgres`, and both write `plm.style_tracker_item_bridge`. On production
--- (qsllyeztdwjgirsysgai, read-only, re-verified 2026-11-06 ~3:00 PM EST and
+-- (qsllyeztdwjgirsysgai, read-only, re-verified 2026-11-06 ~10:00 AM EST and
 -- before that 2026-11-05 5:45 PM EST) both carried
 --
 --   proacl = {=X/postgres, postgres=X/postgres, service_role=X/postgres}

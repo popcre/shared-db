@@ -235,7 +235,9 @@ with baseline as (
     expected_input_base||jsonb_build_object('sha256',encode(extensions.digest(expected_input_base::text,'sha256'),'hex')) end as expected_input,
   case when embedding_lease_token is null then
     embedding_lease_owner is null and embedding_lease_expires_at is null
-      and not (actual_metadata ? '_embedding_lease_input_sha256')
+      and (not (actual_metadata ? '_embedding_lease_input_sha256') or
+        (jsonb_typeof(actual_metadata->'_embedding_lease_input_sha256')='string'
+         and (actual_metadata->>'_embedding_lease_input_sha256') ~ '^[0-9a-f]{64}$'))
    else nullif(btrim(embedding_lease_owner),'') is not null
     and embedding_lease_expires_at is not null and isfinite(embedding_lease_expires_at)
     and jsonb_typeof(actual_metadata->'_embedding_lease_input_sha256')='string'
@@ -247,8 +249,8 @@ with baseline as (
     and actual_metadata is not distinct from
       core_metadata||case when expected_input is null or legacy_unchanged then '{}'::jsonb
         else jsonb_build_object('_embedding_input',expected_input) end
-      ||case when embedding_lease_token is null then '{}'::jsonb else
-        jsonb_build_object('_embedding_lease_input_sha256',actual_metadata->'_embedding_lease_input_sha256') end,false)) as all_match
+      ||case when actual_metadata ? '_embedding_lease_input_sha256' then
+        jsonb_build_object('_embedding_lease_input_sha256',actual_metadata->'_embedding_lease_input_sha256') else '{}'::jsonb end,false)) as all_match
  from metadata_checked
 )
 select case

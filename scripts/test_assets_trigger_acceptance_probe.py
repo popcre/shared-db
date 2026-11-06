@@ -161,19 +161,50 @@ select count(*) cases,count(*) filter(where passed=expected_pass) correct,
 """
 
 
+def family_fixture_sql():
+    source = PROBE.read_text()
+    proof = source[source.index('), family_proof as (')+3:source.index('), table_stats as (')]
+    proof = proof.replace('from baseline b', 'from baseline b')
+    cases = [('unchanged_identity',True),('new_entry',True),('new_other_role_db_top',True)]
+    cases += [(name,False) for name in ['missing','duplicate_current','duplicate_baseline','changed_query','changed_since','calls_regress','time_regress','wal_regress','old_new_entry','null_since','null_hash','null_calls','nan_time','infinite_wal','incomplete_vector','wrong_digest','insufficient_calls','mean_at_ceiling','wal_at_ceiling','mean_over_ceiling','wal_over_ceiling']]
+    selects = []
+    for name, expected in cases:
+        base = "(1::oid,5::oid,true,42::bigint,'2026-11-06T14:00:00Z'::timestamptz,md5('synthetic'),100::bigint,1000::numeric,1000::numeric)"
+        current = "(1::oid,5::oid,true,42::bigint,'2026-11-06T14:00:00Z'::timestamptz,md5('synthetic'),200::bigint,2000::numeric,2000::numeric)"
+        substitutions = {'changed_query':("md5('synthetic')","md5('mutated')"),'changed_since':('14:00:00Z','14:30:00Z'),'calls_regress':('200::bigint','99::bigint'),'time_regress':('2000::numeric','999::numeric'),'wal_regress':('2000::numeric','999::numeric'),'null_since':("'2026-11-06T14:00:00Z'::timestamptz",'null::timestamptz'),'null_hash':("md5('synthetic')",'null::text'),'null_calls':('200::bigint','null::bigint'),'nan_time':('2000::numeric',"'NaN'::numeric"),'infinite_wal':('2000::numeric',"'Infinity'::numeric")}
+        if name in substitutions:
+            old,new=substitutions[name]
+            current = current.replace(old,new,1) if name not in ('wal_regress','infinite_wal') else current[::-1].replace(old[::-1],new[::-1],1)[::-1]
+        if name=='insufficient_calls':
+            current=current.replace('200::bigint','199::bigint')
+        if name.startswith('mean_'):
+            value='(4876427.13620301::numeric/29804/2*100+1000'+('+1' if name=='mean_over_ceiling' else '')+')'
+            current=current.replace('2000::numeric',value,1)
+        if name.startswith('wal_'):
+            value='(1778351890::numeric/30092/2*100+1000'+('+1' if name=='wal_over_ceiling' else '')+')'
+            current=current[::-1].replace('2000::numeric'[::-1],value[::-1],1)[::-1]
+        bases = base + (','+base if name=='duplicate_baseline' else '')
+        currents = current + (','+current if name=='duplicate_current' else '')
+        if name in ('new_entry','new_other_role_db_top','old_new_entry'):
+            currents += ",("+("2::oid,6::oid,false" if name=='new_other_role_db_top' else "1::oid,5::oid,true")+",43::bigint,'2026-11-06T"+('14:00:00Z' if name=='old_new_entry' else '16:00:00Z')+"'::timestamptz,md5('new'),100::bigint,1000::numeric,1000::numeric)"
+        cols='userid,dbid,toplevel,queryid,stats_since,query_md5,calls,total_exec_time,wal_bytes'
+        selects.append("select '"+name+"' case_label,"+str(expected).lower()+" expected_pass,(p.valid and p.calls>=100 and p.total_exec_time/nullif(p.calls,0)<4876427.13620301::numeric/29804/2 and p.wal_bytes/nullif(p.calls,0)<1778351890::numeric/30092/2) valid from (with baseline_family("+cols+") as(values "+bases+"), query_stats("+cols+") as(select * from(values "+currents+")v where "+('false' if name=='missing' else 'true')+"), baseline as(select '2026-11-06T15:00:00Z'::timestamptz observed_at,"+('2' if name=='incomplete_vector' else '(select count(*) from baseline_family)')+" family_entry_count,"+("md5('wrong')" if name=='wrong_digest' else "(select md5(string_agg(row(userid,dbid,toplevel,queryid,extract(epoch from stats_since),query_md5,calls,total_exec_time,wal_bytes)::text,E'\\n' order by userid,dbid,toplevel,queryid)) from baseline_family)")+" family_vector_md5), "+proof+" ) select * from family_proof)p")
+    return "with cases as("+' union all '.join(selects)+") select count(*) cases,count(*) filter(where valid=expected_pass) correct,coalesce(jsonb_agg(case_label) filter(where valid is distinct from expected_pass),'[]'::jsonb) failures from cases;"
+
+
 class AcceptanceProbeTests(unittest.TestCase):
     def test_original_failed_window_bytes_are_preserved(self):
         self.assertEqual(hashlib.sha256(HISTORY.read_bytes()).hexdigest(), ORIGINAL_SHA)
 
     def test_successor_is_unset_and_frozen_targets_unchanged(self):
         current, original = PROBE.read_text(), HISTORY.read_text()
-        for alias in ['observed_at', 'statement_stats_reset', 'entry_stats_since', 'postmaster_started_at', 'calls', 'total_exec_time', 'wal_bytes', 'asset_updates', 'document_updates']:
+        for alias in ['observed_at', 'statement_stats_reset', 'postmaster_started_at', 'statement_dealloc', 'family_entry_count', 'family_vector_md5', 'asset_updates', 'document_updates']:
             self.assertRegex(current, r'null::\w+ as ' + alias + r'\b')
         for target in ['170.077045367033::numeric', '59888.980667756245::numeric', '(8829::numeric / 5050.846546::numeric)']:
             self.assertIn(target, current)
             self.assertIn(target, original)
         self.assertIn("interval '24 hours'", current)
-        self.assertIn('q.calls-b.calls>=100', current)
+        self.assertIn('f.calls>=100', current)
         self.assertIn('<b.pre_mean_ms*0.5', current)
         self.assertIn('<b.pre_wal_per_call*0.5', current)
         self.assertIn('<b.pre_document_updates_per_second', current)
@@ -200,6 +231,17 @@ class AcceptanceProbeTests(unittest.TestCase):
                 self.assertIn(hashlib.md5(prefix.encode()).hexdigest(), source)
             self.assertNotRegex(row['current_prefix'], r'\bAND\b')
 
+    def test_family_scope_identity_and_reset_guards(self):
+        source = PROBE.read_text()
+        current = source[source.index('), query_stats as ('):source.index('), family_proof as (')]
+        self.assertIn('where query ilike', current)
+        self.assertNotRegex(re.sub(r'--[^\n]*', '', current), r'(?i)\blimit\b|and userid|and dbid|and toplevel')
+        for guard in ['dealloc from extensions.pg_stat_statements_info)=b.statement_dealloc',
+                      'q.stats_since=f.stats_since and q.query_md5=f.query_md5',
+                      'q.stats_since<b.observed_at', 'having count(*)<>1',
+                      '4876427.13620301::numeric/29804', '1778351890::numeric/30092']:
+            self.assertIn(guard, source)
+
     def test_fixture_uses_actual_probe_predicates_and_is_values_only(self):
         fixture = fixture_sql()
         self.assertIn('from metadata_checked group by case_label,expected_pass', fixture)
@@ -209,7 +251,9 @@ class AcceptanceProbeTests(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    if '--emit-trigger-fixture' in sys.argv:
+    if '--emit-family-fixture' in sys.argv:
+        print(family_fixture_sql())
+    elif '--emit-trigger-fixture' in sys.argv:
         print(trigger_fixture_sql())
     elif '--emit-fixture' in sys.argv:
         print(fixture_sql())

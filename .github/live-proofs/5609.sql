@@ -13,22 +13,54 @@ with baseline as (
  select
    null::timestamptz as observed_at,
    null::timestamptz as statement_stats_reset,
-   null::timestamptz as entry_stats_since,
    null::timestamptz as database_stats_reset,
    null::timestamptz as postmaster_started_at,
-   null::bigint as calls,
-   null::numeric as total_exec_time,
-   null::numeric as wal_bytes,
+   null::bigint as statement_dealloc,
+   null::bigint as family_entry_count,
+   null::text as family_vector_md5,
    null::bigint as asset_updates,
    null::bigint as document_updates,
-   170.077045367033::numeric as pre_mean_ms,
-   59888.980667756245::numeric as pre_wal_per_call,
+   least(170.077045367033::numeric,4876427.13620301::numeric/29804,5249576.57683701::numeric/30092) as pre_mean_ms,
+   least(59888.980667756245::numeric,1764593069::numeric/29804,1778351890::numeric/30092) as pre_wal_per_call,
    (8829::numeric / 5050.846546::numeric) as pre_document_updates_per_second
+), baseline_family as (
+ -- UNSET: populate the complete captured family vector only after root review.
+ select * from (values
+  (null::oid,null::oid,null::boolean,null::bigint,null::timestamptz,null::text,null::bigint,null::numeric,null::numeric)
+ )v(userid,dbid,toplevel,queryid,stats_since,query_md5,calls,total_exec_time,wal_bytes)
+ where false
 ), query_stats as (
- select calls,total_exec_time,wal_bytes,stats_since
+ select userid,dbid,toplevel,queryid,stats_since,md5(query) query_md5,calls,total_exec_time::numeric,wal_bytes::numeric
  from extensions.pg_stat_statements
- where queryid='8695287796313115953'::bigint
-   and userid='16486'::oid and dbid='5'::oid and toplevel
+ -- Exact authentic PRE collector: no role/database/top-level restriction or LIMIT.
+ where query ilike 'with pgrst_source as (update "public"."assets"%'
+), family_proof as (
+ select
+  (select count(*) from baseline_family)=b.family_entry_count and b.family_entry_count>0
+  and (select md5(string_agg(row(userid,dbid,toplevel,queryid,extract(epoch from stats_since),query_md5,calls,total_exec_time,wal_bytes)::text,
+    E'\n' order by userid,dbid,toplevel,queryid)) from baseline_family)=b.family_vector_md5
+  and not exists(select from baseline_family where userid is null or dbid is null or toplevel is null or queryid is null
+    or stats_since is null or stats_since>b.observed_at or query_md5 is null or query_md5 !~ '^[0-9a-f]{32}$'
+    or calls is null or calls<0 or total_exec_time is null or total_exec_time<0
+    or total_exec_time::text in ('NaN','Infinity','-Infinity') or wal_bytes is null or wal_bytes<0
+    or wal_bytes::text in ('NaN','Infinity','-Infinity'))
+  and not exists(select from baseline_family group by userid,dbid,toplevel,queryid having count(*)<>1)
+  and not exists(select from query_stats group by userid,dbid,toplevel,queryid having count(*)<>1)
+  and not exists(select from baseline_family f where not exists(select from query_stats q
+    where (q.userid,q.dbid,q.toplevel,q.queryid)=(f.userid,f.dbid,f.toplevel,f.queryid)
+      and q.stats_since=f.stats_since and q.query_md5=f.query_md5
+      and q.calls>=f.calls and q.total_exec_time>=f.total_exec_time and q.wal_bytes>=f.wal_bytes))
+  and not exists(select from query_stats q where q.userid is null or q.dbid is null or q.toplevel is null or q.queryid is null
+    or q.stats_since is null or q.query_md5 is null or q.query_md5 !~ '^[0-9a-f]{32}$'
+    or q.calls is null or q.calls<0 or q.total_exec_time is null or q.total_exec_time<0
+    or q.total_exec_time::text in ('NaN','Infinity','-Infinity') or q.wal_bytes is null or q.wal_bytes<0
+    or q.wal_bytes::text in ('NaN','Infinity','-Infinity')
+    or (not exists(select from baseline_family f where
+      (q.userid,q.dbid,q.toplevel,q.queryid)=(f.userid,f.dbid,f.toplevel,f.queryid)) and q.stats_since<b.observed_at)) as valid,
+  (select sum(q.calls-coalesce(f.calls,0)) from query_stats q left join baseline_family f using(userid,dbid,toplevel,queryid)) as calls,
+  (select sum(q.total_exec_time-coalesce(f.total_exec_time,0)) from query_stats q left join baseline_family f using(userid,dbid,toplevel,queryid)) as total_exec_time,
+  (select sum(q.wal_bytes-coalesce(f.wal_bytes,0)) from query_stats q left join baseline_family f using(userid,dbid,toplevel,queryid)) as wal_bytes
+ from baseline b
 ), table_stats as (
  select
   (select n_tup_upd from pg_stat_user_tables where relid='public.assets'::regclass) as asset_updates,
@@ -118,9 +150,9 @@ with baseline as (
  from metadata_checked
 )
 select case
- when b.observed_at is null or b.calls is null or b.total_exec_time is null
-   or b.wal_bytes is null or b.asset_updates is null or b.document_updates is null
-   or b.statement_stats_reset is null or b.entry_stats_since is null or b.postmaster_started_at is null
+ when b.observed_at is null or b.family_entry_count is null or b.family_vector_md5 is null
+   or b.statement_dealloc is null or b.asset_updates is null or b.document_updates is null
+   or b.statement_stats_reset is null or b.postmaster_started_at is null
    or now()<b.observed_at+interval '24 hours' then false
  else coalesce(
   current_user='supabase_read_only_user'
@@ -132,16 +164,14 @@ select case
     where not has_table_privilege(current_user,rel,'select'))
   and pg_postmaster_start_time()=b.postmaster_started_at
   and (select stats_reset from extensions.pg_stat_statements_info)=b.statement_stats_reset
+  and (select dealloc from extensions.pg_stat_statements_info)=b.statement_dealloc
   and (select stats_reset from pg_stat_database where datname=current_database())
       is not distinct from b.database_stats_reset
   and exists(select 1 from supabase_migrations.schema_migrations where version='20261105033827')
   and exists(select 1 from supabase_migrations.schema_migrations where version='20261105074126')
-  and (select count(*) from query_stats)=1
-  and exists(select 1 from query_stats q where q.stats_since=b.entry_stats_since
-    and q.calls-b.calls>=100
-    and q.total_exec_time>=b.total_exec_time and q.wal_bytes>=b.wal_bytes
-    and (q.total_exec_time-b.total_exec_time)/nullif(q.calls-b.calls,0)<b.pre_mean_ms*0.5
-    and (q.wal_bytes-b.wal_bytes)/nullif(q.calls-b.calls,0)<b.pre_wal_per_call*0.5)
+  and exists(select from family_proof f where f.valid and f.calls>=100
+    and f.total_exec_time/nullif(f.calls,0)<b.pre_mean_ms*0.5
+    and f.wal_bytes/nullif(f.calls,0)<b.pre_wal_per_call*0.5)
   and exists(select 1 from table_stats t where t.asset_updates>b.asset_updates
     and t.document_updates>=b.document_updates
     and (t.document_updates-b.document_updates)

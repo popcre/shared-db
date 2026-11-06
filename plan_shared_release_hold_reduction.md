@@ -26,9 +26,13 @@ Do not mark an implementation done because this plan was published.
 | 10 | Guarded landing and live acceptance of all four improvements | ⬜ open | 2026-10-16 EDT | Required: merged SHA, real run links, measured held time and negative results |
 
 Debate and finding dispositions: [design debate ledger](docs/investigations/shared-release-holds-design-debate.md).
-Companion handoff `HANDOFF.d/2026-10-16T1317Z-hetz-codex-shared-release-holds.md`
-retired 2026-11-05 after #3779 closed (issue #4241 hygiene); it remains readable in
-[git history](https://github.com/popcre/shared-db/blob/55f6e6a59/HANDOFF.d/2026-10-16T1317Z-hetz-codex-shared-release-holds.md).
+Both companion handoffs are retained:
+[2026-10-16 release holds](HANDOFF.d/2026-10-16T1317Z-hetz-codex-shared-release-holds.md)
+and [2026-10-22 steps 2–8a](HANDOFF.d/2026-10-22T1155Z-edge-dev-claude-3779-steps-2-8a.md).
+The #4241 hygiene closure of #3779 does not establish implementation acceptance.
+Remaining obligations stay in this STATUS table and both handoffs under #3779;
+no implementation ownership transfer is established. Reconcile the tracker's
+closure before continuing; retirement requires evidence of completed obligations.
 Read its current state, then the downstream phases before each phase. At phase cut points
 use the `fresh-session` skill if context is insufficient; preserve evidence and re-read STATUS.
 

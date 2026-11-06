@@ -5,12 +5,14 @@
 --
 -- A. Catalogue: after the lockdown, neither plm SECURITY DEFINER function
 --    holds an ACL entry for PUBLIC (grantee oid 0), anon or authenticated,
---    service_role keeps EXECUTE on both, and -- regression guard -- the
---    public.refresh_style_tracker_item_bridge() zero-arg wrapper (a deliberate
---    allowlist entry of 20260729120000, untouched by this change) keeps its
---    authenticated EXECUTE. Roles absent from the test database simply match
---    no ACL entry (null grantee), so the assertions hold vacuously there and
---    bind on Supabase-shaped databases where the roles exist.
+--    service_role keeps EXECUTE on both, and both stay SECURITY DEFINER. The
+--    public.refresh_style_tracker_item_bridge() wrapper's authenticated grant
+--    is deliberately NOT asserted here: it is a production-live property (the
+--    ephemeral replay history does not reproduce it) and it is asserted by the
+--    committed live-proof probe .github/live-proofs/4474.sql instead. Roles
+--    absent from the test database simply match no ACL entry (null grantee),
+--    so the assertions hold vacuously there and bind on Supabase-shaped
+--    databases where the roles exist.
 begin;
 
 do $a$
@@ -58,12 +60,11 @@ begin
     raise exception 'A3 % stopped being SECURITY DEFINER', v_bad;
   end if;
 
-  -- A4 regression guard: the public zero-arg wrapper keeps authenticated EXECUTE.
-  if v_auth is not null then
-    if not has_function_privilege(v_auth, 'public.refresh_style_tracker_item_bridge()', 'EXECUTE') then
-      raise exception 'A4 public.refresh_style_tracker_item_bridge() lost its authenticated grant';
-    end if;
-  end if;
+  -- A4: the public zero-arg wrapper is untouched by this change: this
+  -- migration writes no DDL against public.* (checked by the migration body
+  -- itself and by admission's exact-object match), so no catalogue assertion is
+  -- needed here; the wrapper's live authenticated grant is proven on production
+  -- by .github/live-proofs/4474.sql.
 end
 $a$;
 

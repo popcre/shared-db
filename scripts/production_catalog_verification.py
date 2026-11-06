@@ -4756,9 +4756,9 @@ CATALOG_CONTRACTS["dflow_sample_quantity_state_v1"] = CATEGORY_DFLOW_SAMPLE_QUAN
 
 # Durable catalog outcome of migration 20261105222623 (issue #5020,
 # Core Product Type): exactly one arm's four
-# product-description tables and four indexes exist. The sandbox project
-# (xupnyeifmpsacrqahwwm) carries only schema dflow; the production project
-# (qsllyeztdwjgirsysgai) carries dflow_prod plus a STALE dflow schema that the
+# product-description tables and four indexes exist. The configured sandbox
+# carries only schema dflow; configured production carries dflow_prod plus a
+# STALE dflow schema that the
 # migration must not touch, so each arm also asserts the other schema's pair
 # is absent.
 CATEGORY_DFLOW_PRODUCT_DESCRIPTION_TABLES = """

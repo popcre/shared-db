@@ -1328,12 +1328,18 @@ jobs:
           WORK_ISSUE: ${{ steps.governed_review.outputs.work_issue }}
         run: |
           set -euo pipefail
-          if [ -z "${SOURCE_PR:-}" ] || [ -z "${WORK_ISSUE:-}" ]; then
-            echo "::error::ENGINEER ACTION REQUIRED: the promotion merge freeze needs this source PR and its bound admitted work issue (--resolve-admitted-issue-for-pr); refusing to draw the production-risk assessment without the freeze. Nothing was dispatched." >&2
+          # Step 2.1 completion (#2367): a merged source PR with no resolvable
+          # work issue (no closing link, no title issue tag -- the shape of
+          # every claim-era merged PR) still freezes on the PR alone. Refusing
+          # here refused a merged change for its pull request's issue links.
+          if [ -z "${SOURCE_PR:-}" ]; then
+            echo "::error::ENGINEER ACTION REQUIRED: the promotion merge freeze needs this source PR; refusing to draw the production-risk assessment without the freeze. Nothing was dispatched." >&2
             exit 2
           fi
+          ISSUE_ARGS=()
+          if [ -n "${WORK_ISSUE:-}" ]; then ISSUE_ARGS=(--issue "$WORK_ISSUE"); fi
           node scripts/manage-migration-coordination.mjs --acquire-promotion-freeze \
-            --pr "$SOURCE_PR" --issue "$WORK_ISSUE" \
+            --pr "$SOURCE_PR" "${ISSUE_ARGS[@]}" \
             --owner "automatic-production-qualification" --ttl-minutes 45
       # ISSUE #3039. Ask the production gate's own evidence question BEFORE
       # dispatching. A historical rebind whose original apply ran on an older

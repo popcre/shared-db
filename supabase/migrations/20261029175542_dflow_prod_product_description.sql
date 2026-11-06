@@ -249,3 +249,10 @@ grant usage
     dflow_prod.mg_combination_description_history_history_id_seq,
     dflow_prod.item_product_description_history_history_id_seq
   to designflow_prod_item_master_grants;
+
+-- FK-parent reads (review round 5, finding H1): inserting a combination row
+-- runs the merchGroup/itemHeader parent checks as the invoker, so the grants
+-- role must be able to see the referenced parents or every INSERT fails.
+grant usage on schema core to designflow_prod_item_master_grants;
+grant select on core."merchGroup" to designflow_prod_item_master_grants;
+grant select on dflow_prod."itemHeader" to designflow_prod_item_master_grants;

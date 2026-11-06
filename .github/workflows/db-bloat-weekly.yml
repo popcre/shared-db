@@ -48,6 +48,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The repack proposer pushes its branch with SYNC_TOKEN; no persisted GITHUB_TOKEN header.
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22

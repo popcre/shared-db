@@ -17,6 +17,8 @@
 // production.
 import { readFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
+import { writeFileSync } from 'node:fs'
+import { runGitHubCommand } from './lib/github-transport.mjs'
 import { createHash } from 'node:crypto'
 import { Unknown } from './db-flow/read-preview-ledger.mjs'
 
@@ -64,8 +66,13 @@ export function buildEntry(policy, { table, pr, claim, work, previewOnly }) {
 
 // ---- GitHub side effects (gh CLI). REPACK_GH_TOKEN (SYNC_TOKEN) so required checks run on the PR;
 // a PR opened by the workflow's own token would never start CI. ----
-const gh = (args, input) => execFileSync('gh', args, { encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'inherit'],
-  env: { ...process.env, GH_TOKEN: process.env.REPACK_GH_TOKEN || process.env.GH_TOKEN } })
+const repackToken = () => process.env.REPACK_GH_TOKEN || process.env.GH_TOKEN
+// Reads retry through the shared transport; writes run once (never replayed).
+const gh = (args) => {
+  const saved = process.env.GH_TOKEN; process.env.GH_TOKEN = repackToken()
+  try { return runGitHubCommand(args, { attempts: args[0] === 'api' && !args.includes('-X') ? 4 : 1 }) } finally { process.env.GH_TOKEN = saved }
+}
+const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] })
 const api = (path, ...rest) => JSON.parse(gh(['api', path, ...rest]) || 'null')
 
 export function receiptExists(repo, ref) {
@@ -104,14 +111,15 @@ export function openRepackPr(repo, { table, work, previewOnly, day, reason, sign
     `\`\`\`db-claim\nversion: ${version}\nobjects:\n- table ${table}\n\`\`\`\nOpened by the weekly database health check (plan_db-anti-bloat-safeguards.md Step 7). Covers one online \`pg_repack\` of \`${table}\` through \`table-repack/v1\` (operation \`${id}\`). Closed automatically once the operation completes.\n\n${signature}`]).trim()
   const claim = Number(claimUrl.split('/').pop())
   const branch = `auto/${id}`
-  const main = api(`repos/${repo}/git/ref/heads/main`).object.sha
-  gh(['api', '-X', 'POST', `repos/${repo}/git/refs`, '-f', `ref=refs/heads/${branch}`, '-f', `sha=${main}`])
+  // Local git commits on the checked-out main, pushed with the proposer token (no per-file contents API).
+  const remote = `https://x-access-token:${repackToken()}@github.com/${repo}.git`
+  git('config', 'user.name', 'db-bloat-weekly'); git('config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com')
+  git('checkout', '-B', branch)
   const put = (entry, message) => {
-    const cur = api(`repos/${repo}/contents/${POLICY_PATH}?ref=${branch}`)
-    const next = JSON.parse(Buffer.from(cur.content, 'base64').toString())
-    next.operations[id] = entry
-    gh(['api', '-X', 'PUT', `repos/${repo}/contents/${POLICY_PATH}`, '-f', `message=${message}`, '-f', `branch=${branch}`, '-f', `sha=${cur.sha}`,
-      '-f', `content=${Buffer.from(JSON.stringify(next, null, 2) + '\n').toString('base64')}`])
+    const next = loadPolicy(); next.operations[id] = entry
+    writeFileSync(new URL(POLICY_PATH, ROOT), JSON.stringify(next, null, 2) + '\n')
+    git('commit', '-q', '-m', message, '--', POLICY_PATH)
+    git('push', '-q', remote, `HEAD:refs/heads/${branch}`)
   }
   // The entry must name its own PR; the PR number exists only after the PR does.
   put(buildEntry(policy, { table, pr: 1, claim, work, previewOnly }), `Propose online repack of ${table} (${id})`)

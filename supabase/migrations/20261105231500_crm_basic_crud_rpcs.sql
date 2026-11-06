@@ -3,11 +3,10 @@
 --   contacts  -> crm.contact_ext.archived_at (mirrors the defunct marking of
 --                20261105215348_crm_contact_ext.sql; core.contact.status stays
 --                untouched so no other app's view changes meaning),
---   customers -> crm.customer_ext.archived_at (PIM api.pm_customer_list
+--   customers -> crm.customer_ext.status='archived' (PIM api.pm_customer_list
 --                filters core.customer.status in ('active','potential'), so a
 --                CRM archive through the shared column would hide customers
---                from PIM; and crm.customer_ext.status itself is constrained
---                to active/inactive, so it cannot carry 'archived'),
+--                from PIM),
 --   programs  -> crm.opportunity.status='archived' (free text, unread by apps).
 -- api.crm_* list views gain archived-row filters; segment views read
 -- crm_contact_list and inherit. Access checks: crm_create_contact matches
@@ -17,10 +16,6 @@
 -- derived-from: none
 
 alter table crm.contact_ext
-  add column if not exists archived_at timestamptz,
-  add column if not exists archived_by uuid;
-
-alter table crm.customer_ext
   add column if not exists archived_at timestamptz,
   add column if not exists archived_by uuid;
 
@@ -42,7 +37,7 @@ set search_path to 'app', 'core', 'crm', 'public'
 as $fn$
 declare
   v_name text := nullif(btrim(coalesce(p_full_name, '')), '');
-  v_email text := nullif(lower(btrim(coalesce(p_email, ''))), '');
+  v_email text := lower(btrim(coalesce(p_email, '')));
   v_phone text := nullif(btrim(coalesce(p_phone, '')), '');
   v_title text := nullif(btrim(coalesce(p_job_title, '')), '');
   v_scope text := upper(coalesce(btrim(coalesce(p_scope, '')), ''));
@@ -190,8 +185,8 @@ begin
   update crm.note set contact_id = p_keep_id where contact_id = p_drop_id;
   update crm.opportunity set contact_id = p_keep_id where contact_id = p_drop_id;
   update crm.task set contact_id = p_keep_id where contact_id = p_drop_id;
-  update pim.product set buyer_contact_id = p_keep_id where buyer_contact_id = p_drop_id;
-  update pim.project set primary_contact_id = p_keep_id where primary_contact_id = p_drop_id;
+  update pim.product set contact_id = p_keep_id where contact_id = p_drop_id;
+  update pim.project set contact_id = p_keep_id where contact_id = p_drop_id;
 
   -- Hide the dropped contact from CRM lists; undo = clear archived_at.
   insert into crm.contact_ext (contact_id, archived_at, archived_by)
@@ -233,7 +228,7 @@ begin
     raise exception 'crm: customer % not found', p_company_id using errcode = 'no_data_found';
   end if;
   if exists (select 1 from crm.customer_ext xe
-             where xe.customer_id = p_company_id and xe.archived_at is not null) then
+             where xe.customer_id = p_company_id and xe.status = 'archived') then
     raise exception 'crm: customer is archived; restore it before adding a program'
       using errcode = 'check_violation';
   end if;
@@ -304,11 +299,12 @@ begin
       using errcode = 'check_violation';
   end if;
 
-  insert into crm.customer_ext (customer_id, archived_at, archived_by)
-  values (p_customer_id, now(), auth.uid())
+  insert into crm.customer_ext (customer_id, status, status_changed_at, status_changed_by)
+  values (p_customer_id, 'archived', now(), auth.uid())
   on conflict (customer_id) do update
-    set archived_at = now(),
-        archived_by = excluded.archived_by;
+    set status = 'archived',
+        status_changed_at = now(),
+        status_changed_by = excluded.status_changed_by;
 end;
 $fn$;
 
@@ -376,7 +372,7 @@ left join lateral (
 where (select app.has_app_access('crm'::app.app_name) as has_app_access)
   and not exists (
     select 1 from crm.customer_ext xe
-    where xe.customer_id = c.id and xe.archived_at is not null
+    where xe.customer_id = c.id and xe.status = 'archived'
   );
 
 create or replace view api.crm_opportunity_list as
@@ -414,24 +410,6 @@ left join crm.department d on d.id = o.department_id
 left join core.factory f on f.id = o.factory_id
 left join pim.project pr on pr.id = o.project_id
 where coalesce(o.status, '') <> 'archived';
-
--- The picker feeds every create/assign combobox; an archived customer must not
--- come back through it. Column list otherwise unchanged.
-create or replace view api.crm_customer_picker_list as
-select c.id,
-       c.name,
-       c.display_name,
-       c.status as core_status,
-       coalesce(x.status, 'active'::app.entity_status) as crm_status,
-       x.status_reason as crm_status_reason,
-       x.status_changed_at as crm_status_changed_at,
-       c.updated_at
-from core.customer c
-left join crm.customer_ext x on x.customer_id = c.id
-where app.has_explicit_app_access('crm'::app.app_name)
-  and c.status = any (array['active'::app.entity_status, 'potential'::app.entity_status])
-  and coalesce(x.status, 'active'::app.entity_status) = 'active'::app.entity_status
-  and x.archived_at is null;
 
 revoke all on function api.crm_create_contact(text,text,text,text,uuid,uuid,text) from public, anon;
 grant execute on function api.crm_create_contact(text,text,text,text,uuid,uuid,text) to authenticated;

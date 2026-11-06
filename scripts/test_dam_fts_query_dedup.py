@@ -8,7 +8,7 @@ import unittest
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
-MIGRATION = ROOT / 'supabase/migrations/20261105171913_dam_fts_query_dedup.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261106042721_dam_fts_query_dedup.sql'
 BASE = ROOT / 'supabase/migrations/20261105023330_dam_search_no_short_word_substring.sql'
 SIGNATURE = 'public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)'
 
@@ -26,7 +26,7 @@ class SourceContract(unittest.TestCase):
         start = source.index('CREATE OR REPLACE FUNCTION')
         new = source[start:source.index('$function$;', start) + len('$function$;')]
         self.assertEqual(new, old.replace('array(select q.tsq from queries q)', 'array(select distinct q.tsq from queries q)'))
-        policy = json.loads((ROOT / 'config/atomic-migration-allowlist.json').read_text())['migrations']['20261105171913']
+        policy = json.loads((ROOT / 'config/atomic-migration-allowlist.json').read_text())['migrations']['20261106042721']
         self.assertEqual(policy, {'sha256': hashlib.sha256(MIGRATION.read_bytes()).hexdigest(), 'targets': ['preview', 'production'], 'strip_outer_transaction': True})
         for budget in ["lock_timeout='500ms'", "statement_timeout='2500ms'", "transaction_timeout='3s'"]:
             self.assertIn(budget, source)

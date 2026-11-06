@@ -1,7 +1,7 @@
 {
   "command": "node scripts/check-production-verification-sidecars.mjs",
   "detector_schema_version": 1,
-  "detector_source_sha256": "d5499ad8a504933515647e0ead63e6ca31da573521541fcd01b597b5ac431f5c",
+  "detector_source_sha256": "f51275d9acc9893e49bd0e211f0cc91157cd61d67e7f5d3a56d9a494920cada9",
   "enforced_versions": [
     "20260621151155",
     "20260701154948",
@@ -650,5 +650,5 @@
       "marker_count": 1
     }
   ],
-  "total_migration_files": 981
+  "total_migration_files": 990
 }

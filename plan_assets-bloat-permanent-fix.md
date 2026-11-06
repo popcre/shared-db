@@ -4,20 +4,20 @@ Owning issue: [popcre/shared-db#5747](https://github.com/popcre/shared-db/issues
 Handoff for this plan: [HANDOFF.d/20261105T1950Z-edge-dev3-claude-assets-bloat-plan.md](HANDOFF.d/20261105T1950Z-edge-dev3-claude-assets-bloat-plan.md).
 Related plans (read their STATUS, do not redo): [plan_assets-update-trigger-scoping.md](plan_assets-update-trigger-scoping.md) (#5609, trigger fan-out on `assets` updates — delivered, 24 h live proof pending), [plan_database_efficiency_and_api_security.md](plan_database_efficiency_and_api_security.md) (#2196 fillfactor work owns `dam_search_documents` only).
 
-## STATUS (2026-11-05 2:55 PM EST — plan written, no step executed by this plan)
+## STATUS (2026-11-05 10:15 PM EST — Steps 0, 1, 4 done; Step 7 immediate reading done, 24 h and 7-day readings due)
 
 | Step | State | Evidence |
 |---|---|---|
-| 0 Baseline measurement (pgstattuple, visibility map, index sizes, writer churn) | ⬜ open | — |
-| 1 Land repack capability (PR #5744) | 🟡 in progress by another session | PR popcre/shared-db#5744, branch `claude/assets-repack-804` (not this plan's work; do not duplicate) |
-| 2 Find and stop no-op writers in PopDAM | ⬜ open | — (related app issue u2giants/popdam3#753 is open) |
-| 3 Index audit on `assets` | ⬜ open | — |
-| 4 Activate repack: preview, then production | ⬜ open | — |
-| 5 Make the exact total count cheap (exact stays exact) | ⬜ open | — |
-| 6 Re-bloat monitor | ⬜ open | — |
-| 7 After-measurement and live proof | ⬜ open | — |
+| 0 Baseline measurement (pgstattuple, visibility map, index sizes, writer churn) | ✅ done 6:35 PM EST Nov 5 | `docs/verification/assets-bloat-5747/20261105T2331Z/baseline.md` (PR #5800); pgstattuple/pg_visibility not installed, live bytes via `sum(pg_column_size)` |
+| 1 Land repack capability (PR #5744) | ✅ done 9:05 PM EST Nov 5 | #5744 + review fixes #5775 merged; pg_repack 1.5.2 live on production (preview run 42147162525, production run 42147611207 — applied; its red 'log verification' is a catalog-lexer gap for `create extension`) |
+| 2 Find and stop no-op writers in PopDAM | 🟡 delivered, HOT proof pending | App: u2giants/popdam3#825 (merged 5e222ef, deployed 2026-11-05 7:08 PM EST; closes #753) — ingest full-row rewrites 2,306/38 min → 0/54 min (−97%); `division_code` writer was the same ingest PATCH. DB: popcre/shared-db#5822 (migration 20261106040512, `asset_tags` sync statement-level + IS DISTINCT FROM; was 2N `assets` rewrites per AI result). Evidence: #5747 comments 6673886917. `last_seen_at` now advances only on real change (display-only; flagged on #5747). Remaining: HOT ratio re-measure ≥1 h after #5822 reaches production. |
+| 3 Index audit on `assets` | 🟡 audit recorded, no drops yet | [index-audit.md](docs/verification/assets-bloat-5747/20261105T2345Z/index-audit.md): 46 indexes, 28 with zero scans since the 2026-11-04 reset; re-check on or after 2026-11-18 EST |
+| 4 Activate repack: preview, then production | ✅ done 9:47 PM EST Nov 5 | activation #5757; preview run 42150067190, production run 42151590867; heap 2,024 → 196 MB, indexes 1,345 → 335 MB, index/constraint/trigger/ACL counts unchanged; Search test set pass counts held (PopDAM 108 → 112) |
+| 5 Make the exact total count cheap (exact stays exact) | ⏸ waits for Step 4 production compaction, then re-measure | — |
+| 6 Re-bloat monitor | 🟡 built; done when the dispatch dry run posts on #5747 | job `assets-bloat` in `.github/workflows/migration-ledger-drift.yml`, `scripts/assets-bloat-monitor.mjs` (2026-11-05 reading: heap 2,024 MB vs 188 MB live, ratio 10.8) |
+| 7 After-measurement and live proof | 🟡 immediate reading done 9:56 PM EST Nov 5 | `docs/verification/assets-bloat-5747/20261105T2331Z/after.md`; 24 h reading due 9:47 PM EST Nov 6, 7-day reading due 9:47 PM EST Nov 12 (note on #5747). PopDAM latency not yet improved on the first cold-cache run |
 
-**Fresh session starts at:** Step 0. Check PR #5744's state first (merged? activation PR open?).
+**Fresh session starts at:** Step 7 24-hour reading (repeat `after.md` queries into `after-24h.md`, rerun the Search test set). Steps 2, 3, 5, 6 belong to sibling sessions.
 
 ## 1. Ultimate goal
 
@@ -26,7 +26,7 @@ PopDAM search must answer in under 3 seconds, and the shared database must stop 
 ## 2. The application
 
 - `popcre/shared-db` owns the shared Supabase Postgres used by DesignFlow, PopDAM, PIM and CRM. Production project ref `qsllyeztdwjgirsysgai` (Medium compute: 4 GB RAM, 1 GB shared buffers). Schema changes are SQL migrations under `supabase/migrations/` and reach production **only** through the automatic promotion workflow `.github/workflows/shared-supabase-migrations.yml` (preview rehearsal, tests, no open `review-finding` issue; owner ruling 2026-10-29 in `docs/owner-rulings.md`). Non-transactional maintenance (index rebuilds, and after PR #5744 table repacks) runs through the same workflow's maintenance route, driven by `config/nontransactional-index-maintenance.json` and `scripts/nontransactional_index_maintenance.py`. No manual production command, ever.
-- `public.assets` (~152k live rows, 35+ indexes, primary key `assets_pkey (id)`) is PopDAM's file catalogue. PopDAM lives in `u2giants/popdam3` (local clone `/home/ahazan/repos/popdam3`). Writers include the `agent-api` edge function (`supabase/functions/agent-api/index.ts`, NAS scan ingest), the worker (`apps/worker/src/handlers/ai-tagging*.ts`, AI tag results), and SKU/division assignment code.
+- `public.assets` (~152k live rows, 46 indexes (production, 2026-11-05), primary key `assets_pkey (id)`) is PopDAM's file catalogue. PopDAM lives in `u2giants/popdam3` (local clone `/home/ahazan/repos/popdam3`). Writers include the `agent-api` edge function (`supabase/functions/agent-api/index.ts`, NAS scan ingest), the worker (`apps/worker/src/handlers/ai-tagging*.ts`, AI tag results), and SKU/division assignment code.
 - DAM search is the SQL function `public.search_dam_documents` (latest body: newest migration that redefines it; exact-total logic introduced in `20261030224046_dam_search_exact_totals.sql`, CTE `exact_docs`).
 
 ## 3. What triggered this work
@@ -64,7 +64,7 @@ NOT in this plan:
 ## 6. Key findings
 
 - F1 Bloat is free space, not dead tuples (4,772 dead vs ~259k pages). Autovacuum cannot shrink the file; only a rewrite (VACUUM FULL / CLUSTER / pg_repack) can.
-- F2 The bloat engine is non-HOT updates: ~43-53% HOT (`plan_assets-update-trigger-scoping.md:37-39`; #1966 inventory). Non-HOT updates write a new row version on a new page and an entry in every one of the 35+ indexes. `division_code` is indexed (`20261008041231_assets_sku_division_index`), so updates that touch it are never HOT.
+- F2 The bloat engine is non-HOT updates: ~43-53% HOT (`plan_assets-update-trigger-scoping.md:37-39`; #1966 inventory). Non-HOT updates write a new row version on a new page and an entry in every one of the 46 indexes. `division_code` is indexed (`20261008041231_assets_sku_division_index`), so updates that touch it are never HOT.
 - F3 Many updates are no-ops: scan PATCHes rewrite ~30 columns even when only `last_seen_at`/`updated_at` changed (`plan_assets-update-trigger-scoping.md` §3). `division_code` updates: 43,047 calls on 2026-11-05 (per #5747); the writer is not yet identified.
 - F4 Expected gain from repack alone: ~6x fewer pages, but at ~0.8 ms per disk read the 26.5 s count probably lands near 4-5 s, not under 3 s. Hence Step 5.
 - F5 After compaction the heap (~260 MB) fits in the 1 GB cache, which also stops it evicting search indexes for other apps.
@@ -72,7 +72,7 @@ NOT in this plan:
 ## 7. Approaches rejected, and why
 
 - **VACUUM FULL**: cannot run through the migration pipeline (non-transactional; issue-611 Q4) and takes ACCESS EXCLUSIVE for minutes.
-- **CLUSTER**: runs, but ACCESS EXCLUSIVE on a 35-index table for minutes blocks search and the ongoing AI tagging run (7.7-day run).
+- **CLUSTER**: runs, but ACCESS EXCLUSIVE on a 46-index table for minutes blocks search and the ongoing AI tagging run (7.7-day run).
 - **Capped ("10,000+") or estimated totals**: owner ruling 2026-10-29, `20261030224046_dam_search_exact_totals.sql:2-3`. Rejected outright; do not reopen.
 - **`suppress_redundant_updates_trigger`**: zero effect — every scan changes `last_seen_at`/`updated_at` (`plan_assets-update-trigger-scoping.md:83,97`).
 - **`fillfactor` 80-90 on `assets`**: HOT is blocked by indexed-column changes, not page fullness; already rejected in `plan_database_efficiency_and_api_security.md:118,150`.

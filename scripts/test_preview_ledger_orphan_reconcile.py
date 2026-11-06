@@ -656,7 +656,6 @@ class OrphanSourceCommitTests(unittest.TestCase):
         self.assertEqual(case['orphan_source_commit'],'2a0f16d2f4152374d10acd972c07b799fdfcee4a')
         with self.assertRaisesRegex(M.Refusal,'full commit sha'): M.load_orphan_at_commit(P.parent.parent,'abc','20261030014205')
 
-if __name__=='__main__': unittest.main()
 
 
 class NullStatementsOrphanTests(unittest.TestCase):
@@ -672,7 +671,7 @@ class NullStatementsOrphanTests(unittest.TestCase):
         d = pathlib.Path(tmp)
         files = {
             "issue_json": {"number": 5791, "state": "open"},
-            "claim_json": {"number": 5815, "state": "open"},
+            "claim_json": {"number": 5815, "state": "open", "title": "Claim for #5791", "body": "version: 20261105231500"},
             "pr_json": {"number": 5808, "state": "open", "merged_at": None, "head": {"sha": "b" * 40}},
             "pr_files_json": [{"filename": "supabase/migrations/20261105231500_crm_basic_crud_rpcs.sql", "status": "added"}],
         }
@@ -744,3 +743,48 @@ class NullStatementsOrphanTests(unittest.TestCase):
             M.reconcile_null_statements("u", {}, args, self.case())
         self.assertIn("lock table supabase_migrations.schema_migrations in exclusive mode", sent[-1])
         self.assertIn("where version='20261105231500' and statements is null", sent[-1])
+
+    def test_claim_must_bind_the_issue_and_version(self):
+        for title, body in (("Claim for #9999", "version: 20261105231500"),
+                            ("Claim for #5791", "version: 20261105231501"),
+                            ("Claim for #5791", "")):
+            with self.subTest(title=title, body=body), tempfile.TemporaryDirectory() as tmp:
+                args = self.args(tmp, files={"claim_json": {
+                    "number": 5815, "state": "open", "title": title, "body": body}})
+                with self.assertRaises(M.Refusal):
+                    self.governance(args)
+
+    def test_null_statements_arguments_are_required_and_exclusive(self):
+        argv = ["x", "--mode", "check", "--reconciliation", "preview-null-statements",
+                "--repo", ".", "--linked-dir", ".", "--expected-project-ref", self.case()["project_ref"],
+                "--main-sha", "a" * 40, "--orphan-version", "20261105231500", "--issue", "5791",
+                "--claim", "5815", "--source-pr", "5808", "--issue-json", "i.json",
+                "--claim-json", "c.json", "--pr-json", "p.json", "--pr-files-json", "f.json",
+                "--evidence-out", "o.json"]
+        with patch.object(sys, "argv", argv):
+            self.assertEqual(M.parse_args().reconciliation, "preview-null-statements")
+        for option in ("--claim", "--source-pr", "--issue-json", "--claim-json", "--pr-json", "--pr-files-json"):
+            missing = argv.copy()
+            index = missing.index(option)
+            del missing[index:index + 2]
+            with self.subTest(missing=option), patch.object(sys, "argv", missing):
+                with self.assertRaises(M.Refusal):
+                    M.parse_args()
+        for option in ("--remote-ledger", "--run-jobs-json", "--replacement-version"):
+            value = "20261105231501" if option == "--replacement-version" else "unused.json"
+            with self.subTest(option=option), patch.object(sys, "argv", argv + [option, value]):
+                with self.assertRaises(M.Refusal):
+                    M.parse_args()
+
+    def test_name_pin_is_byte_exact(self):
+        from types import SimpleNamespace
+        args = SimpleNamespace(mode="check", orphan_version="20261105231500")
+        row = {"version": args.orphan_version, "name": "crm_basic_crud_rpcs", "statements": None}
+        with patch.object(M, "ledger_rows", return_value=[row]), patch.object(M, "psql") as sql:
+            with self.assertRaises(M.Refusal):
+                M.reconcile_null_statements("u", {}, args, self.case())
+            sql.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -66,6 +66,18 @@ insert into supabase_migrations.schema_migrations values ('{self.old}',null,'old
             self.psql(f"select version from supabase_migrations.schema_migrations where version in ('{self.old}','{self.replacement}')"),
             self.old,
         )
+    def test_null_statements_delete_rolls_back_when_another_row_is_deleted(self):
+        # setUp's trigger deletes the replacement row alongside the orphan.
+        # The reconciler must reject the count drift and roll back both deletes.
+        self.psql(f"update supabase_migrations.schema_migrations set statements=null where version='{self.old}'")
+        args=type('A',(),{'orphan_version':self.old,'mode':'apply'})()
+        case={'expected_name':'old','object_proofs':[
+            {'kind':'column','object':'supabase_migrations.schema_migrations.version'}]}
+        with self.assertRaises(RuntimeError):
+            reconcile.reconcile_null_statements(self.url(),os.environ.copy(),args,case)
+        self.assertEqual(self.psql(f"select count(*) from supabase_migrations.schema_migrations where version='{self.old}' and name='old' and statements is null"),'1')
+        self.assertEqual(self.psql(f"select count(*) from supabase_migrations.schema_migrations where version='{self.replacement}' and statements=array['select 1']"),'1')
+
     def test_sandbox_orphan_delete_rolls_back_when_the_row_changes_mid_transaction(self):
         orphan='29990301000003'
         case={'project_ref':'xupnyeifmpsacrqahwwm','expected_name':'sandbox_orphan','expected_statements':['select 1','select 2'],'expected_other_versions':['29990301000001']}

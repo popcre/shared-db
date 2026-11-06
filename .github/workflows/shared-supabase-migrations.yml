@@ -1119,6 +1119,25 @@ jobs:
         # Every preview lane kind writes the SAME ref, so one release covers all
         # three. Named --release-preview because that is the ref's name.
         run: node scripts/manage-migration-coordination.mjs --release-preview --owner-sha "$OWNER_SHA"
+      # FAULT-CLASSIFICATION MARKER (plan_go-live-lane-prevention.md §9 2.1,
+      # issue #5782). A SUCCESSFUL conclusion of this step is the machine-readable
+      # marker the promotion selector refunds out of the attempt budget
+      # (its refund-eligible-in-any-attempt reader; the selector is queue-selection
+      # automation this lane deliberately never names). It classifies this job's
+      # own failed-step logs: an
+      # infrastructure failure the workflow itself labelled ("CI INFRASTRUCTURE:"
+      # with "NO MIGRATION WAS APPLIED") or a coordination refusal (pin/lane
+      # staleness) is NOT a fault in the change under review. Anything else -
+      # SQL errors, guard refusals, witness rejections - stays a change fault and
+      # this step concludes failure, keeping the status quo. A STEP, never a job:
+      # the six-job run-shape invariants must hold. Unreadable evidence never
+      # refunds.
+      - name: refund-eligible-fault
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MARKER_JOB_NAME: preview
+        run: python scripts/refund_fault_classification.py --classify-run-job "$MARKER_JOB_NAME"
 
   # A successful merged-main rehearsal already carries every fact needed to
   # decide whether the existing production lane may start. This job performs
@@ -2365,6 +2384,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SOURCE_PR: ${{ inputs.source_pr }}
         run: node scripts/manage-migration-coordination.mjs --release-promotion-freeze --pr "$SOURCE_PR"
+      # FAULT-CLASSIFICATION MARKER (plan_go-live-lane-prevention.md §9 2.1,
+      # issue #5782) — identical to the preview job's marker: a SUCCESSFUL
+      # conclusion is the refund-eligible marker the promotion selector reads;
+      # a change fault keeps this step red and counts as an attempt. A STEP,
+      # never a job (the six-job run-shape invariants must hold).
+      - name: refund-eligible-fault
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MARKER_JOB_NAME: Production apply (automatic evidence gates)
+        run: python scripts/refund_fault_classification.py --classify-run-job "$MARKER_JOB_NAME"
 
   # ===========================================================================
   # NUDGE THE PRODUCTION QUEUE (issue #5532, added 2026-11-03).

@@ -186,6 +186,7 @@ jobs:
           python scripts/test_automatic_index_maintenance.py
           python scripts/test_index_maintenance_workflow_gate.py
           python scripts/test_prepare_index_maintenance_activation.py
+          python scripts/test_table_repack_maintenance.py
           node --test scripts/index-maintenance-receipt.test.mjs
       - name: Refuse a mixed maintenance/migration dispatch
         if: github.event_name == 'workflow_dispatch' && startsWith(inputs.migration_train_ref, 'refs/db-index-maintenance-operations/')
@@ -663,13 +664,17 @@ jobs:
             fi
           fi
           test -n "$CLAIM_PR"; test -n "$CLAIM_HEAD_SHA"
-          ADMITTED_ISSUE="$(node scripts/manage-migration-coordination.mjs --resolve-admitted-issue-for-pr "$CLAIM_PR" | jq -r .issue)"
-          test "$ADMITTED_ISSUE" -gt 0
+          ADMITTED_ISSUE="$(node scripts/manage-migration-coordination.mjs --resolve-admitted-issue-for-pr "$CLAIM_PR" | jq -r '.issue // empty')"
+          # Step 2.1: a merged change is never refused for absent issue links.
+          ADMIT_ARGS=()
+          if [ -n "$ADMITTED_ISSUE" ] && [ "$ADMITTED_ISSUE" != "null" ]; then
+            ADMIT_ARGS=(--admit-issue "$ADMITTED_ISSUE")
+          fi
           LOCK_KIND=preview
           if [ -n "$HISTORICAL_SOURCE_PR" ]; then LOCK_KIND=preview-recovery; fi
           if [ -n "${MERGED_SOURCE_PR:-}" ]; then LOCK_KIND=preview-rehearsal; fi
           node scripts/manage-migration-coordination.mjs --acquire-$LOCK_KIND \
-            --admit-issue "$ADMITTED_ISSUE" \
+            "${ADMIT_ARGS[@]}" \
             --owner "github-actions:${GITHUB_RUN_ID}" --pr "$CLAIM_PR" --head-sha "$CLAIM_HEAD_SHA" \
             "${LANE_VERSIONS[@]}" \
             > "$RUNNER_TEMP/preview-lock.json"
@@ -1278,8 +1283,8 @@ jobs:
           fi
           echo "source_head=$SOURCE_HEAD" >> "$GITHUB_OUTPUT"
           ADMISSION="$(node scripts/manage-migration-coordination.mjs --resolve-admitted-issue-for-pr "$SOURCE_PR")"
-          WORK_ISSUE="$(jq -r 'if (.issue | type) == "number" and .issue >= 1 then .issue else error("resolver returned no positive issue") end' <<<"$ADMISSION")"
-          if [ -n "${TRAIN_WORK_ISSUE:-}" ]; then test "$WORK_ISSUE" = "$TRAIN_WORK_ISSUE"; fi
+          WORK_ISSUE="$(jq -r '.issue // empty' <<<"$ADMISSION")"
+          if [ -n "${TRAIN_WORK_ISSUE:-}" ] && [ -n "$WORK_ISSUE" ]; then test "$WORK_ISSUE" = "$TRAIN_WORK_ISSUE"; fi
           echo "work_issue=$WORK_ISSUE" >> "$GITHUB_OUTPUT"
       # ISSUE #3039. Ask the production gate's own evidence question BEFORE
       # dispatching. A historical rebind whose original apply ran on an older
@@ -1338,7 +1343,7 @@ jobs:
               actor=os.environ["GITHUB_ACTOR"],
               source_pr=int(os.environ["SOURCE_PR"]),
               source_pr_head=os.environ["SOURCE_HEAD"],
-              work_issue=int(os.environ["WORK_ISSUE"]),
+              work_issue=int(os.environ["WORK_ISSUE"]) if os.environ.get("WORK_ISSUE") else None,
               preview_run_id=int(os.environ["GITHUB_RUN_ID"]),
               preview_artifact_digest=os.environ["PREVIEW_DIGEST"],
               created_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -1805,11 +1810,12 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$SOURCE_PR"
-          test -n "$WORK_ISSUE"
           TRAIN_ARGS=()
           if [ -n "$TRAIN_REF" ]; then
             TRAIN_ARGS=(--migration-train-record "$RUNNER_TEMP/migration-train-record.json")
           fi
+          WORK_ISSUE_ARGS=()
+          if [ -n "${WORK_ISSUE:-}" ]; then WORK_ISSUE_ARGS=(--work-issue "$WORK_ISSUE"); fi
           # EXACTLY ONE EVIDENCE ROUTE (#2758). Preview evidence, or -- for a
           # migration the gate classifies as NOT high-risk to live data -- the
           # successful ephemeral-database CI job on the source PR head. The gate
@@ -1851,7 +1857,7 @@ jobs:
           # wait up to 15 minutes for its reset. The lane-held run fails fast.
           python scripts/production_business_risk_gate.py \
             --main-sha "$REQUESTED_SHA" --allowlist "$PRODUCTION_ALLOWLIST" \
-            --pr "$SOURCE_PR" --work-issue "$WORK_ISSUE" --review-run-id "$REVIEW_RUN_ID" \
+            --pr "$SOURCE_PR" "${WORK_ISSUE_ARGS[@]}" --review-run-id "$REVIEW_RUN_ID" \
             --review-digest "$REVIEW_ARTIFACT_DIGEST" \
             "${ROUTE_ARGS[@]}" "${TRAIN_ARGS[@]}" \
             --owner-decision-run-id "$OWNER_DECISION_RUN_ID" \
@@ -1926,10 +1932,14 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$SOURCE_PR"
-          ADMITTED_ISSUE="$(node scripts/manage-migration-coordination.mjs --resolve-admitted-issue-for-pr "$SOURCE_PR" | jq -r .issue)"
-          test "$ADMITTED_ISSUE" -gt 0
+          ADMITTED_ISSUE="$(node scripts/manage-migration-coordination.mjs --resolve-admitted-issue-for-pr "$SOURCE_PR" | jq -r '.issue // empty')"
+          # Step 2.1: a merged change is never refused for absent issue links.
+          ADMIT_ARGS=()
+          if [ -n "$ADMITTED_ISSUE" ] && [ "$ADMITTED_ISSUE" != "null" ]; then
+            ADMIT_ARGS=(--admit-issue "$ADMITTED_ISSUE")
+          fi
           node scripts/manage-migration-coordination.mjs --acquire-production \
-            --admit-issue "$ADMITTED_ISSUE" --pr "$SOURCE_PR" \
+            "${ADMIT_ARGS[@]}" --pr "$SOURCE_PR" \
             --owner "github-actions:${GITHUB_RUN_ID}" --head-sha "$REQUESTED_SHA" \
             > "$RUNNER_TEMP/production-lock.json"
           echo "owner_sha=$(jq -r .ownerSha "$RUNNER_TEMP/production-lock.json")" >> "$GITHUB_OUTPUT"
@@ -2009,11 +2019,12 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$SOURCE_PR"
-          test -n "$WORK_ISSUE"
           TRAIN_ARGS=()
           if [ -n "$TRAIN_REF" ]; then
             TRAIN_ARGS=(--migration-train-record "$RUNNER_TEMP/migration-train-record.json")
           fi
+          WORK_ISSUE_ARGS=()
+          if [ -n "${WORK_ISSUE:-}" ]; then WORK_ISSUE_ARGS=(--work-issue "$WORK_ISSUE"); fi
           # EXACTLY ONE EVIDENCE ROUTE (#2758). Preview evidence, or -- for a
           # migration the gate classifies as NOT high-risk to live data -- the
           # successful ephemeral-database CI job on the source PR head. The gate
@@ -2046,7 +2057,7 @@ jobs:
           fi
           python scripts/production_business_risk_gate.py \
             --main-sha "$REQUESTED_SHA" --allowlist "$PRODUCTION_ALLOWLIST" \
-            --pr "$SOURCE_PR" --work-issue "$WORK_ISSUE" --review-run-id "$REVIEW_RUN_ID" \
+            --pr "$SOURCE_PR" "${WORK_ISSUE_ARGS[@]}" --review-run-id "$REVIEW_RUN_ID" \
             --review-digest "$REVIEW_ARTIFACT_DIGEST" \
             "${ROUTE_ARGS[@]}" "${TRAIN_ARGS[@]}" \
             --owner-decision-run-id "$OWNER_DECISION_RUN_ID" \
@@ -2341,6 +2352,21 @@ jobs:
           version: 2.105.0
       - name: Install the existing pinned protected database driver
         run: python -m pip install 'psycopg[binary]==3.2.13'
+      # Table-repack operations only (popdam3#804, shared-db#5742): the pg_repack
+      # client must equal the server extension (1.5.2). Fixed archived PGDG
+      # package, sha256-pinned, extracted without installing anything.
+      - name: Fetch the pinned pg_repack 1.5.2 client
+        if: contains(inputs.migration_train_ref, '/repack-')
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/pg_repack"; mkdir -p "$dir"
+          curl -fsSL --retry 3 --max-time 120 -o "$dir/client.deb" \
+            'https://apt-archive.postgresql.org/pub/repos/apt/pool/main/p/pg-repack/postgresql-17-repack_1.5.2-2.pgdg24.04%2B1_amd64.deb'
+          echo 'f7924f0c5916fcb913085ba0a0998960b582c27627769481cced56224616e94f  '"$dir/client.deb" | sha256sum -c -
+          dpkg-deb -x "$dir/client.deb" "$dir/x"
+          bin="$dir/x/usr/lib/postgresql/17/bin/pg_repack"
+          test "$("$bin" --version)" = 'pg_repack 1.5.2'
+          echo "PG_REPACK_BIN=$bin" >> "$GITHUB_ENV"
       - name: Link the exact protected target
         env:
           DISPATCH_REF: ${{ inputs.migration_train_ref }}

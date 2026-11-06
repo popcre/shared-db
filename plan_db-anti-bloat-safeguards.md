@@ -14,7 +14,7 @@ Sibling plan (read its STATUS, never redo its work): [plan_assets-bloat-permanen
 | 3 Skip-unchanged writers (4 targets) | 🔄 3a in PR #5814 (migration 20261106024854); 3c ✅ landed on popdam3 main (f19cbb9c codes-only hash parity + 2f8f907f bridge no-op guard); 3b DesignFlow blocked on the popcre GitHub identity not being authenticated on this machine; 3d conditional remains open | 3a: supabase/tests/sg_search_embedding_no_churn_contract.sql; 3c: popdam3 scripts/test-refresh-style-tracker-rows.py |
 | 4 Move queue/lease state off wide rows | ⬜ open | — |
 | 5 Index audit on busy tables | ⬜ open | — |
-| 6 Weekly bloat/churn check | ⬜ open | — |
+| 6 Weekly bloat/churn check | 🟡 built 2026-11-06; done when a live run posts on #5886 | `.github/workflows/db-bloat-weekly.yml` (Mon 6:00 AM EST), `scripts/db-bloat-weekly.mjs`; standing issue "Weekly database health" #5886; ledger comment there (no table); change_log delete space reported as reclaimable, not flagged |
 | 7 Governed automatic compaction | ⬜ open | — |
 | 8 After-measurement and live proof | ⬜ open | — |
 

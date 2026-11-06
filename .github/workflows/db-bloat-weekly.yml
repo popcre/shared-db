@@ -1,0 +1,60 @@
+# Weekly bloat/churn check (popcre/shared-db#5758, plan_db-anti-bloat-safeguards.md Step 6).
+#
+# Monday 6:00 AM EST (11:00 UTC; 7:00 AM during EDT). Read-only: one constant
+# SELECT against production through the Management API. Posts one reading to the
+# standing "Weekly database health" issue (#5886) and keeps the previous reading
+# in one ledger comment there for week-over-week deltas. A flagged table is a
+# warning, never a red run; only "no reading taken" fails the run.
+# Free space left by deletes (coldlion.change_log rotation) is reported as
+# reclaimable, never as a writer problem. Step 7 (governed compaction) consumes it.
+# Owner: shared-db maintainers. Supersedes the public.assets monitor job in
+# migration-ledger-drift.yml (#5747 plan Step 6) once both have run; retire that
+# job with a note on #5747.
+name: Weekly database health
+
+on:
+  schedule:
+    - cron: '0 11 * * 1'
+  workflow_dispatch:
+    inputs:
+      post:
+        description: "Post the reading to the Weekly database health issue"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: db-bloat-weekly
+  cancel-in-progress: false
+
+jobs:
+  bloat:
+    name: Weekly bloat/churn check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test the check
+        run: node --test scripts/db-bloat-weekly.test.mjs
+      - name: Read table health (production, read-only)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          POST: ${{ github.event_name == 'schedule' && 'true' || (inputs.post && 'true' || 'false') }}
+        run: |
+          set +e -uo pipefail
+          node scripts/db-bloat-weekly.mjs --target=production --post="$POST" | tee /tmp/health.md
+          CODE=${PIPESTATUS[0]}
+          cat /tmp/health.md >> "$GITHUB_STEP_SUMMARY"
+          case "$CODE" in
+            0) echo "No table flagged." ;;
+            1) echo "::warning::One or more tables flagged; see the Weekly database health issue." ;;
+            *) echo "::error::No reading was taken (exit $CODE). This is not a clean result."; exit "$CODE" ;;
+          esac

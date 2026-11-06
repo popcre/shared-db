@@ -1092,7 +1092,7 @@ class CompletePullDiscovery(unittest.TestCase):
             number = int(args[-1].split("/pulls/")[1].split("/")[0])
             file_reads.append(number)
             path, = Path(m.HERE).parent.glob(f"supabase/migrations/{versions[number]}_*.sql")
-            return [[{"status": "added", "filename": str(path.relative_to(Path(m.HERE).parent))}]]
+            return [[{"status": "added", "filename": path.relative_to(Path(m.HERE).parent).as_posix()}]]
 
         from pathlib import Path
         with mock.patch.object(m, "gh", side_effect=api):

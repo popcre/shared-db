@@ -1,4 +1,4 @@
--- Fix-forward of 20261106144500 (popcre/shared-db, work issue #5791): crm_create_opportunity
+-- Fix-forward of 20261106144500 (renamed from draft 20261106205000, backdated below main's 20261106205842 before merge) (popcre/shared-db, work issue #5791): crm_create_opportunity
 -- left (external_source, external_id) null, and crm.opportunity enforces
 -- UNIQUE NULLS NOT DISTINCT on that pair (opportunity_external_source_external_id_key),
 -- so only one manual program can ever exist -- observed live 2026-11-06 on the Step 11

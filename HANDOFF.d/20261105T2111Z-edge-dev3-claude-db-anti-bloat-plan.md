@@ -1,3 +1,9 @@
+---
+issue: 5758
+status: OPEN
+owner: zcode anti-bloat-5758 (PR #5814 merged; plan Phase B remains)
+---
+
 # Handoff: database anti-bloat safeguards plan (#5758)
 
 Written 2026-11-05 4:15 PM EST on edge-dev3 by Claude.
@@ -11,12 +17,6 @@ Written 2026-11-05 4:15 PM EST on edge-dev3 by Claude.
 **Nothing claimed, no preview or production writes made.** All production reads were SELECT-only through the Supabase MCP.
 
 **Update 2026-11-05 (after Muse debate):** Step 1 is now codes-only with labels joined from `coldlion.merch_group_detail`; the 7-blank-nights rule and its business question are withdrawn. New Step 1v: ColdLion vendor bug report under `docs/verification/db-anti-bloat-5758/` plus a stable-paging guard (`/items` has no sort parameter).
-
----
-issue: 5758
-status: OPEN
-owner: zcode anti-bloat-5758 (PR #5814 merged; plan Phase B remains)
----
 
 **Update 2026-11-05 10:25 PM EST (ZCode, edge-dev):** Phase A landed, split across
 two sessions after a same-night collision:

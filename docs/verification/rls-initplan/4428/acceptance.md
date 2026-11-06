@@ -30,9 +30,11 @@ untouched.
 
 ## Close-out re-proof (read-only, 2026-11-05, all times EST)
 
-Target: production project `qsllyeztdwjgirsysgai` (Supabase Management API
-read-only query + session-pooler psql, password from 1Password `vibe_coding`;
-no writes issued; the measurement transaction ended in ROLLBACK).
+Target: the production project ref recorded in this repo's `AGENTS.md` data
+model table (Supabase Management API read-only query + session-pooler psql,
+password from 1Password `vibe_coding`; no writes issued; the measurement
+transaction ended in ROLLBACK). The re-proof workflow run below binds to
+production by construction; the 2026-10-23 apply run names the ref in its title.
 
 ### Step 1 — installed live proof and ledger
 

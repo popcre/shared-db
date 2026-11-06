@@ -1,3 +1,4 @@
+-- derived-from: 20260825010603
 -- popcre/shared-db#5747 Step 2: stop no-op rewrites of public.assets.tags.
 --
 -- The old row-level trigger rewrote assets.tags once for EVERY asset_tags row

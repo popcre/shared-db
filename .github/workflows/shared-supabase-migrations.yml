@@ -1286,6 +1286,34 @@ jobs:
           WORK_ISSUE="$(jq -r '.issue // empty' <<<"$ADMISSION")"
           if [ -n "${TRAIN_WORK_ISSUE:-}" ] && [ -n "$WORK_ISSUE" ]; then test "$WORK_ISSUE" = "$TRAIN_WORK_ISSUE"; fi
           echo "work_issue=$WORK_ISSUE" >> "$GITHUB_OUTPUT"
+      # PROMOTION MERGE FREEZE (plan_go-live-lane-prevention.md §9 step 1.1,
+      # tracking issue #5782). Owner instruction 2026-10-02 (verbatim, also kept
+      # in scripts/lib/lanes/exclusive-locks.mjs): "assign someone to pause
+      # merges during production runs" — acquire the freeze BEFORE the
+      # production-risk assessment so main cannot move between qualification
+      # and the production apply. The production job's always() cleanup below
+      # releases it for THIS source PR; the TTL expires it on its own (owner
+      # rule 2026-10-21: "no session is allowed to freeze merges for more than
+      # 1hr. that's the new rule"). Create-only: while any live freeze exists
+      # this step fails loudly — go-lives serialize — and qualification never
+      # continues without the freeze. Operator crash recovery: node
+      # scripts/manage-migration-coordination.mjs --release-promotion-freeze
+      # --pr <n> (any positive --pr clears an unreadable record); otherwise
+      # the 45-minute TTL is the cleanup.
+      - name: Acquire the promotion merge freeze for this source PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_PR: ${{ steps.source_guard.outputs.source_pr || steps.train_source_guard.outputs.source_pr }}
+          WORK_ISSUE: ${{ steps.governed_review.outputs.work_issue }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SOURCE_PR:-}" ] || [ -z "${WORK_ISSUE:-}" ]; then
+            echo "::error::ENGINEER ACTION REQUIRED: the promotion merge freeze needs this source PR and its bound admitted work issue (--resolve-admitted-issue-for-pr); refusing to draw the production-risk assessment without the freeze. Nothing was dispatched." >&2
+            exit 2
+          fi
+          node scripts/manage-migration-coordination.mjs --acquire-promotion-freeze \
+            --pr "$SOURCE_PR" --issue "$WORK_ISSUE" \
+            --owner "automatic-production-qualification" --ttl-minutes 45
       # ISSUE #3039. Ask the production gate's own evidence question BEFORE
       # dispatching. A historical rebind whose original apply ran on an older
       # commit is refused by the gate's unchanged producer pin; qualification

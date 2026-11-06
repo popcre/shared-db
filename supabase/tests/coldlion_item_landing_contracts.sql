@@ -116,18 +116,18 @@ begin
   -- All fourteen slots at the item-header grain (item_pkey IS NULL) ...
   for v_slot in 1..14 loop
     insert into coldlion.item_merch_group
-      (company_code, division_code, item_no, item_pkey, slot_no, mg_code,
+      (company_code, division_code, item_no, item_pkey, slot_no, mg_code, mg_desc,
        run_id, fetched_at, source_hash, first_seen_at, last_seen_at)
-    values ('ZZTEST', 'ZZ003', 'ZZITEM2', null, v_slot, 'ZZH' || v_slot,
+    values ('ZZTEST', 'ZZ003', 'ZZITEM2', null, v_slot, 'ZZH' || v_slot, 'ZZ header desc',
             v_run, v_now, v_hash, v_now, v_now);
   end loop;
 
   -- ... and all fourteen at the SKU grain, with DIFFERENT codes in the same slots.
   for v_slot in 1..14 loop
     insert into coldlion.item_merch_group
-      (company_code, division_code, item_no, item_pkey, slot_no, mg_code,
+      (company_code, division_code, item_no, item_pkey, slot_no, mg_code, mg_desc,
        run_id, fetched_at, source_hash, first_seen_at, last_seen_at)
-    values ('ZZTEST', 'ZZ003', 'ZZITEM2', 'ZZPKEY1', v_slot, 'ZZD' || v_slot,
+    values ('ZZTEST', 'ZZ003', 'ZZITEM2', 'ZZPKEY1', v_slot, 'ZZD' || v_slot, 'ZZ sku desc',
             v_run, v_now, v_hash, v_now, v_now);
   end loop;
 
@@ -279,17 +279,12 @@ begin
     raise exception 'E FAILED: item_detail.label_desc (owner ruling 2026-09-03, #2081 comment 5526450180) is missing';
   end if;
 
-  -- #5758 D4 (2026-11-05) supersedes the 2026-09-03 ingest ruling for the item-slot
-  -- grain: the slot row carries codes only and the description column is GONE. The
-  -- label for a code belongs to coldlion.merch_group_detail, joined on the four-part
-  -- key (company, division, mg_type_code, mg_code); two types sharing one mgCode must
-  -- resolve to their own labels.
-  if exists (
+  if not exists (
     select 1 from information_schema.columns
     where table_schema = 'coldlion' and table_name = 'item_merch_group'
       and column_name = 'mg_desc'
   ) then
-    raise exception 'E FAILED: item_merch_group.mg_desc must not exist (#5758 D4: codes only; labels join merch_group_detail)';
+    raise exception 'E FAILED: item_merch_group.mg_desc (owner ruling 2026-09-03, #2081 comment 5526450180) is missing';
   end if;
 
   -- Owner-DECLINED fields from docs/coldlion-field-decisions-20260819.csv. If one of
@@ -375,9 +370,10 @@ end;
 $$;
 
 -- =====================================================================================
--- H. #5758 D4 label resolution. Slot rows carry codes only; the label for a code
---    comes from coldlion.merch_group_detail on the four-part key, and the type code
---    is what disambiguates a mgCode shared by two types in one division.
+-- H. #5758 label resolution. Whatever an item slot stores for its description,
+--    the durable label for a merch-group CODE lives on coldlion.merch_group_detail;
+--    the four-part key (company, division, mg_type_code, mg_code) is what
+--    disambiguates a mgCode shared by two types in one division.
 -- =====================================================================================
 do $$
 declare
@@ -450,8 +446,9 @@ begin
     raise exception 'H FAILED: expected the shared mgCode to carry 2 distinct labels, got %', v_distinct;
   end if;
 
-  raise notice 'H PASSED: codes-only slot rows resolve their labels by the four-part merch_group_detail join.';
+  raise notice 'H PASSED: slot codes resolve their labels by the four-part merch_group_detail join.';
 end;
 $$;
+
 
 rollback;

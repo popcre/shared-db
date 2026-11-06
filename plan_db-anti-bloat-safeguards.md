@@ -8,10 +8,10 @@ Sibling plan (read its STATUS, never redo its work): [plan_assets-bloat-permanen
 | Step | State | Evidence |
 |---|---|---|
 | 0 Baseline | ✅ done 2026-11-05 | docs/verification/db-anti-bloat-5758/20261105T2318Z/baseline.md (PR #5814); 2,994/3,000 slot updates and 2,981/3,000 item_header updates are description-only |
-| 1 Stop ColdLion description flapping | 🔄 PR #5814 (migration 20261105225256; gate needs the second nightly run after deploy) | tools/coldlion-landing codes-only + suppression; popdam3 loader aligned (u2giants/popdam3 f19cbb9c) |
+| 1 Stop ColdLion description flapping | 🔄 PR #5814 (migration 20261106002656; gate needs the second nightly run after deploy) | tools/coldlion-landing codes-only + suppression; popdam3 loader aligned (u2giants/popdam3 f19cbb9c) |
 | 1v Vendor bug report + paging-order check | 🔄 PR #5814 (report committed; duplicate/gap key guard live in fetchMasterSpec) | docs/verification/db-anti-bloat-5758/coldlion-items-desc-flap-report.md; tools/coldlion-master-http-paging.test.mjs |
 | 2 ColdLion change_log rotation | ⬜ open | — |
-| 3 Skip-unchanged writers (4 targets) | 🔄 3a in PR #5814 (migration 20261105225343); 3b DesignFlow / 3c popdam3 / 3d conditional remain open | 3a: supabase/tests/sg_search_embedding_no_churn_contract.sql; 3c partially covered by the popdam3 hash alignment |
+| 3 Skip-unchanged writers (4 targets) | 🔄 3a in PR #5814 (migration 20261106002740); 3b DesignFlow / 3c popdam3 / 3d conditional remain open | 3a: supabase/tests/sg_search_embedding_no_churn_contract.sql; 3c partially covered by the popdam3 hash alignment |
 | 4 Move queue/lease state off wide rows | ⬜ open | — |
 | 5 Index audit on busy tables | ⬜ open | — |
 | 6 Weekly bloat/churn check | ⬜ open | — |

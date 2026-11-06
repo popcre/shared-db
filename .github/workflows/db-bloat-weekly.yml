@@ -6,7 +6,14 @@
 # in one ledger comment there for week-over-week deltas. A flagged table is a
 # warning, never a red run; only "no reading taken" fails the run.
 # Free space left by deletes (coldlion.change_log rotation) is reported as
-# reclaimable, never as a writer problem. Step 7 (governed compaction) consumes it.
+# reclaimable, never as a writer problem.
+# Step 7 (governed automatic compaction): for at most one allowlisted table
+# (config/table-repack-allowlist.json) with heap/live > 2.5 and enough free disk,
+# the check opens a claim issue and a PR adding a table-repack/v1 operation and
+# queues it to merge; the existing maintenance route repacks preview, then
+# production. It never writes to the database itself. The PR is opened with
+# SYNC_TOKEN so the required checks run. test_table (manual only) runs the same
+# path against PREVIEW for one named table and marks the operation preview_only.
 # Owner: shared-db maintainers. Supersedes the public.assets monitor job in
 # migration-ledger-drift.yml (#5747 plan Step 6) once both have run; retire that
 # job with a note on #5747.
@@ -21,6 +28,10 @@ on:
         description: "Post the reading to the Weekly database health issue"
         type: boolean
         default: true
+      test_table:
+        description: "Test mode: propose a preview-only repack of this allowlisted table (reads preview)"
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -40,17 +51,37 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Test the check
-        run: node --test scripts/db-bloat-weekly.test.mjs
-      - name: Read table health (production, read-only)
+        run: |
+          node --test scripts/db-bloat-weekly.test.mjs scripts/db-repack-proposer.test.mjs
+          python -c "import sys; sys.path.insert(0,'scripts'); import table_repack_maintenance as r; r.load_allowlist()"
+      - name: Test mode (preview only, one allowlisted table)
+        if: github.event_name == 'workflow_dispatch' && inputs.test_table != ''
         env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          REPACK_GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TEST_TABLE: ${{ inputs.test_table }}
+        run: |
+          set +e -uo pipefail
+          node scripts/db-bloat-weekly.mjs --target=preview --post=false --propose=true --test-table="$TEST_TABLE" | tee -a "$GITHUB_STEP_SUMMARY"
+          CODE=${PIPESTATUS[0]}
+          [ "$CODE" -le 1 ] || { echo "::error::Test-mode run failed (exit $CODE)."; exit "$CODE"; }
+      - name: Read table health (production, read-only)
+        if: github.event_name == 'schedule' || inputs.test_table == ''
+        env:
+          REPACK_GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           POST: ${{ github.event_name == 'schedule' && 'true' || (inputs.post && 'true' || 'false') }}
         run: |
           set +e -uo pipefail
-          node scripts/db-bloat-weekly.mjs --target=production --post="$POST" | tee /tmp/health.md
+          node scripts/db-bloat-weekly.mjs --target=production --post="$POST" --propose="$POST" | tee /tmp/health.md
           CODE=${PIPESTATUS[0]}
           cat /tmp/health.md >> "$GITHUB_STEP_SUMMARY"
           case "$CODE" in

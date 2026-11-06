@@ -52,7 +52,7 @@ with baseline as (
    and a.last_seen_at<=now() limit 3
 ), metadata_source as (
  select a.id,a.modified_at,a.file_size,a.thumbnail_url,
-  d.metadata as actual_metadata,d.embedding_lease_token,d.embedding_lease_owner,d.embedding_lease_expires_at,
+  d.metadata as actual_metadata,d.indexed_at,d.source_updated_at,q.render_completed_at as current_queue_render,d.embedding_lease_token,d.embedding_lease_owner,d.embedding_lease_expires_at,
   jsonb_strip_nulls(jsonb_build_object(
    'file_type',a.file_type,'asset_type',a.asset_type,'content_type',a.content_type,
    'item_description',sg.item_description,'group_ai_description',sg.group_ai_description,
@@ -89,7 +89,15 @@ with baseline as (
      then (to_jsonb(retained_render at time zone 'UTC') #>> '{}')||'+00:00' else retained_render::text end)) end as expected_input_base
  from metadata_source m
 ), metadata_checked as (
- select p.*,case when expected_input_base is not null then
+ select p.*,
+  -- Grandfather only unchanged pre-cutover documents; present JSON NULL is not absence.
+  coalesce(not (actual_metadata ? '_embedding_input')
+    and indexed_at<'2026-11-05T07:30:57-05:00'::timestamptz
+    and source_updated_at<'2026-11-05T07:30:57-05:00'::timestamptz
+    and (modified_at is null or (modified_at<=indexed_at and modified_at<=source_updated_at))
+    and (current_queue_render is null or
+      (current_queue_render<=indexed_at and current_queue_render<=source_updated_at)),false) as legacy_unchanged,
+  case when expected_input_base is not null then
     expected_input_base||jsonb_build_object('sha256',encode(extensions.digest(expected_input_base::text,'sha256'),'hex')) end as expected_input,
   case when embedding_lease_token is null then
     embedding_lease_owner is null and embedding_lease_expires_at is null
@@ -103,7 +111,7 @@ with baseline as (
  select count(*) as checked,
   bool_and(coalesce(render_valid and lease_valid
     and actual_metadata is not distinct from
-      core_metadata||case when expected_input is null then '{}'::jsonb
+      core_metadata||case when expected_input is null or legacy_unchanged then '{}'::jsonb
         else jsonb_build_object('_embedding_input',expected_input) end
       ||case when embedding_lease_token is null then '{}'::jsonb else
         jsonb_build_object('_embedding_lease_input_sha256',actual_metadata->'_embedding_lease_input_sha256') end,false)) as all_match

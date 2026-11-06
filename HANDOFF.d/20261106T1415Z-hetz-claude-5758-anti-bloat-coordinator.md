@@ -1,3 +1,9 @@
+---
+issue: 5758
+status: OPEN
+owner: next #5758 coordinator (from Claude chat 0f66eca0 on hetz)
+---
+
 # HANDOFF — #5758 database anti-bloat: coordinator for Steps 4–8 and the first history cleanup
 
 Written 2026-11-06 9:15 AM EST by Claude chat 0f66eca0-8065-44b1-8fba-bbc582b004a9 on hetz.

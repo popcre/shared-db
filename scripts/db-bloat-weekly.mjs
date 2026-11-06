@@ -23,8 +23,6 @@ export const RATIO_LIMIT = 2.0
 export const INDEX_GROWTH_LIMIT = 0.5
 export const HOT_LIMIT = 0.5
 export const UPD_PER_ROW_DAY_LIMIT = 0.2
-// Tables whose deletes are an intended retention job; free space there is expected.
-export const ROTATED_TABLES = new Set(['coldlion.change_log'])
 export const LEDGER_MARKER = '<!-- db-bloat-weekly:ledger -->'
 const DAY = 86400000
 
@@ -37,27 +35,33 @@ export const READING_SQL = `with t as (
  from pg_class c join pg_namespace n on n.oid=c.relnamespace join pg_stat_user_tables st on st.relid=c.oid
  where c.relkind='r' and pg_relation_size(c.oid) > ${MIN_BYTES})
 select t.tbl, t.heap_bytes, t.index_bytes, t.est_rows, t.live_bytes, t.n_tup_ins, t.n_tup_upd, t.n_tup_hot_upd, t.n_tup_del,
- coalesce((select left(regexp_replace(q.query,'\\s+',' ','g'),160) from extensions.pg_stat_statements q
+ null::text as top_writer,
+ (select stats_reset from pg_stat_database where datname=current_database()) as stats_reset,
+ now() as read_at
+from t order by t.heap_bytes desc`
+
+// Attribution is optional: retry the core stats query if its extension is unavailable.
+export const WRITER_READING_SQL = READING_SQL.replace(' null::text as top_writer', ` coalesce((select left(regexp_replace(q.query,'\\s+',' ','g'),160) from extensions.pg_stat_statements q
    where q.rows > 0 and q.query ~* ('\\m(update|insert\\s+into|delete\\s+from)\\s+("?' || t.nspname || '"?\\.)?"?' || t.relname || '"?\\M')
    order by q.rows desc limit 1),
   -- writers wrapped in functions: the busiest statement naming the table at all
   (select left(regexp_replace(q.query,'\\s+',' ','g'),160) from extensions.pg_stat_statements q
    where q.rows > 0 and q.query ~* ('\\m' || t.relname || '\\M') and q.query !~* '^\\s*select\\s+.*\\mfrom\\M' 
-   order by q.calls desc limit 1)) as top_writer,
- (select stats_reset from pg_stat_database where datname=current_database()) as stats_reset,
- now() as read_at
-from t order by t.heap_bytes desc`
+   order by q.calls desc limit 1)) as top_writer`)
 
 export async function fetchReading(projectRef, token = process.env.SUPABASE_ACCESS_TOKEN, { fetchImpl = fetch } = {}) {
   if (!token) throw new Unknown('SUPABASE_ACCESS_TOKEN is not set; no reading was taken')
-  const res = await fetchImpl(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+  const query = (sql) => fetchImpl(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
     method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: READING_SQL }),
+    body: JSON.stringify({ query: sql }),
   })
+  let res = await query(WRITER_READING_SQL)
+  if (!res.ok) res = await query(READING_SQL)
   const body = await res.text()
   if (!res.ok) throw new Unknown(`Management API returned ${res.status}: ${body.slice(0, 300)}`)
   const rows = JSON.parse(body)
-  if (!Array.isArray(rows) || rows.length === 0) throw new Unknown('expected at least one table row')
+  if (!Array.isArray(rows)) throw new Unknown('expected table rows')
+  if (rows.length === 0) return { read_at: new Date().toISOString(), stats_reset: null, tables: [] }
   const num = (r, k) => { const v = Number(r[k]); if (!Number.isFinite(v)) throw new Unknown(`column ${k} is absent for ${r.tbl}`); return v }
   return {
     read_at: new Date(rows[0].read_at).toISOString(),
@@ -85,9 +89,12 @@ export function evaluate(reading, prev) {
     const hot = d ? (d.upd > 0 ? d.hot / d.upd : null) : (t.n_tup_upd > 0 ? t.n_tup_hot_upd / t.n_tup_upd : null)
     const updPerRowDay = d && t.est_rows > 0 ? d.upd / t.est_rows / d.days : null
     // Space explained by deletes (retention/cleanup) rather than updates.
-    const delExplained = ROTATED_TABLES.has(t.tbl) || (d ? d.del > d.upd : t.n_tup_del > t.n_tup_upd)
+    const delExplained = d ? d.del > d.upd : t.n_tup_del > t.n_tup_upd
     const flags = []; const notes = []
-    if (ratio !== null && ratio > RATIO_LIMIT) {
+    if (t.live_bytes === 0 && t.heap_bytes > MIN_BYTES) {
+      if (delExplained) notes.push('heap with no estimated live rows from deleted rows — reclaimable, not a writer problem')
+      else flags.push('heap over 100 MB with no estimated live rows')
+    } else if (ratio !== null && ratio > RATIO_LIMIT) {
       if (delExplained) notes.push(`free space ${ratio.toFixed(2)}x live from deleted rows — reclaimable, not a writer problem`)
       else flags.push(`heap/live ${ratio.toFixed(2)} > ${RATIO_LIMIT}`)
     }
@@ -141,7 +148,7 @@ async function listComments(repo, issue) {
   for (let page = 1; ; page++) { const c = await gh(`repos/${repo}/issues/${issue}/comments?per_page=100&page=${page}`); out.push(...c); if (c.length < 100) return out }
 }
 
-async function main() {
+export async function main() {
   const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, '').split('=')))
   const target = args.target ?? 'production'
   const projectRef = PROJECT_REFS[target]
@@ -161,7 +168,7 @@ async function main() {
   const text = renderReading(reading, results, prev, { target, runUrl })
   console.log(text)
   const code = results.some((r) => r.flags.length) ? 1 : 0
-  if (!useGitHub) return code
+  if (!useGitHub || !post) return code
   if (ledger) await gh(`repos/${repo}/issues/comments/${ledger.id}`, { method: 'PATCH', body: { body: renderLedger(reading) } })
   else await gh(`repos/${repo}/issues/${issue}/comments`, { method: 'POST', body: { body: renderLedger(reading) } })
   if (post) await gh(`repos/${repo}/issues/${issue}/comments`, { method: 'POST', body: { body: `${text}\n\n${signature}` } })

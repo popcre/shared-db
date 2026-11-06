@@ -1,4 +1,4 @@
--- Renamed from 20261105231500 -> 20261105235900 -> 2026110608043500: first because the base
+-- Renamed from 20261105231500 -> 20261105235900 -> 20261106043500 -> 20261106083500: first because the base
 -- branch advanced past the number, then because PR #5808 exhausted its automatic
 -- promotion attempts under 20261105235900 and a fresh governed version is a new
 -- candidate. Body is byte-identical to what preview ran.

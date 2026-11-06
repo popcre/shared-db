@@ -1,4 +1,4 @@
--- Behavioural contract for migration 20261105225141 (#5776): read-only DesignFlow
+-- Behavioural contract for migration 20261106010627 (#5776): read-only DesignFlow
 -- user directory for The Oracle — function api.oracle_user_directory() and role
 -- oracle_directory_reader. Catalog and privilege contract only; the live read
 -- as the role lives in oracle_user_directory_reader_live_read_contracts.sql

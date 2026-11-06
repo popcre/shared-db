@@ -1,4 +1,4 @@
--- Live-read contract for migration 20261105225141 (#5776): execute
+-- Live-read contract for migration 20261106010627 (#5776): execute
 -- api.oracle_user_directory() AS the read-only login and prove the write is
 -- refused. Quarantined from the from-empty lane (supabase/tests/ci-quarantine.txt):
 -- the function reads dflow_prod.user_roles, which only 20261022182809 creates,

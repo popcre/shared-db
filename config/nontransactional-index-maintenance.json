@@ -23,7 +23,7 @@
     },
     "repack-20261106-ce21f88c": {
       "kind": "table-repack/v1",
-      "source_pr": 1,
+      "source_pr": 5905,
       "work_issue": 5886,
       "claim_issue": 5904,
       "table": "plm.item_import_unresolved",

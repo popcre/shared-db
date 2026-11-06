@@ -171,5 +171,25 @@
     "Three genuine consecutive final-source scheduled nights under60 seconds"
   ],
   "future_route": "After hold eligibility, freshly prove current main, target and lane and use the existing historical PREVIEW requalification with original map20261106171924:42268869549; this re-proves the original artifact without replaying applied SQL, then existing normal automatic production gates decide. This receipt is not dispatch authorization or a promise of background execution.",
-  "issue_proof_comment": "https://github.com/popcre/shared-db/issues/5608#issuecomment-6692295877"
+  "issue_proof_comment": "https://github.com/popcre/shared-db/issues/5608#issuecomment-6692295877",
+  "future_historical_preview_workflow": {
+    "template_only_not_dispatched": true,
+    "workflow": "shared-supabase-migrations.yml",
+    "ref": "main",
+    "inputs": {
+      "target": "preview",
+      "mode": "apply",
+      "commit_sha": "CURRENT_MAIN",
+      "preview_allowlist": "20261106171924",
+      "historical_preview_source_pr": "5898",
+      "historical_preview_original_run_map": "20261106171924:42268869549"
+    },
+    "current_main_requirement": "Replace CURRENT_MAIN with a freshly re-proved exact current main SHA; recheck source SHA1e8e96db3fb0be84c782be815d76a3e34539f2d2f23bd5c32f87cbef652f0c4a and native original-producer proof against that main.",
+    "ordered_preconditions": [
+      "After the binding deadline, first check actual production ledger/job/progress and native delivery runs: if automatic production already delivered this source, do not duplicate recovery.",
+      "If still pending, freshly check live hold eligibility, production/preview ledgers and configured target/parent identity, current main/source binding, existing attempt budget and active/queued workflows/exclusive ownership through the supported route.",
+      "Only a genuinely needed supported historical PREVIEW recovery may use this template; it re-proves the original applied preview evidence without replaying SQL. Existing automatic production gates still decide."
+    ],
+    "background_wakeup_configured": false
+  }
 }

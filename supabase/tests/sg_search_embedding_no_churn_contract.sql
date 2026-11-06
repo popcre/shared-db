@@ -76,7 +76,7 @@ begin
 
   -- 2) The same vector under a lease that never existed writes nothing.
   select public.upsert_sg_search_embedding(v_file1, v_sha1, v_dead, v_vec) into v_ret;
-  if v_ret is not distinct from false then
+  if v_ret is distinct from false then
     raise exception 'contract 2: unknown-lease upsert reported a write';
   end if;
   if (select embedding_updated_at from public.style_guide_search_documents where style_guide_file_id = v_file1) is distinct from v_updated then

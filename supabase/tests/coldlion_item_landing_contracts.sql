@@ -407,6 +407,12 @@ begin
     ('ZZTEST', 'ZZ003', '06', 'CAT-A', 'ZZSHARED', 'ZZ property label', 'Y',
      v_run, v_now, repeat('b', 64), v_now, v_now);
 
+  -- The slot rows need their item-header parent (FK).
+  insert into coldlion.item_header
+    (company_code, division_code, item_no, run_id, fetched_at,
+     source_hash, first_seen_at, last_seen_at)
+  values ('ZZTEST', 'ZZ003', 'ZZLABEL', v_run, v_now, repeat('g', 64), v_now, v_now);
+
   insert into coldlion.item_merch_group
     (company_code, division_code, item_no, item_pkey, slot_no, mg_code,
      run_id, fetched_at, source_hash, first_seen_at, last_seen_at)

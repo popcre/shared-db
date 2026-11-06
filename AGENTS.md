@@ -202,6 +202,8 @@ Do not load these into context (also reflected in `.claudeignore` / `.cursorigno
 
 Never commit anon keys, service-role keys, database passwords, or `.env` files.
 Secret values live only in 1Password vault `vibe_coding`. Fetch items serially.
+Do not embed new project refs or other stable infrastructure identifiers in committed evidence —
+consumer mirrors enforce a public boundary against them (§8, #4910).
 Full CLI/credential traps: [`docs/agents/runbooks-credentials-cli-and-gotchas.md`](docs/agents/runbooks-credentials-cli-and-gotchas.md).
 
 ## Deployment
@@ -386,6 +388,7 @@ identifiers resolve to preserved evidence storage as documented in
 - [plan_shared_release_hold_reduction.md](plan_shared_release_hold_reduction.md)
 - [plan_narrow_promotion_freezes.md](plan_narrow_promotion_freezes.md)
 - [plan_rls_request_constant_checks.md](plan_rls_request_constant_checks.md)
+- [plan_go-live-lane-prevention.md](plan_go-live-lane-prevention.md) (read its STATUS table first — do not re-derive or re-plan; issue #5782)
 
 ## Task declaration
 

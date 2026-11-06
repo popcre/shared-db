@@ -289,8 +289,10 @@ def decide(prs: list[dict[str, Any]], runs: list[dict[str, Any]], held: callable
             if skipped is not None:
                 skipped.append({**pr, "pending_dependencies": missing_bases})
             continue
-        # Attempts count per main commit: a later merge may be the cure, so it earns fresh tries.
-        # The WHOLE automatic cycle counts, not only preview applies (#5532): a failed
+        # Attempts count per change since its merge, NOT per main commit (#5683/#5686,
+        # Nov 5 2026): resetting on every main advance let one stuck change be retried
+        # after each unrelated merge and starve every later promotion. A cure for a stuck
+        # change is a new governed version, which is a new candidate. The WHOLE automatic cycle counts, not only preview applies (#5532): a failed
         # production apply re-enters through a historical recovery preview that succeeds
         # by design, so counting only preview failures could never bound that loop. A
         # recovery run titles itself "PR " with no number, hence the version match.
@@ -298,7 +300,6 @@ def decide(prs: list[dict[str, Any]], runs: list[dict[str, Any]], held: callable
                        if (t.startswith("DB preview apply") or t.startswith("DB production apply"))
                        and (tag in t or names_pr(pr, t))
                        and r.get("created_at", "") > pr["merged_at"]
-                       and (not main_sha or f" {main_sha} " in t)
                        and r.get("conclusion") != "success")
         if attempts >= MAX_ATTEMPTS:
             # Out of automatic attempts: passed over like a held PR, with a loud
@@ -437,18 +438,42 @@ def main(now: datetime | None = None) -> int:
         print(f"::error title=ENGINEER ACTION REQUIRED: automatic attempts exhausted::"
               f"PR #{entry['number']} (versions {','.join(entry['versions'])}) failed {entry['exhausted']} "
               f"automatic attempts at this main commit; later PRs still promote")
+    # Step 2.3: open or update ONE tracking issue for exhausted PRs.
+    if exhausted and not args.dry_run:
+        report_stuck_change(repo, exhausted, now)
     reruns = recent_re_runs(runs, now, ACKNOWLEDGED_RE_RUNS)
     for r in reruns:
         print(f"::error title=ENGINEER ACTION REQUIRED: production apply re-run::"
               f"run {r['id']} ({r.get('display_title')}) was re-run (attempt {r.get('run_attempt')}); "
               f"a re-run is never the retry path -- the queue dispatches a fresh run with fresh evidence -- "
               f"and it hides what earlier attempts did")
+    # Step 2.2 (plan_ci-process-repair): holds, waits, used-up attempts and
+    # acknowledged history are expected states. Exit success with the reason in
+    # the summary; exit failure only when the trigger itself broke.
+    #
     # Advisory findings above are annotations, not exit status. A failing run
     # used to be the alert channel, but these findings are long-lived PR states
     # evaluated only on runs that reach queue selection -- runs that early-return
     # "wait" (a migration workflow run in flight) never see them -- so the step
     # flapped red/green on unrelated timing while the hold gate itself (checked
     # at decide, again before dispatch, again before the apply) kept working.
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_path:
+        with open(summary_path, "a", encoding="utf-8") as fh:
+            fh.write(f"## Automatic promotion trigger\n\n**Action:** {action} — {reason}\n\n")
+            for entry in skipped:
+                if entry.get("pending_dependencies"):
+                    refs = ", ".join(f"{v} (PR #{owner})" for v, owner in entry["pending_dependencies"].items())
+                    fh.write(f"- Dependency wait: PR #{entry['number']} waiting on {refs}\n")
+                elif entry.get("exhausted"):
+                    fh.write(f"- Used-up attempts: PR #{entry['number']} ({entry['exhausted']} attempts)\n")
+                else:
+                    refs = ", ".join(f"#{f.get('number')}" for f in entry["findings"]) or "unreadable"
+                    fh.write(f"- Held: PR #{entry['number']} by {refs}\n")
+            if alerts:
+                fh.write(f"- Overdue holds: {len(alerts)}\n")
+            if reruns:
+                fh.write(f"- Acknowledged re-runs: {len(reruns)}\n")
     return 0
 
 
@@ -470,5 +495,59 @@ def dispatch(repo: str, pr: dict[str, Any], main_sha: str) -> None:
     print(f"Dispatched the post-merge preview rehearsal for PR #{pr['number']} at {main_sha}.")
 
 
+STUCK_ISSUE_TITLE = "Automatic promotion: stuck migrations need repair"
+
+
+def report_stuck_change(repo: str, entries: list[dict[str, Any]], now: datetime) -> None:
+    """Step 2.3: open or update ONE tracking issue for exhausted PRs, with
+    delivery wording, failure text, and merged-not-live duration."""
+    if not entries:
+        return
+    lines = []
+    for e in entries:
+        merged_at = _time(e.get("merged_at", "1970-01-01T00:00:00Z"))
+        hours = max(0, int((now - merged_at).total_seconds() / 3600))
+        lines.append(
+            f"- PR #{e['number']} (versions {','.join(e.get('versions', []))}): "
+            f"failed {e['exhausted']} automatic attempts; merged {hours}h ago and not live"
+        )
+    body = (
+        "## Delivery needed\n\n"
+        "The following merged migrations have exhausted their automatic promotion attempts "
+        "and need a repair session to deliver them to production:\n\n"
+        + "\n".join(lines)
+        + "\n\n**Action:** investigate the failure, fix the migration or its dependencies, "
+        "and re-dispatch through the normal promotion path.\n"
+    )
+    try:
+        found = gh(f"repos/{repo}/issues?state=open&per_page=100")
+        existing = next(
+            (i for i in (found or []) if i.get("title") == STUCK_ISSUE_TITLE and not i.get("pull_request")),
+            None,
+        )
+        if existing:
+            number = existing["number"]
+            subprocess.run(
+                ["gh", "issue", "comment", str(number), "--repo", repo, "--body", body],
+                check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            )
+            print(f"Updated tracking issue #{number} for {len(entries)} stuck migration(s).")
+        else:
+            result = subprocess.run(
+                ["gh", "issue", "create", "--repo", repo, "--title", STUCK_ISSUE_TITLE, "--body", body],
+                check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            print(f"Opened tracking issue for {len(entries)} stuck migration(s): {result.stdout.strip()}")
+    except (subprocess.CalledProcessError, ValueError, OSError) as exc:
+        print(f"::warning::could not open/update the stuck-change tracking issue ({exc}); the alert above is still the signal")
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except Exception as exc:
+        # Step 2.2: exit failure only when the trigger itself broke.
+        print(f"::error title=Trigger defect::automatic-promotion-candidates raised {type(exc).__name__}: {exc}")
+        raise SystemExit(1)

@@ -536,12 +536,9 @@ test('POSITIVE CONTROL #4845: an appended migration needs a dispatched ledger to
   } finally { rmSync(repo, { recursive: true, force: true }) }
 })
 
-// STEP 2.5 (plan_ci-process-repair.md, #2367): preview evidence tracks the
-// database surface -- migration bytes, the ledger prefix, the apply tool --
-// not the workflow folder. A workflow-only change merged between preview and
-// production no longer voids evidence; the apply workflow itself still does,
-// because it carries the production job's own steps.
-test('step 2.5: production accepts a tip moved only by unrelated workflow edits; the merge/preview lane still refuses them', () => {
+// A newly merged workflow can run independently of the pinned production
+// checkout. Workflow edits must remain blocking in both lanes.
+test('production refuses every workflow edit', () => {
   for (const path of [
     '.github/workflows/merge-queue-gate.yml',
     '.github/workflows/review-fixer.yml',
@@ -555,13 +552,14 @@ test('step 2.5: production accepts a tip moved only by unrelated workflow edits;
       const tip = commitFiles(repo, { [path]: 'changed\n' }, 'workflow edit')
       assert.equal(classify(repo, sha, tip).ok, false, 'the default (merge/preview) lane is unchanged')
       const verdict = prod(repo, sha, tip)
-      assert.equal(verdict.ok, true, `${path}: ${verdict.reason}`)
+      assert.equal(verdict.ok, false, `${path}: ${verdict.reason}`)
     } finally { rmSync(repo, { recursive: true, force: true }) }
   }
 })
 
 test('POSITIVE CONTROL step 2.5: the apply workflow itself is the apply tool and still refuses', () => {
   assert.equal(isProductionInertPath('.github/workflows/shared-supabase-migrations.yml'), false)
+  assert.equal(isProductionInertPath('.GITHUB/WORKFLOWS/SHARED-SUPABASE-MIGRATIONS.YML'), false)
   const { repo, sha } = prefixFixture()
   try {
     const tip = commitFiles(repo, { '.github/workflows/shared-supabase-migrations.yml': 'changed\n' }, 'apply tool edit')
@@ -569,7 +567,7 @@ test('POSITIVE CONTROL step 2.5: the apply workflow itself is the apply tool and
   } finally { rmSync(repo, { recursive: true, force: true }) }
 })
 
-test('step 2.5: an appended migration plus unrelated workflow edits is still a verified prefix', () => {
+test('an appended migration does not exempt concurrent workflow edits', () => {
   const { repo, sha } = prefixFixture()
   try {
     const tip = commitFiles(repo, {
@@ -577,7 +575,6 @@ test('step 2.5: an appended migration plus unrelated workflow edits is still a v
       '.github/workflows/queue-hygiene-report.yml': 'changed\n',
     }, 'mixed move')
     const verdict = prod(repo, sha, tip)
-    assert.equal(verdict.ok, true, verdict.reason)
-    assert.match(verdict.reason, /verified prefix/)
+    assert.equal(verdict.ok, false, verdict.reason)
   } finally { rmSync(repo, { recursive: true, force: true }) }
 })

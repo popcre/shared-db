@@ -87,13 +87,6 @@ def read_policy() -> dict[str, dict[str, object]]:
         validate_version(version)
         if not isinstance(entry, dict):
             raise Refusal(f"atomic policy entry {version} is not an object")
-        # Plan step 2.6 (#2367), the #5445 divergence class: an atomic-route
-        # migration authorized for one environment only falls through to the
-        # Supabase CLI lane in the other, which splits SQL-standard BEGIN
-        # ATOMIC bodies (SQLSTATE 42601). Both environments must select the
-        # atomic path together or the entry refuses.
-        if set(entry.get("targets", [])) != {"preview", "production"}:
-            raise Refusal(f"atomic policy entry {version} must target both preview and production")
         if version == CURATED_CHARACTER_LOCK_VERSION or "admission_lock_contract" in entry:
             if (set(entry) != {"sha256", "targets", "admission_lock_contract"}
                     or entry["admission_lock_contract"] != CURATED_CHARACTER_LOCK_CONTRACT
@@ -129,6 +122,9 @@ def classify_allowlist(raw: str, target: str | None = None) -> str:
         return ""
     if opted != set(versions) or not opted <= eligible:
         raise Refusal("atomic allowlist mixes unpinned or unauthorized target versions")
+    for version in versions:
+        if set(policy[version].get("targets", [])) != {"preview", "production"}:
+            raise Refusal(f"atomic policy entry {version} must target both preview and production")
     if len(versions) > 1:
         groups = {policy[v].get("batch_group") for v in versions}
         if len(groups) != 1 or None in groups or not next(iter(groups)):
@@ -407,6 +403,8 @@ def load_candidate(migrations_dir: Path, version: str, target: str) -> tuple[Pat
     entry = read_policy().get(version)
     if not entry or target not in entry.get("targets", []):
         raise Refusal(f"version {version} is not atomically authorized for {target}")
+    if set(entry.get("targets", [])) != {"preview", "production"}:
+        raise Refusal(f"atomic policy entry {version} must target both preview and production")
     matches = sorted(migrations_dir.glob(f"{version}_*.sql"))
     if len(matches) != 1:
         raise Refusal(f"expected exactly one migration for {version}; found {len(matches)}")
@@ -561,7 +559,7 @@ def build_wrapper(version: str, name: str, raw: str, statements: list[str], *, a
         # caller may then bound this transaction's statement time explicitly
         # instead of inheriting the server default. SET LOCAL scopes the
         # override to this one transaction and vanishes at COMMIT.
-        prelude = f"SET LOCAL statement_timeout='{int(statement_timeout_ms)} ms';\n"
+        prelude = f"SET LOCAL statement_timeout='{int(statement_timeout_ms)}ms';\n"
     values = ",\n".join(dollar_quote(s, f"s{i}") for i, s in enumerate(statements))
     return (
         "\\set ON_ERROR_STOP on\nBEGIN;\n" + prelude + raw.rstrip() + "\n"

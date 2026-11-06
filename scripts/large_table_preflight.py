@@ -60,22 +60,76 @@ CREATE_INDEX_RE = re.compile(
 UPDATE_RE = re.compile(r"(?is)\bupdate\s+(?:only\s+)?" + _IDENT)
 # The gap to the select may not cross a statement boundary, or a values
 # insert followed later in the file by any select would match.
-INSERT_SELECT_RE = re.compile(r"(?is)\binsert\s+into\s+" + _IDENT + r"[^;]{0,400}?\bselect\b")
+INSERT_SELECT_RE = re.compile(r"(?is)\binsert\s+into\s+" + _IDENT + r"[^;]*?\bselect\b")
 ALTER_REWRITE_RE = re.compile(
     r"(?is)\balter\s+table\s+(?:only\s+)?(?:if\s+exists\s+)?" + _IDENT
-    + r"\s+[^\n;]*(?:\balter\s+column\b[^\n;]*\btype\b|\bset\s+not\s+null\b"
-    r"|\badd\s+column\b[^\n;]*\bnot\s+null\b[^\n;]*\bdefault\b)"
+    + r"\s+[^;]*(?:\balter\s+column\b[^;]*\btype\b|\bset\s+not\s+null\b"
+    r"|\badd\s+column\b[^;]*\bnot\s+null\b[^;]*\bdefault\b)"
 )
-
-LINE_COMMENT_RE = re.compile(r"--[^\n]*")
-BLOCK_COMMENT_RE = re.compile(r"/\*[\s\S]*?\*/")
 
 REASON_INDEX = "index build scales with table size"
 REASON_REWRITE = "table rewrite or bulk write scales with table size"
 
 
 def strip_comments(raw: str) -> str:
-    return BLOCK_COMMENT_RE.sub(" ", LINE_COMMENT_RE.sub(" ", raw))
+    """Strip SQL comments without treating quoted text as comment delimiters.
+
+    Scan dollar bodies recursively so SQL in DO/function bodies remains visible.
+    Each body is bounded before scanning, so its comments cannot consume SQL
+    following the closing delimiter.
+    """
+    out: list[str] = []
+    i = 0
+    while i < len(raw):
+        if raw.startswith("--", i):
+            end = raw.find("\n", i)
+            i = len(raw) if end < 0 else end
+            out.append(" ")
+        elif raw.startswith("/*", i):
+            depth = 1
+            i += 2
+            while i < len(raw) and depth:
+                if raw.startswith("/*", i):
+                    depth += 1
+                    i += 2
+                elif raw.startswith("*/", i):
+                    depth -= 1
+                    i += 2
+                else:
+                    i += 1
+            out.append(" ")
+        elif raw[i] in ("'", '"'):
+            quote = raw[i]
+            start = i
+            escaped = quote == "'" and i > 0 and raw[i - 1] in "eE" and (
+                i == 1 or not (raw[i - 2].isalnum() or raw[i - 2] in "_$")
+            )
+            i += 1
+            while i < len(raw):
+                if escaped and raw[i] == "\\":
+                    i += 2
+                elif raw[i] == quote:
+                    i += 1
+                    if i < len(raw) and raw[i] == quote:
+                        i += 1
+                    else:
+                        break
+                else:
+                    i += 1
+            out.append(raw[start:i])
+        elif raw[i] == "$" and (match := re.match(r"\$\$|\$[A-Za-z_][A-Za-z0-9_]*\$", raw[i:])):
+            tag = match.group()
+            start = i + len(tag)
+            end = raw.find(tag, start)
+            if end < 0:
+                out.append(raw[i:])
+                break
+            out.extend((tag, strip_comments(raw[start:end]), tag))
+            i = end + len(tag)
+        else:
+            out.append(raw[i])
+            i += 1
+    return "".join(out)
 
 
 def qualified(first: str, second: str | None) -> str:
@@ -124,8 +178,8 @@ def read_table_size(url: str | None, env: dict[str, str] | None, table: str) -> 
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?", table):
         raise Refusal(f"candidate table name is not a plain identifier: {table}")
     sql = (
-        "select coalesce(pg_catalog.pg_total_relation_size(r), 0) || '|' || "
-        "coalesce((select c.reltuples::bigint from pg_catalog.pg_class c where c.oid = r), -1) "
+        "select case when r is null then 'absent' else coalesce(pg_catalog.pg_total_relation_size(r), 0) || '|' || "
+        "coalesce((select c.reltuples::bigint from pg_catalog.pg_class c where c.oid = r), -1) end "
         f"from pg_catalog.to_regclass('{table}') as r"
     )
     try:
@@ -214,7 +268,7 @@ def main() -> int:
     if len(sys.argv) == 3 and sys.argv[1] == "--print-budget":
         try:
             print(int(json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))["statement_budget_ms"]))
-        except (OSError, ValueError, KeyError):
+        except (OSError, ValueError, KeyError, TypeError, OverflowError):
             print(0)
         return 0
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -228,11 +282,9 @@ def main() -> int:
 
     try:
         versions = [item.strip() for item in args.allowlist.split(",") if item.strip()]
-        if not versions:
-            raise Refusal("allowlist is empty")
         url: str | None = None
         env: dict[str, str] | None = None
-        if args.linked_dir is not None:
+        if versions and args.linked_dir is not None:
             if not args.expected_project_ref:
                 raise Refusal("--linked-dir requires --expected-project-ref")
             url, env = linked_connection(args.linked_dir, args.expected_project_ref)

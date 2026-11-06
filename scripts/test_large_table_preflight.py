@@ -11,6 +11,10 @@ under the scripts/test_*.py glob.
 
 from pathlib import Path
 import tempfile
+import json
+import io
+from contextlib import redirect_stdout
+from unittest.mock import patch
 import unittest
 
 import sys
@@ -113,6 +117,60 @@ class CandidateTableTests(unittest.TestCase):
             "insert into core.property select id, code from staging.properties;\n"
         )
         self.assertEqual(set(candidates), {"core.property"})
+
+    def test_quoted_comment_markers_do_not_hide_following_writes(self):
+        for literal in ("'--'", "'/*'", "'it''s --'", '"--"', "$tag$--$tag$"):
+            with self.subTest(literal=literal):
+                self.assertIn("t", preflight.candidate_tables(f"SELECT {literal}; UPDATE t SET x=1;"))
+        self.assertIn("t", preflight.candidate_tables(
+            "DO $$ BEGIN SELECT '--'; UPDATE t SET x=1; END $$;"))
+        self.assertEqual(preflight.candidate_tables(
+            "DO $$ BEGIN /* outer /* nested */ UPDATE hidden SET x=1; */ END $$;"), {})
+
+    def test_multiline_rewrites_and_long_insert_cte(self):
+        for sql in (
+            "ALTER TABLE t ALTER COLUMN c\n TYPE text;",
+            "ALTER TABLE t ADD COLUMN c int NOT NULL\n DEFAULT 1;",
+            "INSERT INTO t (" + ", ".join(f"c{i}" for i in range(200)) + ") SELECT 1;",
+            "INSERT INTO t WITH source AS (SELECT 1) SELECT * FROM source;",
+            "WITH source AS (SELECT 1) INSERT INTO t SELECT * FROM source;",
+        ):
+            with self.subTest(sql=sql):
+                self.assertIn("t", preflight.candidate_tables(sql))
+
+    def test_absent_table_is_explicit_in_size_query(self):
+        def reader(url, env, sql):
+            self.assertIn("case when r is null then 'absent'", sql)
+            return "absent"
+        with patch.object(preflight, "psql", side_effect=reader):
+            row = preflight.read_table_size("url", {}, "t")
+        self.assertFalse(row["present"])
+        self.assertIsNone(row["rows"])
+        with patch.object(preflight, "psql", return_value="0|-1"):
+            self.assertTrue(preflight.read_table_size("url", {}, "t")["present"])
+
+    def test_budget_helper_handles_non_object_json(self):
+        with tempfile.TemporaryDirectory() as temp:
+            report = Path(temp) / "report.json"
+            for value in ([], None, "text", {"statement_budget_ms": None}):
+                report.write_text(json.dumps(value))
+                output = io.StringIO()
+                with patch.object(sys, "argv", ["preflight", "--print-budget", str(report)]), redirect_stdout(output):
+                    self.assertEqual(preflight.main(), 0)
+                self.assertEqual(output.getvalue(), "0\n")
+
+    def test_empty_allowlist_reports_noop_without_target_connection(self):
+        with tempfile.TemporaryDirectory() as temp:
+            report = Path(temp) / "report.json"
+            with patch.object(sys, "argv", [
+                "preflight", "--dir", temp, "--allowlist", "",
+                "--target", "production", "--linked-dir", temp, "--json-out", str(report),
+            ]), patch.object(preflight, "linked_connection") as connection, redirect_stdout(io.StringIO()):
+                self.assertEqual(preflight.main(), 0)
+            connection.assert_not_called()
+            value = json.loads(report.read_text())
+            self.assertEqual(value["statement_budget_ms"], 0)
+            self.assertEqual(value["candidates"], [])
 
 
 class PreflightVerdictTests(unittest.TestCase):

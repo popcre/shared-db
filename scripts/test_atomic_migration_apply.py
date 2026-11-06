@@ -141,7 +141,7 @@ class AtomicMigrationApplyTests(unittest.TestCase):
     def test_statement_timeout_budget_is_bounded_and_scoped_to_the_transaction(self):
         sql, statements = "create index i on t(c);", ["create index i on t(c);"]
         wrapper = atomic.build_wrapper("29990101000000", "test", sql, statements, statement_timeout_ms=1_800_000)
-        self.assertIn("BEGIN;" + chr(10) + "SET LOCAL statement_timeout='1800000 ms';" + chr(10), wrapper)
+        self.assertIn("BEGIN;" + chr(10) + "SET LOCAL statement_timeout='1800000ms';" + chr(10), wrapper)
         self.assertIn("COMMIT;", wrapper)
         self.assertNotIn("statement_timeout", atomic.build_wrapper("29990101000000", "test", sql, statements))
         for bad in (59_999, 3_600_001):
@@ -249,16 +249,12 @@ class AtomicMigrationApplyTests(unittest.TestCase):
                     atomic.classify_allowlist(raw)
 
     def test_classifier_preserves_targetless_api_and_single_target_entries_refuse(self):
-        # Plan step 2.6 (#2367), the #5445 divergence class: an entry that
-        # routes one environment through the atomic path leaves the other on
-        # the CLI lane, which splits SQL-standard BEGIN ATOMIC bodies. The
-        # policy reader therefore refuses any entry that does not target both
-        # environments; the classifier's target filter stays for callers and
-        # for a future reviewed relaxation, proved here against a compliant
-        # entry.
+        # Reject a selected single-target entry without letting unrelated
+        # legacy entries prevent a compliant migration from being selected.
         _, policy = self.authorize()
         value = json.loads(policy.read_text(encoding="utf-8"))
         entry = value["migrations"]["29990101000000"]
+        value["migrations"]["29990101000001"] = {"targets": ["preview"], "sha256": "0" * 64}
         for targets in (["preview"], ["production"]):
             entry["targets"] = targets
             policy.write_text(json.dumps(value), encoding="utf-8")
@@ -266,6 +262,8 @@ class AtomicMigrationApplyTests(unittest.TestCase):
                 with self.subTest(targets=targets):
                     with self.assertRaisesRegex(atomic.Refusal, "must target both preview and production"):
                         atomic.classify_allowlist("29990101000000")
+                    with self.assertRaisesRegex(atomic.Refusal, "must target both preview and production"):
+                        atomic.load_candidate(self.root, "29990101000000", targets[0])
         entry["targets"] = ["preview", "production"]
         policy.write_text(json.dumps(value), encoding="utf-8")
         with patch.object(atomic, "POLICY", policy):
@@ -295,9 +293,6 @@ class AtomicMigrationApplyTests(unittest.TestCase):
             for raw in ("29990101000000,29990101000000", "29990101000000,29990101000002"):
                 with self.assertRaises(atomic.Refusal):
                     atomic.classify_allowlist(raw, "preview")
-            # (Plan step 2.6 parity: a production-only refusal of this batch
-            # is no longer constructible -- every entry now targets both
-            # environments, proved by the classifier test above.)
             value["migrations"]["29990101000001"]["batch_group"] = "other"
             policy.write_text(json.dumps(value))
             with self.assertRaises(atomic.Refusal):

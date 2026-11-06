@@ -48,7 +48,7 @@ begin
     raise exception 'PopDAM canonical final validated checks are incomplete';
   end if;
   if (select count(*) from pg_trigger where not tgisinternal and tgenabled <> 'D' and (
-      -- Statement-level tags sync, one trigger per event (migration 20261106022828).
+      -- Statement-level tags sync, one trigger per event (migration 20261106040512).
       (tgrelid='public.asset_tags'::regclass and tgname in ('asset_tags_sync_assets_tags_ins','asset_tags_sync_assets_tags_upd','asset_tags_sync_assets_tags_del'))
       -- Statement-level search refresh, one trigger per event (migration 20261101120856).
       or (tgrelid='public.asset_tags'::regclass and tgname like 'asset\_tags\_dam\_search\_refresh\_%')

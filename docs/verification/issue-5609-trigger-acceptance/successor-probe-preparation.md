@@ -8,7 +8,7 @@ The former `.github/live-proofs/5609.sql` is retained byte-for-byte as [5609-ori
 
 The successor's observed/reset/entry/postmaster identities and all five post-baseline counters are NULL. It must return false until the coordinator explicitly installs a newly captured, genuinely clean baseline after the separately owned cache repair. No repaired baseline, elapsed-time proof, passing production probe, or acceptance is claimed here.
 
-Frozen PRE targets remain exactly 170.077045367033 ms, 59888.980667756245 WAL bytes/call, and 8829/5050.846546 document updates per second. The original full 24-hour requirement, at least 100 calls, strict 50% mean/WAL improvement, lower document-update rate, current metadata, and zero thumbnail-cache drift requirements are unchanged.
+Frozen PRE targets remain exactly 170.077045367033 ms, 59888.980667756245 WAL bytes/call, and 8829/5050.846546 document updates per second. The original full 24-hour requirement, at least 100 calls, strict 50% mean/WAL improvement, lower document-update rate, current metadata, and zero thumbnail-cache drift requirements are unchanged. The statement identity remains query ID `8695287796313115953`, user `16486`, database `5`, top-level true. The separately delivered changed-fields application update can change normal request shape; if the pinned statement no longer receives 100 real matching calls, acceptance remains blocked. Do not substitute an identity, fabricate traffic, or treat missing traffic as improvement; the coordinator must resolve any actual comparability conflict from measured evidence.
 
 ## Exact reviewed trigger renderings
 

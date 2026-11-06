@@ -350,7 +350,7 @@ class GuardTests(unittest.TestCase):
 
     def test_2508_replaced_originals_cannot_be_applied_but_successors_stay_available(self):
         paths = local_migrations(REPO)
-        pairs = {"20261001122410": "20261006004845", "20260914061331": "20260914075758", "20260930212107": "20261005044103", "20261007143431": "20261007171252"}
+        pairs = {"20261106060723": "20261106092127", "20261001122410": "20261006004845", "20260914061331": "20260914075758", "20260930212107": "20261005044103", "20261007143431": "20261007171252"}
         for original, successor in pairs.items():
             with self.subTest(original=original):
                 self.assertEqual(classify_pending_version(original, set(), REPO, paths, "production")["kind"], "retired")

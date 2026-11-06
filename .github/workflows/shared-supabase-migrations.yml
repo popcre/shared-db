@@ -884,6 +884,21 @@ jobs:
           ATOMIC_VERSION="$(python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
             --migrations-dir "$RUNNER_TEMP/bounded-preview/supabase/migrations" \
             --target preview --classify-allowlist "$PREVIEW_ALLOWLIST")"
+          # Large-table preflight (plan step 2.6, #2367). Incidents #1427 and
+          # #5165 passed a small-table rehearsal and failed on production-size
+          # tables, so the apply lane reads candidate table sizes itself. The
+          # report is advisory evidence: the bounded budget below only widens
+          # the atomic transaction's statement time, and a db push apply keeps
+          # the server timeout with the split-work note in the report.
+          python "$GITHUB_WORKSPACE/scripts/large_table_preflight.py" \
+            --dir "$RUNNER_TEMP/bounded-preview" --allowlist "$PREVIEW_ALLOWLIST" --target preview \
+            --linked-dir "$RUNNER_TEMP/bounded-preview" --expected-project-ref "$PREVIEW_PROJECT_REF" \
+            --json-out "$RUNNER_TEMP/large-table-preflight.json" \
+            | tee "$RUNNER_TEMP/large-table-preflight.txt" \
+            || echo "PREFLIGHT-UNAVAILABLE: sizes unread; the apply gates below still decide" | tee -a "$RUNNER_TEMP/large-table-preflight.txt"
+          LARGE_TABLE_BUDGET="$(python "$GITHUB_WORKSPACE/scripts/large_table_preflight.py" --print-budget "$RUNNER_TEMP/large-table-preflight.json" 2>/dev/null || echo 0)"
+          TIMEOUT_ARGS=()
+          if [ "$LARGE_TABLE_BUDGET" != "0" ]; then TIMEOUT_ARGS=(--statement-timeout-ms "$LARGE_TABLE_BUDGET"); fi
           if [ -n "$ATOMIC_VERSION" ]; then
             if [ "$ATOMIC_VERSION" = "20261105121341" ]; then
               python -m pip install 'psycopg[binary]==3.2.13'
@@ -898,8 +913,12 @@ jobs:
               --migrations-dir "$RUNNER_TEMP/bounded-preview/supabase/migrations" \
               --linked-dir "$RUNNER_TEMP/bounded-preview" --versions "$ATOMIC_VERSION" \
               --target preview --expected-project-ref "$PREVIEW_PROJECT_REF" --mode apply \
+              "${TIMEOUT_ARGS[@]}" \
               | tee "$RUNNER_TEMP/preview-apply.txt"
           else
+            if [ "$LARGE_TABLE_BUDGET" != "0" ]; then
+              echo "::warning::large-table preflight flagged this batch; a db push apply keeps the server statement timeout, so a rollback here means the work needs splitting (plan step 2.6). See large-table-preflight.txt"
+            fi
             supabase db push --include-all --dry-run 2>&1 | tee "$RUNNER_TEMP/preview-dry-run.txt"
             python "$GITHUB_WORKSPACE/scripts/production_migration_guard.py" verify-dry-run \
               --dry-run-output "$RUNNER_TEMP/preview-dry-run.txt" \
@@ -1086,6 +1105,8 @@ jobs:
             ${{ runner.temp }}/preview-ledger-after.txt
             ${{ runner.temp }}/preview-instance.json
             ${{ runner.temp }}/preview-instance-*.json
+            ${{ runner.temp }}/large-table-preflight.txt
+            ${{ runner.temp }}/large-table-preflight.json
             ${{ runner.temp }}/bounded-preview/supabase/migration-content-manifest.json
             ${{ runner.temp }}/historical-preview-source.json
           if-no-files-found: warn
@@ -2181,6 +2202,21 @@ jobs:
           ATOMIC_VERSION="$(python "$GITHUB_WORKSPACE/scripts/atomic_migration_apply.py" \
             --migrations-dir "$RUNNER_TEMP/bounded-production/supabase/migrations" \
             --target production --classify-allowlist "$PRODUCTION_ALLOWLIST")"
+          # Large-table preflight (plan step 2.6, #2367). Incidents #1427 and
+          # #5165 passed a small-table rehearsal and failed on production-size
+          # tables, so the apply lane reads candidate table sizes itself. The
+          # report is advisory evidence: the bounded budget below only widens
+          # the atomic transaction's statement time, and a db push apply keeps
+          # the server timeout with the split-work note in the report.
+          python "$GITHUB_WORKSPACE/scripts/large_table_preflight.py" \
+            --dir "$RUNNER_TEMP/bounded-production" --allowlist "$PRODUCTION_ALLOWLIST" --target production \
+            --linked-dir "$RUNNER_TEMP/bounded-production" --expected-project-ref "$PRODUCTION_PROJECT_REF" \
+            --json-out "$RUNNER_TEMP/large-table-preflight.json" \
+            | tee "$RUNNER_TEMP/large-table-preflight.txt" \
+            || echo "PREFLIGHT-UNAVAILABLE: sizes unread; the apply gates below still decide" | tee -a "$RUNNER_TEMP/large-table-preflight.txt"
+          LARGE_TABLE_BUDGET="$(python "$GITHUB_WORKSPACE/scripts/large_table_preflight.py" --print-budget "$RUNNER_TEMP/large-table-preflight.json" 2>/dev/null || echo 0)"
+          TIMEOUT_ARGS=()
+          if [ "$LARGE_TABLE_BUDGET" != "0" ]; then TIMEOUT_ARGS=(--statement-timeout-ms "$LARGE_TABLE_BUDGET"); fi
           if [ -n "$ATOMIC_VERSION" ]; then
             if [ "$ATOMIC_VERSION" = "20261105121341" ]; then
               python -m pip install 'psycopg[binary]==3.2.13'
@@ -2195,8 +2231,12 @@ jobs:
               --migrations-dir "$RUNNER_TEMP/bounded-production/supabase/migrations" \
               --linked-dir "$RUNNER_TEMP/bounded-production" --versions "$ATOMIC_VERSION" \
               --target production --expected-project-ref "$PRODUCTION_PROJECT_REF" --mode apply \
+              "${TIMEOUT_ARGS[@]}" \
               | tee "$RUNNER_TEMP/production-apply.txt"
           else
+            if [ "$LARGE_TABLE_BUDGET" != "0" ]; then
+              echo "::warning::large-table preflight flagged this batch; a db push apply keeps the server statement timeout, so a rollback here means the work needs splitting (plan step 2.6). See large-table-preflight.txt"
+            fi
             supabase db push --include-all --dry-run 2>&1 | tee "$RUNNER_TEMP/production-dry-run.txt"
             python "$GITHUB_WORKSPACE/scripts/production_migration_guard.py" verify-dry-run \
               --dry-run-output "$RUNNER_TEMP/production-dry-run.txt" \
@@ -2266,6 +2306,8 @@ jobs:
             ${{ runner.temp }}/production-dry-run.txt
             ${{ runner.temp }}/production-apply.txt
             ${{ runner.temp }}/production-ledger-after.txt
+            ${{ runner.temp }}/large-table-preflight.txt
+            ${{ runner.temp }}/large-table-preflight.json
             ${{ runner.temp }}/bounded-production/supabase/migration-content-manifest.json
             ${{ runner.temp }}/catalog-verification/production-catalog-verification.md
             ${{ runner.temp }}/catalog-verification/production-catalog-verification.json

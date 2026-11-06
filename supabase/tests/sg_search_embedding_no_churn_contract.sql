@@ -91,7 +91,7 @@ begin
   end if;
   select to_jsonb(d) into v_row from public.style_guide_search_documents d where style_guide_file_id = v_file2;
   select public.mark_sg_search_embedding_error(v_file2, v_sha2, v_dead, 'zz5758 boom') into v_ret;
-  if v_ret is not distinct from false then
+  if v_ret is distinct from false then
     raise exception 'contract 3: dead-lease mark_error reported a write';
   end if;
   if (select to_jsonb(d) from public.style_guide_search_documents d where style_guide_file_id = v_file2) is distinct from v_row then

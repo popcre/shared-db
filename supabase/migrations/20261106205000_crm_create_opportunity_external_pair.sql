@@ -5,6 +5,9 @@
 -- gate: the second create failed with a duplicate-key error. CRM-created programs now
 -- carry the distinct pair ('crm', 'crm-'||gen_random_uuid()), which also names their
 -- provenance. Body otherwise identical to 20261106144500.
+-- derived-from: 20261106144600
+-- derived from 20261106144600's body of api.crm_create_opportunity (the applied
+-- corrected body; 20261106144500 authored it).
 -- Claim and work issue #5791 (popcrm-web #24, plan_crm_basic_crud.md Step 11).
 
 create or replace function api.crm_create_opportunity(

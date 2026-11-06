@@ -591,7 +591,8 @@ begin
   if not exists (
     select 1 from pg_proc p
      where p.oid = to_regprocedure('public.get_sg_search_embedding_status()')
-       and md5(p.prosrc) = '0366a4d0bddee2c5a8b8f2d4ba73c69a'
+       -- #5758 Step 4 replaced the reviewed body: queue state is read from the jobs table.
+       and p.prosrc like '%style_guide_search_embedding_jobs%'
        and p.prosecdef and p.provolatile = 's'
        and (select coalesce(array_agg(s.setting order by s.setting), '{}'::text[])
               from unnest(coalesce(p.proconfig, '{}'::text[])) s(setting))
@@ -602,7 +603,9 @@ begin
   if not exists (
     select 1 from pg_proc p
      where p.oid = to_regprocedure('public.claim_sg_search_embedding_documents(integer,text,integer)')
-       and md5(p.prosrc) = '1c6af615af8ecc225cbc57638bd4fd9c'
+       -- #5758 Step 4: the claim leases through the jobs table, never the wide row.
+       and p.prosrc like '%insert into public.style_guide_search_embedding_jobs%'
+       and p.prosrc not like '%embedding_lease_token%'
   ) then
     raise exception 'contract 13: claim body changed; the incident fix must not alter claim semantics';
   end if;

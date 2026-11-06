@@ -17,6 +17,18 @@ function stageSql(name, spec, rows) {
   return [create, ...statements].join("\n");
 }
 
+// #5758: slot-bearing feeds (/items, /itemDetails) hash their source with the
+// merchGroupNNDesc family removed, so the first run after that change rehashes
+// every stored row whose stored hash predates it. A hash difference alone must
+// not log an 'updated' change: only a content difference (ignoring exactly the
+// keys the new hash ignores) does. The comparison is jsonb-vs-jsonb on both
+// sides minus the ignored keys, so it holds whichever side predates the change.
+function slotDescIgnoreKeys() {
+  const keys = [];
+  for (let slotNo = 1; slotNo <= 14; slotNo += 1) keys.push(`merchGroup${String(slotNo).padStart(2, "0")}Desc`);
+  return `array[${keys.map((key) => sqlText(key)).join(",")}]`;
+}
+
 function currentTableSql(table, spec, rows) {
   const stage = `_stage_${table}`;
   const keys = spec.key;
@@ -30,6 +42,14 @@ function currentTableSql(table, spec, rows) {
           from coldlion.change_log cl
          where cl.table_name=${sqlText(table)}
          order by cl.natural_key, cl.changed_at desc) prior`;
+  // For slot-bearing tables a hash-only difference (the deploy-run rehash, or a
+  // vendor description flap on a night whose stored hash still covers the desc
+  // keys) is suppressed: content equal minus the ignored keys logs nothing.
+  // Non-slot tables keep the pure hash condition.
+  const rehashGuard = spec.slots
+    ? `   or (t.source_hash <> s.source_hash
+       and (s.source_raw - ${slotDescIgnoreKeys()}::text[]) is distinct from (${priorRaw} - ${slotDescIgnoreKeys()}::text[]))`
+    : `   or t.source_hash <> s.source_hash`;
   const updates = [...data.filter((c) => !keys.includes(c)).map((c) => `${c} = excluded.${c}`), "run_id = excluded.run_id", "fetched_at = excluded.fetched_at", "source_hash = excluded.source_hash", "last_seen_at = excluded.last_seen_at"].join(",\n      ");
   return `${stageSql(stage, spec, rows)}
 create temp table _counts_${table} on commit drop as
@@ -45,7 +65,7 @@ select ${sqlText(table)}, ${naturalKey}, case when t.${keys[0]} is null then 'in
   from ${stage} s
   left join coldlion.${table} t on ${join}
   left join ${latestPrior} on prior.natural_key=${naturalKey}
- where t.${keys[0]} is null or t.source_hash <> s.source_hash;
+ where t.${keys[0]} is null${rehashGuard};
 
 insert into coldlion.${table} (${all.join(", ")})
 select ${data.map((c) => `s.${c}`).join(", ")}, s.run_id, s.fetched_at, s.source_hash, s.fetched_at, s.fetched_at
@@ -55,10 +75,10 @@ on conflict (${keys.join(", ")}) do update set
 }
 
 function slotStageSql(rows) {
-  const columns = [["company_code","text"],["division_code","text"],["item_no","text"],["item_pkey","text"],["slot_no","smallint"],["mg_code","text"],["mg_desc","text"],["run_id","uuid"],["fetched_at","timestamptz"],["source_hash","text"]];
+  const columns = [["company_code","text"],["division_code","text"],["item_no","text"],["item_pkey","text"],["slot_no","smallint"],["mg_code","text"],["run_id","uuid"],["fetched_at","timestamptz"],["source_hash","text"]];
   const out = [`create temp table _stage_item_merch_group (${columns.map(([c,t]) => `${c} ${t}`).join(", ")}) on commit drop;`];
   for (let start=0; start<rows.length; start+=BATCH) {
-    out.push(`insert into _stage_item_merch_group (${columns.map(([c])=>c).join(", ")}) values\n${rows.slice(start,start+BATCH).map((r)=>`  (${sqlText(r.company_code)}, ${sqlText(r.division_code)}, ${sqlText(r.item_no)}, ${sqlText(r.item_pkey)}, ${sqlNumber(r.slot_no)}, ${sqlText(r.mg_code)}, ${sqlText(r.mg_desc)}, ${sqlUuid(r.run_id)}, ${sqlTimestamp(r.fetched_at)}, ${sqlText(r.source_hash)})`).join(",\n")};`);
+    out.push(`insert into _stage_item_merch_group (${columns.map(([c])=>c).join(", ")}) values\n${rows.slice(start,start+BATCH).map((r)=>`  (${sqlText(r.company_code)}, ${sqlText(r.division_code)}, ${sqlText(r.item_no)}, ${sqlText(r.item_pkey)}, ${sqlNumber(r.slot_no)}, ${sqlText(r.mg_code)}, ${sqlUuid(r.run_id)}, ${sqlTimestamp(r.fetched_at)}, ${sqlText(r.source_hash)})`).join(",\n")};`);
   }
   return out.join("\n");
 }
@@ -73,12 +93,23 @@ ${affectedInsert}
 insert into coldlion.change_log
   (table_name,natural_key,change_kind,previous_source_hash,new_source_hash,previous_raw,new_raw,run_id)
 select 'item_merch_group', jsonb_build_object('company_code',s.company_code,'division_code',s.division_code,'item_no',s.item_no,'item_pkey',s.item_pkey,'slot_no',s.slot_no),
-       case when t.company_code is null then 'inserted' else 'updated' end, t.source_hash, s.source_hash,
-       case when t.company_code is null then null else to_jsonb(t)-array['run_id','fetched_at','first_seen_at','last_seen_at']::text[] end,
-       to_jsonb(s)-array['run_id','fetched_at']::text[], s.run_id
+     case when t.company_code is null then 'inserted' else 'updated' end, t.source_hash, s.source_hash,
+     case when t.company_code is null then null else to_jsonb(t)-array['run_id','fetched_at','first_seen_at','last_seen_at']::text[] end,
+     to_jsonb(s)-array['run_id','fetched_at']::text[], s.run_id
   from _stage_item_merch_group s
   left join coldlion.item_merch_group t on t.company_code=s.company_code and t.division_code=s.division_code and t.item_no=s.item_no and t.item_pkey is not distinct from s.item_pkey and t.slot_no=s.slot_no
- where t.company_code is null or t.source_hash<>s.source_hash;
+ where t.company_code is null
+   or (t.source_hash<>s.source_hash
+       -- #5758: a hash difference alone is not a change. The slot hash is now
+       -- codes-only, so the one deploy run that rehashes every stored row must
+       -- not log ~250k 'updated' rows. Bookkeeping (run_id, timestamps, hash,
+       -- surrogate id) and the withdrawn mg_desc column never describe content;
+       -- only company/division/item/item_pkey/slot_no/mg_code do. mg_desc stays
+       -- in the strip list so the suppression also holds during the window
+       -- where the column-drop migration has not applied yet.
+       and (to_jsonb(s)-array['run_id','fetched_at','source_hash','mg_desc','id','first_seen_at','last_seen_at']::text[])
+        is distinct from
+           (to_jsonb(t)-array['run_id','fetched_at','source_hash','mg_desc','id','first_seen_at','last_seen_at']::text[]));
 
 insert into coldlion.change_log
   (table_name,natural_key,change_kind,previous_source_hash,new_source_hash,previous_raw,new_raw,run_id)
@@ -97,11 +128,11 @@ delete from coldlion.item_merch_group t
    and not exists (select 1 from _stage_item_merch_group s where s.company_code=t.company_code and s.division_code=t.division_code and s.item_no=t.item_no and s.item_pkey is not distinct from t.item_pkey and s.slot_no=t.slot_no);
 
 insert into coldlion.item_merch_group
-  (company_code,division_code,item_no,item_pkey,slot_no,mg_code,mg_desc,run_id,fetched_at,source_hash,first_seen_at,last_seen_at)
-select company_code,division_code,item_no,item_pkey,slot_no,mg_code,mg_desc,run_id,fetched_at,source_hash,fetched_at,fetched_at
+  (company_code,division_code,item_no,item_pkey,slot_no,mg_code,run_id,fetched_at,source_hash,first_seen_at,last_seen_at)
+select company_code,division_code,item_no,item_pkey,slot_no,mg_code,run_id,fetched_at,source_hash,fetched_at,fetched_at
 from _stage_item_merch_group
 on conflict on constraint item_merch_group_slot_identity do update set
-  mg_code=excluded.mg_code, mg_desc=excluded.mg_desc, run_id=excluded.run_id,
+  mg_code=excluded.mg_code, run_id=excluded.run_id,
   fetched_at=excluded.fetched_at, source_hash=excluded.source_hash, last_seen_at=excluded.last_seen_at;`;
 }
 

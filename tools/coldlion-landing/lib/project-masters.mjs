@@ -10,6 +10,23 @@ function timestamp(value) {
   return parsed.toISOString();
 }
 
+// The merchGroupNNDesc family is not item data (#5758 D4, 2026-11-05): the same
+// /items and /itemDetails snapshot returns the same merchGroupNN code with the
+// description valued on one night and null on the next, so a hash that includes
+// them logs ~10k non-change rows per night. Descriptions of a merch-group CODE
+// live on coldlion.merch_group_detail; item rows and their hashes carry codes
+// only. The raw payloads (source_raw / change_log) still keep whatever arrived.
+const SLOT_DESC_KEY = /^merchGroup\d\dDesc$/;
+
+export function stripSlotDescFields(source) {
+  const stripped = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (SLOT_DESC_KEY.test(key)) continue;
+    stripped[key] = value;
+  }
+  return stripped;
+}
+
 const converters = { text, num, date, ts: timestamp };
 converters.keytext = (value) => value === null || value === undefined ? null : String(value).trim();
 
@@ -35,7 +52,11 @@ export function projectCurrentRows(spec, sourceRows, { runId, fetchedAt, exclude
     for (const field of spec.fields) row[field.column] = converters[field.type](source[field.api]);
     // The schema contract requires a complete-record hash and retains that record
     // privately in change_log; public fixtures and logs never contain its values.
-    row.source_hash = sourceHash(source);
+    // Slot-bearing feeds hash the record with the merchGroupNNDesc family removed
+    // (#5758): those fields flap between valued and blank on identical snapshots,
+    // and a description is resolved by joining merch_group_detail on the code, so
+    // it must never decide whether an item row "changed".
+    row.source_hash = sourceHash(spec.slots ? stripSlotDescFields(source) : source);
     row.source_raw = source;
     row.run_id = runId;
     row.fetched_at = fetchedAt;
@@ -59,10 +80,14 @@ export function projectItemSlots(sourceRows, { runId, fetchedAt, itemPkey = null
       const row = {
         company_code: text(source.companyCode), division_code: text(source.divisionCode), item_no: text(source.itemNo),
         item_pkey: itemPkey === "source" ? text(source.itemPkey) : null,
-        slot_no: slotNo, mg_code: mgCode, mg_desc: text(source[`merchGroup${suffix}Desc`]),
+        slot_no: slotNo, mg_code: mgCode,
         run_id: runId, fetched_at: fetchedAt,
       };
-      row.source_hash = sourceHash({ slotNo, mgCode: row.mg_code, mgDesc: row.mg_desc });
+      // Codes only (#5758 D4): the slot IS (slotNo, mgCode). The description of
+      // that code belongs to coldlion.merch_group_detail and is joined when a
+      // reader wants a label; hashing it here recorded the vendor's intermittent
+      // omission of merchGroupNNDesc as a nightly "change" for ~90% of the log.
+      row.source_hash = sourceHash({ slotNo, mgCode: row.mg_code });
       slots.push(row);
     }
   }

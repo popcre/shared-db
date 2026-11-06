@@ -116,18 +116,18 @@ begin
   -- All fourteen slots at the item-header grain (item_pkey IS NULL) ...
   for v_slot in 1..14 loop
     insert into coldlion.item_merch_group
-      (company_code, division_code, item_no, item_pkey, slot_no, mg_code, mg_desc,
+      (company_code, division_code, item_no, item_pkey, slot_no, mg_code,
        run_id, fetched_at, source_hash, first_seen_at, last_seen_at)
-    values ('ZZTEST', 'ZZ003', 'ZZITEM2', null, v_slot, 'ZZH' || v_slot, 'ZZ header desc',
+    values ('ZZTEST', 'ZZ003', 'ZZITEM2', null, v_slot, 'ZZH' || v_slot,
             v_run, v_now, v_hash, v_now, v_now);
   end loop;
 
   -- ... and all fourteen at the SKU grain, with DIFFERENT codes in the same slots.
   for v_slot in 1..14 loop
     insert into coldlion.item_merch_group
-      (company_code, division_code, item_no, item_pkey, slot_no, mg_code, mg_desc,
+      (company_code, division_code, item_no, item_pkey, slot_no, mg_code,
        run_id, fetched_at, source_hash, first_seen_at, last_seen_at)
-    values ('ZZTEST', 'ZZ003', 'ZZITEM2', 'ZZPKEY1', v_slot, 'ZZD' || v_slot, 'ZZ sku desc',
+    values ('ZZTEST', 'ZZ003', 'ZZITEM2', 'ZZPKEY1', v_slot, 'ZZD' || v_slot,
             v_run, v_now, v_hash, v_now, v_now);
   end loop;
 
@@ -279,12 +279,17 @@ begin
     raise exception 'E FAILED: item_detail.label_desc (owner ruling 2026-09-03, #2081 comment 5526450180) is missing';
   end if;
 
-  if not exists (
+  -- #5758 D4 (2026-11-05) supersedes the 2026-09-03 ingest ruling for the item-slot
+  -- grain: the slot row carries codes only and the description column is GONE. The
+  -- label for a code belongs to coldlion.merch_group_detail, joined on the four-part
+  -- key (company, division, mg_type_code, mg_code); two types sharing one mgCode must
+  -- resolve to their own labels.
+  if exists (
     select 1 from information_schema.columns
     where table_schema = 'coldlion' and table_name = 'item_merch_group'
       and column_name = 'mg_desc'
   ) then
-    raise exception 'E FAILED: item_merch_group.mg_desc (owner ruling 2026-09-03, #2081 comment 5526450180) is missing';
+    raise exception 'E FAILED: item_merch_group.mg_desc must not exist (#5758 D4: codes only; labels join merch_group_detail)';
   end if;
 
   -- Owner-DECLINED fields from docs/coldlion-field-decisions-20260819.csv. If one of
@@ -366,6 +371,80 @@ begin
   end loop;
 
   raise notice 'G PASSED: the item landing tables stay closed to applications.';
+end;
+$$;
+
+-- =====================================================================================
+-- H. #5758 D4 label resolution. Slot rows carry codes only; the label for a code
+--    comes from coldlion.merch_group_detail on the four-part key, and the type code
+--    is what disambiguates a mgCode shared by two types in one division.
+-- =====================================================================================
+do $$
+declare
+  v_run   uuid;
+  v_now   timestamptz := '2026-11-05T23:00:00Z';
+  v_label_05 text;
+  v_label_06 text;
+  v_distinct  int;
+begin
+  insert into coldlion.sync_run (endpoint, company_code, requested_by)
+  values ('/merchGroupDetails', 'ZZTEST', 'ZZTEST') returning id into v_run;
+
+  insert into coldlion.merch_group_header
+    (company_code, division_code, mg_type_code, mg_type_desc,
+     run_id, fetched_at, source_hash, first_seen_at, last_seen_at)
+  values
+    ('ZZTEST', 'ZZ003', '05', 'Licensor', v_run, v_now, repeat('e', 64), v_now, v_now),
+    ('ZZTEST', 'ZZ003', '06', 'Property', v_run, v_now, repeat('f', 64), v_now, v_now);
+
+  -- One mgCode under two types in one division: the join must NOT collapse them.
+  insert into coldlion.merch_group_detail
+    (company_code, division_code, mg_type_code, mg_category, mg_code, mg_desc, active,
+     run_id, fetched_at, source_hash, first_seen_at, last_seen_at)
+  values
+    ('ZZTEST', 'ZZ003', '05', 'CAT-A', 'ZZSHARED', 'ZZ licensor label', 'Y',
+     v_run, v_now, repeat('a', 64), v_now, v_now),
+    ('ZZTEST', 'ZZ003', '06', 'CAT-A', 'ZZSHARED', 'ZZ property label', 'Y',
+     v_run, v_now, repeat('b', 64), v_now, v_now);
+
+  insert into coldlion.item_merch_group
+    (company_code, division_code, item_no, item_pkey, slot_no, mg_code,
+     run_id, fetched_at, source_hash, first_seen_at, last_seen_at)
+  values
+    ('ZZTEST', 'ZZ003', 'ZZLABEL', null, 5, 'ZZSHARED',
+     v_run, v_now, repeat('c', 64), v_now, v_now),
+    ('ZZTEST', 'ZZ003', 'ZZLABEL', null, 6, 'ZZSHARED',
+     v_run, v_now, repeat('d', 64), v_now, v_now);
+
+  select d.mg_desc into v_label_05
+    from coldlion.item_merch_group g
+    join coldlion.merch_group_detail d
+      on d.company_code = g.company_code and d.division_code = g.division_code
+     and d.mg_type_code = lpad(g.slot_no::text, 2, '0') and d.mg_code = g.mg_code
+   where g.item_no = 'ZZLABEL' and g.slot_no = 5 and d.active = 'Y';
+
+  select d.mg_desc into v_label_06
+    from coldlion.item_merch_group g
+    join coldlion.merch_group_detail d
+      on d.company_code = g.company_code and d.division_code = g.division_code
+     and d.mg_type_code = lpad(g.slot_no::text, 2, '0') and d.mg_code = g.mg_code
+   where g.item_no = 'ZZLABEL' and g.slot_no = 6 and d.active = 'Y';
+
+  if v_label_05 is distinct from 'ZZ licensor label' or v_label_06 is distinct from 'ZZ property label' then
+    raise exception 'H FAILED: four-part label join returned "%" / "%", expected the two different type labels',
+      coalesce(v_label_05, '<null>'), coalesce(v_label_06, '<null>');
+  end if;
+
+  -- The join without the type code is ambiguous by design; prove it stays ambiguous
+  -- so nobody "simplifies" the reader join later.
+  select count(distinct d.mg_desc) into v_distinct
+    from coldlion.merch_group_detail d
+   where d.company_code = 'ZZTEST' and d.division_code = 'ZZ003' and d.mg_code = 'ZZSHARED';
+  if v_distinct <> 2 then
+    raise exception 'H FAILED: expected the shared mgCode to carry 2 distinct labels, got %', v_distinct;
+  end if;
+
+  raise notice 'H PASSED: codes-only slot rows resolve their labels by the four-part merch_group_detail join.';
 end;
 $$;
 

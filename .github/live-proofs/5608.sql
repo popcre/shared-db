@@ -9,7 +9,7 @@ with recent as (
   select * from recent where rn<=3
 )
 select
-  (select count(*)=3 and bool_and(coalesce(command='call public.resolve_sku_style_guide_links_run() /* shared-db:20261105061627 */'
+  (select count(*)=3 and bool_and(coalesce(command='call public.resolve_sku_style_guide_links_run() /* shared-db:20261106161310 */'
       and status='succeeded'
       and end_time is not null and end_time>=start_time
       and end_time-start_time<interval '60 seconds',false))
@@ -17,9 +17,10 @@ select
       and max((start_time at time zone 'UTC')::date)-min((start_time at time zone 'UTC')::date)=2
     from nights)
   and exists(select 1 from supabase_migrations.schema_migrations where version='20261105061627')
-  and (select count(*)=1 and bool_and(coalesce(command='call public.resolve_sku_style_guide_links_run() /* shared-db:20261105061627 */' and active and username='postgres' and schedule='30 4 * * *',false)) from cron.job where jobname='resolve-sku-style-guide-links-nightly')
+  and exists(select 1 from supabase_migrations.schema_migrations where version='20261106161310')
+  and (select count(*)=1 and bool_and(coalesce(command='call public.resolve_sku_style_guide_links_run() /* shared-db:20261106161310 */' and active and username='postgres' and schedule='30 4 * * *',false)) from cron.job where jobname='resolve-sku-style-guide-links-nightly')
   and not exists(select 1 from cron.job where jobname='sku-style-guide-links-catchup-5608')
-  and exists(select 1 from public.sku_style_guide_resolver_progress where cardinality(active_link_ids)>0)
+  and exists(select 1 from public.sku_style_guide_resolver_progress where cardinality(active_link_ids)>0 and portal_hash like 'v4:%')
   and (select max(last_seen_at) from public.sku_style_guide_links)>=
       (select max(start_time) from nights)
   and not has_function_privilege('authenticated','public.resolve_sku_style_guide_links()','EXECUTE')

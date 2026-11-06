@@ -133,8 +133,10 @@ begin
   select md5('zq5747t-a' || i)::uuid, 'zq5747trunc' || i || '.pdf', 'zq5747/trunc/' || i || '.pdf', 'pdf',
          'zq5747trunc' || i, now(), now(), 'https://example.invalid/t.png'
   from generate_series(1, 1021) i;
-  -- 20 hidden extras: old, no thumbnail -> flags false, candidates but not visible
-  update public.assets set thumbnail_url = null, modified_at = '2000-01-01', file_created_at = '2000-01-01'
+  -- 20 hidden extras: older than the active THUMBNAIL_MIN_DATE (the first test
+  -- block above sets it to 1999-01-01), no thumbnail -> flags false, candidates
+  -- but not visible
+  update public.assets set thumbnail_url = null, modified_at = '1990-01-01', file_created_at = '1990-01-01'
   where id in (select md5('zq5747t-a' || i)::uuid from generate_series(1002, 1021) i);
   insert into public.dam_search_documents (document_type, entity_id, asset_id, style_group_id, title, path)
   select 'asset', md5('zq5747t-a' || i)::uuid, md5('zq5747t-a' || i)::uuid, null,

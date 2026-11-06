@@ -450,7 +450,7 @@ jobs:
           fi
           git fetch origin main
           test "$(git rev-parse HEAD)" = "$MAIN_SHA"
-          MAIN_SHA="$MAIN_SHA" node scripts/check-main-tip-freshness.mjs
+          MAIN_SHA="$MAIN_SHA" node scripts/check-main-tip-freshness.mjs --production
           # A batch that AGENTS.md 6.5 requires to move as ONE bounded event can
           # span several authoring pull requests, so it names a source PR per
           # version. BOTH SET IS REFUSED HERE for the same reason the historical
@@ -572,7 +572,7 @@ jobs:
           test -n "$MAIN_SHA"
           git fetch origin main
           test "$(git rev-parse HEAD)" = "$MAIN_SHA"
-          MAIN_SHA="$MAIN_SHA" node scripts/check-main-tip-freshness.mjs
+          MAIN_SHA="$MAIN_SHA" node scripts/check-main-tip-freshness.mjs --production
           # A batch authored across several pull requests names a source PR per
           # version; a single-PR batch keeps the original form.
           #

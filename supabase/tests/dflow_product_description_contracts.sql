@@ -1,6 +1,6 @@
 -- =====================================================================================
 -- Core Product Type (product description tables) behavior contracts — migration
--- 20261105231250 (dflow half), issue #5020 / claim #5772, PR #5029. Written after a
+-- 20261106050346 (dflow half), issue #5020 / claim #5772, PR #5029. Written after a
 -- governed deepseek review (REJECT) proved the original human-override guard could
 -- be bypassed three ways and that no committed behavior test existed.
 --
@@ -97,7 +97,7 @@ begin
 end
 $fixture$;
 
-\i supabase/migrations/20261105231250_dflow_product_description.sql
+\i supabase/migrations/20261106050346_dflow_product_description.sql
 
 -- A. Positive chain: a published combination and its per-item row insert cleanly.
 insert into dflow.mg_combination_description
@@ -187,6 +187,6 @@ begin
 end $$;
 
 -- H. Idempotent re-apply.
-\i supabase/migrations/20261105231250_dflow_product_description.sql
+\i supabase/migrations/20261106050346_dflow_product_description.sql
 
 rollback;

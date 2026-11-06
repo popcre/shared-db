@@ -12,7 +12,7 @@ Owning issue: #5608. Related history: #5141 (closed; the same 120 s cap rolled b
 | 2 Batched snapshot resolver | production delivered; real full failed | Automatic42243380012; zero-key10:50 AM EST resolver failed120.035070s/3400 committed SKUs |
 | 3 Contracts and recovery | v4 disposable checks passed; new CI pending | Whole8050-SKU calls, original nine-column/eight-portal parity, post-DML cancellation, input concurrency/security and24 actual proof-SQL cases |
 | 4 Governed preview + exact output | complete | Run 41987714096; 0/0 EXCEPT ALL, unchanged 334-row output and input fingerprints |
-| 5 v4 unified input snapshot | authored; not delivered | Version20261106161310; actual8050-SKU/21861-input scale; disposable full2.965543s / unchanged0.884081s; governed rehearsal/automatic production still required |
+| 5 v4 unified input snapshot | authored; not delivered | Version20261106171924; actual8050-SKU/21861-input scale; disposable full2.965543s / unchanged0.884081s; governed rehearsal/automatic production still required |
 | 6 Three final-source nightly successes | open | No genuine final-v4 nights; synthetic proof cases do not count |
 
 - [ ] Implementation complete: v4 realistic hosted rehearsal, automatic delivery and actual production full/catchup/output proof remain required.

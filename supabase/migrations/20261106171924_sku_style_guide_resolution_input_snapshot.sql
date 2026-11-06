@@ -310,7 +310,7 @@ begin
     and command='call public.resolve_sku_style_guide_links_run() /* shared-db:20261105061627 */') then
     raise exception 'Expected the one unchanged original SKU nightly job';
   end if;
-  perform cron.alter_job(v_job_id,command:='call public.resolve_sku_style_guide_links_run() /* shared-db:20261106161310 */');
+  perform cron.alter_job(v_job_id,command:='call public.resolve_sku_style_guide_links_run() /* shared-db:20261106171924 */');
 end $nightly_identity$;
 
 -- Existing catch-up remains unchanged. If already finished, install the SAME

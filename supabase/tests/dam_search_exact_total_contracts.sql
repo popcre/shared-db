@@ -155,10 +155,10 @@ begin
     set asset_id = excluded.asset_id, style_group_id = excluded.style_group_id,
         title = excluded.title, path = excluded.path;
 
-  select min(total_count), min(facets), bool_and(has_more)
+  select min(total_count), min(facets::text)::jsonb, bool_and(has_more)
     into fast_total, fast_facets, fast_more
   from public.search_dam_documents('zq5747trunc', '{}'::jsonb, 5, 0, null, null, 0, null);
-  select min(total_count), min(facets), bool_and(has_more)
+  select min(total_count), min(facets::text)::jsonb, bool_and(has_more)
     into probe_total, probe_facets, probe_more
   from public.search_dam_documents('zq5747trunc', '{"customer":""}'::jsonb, 5, 0, null, null, 0, null);
   if fast_total <> 1001 or probe_total <> 1001 then
@@ -182,7 +182,7 @@ begin
     raise exception '#5747 trunc page differs between shortcut and probe';
   end if;
 
-  select min(total_count), min(facets) into small_total, small_facets
+  select min(total_count), min(facets::text)::jsonb into small_total, small_facets
   from public.search_dam_documents('zq5747small', '{}'::jsonb, 5, 0, null, null, 0, null);
   if small_total <> 3 then
     raise exception '#5747 small total % (want 3)', small_total;

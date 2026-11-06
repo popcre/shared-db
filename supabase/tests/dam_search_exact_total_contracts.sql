@@ -139,7 +139,10 @@ begin
   insert into public.dam_search_documents (document_type, entity_id, asset_id, style_group_id, title, path)
   select 'asset', md5('zq5747t-a' || i)::uuid, md5('zq5747t-a' || i)::uuid, null,
          'zq5747trunc doc ' || i, 'zq5747/trunc/' || i || '.pdf'
-  from generate_series(1, 1021) i;
+  from generate_series(1, 1021) i
+  on conflict (document_type, entity_id) do update
+    set asset_id = excluded.asset_id, style_group_id = excluded.style_group_id,
+        title = excluded.title, path = excluded.path;
   insert into public.assets (id, filename, relative_path, file_type, quick_hash, modified_at, file_created_at, thumbnail_url)
   select md5('zq5747s-a' || i)::uuid, 'zq5747small' || i || '.pdf', 'zq5747/small/' || i || '.pdf', 'pdf',
          'zq5747small' || i, now(), now(), 'https://example.invalid/s.png'
@@ -147,7 +150,10 @@ begin
   insert into public.dam_search_documents (document_type, entity_id, asset_id, style_group_id, title, path)
   select 'asset', md5('zq5747s-a' || i)::uuid, md5('zq5747s-a' || i)::uuid, null,
          'zq5747small doc ' || i, 'zq5747/small/' || i || '.pdf'
-  from generate_series(1, 3) i;
+  from generate_series(1, 3) i
+  on conflict (document_type, entity_id) do update
+    set asset_id = excluded.asset_id, style_group_id = excluded.style_group_id,
+        title = excluded.title, path = excluded.path;
 
   select min(total_count), min(facets), bool_and(has_more)
     into fast_total, fast_facets, fast_more

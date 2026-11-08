@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "work_issue": 5026,
-  "generation": 7,
+  "generation": 8,
   "work_type": "structural",
   "route": "claim-first",
   "goal": "Deliver the dflow_prod Core Product Type product-description tables to DesignFlow production through the governed lane by a forward reissue carrying a PR-owned evidence pair",
@@ -12,8 +12,8 @@
   "worker": "claude",
   "evidence_parent": {
     "work_issue": 5026,
-    "generation": 6,
-    "contract_sha256": "6b4e3e0fbac16e018be15b4a22b4995155782d5308da35dbf30760051f4fbb62"
+    "generation": 7,
+    "contract_sha256": "28a037161bf4ce211693b174f35f1bd414c5b3963ae355b313443cd50cb20aed"
   },
   "allowed_paths": [
     "supabase/migrations/20261108135128_dflow_prod_product_description_reissue.sql",
@@ -23,6 +23,10 @@
     "scripts/test_production_migration_guard.py",
     "scripts/test_post_batch_app_verification.py",
     "supabase/tests/dflow_prod_product_description_contracts.sql",
+    ".agent/work/5026/8/contract.json",
+    ".agent/work/5026/8/completion.json",
+    "docs/verification/throughput-dispositions/scripts~production_migration_guard.py.json",
+    "HANDOFF.d/2026-11-06T1358Z-edge-dev-mimo-cpt-production-half.md",
     ".agent/work/5026/7/contract.json",
     ".agent/work/5026/7/completion.json"
   ],
@@ -34,8 +38,10 @@
     "scripts/test_production_migration_guard.py",
     "scripts/test_post_batch_app_verification.py",
     "supabase/tests/dflow_prod_product_description_contracts.sql",
-    ".agent/work/5026/7/contract.json",
-    ".agent/work/5026/7/completion.json"
+    ".agent/work/5026/8/contract.json",
+    ".agent/work/5026/8/completion.json",
+    "docs/verification/throughput-dispositions/scripts~production_migration_guard.py.json",
+    "HANDOFF.d/2026-11-06T1358Z-edge-dev-mimo-cpt-production-half.md"
   ],
   "db_reads": [],
   "db_writes": [
@@ -69,12 +75,15 @@
     "bash scripts/check-sql.sh",
     "git diff --check",
     "python3 -m unittest discover -s scripts -p test_*.py",
-    "Database Contract Tests on isolated ephemeral database"
+    "Database Contract Tests on isolated ephemeral database",
+    "node scripts/check-throughput-truth-audit.mjs",
+    "python3 -I -B scripts/check_production_verification_sidecars.py --repo . --scan-version 20261108135128"
   ],
   "assumptions": [
     "Source PR5910 merged at 3bb643b940e456c1d7ff889f38e9ba0f682bb644 without a PR-owned evidence pair, so the DesignFlow release observer refuses its issue binding; claim5909 is reissued as claim5943 at version 20261108135128.",
     "20261106174810 was never applied to DesignFlow production (no apply receipt under refs/designflow-db-apply-receipts/5026). The reissue SQL is idempotent (IF NOT EXISTS / OR REPLACE / drop-if-exists) and differs only in its header and self-check message version text.",
-    "Generation 7 supersedes generations 1-6 (PR5910 lineage, which never committed a pair); this generation is the reissue PR's own pair."
+    "Generation 7 supersedes generations 1-6 (PR5910 lineage, which never committed a pair); this generation is the reissue PR's own pair.",
+    "Generation 8 supersedes generation 7 on the same PR 5944: CI required the truth-audit disposition entry, unique sidecar check ids, and retirement of the #5026 production-half handoff; scope and database objects are unchanged."
   ],
   "stop_conditions": [
     "stop if admission inspector objects differ from the issue writes",

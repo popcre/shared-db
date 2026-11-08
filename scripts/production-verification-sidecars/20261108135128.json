@@ -4,7 +4,7 @@
   "migration_sha256": "1dc5871508acee36b8dc48dfad30e5e479c5dc02143cce3369692bb6bddbb917",
   "checks": [
     {
-      "id": "dflow_prod_pd_combination_table_exists",
+      "id": "dflow_prod_pd_reissue_combination_table_exists",
       "kind": "exact_row_count",
       "relation": "dflow_prod.mg_combination_description",
       "filters": [
@@ -17,7 +17,7 @@
       "expected_count": 0
     },
     {
-      "id": "dflow_prod_pd_item_table_exists",
+      "id": "dflow_prod_pd_reissue_item_table_exists",
       "kind": "exact_row_count",
       "relation": "dflow_prod.item_product_description",
       "filters": [

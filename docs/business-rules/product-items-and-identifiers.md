@@ -114,6 +114,14 @@ as stock, not whether it is sold. A physical thing we hold is inventory even
 when it never reaches a customer; a charge or a consumed input is not inventory
 even when it appears on the same order.
 
+### Who sets the non-inventory flag
+
+**Settled - Albert Hazan, 2026-11-08.** The non-inventory flag is maintained in
+ColdLion, the ERP, and nowhere else. DesignFlow and the shared database must not
+be used to set it. A correction to the flag is made in ColdLion by the person
+who maintains the ERP item record, from a list the business supplies, and the
+change then reaches our applications through the normal feed.
+
 ### Non-inventory items do not belong in the served product data
 
 **Settled - Albert Hazan, 2026-09-07.** Entries flagged as non-inventory must

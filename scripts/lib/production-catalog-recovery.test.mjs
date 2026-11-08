@@ -49,7 +49,7 @@ function adapterFixture(){
  const original=new Map([['production-apply.txt','actually applied'],['production-ledger-before.txt',x.ledgerBefore],['production-ledger-after.txt',x.ledgerAfter],['migration-content-manifest.json',JSON.stringify(x.manifest)]])
  const recovered=new Map([['production-catalog-recovery-binding.json',JSON.stringify(x.binding)],['production-catalog-verification.json',JSON.stringify(x.catalog)],['production-ledger-recovery.txt',x.ledgerLive]])
  const io={verifyProductionApply:()=>{throw Error('failed whole apply must not use successful route')},mergeCommitInMain:()=>true,getPrFiles:()=>[{filename:`supabase/migrations/${v}_exact.sql`}],readArtifactFiles:(_repo,id)=>id===2?original:recovered}
- const read=([_api,url])=>url.includes('/compare/')?{status:'ahead',behind_by:0}:url.endsWith('/1/artifacts')?{artifacts:[{id:2,name:`production-migration-apply-${apply}`,expired:false,digest}]}:url.endsWith('/3/artifacts')?{artifacts:[x.recoveryArtifact]}:url.includes('/1/jobs?')?x.jobs:url.endsWith('/1')?x.applyRun:url.endsWith('/3')?x.recoveryRun:(()=>{throw Error(`unexpected endpoint ${url}`)})()
+ const read=([_api,url])=>url.includes('/compare/')?{status:'ahead',behind_by:0}:url.endsWith('/1/artifacts')?{artifacts:[{id:2,name:`production-migration-apply-${apply}`,expired:false,digest,workflow_run:{id:1,head_sha:apply}}]}:url.endsWith('/3/artifacts')?{artifacts:[x.recoveryArtifact]}:url.includes('/1/jobs?')?x.jobs:url.endsWith('/1')?x.applyRun:url.endsWith('/3')?x.recoveryRun:(()=>{throw Error(`unexpected endpoint ${url}`)})()
  return {x,io,read,recovered}
 }
 test('composite adapter independently re-derives exact run artifacts, jobs and ancestry',()=>{
@@ -338,3 +338,20 @@ for(const route of ['legacy','current'])test(`${route} requires a positive asser
   assert.throws(()=>validateCurrentLiveBinding(x.binding,x))
  }
 })
+
+test('recovery rejects a different run head before reading artifacts',()=>{
+ const {x,io,read}=adapterFixture();x.applyRun.head_sha='d'.repeat(40)
+ io.readArtifactFiles=()=>{throw Error('must reject before archive read')}
+ assert.equal(verifyProductionEvidence(x.evidence,io,read,'popcre/shared-db'),false)
+})
+for(const workflow_run of [undefined,{id:99,head_sha:apply},{id:1,head_sha:main}]){
+ test(`recovery rejects mismatched artifact workflow binding ${JSON.stringify(workflow_run)}`,()=>{
+  const {x,io,read}=adapterFixture()
+  const altered=args=>{
+   const value=read(args)
+   if(args[1].endsWith('/1/artifacts'))value.artifacts[0].workflow_run=workflow_run
+   return value
+  }
+  assert.equal(verifyProductionEvidence(x.evidence,io,altered,'popcre/shared-db'),false)
+ })
+}

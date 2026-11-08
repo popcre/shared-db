@@ -51,7 +51,7 @@ test('original upload parsing accepts dispatch-named upload only when the caller
   assert.throws(() => parseOriginalUpload(log.replace(dispatched, other), run, 3, acceptedApplyArtifactNames(run, ancestorOnly)))
 })
 
-test('current-live producer custody accepts the run-name dispatch commit but not another commit', () => {
+test('current-live producer custody requires verified dispatch ancestry', () => {
   const names = ['SQL migration guards', 'Production apply review (immutable evidence + hard guards)', 'Production apply (automatic evidence gates)']
   const original = { id: 10, run_attempt: 1, head_branch: 'main', head_sha: head, display_title: run.display_title,
     path: '.github/workflows/shared-supabase-migrations.yml', event: 'workflow_dispatch', status: 'completed', conclusion: 'success' }
@@ -59,7 +59,11 @@ test('current-live producer custody accepts the run-name dispatch commit but not
   const producer = name => ({ original, jobs, later: [], latestAttempt: 1, artifact: null, absence: 'authenticated-404',
     upload: { artifact_id: 30, digest: `sha256:${'c'.repeat(64)}`, name, job_id: 22, log_sha256: 'f'.repeat(64) } })
   assert.equal(assertCurrentLiveProducer(producer(applyArtifactName(head))), true)
-  assert.equal(assertCurrentLiveProducer(producer(applyArtifactName(dispatched))), true)
+  assert.throws(() => assertCurrentLiveProducer(producer(applyArtifactName(dispatched))))
+  assert.throws(() => assertCurrentLiveProducer(producer(applyArtifactName(dispatched)), () => false))
+  assert.throws(() => assertCurrentLiveProducer(producer(applyArtifactName(dispatched)), () => 'true'))
+  assert.equal(assertCurrentLiveProducer(producer(applyArtifactName(dispatched)), compareAncestry(() => ({status: 'ahead', behind_by: 0}))), true)
+  assert.throws(() => assertCurrentLiveProducer(producer(applyArtifactName(dispatched)), compareAncestry(() => ({status: 'diverged', behind_by: 1}))))
   assert.throws(() => assertCurrentLiveProducer(producer(applyArtifactName(other))))
 })
 

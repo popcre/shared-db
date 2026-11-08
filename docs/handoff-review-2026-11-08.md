@@ -4,11 +4,12 @@ Housekeeping review of all `HANDOFF.d/` notes. Each note was checked against
 its issue, PRs, branches, and live proof. Retired notes are gone from git
 working tree; git history preserves their text.
 
-> **2026-11-08 3:10 PM EST supersession:** the #2421, #5608 and #5747 entries
-> below were stale at publication (triage found later facts). Each carries a
-> corrected resume prompt; the #2421 note is retired since publication.
+> **Reconciled against the local records:** #2421, #4421, #5608 and #5747
+> entries have been corrected below. Ten notes have been retired across this
+> review and its follow-ups. Nine notes remain: six stalled, two unattributed,
+> and one review-closeout note. Claim #4158 release remains unverified.
 
-## Retired (5 notes — issue closed, outcome verified)
+## Retired (10 notes — 9 completed, 1 superseded with outcome still open)
 
 | File | Issue | Proof |
 |---|---|---|
@@ -17,11 +18,36 @@ working tree; git history preserves their text.
 | `2026-10-27T1645Z-edge-dev3-codex-roles-rls-stop.md` | [#4832](https://github.com/popcre/shared-db/issues/4832) closed | Same. All three named issues (#4832, #4427, #4890) closed with verified outcomes. |
 | `20261105T2111Z-edge-dev3-claude-db-anti-bloat-plan.md` | [#5758](https://github.com/popcre/shared-db/issues/5758) closed | Live proof gates (i) and (ii) passed 2026-11-08. Phase B carried forward by successor note `20261108T1305Z` and the plan STATUS table. |
 | `20261106T1415Z-hetz-claude-5758-anti-bloat-coordinator.md` | [#5758](https://github.com/popcre/shared-db/issues/5758) closed | No contract block (unattributed). All work carried by successor note `20261108T1305Z`. |
+| `2026-10-18T1421Z-edge-dev3-codex-rls-performance-plan.md` | [#4421](https://github.com/popcre/shared-db/issues/4421) closed | PR [#5961](https://github.com/popcre/shared-db/pull/5961) reconciled the plan and retired the four RLS notes; `plan_rls_request_constant_checks.md` STATUS records completion. |
+| `2026-10-18T1547Z-edge-dev3-codex-rls-publication-custody.md` | #4421 closed | Same. |
+| `2026-10-18T1929Z-edge-dev3-codex-rls-repair-closeout.md` | #4421 closed | Same. |
+| `2026-10-21T1823Z-edge-dev-mimo-rls-4427-resume-closeout.md` | #4421 closed | Same. |
+| `2026-10-11T1324Z-edge-dev3-codex-style-group-watermark.md` | [#2421](https://github.com/popcre/shared-db/issues/2421) outcome open | Superseded by the corrected resume prompt below; note retired, outcome completion still pending. |
 
 **Spent migration versions (never reuse):** `20261026174936`, `20261026193803`,
 `20261027022851` (role-rename work). The successful version is `20261027172235`.
 
-## Stalled (11 notes — open work, no active owner)
+### #2421 — retired note, outcome still open
+
+- `2026-10-11T1324Z-edge-dev3-codex-style-group-watermark.md` — **retired 2026-11-08** (this entry supersedes the note and the original resume prompt, which were stale: PR #4161 is MERGED, local evidence records custody adoption of claim #4158, not its release, migration `20261012012727` is in the production ledger as of 2026-11-08).
+
+**Resume prompt (corrected 2026-11-08 3:10 PM EST):**
+> In popcre/shared-db (own worktree from origin/main), finish the authoritative
+> outcome for issue #2421. Delivery is done: PR
+> [popcre/shared-db#4161](https://github.com/popcre/shared-db/pull/4161) merged
+> 2026-10-12, migration `20261012012727` in production (confirmed 2026-11-08),
+> worker deployed (popdam3 PR 355), native full/incremental/watermark runs and
+> full-population zero-drift reads observed 2026-10-13–18 on the issue. Claim
+> #4158 release is unverified: `docs/verification/claim4158-recovery/manifest.json`
+> records adoption only; `docs/agents/stopped-merged-claim-recovery.md` requires
+> a separate release. Verify the current claim state and release if still held
+> through the supported recovery route. What remains: produce the
+> `shared-db-live-proof-2421-<sha>` artifact from popdam3 (its proof workflow
+> has no `2421` dispatch option yet) and the generated-types evidence, then
+> advance the outcome ledger past `dispatched` and run `--complete-outcome`.
+> Never close #2421 by hand — a close before `live_verified` blocks completion.
+
+## Stalled (6 notes — open work, no active owner)
 
 Each needs a new session. Resume prompts below.
 
@@ -40,23 +66,6 @@ Each needs a new session. Resume prompts below.
 > baseline) still blocks taxonomy activation — do not proceed past that gate
 > until Ilona/Laura confirm on #1941.
 
-### #2421 — style-group change watermark (1 note)
-
-- `2026-10-11T1324Z-edge-dev3-codex-style-group-watermark.md` — **retired 2026-11-08** (this entry supersedes the note and the original resume prompt, which were stale: PR #4161 is MERGED, claim #4158 was explicitly released 2026-10-18, migration `20261012012727` is in the production ledger as of 2026-11-08).
-
-**Resume prompt (corrected 2026-11-08 3:10 PM EST):**
-> In popcre/shared-db (own worktree from origin/main), finish the authoritative
-> outcome for issue #2421. Delivery is done: PR
-> [popcre/shared-db#4161](https://github.com/popcre/shared-db/pull/4161) merged
-> 2026-10-12, migration `20261012012727` in production (confirmed 2026-11-08),
-> worker deployed (popdam3 PR 355), native full/incremental/watermark runs and
-> full-population zero-drift reads observed 2026-10-13–18 on the issue. Claim
-> #4158 released 2026-10-18. What remains: produce the
-> `shared-db-live-proof-2421-<sha>` artifact from popdam3 (its proof workflow
-> has no `2421` dispatch option yet) and the generated-types evidence, then
-> advance the outcome ledger past `dispatched` and run `--complete-outcome`.
-> Never close #2421 by hand — a close before `live_verified` blocks completion.
-
 ### #4248 — DesignFlow Cloud SQL → Supabase migration (2 notes)
 
 - `2026-10-13T1710Z-edge-dev3-claude-770-dflow-migration-program.md`
@@ -71,23 +80,6 @@ Each needs a new session. Resume prompts below.
 > handoff notes and the plan, then continue from the first unfinished phase.
 > Albert's ruling: customers, artists, characters, factories and users should
 > be `core.*` tables (Phase 5, after Step 2).
-
-### #4421 — RLS performance repair program (4 notes)
-
-- `2026-10-18T1421Z-edge-dev3-codex-rls-performance-plan.md`
-- `2026-10-18T1547Z-edge-dev3-codex-rls-publication-custody.md`
-- `2026-10-18T1929Z-edge-dev3-codex-rls-repair-closeout.md`
-- `2026-10-21T1823Z-edge-dev-mimo-rls-4427-resume-closeout.md`
-
-**Resume prompt:**
-> In popcre/shared-db (own worktree from origin/main), reconcile the RLS
-> performance repair program under issue #4421. All four sub-phase issues are
-> CLOSED: #4427 (`live_verified`), #4428, #4429, #4430 (all `merged`). The
-> plan STATUS table in `plan_rls_request_constant_checks.md` is stale — it
-> still shows #4428–#4430 as OPEN (snapshot was 2026-10-29). Update the plan
-> STATUS to reflect the actual closed state, verify each sub-issue has its
-> completion record, then close parent #4421. After that, retire the four
-> `HANDOFF.d/` notes for #4421.
 
 ### #5758 — anti-bloat Phase B (1 note)
 
@@ -127,9 +119,17 @@ Each needs a new session. Resume prompts below.
 
 **Resume prompt (corrected 2026-11-08 — "no step has been executed" was stale):**
 > In popcre/shared-db (own worktree from origin/main), handle the #5747
-> 7-day measurement when it is due **2026-11-12 9:47 PM EST**. Steps 0–6 are
-> done (repack live); see `plan_assets-bloat-permanent-fix.md` STATUS. Nothing
-> to do before the due date. Owner ruling: totals stay exact.
+> Step 7 seven-day measurement when it is due **2026-11-12 9:47 PM EST**.
+> Steps 0–2 and 4–6 are done (repack live). Step 3 has an audit recorded,
+> with no index drops yet; re-check on or after **2026-11-18 EST**.
+> See `plan_assets-bloat-permanent-fix.md` STATUS for scope and sibling-session
+> ownership. Owner ruling: totals stay exact.
+
+## Review closeout (1 note — remaining verification)
+
+- `2026-11-08T1914Z-edge-dev-mimo-handoff-review-closeout.md` — retains the
+  review session's closeout-check follow-up. Its #2421 release and #5747
+  completion statements are superseded by the corrected entries above.
 
 ---
 

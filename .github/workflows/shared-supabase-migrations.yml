@@ -2352,7 +2352,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: production-migration-apply-${{ inputs.commit_sha }}
+          # Named after the commit this run executed at (github.sha = run.head_sha),
+          # which is what every verifier keys on (#5974).
+          name: production-migration-apply-${{ github.sha }}
           path: |
             ${{ runner.temp }}/production-apply-review-evidence.json
             ${{ runner.temp }}/production-ledger-before.txt

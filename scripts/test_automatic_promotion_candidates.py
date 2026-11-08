@@ -253,6 +253,13 @@ class ForeignTargetVersions(unittest.TestCase):
         self.assertEqual(self.prs("20261104214842", "20261105035926"), [])
         self.assertEqual(self.prs("20261104214842", "20261105074028")[0]["versions"], ["20261105074028"])
 
+    def test_designflow_product_description_reissue_is_never_a_shared_candidate(self):
+        self.assertEqual(self.prs("20261108135128"), [])
+        self.assertEqual(
+            self.prs("20261108135128", "20261102224413")[0]["versions"],
+            ["20261102224413"],
+        )
+
     def test_sandbox_only_pr_is_never_a_production_candidate(self):
         self.assertEqual(self.prs("20261102215524"), [])
 

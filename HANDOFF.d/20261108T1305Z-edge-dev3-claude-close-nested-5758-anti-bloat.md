@@ -1,3 +1,9 @@
+---
+issue: 5758
+status: OPEN
+owner: claude/5758-close-nested-handoff
+---
+
 # HANDOFF — #5758 anti-bloat coordinator tree closed (close-nested)
 
 Written 2026-11-08 8:05 AM EST by the #5758 coordinator Claude session on edge-dev3.

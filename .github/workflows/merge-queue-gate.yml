@@ -90,6 +90,18 @@ jobs:
           echo "pr=$(echo "$facts" | jq -r .number)" >> "$GITHUB_OUTPUT"
           echo "head=$tip" >> "$GITHUB_OUTPUT"
 
+      # #5937: a live promotion merge freeze (production qualification, or the
+      # selector's 15-minute backstop after repeated main-moved refusals) holds
+      # main still so the running promotion's evidence stays valid. Refuse the
+      # group unless the queued PR is freeze-tolerant; merges resume once the
+      # production job releases the freeze or its TTL expires.
+      - name: Refuse while a promotion merge freeze is live
+        if: github.event_name == 'merge_group'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.queue.outputs.pr }}
+        run: node scripts/manage-migration-coordination.mjs --check-promotion-freeze --pr "$PR_NUMBER"
+
       # popcre/ai-devops#2172 stage C2: the gate keeps only single-PR identity,
       # ascending migration versions, and the preceding-migration preview hold.
       # Guarded-merge authorization, claims and leases are retired.

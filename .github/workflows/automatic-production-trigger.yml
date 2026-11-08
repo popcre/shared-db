@@ -56,6 +56,11 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+      # #5937: the selector arms the backstop merge freeze through the node
+      # coordination CLI.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       # Maintenance selects first: a promotion dispatched first would make every
       # selection see an active run, and a held PR fails the promotion step.
       - name: Select an explicitly enabled exact-index maintenance operation

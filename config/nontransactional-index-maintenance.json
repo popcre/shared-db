@@ -34,7 +34,7 @@
     },
     "repack-20261109-6c9d5541": {
       "kind": "table-repack/v1",
-      "source_pr": 1,
+      "source_pr": 5984,
       "work_issue": 5886,
       "claim_issue": 5983,
       "table": "plm.style_tracker_item_bridge",

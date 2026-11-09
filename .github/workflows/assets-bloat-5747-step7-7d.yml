@@ -1,0 +1,63 @@
+name: assets-bloat-5747 7-day reading
+
+# One-shot scheduled reading for popcre/shared-db#5747 Step 7 (7-day re-measure,
+# due 9:47 PM EST Thu Nov 12, 2026 = 02:47 UTC Nov 13). Read-only SELECTs through
+# the Supabase Management API (same access pattern as db-bloat-weekly.yml), same
+# measures as docs/verification/assets-bloat-5747/after.md; posts the reading to
+# #5747 and uploads the after-7d.md body as an artifact. The paired search test
+# set runs the same minute on u2giants/popdam3 "Search test set" (scheduled).
+# Year-guarded: a stray run in any other year exits without touching anything.
+# Retirement: delete this file once the reading comment is posted (or after
+# Nov 13, 2026); it serves no other purpose.
+on:
+  schedule:
+    - cron: '47 2 13 11 *' # 02:47 UTC Nov 13 = 9:47 PM EST Nov 12
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: assets-bloat-5747-step7
+  cancel-in-progress: false
+
+env:
+  PROJECT_REF: qsllyeztdwjgirsysgai
+
+jobs:
+  reading:
+    name: 7-day reading (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - id: guard
+        name: One-shot year guard (2026 only)
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$(date -u +%Y)" != "2026" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Scheduled one-shot reading for 2026-11-12 only; skipping $(date -u +%Y) run."
+          fi
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: steps.guard.outputs.skip != 'true'
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69bece1a213e9b5b71c6cb174a7666345ac # v5.6.0
+        if: steps.guard.outputs.skip != 'true'
+        with:
+          python-version: '3.12'
+      - name: Take the reading (read-only SELECTs)
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: python .github/scripts/assets_bloat_5747_7d.py
+      - name: Post to #5747
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+        run: gh issue comment 5747 --repo popcre/shared-db --body-file /tmp/after-7d-comment.md
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: steps.guard.outputs.skip != 'true'
+        with:
+          name: after-7d
+          path: /tmp/after-7d.md

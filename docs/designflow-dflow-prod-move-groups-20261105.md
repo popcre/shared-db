@@ -83,8 +83,8 @@ Each destination is the existing same-name table in that schema, as listed in
 
 ## Nothing stays in `dflow_prod`
 
-The schema is deleted at the end. The two old backup copies (merchGroup_04112026,
-merchGroup_pr90_bad) are archived, then dropped. tracking_grid_archive moves to `plm` (new table).
+The schema is deleted at the end. merchGroup_04112026 was deleted on 2026-11-05 (#5748; backup kept in 1Password). The other old backup copy,
+merchGroup_pr90_bad, is archived, then dropped. tracking_grid_archive moves to `plm` (new table).
 
 ## Data check still owed for every group
 

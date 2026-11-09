@@ -157,7 +157,7 @@ home to build. Nothing stays in `dflow_prod`: that schema is deleted at the end.
 | merchGroupHeaders | core.merchGroupHeaders |
 | merchGroupMaster | core.merchGroupMaster |
 | merchGroupRelations | core.merchGroupRelations |
-| merchGroup_04112026 | retire (old backup copy; archive then drop) |
+| merchGroup_04112026 | deleted 2026-11-05 (backup kept in 1Password; #5748) |
 | merchGroup_pr90_bad | retire (old backup copy; archive then drop) |
 | product_category | core.product_category |
 | properties_and_characters | core.property / core.character (owner ruling: shared core) |

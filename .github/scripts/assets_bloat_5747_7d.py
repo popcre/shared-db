@@ -61,8 +61,9 @@ def main() -> int:
 
     md = f"""# public.assets 7-day reading (popcre/shared-db#5747 Step 7)
 
-Captured read-only on production `{PROJECT_REF}` by scheduled workflow (one-shot,
-2026-11-12 9:47 PM EST slot), same measures as `after.md` / `after-24h.md`.
+Captured read-only on production `{PROJECT_REF}` by the one-shot scheduled workflow
+(due 2026-11-12 9:47 PM EST; manual dispatch runs the same read-only queries), same
+measures as `after.md` / `after-24h.md`.
 
 | Measure | After repack (Nov 5) | 24 h (Nov 8) | 7-day (this reading) |
 |---|---|---|---|

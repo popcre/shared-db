@@ -21,7 +21,7 @@
 
 create table if not exists dam.order_buy_sheet_import (
   id            uuid primary key default gen_random_uuid(),
-  customer_id   uuid not null references core.customer(id),
+  customer_id   uuid not null, -- audit value; no FK so customer merges stay unaffected
   file_name     text,
   file_sha256   text not null check (file_sha256 ~ '^[0-9a-f]{64}$'),
   raw_sheet     jsonb not null,

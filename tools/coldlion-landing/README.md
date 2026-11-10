@@ -169,11 +169,14 @@ canonical writer (`order-intake-write.mjs`) attaches each such production
 line to the Google OrderList line with the same production reference
 (`prod_reference_no`, the D-number = the Google Import PO) and SKU, as a
 `coldlion:prod:<prodOrderNo>:line:<seq>:component:<k>` source ref. One Google
-line per key takes every matching ColdLion item; several Google lines pair
+line per key takes every matching ColdLion item, including later arrivals;
+several Google lines pair
 only on equal quantity; anything else is left alone. ColdLion's quantity and
 reference refresh into `metadata.coldlion_values` every run. When the sales
 order arrives later, the automatic merge still lands on that Google line and
-its sales-order ref becomes primary. Behaviour is pinned by
+its sales-order ref becomes primary. Production-only refs stay secondary so
+current-catalog assortment quantities and Google SKU/PO editor corrections remain
+available while waiting for the sales order. Behaviour is pinned by
 `tools/coldlion-order-intake-prod-only-pg.test.mjs`.
 
 ## Forward scan for sales orders (`sync-history.mjs --forward`)

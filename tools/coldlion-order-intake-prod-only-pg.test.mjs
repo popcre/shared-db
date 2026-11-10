@@ -7,10 +7,11 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
 import { buildProdOnlyClaimSql, prodLineSourceId, PROD_REF_PATTERN } from "./coldlion-landing/lib/order-intake-prod-only.mjs";
-import { buildAutoMergeSql } from "./coldlion-landing/lib/order-intake-write.mjs";
+import { buildAutoMergeSql, WRITE_REQUIRED_COLUMNS } from "./coldlion-landing/lib/order-intake-write.mjs";
 
 const container = process.env.COLDLION_WRITER_TEST_CONTAINER;
 const DB = "coldlion_prod_only_test";
@@ -82,6 +83,31 @@ test("prod ref grammar is distinct from the sales-order grammar", () => {
   assert.match(buildProdOnlyClaimSql({ runId: RUN() }), /rollback;$/);
 });
 
+test("prod-only claims remain supplemental and accept subsequent production refs", () => {
+  const sql = buildProdOnlyClaimSql({ runId: RUN(), write: true });
+  const candidates = sql.slice(sql.indexOf("g as materialized ("), sql.indexOf("gcount as materialized"));
+  assert.ok(candidates.includes(`and r.source_id !~ '${PROD_REF_PATTERN}'`));
+  assert.match(sql, /select c.google_line, 'coldlion', c.source_id,\s*false,/);
+  // These consumers select only primary ColdLion refs. Supplemental production
+  // evidence must not redirect catalog recipes or enter sales-identity validation.
+  for (const file of ["20261102150308_orderlist_recipe_provenance.sql",
+    "20261102150646_orderlist_durable_editor_corrections.sql"]) {
+    const consumer = readFileSync(new URL(`../supabase/migrations/${file}`, import.meta.url), "utf8");
+    assert.match(consumer, /r.source_system\s*=\s*'coldlion' and r.is_primary/);
+  }
+});
+
+test("writer preflight covers every production-history read column", () => {
+  for (const [table, columns] of [
+    ["prod_history_line", "id sales_order_no division_code prod_reference_no item_no prod_order_qty prod_order_no prod_line_seq source_observed_at source_version_seq fetched_at created_at"],
+    ["prod_history_component", "id line_id sub_item_no prepack_item_pkey"],
+  ]) {
+    for (const column of columns.split(" ")) {
+      assert.ok(WRITE_REQUIRED_COLUMNS.some(e => e.schema === "coldlion" && e.table === table && e.column === column), `${table}.${column}`);
+    }
+  }
+});
+
 test("no-sales-order production lines attach to their Google lines", { skip: !container }, () => {
   spawnSync("docker", ["exec", container, "psql", "-U", "postgres", "-c", `drop database if exists ${DB}`]);
   spawnSync("docker", ["exec", container, "psql", "-U", "postgres", "-c", `create database ${DB}`]);
@@ -108,9 +134,9 @@ test("no-sales-order production lines attach to their Google lines", { skip: !co
   assert.equal(Number(claimed), 5);
   assert.equal(Number(lines), 4);
 
-  assert.equal(refsOf("MWB10DYMM01"), "coldlion:prod:24377:line:1:component:1:true");
+  assert.equal(refsOf("MWB10DYMM01"), "coldlion:prod:24377:line:1:component:1:false");
   assert.equal(refsOf("VDC83DYMM14"),
-    "coldlion:prod:24391:line:1:component:1:true,coldlion:prod:24443:line:1:component:1:false");
+    "coldlion:prod:24391:line:1:component:1:false,coldlion:prod:24443:line:1:component:1:false");
   assert.equal(refsOf("AMBIG01"), "");
   assert.equal(psql(`select string_agg(l.quantity_ordered::text, ',') from plm.production_order_line l
     join plm.production_order_line_source_ref r on r.production_order_line_id = l.id
@@ -123,6 +149,13 @@ test("no-sales-order production lines attach to their Google lines", { skip: !co
   assert.equal(psql(`select metadata->'coldlion_values'->>'quantity_ordered' is null from plm.production_order_line where sku='VDC83DYMM14';`), "t");
 
   // Idempotent.
+  assert.equal(psql(buildProdOnlyClaimSql({ runId: RUN(), write: true })), "0|0");
+
+  // A later DC split must attach to the already claimed Google component.
+  psql(prodLine(24444, 1, "D3651", "VDC8308", 25, ["VDC83DYMM14"]));
+  assert.equal(psql(buildProdOnlyClaimSql({ runId: RUN(), write: true })), "1|1");
+  assert.equal(refsOf("VDC83DYMM14"),
+    "coldlion:prod:24391:line:1:component:1:false,coldlion:prod:24443:line:1:component:1:false,coldlion:prod:24444:line:1:component:1:false");
   assert.equal(psql(buildProdOnlyClaimSql({ runId: RUN(), write: true })), "0|0");
 
   // The sales order arrives later: the placeholder still merges onto the

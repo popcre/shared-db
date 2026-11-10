@@ -66,4 +66,52 @@ begin
 end;
 $test$;
 
+-- Recreate the pre-migration tie: older art and newer COMP+art both had tier 3.
+-- The COMP+art tier stays 3, so it must be captured without an updated row.
+do $fixture$
+declare
+  g uuid;
+  a_art uuid;
+  a_comp uuid;
+  winner uuid;
+begin
+  insert into public.style_groups (sku, folder_path)
+    values ('ZZ6014G', '/zz6014/g') returning id into g;
+  insert into public.assets (filename, relative_path, file_type, quick_hash,
+                             modified_at, created_at, thumbnail_url, style_group_id)
+    values ('ZZ6014G art.psd', 'zz6014/g/art.psd', 'psd', 'zz6014ga',
+            now(), now() - interval '1 day', 'https://example.invalid/a.png', g)
+    returning id into a_art;
+  insert into public.assets (filename, relative_path, file_type, quick_hash,
+                             modified_at, created_at, thumbnail_url, style_group_id)
+    values ('ZZ6014G COMP art.psd', 'zz6014/g/comp-art.psd', 'psd', 'zz6014gc',
+            now(), now(), 'https://example.invalid/c.png', g)
+    returning id into a_comp;
+  update public.assets set primary_sort_tier = 3 where id in (a_art, a_comp);
+  perform public.refresh_style_group_primaries(array[g]);
+  select primary_asset_id into winner from public.style_groups where id = g;
+  if winner is distinct from a_art then
+    raise exception 'older art asset must win the pre-migration tier-3 tie';
+  end if;
+end;
+$fixture$;
+
+-- The test runner may have applied the migration in this same transaction.
+drop table if exists pg_temp.comp_tier_groups_20261110192227;
+\ir ../migrations/20261110192227_dam_cover_tier_comp_files.sql
+
+do $regression$
+begin
+  if not exists (
+    select 1
+    from public.style_groups g
+    join public.assets a on a.id = g.primary_asset_id
+    where g.sku = 'ZZ6014G' and a.filename = 'ZZ6014G COMP art.psd'
+      and a.primary_sort_tier = 3
+  ) then
+    raise exception 'migration must refresh the group when COMP+art stays at tier 3';
+  end if;
+end;
+$regression$;
+
 rollback;

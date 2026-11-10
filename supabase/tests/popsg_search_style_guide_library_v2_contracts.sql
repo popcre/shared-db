@@ -22,7 +22,7 @@ begin
   if to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer,extensions.vector(768),real,text)') is null then
     raise exception 'contract 1: v2 search RPC is missing';
   end if;
-  if md5((select p.prosrc from pg_proc p where p.oid = to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer,extensions.vector(768),real,text)'))) <> '78aef31e87d56da0e1a9d0e8b0b3535e' then
+  if md5((select p.prosrc from pg_proc p where p.oid = to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer,extensions.vector(768),real,text)'))) <> 'a4387673de2ace2e455412894ccf93ce' then
     raise exception 'contract 1: v2 search body is not the reviewed semantic stage-2 body';
   end if;
   if to_regprocedure('public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer)') is not null then
@@ -360,11 +360,13 @@ begin
   end loop;
 
   -- popdam3#887: rows matching only p_fallback_query come AFTER every row matching
-  -- all words, even when their own keyword rank is far higher, and are counted.
+  -- all words in names, folders or tags, even when their own keyword rank is far
+  -- higher, and are counted. An all-word match found only in PDF body text (D)
+  -- gets no such precedence.
   update public.style_guide_search_documents
      set search_vector = case
            when style_guide_file_id = '25060000-0000-4000-8000-000000000011'
-             then setweight(to_tsvector('simple', 'zz887name zz887extra'), 'D')
+             then setweight(to_tsvector('simple', 'zz887name zz887extra'), 'C')
            else setweight(to_tsvector('simple', repeat('zz887name ', 5)), 'A')
          end
    where style_guide_file_id in (
@@ -409,6 +411,24 @@ begin
            (v_result->'results'->0->>'style_guide_name') is not distinct from 'GuideA') then
       raise exception 'contract 14: % second page must hold the fallback-only row: %', v_mode, v_result;
     end if;
+    -- an all-word match found only in PDF body text does not precede the name match
+    update public.style_guide_search_documents
+       set search_vector = setweight(to_tsvector('simple', 'zz887name zz887extra'), 'D')
+     where style_guide_file_id = '25060000-0000-4000-8000-000000000011';
+    v_result := public.search_style_guide_library_v2(
+      p_result_mode => v_mode, p_query => 'zz887name zz887extra',
+      p_sort => 'relevance', p_limit => 200, p_fallback_query => 'zz887name');
+    if (v_result->>'total')::integer is distinct from 2
+       or (v_mode = 'files' and
+           (v_result->'results'->0->>'style_guide_file_id') is distinct from
+             '25060000-0000-4000-8000-000000000014')
+       or (v_mode = 'guides' and
+           (v_result->'results'->0->>'style_guide_name') is not distinct from 'GuideA') then
+      raise exception 'contract 14: % body-only all-word match must not precede the name match: %', v_mode, v_result;
+    end if;
+    update public.style_guide_search_documents
+       set search_vector = setweight(to_tsvector('simple', 'zz887name zz887extra'), 'C')
+     where style_guide_file_id = '25060000-0000-4000-8000-000000000011';
     -- a fallback without a query never widens a browse
     if public.search_style_guide_library_v2(p_result_mode => v_mode, p_fallback_query => 'zz887name')
        is distinct from public.search_style_guide_library_v2(p_result_mode => v_mode) then

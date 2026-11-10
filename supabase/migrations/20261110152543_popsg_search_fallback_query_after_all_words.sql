@@ -2,8 +2,10 @@
 -- Issue: popcre/shared-db#5998 (app u2giants/popdam3#887).
 -- A PopSG search of a known name plus one extra word lists only the few files that
 -- happen to contain both words. New optional last argument p_fallback_query: rows
--- matching it but not the main query are listed AFTER every row matching the main
--- query; totals and facets count both. Callers that omit it get the previous results.
+-- matching it are added to the result. Rows matching every word of the main query in
+-- their names, folders or tags stay first; every other row follows, ranked as the
+-- fallback search would rank it. Totals and facets count both. Callers that omit it
+-- get the previous results.
 -- The 17-argument signature is replaced so PostgREST sees one function.
 begin;
 set local lock_timeout = '5s';
@@ -298,12 +300,18 @@ with params as not materialized (
       -- keyword rank, byte-identical to the previous ordering)
       case when t.query is null then 0::real
            else ts_rank_cd('{0.005,0.2,0.4,1.0}'::real[], d.search_vector,
-                           case when t.fallback is not null and not (d.search_vector @@ t.query)
+                           -- #887: a row that does not match every word in its names, folders or
+                           -- tags is ranked as the fallback search would rank it
+                           case when t.fallback is not null
+                                 and not (ts_filter(d.search_vector, '{a,b,c}') @@ t.query)
                                 then t.fallback else t.query end)
                 -- With a query vector, words that match always outrank meaning-only rows.
                 + case when p.has_embedding and d.search_vector @@ t.query then 0.35 else 0 end end
         + coalesce(sc.semantic_rank, 0) * 0.35 as rank,
-      (t.fallback is not null and not (d.search_vector @@ t.query)) as fallback_only
+      -- PDF body text (weight D) only breaks ties (20261105023331), so an all-word
+      -- match found only there does not outrank the fallback's own name matches.
+      (t.fallback is not null
+       and not (ts_filter(d.search_vector, '{a,b,c}') @@ t.query)) as fallback_only
     from (
       -- Three disjoint index-driven arms: keyword matches (GIN), the whole
       -- active corpus when no query text (snapshot bypass / embedding-only
@@ -492,12 +500,18 @@ with params as not materialized (
       -- keyword rank, byte-identical to the previous ordering)
       case when t.query is null then 0::real
            else ts_rank_cd('{0.005,0.2,0.4,1.0}'::real[], d.search_vector,
-                           case when t.fallback is not null and not (d.search_vector @@ t.query)
+                           -- #887: a row that does not match every word in its names, folders or
+                           -- tags is ranked as the fallback search would rank it
+                           case when t.fallback is not null
+                                 and not (ts_filter(d.search_vector, '{a,b,c}') @@ t.query)
                                 then t.fallback else t.query end)
                 -- With a query vector, words that match always outrank meaning-only rows.
                 + case when p.has_embedding and d.search_vector @@ t.query then 0.35 else 0 end end
         + coalesce(sc.semantic_rank, 0) * 0.35 as rank,
-      (t.fallback is not null and not (d.search_vector @@ t.query)) as fallback_only
+      -- PDF body text (weight D) only breaks ties (20261105023331), so an all-word
+      -- match found only there does not outrank the fallback's own name matches.
+      (t.fallback is not null
+       and not (ts_filter(d.search_vector, '{a,b,c}') @@ t.query)) as fallback_only
     from (
       select m.* from public.style_guide_search_documents m, tsq mt
        where mt.query is not null and m.is_active and m.search_vector @@ mt.match_query
@@ -733,5 +747,5 @@ $function$;
 revoke all on function public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer,extensions.vector(768),real,text) from public, anon;
 grant execute on function public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer,extensions.vector(768),real,text) to authenticated, service_role;
 comment on function public.search_style_guide_library_v2(text,text,text[],text[],text[],text[],text[],text[],text[],text[],timestamptz,timestamptz,text,integer,integer,extensions.vector(768),real,text) is
-  'PopSG library search, semantic-plus-keyword. p_query_embedding (SigLIP2/768) and p_min_semantic_score are optional. p_fallback_query is optional: rows matching it but not p_query are listed after every row matching p_query under relevance sort, and totals and facets count both; without it the results equal the previous contract. Authorization and all filters run before ranking.';
+  'PopSG library search, semantic-plus-keyword. p_query_embedding (SigLIP2/768) and p_min_semantic_score are optional. p_fallback_query is optional: rows matching it are added; under relevance sort rows matching all of p_query in names, folders or tags stay first and the rest follow in the fallback''s own order; totals and facets count both; without it the results equal the previous contract. Authorization and all filters run before ranking.';
 commit;

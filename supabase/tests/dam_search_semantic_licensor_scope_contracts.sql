@@ -10,8 +10,32 @@ declare
   e0 extensions.vector := (array[1]::real[] || array_fill(0::real, array[767]))::extensions.vector;
   f jsonb; ids uuid[]; n bigint; probe bigint; sem real;
 begin
-  insert into core.licensor (name) values ('ZQ892 Licensor One') returning id into l1;
-  insert into core.licensor (name) values ('ZQ892 Licensor Two') returning id into l2;
+  -- core.licensor is protected by the licensing write-authority guard: one real,
+  -- transaction-bound authorization per synthetic insert (pattern of
+  -- character_alias_and_source_provenance_contracts.sql); it disappears with the rollback.
+  insert into plm.licensing_write_authorization (
+    backend_pid, transaction_id, target_table, write_kind, plan_id, plan_hash,
+    actor, protected_columns, expires_at
+  ) values (
+    pg_backend_pid(), txid_current(), 'core.licensor', 'licensing_review_create',
+    '08920000-0000-4000-8000-000000000001', repeat('a', 64),
+    'popdam3-892 synthetic contract', array['name','code','status'],
+    clock_timestamp() + interval '1 minute'
+  );
+  insert into core.licensor (name, code, status) values ('ZQ892 Licensor One', 'ZQ892-1', 'active') returning id into l1;
+  -- core.licensor is protected by the licensing write-authority guard: one real,
+  -- transaction-bound authorization per synthetic insert (pattern of
+  -- character_alias_and_source_provenance_contracts.sql); it disappears with the rollback.
+  insert into plm.licensing_write_authorization (
+    backend_pid, transaction_id, target_table, write_kind, plan_id, plan_hash,
+    actor, protected_columns, expires_at
+  ) values (
+    pg_backend_pid(), txid_current(), 'core.licensor', 'licensing_review_create',
+    '08920000-0000-4000-8000-000000000002', repeat('b', 64),
+    'popdam3-892 synthetic contract', array['name','code','status'],
+    clock_timestamp() + interval '1 minute'
+  );
+  insert into core.licensor (name, code, status) values ('ZQ892 Licensor Two', 'ZQ892-2', 'active') returning id into l2;
   insert into public.style_groups (sku, folder_path, licensor_id) values ('ZQ892A', '/zq892/a', l1) returning id into g1;
   insert into public.style_groups (sku, folder_path, licensor_id) values ('ZQ892B', '/zq892/b', l2) returning id into g2;
   insert into public.style_groups (sku, folder_path, licensor_id) values ('ZQ892C', '/zq892/c', l2) returning id into g3;

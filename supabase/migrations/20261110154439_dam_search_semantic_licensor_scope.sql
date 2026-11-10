@@ -18,7 +18,7 @@ set local search_path=pg_catalog,public,extensions;
 do $guard$
 begin
   if not exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)')
-      and md5(p.prosrc) in ('e5a91c3487599c6a66944c94c2bb0518','a062ee0f80d214ddedbf2642c7955eb5')) then
+      and md5(p.prosrc) in ('e5a91c3487599c6a66944c94c2bb0518','88f0ba8eee3a8b4e68e6924bd0c8996f')) then
     raise exception 'popdam3#892 pre-change search_dam_documents differs from 20261108190600; reconcile rather than overwrite';
   end if;
 end;
@@ -175,7 +175,7 @@ AS $function$
     having coalesce(max(c.keyword_rank),0) + coalesce(max(c.semantic_rank),0) * 0.35 >= (select min_rank from params)
       and ((select semantic_licensor_ids from params) is null
         or max(c.keyword_rank) is not null
-        -- same licensor rule as dam_asset_matches_filters: the style group's licensor when grouped
+        -- a grouped document takes its style group's licensor, an ungrouped asset its own
         or exists (select 1 from public.style_groups g
           where g.id = c.style_group_id
             and g.licensor_id = any((select semantic_licensor_ids from params)::uuid[]))
@@ -385,7 +385,7 @@ $function$;
 do $guard$
 begin
   if not exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)')
-      and md5(p.prosrc)='a062ee0f80d214ddedbf2642c7955eb5'
+      and md5(p.prosrc)='88f0ba8eee3a8b4e68e6924bd0c8996f'
       and pg_get_userbyid(p.proowner)='postgres'
       and p.prosecdef and p.provolatile='s' and p.proretset
       and pg_get_function_arguments(p.oid)='p_query text, p_filters jsonb, p_limit integer, p_offset integer, p_document_types text[] DEFAULT NULL::text[], p_query_embedding vector DEFAULT NULL::vector, p_min_rank real DEFAULT 0, p_min_semantic_score real DEFAULT NULL::real'

@@ -1,3 +1,4 @@
+-- derived-from: 20261110194619
 -- Second forward fix (review finding popcre/shared-db#6017): keep trimmed
 -- style matching on the tracker side (upper(btrim(sku)), as before), hold a
 -- line whose parent order was voided, take one global import lock so two

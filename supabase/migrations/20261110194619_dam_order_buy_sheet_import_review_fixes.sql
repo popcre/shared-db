@@ -1,3 +1,4 @@
+-- derived-from: 20261110190600
 -- Forward fix of 20261110190600_dam_order_buy_sheet_import (review finding
 -- popcre/shared-db#6010): index-backed style lookups (sku_normalized and
 -- upper(sku)), an optional per-line catalog for the item link with an honest

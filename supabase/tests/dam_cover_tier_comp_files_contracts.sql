@@ -36,7 +36,7 @@ begin
     ) v(fname, ftype, thumb, want)
   loop
     insert into public.assets (filename, relative_path, file_type, quick_hash, modified_at, thumbnail_url)
-      values (t.fname, 'zz6011/' || t.fname || gen_random_uuid()::text, t.ftype, gen_random_uuid()::text, now(),
+      values (t.fname, 'zz6011/' || t.fname || gen_random_uuid()::text, t.ftype::public.file_type, gen_random_uuid()::text, now(),
               case when t.thumb then 'https://example.invalid/t.png' end)
       returning primary_sort_tier into got;
     if got is distinct from t.want then

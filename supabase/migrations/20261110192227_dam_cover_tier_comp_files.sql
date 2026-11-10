@@ -88,8 +88,7 @@ revoke all on function public.compute_primary_sort_tier() from public, anon, aut
 alter table public.assets alter column primary_sort_tier set default 13;
 
 -- 2) Recompute every row's tier in primary-key chunks and capture the groups
---    holding a comp asset whose tier changed (the only groups whose winner
---    can change). The CASE mirrors step 1 exactly.
+--    holding a comp asset (the only groups whose winner can change). The CASE mirrors step 1 exactly.
 create temp table pg_temp.comp_tier_groups_20261110192227 (style_group_id uuid primary key) on commit drop;
 
 do $$
@@ -148,10 +147,13 @@ begin
         and a.primary_sort_tier is distinct from c.new_tier
       returning a.id
     ),
+    -- Every group holding a comp asset, changed or not: a comp+art file
+    -- keeps tier 3 while a pure-art sibling moves 3 -> 4, so a former tie
+    -- can flip without the comp row changing.
     ins as (
       insert into pg_temp.comp_tier_groups_20261110192227 (style_group_id)
       select distinct c.style_group_id
-      from chunk c join upd u on u.id = c.id
+      from chunk c
       where c.is_comp and c.style_group_id is not null
       on conflict do nothing
     )
@@ -271,7 +273,7 @@ create index idx_assets_ai_tag_all_candidates
     and thumbnail_url is not null
     and primary_sort_tier not in (5, 9);
 
--- 4) Refresh primaries only for groups holding a tier-changed comp asset.
+-- 4) Refresh primaries only for groups holding a comp asset.
 do $$
 declare
   v_batch uuid[];

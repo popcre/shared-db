@@ -57,6 +57,20 @@ begin
     raise exception 'comp asset should be the group primary over art';
   end if;
 
+  -- Former tie (both old tier 3): an older pure-art file and a newer
+  -- "comp ... art" file. The comp file must now win.
+  insert into public.style_groups (sku, folder_path) values ('ZZ6011H', '/zz6011/h') returning id into g;
+  insert into public.assets (filename, relative_path, file_type, quick_hash, modified_at, thumbnail_url, style_group_id, created_at)
+    values ('ZZ6011H art.psd', 'zz6011/h/art.psd', 'psd', 'zz6011ha', now(), 'https://example.invalid/a.png', g, now() - interval '1 day');
+  insert into public.assets (filename, relative_path, file_type, quick_hash, modified_at, thumbnail_url, style_group_id)
+    values ('ZZ6011H comp art.psd', 'zz6011/h/comp-art.psd', 'psd', 'zz6011hc', now(), 'https://example.invalid/c.png', g)
+    returning id into a_comp;
+  perform public.refresh_style_group_primaries(array[g]);
+  select primary_asset_id into winner from public.style_groups where id = g;
+  if winner is distinct from a_comp then
+    raise exception 'comp+art asset should beat an older pure-art asset';
+  end if;
+
   if not exists (
     select 1 from pg_indexes
     where indexname = 'idx_assets_ai_tag_all_candidates' and indexdef like '%ARRAY[5, 9]%'

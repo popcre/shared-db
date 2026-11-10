@@ -227,7 +227,7 @@
       "strip_outer_transaction": true
     },
     "20261110192227": {
-      "sha256": "50a73aaa1776ba9c7f9bdec89148dadf44dac97375d6f5090a2a9ae57f29cd92",
+      "sha256": "48aee063a4c8d5435ad70336b47db517d09b2437689db367bf5c435f158048b1",
       "targets": [
         "preview",
         "production"

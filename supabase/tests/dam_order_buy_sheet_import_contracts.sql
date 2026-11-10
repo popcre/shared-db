@@ -70,23 +70,19 @@ begin
   select count(*) into v_after from plm.production_order_line where production_order_id = v_order;
   if v_after <> v_before then raise exception 're-upload inserted lines'; end if;
 
-  -- Order numbers: a duplicate number is held, another customer's number is
-  -- held, a free number creates the order, an existing own number gets the line.
+  -- Order numbers (plm.guard_production_po_number already forbids duplicate
+  -- numbers): another customer's number is held, a free number creates the order, an existing own number gets the line.
   insert into plm.production_order (production_order_number, company_id, metadata)
-  values ('BSCT-DUP', v_customer, '{}'), ('BSCT-DUP', v_customer, '{}'),
-         ('BSCT-OTHER', null, '{"customer_name":"Someone Else"}');
-  v_lines := '[{"sku":"BSCTNEW01","delivery_date":"2026-12-20","quantity":10,"group":"dup"},
-               {"sku":"BSCTNEW02","delivery_date":"2026-12-20","quantity":10,"group":"other"},
+  values ('BSCT-OTHER', null, '{"customer_name":"Someone Else"}');
+  v_lines := '[{"sku":"BSCTNEW02","delivery_date":"2026-12-20","quantity":10,"group":"other"},
                {"sku":"BSCTNEW03","delivery_date":"2026-12-20","quantity":10,"group":"free"},
                {"sku":"BSCTNEW04","delivery_date":"2026-12-20","quantity":10,"group":"own"}]';
   v_res := public.import_dam_buy_sheet(v_customer, 'c.xlsx', repeat('b', 64), '{}', v_lines,
-    '{"dup":"BSCT-DUP","other":"BSCT-OTHER","free":"BSCT-NEW","own":"BSCT-1"}', true);
-  if v_res -> 'counts' <> '{"held": 2, "new": 2}'::jsonb then
+    '{"other":"BSCT-OTHER","free":"BSCT-NEW","own":"BSCT-1"}', true);
+  if v_res -> 'counts' <> '{"held": 1, "new": 2}'::jsonb then
     raise exception 'order-number counts wrong: %', v_res -> 'lines';
   end if;
   if not exists (select 1 from jsonb_array_elements(v_res -> 'lines') r
-                 where r ->> 'sku' = 'BSCTNEW01' and r ->> 'reason' like 'several OrderList orders%')
-     or not exists (select 1 from jsonb_array_elements(v_res -> 'lines') r
                  where r ->> 'sku' = 'BSCTNEW02' and r ->> 'reason' like '%another customer%') then
     raise exception 'order-number hold reasons wrong: %', v_res -> 'lines';
   end if;

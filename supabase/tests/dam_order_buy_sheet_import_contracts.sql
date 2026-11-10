@@ -69,5 +69,38 @@ begin
   end if;
   select count(*) into v_after from plm.production_order_line where production_order_id = v_order;
   if v_after <> v_before then raise exception 're-upload inserted lines'; end if;
+
+  -- Order numbers: a duplicate number is held, another customer's number is
+  -- held, a free number creates the order, an existing own number gets the line.
+  insert into plm.production_order (production_order_number, company_id, metadata)
+  values ('BSCT-DUP', v_customer, '{}'), ('BSCT-DUP', v_customer, '{}'),
+         ('BSCT-OTHER', null, '{"customer_name":"Someone Else"}');
+  v_lines := '[{"sku":"BSCTNEW01","delivery_date":"2026-12-20","quantity":10,"group":"dup"},
+               {"sku":"BSCTNEW02","delivery_date":"2026-12-20","quantity":10,"group":"other"},
+               {"sku":"BSCTNEW03","delivery_date":"2026-12-20","quantity":10,"group":"free"},
+               {"sku":"BSCTNEW04","delivery_date":"2026-12-20","quantity":10,"group":"own"}]';
+  v_res := public.import_dam_buy_sheet(v_customer, 'c.xlsx', repeat('b', 64), '{}', v_lines,
+    '{"dup":"BSCT-DUP","other":"BSCT-OTHER","free":"BSCT-NEW","own":"BSCT-1"}', true);
+  if v_res -> 'counts' <> '{"held": 2, "new": 2}'::jsonb then
+    raise exception 'order-number counts wrong: %', v_res -> 'lines';
+  end if;
+  if not exists (select 1 from jsonb_array_elements(v_res -> 'lines') r
+                 where r ->> 'sku' = 'BSCTNEW01' and r ->> 'reason' like 'several OrderList orders%')
+     or not exists (select 1 from jsonb_array_elements(v_res -> 'lines') r
+                 where r ->> 'sku' = 'BSCTNEW02' and r ->> 'reason' like '%another customer%') then
+    raise exception 'order-number hold reasons wrong: %', v_res -> 'lines';
+  end if;
+  if (select count(*) from plm.production_order where production_order_number = 'BSCT-NEW' and company_id = v_customer) <> 1
+     or not exists (select 1 from plm.production_order_line where production_order_id = v_order and sku = 'BSCTNEW04') then
+    raise exception 'new order / existing own order not used';
+  end if;
+
+  -- A claimed line whose order is voided afterwards is held, not updated.
+  update plm.production_order set voided_at = now() where id = v_order;
+  v_res := public.import_dam_buy_sheet(v_customer, 'c.xlsx', repeat('b', 64), '{}',
+    '[{"sku":"BSCTSTYLE01","delivery_date":"2026-12-10","quantity":700,"group":"g1"}]', '{}', true);
+  if v_res -> 'counts' <> '{"held": 1}'::jsonb or (select quantity_ordered from plm.production_order_line where id = v_line) <> 600 then
+    raise exception 'voided order line was not held: %', v_res;
+  end if;
 end $$;
 rollback;

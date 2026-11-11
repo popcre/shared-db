@@ -7,6 +7,7 @@ declare
   v_n int;
   v_c text[];
   v_cmd text;
+  v_constraint text;
 begin
   -- A11 path_as_of matches whole segments only
   insert into dam.folder_rename_log (share, old_path, new_path, renamed_at, batch_id, rule)
@@ -54,6 +55,26 @@ begin
     raise exception 'nested rename must be rejected';
   exception when check_violation then null;
   end;
+  begin
+    insert into dam.folder_rename_log (share, old_path, new_path, renamed_at, batch_id, rule)
+    values ('t963', 'N/A', 'N/A/B/C', '2026-01-01', v_batch, 'test');
+    raise exception 'rename into its own subtree must be rejected';
+  exception when check_violation then
+    get stacked diagnostics v_constraint = constraint_name;
+    if v_constraint <> 'folder_rename_log_not_nested' then
+      raise exception 'unexpected constraint: %', v_constraint;
+    end if;
+  end;
+  begin
+    insert into dam.folder_rename_log (share, old_path, new_path, renamed_at, reverted_at, batch_id, rule)
+    values ('t963', 'N/Before', 'N/After', '2026-06-01', '2026-05-31', v_batch, 'test');
+    raise exception 'revert before rename must be rejected';
+  exception when check_violation then
+    get stacked diagnostics v_constraint = constraint_name;
+    if v_constraint <> 'folder_rename_log_revert_after_rename' then
+      raise exception 'unexpected constraint: %', v_constraint;
+    end if;
+  end;
   if dam.path_as_of('t963', 'C/Mixed/f.ai', '2026-01-01') <> 'C/Mixed/f.ai' then
     raise exception 'wildcard characters must not pattern-match';
   end if;
@@ -74,6 +95,30 @@ begin
   select count(*) into v_n from public.dam_asset_path_candidates(v_asset);
   if v_n <> 4 then
     raise exception 'public wrapper must return the same candidates';
+  end if;
+
+  -- Reverted rows must still supply the old paths from new-path seeds.
+  update dam.folder_rename_log set reverted_at = '2026-06-02'
+  where share = 'mac' and batch_id = v_batch;
+  select array_agg(p order by p) into v_c from dam.path_candidates('mac', v_asset) p;
+  if v_c is distinct from array[
+      'Z963/Cust Adopted/new/f.psd', 'Z963/Cust Adopted/old/f.psd',
+      'Z963/Customer Adopted/new/f.psd', 'Z963/Customer Adopted/old/f.psd'] then
+    raise exception 'reverted rename must retain old-path candidates: %', v_c;
+  end if;
+
+  -- After a revert, seeds under old_path must also find the window's new_path.
+  update public.assets set relative_path = 'Z963/Customer Adopted/new/f.psd'
+  where id = v_asset;
+  update public.asset_path_history
+  set old_relative_path = 'Z963/Customer Adopted/old/f.psd',
+      new_relative_path = 'Z963/Customer Adopted/new/f.psd'
+  where asset_id = v_asset;
+  select array_agg(p order by p) into v_c from public.dam_asset_path_candidates(v_asset) p;
+  if v_c is distinct from array[
+      'Z963/Cust Adopted/new/f.psd', 'Z963/Cust Adopted/old/f.psd',
+      'Z963/Customer Adopted/new/f.psd', 'Z963/Customer Adopted/old/f.psd'] then
+    raise exception 'reverted rename must include new-path candidates through wrapper: %', v_c;
   end if;
 
   -- grants

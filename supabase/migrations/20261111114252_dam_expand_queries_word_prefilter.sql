@@ -8,7 +8,7 @@
 -- first requires the split parts (or the joined word) as whole words, which
 -- the regex already implies (its parts are bounded by non-alphanumerics), so
 -- the result set is identical; only the rows the regex must check shrink.
--- derived-from: 20261111015117 (latest migration touching search; function body from production md5 0df641d5c9e39f2e784a74fa286e6e3e)
+-- derived-from: 20261026145217
 begin;
 set local lock_timeout='500ms';
 set local statement_timeout='300s';

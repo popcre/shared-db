@@ -1,6 +1,7 @@
 -- u2giants/popdam3#963 Phase 3.1 (claim popcre/shared-db#6076).
 -- infer_path_attrs learns the short folder names planned for the NAS rename
--- (In Dev = In Development, Cust Adopted = Customer Adopted) and skips a year
+-- (In Dev = In Development, Cust Adopted = Customer Adopted,
+-- Concept Approved = Concept Approved Designs) and skips a year
 -- folder (^20\d\d$) under a customer so program is the folder after it.
 -- Stored values stay canonical: stage is always 'In Development'.
 -- Signature, volatility, _FINISHED/_bucket rules and program guards unchanged.
@@ -35,6 +36,8 @@ BEGIN
   -- Folder name is an input; stored stage is the canonical business term.
   IF s = 'In Dev' THEN
     s := 'In Development';
+  ELSIF s = 'Concept Approved' THEN
+    s := 'Concept Approved Designs';
   END IF;
 
   IF s = 'In Development' AND segs[idx + 2] IN ('Customer Adopted', 'Cust Adopted') THEN

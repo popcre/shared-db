@@ -15,9 +15,18 @@ begin
   if not (select relrowsecurity from pg_class where oid = 'plm.license_agreement'::regclass) then
     raise exception 'RLS must be enabled';
   end if;
-  if has_table_privilege('anon','plm.license_agreement','select')
-     or has_table_privilege('authenticated','plm.license_agreement','select') then
-    raise exception 'browser roles must not read plm.license_agreement';
+  if has_table_privilege('anon','plm.license_agreement','select,insert,update,delete')
+     or has_table_privilege('authenticated','plm.license_agreement','select,insert,update,delete') then
+    raise exception 'browser roles must not access plm.license_agreement';
+  end if;
+  if not exists (select 1 from pg_trigger
+                 where tgrelid = 'plm.license_agreement'::regclass
+                   and tgname = 'set_updated_at'
+                   and tgfoid = 'app.set_updated_at()'::regprocedure
+                   and not tgisinternal
+                   and tgenabled = 'O'
+                   and tgtype = 19) then
+    raise exception 'enabled BEFORE UPDATE row trigger set_updated_at missing';
   end if;
   if not exists (select 1 from pg_constraint where conrelid='plm.license_agreement'::regclass
                  and contype='f' and confrelid='core.licensor'::regclass) then

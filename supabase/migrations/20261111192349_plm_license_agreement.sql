@@ -1,4 +1,4 @@
--- shared-db#4705 (parent #4248) — DesignFlow per-licensor royalty rates move to a
+-- shared-db#4705 (parent #4248) — DesignFlow per-license-agreement royalty rates move to a
 -- canonical home: plm.license_agreement, linked to core.licensor.
 -- Owner authority (Albert Hazan, 2026-11-11): add FOB and LDP royalty rates on the
 -- production database; table placement left to the implementer (plm chosen per #4705).
@@ -38,11 +38,14 @@ create table plm.license_agreement (
 );
 
 comment on table plm.license_agreement is
-  'DesignFlow license agreements: per-licensor royalty rates (shared-db#4705).';
+  'DesignFlow royalty rates: one row per source license agreement, not per licensor. Multiple agreements may share a licensor; consumers must select the intended agreement (shared-db#4705).';
 comment on column plm.license_agreement.royalty_rate is 'LDP royalty rate, percent.';
 comment on column plm.license_agreement.fob_royalty_rate is 'FOB royalty rate, percent.';
 
 create index license_agreement_licensor_id_idx on plm.license_agreement (licensor_id);
+
+create trigger set_updated_at before update on plm.license_agreement
+  for each row execute function app.set_updated_at();
 
 alter table plm.license_agreement enable row level security;
 revoke all on table plm.license_agreement from anon, authenticated;
@@ -92,7 +95,9 @@ begin
   on conflict (source_system, source_id) do nothing;
   get diagnostics v_inserted = row_count;
 
-  if (select count(*) from plm.license_agreement where source_system = 'designflow') <> 15 then
+  if (select count(*) from plm.license_agreement a
+      join _la_map m on a.source_id = m.legacy_id::text
+      where a.source_system = 'designflow') <> 15 then
     raise exception '#4705: expected 15 license_agreement rows, inserted %', v_inserted;
   end if;
 end

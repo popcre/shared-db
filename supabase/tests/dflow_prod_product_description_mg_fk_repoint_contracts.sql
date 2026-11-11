@@ -297,13 +297,36 @@ begin
 end $$;
 
 -- H. The application's grants role can still insert a combination; the parent
--- check does not need its own privilege on dflow_prod."merchGroup".
-set local role designflow_prod_item_master_grants;
-insert into dflow_prod.mg_combination_description
-  (mg01_id, mg02_id, mg03_id, material, feature_set, description, status, run_id)
-values (current_setting('zz.fk.g1')::int, current_setting('zz.fk.g2')::int,
-        current_setting('zz.fk.prod_only')::int, 'zz-canvas', '', 'ZZ fixture canvas sign', 'published', 'zz-fk-run');
-reset role;
+-- check does not need its own privilege on dflow_prod."merchGroup". Stacks
+-- that forbid the test connection from assuming the role skip with a NOTICE,
+-- exactly as the other product-description contract tests do.
+do $h$
+begin
+  if not pg_has_role(current_user, 'designflow_prod_item_master_grants', 'member') then
+    begin
+      execute format('grant designflow_prod_item_master_grants to %I', current_user);
+    exception when insufficient_privilege then
+      raise notice 'H role-path assertions skipped: % cannot take membership in designflow_prod_item_master_grants on this stack', current_user;
+    end;
+  end if;
+  begin
+    execute 'set role designflow_prod_item_master_grants';
+    execute 'reset role';
+  exception when insufficient_privilege then
+    raise notice 'H role-path assertions skipped: SET ROLE designflow_prod_item_master_grants is not permitted for % on this stack', current_user;
+    return;
+  end;
+  set role designflow_prod_item_master_grants;
+  insert into dflow_prod.mg_combination_description
+    (mg01_id, mg02_id, mg03_id, material, feature_set, description, status, run_id)
+  values (current_setting('zz.fk.g1')::int, current_setting('zz.fk.g2')::int,
+          current_setting('zz.fk.prod_only')::int, 'zz-canvas', '', 'ZZ fixture canvas sign', 'published', 'zz-fk-role-run');
+  reset role;
+  if not exists (select 1 from dflow_prod.mg_combination_description where run_id = 'zz-fk-role-run') then
+    raise exception 'H: the grants-role insert of a production-only group did not land';
+  end if;
+end
+$h$;
 
 -- I. Idempotent re-apply: same three keys, same rows.
 \i supabase/migrations/20261111183827_dflow_prod_product_description_mg_fk_repoint.sql
@@ -326,8 +349,8 @@ begin
     raise exception 'I: expected 3 validated keys on dflow_prod."merchGroup" after re-apply, found %', n;
   end if;
   select count(*) into n from dflow_prod.mg_combination_description where run_id = 'zz-fk-run';
-  if n <> 5 then
-    raise exception 'I: expected 5 fixture rows after re-apply, found %', n;
+  if n <> 4 then
+    raise exception 'I: expected 4 fixture rows after re-apply, found %', n;
   end if;
 end $$;
 

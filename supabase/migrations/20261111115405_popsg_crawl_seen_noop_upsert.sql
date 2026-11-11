@@ -1,3 +1,4 @@
+-- derived-from: 20260915023506
 -- u2giants/popdam3#804: stop the PopSG crawl from rewriting every unchanged
 -- style_guide_files row.
 --

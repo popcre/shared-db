@@ -41,17 +41,24 @@ begin
     raise exception 'path_as_of across chained renames (between)';
   end if;
   if dam.path_as_of('t963', 'C/Short/f.ai', '2026-05-15') <> 'C/Short/f.ai' then
-    raise exception 'reverted renames must be ignored';
+    raise exception 'path before a reverted rename must remain unchanged';
   end if;
   if dam.path_as_of('t963', 'C/Mixed/f.ai', '2026-01-01') <> 'C/Mixed/f.ai' then
     raise exception 'wildcard characters must not pattern-match';
   end if;
 
+  if dam.path_as_of('t963', 'C/Short/f.ai', '2026-06-01 12:00+00') <> 'C/Oops/f.ai' then
+    raise exception 'snapshot during reverted rename must use interim path';
+  end if;
+  if dam.path_as_of('t963', 'C/Short/f.ai', null) is not null then
+    raise exception 'NULL timestamp must return NULL';
+  end if;
+
   -- path_candidates on the real share uses public.assets + public.asset_path_history
   insert into dam.folder_rename_log (share, old_path, new_path, renamed_at, batch_id, rule)
   values ('mac', 'Z963/Customer Adopted', 'Z963/Cust Adopted', '2026-06-01', v_batch, 'test');
-  insert into public.assets (id, relative_path, filename, file_type)
-  values (v_asset, 'Z963/Cust Adopted/new/f.psd', 'f.psd', 'psd');
+  insert into public.assets (id, quick_hash, modified_at, relative_path, filename, file_type)
+  values (v_asset, gen_random_uuid()::text, now(), 'Z963/Cust Adopted/new/f.psd', 'f.psd', 'psd');
   insert into public.asset_path_history (asset_id, old_relative_path, new_relative_path)
   values (v_asset, 'Z963/Cust Adopted/old/f.psd', 'Z963/Cust Adopted/new/f.psd');
   select array_agg(p order by p) into v_c from dam.path_candidates('mac', v_asset) p;
@@ -63,6 +70,20 @@ begin
   select count(*) into v_n from public.dam_asset_path_candidates(v_asset);
   if v_n <> 4 then
     raise exception 'public wrapper must return the same candidates';
+  end if;
+
+  insert into dam.folder_rename_log
+    (share, old_path, new_path, renamed_at, reverted_at, batch_id, rule)
+  values ('mac', 'Z963/Cust Adopted', 'Z963/Interim', '2026-07-01', '2026-07-02', v_batch, 'test');
+  if not exists (select 1 from dam.path_candidates('mac', v_asset) p
+                 where p = 'Z963/Interim/new/f.psd') then
+    raise exception 'candidates must include reverted interim paths';
+  end if;
+  insert into dam.folder_rename_log (share, old_path, new_path, renamed_at, batch_id, rule)
+  values ('mac', 'Z963/Cust Adopted/nested', 'Z963/Cust Adopted', '2026-08-01', v_batch, 'test');
+  select count(*) into v_n from dam.path_candidates('mac', v_asset);
+  if v_n < 6 or v_n > 100 then
+    raise exception 'expanding rename must terminate with bounded candidates: %', v_n;
   end if;
 
   -- grants

@@ -35,8 +35,8 @@ create policy folder_rename_log_admin_read on dam.folder_rename_log
   for select to authenticated
   using (public.has_role((select auth.uid()), 'admin'::public.app_role));
 
--- Path as it was at p_at: undo every non-reverted rename that happened after
--- p_at, newest first, on whole path segments only (literal compare, no LIKE).
+-- Path as it was at p_at: undo rename and restoration events after p_at,
+-- newest first, on whole path segments only (literal compare, no LIKE).
 create function dam.path_as_of(p_share text, p_path text, p_at timestamptz)
 returns text
 language plpgsql
@@ -47,14 +47,21 @@ declare
   r record;
   v text := p_path;
 begin
-  if v is null then
+  if v is null or p_at is null then
     return null;
   end if;
   for r in
-    select l.old_path, l.new_path
-    from dam.folder_rename_log l
-    where l.share = p_share and l.reverted_at is null and l.renamed_at > p_at
-    order by l.renamed_at desc, l.id desc
+    select e.old_path, e.new_path
+    from (
+      select l.old_path, l.new_path, l.renamed_at as event_at, l.id, 0 as restoration
+      from dam.folder_rename_log l where l.share = p_share
+      union all
+      select l.new_path, l.old_path, l.reverted_at, l.id, 1
+      from dam.folder_rename_log l
+      where l.share = p_share and l.reverted_at is not null
+    ) e
+    where e.event_at > p_at
+    order by e.event_at desc, e.id desc, e.restoration desc
   loop
     if v = r.new_path then
       v := r.old_path;
@@ -81,14 +88,22 @@ as $$
     union
     select h.new_relative_path from public.asset_path_history h where h.asset_id = p_asset_id
   ),
-  walk(p) as (
-    select p from seeds where p is not null
+  events as (
+    select id, old_path, new_path from dam.folder_rename_log where share = p_share
+    union all
+    select -id, new_path, old_path from dam.folder_rename_log
+    where share = p_share and reverted_at is not null
+  ),
+  -- Each event can be traversed only once per walk, even for expanding paths.
+  walk(p, used) as (
+    select p, array[]::bigint[] from seeds where p is not null
     union
     select case when w.p = l.new_path then l.old_path
-                else l.old_path || substr(w.p, length(l.new_path) + 1) end
+                else l.old_path || substr(w.p, length(l.new_path) + 1) end,
+           w.used || l.id
     from walk w
-    join dam.folder_rename_log l
-      on l.share = p_share and l.reverted_at is null
+    join events l
+      on not (l.id = any(w.used))
      and (w.p = l.new_path or left(w.p, length(l.new_path) + 1) = l.new_path || '/')
   )
   select distinct p from walk;

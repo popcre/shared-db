@@ -66,7 +66,9 @@ begin
          not has_column_privilege(v_role, 'hts_rag.hts_rag_classification_jobs', 'result_public', 'SELECT')
       or not has_column_privilege(v_role, 'hts_rag.hts_rag_classification_jobs', 'result_system_check', 'SELECT')
       or not has_column_privilege(v_role, 'hts_rag.hts_rag_classification_jobs', 'result_core_phrase', 'SELECT')
-      or has_column_privilege(v_role, 'hts_rag.hts_rag_classification_jobs', 'result_public', 'UPDATE')) then
+      or has_column_privilege(v_role, 'hts_rag.hts_rag_classification_jobs', 'result_public', 'UPDATE')
+      or has_column_privilege(v_role, 'hts_rag.hts_rag_classification_jobs', 'result_system_check', 'UPDATE')
+      or has_column_privilege(v_role, 'hts_rag.hts_rag_classification_jobs', 'result_core_phrase', 'UPDATE')) then
       raise exception 'VERIFY FAILED: worker access to generated columns for %', v_role;
     end if;
   end loop;

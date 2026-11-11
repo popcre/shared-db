@@ -1,5 +1,4 @@
 -- popdam3#963: folder rename log, path_as_of, path_candidates, move-history retention.
-begin;
 
 do $t$
 declare
@@ -50,8 +49,8 @@ begin
   -- path_candidates on the real share uses public.assets + public.asset_path_history
   insert into dam.folder_rename_log (share, old_path, new_path, renamed_at, batch_id, rule)
   values ('mac', 'Z963/Customer Adopted', 'Z963/Cust Adopted', '2026-06-01', v_batch, 'test');
-  insert into public.assets (id, relative_path, filename, file_type)
-  values (v_asset, 'Z963/Cust Adopted/new/f.psd', 'f.psd', 'psd');
+  insert into public.assets (id, relative_path, filename, file_type, quick_hash, modified_at)
+  values (v_asset, 'Z963/Cust Adopted/new/f.psd', 'f.psd', 'psd', 'qh963', now());
   insert into public.asset_path_history (asset_id, old_relative_path, new_relative_path)
   values (v_asset, 'Z963/Cust Adopted/old/f.psd', 'Z963/Cust Adopted/new/f.psd');
   select array_agg(p order by p) into v_c from dam.path_candidates('mac', v_asset) p;
@@ -84,4 +83,3 @@ begin
 end
 $t$;
 
-rollback;

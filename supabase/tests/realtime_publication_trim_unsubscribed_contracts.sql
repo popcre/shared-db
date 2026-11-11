@@ -2,8 +2,11 @@
 -- (u2giants/popdam3#804 task 1).
 --
 -- Where the supabase_realtime publication exists:
---   1. every table an application subscribes to is still published, so no live
---      update feature was removed;
+--   1. the six crm tables PopCRM subscribes to are still published, so no live
+--      update feature was removed. The three public tables PopDAM subscribes to
+--      (admin_config, agent_registrations, style_tracker_rows) are not asserted
+--      here: the ephemeral test database does not publish them, and this
+--      migration never names them;
 --   2. the 13 tables with no listener are no longer published.
 -- The publication is created by the Supabase platform, so a database without a
 -- realtime stack is reported as an explicit skip.
@@ -22,7 +25,7 @@ begin
 
   select string_agg(expected.name, ', ')
     into v_missing
-  from unnest(array['public.admin_config','public.agent_registrations','public.style_tracker_rows','crm.email_message','crm.task','crm.note','crm.meeting_note','crm.opportunity','crm.department']::text[]) expected(name)
+  from unnest(array['crm.email_message','crm.task','crm.note','crm.meeting_note','crm.opportunity','crm.department']::text[]) expected(name)
   where to_regclass(expected.name) is not null
     and not exists (
       select 1 from pg_publication_tables p

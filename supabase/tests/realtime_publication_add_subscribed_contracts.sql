@@ -1,4 +1,4 @@
--- Contracts for 20261111221929_realtime_publication_add_subscribed.sql
+-- Contracts for 20261111233202_realtime_publication_add_subscribed.sql
 -- (u2giants/popdam3#804 task 2).
 --
 -- Where the supabase_realtime publication exists, the three crm/core tables
@@ -34,7 +34,7 @@ begin
     raise exception 'CONTRACT: subscribed table(s) missing from supabase_realtime: %. An application listens to these with postgres_changes.', v_missing;
   end if;
 
-  raise notice 'OK: supabase_realtime publishes every table added by 20261111221929.';
+  raise notice 'OK: supabase_realtime publishes every table added by 20261111233202.';
 end;
 $contracts$;
 

@@ -5074,7 +5074,7 @@ CATALOG_CONTRACTS["realtime_publication_trim_unsubscribed_v1"] = (
 )
 
 
-# Durable catalog outcome of migration 20261111221929 (u2giants/popdam3#804
+# Durable catalog outcome of migration 20261111233202 (u2giants/popdam3#804
 # task 2): every table an application subscribes to with postgres_changes is
 # in the supabase_realtime publication. The migration's statements sit inside
 # a guarded DO block, which the statement lexer cannot read, so this named

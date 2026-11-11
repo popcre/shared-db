@@ -1,4 +1,4 @@
--- Contracts for 20261111162316_realtime_publication_trim_unsubscribed.sql
+-- Contracts for 20261111170334_realtime_publication_trim_unsubscribed.sql
 -- (u2giants/popdam3#804 task 1).
 --
 -- Where the supabase_realtime publication exists:

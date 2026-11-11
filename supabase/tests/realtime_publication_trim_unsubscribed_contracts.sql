@@ -6,7 +6,12 @@
 --      update feature was removed;
 --   2. the 13 tables with no listener are no longer published.
 -- The publication is created by the Supabase platform, so a database without a
--- realtime stack is reported as an explicit skip.
+-- realtime stack is reported as an explicit skip in ephemeral CI only.
+-- REQUIRED LIVE PROOF (not supplied by CI green): after preview apply and again
+-- after automatic production promotion, run this file with ON_ERROR_STOP and
+-- PGOPTIONS='-c shared_db.require_realtime_contract=on'. That mode rejects an
+-- absent publication AND absent kept tables. Record both non-skip results on
+-- issue #6056 before closing live proof; this offline change supplies neither.
 
 begin;
 
@@ -14,8 +19,12 @@ do $contracts$
 declare
   v_missing text;
   v_leftover text;
+  v_strict boolean := coalesce(current_setting('shared_db.require_realtime_contract', true), 'off') = 'on';
 begin
   if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    if v_strict then
+      raise exception 'CONTRACT: supabase_realtime publication is required for live proof.';
+    end if;
     raise notice 'SKIP: the supabase_realtime publication does not exist in this database, so membership cannot be asserted here.';
     return;
   end if;
@@ -23,7 +32,7 @@ begin
   select string_agg(expected.name, ', ')
     into v_missing
   from unnest(array['public.admin_config','public.agent_registrations','public.style_tracker_rows','crm.email_message','crm.task','crm.note','crm.meeting_note','crm.opportunity','crm.department']::text[]) expected(name)
-  where to_regclass(expected.name) is not null
+  where (v_strict or to_regclass(expected.name) is not null)
     and not exists (
       select 1 from pg_publication_tables p
        where p.pubname = 'supabase_realtime'

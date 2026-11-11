@@ -559,7 +559,8 @@ API_POLICY_EXPRESSIONS = {
     "notification_select_own": ("profile_id = app.current_profile_id() or app.has_role('administrator')", None),
     "notification_update_own_read_state": ("profile_id = app.current_profile_id() or app.has_role('administrator')", "profile_id = app.current_profile_id() or app.has_role('administrator')"),
 }
-API_REALTIME_RELATIONS = tuple("""app.comment app.notification app.activity pim.product pim.stage_history pim.product_submission pim.product_sample pim.revision_request pim.customer_order pim.product_assignee crm.opportunity crm.task crm.note crm.email_message dam.asset dam.style_group""".split())
+# Current subscriber set after 20261111162316; RLS/policy expectations stay intact.
+API_REALTIME_RELATIONS = tuple("""public.admin_config public.agent_registrations public.style_tracker_rows crm.email_message crm.task crm.note crm.meeting_note crm.opportunity crm.department""".split())
 def _quoted(values: tuple[str, ...]) -> str:
     return ",".join("'" + value.replace("'", "''") + "'" for value in values)
 def _policy_group_contract(tables: tuple[str, ...], policies: tuple[tuple[str,str], ...]) -> str:

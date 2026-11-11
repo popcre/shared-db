@@ -31,11 +31,33 @@ class OfflineSidecarTests(unittest.TestCase):
         self.assertEqual(set(API_RLS_RELATIONS),set(re.findall(r"'([^']+)'::regclass",rls_block)))
         realtime=sql[sql.index("foreach table_name in array array["):sql.index("comment on view api.pm_product_board")]
         names={value for value in re.findall(r"'([^']+)'",realtime) if re.fullmatch(r"[a-z_]+\.[a-z_]+",value)}
-        self.assertEqual(set(API_REALTIME_RELATIONS),names)
+        trim=(Path(__file__).parents[1]/"supabase/migrations/20261111162316_realtime_publication_trim_unsubscribed.sql").read_text(encoding="utf-8")
+        removed=set(re.findall(r"drop table ([a-z_]+\.[a-z_]+)",trim))
+        kept=set(re.findall(r"add table ([a-z_]+\.[a-z_]+)",trim))
+        self.assertEqual(len(kept),9)
+        self.assertTrue((names-removed) <= kept)
+        self.assertEqual(set(API_REALTIME_RELATIONS),kept)
+        self.assertFalse(removed & set(API_REALTIME_RELATIONS))
+        for relation in kept:
+            self.assertIn("'"+relation+"'",API_RLS_REALTIME_CONTRACT)
+        for relation in kept:
+            self.assertIn("to_regclass('"+relation+"') is not null and not exists",trim)
+        contract=(Path(__file__).parents[1]/"supabase/tests/realtime_publication_trim_unsubscribed_contracts.sql").read_text(encoding="utf-8")
+        self.assertIn("if v_strict then",contract)
+        self.assertIn("where (v_strict or to_regclass(expected.name) is not null)",contract)
         covered={table for tables,_ in API_POLICY_GROUPS for table in tables}
         self.assertEqual(covered,set(API_RLS_RELATIONS)-{"app.profile","app.notification"})
         self.assertIn("p.roles=array['authenticated']::name[]",API_RLS_REALTIME_CONTRACT)
         self.assertIn("expected_policy.with_check",API_RLS_REALTIME_CONTRACT)
+
+    def test_catalog_detector_baseline_matches_source_and_historical_inventory(self):
+        root=Path(__file__).parents[1]
+        baseline=json.loads((root/"docs/verification/throughput-guard-truth-baseline-20260828.json").read_text())
+        source=(root/"scripts/production_catalog_verification.py").read_text()
+        self.assertEqual(baseline["detector_source_sha256"],hashlib.sha256(source.encode()).hexdigest())
+        for row in baseline["matched_paths"]:
+            sql=(root/row["path"]).read_text()
+            self.assertEqual(len(dynamic_execution_marker_lines(sql)),row["marker_count"],row["path"])
 
     def test_sequence_contract_covers_all_18_migration_targets_and_values(self):
         import re

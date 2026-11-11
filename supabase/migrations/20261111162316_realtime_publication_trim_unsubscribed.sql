@@ -7,8 +7,9 @@
 -- pg_stat_statements since 2026-11-06 11:20 AM EST: 995,771 calls, 39.1 ms mean,
 -- ~7,760 s of database time per day). Every poll rebuilds the publication's
 -- table list from pg_publication_tables, and that step costs catalog reads per
--- published table (22 published tables: 1,251 buffer hits per poll; a 7-table
--- publication: 649).
+-- published table. A separate 7-table experiment measured 649 buffer hits
+-- versus 1,251 with 22 tables. The audited target below keeps 9 tables; its
+-- buffer cost has not been measured, so 649 is not a claim for this migration.
 --
 -- AUDIT (2026-11-11, default branches of every popcre and u2giants repository,
 -- searched for `postgres_changes`, plus live realtime.subscription rows)
@@ -26,7 +27,8 @@
 -- -----
 -- Publication membership only. No table, policy, grant, index or replica
 -- identity changes. Each statement is guarded so a database with no realtime
--- stack, a missing table, or an already-trimmed publication is a clean no-op.
+-- stack is a clean no-op. Existing kept tables are added if unpublished;
+-- missing tables are left for the strict live contract to report.
 begin;
 set local lock_timeout='2s';
 set local statement_timeout='60s';
@@ -37,6 +39,70 @@ begin
   if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
     raise notice 'supabase_realtime publication absent; nothing to trim.';
     return;
+  end if;
+
+  -- Converge the audited kept set even when platform setup never published it.
+  if to_regclass('public.admin_config') is not null and not exists (
+    select 1 from pg_publication_tables
+     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'admin_config'
+  ) then
+    alter publication supabase_realtime add table public.admin_config;
+  end if;
+
+  if to_regclass('public.agent_registrations') is not null and not exists (
+    select 1 from pg_publication_tables
+     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'agent_registrations'
+  ) then
+    alter publication supabase_realtime add table public.agent_registrations;
+  end if;
+
+  if to_regclass('public.style_tracker_rows') is not null and not exists (
+    select 1 from pg_publication_tables
+     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'style_tracker_rows'
+  ) then
+    alter publication supabase_realtime add table public.style_tracker_rows;
+  end if;
+
+  if to_regclass('crm.email_message') is not null and not exists (
+    select 1 from pg_publication_tables
+     where pubname = 'supabase_realtime' and schemaname = 'crm' and tablename = 'email_message'
+  ) then
+    alter publication supabase_realtime add table crm.email_message;
+  end if;
+
+  if to_regclass('crm.task') is not null and not exists (
+    select 1 from pg_publication_tables
+     where pubname = 'supabase_realtime' and schemaname = 'crm' and tablename = 'task'
+  ) then
+    alter publication supabase_realtime add table crm.task;
+  end if;
+
+  if to_regclass('crm.note') is not null and not exists (
+    select 1 from pg_publication_tables
+     where pubname = 'supabase_realtime' and schemaname = 'crm' and tablename = 'note'
+  ) then
+    alter publication supabase_realtime add table crm.note;
+  end if;
+
+  if to_regclass('crm.meeting_note') is not null and not exists (
+    select 1 from pg_publication_tables
+     where pubname = 'supabase_realtime' and schemaname = 'crm' and tablename = 'meeting_note'
+  ) then
+    alter publication supabase_realtime add table crm.meeting_note;
+  end if;
+
+  if to_regclass('crm.opportunity') is not null and not exists (
+    select 1 from pg_publication_tables
+     where pubname = 'supabase_realtime' and schemaname = 'crm' and tablename = 'opportunity'
+  ) then
+    alter publication supabase_realtime add table crm.opportunity;
+  end if;
+
+  if to_regclass('crm.department') is not null and not exists (
+    select 1 from pg_publication_tables
+     where pubname = 'supabase_realtime' and schemaname = 'crm' and tablename = 'department'
+  ) then
+    alter publication supabase_realtime add table crm.department;
   end if;
 
   if exists (select 1 from pg_publication_tables

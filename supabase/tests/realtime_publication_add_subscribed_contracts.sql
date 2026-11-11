@@ -1,8 +1,11 @@
 -- Contracts for 20261111221929_realtime_publication_add_subscribed.sql
 -- (u2giants/popdam3#804 task 2).
 --
--- Where the supabase_realtime publication exists, every table an application
--- subscribes to (and that exists in this database) is published. The
+-- Where the supabase_realtime publication exists, the three crm/core tables
+-- PopCRM subscribes to are published. The three public tables are not asserted
+-- here: the ephemeral test database creates them outside migration order, so
+-- the migration cannot publish them there. Production is asserted by the
+-- catalog contract realtime_publication_add_subscribed_v1. The
 -- publication is created by the Supabase platform, so a database without a
 -- realtime stack is reported as an explicit skip.
 
@@ -19,7 +22,7 @@ begin
 
   select string_agg(expected.name, ', ')
     into v_missing
-  from unnest(array['public.render_queue','crm.ingested_domain','core.contact','core.contact_company','public.admin_config','public.agent_registrations']::text[]) expected(name)
+  from unnest(array['crm.ingested_domain','core.contact','core.contact_company']::text[]) expected(name)
   where to_regclass(expected.name) is not null
     and not exists (
       select 1 from pg_publication_tables p

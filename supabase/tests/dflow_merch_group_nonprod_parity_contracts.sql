@@ -1,5 +1,5 @@
 -- =====================================================================================
--- Non-production merchGroup parity contracts — migration 20261111213445, issue #6086
+-- Non-production merchGroup parity contracts — migration 20261111222527, issue #6086
 -- (work issue popcre/designflow-item-master#205).
 --
 -- Proves: dflow."merchGroup" / "merchGroupHeaders" end identical to their core
@@ -79,7 +79,7 @@ insert into core."merchGroupHeaders" (id, "mgTypeCode", "mgTypeDesc") overriding
 insert into dflow."merchGroupHeaders" (id, "mgTypeCode", "mgTypeDesc") overriding system value values (910001, '01', 'Old type');
 insert into dflow.mg_combination_description (mg01_id, mg02_id, mg03_id) values (900001, 900002, 900003);
 
-\i supabase/migrations/20261111213445_dflow_merch_group_nonprod_parity.sql
+\i supabase/migrations/20261111222527_dflow_merch_group_nonprod_parity.sql
 
 do $a$
 declare n bigint; s text; v bigint;
@@ -108,7 +108,7 @@ end
 $a$;
 
 -- Re-run is a no-op.
-\i supabase/migrations/20261111213445_dflow_merch_group_nonprod_parity.sql
+\i supabase/migrations/20261111222527_dflow_merch_group_nonprod_parity.sql
 
 do $r$
 begin

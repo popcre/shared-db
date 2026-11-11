@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "migration_version": "20261111213445",
-  "migration_sha256": "d8665cf6d0b1f12b2d44842dcf7bf029aeeb7861e7dac4f9392faf8e4c7f3da4",
+  "migration_version": "20261111222527",
+  "migration_sha256": "99dd4c70fbe257101813f0327a1143f53bbaf5d41c0d3d3e0cd72206d5114170",
   "checks": [
     {
       "id": "dflow_merch_group_parity_combination_readable",

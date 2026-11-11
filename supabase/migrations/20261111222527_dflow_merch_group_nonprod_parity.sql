@@ -35,13 +35,13 @@ set statement_timeout = '5min';
 do $check$
 begin
   if to_regnamespace('dflow_prod') is not null then
-    raise exception '#6086/20261111213445 self-check: schema dflow_prod exists here; this is a production-shaped project and this migration is DesignFlow non-production only'
+    raise exception '#6086/20261111222527 self-check: schema dflow_prod exists here; this is a production-shaped project and this migration is DesignFlow non-production only'
       using errcode = 'feature_not_supported';
   end if;
   if to_regclass('core."merchGroup"') is null or to_regclass('dflow."merchGroup"') is null
      or to_regclass('core."merchGroupHeaders"') is null or to_regclass('dflow."merchGroupHeaders"') is null
      or to_regclass('dflow.mg_combination_description') is null then
-    raise exception '#6086/20261111213445 self-check: a required merchGroup / merchGroupHeaders / mg_combination_description table is missing'
+    raise exception '#6086/20261111222527 self-check: a required merchGroup / merchGroupHeaders / mg_combination_description table is missing'
       using errcode = 'feature_not_supported';
   end if;
 end
@@ -140,14 +140,14 @@ begin
   from core."merchGroup" c full join dflow."merchGroup" d using (mg_id)
   where c is distinct from d;
   if n <> 0 then
-    raise exception '#6086/20261111213445: dflow."merchGroup" still differs from core in % rows (a dflow-only row is never deleted here; investigate)', n
+    raise exception '#6086/20261111222527: dflow."merchGroup" still differs from core in % rows (a dflow-only row is never deleted here; investigate)', n
       using errcode = 'check_violation';
   end if;
   select count(*) into n
   from core."merchGroupHeaders" c full join dflow."merchGroupHeaders" d using (id)
   where c is distinct from d;
   if n <> 0 then
-    raise exception '#6086/20261111213445: dflow."merchGroupHeaders" still differs from core in % rows', n
+    raise exception '#6086/20261111222527: dflow."merchGroupHeaders" still differs from core in % rows', n
       using errcode = 'check_violation';
   end if;
 end

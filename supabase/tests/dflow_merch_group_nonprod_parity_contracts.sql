@@ -64,7 +64,6 @@ end
 $fx$;
 
 -- Start from known contents inside the transaction.
-truncate core.mg_category_merch_group;
 delete from dflow.mg_combination_description;
 -- core: ids 900001..900003; dflow: 900001 stale, 900002 missing, 900003 equal.
 insert into core."merchGroup" (mg_id, mg_code, mg_desc, "mgTypeCode", is_active) overriding system value values
@@ -78,7 +77,6 @@ on conflict do nothing;
 update dflow."merchGroup" set mg_desc = 'Old name', is_active = false where mg_id = 900001;
 insert into core."merchGroupHeaders" (id, "mgTypeCode", "mgTypeDesc") overriding system value values (910001, '01', 'Type'), (910002, '02', 'Other');
 insert into dflow."merchGroupHeaders" (id, "mgTypeCode", "mgTypeDesc") overriding system value values (910001, '01', 'Old type');
-insert into core.mg_category_merch_group (merch_group_mg_id) values (900001);
 insert into dflow.mg_combination_description (mg01_id, mg02_id, mg03_id) values (900001, 900002, 900003);
 
 \i supabase/migrations/20261111213445_dflow_merch_group_nonprod_parity.sql

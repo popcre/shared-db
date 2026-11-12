@@ -1531,7 +1531,8 @@ class ClassifyRunJobGlue(unittest.TestCase):
         with mock.patch.object(classifier.subprocess, "run", side_effect=fake), \
                 mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "o/r", "GITHUB_RUN_ID": "43094471144",
                                              "GITHUB_RUN_ATTEMPT": "1"}):
-            self.assertFalse(classifier.classify_run_job("Production apply (automatic evidence gates)"))
+            self.assertFalse(classifier.classify_run_job("Production apply (automatic evidence gates)",
+                                                         sleep=lambda _: None))
 
     def test_annotation_publication_lag_is_tolerated_by_bounded_retry(self):
         # GitHub publishes check-run annotations with a lag of seconds behind

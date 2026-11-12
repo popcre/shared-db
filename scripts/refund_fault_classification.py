@@ -134,7 +134,12 @@ def classify_run_job(job_name: str, gh: callable = None, sleep: callable = None)
               "treating this failure as a change fault")
         return False
 
-    # Bounded retry for GitHub's annotation-publication lag.
+    # Bounded retry for GitHub's annotation-publication lag.  The `::error::`
+    # workflow-command annotations lag behind the emitting step while generic
+    # GitHub annotations (e.g. "Process completed with exit code …") appear
+    # immediately — so an early fetch can see a non-empty list that still lacks
+    # the taxonomy marker (run 43305244649).  Retry whenever classification
+    # cannot yet find an infrastructure/coordination marker.
     for i in range(len(ANNOTATION_PUBLICATION_DELAYS) + 1):
         if i:
             sleep(ANNOTATION_PUBLICATION_DELAYS[i - 1])
@@ -150,15 +155,15 @@ def classify_run_job(job_name: str, gh: callable = None, sleep: callable = None)
             check=True, stdout=subprocess.PIPE, text=True, encoding="utf-8").stdout)
         if isinstance(annotations, dict):
             annotations = annotations.get("annotations", [])
-        if annotations:
-            text = "\n".join(
-                f"{annotation.get('title') or ''}\n{annotation.get('message') or ''}"
-                for annotation in annotations)
-            return classify_failure(text)
-        # Empty list: publication lag; retry within the bound.
+        text = "\n".join(
+            f"{annotation.get('title') or ''}\n{annotation.get('message') or ''}"
+            for annotation in annotations)
+        if classify_failure(text):
+            return True
+        # No taxonomy marker yet — publication lag; retry within the bound.
 
-    # After the bound: no usable evidence. Fail-safe: change fault.
-    print("::warning::refund-eligible-fault: annotations not yet published after bounded retry; "
+    # After the bound: evidence never produced a marker.  Fail-safe: change fault.
+    print("::warning::refund-eligible-fault: no infrastructure/coordination marker after bounded retry; "
           "treating this failure as a change fault")
     return False
 

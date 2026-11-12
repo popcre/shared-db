@@ -541,7 +541,7 @@ FOREIGN_TARGET_MIGRATIONS = {
             "dflow.\"itemDetail\" identity/sync columns, the partial identity index and the "
             "dflow.item_detail_upc view on the DesignFlow sandbox only. Shared preview and "
             "production already carry the 20260803150000 / 20261112150000 contract; every "
-            "statement is a no-op there. Review finding #6139 flagged the missing registration "
+            "statement is a no-op there. Review finding #6139 flagged the absent registration "
             "of the sibling catch-up as a scope leak. This is target scope, not retirement."
         ),
     },

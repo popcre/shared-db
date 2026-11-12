@@ -2121,10 +2121,8 @@ export function authorizeRepositoryMaintenanceStatus(options, io = githubIo) {
     if(pr?.base?.ref!=='main'||pr?.base?.repo?.full_name!==REPO)throw new LaneError('repository-maintenance authorization requires the protected main base in this repository')
     if(!/^[0-9a-f]{40}$/.test(baseSha))throw new LaneError('repository-maintenance authorization base SHA is unreadable')
     let files
-    // An unreadable change set cannot prove documents-only, so it routes to the
-    // guarded code checks like any other code change: not applicable, never red
-    // ("red means a revoked grant" — see the catch block).
-    try{files=io.comparePullRequestFiles(baseSha,headSha)}catch(error){throw Object.assign(new LaneError(`repository-maintenance authorization cannot read the exact base-to-head comparison (${error.message})`),{notApplicable:true})}
+    // An instrument failure is not evidence of an ordinary code change.
+    try{files=io.comparePullRequestFiles(baseSha,headSha)}catch(error){throw new LaneError(`repository-maintenance authorization cannot read the exact base-to-head comparison (${error.message})`)}
     const verdict=classifyLightweightMergePullRequestFiles(files)
     if(!verdict.documentsOnly)throw Object.assign(new LaneError(`repository-maintenance authorization refused: ${verdict.reason}`),{notApplicable:true})
     const finalPr=io.getPr(prNumber)

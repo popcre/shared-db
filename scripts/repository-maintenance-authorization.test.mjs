@@ -107,14 +107,12 @@ test('a transient status-history blip is retried and reports not applicable, nev
   assert.match(flaky.statuses[0].description,/^Not applicable/)
 })
 
-test('an unreadable change set routes to guarded checks as not applicable, never red',()=>{
+test('an unreadable change set reports instrument failure without granting authorization',()=>{
   const io=fakeIo()
   io.comparePullRequestFiles=()=>{throw new Error('comparison reached the 300-file ceiling')}
-  const result=authorizeRepositoryMaintenanceStatus(options,io)
-  assert.equal(result.documentsOnly,false)
-  assert.equal(result.notApplicable,true)
-  assert.deepEqual(io.statuses.map((row)=>[row.context,row.state]),[[MERGE_ADVISORY_CONTEXT,'success']])
-  assert.match(io.statuses[0].description,/guarded code checks required/)
+  assert.throws(()=>authorizeRepositoryMaintenanceStatus(options,io),/cannot read the exact base-to-head comparison/)
+  assert.deepEqual(io.statuses.map((row)=>[row.context,row.state]),[[MERGE_ADVISORY_CONTEXT,'failure']])
+  assert.doesNotMatch(io.statuses[0].description,/Not applicable/)
 })
 
 test('an untrusted or moved base repository and branch cannot authorize',()=>{

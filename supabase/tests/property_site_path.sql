@@ -1,4 +1,5 @@
 -- #6150 contracts: core.property_site_path + api.mg06_site_path. Synthetic rows; CI wraps in begin/rollback.
+select public.ci_authorize_licensing_contract_test();
 do $$
 declare
   v_prop uuid;

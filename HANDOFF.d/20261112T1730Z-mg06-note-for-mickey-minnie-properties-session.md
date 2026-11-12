@@ -31,18 +31,17 @@ Separate OPA properties also exist: "Mickey Mouse" (old art programs only, e.g. 
 Tuff Mickey — not the classic character), "Minnie" (Minnie & Me, Totally Minnie, Totally Minnie
 Friends), and "Standard Characters" (Mickey, Donald, Goofy, etc. together).
 
-What we are doing with it:
-- **No MG06 value called "Mickey Mouse Family" for now.** Albert's 2026-11-12 sheet proposed
-  moving 217 styles from "Standard Characters" to a new "Mickey Mouse Family" value. That move
-  is ON HOLD pending Albert's decision. Do not create a "Mickey Mouse Family" property, or
-  per-character sub-values under it.
-- **The characters stay site-side.** Each MG06 value maps to an OPA property plus a
-  character box in the new site-path table: MICKEY MOUSE → "Mickey Mouse Family" > "Mickey Mouse";
-  Minnie Mouse → "Minnie" > "Minnie & Me"; Standard Characters → "Standard Characters".
-  Pluto, Pete, Clarabelle and the rest are **characters picked per style at submission time**,
-  not MG06 values or `core.property` rows.
-- **Minnie for a Minnie-only design = "Minnie & Me"** (every past submission did this).
-- "Minnie" and "Standard Characters" become real `core.property` rows through the repaired
+What we are doing with it (owner ruling, 2026-11-12 12:54 PM EST: "one lives under the other"):
+- **Mickey Mouse Family (MMF) is the parent property; MICKEY MOUSE lives under it**, as do
+  Minnie Mouse, Pluto and the other family characters. These are levels, not competing names.
+- Albert's 2026-11-12 sheet moves 217 styles from "Standard Characters" to MMF
+  "Mickey Mouse Family". **That move is approved.** Use MMF for styles showing the family or
+  several family characters, and the child value (e.g. MICKEY MOUSE) for a single-character design.
+- Treat MMF as the parent of MICKEY MOUSE (and of Minnie) in any property hierarchy you build.
+  Do not merge or rename them into one.
+- On Disney's site: MMF → OPA "Mickey Mouse Family"; MICKEY MOUSE → "Mickey Mouse Family" >
+  "Mickey Mouse"; a Minnie-only design → OPA "Minnie" > "Minnie & Me".
+- "Minnie" and "Standard Characters" become `core.property` rows through the repaired
   automatic step (session `mg06-ilona-props`), not by hand.
 
 If your work needs a property per character (e.g. Pluto), stop and comment on PR

@@ -1,3 +1,9 @@
+---
+issue: 6150
+status: INFO
+owner: claude/edge-dev3 MG06 coordinator (designflow-coordinator-c77315)
+---
+
 # Note for the session working on Mickey / Minnie / Mickey & Friends properties (2026-11-12, 12:30 PM EST)
 
 What the MG06 work is doing, so you do not collide with it:

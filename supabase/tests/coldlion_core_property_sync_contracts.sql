@@ -3,7 +3,7 @@ begin;
 
 do $$
 declare
-  v_lic uuid; v_a uuid; v_c uuid; v_keep uuid; v_res jsonb; v_row record;
+  v_lic uuid; v_a uuid; v_c uuid; v_keep uuid; v_res jsonb; v_row record; v_parent bigint;
   v_s text := upper(substr(replace(gen_random_uuid()::text,'-',''),1,6));
   v_fake_app boolean := to_regclass('dflow_prod."merchGroup"') is null;
 begin
@@ -26,8 +26,8 @@ begin
     create schema if not exists dflow_prod;
     create table dflow_prod."merchGroup"(mg_id serial primary key, mg_code text, "mgTypeCode" text, parent_id int);
   end if;
-  insert into dflow_prod."merchGroup"(mg_id, mg_code, "mgTypeCode", parent_id) values (-61940,'L'||v_s,'05',null);
-  insert into dflow_prod."merchGroup"(mg_id, mg_code, "mgTypeCode", parent_id) values (-61941,'C'||v_s,'06',-61940),(-61942,'N'||v_s,'06',-61940);
+  insert into dflow_prod."merchGroup"(mg_code, "mgTypeCode") values ('L'||v_s,'05') returning mg_id into v_parent;
+  insert into dflow_prod."merchGroup"(mg_code, "mgTypeCode", parent_id) values ('C'||v_s,'06',v_parent),('N'||v_s,'06',v_parent);
 
   insert into coldlion.merch_group_detail(company_code,division_code,mg_type_code,mg_code,mg_category,run_id,fetched_at,source_hash,first_seen_at,last_seen_at,mg_desc,active) values
    ('FIX6194','CW001','06','A'||v_s,'','ac619400-0000-0000-0000-000000000001',now(),repeat('a',64),now(),now(),'New Name','N'),

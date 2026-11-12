@@ -147,7 +147,7 @@ begin
          where id = v_id;
       end if;
     end if;
-    if v_cur.st is distinct from case when r.active then 'active' else 'inactive' end then
+    if v_cur.st is distinct from (case when r.active then 'active' else 'inactive' end) then
       v_status := v_status + 1;
       if p_apply then
         insert into plm.licensing_write_authorization(backend_pid,transaction_id,target_table,write_kind,plan_id,plan_hash,actor,protected_columns,expires_at)

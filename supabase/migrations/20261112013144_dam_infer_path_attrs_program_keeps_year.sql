@@ -1,3 +1,4 @@
+-- derived-from: 20261111215610
 -- u2giants/popdam3#963 Phase 3.4 search gate follow-up (claim popcre/shared-db#6076).
 -- 20261111215610 made program the folder after a year folder. Before, program
 -- was the year itself, so "Dollar General 2027" matched every file under the

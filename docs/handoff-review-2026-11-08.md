@@ -34,15 +34,16 @@ Each needs a new session. Resume prompts below.
 
 ### #2326 — database efficiency and API security program (3 notes)
 
-- `2026-09-10T0450Z-edge-dev-claude-five-oldest-issues.md (retired 2026-11-12)`
+- `2026-09-10T0450Z-edge-dev-claude-five-oldest-issues.md`
 - `2026-10-11T1705Z-edge-dev-mimo-nine-issues-clearance.md`
-- `2026-10-11T1749Z-edge-dev-mimo-batch-remaining-clearance.md (retired 2026-11-12)`
+- `2026-10-11T1749Z-edge-dev-mimo-batch-remaining-clearance.md`
 
 **Resume prompt:**
 > In popcre/shared-db (own worktree from origin/main), pick up the open work
 > under issue #2326. Read `plan_database_efficiency_and_api_security.md` STATUS
-> table first. The three handoff notes under `HANDOFF.d/` for #2326 describe
-> what has already been done (Steps 1–3 and various batch clearances). Continue
+> table first. Read the three notes listed above under `HANDOFF.d/`, including
+> `2026-10-11T1705Z-edge-dev-mimo-nine-issues-clearance.md`, for completed
+> Steps 1–3 and batch clearances. Continue
 > from the first unfinished step. Owner hold on #2290 (ColdLion health-lane
 > baseline) still blocks taxonomy activation — do not proceed past that gate
 > until Ilona/Laura confirm on #1941.
@@ -114,7 +115,7 @@ Each needs a new session. Resume prompts below.
 
 ### #5608 — Supabase assessment follow-up plans (1 note)
 
-- `20261105T0203Z-edge-dev3-claude-supabase-assessment-plans.md (retired 2026-11-12)`
+- `20261105T0203Z-edge-dev3-claude-supabase-assessment-plans.md`
 
 **Resume prompt (corrected 2026-11-08 3:10 PM EST — "none is started" was stale):**
 > In popcre/shared-db (own worktree from origin/main), continue issue #5608.

@@ -1149,7 +1149,9 @@ jobs:
       # marker the promotion selector refunds out of the attempt budget
       # (its refund-eligible-in-any-attempt reader; the selector is queue-selection
       # automation this lane deliberately never names). It classifies this job's
-      # own failed-step logs: an
+      # own failure annotations (its `::error::` marker text; job logs do not
+      # exist yet while the job runs - see the trust-model amendment in
+      # scripts/refund_fault_classification.py): an
       # infrastructure failure the workflow itself labelled ("CI INFRASTRUCTURE:"
       # with "NO MIGRATION WAS APPLIED") or a coordination refusal (pin/lane
       # staleness) is NOT a fault in the change under review. Anything else -

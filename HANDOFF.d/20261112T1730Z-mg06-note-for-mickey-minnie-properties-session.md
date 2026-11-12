@@ -21,3 +21,29 @@ What the MG06 work is doing, so you do not collide with it:
 
 If your work changes Mickey/Minnie/Mickey & Friends `core.property` rows or their names,
 comment on PR popcre/shared-db#6091 first so the site-path table maps to the right rows.
+
+## Addendum (12:55 PM EST): the characters under Disney's "Mickey Mouse Family"
+
+On Disney's submission site (OPA), "Mickey Mouse Family" is a **grouping**, not one
+character. Under it Disney lists: Mickey Mouse, Minnie Mouse, Pluto, Big Bad Pete,
+Clarabelle Cow, Horace Horsecollar, Morty, Ferdie, Morty & Ferdy, Chief O'Hara.
+Separate OPA properties also exist: "Mickey Mouse" (old art programs only, e.g. Mickey's 60th,
+Tuff Mickey — not the classic character), "Minnie" (Minnie & Me, Totally Minnie, Totally Minnie
+Friends), and "Standard Characters" (Mickey, Donald, Goofy, etc. together).
+
+What we are doing with it:
+- **No MG06 value called "Mickey Mouse Family" for now.** Albert's 2026-11-12 sheet proposed
+  moving 217 styles from "Standard Characters" to a new "Mickey Mouse Family" value. That move
+  is ON HOLD pending Albert's decision. Do not create a "Mickey Mouse Family" property, or
+  per-character sub-values under it.
+- **The characters stay site-side.** Each MG06 value maps to an OPA property plus a
+  character box in the new site-path table: MICKEY MOUSE → "Mickey Mouse Family" > "Mickey Mouse";
+  Minnie Mouse → "Minnie" > "Minnie & Me"; Standard Characters → "Standard Characters".
+  Pluto, Pete, Clarabelle and the rest are **characters picked per style at submission time**,
+  not MG06 values or `core.property` rows.
+- **Minnie for a Minnie-only design = "Minnie & Me"** (every past submission did this).
+- "Minnie" and "Standard Characters" become real `core.property` rows through the repaired
+  automatic step (session `mg06-ilona-props`), not by hand.
+
+If your work needs a property per character (e.g. Pluto), stop and comment on PR
+popcre/shared-db#6149 first; that would change this design.

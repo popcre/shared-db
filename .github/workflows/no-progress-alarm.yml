@@ -38,6 +38,11 @@ permissions:
   contents: read
   issues: write
   pull-requests: read
+  # Required: the promotion-lane inputs read workflow runs (review finding
+  # popcre/shared-db#5922). A declared permissions block zeroes every unlisted
+  # scope, and without actions:read every tick 403s into a standing
+  # instrument_down alarm — the alarm dead on arrival.
+  actions: read
 
 concurrency:
   group: no-progress-alarm

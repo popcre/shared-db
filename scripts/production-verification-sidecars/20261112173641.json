@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "migration_version": "20261112173641",
+  "migration_sha256": "5636bb8e10ec6835cc16c020db8b0f2090c12897be124e6c6486a15168d63d75",
+  "checks": [
+    {
+      "id": "opa_submission_current",
+      "kind": "catalog_contract",
+      "contract": "opa_submission_properties_current_v1",
+      "expected_count": 1
+    }
+  ]
+}

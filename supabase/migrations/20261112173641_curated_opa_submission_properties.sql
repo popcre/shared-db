@@ -30,7 +30,7 @@ do $opa_submission_canonical$
 declare
   v_actor constant text := 'shared-db migration 20261112173641';
   v_reason constant text := '#2541 OPA submission Property canonical (owner ruling 2026-10-26)';
-  r record; v_lic uuid; v_id uuid; v_name text; v_n integer; v_rows integer; v_expected integer;
+  r record; v_resolution plm.source_resolution%rowtype; v_lic uuid; v_id uuid; v_name text; v_n integer; v_rows integer; v_expected integer;
 begin
   if to_regclass('plm.opa_property') is null or to_regclass('plm.opa_property_studio_resolution') is null then
     raise notice '#2541: OPA landing absent; nothing to do';
@@ -60,9 +60,16 @@ begin
     select id into v_lic from core.licensor
      where code = case r.st when 'marvel' then 'MV' when 'lucasfilm' then 'SW' else 'DY' end;
 
+    select * into v_resolution from plm.source_resolution
+     where source_system = 'disney_opa' and entity_kind = 'property' and source_id = r.k
+     for update;
     v_id := null;
     select t.entity_id into v_id from core.taxonomy_source_ref t
      where t.source_system = 'disney_opa' and t.source_table = 'plm.opa_property' and t.source_id = r.k;
+    -- Preserve a previously matched identity even when it has no taxonomy ref yet.
+    if v_id is null and v_resolution.resolution_status = 'matched' then
+      v_id := v_resolution.core_property_id;
+    end if;
     if v_id is not null and not exists (select 1 from core.property where id = v_id and licensor_id = v_lic) then
       raise exception '#2541: OPA property % is linked to a row outside its studio licensor', r.k;
     end if;
@@ -107,11 +114,9 @@ begin
         'studio_code',r.st,'owner_ruling','2026-10-26'))
     on conflict (source_system,source_table,source_id) do nothing;
 
-    if not exists (select 1 from plm.source_resolution
-                    where source_system = 'disney_opa' and entity_kind = 'property' and source_id = r.k) then
-      perform plm.set_source_resolution('disney_opa'::text, 'property'::text, r.k, 'matched'::text,
-        v_id, null::uuid, null::uuid, null::uuid, v_reason, null::timestamptz);
-    end if;
+    perform plm.set_source_resolution('disney_opa'::text, 'property'::text, r.k, 'matched'::text,
+      v_id, null::uuid, null::uuid, null::uuid, v_reason, v_resolution.updated_at);
+
   end loop;
 
   -- Post-conditions: every studio-placed OPA property has one ref to a row under its licensor

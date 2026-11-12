@@ -6126,6 +6126,28 @@ not exists (
 )
 """
 
+# #6162: verify every studio-placed OPA identity without exporting licensed labels.
+CATALOG_CONTRACTS["opa_submission_properties_current_v1"] = """(
+  not exists (
+    select 1 from plm.opa_property o
+    join plm.opa_property_studio_resolution s using (licensed_property_id)
+    where s.resolution_status = 'canonical'
+      and not exists (
+        select 1 from core.taxonomy_source_ref t
+        join core.property p on p.id = t.entity_id and p.name = o.property_name
+        join core.licensor l on l.id = p.licensor_id
+        join plm.source_resolution sr on sr.source_system = 'disney_opa'
+          and sr.entity_kind = 'property' and sr.source_id = o.licensed_property_id::text
+          and sr.resolution_status = 'matched' and sr.core_property_id = p.id
+        where t.source_system = 'disney_opa' and t.source_table = 'plm.opa_property'
+          and t.source_id = o.licensed_property_id::text
+          and t.entity_schema = 'core' and t.entity_table = 'property'
+          and l.code = case s.studio_code when 'disney' then 'DY' when 'pixar' then 'DY'
+            when 'marvel' then 'MV' when 'lucasfilm' then 'SW' end
+      )
+  )
+)"""
+
 if __name__ == "__main__":
     raise SystemExit(main())
 

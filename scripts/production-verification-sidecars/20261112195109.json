@@ -1,0 +1,1 @@
+{"schema_version":1,"migration_version":"20261112195109","migration_sha256":"015818e01730744bd9e6e5116d3070b0a7bc1d7592ed688470f03b49a6430b0e","checks":[{"id":"coldlion_names_restored","kind":"exact_row_count","relation":"core.property","filters":[{"column":"name","type":"text","equals":"MICKEY MOUSE"},{"column":"code","type":"text","equals":"MM"}],"expected_count":1}]}

@@ -6,7 +6,7 @@
 -- 2. Backfill through core.company_source_ref designflow_plm/customers links, only where
 --    core.customer.dilution is null; blank or non-numeric legacy values are skipped.
 --    No-op (NOTICE) on any database without dflow.customers (shared production has no dflow
---    schema). Uses dynamic SQL so the migration compiles where dflow is absent.
+--    schema). PL/pgSQL plans the update only when reached, so it is safe where dflow is absent.
 -- Rollback: alter table core.customer drop column dilution, drop column logistic_load.
 
 alter table core.customer
@@ -27,7 +27,6 @@ begin
     return;
   end if;
 
-  execute $sql$
     with src as (
       select r.company_id,
              case when btrim(d.customers_dilution::text) ~ '^-?[0-9]+(\.[0-9]+)?$'
@@ -49,8 +48,7 @@ begin
       from one
      where one.company_id = c.id
        and c.dilution is null
-       and (one.dilution is not null or one.logistic_load is not null)
-  $sql$;
+       and (one.dilution is not null or one.logistic_load is not null);
   get diagnostics v_n = row_count;
   raise notice '#6177: backfilled % core.customer rows', v_n;
 end

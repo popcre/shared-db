@@ -1,3 +1,10 @@
+-- Renamed from 20261111230455 -> 20261112033254 (issue #6085, claim #6113): PR #6075
+-- exhausted its automatic promotion attempts (three failed preview applies, each caused
+-- by batch-mate 20261111230502's fail-closed data check on preview-only drift; the
+-- atomic batch rolled back and applied nowhere). 20261111230502 is retired and reissued
+-- as 20261112011634. A fresh governed version is a new promotion candidate. Body is
+-- byte-identical to the merged 20261111230455 original. Version reserved atomically
+-- as refs/db-claims/20261112033254.
 -- shared-db#4705 REISSUE of 20261111192349 (PR #6066), identical intent, made idempotent.
 -- Why: 20261111192349 is unpromotable. PR #6066's pull_request checks never ran on its
 -- exact head 6685cfd (GitHub Actions outage 2026-11-11); it passed only in the merge

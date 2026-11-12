@@ -69,6 +69,11 @@ begin
     where conname = 'item_product_description_item_fk_fkey'
       and conrelid = 'dflow.item_product_description'::regclass
       and confrelid = 'plm."itemHeader"'::regclass
+      and contype = 'f' and convalidated and confdeltype = 'c'
+      and conkey = array[(select attnum from pg_attribute
+        where attrelid = 'dflow.item_product_description'::regclass and attname = 'item_fk')]
+      and confkey = array[(select attnum from pg_attribute
+        where attrelid = 'plm."itemHeader"'::regclass and attname = 'item_id_pk')]
   ) then
     return;
   end if;

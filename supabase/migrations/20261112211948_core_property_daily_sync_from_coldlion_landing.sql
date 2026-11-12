@@ -181,3 +181,6 @@ begin
   end if;
 end;
 $sched$;
+
+-- First fill now (no-op where the landing is absent, as in CI); the daily job keeps it current.
+select plm.sync_core_property_from_coldlion(true);

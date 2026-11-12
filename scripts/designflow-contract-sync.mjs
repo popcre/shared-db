@@ -23,21 +23,36 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { manifestDigest } from './lib/designflow-db-release.mjs';
 import { productionCatalogQuery, verifyCatalogProof } from './lib/designflow-db-catalog.mjs';
+import { runGitHubCommand } from './lib/github-transport.mjs';
+import { createTreeReader } from './lib/github-tree.mjs';
 import { releasePolicy } from './designflow-db-release.mjs';
 
 const CANONICAL = 'popcre/shared-db';
 const PROJECT = 'qsllyeztdwjgirsysgai';
 const POLICY_PATH = 'config/designflow-db-releases.json';
 
-function gh(args, opts = {}) {
-  return execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024, ...opts });
+// All GitHub access goes through the one shared transport (issue #2342).
+function command(args, { input, timeout = 60_000 } = {}) {
+  try {
+    return runGitHubCommand(args, { input, timeoutMs: timeout, maxBuffer: 20 * 1024 * 1024 });
+  } catch {
+    throw Error(`GitHub operation refused or unavailable: ${args[0]}`);
+  }
 }
 
 function api(endpoint, body) {
   const args = ['api', endpoint];
   if (body !== undefined) args.push('--method', 'POST', '--input', '-');
-  return JSON.parse(gh(args, { input: body ? JSON.stringify(body) : undefined }));
+  const output = command(args, { input: body === undefined ? undefined : JSON.stringify(body) });
+  return output.trim() ? JSON.parse(output) : null;
 }
+
+// File content comes from one tree read per ref, then blobs by SHA (issue #2342).
+const manifestTree = createTreeReader({
+  json: args => JSON.parse(command(args)),
+  raw: args => command(args),
+  wrapError: () => Error('Application manifest tree is unavailable or incomplete'),
+});
 
 async function readProduction(query) {
   const response = await fetch(`https://api.supabase.com/v1/projects/${PROJECT}/database/query`, {
@@ -57,9 +72,10 @@ async function readProduction(query) {
 }
 
 function fetchManifest(repository, manifestPath) {
-  const content = api(`repos/${repository}/contents/${manifestPath}?ref=develop`);
-  if (content.encoding !== 'base64' || !content.content) throw Error('Manifest content unavailable');
-  return JSON.parse(Buffer.from(content.content, 'base64').toString('utf8'));
+  const text = manifestTree.readFileAtRef(repository, manifestPath, 'develop');
+  if (typeof text !== 'string' || Buffer.byteLength(text) > 8 * 1024 * 1024)
+    throw Error('Manifest content is absent or exceeds the bounded file size');
+  return JSON.parse(text);
 }
 
 // One application's digest update on top of the exact policy bytes that will be
@@ -104,7 +120,7 @@ function routingBlock(workType, route) {
 
 function openIssue(title, body) {
   if (findOpenIssue(title)) return null;
-  const output = gh(['issue', 'create', '--repo', CANONICAL, '--title', title, '--body', body,
+  const output = command(['issue', 'create', '--repo', CANONICAL, '--title', title, '--body', body,
     '--label', 'db-work', '--label', 'non-orchestrator']);
   return output.trim().split('/').pop();
 }
@@ -170,7 +186,7 @@ function createContractPR(repository, newDigest) {
       + `The contract was verified against the live production database (${PROJECT}) and `
       + `accepted by the central release policy before this pull request was opened.`
       + signLine();
-    const prOutput = gh(['pr', 'create', '--repo', CANONICAL, '--title', `Contract sync: ${repository}`,
+    const prOutput = command(['pr', 'create', '--repo', CANONICAL, '--title', `Contract sync: ${repository}`,
       '--body', prBody, '--base', 'main', '--head', branch]);
     const prNumber = prOutput.match(/pull\/(\d+)/)?.[1];
     if (!prNumber) throw Error('PR creation did not return a number');
@@ -186,11 +202,11 @@ function createContractPR(repository, newDigest) {
 // once they pass. A check failure leaves the PR open and never merges.
 function mergeWhenGreen(prNumber) {
   try {
-    gh(['pr', 'merge', String(prNumber), '--repo', CANONICAL, '--auto', '--squash', '--delete-branch']);
+    command(['pr', 'merge', String(prNumber), '--repo', CANONICAL, '--auto', '--squash', '--delete-branch']);
     return 'auto-merge queued; merges when required checks are green';
   } catch {
-    gh(['pr', 'checks', String(prNumber), '--repo', CANONICAL, '--watch', '--fail-fast', '--interval', '15']);
-    gh(['pr', 'merge', String(prNumber), '--repo', CANONICAL, '--squash', '--admin', '--delete-branch']);
+    command(['pr', 'checks', String(prNumber), '--repo', CANONICAL, '--watch', '--fail-fast', '--interval', '15']);
+    command(['pr', 'merge', String(prNumber), '--repo', CANONICAL, '--squash', '--admin', '--delete-branch']);
     return 'merged after reported checks were green';
   }
 }

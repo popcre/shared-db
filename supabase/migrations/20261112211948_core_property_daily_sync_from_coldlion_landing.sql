@@ -80,13 +80,13 @@ begin
 
   -- Licensor 2: the MG05 parent the app list gives this MG06 code (production only).
   if v_has_app then
-    execute $q$
+    -- static SQL: plpgsql plans it only when this branch runs, so it is safe where dflow_prod is absent.
       update _cl_prop c set licensor_id = l.id, how = 'app_parent'
         from (select m.mg_code c, min(p.mg_code) lic
                 from dflow_prod."merchGroup" m join dflow_prod."merchGroup" p on p.mg_id = m.parent_id
                where m."mgTypeCode" = '06' group by m.mg_code having count(distinct p.mg_code) = 1) a
         join core.licensor l on l.code = a.lic
-       where a.c = c.code and c.licensor_id is null $q$;
+       where a.c = c.code and c.licensor_id is null;
   end if;
 
   select coalesce(jsonb_agg(jsonb_build_object('code', code, 'name', name, 'active', active) order by code), '[]'::jsonb)

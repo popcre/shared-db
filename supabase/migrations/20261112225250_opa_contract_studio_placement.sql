@@ -38,7 +38,7 @@ begin
      set studio_code = 'disney', resolution_status = 'canonical', provenance_type = 'direct_source_assertion',
          provenance_reference = 'contract:K2557:disney:clause-' || p.clause,
          resolution_reason = 'Signed contract K2557 Disney section names this franchise (#2541)',
-         resolved_at = clock_timestamp(), resolved_by = 'shared-db migration 20261112210827', updated_at = clock_timestamp()
+         resolved_at = clock_timestamp(), resolved_by = 'shared-db migration 20261112225250', updated_at = clock_timestamp()
     from p
    where r.licensed_property_id = p.id and r.resolution_status = 'unresolved';
   select count(*) into v_n from plm.opa_property_studio_resolution
@@ -49,7 +49,7 @@ $opa_contract_placement$;
 
 do $opa_submission_canonical$
 declare
-  v_actor constant text := 'shared-db migration 20261112210827';
+  v_actor constant text := 'shared-db migration 20261112225250';
   v_reason constant text := '#2541 OPA submission Property canonical (owner ruling 2026-10-26)';
   r record; v_lic uuid; v_id uuid; v_name text; v_n integer; v_rows integer; v_expected integer;
 begin
@@ -101,7 +101,7 @@ begin
         array['licensor_id','name','code','status'], clock_timestamp()+interval '1 minute');
       insert into core.property(licensor_id,name,code,status,metadata)
       values (v_lic, r.l, null, 'potential', jsonb_build_object('curated',true,'import_owned',false,
-        'authorising_issue',2541,'owner_instruction_date','2026-10-26','migration','20261112210827',
+        'authorising_issue',2541,'owner_instruction_date','2026-10-26','migration','20261112225250',
         'curated_source',jsonb_build_object('source_system','disney_opa','source_table','plm.opa_property',
           'licensed_property_id',r.k,'studio_code',r.st)))
       returning id into v_id;
@@ -114,7 +114,7 @@ begin
           array['name'], clock_timestamp()+interval '1 minute');
         update core.property set name = r.l,
           metadata = coalesce(metadata,'{}') || jsonb_build_object('submission_canonical', jsonb_build_object(
-            'authorising_issue',2541,'migration','20261112210827','previous_name',v_name,
+            'authorising_issue',2541,'migration','20261112225250','previous_name',v_name,
             'source_system','disney_opa','licensed_property_id',r.k))
          where id = v_id;
         get diagnostics v_rows = row_count;

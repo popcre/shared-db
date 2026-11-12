@@ -5,6 +5,12 @@ begin;
 
 create temporary table t2873_expected(grantee text, kind text, name text, priv text) on commit drop;
 insert into t2873_expected values
+ ('designflow_prod_backend_grants','table','coldlion.merch_group_event_log','SELECT'),
+ ('designflow_prod_backend_grants','table','coldlion.merch_group_event_log','INSERT'),
+ ('designflow_prod_backend_grants','column','coldlion.merch_group_event_log.status','UPDATE'),
+ ('designflow_prod_backend_grants','column','coldlion.merch_group_event_log.reason','UPDATE'),
+ ('designflow_prod_backend_grants','column','coldlion.merch_group_event_log.rows_touched','UPDATE'),
+ ('designflow_prod_backend_grants','column','coldlion.merch_group_event_log.processed_at','UPDATE'),
   ('designflow_prod_backend_grants','table','dflow_prod.AdditionalUserEmail','SELECT'),
   ('designflow_prod_backend_grants','table','dflow_prod.AdditionalUserEmail','INSERT'),
   ('designflow_prod_backend_grants','table','dflow_prod.AuditLog','SELECT'),
@@ -518,6 +524,13 @@ begin
     cross join lateral aclexplode(c.relacl) a join pg_roles r on r.oid=a.grantee
     where r.rolname like 'designflow\_prod\_%\_grants' or r.rolname = 'designflow_prod_tracking_runtime'
     union all
+ SELECT r.rolname::text,'column',n.nspname||'.'||c.relname||'.'||at.attname,a.privilege_type
+ FROM pg_attribute at JOIN pg_class c ON c.oid=at.attrelid
+ JOIN pg_namespace n ON n.oid=c.relnamespace
+ CROSS JOIN LATERAL aclexplode(at.attacl) a JOIN pg_roles r ON r.oid=a.grantee
+ WHERE n.nspname='coldlion' AND c.relname='merch_group_event_log'
+   AND r.rolname ~ '^designflow_prod_(backend|item_master|tracking|data_sync)_(grants|runtime)$'
+ UNION ALL
     select r.rolname::text, 'function', n.nspname||'.'||p.proname, a.privilege_type
     from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join lateral aclexplode(p.proacl) a join pg_roles r on r.oid=a.grantee
     where r.rolname like 'designflow\_prod\_%\_grants'

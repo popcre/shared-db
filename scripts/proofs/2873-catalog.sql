@@ -1,5 +1,11 @@
 -- Fixed #2873 metadata-only proof. No passwords, rows, or mutable SQL are returned.
 WITH expected(grantee,kind,name,priv) AS (VALUES
+ ('designflow_prod_backend_grants','table','coldlion.merch_group_event_log','SELECT'),
+ ('designflow_prod_backend_grants','table','coldlion.merch_group_event_log','INSERT'),
+ ('designflow_prod_backend_grants','column','coldlion.merch_group_event_log.status','UPDATE'),
+ ('designflow_prod_backend_grants','column','coldlion.merch_group_event_log.reason','UPDATE'),
+ ('designflow_prod_backend_grants','column','coldlion.merch_group_event_log.rows_touched','UPDATE'),
+ ('designflow_prod_backend_grants','column','coldlion.merch_group_event_log.processed_at','UPDATE'),
  ('designflow_prod_backend_grants','table','dflow_prod.AdditionalUserEmail','SELECT'),
  ('designflow_prod_backend_grants','table','dflow_prod.AdditionalUserEmail','INSERT'),
  ('designflow_prod_backend_grants','table','dflow_prod.AuditLog','SELECT'),
@@ -487,6 +493,12 @@ WITH expected(grantee,kind,name,priv) AS (VALUES
  n.nspname||'.'||c.relname name,a.privilege_type priv
  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace CROSS JOIN LATERAL aclexplode(c.relacl) a JOIN roles r ON r.oid=a.grantee
  UNION ALL
+ SELECT r.rolname::text,'column',n.nspname||'.'||c.relname||'.'||at.attname,a.privilege_type
+ FROM pg_attribute at JOIN pg_class c ON c.oid=at.attrelid
+ JOIN pg_namespace n ON n.oid=c.relnamespace
+ CROSS JOIN LATERAL aclexplode(at.attacl) a JOIN pg_roles r ON r.oid=a.grantee
+ WHERE n.nspname='coldlion' AND c.relname='merch_group_event_log'
+ UNION ALL
  SELECT r.rolname::text,'function',COALESCE(e.name,p.oid::regprocedure::text),a.privilege_type
  FROM pg_proc p CROSS JOIN LATERAL aclexplode(p.proacl) a JOIN roles r ON r.oid=a.grantee
  LEFT JOIN expected e ON e.kind='function' AND e.grantee=r.rolname AND to_regprocedure(e.name)=p.oid AND e.priv=a.privilege_type
@@ -507,12 +519,12 @@ SELECT jsonb_build_object(
  'memberships_exact',NOT EXISTS(SELECT 1 FROM roles r WHERE (SELECT count(*) FROM pg_auth_members m WHERE m.member=r.oid)<>CASE WHEN suffix='_runtime' THEN 1 ELSE 0 END)
  AND NOT EXISTS(SELECT 1 FROM pg_auth_members m JOIN roles r ON r.oid=m.member JOIN pg_roles g ON g.oid=m.roleid WHERE r.suffix<>'_runtime' OR g.rolname<>'designflow_prod_'||r.service||'_grants' OR m.admin_option OR m.set_option OR NOT m.inherit_option)
  AND NOT EXISTS(SELECT 1 FROM pg_auth_members m JOIN roles r ON r.oid=m.roleid WHERE NOT EXISTS(SELECT 1 FROM roles rr WHERE r.suffix='_grants' AND rr.oid=m.member AND rr.suffix='_runtime' AND rr.service=r.service) AND NOT (m.member='postgres'::regrole AND m.admin_option AND NOT m.inherit_option AND NOT m.set_option AND EXISTS(SELECT 1 FROM pg_roles g WHERE g.oid=m.grantor AND g.rolsuper))),
- 'schema_exact',NOT EXISTS(SELECT 1 FROM pg_namespace n CROSS JOIN LATERAL aclexplode(n.nspacl) a JOIN roles r ON r.oid=a.grantee WHERE NOT ((n.nspname='dflow_prod' AND r.suffix='_grants') OR (n.nspname='plm' AND r.rolname='designflow_prod_tracking_runtime') OR (n.nspname='coldlion' AND r.rolname='designflow_prod_tracking_grants')) OR a.privilege_type<>'USAGE' OR a.is_grantable)
+ 'schema_exact',NOT EXISTS(SELECT 1 FROM pg_namespace n CROSS JOIN LATERAL aclexplode(n.nspacl) a JOIN roles r ON r.oid=a.grantee WHERE NOT ((n.nspname='dflow_prod' AND r.suffix='_grants') OR (n.nspname='plm' AND r.rolname='designflow_prod_tracking_runtime') OR (n.nspname='coldlion' AND r.rolname IN ('designflow_prod_tracking_grants','designflow_prod_backend_grants'))) OR a.privilege_type<>'USAGE' OR a.is_grantable)
  AND (SELECT count(*) FROM pg_namespace n CROSS JOIN LATERAL aclexplode(n.nspacl) a JOIN roles r ON r.oid=a.grantee WHERE n.nspname='dflow_prod')=4
  AND (SELECT count(*) FROM pg_namespace n CROSS JOIN LATERAL aclexplode(n.nspacl) a JOIN roles r ON r.oid=a.grantee WHERE n.nspname='plm')=1
- AND (SELECT count(*) FROM pg_namespace n CROSS JOIN LATERAL aclexplode(n.nspacl) a JOIN roles r ON r.oid=a.grantee WHERE n.nspname='coldlion')=1
+ AND (SELECT count(*) FROM pg_namespace n CROSS JOIN LATERAL aclexplode(n.nspacl) a JOIN roles r ON r.oid=a.grantee WHERE n.nspname='coldlion')=2
  AND NOT EXISTS(SELECT 1 FROM roles r WHERE NOT has_schema_privilege(r.oid,'dflow_prod','USAGE') OR has_schema_privilege(r.oid,'dflow_prod','CREATE')),
- 'forbidden_schemas_closed',NOT EXISTS(SELECT 1 FROM roles r CROSS JOIN pg_namespace n WHERE (n.nspname IN ('dflow','hts_rag') AND has_schema_privilege(r.oid,n.oid,'USAGE,CREATE')) OR (n.nspname='coldlion' AND (has_schema_privilege(r.oid,n.oid,'CREATE') OR (r.rolname NOT IN ('designflow_prod_tracking_grants','designflow_prod_tracking_runtime','designflow_prod_backend_runtime') AND has_schema_privilege(r.oid,n.oid,'USAGE')) OR (r.rolname IN ('designflow_prod_tracking_grants','designflow_prod_tracking_runtime','designflow_prod_backend_runtime') AND NOT has_schema_privilege(r.oid,n.oid,'USAGE')))) OR (n.nspname='plm' AND (has_schema_privilege(r.oid,n.oid,'CREATE') OR (r.rolname<>'designflow_prod_tracking_runtime' AND has_schema_privilege(r.oid,n.oid,'USAGE'))))),
+ 'forbidden_schemas_closed',NOT EXISTS(SELECT 1 FROM roles r CROSS JOIN pg_namespace n WHERE (n.nspname IN ('dflow','hts_rag') AND has_schema_privilege(r.oid,n.oid,'USAGE,CREATE')) OR (n.nspname='coldlion' AND (has_schema_privilege(r.oid,n.oid,'CREATE') OR (r.rolname NOT IN ('designflow_prod_tracking_grants','designflow_prod_tracking_runtime','designflow_prod_backend_runtime','designflow_prod_backend_grants') AND has_schema_privilege(r.oid,n.oid,'USAGE')) OR (r.rolname IN ('designflow_prod_tracking_grants','designflow_prod_tracking_runtime','designflow_prod_backend_runtime','designflow_prod_backend_grants') AND NOT has_schema_privilege(r.oid,n.oid,'USAGE')))) OR (n.nspname='plm' AND (has_schema_privilege(r.oid,n.oid,'CREATE') OR (r.rolname<>'designflow_prod_tracking_runtime' AND has_schema_privilege(r.oid,n.oid,'USAGE'))))),
  'tracking_history_policies_exact',(SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='coldlion' AND c.relname IN ('order_history_line','prod_history_line') AND c.relkind='r' AND c.relrowsecurity)=2
  AND (SELECT count(*) FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='coldlion' AND c.relname IN ('order_history_line','prod_history_line') AND (0=ANY(p.polroles) OR EXISTS(SELECT 1 FROM pg_roles audience WHERE audience.rolname ~ '^designflow_prod_(backend|item_master|tracking|data_sync)_(grants|runtime)$' AND audience.oid=ANY(p.polroles))))=2
  AND (SELECT count(*) FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='coldlion' AND c.relname IN ('order_history_line','prod_history_line') AND p.polname='coldlion_history_tracking_read' AND p.polcmd='r' AND p.polpermissive AND p.polroles=ARRAY['designflow_prod_tracking_grants'::regrole]::oid[] AND pg_get_expr(p.polqual,p.polrelid)='true' AND p.polwithcheck IS NULL)=2,

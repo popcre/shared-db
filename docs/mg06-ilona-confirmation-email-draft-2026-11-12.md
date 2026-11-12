@@ -6,7 +6,7 @@ Hi Ilona,
 
 We are cleaning up the MG06 property list so it can later be used to fill licensor submission
 forms automatically. In the October review workbook you marked a few values that don't match
-what we see in recent submissions. "Styles" below means distinct styles submitted to the
+what we see in recent submissions, plus one update for your information. "Styles" below means distinct styles submitted to the
 licensor since January 2025. Could you confirm or correct each item?
 
 1. **Minnie (Disney OPA property).** You marked it "inactivate". It was used on 55 styles since
@@ -23,10 +23,9 @@ licensor since January 2025. Could you confirm or correct each item?
    (Winnie the Pooh Classic, Aristocats, Bambi, etc.) instead of one catch-all.
 6. **Rugrats (RG)** — *on hold, pending Albert's decision.* You marked "inactivate – contract
    expired", but a recent style is being moved onto it. No action needed from you yet.
-7. **Mickey Mouse (MM, "Standard Characters" on the Disney site) vs. "Mickey Mouse Family"** —
-   *on hold, pending Albert's decision* on how the name appears in MG06. 216 styles use MM
-   since Jan 2025 (71 submitted as "Standard Characters", 97 as "Mickey Mouse Family").
-   No action needed from you yet.
+7. **For your information — Mickey Mouse Family.** Mickey Mouse Family is now the parent
+   value; MICKEY MOUSE and the other family characters sit under it. 217 styles are moving from
+   "Standard Characters" to Mickey Mouse Family (approved by Albert). Nothing to decide here.
 
 All other values you marked "inactivate – contract expired" (Paw Patrol group, JoJo Siwa,
 Dora, Blaze, Shimmer & Shine, Space Jam, Frida Kahlo, Peanuts 75th, etc.) have no styles since

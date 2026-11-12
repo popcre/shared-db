@@ -1,3 +1,9 @@
+---
+issue: 6208
+status: OPEN
+owner: claude/amazing-kalam-fcc57c
+---
+
 # Jamielynn ColdLion sheet consolidated (2026-11-12 4:15 PM EST)
 
 Status: done; waiting on Albert to send it (AI never emails for him).

@@ -38,7 +38,7 @@ What we are doing with it (owner ruling, 2026-11-12 12:54 PM EST: "one lives und
   ruling 2026-11-12, 2:03 PM EST: "if it's mickey + anyone else (minnie, pluto, goofy) it
   submitted as 'Standard Characters'"). Mickey Mouse Family and its children (MICKEY MOUSE,
   Minnie Mouse, ...) are for **single-character** designs. Of Albert's 217 proposed moves,
-  only the single-character ones (about 212) move; Mickey-plus-others styles stay on
+  only the single-character ones move: 208 (207 Mickey Mouse, 1 Minnie Mouse); 9 stay on Standard Characters; Mickey-plus-others styles stay on
   Standard Characters.
 - Treat MMF as the parent of MICKEY MOUSE (and of Minnie) in any property hierarchy you build.
   Do not merge or rename them into one.

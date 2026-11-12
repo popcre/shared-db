@@ -34,9 +34,12 @@ Friends), and "Standard Characters" (Mickey, Donald, Goofy, etc. together).
 What we are doing with it (owner ruling, 2026-11-12 12:54 PM EST: "one lives under the other"):
 - **Mickey Mouse Family (MMF) is the parent property; MICKEY MOUSE lives under it**, as do
   Minnie Mouse, Pluto and the other family characters. These are levels, not competing names.
-- Albert's 2026-11-12 sheet moves 217 styles from "Standard Characters" to MMF
-  "Mickey Mouse Family". **That move is approved.** Use MMF for styles showing the family or
-  several family characters, and the child value (e.g. MICKEY MOUSE) for a single-character design.
+- **Mickey plus anyone else = "Standard Characters", never Mickey Mouse Family** (owner
+  ruling 2026-11-12, 2:03 PM EST: "if it's mickey + anyone else (minnie, pluto, goofy) it
+  submitted as 'Standard Characters'"). Mickey Mouse Family and its children (MICKEY MOUSE,
+  Minnie Mouse, ...) are for **single-character** designs. Of Albert's 217 proposed moves,
+  only the single-character ones (about 212) move; Mickey-plus-others styles stay on
+  Standard Characters.
 - Treat MMF as the parent of MICKEY MOUSE (and of Minnie) in any property hierarchy you build.
   Do not merge or rename them into one.
 - On Disney's site: MMF → OPA "Mickey Mouse Family"; MICKEY MOUSE → "Mickey Mouse Family" >

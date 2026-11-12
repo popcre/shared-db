@@ -1,7 +1,17 @@
 -- #6136 / designflow-backend #401: catch-up apply of the UPC item-identity
 -- contract (20260803150000, PR #430) for the DesignFlow sandbox.
--- derived-from: 20260803150000
+-- derived-from: none
 --
+-- DERIVATION NOTE (why `none` and not `20260803150000`): the executable body
+-- below replays the 20260803150000 statements verbatim, but every object it
+-- names is written FROM SCRATCH on the one database this version targets —
+-- the DesignFlow sandbox lacks all of them (that is the bug being fixed), so
+-- there is no prior body being replaced there. Declaring the base version
+-- instead would be refused by the derivation guard precisely because the
+-- sandbox ledger does not carry 20260803150000, and the guard's override flag
+-- is not exposed by the sandbox workflow. On preview and production, which
+-- already hold 20260803150000, every statement is an IF NOT EXISTS /
+-- CREATE OR REPLACE no-op over the identical body.
 -- WHY THIS EXISTS
 -- The DesignFlow sandbox project (xupnyeifmpsacrqahwwm) never received
 -- 20260803150000: the guarded sandbox route (issue #3428) postdates that

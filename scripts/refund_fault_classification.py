@@ -158,6 +158,8 @@ def classify_run_job(job_name: str, gh: callable = None, sleep: callable = None)
         text = "\n".join(
             f"{annotation.get('title') or ''}\n{annotation.get('message') or ''}"
             for annotation in annotations)
+        print(f"::warning::refund-eligible-fault: attempt {i}: {len(annotations)} annotations, "
+              f"snippet={text[:120]!r}")
         if classify_failure(text):
             return True
         # No taxonomy marker yet — publication lag; retry within the bound.

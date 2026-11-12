@@ -1,6 +1,6 @@
 -- #6136 / designflow-backend #401: catch-up apply of the UPC item-identity
 -- contract (20260803150000, PR #430) for the DesignFlow sandbox.
--- derived-from: 20260803150000_itemdetail_coldlion_item_identity_and_upc_contract.sql
+-- derived-from: 20260803150000
 --
 -- WHY THIS EXISTS
 -- The DesignFlow sandbox project (xupnyeifmpsacrqahwwm) never received

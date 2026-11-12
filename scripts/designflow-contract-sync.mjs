@@ -10,7 +10,10 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { manifestDigest } from './lib/designflow-db-release.mjs';
+import { createHash } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
+import { releasePolicy } from './designflow-db-release.mjs';
+import { manifestDigest, validateManifest } from './lib/designflow-db-release.mjs';
 import { productionCatalogQuery, verifyCatalogProof } from './lib/designflow-db-catalog.mjs';
 
 const CANONICAL = 'popcre/shared-db';
@@ -65,18 +68,21 @@ function signLine() {
   return `\n\nPosted by MiMo chat ${process.env.MIMO_SESSION_ID ?? 'unknown'} on ${process.env.HOSTNAME ?? 'unknown'}`;
 }
 
-function createAndMergePR(repository, newDigest, policy) {
+export function createAndMergePR(repository, newDigest, manifest, io = { execFileSync, readFileSync, writeFileSync, gh }) {
+  const { execFileSync, readFileSync, writeFileSync, gh } = io;
   const appName = repository.replace('popcre/designflow-', '');
   const branch = `contract-sync/${appName}-${newDigest.slice(0, 8)}`;
 
-  execFileSync('git', ['checkout', '-b', branch], { cwd: process.cwd() });
+  execFileSync('git', ['fetch', 'origin', 'main']);
+  execFileSync('git', ['checkout', '-b', branch, 'origin/main'], { cwd: process.cwd() });
 
-  const updated = JSON.parse(JSON.stringify(policy));
+  const updated = JSON.parse(readFileSync('config/designflow-db-releases.json', 'utf8'));
   for (const app of updated.repositories) {
     if (app.repository === repository) {
       app.contract_manifest_sha256 = newDigest;
     }
   }
+  assertSyncPolicy(repository, manifest, updated);
   writeFileSync('config/designflow-db-releases.json', JSON.stringify(updated, null, 2) + '\n');
 
   execFileSync('git', ['config', 'user.name', 'github-actions[bot]']);
@@ -94,70 +100,91 @@ function createAndMergePR(repository, newDigest, policy) {
   const prNumber = prOutput.match(/pull\/(\d+)/)?.[1];
   if (!prNumber) throw Error('PR creation did not return a number');
 
-  gh(['pr', 'merge', prNumber, '--squash', '--admin']);
+  gh(['pr', 'merge', prNumber, '--squash', '--auto']);
   return prNumber;
 }
 
-function createMismatchIssue(repository, newDigest, expectedDigest, error) {
+function createMismatchIssue(repository, newDigest, expectedDigest, error, stage) {
   const title = `Contract sync: ${repository} develop ${newDigest.slice(0, 12)}`;
   const body = `Contract digest mismatch detected for \`${repository}\`.\n\n`
     + `Expected digest: \`${expectedDigest}\`\n`
     + `Actual digest: \`${newDigest}\`\n\n`
-    + `Verification against live production database failed: ${error.message}\n\n`
-    + `The application's contract references database objects that do not exist or lack required privileges. `
-    + `A migration may be missing, unapplied, or the contract may be incorrect.\n\n`
+    + `Contract sync failed during ${stage}: ${error.message}\n\n`
     + '```db-work-scope\nwork_type: repo-maintenance\nroute: repo-maintenance\n```\n'
     + signLine();
   gh(['issue', 'create', '--title', title, '--body', body,
-    '--label', 'db-work', '--label', 'non-orchestrator']);
+    '--label', 'db-work']);
 }
 
-async function main() {
-  const policy = JSON.parse(readFileSync('config/designflow-db-releases.json', 'utf8'));
+export function assertSyncPolicy(repository, manifest, policy) {
+  if (manifest.repository !== repository) throw Error('Application manifest repository mismatch');
+  const candidate = structuredClone(policy);
+  const app = candidate.repositories.find(row => row.repository === repository);
+  if (!app) throw Error('Application is absent from central policy');
+  app.contract_manifest_sha256 = manifestDigest({ ...manifest, requirements: [] });
+  return releasePolicy(manifest, candidate);
+}
+
+export async function main(io = {}) {
+  const adapters = { fetchManifest, findOpenPR, findOpenIssue, readProduction,
+    createAndMergePR, createMismatchIssue, ...io };
+  const policy = io.policy ?? JSON.parse(readFileSync('config/designflow-db-releases.json', 'utf8'));
   const results = [];
 
   for (const app of policy.repositories) {
-    let manifest;
+    let digest = 'unavailable';
+    let stage = 'manifest fetch';
     try {
-      manifest = fetchManifest(app.repository, policy.manifest_path);
+      const manifest = adapters.fetchManifest(app.repository, policy.manifest_path);
+      // Retain a stable issue identity even when validation rejects the manifest.
+      digest = createHash('sha256').update(JSON.stringify(manifest)).digest('hex');
+      stage = 'manifest validation';
+      validateManifest(manifest);
+      digest = manifestDigest({ ...manifest, requirements: [] });
+      stage = 'application policy validation';
+      assertSyncPolicy(app.repository, manifest, policy);
+      if (digest === app.contract_manifest_sha256) continue;
+
+      stage = 'existing PR/issue lookup';
+      const existingPR = adapters.findOpenPR(app.repository);
+      if (existingPR) {
+        results.push({ repository: app.repository, status: 'skipped', reason: `PR #${existingPR.number} already open` });
+        continue;
+      }
+      const existingIssue = adapters.findOpenIssue(app.repository, digest);
+      if (existingIssue) {
+        results.push({ repository: app.repository, status: 'skipped', reason: `Issue #${existingIssue.number} already open` });
+        continue;
+      }
+
+      stage = 'production verification';
+      const rows = await adapters.readProduction(productionCatalogQuery(manifest.contracts));
+      verifyCatalogProof(manifest.contracts, rows[0]?.production_catalog_proof);
+
+      stage = 'PR publication/auto-merge request';
+      const prNumber = adapters.createAndMergePR(app.repository, digest, manifest);
+      results.push({ repository: app.repository, status: 'auto-merge-requested', pr: prNumber, digest });
     } catch (error) {
-      results.push({ repository: app.repository, status: 'error', reason: `Could not fetch manifest: ${error.message}` });
-      continue;
-    }
-
-    const digest = manifestDigest({ ...manifest, requirements: [] });
-    if (digest === app.contract_manifest_sha256) continue;
-
-    console.log(`Contract mismatch: ${app.repository} expected=${app.contract_manifest_sha256} actual=${digest}`);
-
-    const existingPR = findOpenPR(app.repository);
-    if (existingPR) {
-      results.push({ repository: app.repository, status: 'skipped', reason: `PR #${existingPR.number} already open` });
-      continue;
-    }
-
-    const existingIssue = findOpenIssue(app.repository, digest);
-    if (existingIssue) {
-      results.push({ repository: app.repository, status: 'skipped', reason: `Issue #${existingIssue.number} already open` });
-      continue;
-    }
-
-    try {
-      const rows = await readProduction(productionCatalogQuery(manifest.contracts));
-      verifyCatalogProof(manifest.contracts, rows[0].production_catalog_proof);
-
-      const prNumber = createAndMergePR(app.repository, digest, policy);
-      results.push({ repository: app.repository, status: 'pr-merged', pr: prNumber, digest });
-    } catch (error) {
-      createMismatchIssue(app.repository, digest, app.contract_manifest_sha256, error);
-      results.push({ repository: app.repository, status: 'issue-created', digest, error: error.message });
+      try {
+        const existingIssue = adapters.findOpenIssue(app.repository, digest);
+        if (!existingIssue) adapters.createMismatchIssue(app.repository, digest,
+          app.contract_manifest_sha256, error, stage);
+        results.push({ repository: app.repository, status: existingIssue ? 'skipped' : 'issue-created',
+          digest, stage, error: error.message });
+      } catch (issueError) {
+        results.push({ repository: app.repository, status: 'error', digest, stage,
+          error: error.message, issueError: issueError.message });
+        process.exitCode = 1;
+      }
     }
   }
 
   console.log(JSON.stringify(results, null, 2));
+  return results;
 }
 
-main().catch(error => {
-  console.error('Contract sync failed:', error);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
+  main().catch(error => {
+    console.error('Contract sync failed:', error);
+    process.exitCode = 1;
+  });

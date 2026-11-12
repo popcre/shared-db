@@ -63,13 +63,18 @@ central `contract_manifest_sha256`, the `contract-sync` job in
 `designflow-db-release.yml` runs `scripts/designflow-contract-sync.mjs`:
 
 1. Fetches the app's `.release/database.json` from `develop`.
-2. Computes the contract digest (`manifestDigest` with empty requirements).
+2. Validates the manifest and computes the contract digest (`manifestDigest` with
+   empty requirements), enforcing the observer's application identity, schema,
+   role and minimum-source policy before publication.
 3. Verifies the new contract against the live production database using
    `productionCatalogQuery`/`verifyCatalogProof`.
-4. If verified: opens a PR updating `config/designflow-db-releases.json` and
-   merges it (`gh pr merge --squash --admin`).
-5. If verification fails: opens a labeled, routed issue (`db-work`,
-   `non-orchestrator`) describing the mismatch.
+4. If verified: fetches current `main`, creates a branch from it, rereads the
+   central policy and rechecks application policy before updating the digest.
+   Opens a PR and requests squash auto-merge (`gh pr merge --squash --auto`),
+   preserving required checks. The request is reported separately from a merge.
+5. If a stage fails: opens a `db-work` issue naming that stage. Invalid manifests
+   are routed too. Issue-publication failures retain both errors, fail the job
+   and allow the remaining applications to be processed.
 
 The sync is idempotent: it skips apps that already have an open contract-update
 PR or mismatch issue. This replaces the manual process that previously left

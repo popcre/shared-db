@@ -1,4 +1,4 @@
--- Rollback-safe contracts for 20261112211948 / issue #6194 (core.property daily sync from ColdLion landing).
+-- Rollback-safe contracts for 20261112232209 / issue #6194 (core.property daily sync from ColdLion landing).
 begin;
 
 do $$

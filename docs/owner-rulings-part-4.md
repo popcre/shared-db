@@ -125,4 +125,4 @@ Verbatim Albert, 2026-11-12 4:16 PM EST:
 
 > "the long-term property list is settled and it's what's in coldlion right now + a few changes i will ask Jamielynn to make tomorrow"
 
-**Effect.** `core.property` takes ColdLion MG06 codes, names and active/inactive status from `coldlion.merch_group_detail` every day (`plm.sync_core_property_from_coldlion`, migration `20261112211948`, issue #6194). Rows not in ColdLion are untouched and nothing is deleted. Where it conflicts with 6.31 on a ColdLion-coded row's name, ColdLion's name wins; the earlier name stays in the row's metadata.
+**Effect.** `core.property` takes ColdLion MG06 codes, names and active/inactive status from `coldlion.merch_group_detail` every day (`plm.sync_core_property_from_coldlion`, migration `20261112232209`, issue #6194). Rows not in ColdLion are untouched and nothing is deleted. Where it conflicts with 6.31 on a ColdLion-coded row's name, ColdLion's name wins; the earlier name stays in the row's metadata.

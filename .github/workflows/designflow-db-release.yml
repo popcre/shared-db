@@ -106,9 +106,13 @@ jobs:
 
   contract-sync:
     needs: observe
+    # The sync must run when observe FAILS too: a contract mismatch makes the
+    # observer exit 1 (blocked result, application status failure), and that is
+    # exactly the state the sync has to route. Only a skipped observe (PR event
+    # or failed tests) keeps the sync off.
     if: >-
       always() && github.repository == 'popcre/shared-db' && github.ref == 'refs/heads/main' &&
-      needs.observe.result == 'success'
+      (needs.observe.result == 'success' || needs.observe.result == 'failure')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:

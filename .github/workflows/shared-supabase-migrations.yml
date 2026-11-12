@@ -760,6 +760,7 @@ jobs:
           done
 
           echo "::error::CI INFRASTRUCTURE: PostgreSQL client unavailable after ${attempts} attempts (apt mirror stall on the hosted runner -- NOT a fault in the change under review); NO MIGRATION WAS APPLIED"
+          echo "CI INFRASTRUCTURE: PostgreSQL client unavailable after ${attempts} attempts (apt mirror stall on the hosted runner -- NOT a fault in the change under review); NO MIGRATION WAS APPLIED" >> "${REFUND_FAULT_EVIDENCE:-$RUNNER_TEMP/refund-fault-evidence.log}" 2>/dev/null || true
           exit 1
       - name: Capture preview migration record (before)
         env:
@@ -1601,6 +1602,7 @@ jobs:
           done
 
           echo "::error::CI INFRASTRUCTURE: PostgreSQL client unavailable after ${attempts} attempts (apt mirror stall on the hosted runner -- NOT a fault in the change under review); NO MIGRATION WAS APPLIED"
+          echo "CI INFRASTRUCTURE: PostgreSQL client unavailable after ${attempts} attempts (apt mirror stall on the hosted runner -- NOT a fault in the change under review); NO MIGRATION WAS APPLIED" >> "${REFUND_FAULT_EVIDENCE:-$RUNNER_TEMP/refund-fault-evidence.log}" 2>/dev/null || true
           exit 1
       - name: Capture production migration record
         env:
@@ -1824,6 +1826,7 @@ jobs:
           done
 
           echo "::error::CI INFRASTRUCTURE: PostgreSQL client unavailable after ${attempts} attempts (apt mirror stall on the hosted runner -- NOT a fault in the change under review); NO MIGRATION WAS APPLIED"
+          echo "CI INFRASTRUCTURE: PostgreSQL client unavailable after ${attempts} attempts (apt mirror stall on the hosted runner -- NOT a fault in the change under review); NO MIGRATION WAS APPLIED" >> "${REFUND_FAULT_EVIDENCE:-$RUNNER_TEMP/refund-fault-evidence.log}" 2>/dev/null || true
           exit 1
       - name: Capture production migration record
         env:
@@ -2216,6 +2219,7 @@ jobs:
           done
 
           echo "::error::CI INFRASTRUCTURE: PostgreSQL client unavailable after ${attempts} attempts (apt mirror stall on the hosted runner -- NOT a fault in the change under review); NO MIGRATION WAS APPLIED"
+          echo "CI INFRASTRUCTURE: PostgreSQL client unavailable after ${attempts} attempts (apt mirror stall on the hosted runner -- NOT a fault in the change under review); NO MIGRATION WAS APPLIED" >> "${REFUND_FAULT_EVIDENCE:-$RUNNER_TEMP/refund-fault-evidence.log}" 2>/dev/null || true
           exit 1
       # Re-read the ledger IN THIS JOB. The review job's copy was taken before the
       # approval wait, which can be hours; production moves independently of this

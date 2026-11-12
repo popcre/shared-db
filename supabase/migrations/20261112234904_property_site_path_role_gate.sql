@@ -1,4 +1,5 @@
 -- shared-db#6150 / review finding #6157: forward fix for 20261112194140.
+-- Re-versioned from 20261112223245 (main advanced); that version stays reserved and unused.
 -- core.property_site_path holds licensor-portal paths (OPA/WB/NBCU/Sega site names and ids),
 -- the same exposure class core.* tables gate by app role. Replace the open
 -- authenticated read (using true) with the standard core.* shared_read predicate.

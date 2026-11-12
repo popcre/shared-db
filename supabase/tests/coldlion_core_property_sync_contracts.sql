@@ -30,6 +30,9 @@ begin
   insert into dflow_prod."merchGroup"(mg_code, "mgTypeCode", parent_id) values ('C'||v_s,'06',v_parent),('N'||v_s,'06',v_parent);
 
   insert into coldlion.sync_run(endpoint, requested_by) values ('/merchGroupDetails','6194-contract') returning id into v_run;
+  insert into coldlion.merch_group_header(company_code,division_code,mg_type_code,mg_type_desc,run_id,fetched_at,source_hash,first_seen_at,last_seen_at)
+  values ('FIX6194','CW001','06','Property',v_run,now(),repeat('e',64),now(),now()),
+         ('FIX6194','SP001','06','Property',v_run,now(),repeat('f',64),now(),now());
   insert into coldlion.merch_group_detail(company_code,division_code,mg_type_code,mg_code,mg_category,run_id,fetched_at,source_hash,first_seen_at,last_seen_at,mg_desc,active) values
    ('FIX6194','CW001','06','A'||v_s,'',v_run,now(),repeat('a',64),now(),now(),'New Name','N'),
    ('FIX6194','SP001','06','A'||v_s,'',v_run,now(),repeat('a',64),now(),now(),'New Name','N'),

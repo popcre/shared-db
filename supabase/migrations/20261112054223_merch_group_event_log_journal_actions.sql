@@ -9,7 +9,8 @@
 --   status 'on'        — stored off flag cleared (helpers/merchGroupSwitch.js)
 -- Existing values are kept exactly; nothing else about the table changes.
 -- Widening a CHECK is additive: every previously valid row and write stays
--- valid. derived-from: 20261105234916_merch_group_event_log.sql
+-- valid.
+-- derived-from: 20261105234916
 
 alter table coldlion.merch_group_event_log
   drop constraint if exists coldlion_merch_group_event_log_action_allowed;

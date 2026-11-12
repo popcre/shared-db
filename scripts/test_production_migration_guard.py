@@ -4162,6 +4162,24 @@ class ForeignTargetScopeTest(unittest.TestCase):
     # ordinary pending work rather than `base-absent` for an unrelated reason.
     IN_SCOPE_APPLIED = {"20260816110750", "20260909220101"}
 
+    def test_6136_upc_catchup_is_sandbox_only(self):
+        version = "20261112150000"
+        paths = local_migrations(REPO)
+        for target in ("production", "preview"):
+            with self.subTest(target=target):
+                row = classify_pending_version(version, set(), REPO, paths, target)
+                self.assertEqual(row["kind"], "foreign-target")
+                self.assertIn("#6136", row["reason"])
+                with self.assertRaises(GuardError):
+                    parse_allowlist(version, target=target)
+        self.assertIsNone(foreign_target_entry(version, "designflow-nonprod"))
+        self.assertEqual(parse_allowlist(version, target="designflow-nonprod"), [version])
+        self.assertEqual(
+            classify_pending_version(version, set(), REPO, paths, "designflow-nonprod")["kind"],
+            "genuinely-pending",
+        )
+        self.assertEqual(parse_allowlist(self.IN_SCOPE_CONTROL), [self.IN_SCOPE_CONTROL])
+
     def test_2508_exact_sandbox_chain_does_not_hide_shared_pending_work(self):
         paths = local_migrations(REPO)
         versions = ("20261002135053", "20261002224215", "20261006164244", "20261009170724")

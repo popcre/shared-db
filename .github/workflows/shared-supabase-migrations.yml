@@ -144,6 +144,13 @@ jobs:
     runs-on: ubuntu-latest
     # A stalled step must fail on its own budget instead of blocking merges for hours (#1266).
     timeout-minutes: 30
+    # Job-level permissions REPLACE the workflow-level block: the promotion
+    # freeze check below reads the queued PR's file list, so this job must name
+    # pull-requests: read itself (#5937).
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
     steps:
       # fetch-depth: 0 so check-sql.sh Guard B can compare this branch's
       # migration versions against the newest version on the base branch.
@@ -162,6 +169,24 @@ jobs:
       - name: Fetch the base branch ref explicitly on merge queue runs
         if: github.event_name == 'merge_group'
         run: git fetch --no-tags origin main
+      # #5937 behavior 2 (closes the review finding #5958 gap): while a
+      # promotion merge freeze is live, a merge-queue group must be REFUSED, and
+      # the refusal must land on a REQUIRED context -- merge-queue-gate.yml is
+      # advisory (lean required checks, owner ruling 2026-10-30), so a refusal
+      # there never stopped a group from landing. This job reports the required
+      # `SQL migration guards` context, so a live freeze now fails the group
+      # before GitHub merges it. Freeze-tolerant PRs (production-inert paths and
+      # appended migrations/tests) still merge through; the production job's
+      # always() release or the freeze TTL resumes merges automatically.
+      - name: Refuse queue merges while a promotion merge freeze is live
+        if: github.event_name == 'merge_group'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_GROUP_REF: ${{ github.event.merge_group.head_ref }}
+        run: |
+          set -euo pipefail
+          PR_NUMBER="$(node scripts/merge-queue-contract.mjs --resolve-queue-pr | jq -r .number)"
+          node scripts/manage-migration-coordination.mjs --check-promotion-freeze --pr "$PR_NUMBER"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

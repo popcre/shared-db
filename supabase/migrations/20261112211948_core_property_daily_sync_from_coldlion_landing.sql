@@ -183,4 +183,12 @@ end;
 $sched$;
 
 -- First fill now (no-op where the landing is absent, as in CI); the daily job keeps it current.
-select plm.sync_core_property_from_coldlion(true);
+do $first$
+begin
+  if exists (select 1 from coldlion.merch_group_detail where mg_type_code = '06' and last_seen_at > now() - interval '3 days') then
+    raise notice '#6194 first fill: %', plm.sync_core_property_from_coldlion(true);
+  else
+    raise notice '#6194: no fresh ColdLion MG06 landing here (preview/CI); first fill waits for the daily job';
+  end if;
+end;
+$first$;

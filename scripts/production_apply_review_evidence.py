@@ -21,8 +21,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 if __package__:
+    from .production_owner_decision_evidence import TRANSIENT_GITHUB_ERRORS
     from .production_review_allowlist import ReviewAllowlistError, normalize_review_allowlist
 else:
+    from production_owner_decision_evidence import TRANSIENT_GITHUB_ERRORS
     from production_review_allowlist import ReviewAllowlistError, normalize_review_allowlist
 
 REPOSITORY = current_repository()  # never hard-coded (#2530)
@@ -79,36 +81,62 @@ def canonical_json(data: dict[str, Any]) -> str:
     return json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
 
 
-def gh_json(endpoint: str) -> Any:
-    # Read-only. A single transient GitHub API error rejected valid evidence and
-    # failed production apply run 43509901476 (2026-11-13); retry a bounded
-    # number of times before failing closed.
+def github_read_with_retry(operation: Callable[[], Any], *, sleep: Callable) -> Any:
+    """Retry read transport failures and malformed API JSON at most three times."""
     for attempt in range(3):
         try:
-            completed = subprocess.run(
-                ["gh", "api", endpoint],
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
+            return operation()
+        except (subprocess.CalledProcessError, json.JSONDecodeError) as exc:
+            transient = True
+            error = "GitHub returned invalid JSON"
+            if isinstance(exc, subprocess.CalledProcessError):
+                error = exc.stderr or "GitHub API request failed"
+                if isinstance(error, bytes):
+                    error = error.decode("utf-8", errors="replace")
+                error = error.strip()
+                transient = any(marker in error.lower() for marker in TRANSIENT_GITHUB_ERRORS)
+            if not transient or attempt == 2:
+                raise EvidenceError(
+                    f"GitHub read failed after {attempt + 1} attempt(s): {error}"
+                ) from exc
+            delay = 5 * (attempt + 1)
+            print(
+                f"GitHub read attempt {attempt + 1}/3 failed: {error}; retrying in {delay}s",
+                file=sys.stderr,
             )
-            return json.loads(completed.stdout)
-        except subprocess.CalledProcessError:
-            if attempt == 2:
-                raise
-            time.sleep(5 * (attempt + 1))
+            sleep(delay)
     raise AssertionError("unreachable")
 
 
-def download_artifact_zip(artifact_id: int, destination: Path) -> None:
-    with destination.open("wb") as handle:
-        subprocess.run(
-            ["gh", "api", f"repos/{REPOSITORY}/actions/artifacts/{artifact_id}/zip"],
+def gh_json(endpoint: str, *, runner=subprocess.run, sleep=time.sleep) -> Any:
+    def read():
+        completed = runner(
+            ["gh", "api", endpoint],
             check=True,
-            stdout=handle,
+            stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
         )
+        return json.loads(completed.stdout)
+
+    return github_read_with_retry(read, sleep=sleep)
+
+
+def download_artifact_zip(
+    artifact_id: int, destination: Path, *, runner=subprocess.run, sleep=time.sleep,
+) -> None:
+    def download():
+        # Reopen on every attempt so a failed partial download is discarded.
+        with destination.open("wb") as handle:
+            runner(
+                ["gh", "api", f"repos/{REPOSITORY}/actions/artifacts/{artifact_id}/zip"],
+                check=True,
+                stdout=handle,
+                stderr=subprocess.PIPE,
+            )
+
+    github_read_with_retry(download, sleep=sleep)
 
 
 def validate_request(run_id: str, digest: str, sha: str, allowlist: str) -> list[str]:

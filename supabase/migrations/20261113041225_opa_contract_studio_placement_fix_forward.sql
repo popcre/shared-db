@@ -1,50 +1,108 @@
--- Issue #2541 / PR #6203: fix-forward to complete the OPA contract studio placement.
--- The post-condition in 20261112225250 checks p.name = o.property_name for every
--- studio-placed OPA property. Two core.property rows have stale names that differ
--- from their linked OPA submission names, breaking the chain:
---   372 "Mickey Mouse"  -> core.property 4bb52946 named "Standard Characters"
---   640 "X-Men"         -> core.property e0cde0d5 named "X-Men Classic"
--- Both rows have valid taxonomy_source_ref links (confidence=verified) and matched
--- source_resolution rows. The rename is the migration's own intent (owner ruling
--- 2026-10-26: OPA submission names are 100% canonical). On preview the rename
--- succeeded in the rehearsal; on production it is rolled back because the
--- post-condition raises in the same DO block. This fix-forward completes the rename
--- and keeps the #2541 post-condition intact.
+-- Issue #2541 / #6228: repair only the two reviewed OPA identity links.
+-- Standard Characters (OPA 361) and X-Men Classic remain intact. Reuse an
+-- unambiguous exact canonical target, or create it with licensing authority.
+-- The DO block is atomic: a failed assertion rolls back every repair.
 -- derived-from: 20261112225250
 
 do $fix_forward_2541$
 declare
   v_actor constant text := 'shared-db migration 20261113041225';
   r record;
-  v_rows integer;
+  v_lic uuid;
+  v_id uuid;
+  v_previous uuid;
+  v_n integer;
+  v_updated timestamptz;
 begin
   if to_regclass('core.property') is null or to_regclass('plm.opa_property') is null then
     raise notice '#2541 fix-forward: landing absent; nothing to do';
     return;
   end if;
 
+  -- Serialize identity lookup/create and link replacement, including retries.
+  lock table core.property, core.taxonomy_source_ref, plm.source_resolution
+    in share row exclusive mode;
+
   for r in
-    select o.licensed_property_id::text k, o.property_name l, t.entity_id::uuid pid
-      from plm.opa_property o
-      join plm.opa_property_studio_resolution s using (licensed_property_id)
-      join core.taxonomy_source_ref t on t.source_system='disney_opa' and t.source_table='plm.opa_property'
-           and t.source_id = o.licensed_property_id::text
-      join core.property p on p.id = t.entity_id
-     where s.resolution_status = 'canonical'
-       and p.name is distinct from o.property_name
-     order by o.licensed_property_id
+    select * from (values
+      ('372', 'Standard Characters', 'Mickey Mouse', 'disney', 'DY'),
+      ('640', 'X-Men Classic', 'X-Men', 'marvel', 'MV')
+    ) as repairs(k, previous_name, canonical_name, studio, licensor_code)
   loop
-    insert into plm.licensing_write_authorization(backend_pid,transaction_id,target_table,write_kind,plan_id,plan_hash,actor,protected_columns,expires_at)
-    values (pg_backend_pid(), txid_current(), 'core.property', 'scrape_consolidation', gen_random_uuid(),
-      encode(extensions.digest('2541/fix-forward/rename/'||r.pid::text||'/'||r.k,'sha256'),'hex'), v_actor,
-      array['name'], clock_timestamp() + interval '1 minute');
-    update core.property set name = r.l,
-      metadata = coalesce(metadata,'{}'::jsonb) || jsonb_build_object('submission_canonical', jsonb_build_object(
-        'authorising_issue',2541,'migration','20261113041225','previous_name',name,
-        'source_system','disney_opa','licensed_property_id',r.k,'fix_forward',true))
-     where id = r.pid;
-    get diagnostics v_rows = row_count;
-    if v_rows <> 1 then raise exception '#2541 fix-forward: rename changed % rows for OPA %', v_rows, r.k; end if;
+    -- An empty landing is normal in schema-only rehearsals.
+    if not exists (select 1 from plm.opa_property where licensed_property_id::text = r.k) then
+      continue;
+    end if;
+    if not exists (
+      select 1 from plm.opa_property o
+      join plm.opa_property_studio_resolution s using (licensed_property_id)
+      where o.licensed_property_id::text = r.k and o.property_name = r.canonical_name
+        and s.resolution_status = 'canonical' and s.studio_code = r.studio
+    ) then
+      raise exception '#2541 fix-forward: unexpected submission or studio for OPA %', r.k;
+    end if;
+    select count(*), min(id::text)::uuid into v_n, v_lic
+      from core.licensor where code = r.licensor_code;
+    if v_n <> 1 then
+      raise exception '#2541 fix-forward: expected one studio licensor for OPA %', r.k;
+    end if;
+
+    v_previous := null;
+    select entity_id into v_previous from core.taxonomy_source_ref
+      where source_system = 'disney_opa' and source_table = 'plm.opa_property' and source_id = r.k;
+    if v_previous is not null and not exists (
+      select 1 from core.taxonomy_source_ref t join core.property p on p.id = t.entity_id
+      where t.source_system = 'disney_opa' and t.source_table = 'plm.opa_property' and t.source_id = r.k
+        and t.entity_schema = 'core' and t.entity_table = 'property'
+        and p.licensor_id = v_lic and p.name in (r.previous_name, r.canonical_name)
+    ) then
+      raise exception '#2541 fix-forward: unexpected previous identity or outside studio licensor for OPA %', r.k;
+    end if;
+
+    select count(*), min(id::text)::uuid into v_n, v_id from core.property
+      where licensor_id = v_lic and lower(name) = lower(r.canonical_name);
+    if v_n > 1 then
+      raise exception '#2541 fix-forward: duplicate canonical targets for OPA %', r.k;
+    end if;
+    if v_id is not null and not exists (
+      select 1 from core.property where id = v_id and name = r.canonical_name
+    ) then
+      raise exception '#2541 fix-forward: canonical target spelling differs for OPA %', r.k;
+    end if;
+    if exists (
+      select 1 from plm.source_resolution sr
+      left join core.property p on p.id = sr.core_property_id
+      where sr.source_system = 'disney_opa' and sr.entity_kind = 'property' and sr.source_id = r.k
+        and (sr.resolution_status <> 'matched' or p.id is null
+          or p.licensor_id <> v_lic or p.name not in (r.previous_name, r.canonical_name))
+    ) then
+      raise exception '#2541 fix-forward: unexpected source resolution for OPA %', r.k;
+    end if;
+    if v_id is null then
+      insert into plm.licensing_write_authorization(backend_pid,transaction_id,target_table,write_kind,plan_id,plan_hash,actor,protected_columns,expires_at)
+      values (pg_backend_pid(), txid_current(), 'core.property', 'licensing_review_create', gen_random_uuid(),
+        encode(extensions.digest('2541/fix-forward/create/'||r.k,'sha256'),'hex'), v_actor,
+        array['licensor_id','name','code','status'], clock_timestamp() + interval '1 minute');
+      insert into core.property(licensor_id,name,code,status,metadata)
+      values (v_lic, r.canonical_name, null, 'potential', jsonb_build_object(
+        'authorising_issue',2541,'migration','20261113041225','source_system','disney_opa',
+        'licensed_property_id',r.k,'fix_forward',true)) returning id into v_id;
+    end if;
+
+    insert into core.taxonomy_source_ref(entity_schema,entity_table,entity_id,source_system,source_table,source_id,source_name,confidence,raw)
+    values ('core','property',v_id,'disney_opa','plm.opa_property',r.k,r.canonical_name,'verified',
+      jsonb_build_object('authorising_issue',2541,'migration','20261113041225','fix_forward',true))
+    on conflict (source_system,source_table,source_id) do update
+      set entity_id = excluded.entity_id, source_name = excluded.source_name,
+          confidence = excluded.confidence,
+          raw = core.taxonomy_source_ref.raw || excluded.raw;
+
+    v_updated := null;
+    select updated_at into v_updated from plm.source_resolution
+      where source_system = 'disney_opa' and entity_kind = 'property' and source_id = r.k;
+    perform plm.set_source_resolution('disney_opa'::text, 'property'::text, r.k, 'matched'::text,
+      v_id, null::uuid, null::uuid, null::uuid,
+      '#2541 / #6228 repair OPA identity link'::text, v_updated);
   end loop;
 
   -- Post-condition: every studio-placed OPA property chain is now complete.

@@ -22,8 +22,11 @@ declare
   base int;
   cat uuid;
 begin
-  if to_regclass('dflow_prod."merchGroup"') is null or to_regclass('core.mg_category_merch_group') is null then
-    raise exception 'fixture: needs the production-shaped CI replay (dflow_prod."merchGroup", core.mg_category_merch_group)';
+  if to_regclass('dflow_prod."merchGroup"') is null
+     or to_regclass('core.mg_category_merch_group') is null
+     or to_regclass('core."merchGroup"') is null
+     or to_regclass('core.mg_category') is null then
+    raise exception 'fixture: needs the production-shaped CI replay (dflow_prod."merchGroup", core.mg_category_merch_group, core."merchGroup", core.mg_category)';
   end if;
   select id into strict cat from core.mg_category order by code limit 1;
   select greatest(coalesce((select max(mg_id) from core."merchGroup"), 0),
@@ -62,10 +65,10 @@ begin
   end;
 
   -- D: put the old key back, store a core-only link, and the migration must refuse.
+  delete from core.mg_category_merch_group where merch_group_mg_id = app_only;
   alter table core.mg_category_merch_group drop constraint mg_category_merch_group_merch_group_mg_id_fkey;
   alter table core.mg_category_merch_group add constraint mg_category_merch_group_merch_group_mg_id_fkey
     foreign key (merch_group_mg_id) references core."merchGroup"(mg_id) on delete cascade;
-  delete from core.mg_category_merch_group where merch_group_mg_id = app_only;
   insert into core.mg_category_merch_group (mg_category_id, merch_group_mg_id) values (cat, core_only);
 end
 $a$;

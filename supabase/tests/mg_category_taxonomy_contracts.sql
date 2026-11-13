@@ -141,11 +141,16 @@ begin
   from pg_constraint
   where conrelid = 'core.mg_category_merch_group'::regclass
     and contype = 'f'
-    and confrelid = 'core."merchGroup"'::regclass;
+    -- #6252: core."merchGroup" until the app-schema repoint, then the app copy.
+    and confrelid in (to_regclass('core."merchGroup"'), to_regclass('dflow."merchGroup"'),
+                      to_regclass('dflow_prod."merchGroup"'))
+    and conkey = array[(select attnum from pg_attribute
+                        where attrelid = 'core.mg_category_merch_group'::regclass
+                          and attname = 'merch_group_mg_id')]::int2[];
   if v_n = 1 then
-    v_pass := v_pass + 1; raise notice 'PASS foreign key to core."merchGroup"(mg_id) exists';
+    v_pass := v_pass + 1; raise notice 'PASS foreign key to a "merchGroup"(mg_id) exists';
   else
-    v_fail := v_fail + 1; raise notice 'FAIL no foreign key from mg_category_merch_group to core."merchGroup"';
+    v_fail := v_fail + 1; raise notice 'FAIL no foreign key from mg_category_merch_group to a "merchGroup" table';
   end if;
 
   -- RLS must be on, and anon/public must have nothing.

@@ -27,19 +27,15 @@ begin
 end
 $check$;
 
-do $retire$
+lock table core."merchGroup", core."merchGroupHeaders" in access exclusive mode;
+
+do $parity$
 declare
   n bigint;
 begin
-  if to_regclass('core."merchGroup_retired_20261112"') is not null
-     and to_regclass('core."merchGroup"') is null then
-    return; -- already applied
+  if to_regclass('dflow."merchGroup"') is null or to_regclass('dflow."merchGroupHeaders"') is null then
+    raise exception '#205/20261113040728 self-check: dflow."merchGroup" / "merchGroupHeaders" missing; refuse to retire the core copies';
   end if;
-  if to_regclass('core."merchGroup"') is null or to_regclass('dflow."merchGroup"') is null
-     or to_regclass('core."merchGroupHeaders"') is null or to_regclass('dflow."merchGroupHeaders"') is null then
-    raise exception '#205/20261113040728 self-check: a required merchGroup / merchGroupHeaders table is missing';
-  end if;
-  lock table core."merchGroup", core."merchGroupHeaders" in access exclusive mode;
   select count(*) into n
   from core."merchGroup" c full join dflow."merchGroup" d using (mg_id)
   where c is distinct from d;
@@ -54,9 +50,10 @@ begin
     raise exception '#205/20261113040728: core."merchGroupHeaders" differs from dflow in % rows; refuse to retire', n
       using errcode = 'check_violation';
   end if;
-  alter table core."merchGroup" rename to "merchGroup_retired_20261112";
-  alter table core."merchGroupHeaders" rename to "merchGroupHeaders_retired_20261112";
 end
-$retire$;
+$parity$;
+
+alter table core."merchGroup" rename to "merchGroup_retired_20261112";
+alter table core."merchGroupHeaders" rename to "merchGroupHeaders_retired_20261112";
 
 commit;

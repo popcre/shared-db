@@ -3,7 +3,7 @@
 -- plan plan_merch-group-environment-parity.md step 3.1 item (b).
 -- DesignFlow NON-PRODUCTION ONLY: project xupnyeifmpsacrqahwwm. Never applied
 -- to shared preview or shared production; refuses wherever dflow_prod exists.
--- The production half is the paired version 20261113174320 (dflow_prod).
+-- The production half is the paired version 20261113192227 (dflow_prod).
 --
 -- Why: 20261113040728 renamed core."merchGroup" to
 -- core."merchGroup_retired_20261112"; the foreign key
@@ -28,17 +28,17 @@ declare
   n bigint;
 begin
   if to_regnamespace('dflow_prod') is not null then
-    raise exception '#6252/20261113174309 self-check: schema dflow_prod exists here; this migration is DesignFlow non-production only (production half is 20261113174320)'
+    raise exception '#6252/20261113192216 self-check: schema dflow_prod exists here; this migration is DesignFlow non-production only (production half is 20261113192227)'
       using errcode = 'feature_not_supported';
   end if;
   if to_regclass('dflow."merchGroup"') is null then
-    raise exception '#6252/20261113174309 self-check: dflow."merchGroup" is missing';
+    raise exception '#6252/20261113192216 self-check: dflow."merchGroup" is missing';
   end if;
   select count(*) into n
   from core.mg_category_merch_group l
   where not exists (select 1 from dflow."merchGroup" m where m.mg_id = l.merch_group_mg_id);
   if n <> 0 then
-    raise exception '#6252/20261113174309: % mg_category_merch_group rows reference merchandise groups absent from dflow."merchGroup"; refuse (nothing deleted)', n
+    raise exception '#6252/20261113192216: % mg_category_merch_group rows reference merchandise groups absent from dflow."merchGroup"; refuse (nothing deleted)', n
       using errcode = 'foreign_key_violation';
   end if;
 end

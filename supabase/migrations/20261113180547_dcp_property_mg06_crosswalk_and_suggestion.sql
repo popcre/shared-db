@@ -31,6 +31,8 @@ create table if not exists plm.dcp_property_mg06_crosswalk (
   updated_at               timestamptz not null default now()
 );
 
+alter table plm.dcp_property_mg06_crosswalk enable row level security;
+
 comment on table plm.dcp_property_mg06_crosswalk is
   'DCP film source_id -> Coldlion MG06 mg_code crosswalk (Disney). '
   'Seeded from dcp_opa_property_resolution + OPA-to-MG06 mapping sheet + core.property. '

@@ -2,7 +2,7 @@
 -- Claim popcre/shared-db#6252. Work issue popcre/designflow-item-master#205,
 -- plan plan_merch-group-environment-parity.md step 3.1 item (b).
 -- PRODUCTION HALF (schema dflow_prod, project qsllyeztdwjgirsysgai). The
--- non-production half is the paired version 20261113160414 (schema dflow).
+-- non-production half is the paired version 20261113174309 (schema dflow).
 -- Promoted by the normal shared preview -> production lanes.
 --
 -- Why: production DesignFlow services read and write dflow_prod."merchGroup";
@@ -27,14 +27,14 @@ declare
   n bigint;
 begin
   if to_regclass('dflow_prod."merchGroup"') is null then
-    raise exception '#6252/20261113160423 self-check: dflow_prod."merchGroup" is missing; wrong database for the production half (non-production half is 20261113160414)'
+    raise exception '#6252/20261113174320 self-check: dflow_prod."merchGroup" is missing; wrong database for the production half (non-production half is 20261113174309)'
       using errcode = 'feature_not_supported';
   end if;
   select count(*) into n
   from core.mg_category_merch_group l
   where not exists (select 1 from dflow_prod."merchGroup" m where m.mg_id = l.merch_group_mg_id);
   if n <> 0 then
-    raise exception '#6252/20261113160423: % mg_category_merch_group rows reference merchandise groups absent from dflow_prod."merchGroup"; refuse (nothing deleted)', n
+    raise exception '#6252/20261113174320: % mg_category_merch_group rows reference merchandise groups absent from dflow_prod."merchGroup"; refuse (nothing deleted)', n
       using errcode = 'foreign_key_violation';
   end if;
 end

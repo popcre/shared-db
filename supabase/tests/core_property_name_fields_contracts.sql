@@ -22,10 +22,10 @@ begin
   insert into core.licensor (name, code, status) values ('ISSUE 6269 SYNTH LICENSOR', 'ISSUE6269', 'potential')
   returning id into v_lic;
   perform pg_temp.auth6269('core.property', array['licensor_id','name','code','status']);
-  insert into core.property (licensor_id, name, code, status) values (v_lic, 'Synth 6269 A', null, 'potential')
+  insert into core.property (licensor_id, name, code, status) values (v_lic, 'Synth 6269 A', 'S6269A', 'potential')
   returning id into v_a;
   perform pg_temp.auth6269('core.property', array['licensor_id','name','code','status']);
-  insert into core.property (licensor_id, name, code, status) values (v_lic, 'Synth 6269 B', null, 'potential')
+  insert into core.property (licensor_id, name, code, status) values (v_lic, 'Synth 6269 B', 'S6269B', 'potential')
   returning id into v_b;
 
   -- No link leaves NULL, and a typed name is discarded.

@@ -145,6 +145,17 @@ begin
 
   update core.property set metadata = metadata - 'submission_canonical'
    where metadata ? 'submission_canonical';
+
+  -- Owner ruling, Albert Hazan, 2026-11-13 2:19 PM EST (docs/owner-rulings.md): a design with only
+  -- Mickey goes under 'Mickey Mouse' (OPA 372); Mickey plus anyone else goes under 'Standard
+  -- Characters' (OPA 361). They are separate properties, so MM 'Standard Characters' links to 361,
+  -- not 372. (X-Men is the same property as X-Men Classic: XM keeps its link.)
+  if exists (select 1 from plm.opa_property where licensed_property_id = 361)
+     and not exists (select 1 from core.property where submission_source = 'disney_opa' and submission_property_id = '361') then
+    update core.property set submission_property_id = '361'
+     where code = 'MM' and name = 'Standard Characters'
+       and submission_source = 'disney_opa' and submission_property_id = '372';
+  end if;
 end
 $backfill$;
 

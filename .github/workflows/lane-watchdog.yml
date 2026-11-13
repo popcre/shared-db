@@ -22,9 +22,11 @@
 #     already bound to the head makes it stand down.
 #
 # WHAT IT NEVER DOES: never merges, never pushes, never writes refs, never
-# touches the database. The only write in the entire feature is the single
-# workflow-dispatch POST the watchdog issues through the shared GitHub
-# transport (one attempt, never replayed).
+# touches the database. Its only writes: the single workflow-dispatch POST the
+# watchdog issues through the shared GitHub transport (one attempt, never
+# replayed), and the ghost sweep's cancel/delete of wedged run records —
+# queued over 30 minutes with zero jobs created (2026-11-11 batch). A run that
+# is progressing is never touched.
 
 name: Lane watchdog
 
@@ -88,3 +90,15 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/db-flow/lane-watchdog.mjs --repo "$REPO"
+
+      # Ghost runs (2026-11-11 20:22Z batch): queued for hours with zero jobs,
+      # unaddressable by GET/DELETE, cancelling refused — they hold per-ref
+      # concurrency groups and block every later run of their workflow on
+      # their ref. Reap the wedged records; red when one cannot be removed.
+      - name: Reap wedged queued run records (ghosts)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          node scripts/db-flow/lane-watchdog.mjs --repo "$REPO" --sweep-ghosts

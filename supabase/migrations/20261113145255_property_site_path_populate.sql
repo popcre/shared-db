@@ -8,7 +8,10 @@
 -- (its core.property row now exists, created by #2541 migration 20261112225250).
 -- 117 codes get one row. 11 codes have no supported licensor site (licensors without a scraped
 -- submission site, or no core.property row) and get none here.
--- Idempotent (on conflict do nothing). Only inserts into core.property_site_path.
+-- Owner ruling 2026-11-13 9:49 AM EST (#6150 comment 6856411242): Standard Characters is its own
+-- property for all Mickey Group art. Its row exists (code MM); this also sets the nickname
+-- "Mickey Group" (#6178 ruling) that 20261112205231 skipped because the row did not exist then.
+-- Idempotent (on conflict do nothing). Inserts into core.property_site_path; sets one core.property nickname.
 -- Rollback: delete from core.property_site_path where source_evidence like 'shared-db#6150 step 6%'.
 
 do $mg06_site_path_populate$
@@ -92,6 +95,9 @@ begin
   from r
   where site_property_name is not null and (char_id is null or site_character_name is not null)
   on conflict do nothing;
+
+  update core.property set nickname = 'Mickey Group'
+   where code = 'MM' and name = 'Standard Characters' and nickname is null;
 
   select count(distinct property_id) into v_n from core.property_site_path
    where is_current and source_evidence like 'shared-db#6150 step 6%';

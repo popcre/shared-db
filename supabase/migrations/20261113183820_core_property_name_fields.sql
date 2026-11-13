@@ -174,3 +174,13 @@ comment on view api.property_names is
   'Each property''s four names (Coldlion name, licensor-submission name, nickname, short name) with display_name = nickname else name and description_name = short name else nickname else name (shared-db#6269).';
 revoke all on api.property_names from public, anon;
 grant select on api.property_names to authenticated, service_role;
+
+-- DesignFlow backend reads display names for its property pickers (plan Step 4).
+do $grant$
+begin
+  if exists (select 1 from pg_roles where rolname = 'designflow_prod_backend_grants') then
+    grant usage on schema api to designflow_prod_backend_grants;
+    grant select on api.property_names to designflow_prod_backend_grants;
+  end if;
+end
+$grant$;

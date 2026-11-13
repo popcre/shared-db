@@ -211,7 +211,7 @@ jobs:
           set -euo pipefail
           node --test scripts/throughput-guard/*.test.mjs
           node scripts/check-throughput-truth-audit.mjs
-          for f in scripts/throughput-guard/{check-production-verification-sidecars,catalog-truth,check-throughput-truth-audit,false-alarm-corpus,check-blocker-ledger,guard-throughput-report,record-blocker-stub,triage-gate}.test.mjs; do
+          for f in scripts/throughput-guard/{check-production-verification-sidecars,catalog-truth,catalog-truth-fk-targets,check-throughput-truth-audit,false-alarm-corpus,check-blocker-ledger,guard-throughput-report,record-blocker-stub,triage-gate}.test.mjs; do
             test -f "$f" || { echo "::error::Missing planned throughput test: $f"; exit 1; }
           done
 

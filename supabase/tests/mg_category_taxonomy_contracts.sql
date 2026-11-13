@@ -612,6 +612,7 @@ declare
   v_cat_clock uuid;
   v_fixture_mg constant integer := -987654322;
   v_leftover integer;
+  v_fk_target text;
 begin
   select id into v_cat_wall  from core.mg_category where code = 'WALL';
   select id into v_cat_clock from core.mg_category where code = 'CLOCK';
@@ -626,6 +627,20 @@ begin
       (mg_id, mg_code, mg_desc, "mgTypeCode", is_active, "divisionCode_fk")
     overriding system value
     values (v_fixture_mg, 'ZZ', 'issue 1163 throwaway fixture', '01', true, 'ZZ999');
+
+    -- #6252: the link's key may reference the app schema's "merchGroup" copy;
+    -- put the same throwaway row there too (unwound with the rest).
+    select confrelid::regclass::text into v_fk_target
+    from pg_constraint
+    where conname = 'mg_category_merch_group_merch_group_mg_id_fkey'
+      and conrelid = 'core.mg_category_merch_group'::regclass;
+    if v_fk_target is not null and v_fk_target <> 'core."merchGroup"' then
+      execute format(
+        'insert into %s (mg_id, mg_code, mg_desc, "mgTypeCode", is_active, "divisionCode_fk")
+         overriding system value
+         values ($1, ''ZZ'', ''issue 1163 throwaway fixture'', ''01'', true, ''ZZ999'')',
+        v_fk_target) using v_fixture_mg;
+    end if;
 
     insert into core.mg_category_merch_group (mg_category_id, merch_group_mg_id)
     values (v_cat_wall, v_fixture_mg);

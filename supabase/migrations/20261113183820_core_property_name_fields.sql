@@ -39,7 +39,7 @@ as $$
   select case p_source
     when 'disney_opa' then
       (select o.property_name from plm.opa_property o
-        where p_id ~ '^[0-9]{1,18}$' and o.licensed_property_id = p_id::bigint)
+        where p_id ~ '^-?[0-9]{1,18}$' and o.licensed_property_id = p_id::bigint)
     when 'paramount_trackerplus' then
       (select s.exact_label from plm.pmt_trackerplus_submission_property s
         where s.property_local_key = p_id order by s.exact_label limit 1)

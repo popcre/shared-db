@@ -15,6 +15,21 @@ read-when: checking what Step 3 rebuild-churn evidence is still unproven or re-m
 No DDL, no DML, no `pg_stat_reset`, no settings change, no row contents, no credentials.
 Raw captures live beside this file (`q-*.json`).
 
+## Prior-session closeout receipt (first action of this pickup)
+
+`ai-shared-db-closeout-check --session-id ses_ffe5e43506d64ffeEzis1lhwfS` completed
+2026-11-13 11:54 AM EST with exit 0 (raw receipt: `closeout-receipt-prior-session.json`):
+
+```json
+{"blocking_claims":[],"blocking_stages":[],"ok":true,"open_claims_checked":12,"open_issues_seen":118,"session_id":"ses_ffe5e43506d64ffeEzis1lhwfS","stages_checked":3}
+```
+
+`ok:true`, zero blocking claims, zero blocking stages — the prior session held none
+(docs-only), as expected. Earlier attempts the same morning returned `ok:false
+"GitHub authentication is unavailable"`; that message is ai-gh's misleading label for a
+machine-wide core-budget pause (`ai-gh` exit 75, `quota-pause.core` held until the hourly
+window reset). The receipt above is from the first clean run after the pause expired.
+
 ## Window facts (read these before comparing counters)
 
 - `pg_stat_statements` was reset **2026-11-06 11:20:19 EST** (`extensions.pg_stat_statements_info.stats_reset`,

@@ -15,6 +15,15 @@
 -- merch_group_mg_id is absent from dflow_prod."merchGroup". The self-check
 -- below refuses (never deletes) if any orphan appears before apply.
 -- api.resolve_item_mg_category is not touched.
+--
+-- Edited before any ledger applied it (#5141 exception; preview and production
+-- ledgers both absent, read 2026-11-14): the production preview rehearsal
+-- refused four times because preview's dflow_prod."merchGroup" holds 0 rows
+-- (it is never seeded) while its link table holds 58. ONLY when
+-- dflow_prod."merchGroup" is empty (preview, fresh databases) the orphan
+-- refusal is skipped and the key is added NOT VALID, so existing rows are not
+-- checked but every new row is. Wherever the table holds any row (production:
+-- 4,417), the full orphan refusal and a validated key apply unchanged.
 -- Rollback: drop the constraint and re-add it referencing
 -- core."merchGroup"(mg_id) on delete cascade.
 
@@ -25,10 +34,22 @@ set local statement_timeout = '2min';
 do $check$
 declare
   n bigint;
+  parent_empty boolean;
 begin
   if to_regclass('dflow_prod."merchGroup"') is null then
     raise exception '#6252/20261113192227 self-check: dflow_prod."merchGroup" is missing; wrong database for the production half (non-production half is 20261113192216)'
       using errcode = 'feature_not_supported';
+  end if;
+  parent_empty := not exists (select 1 from dflow_prod."merchGroup");
+  alter table core.mg_category_merch_group
+    drop constraint if exists mg_category_merch_group_merch_group_mg_id_fkey;
+  if parent_empty then
+    raise notice '#6252/20261113192227: dflow_prod."merchGroup" is empty (unseeded preview or fresh database); adding the key NOT VALID, orphan check skipped';
+    alter table core.mg_category_merch_group
+      add constraint mg_category_merch_group_merch_group_mg_id_fkey
+      foreign key (merch_group_mg_id) references dflow_prod."merchGroup"(mg_id)
+      on delete cascade not valid;
+    return;
   end if;
   select count(*) into n
   from core.mg_category_merch_group l
@@ -37,15 +58,11 @@ begin
     raise exception '#6252/20261113192227: % mg_category_merch_group rows reference merchandise groups absent from dflow_prod."merchGroup"; refuse (nothing deleted)', n
       using errcode = 'foreign_key_violation';
   end if;
+  alter table core.mg_category_merch_group
+    add constraint mg_category_merch_group_merch_group_mg_id_fkey
+    foreign key (merch_group_mg_id) references dflow_prod."merchGroup"(mg_id)
+    on delete cascade;
 end
 $check$;
-
-alter table core.mg_category_merch_group
-  drop constraint mg_category_merch_group_merch_group_mg_id_fkey;
-
-alter table core.mg_category_merch_group
-  add constraint mg_category_merch_group_merch_group_mg_id_fkey
-  foreign key (merch_group_mg_id) references dflow_prod."merchGroup"(mg_id)
-  on delete cascade;
 
 commit;

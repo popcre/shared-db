@@ -1,4 +1,4 @@
--- derived-from: none
+-- derived-from: 20260827213024
 -- Claim popcre/shared-db#6305. Work issue popcre/designflow-item-master#205,
 -- plan plan_merch-group-environment-parity.md step 3.1 item (a).
 -- PRODUCTION HALF (schema dflow_prod). Promoted by the normal shared

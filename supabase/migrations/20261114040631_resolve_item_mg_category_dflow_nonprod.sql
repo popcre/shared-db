@@ -18,6 +18,9 @@
 -- (pg_get_functiondef read 2026-11-13 11:15 PM EST). create or replace
 -- keeps the existing comment and execute grants; none are re-issued, so
 -- this project's grants stay exactly as they are.
+-- derived-from is none: this project's ledger does not hold 20260827213024
+-- (the body arrived before its ledger), so the base is the deployed body read
+-- with pg_get_functiondef, not a migration version.
 -- Rollback: create or replace the function again with core."merchGroup".
 
 begin;

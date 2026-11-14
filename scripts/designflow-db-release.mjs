@@ -715,7 +715,7 @@ function currentLiveProducer(input) {
   if(!Number.isSafeInteger(latest.run_attempt)||latest.run_attempt<attempt||latest.run_attempt-attempt>100)throw Error('Later attempt discovery is incomplete');
   for(let n=attempt+1;n<=latest.run_attempt;n++)later.push({run:api(`repos/${CANONICAL}/actions/runs/${id}/attempts/${n}`),jobs:api(`repos/${CANONICAL}/actions/runs/${id}/attempts/${n}/jobs?per_page=100`)});
   const producer={original,jobs,later,latestAttempt:latest.run_attempt,upload,...originalArtifact(upload,original)};
-  assertCurrentLiveProducer(producer);return producer;
+  assertCurrentLiveProducer(producer,runAncestry);return producer;
 }
 function recheckProducerCounter(producer) {
   const latest=api(`repos/${CANONICAL}/actions/runs/${producer.original.id}`);
@@ -741,7 +741,7 @@ async function runCurrentLiveReverification() {
   execFileSync('python',['-c','import os,sys;from pathlib import Path;sys.path.insert(0,"scripts");from production_catalog_recovery_evidence import verify_current_live_catalog;verify_current_live_catalog(Path.cwd(),os.environ["CURRENT_LIVE_ALLOWLIST"],Path(os.environ["CURRENT_LIVE_OUTPUT"]),os.environ["SUPABASE_ACCESS_TOKEN"])'],{stdio:['ignore','pipe','pipe'],timeout:180_000,env:{...process.env,CURRENT_LIVE_ALLOWLIST:versions.join(',')}});
   const catalogBytes=readFileSync(join(out,'production-catalog-verification.json')),catalog=JSON.parse(catalogBytes);
   const binding={schema:CURRENT_LIVE_KIND,verifier_run_id:exactPositive(process.env.GITHUB_RUN_ID),verifier_run_attempt:exactPositive(process.env.GITHUB_RUN_ATTEMPT),repository_id:exactPositive(process.env.GITHUB_REPOSITORY_ID),owner_id:exactPositive(process.env.GITHUB_REPOSITORY_OWNER_ID),read_only:true,target:'qsllyeztdwjgirsysgai',historical_ledger_delta:null,verifier_sha:input.main_sha,verified_at:new Date().toISOString(),source,producer,approval_sha256,ledger_fingerprints:ledger,catalog_sha256:hash(catalogBytes)};
-  validateCurrentLiveBinding(binding,{source,ledger,catalog,producer});
+  validateCurrentLiveBinding(binding,{source,ledger,catalog,producer,isAncestor:runAncestry});
   if(JSON.stringify(await ledgerFingerprints(requirement,sourceFacts(requirement)))!==JSON.stringify(ledger)||proveAssignedSource(requirement)!==approval_sha256||api(`repos/${CANONICAL}/commits/main`).sha!==input.main_sha)throw Error('Current-live source, approval, ledger or main changed');
   recheckProducerCounter(producer);writeFileSync(join(out,'current-live-binding.json'),JSON.stringify(binding,null,2)+'\n',{mode:0o600});
   execFileSync('python',['-c','import os,zipfile;from pathlib import Path;p=Path(os.environ["CURRENT_LIVE_OUTPUT"]);z=zipfile.ZipFile(p/"current-live-content.zip","w",compression=zipfile.ZIP_STORED);[z.write(p/n,n) for n in ["current-live-binding.json","production-catalog-verification.json"]];z.close()'],{stdio:['ignore','pipe','pipe'],timeout:10000,env:process.env});
@@ -849,7 +849,7 @@ async function currentLiveEvidence(requirement,facts,ledger) {
       const producer=currentLiveProducer({original_run_id:binding.producer?.original?.id,original_attempt:binding.producer?.original?.run_attempt,original_artifact_id:binding.producer?.upload?.artifact_id,original_artifact_digest:binding.producer?.upload?.digest});
       assertAncestor(facts.merge_sha40,producer.original.head_sha);assertAncestor(producer.original.head_sha,run.head_sha);
       if(proveAssignedSource(requirement)!==binding.approval_sha256)throw Error('Current-live assigned approval changed');
-      validateCurrentLiveBinding(binding,{source,ledger,catalog,producer});recheckProducerCounter(producer);
+      validateCurrentLiveBinding(binding,{source,ledger,catalog,producer,isAncestor:runAncestry});recheckProducerCounter(producer);
       const result={work_issue:requirement.work_issue,source_pr:requirement.source_pr,run_id:producer.original.id,proof_kind:CURRENT_LIVE_KIND,reverification_run_id:run.id,artifact_id:a.id,artifact_digest:a.digest};
       const receipt={schema:'shared-db-current-live-reverification-receipt/v1',source,ledger_fingerprints:ledger,proof:result,certificate:files.certificate};
       const ref=`${prefix}${run.id}`,message=CURRENT_LIVE_RECEIPT_PREFIX+JSON.stringify(receipt);

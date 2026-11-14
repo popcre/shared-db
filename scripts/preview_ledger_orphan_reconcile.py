@@ -471,8 +471,10 @@ def validate_governance_null_statements(args, case: dict) -> dict:
     issue, claim, pr = read_json(args.issue_json), read_json(args.claim_json), read_json(args.pr_json)
     if issue.get("number") != args.issue or issue.get("state") != "open":
         raise Refusal("work issue is not the exact open supported-case issue")
-    if claim.get("number") != args.claim or claim.get("state") != "open":
-        raise Refusal("claim is not the exact open supported-case claim")
+    if claim.get("number") != args.claim or claim.get("state") != "open" or f"#{args.issue}" not in claim.get("title", ""):
+        raise Refusal("claim is not the exact open supported-case claim for the work issue")
+    if not re.search(rf"^version: {re.escape(args.orphan_version)}$", claim.get("body", ""), re.M):
+        raise Refusal("claim does not bind the orphan version")
     if pr.get("number") != args.source_pr or pr.get("state") != "open" or pr.get("merged_at"):
         raise Refusal("source pull request is not the exact open, unmerged supported-case PR")
     files = read_json(args.pr_files_json)
@@ -503,6 +505,8 @@ def reconcile_null_statements(url: str, env: dict[str, str], args, case: dict) -
     before = ledger_rows(url, env, args.orphan_version, args.orphan_version)
     if len(before) != 1 or str(before[0].get("version")) != args.orphan_version:
         raise Refusal("preview ledger does not hold the orphan exactly once")
+    # This out-of-band writer may store a filename including .sql. Preserve the
+    # exact reviewed ledger name; never infer or normalize it from a migration stem.
     if before[0].get("name") != case["expected_name"] or before[0].get("statements") is not None:
         raise Refusal("orphan ledger row is not the pinned name with NULL statements")
     proofs = object_proof_sql(case["object_proofs"])
@@ -562,9 +566,10 @@ def parse_args():
             if getattr(args, name) is None:
                 raise Refusal(f"null-statements reconciliation requires --{name.replace('_', '-')}")
         for name in ("source_pr_dir", "orphan_source_dir", "replacement_version", "preview_run_id",
-                     "preview_artifact_id", "preview_artifact_digest", "run_json", "artifact_json", "preview_evidence_dir"):
+                     "preview_artifact_id", "preview_artifact_digest", "run_json", "artifact_json", "preview_evidence_dir",
+                     "remote_ledger", "run_jobs_json"):
             if getattr(args, name) is not None:
-                raise Refusal(f"null-statements reconciliation refuses the replacement-only argument --{name.replace('_', '-')}")
+                raise Refusal(f"null-statements reconciliation refuses the unrelated argument --{name.replace('_', '-')}")
     elif args.reconciliation == "preview":
         for name in ("source_pr_dir", "orphan_source_dir", "replacement_version", "claim", "source_pr",
                      "preview_run_id", "preview_artifact_id", "preview_artifact_digest", "issue_json",

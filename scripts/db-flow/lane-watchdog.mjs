@@ -31,8 +31,8 @@
 // (POST /repos/:repo/actions/workflows/:wf/dispatches) issued through the
 // same transport, which runs a mutation exactly once and never replays it,
 // and (b) `--sweep-ghosts`: cancelling and deleting wedged run records —
-// runs the listing shows as queued for over 30 minutes that never created a
-// job. Those ghost records are unaddressable by GET/DELETE (404) or refuse
+// explicitly scoped lane runs queued for over 30 minutes with zero jobs
+// and a run-detail endpoint returning HTTP 404. Those ghost records are unaddressable by GET/DELETE (404) or refuse
 // cancellation, hold per-ref concurrency groups with `cancel-in-progress:
 // false`, and block every later run of their workflow on their ref (the
 // 2026-11-11 20:22Z batch). The sweep reaps only that signature and never
@@ -164,21 +164,56 @@ export function planDispatches({
 
 // ---------------------------------------------------------------------------
 // Ghost-run sweep (`--sweep-ghosts`). Pure decision logic, unit-tested offline:
-// a run is a ghost when the listing shows it queued, it is older than the age
-// floor (default 30 minutes), and it never created a job. Healthy work never
-// matches: a run that is progressing is not queued, and a young queued run is
-// still within the dispatch grace.
+// A queued run needs explicit workflow/ref scope, an age floor of at least
+// 30 minutes, a verified empty all-attempt jobs list, and HTTP 404 from its
+// detail endpoint. A healthy concurrency waiter has a readable run record.
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_GHOST_MIN_AGE_MS = 30 * 60 * 1000
 
+function validateGhostAge(age) {
+  if (!Number.isFinite(age) || age < DEFAULT_GHOST_MIN_AGE_MS) {
+    throw new Error('ghost minimum age must be finite and at least 30 minutes')
+  }
+}
+
+export function ageArgument(argv, flag, fallback, minimum) {
+  const raw = argValue(argv, flag)
+  const minutes = argv.includes(flag) ? Number(raw) : fallback
+  if (!Number.isFinite(minutes) || minutes < minimum || !Number.isFinite(minutes * 60000)) {
+    throw new Error(`${flag} requires a finite value of at least ${minimum}`)
+  }
+  return minutes * 60000
+}
+
+/** Read every queued run; refuse capped or inconsistent API listings. */
+export function readQueuedRuns(io, repo) {
+  const runs = []
+  let total
+  for (let page = 1; page <= 10; page += 1) {
+    const answer = io.readJson(['api', `repos/${repo}/actions/runs?status=queued&per_page=100&page=${page}`])
+    if (!Array.isArray(answer?.workflow_runs) || !Number.isSafeInteger(answer.total_count) || answer.total_count < 0) {
+      throw new Error('queued run listing is unreadable; refusing a partial read')
+    }
+    if (total !== undefined && total !== answer.total_count) throw new Error('queued run listing changed during pagination; retry later')
+    total = answer.total_count
+    runs.push(...answer.workflow_runs)
+    if (answer.workflow_runs.length < 100) {
+      if (runs.length !== total || new Set(runs.map(run => run.id)).size !== total) throw new Error('queued run listing is truncated or duplicated')
+      return runs
+    }
+  }
+  throw new Error('queued run listing exceeded 10 pages; refusing a partial read')
+}
+
 /**
  * The reap plan. `runs` are `GET /actions/runs?status=queued` entries
- * ({id, status, created_at, name, head_branch, html_url}); `jobsCount` when
- * the caller probed the run's jobs endpoint is honoured — a run that did
- * create jobs is not a ghost however old. Returns { reap, notes }.
+ * ({id, status, created_at, name, head_branch, html_url}). The caller must
+ * establish jobsCount === 0, recordMissing and scopeVerified from live reads.
+ * Missing evidence never authorizes deletion. Returns { reap, notes }.
  */
 export function planGhostActions(runs, nowMs = Date.now(), minAgeMs = DEFAULT_GHOST_MIN_AGE_MS) {
+  validateGhostAge(minAgeMs)
   const reap = []
   const notes = []
   for (const run of runs ?? []) {
@@ -189,7 +224,8 @@ export function planGhostActions(runs, nowMs = Date.now(), minAgeMs = DEFAULT_GH
       continue
     }
     if (run.status !== 'queued') continue
-    if (run.jobsCount !== undefined && run.jobsCount > 0) continue
+    // Age and an empty jobs list alone also describe healthy concurrency waiters.
+    if (run.jobsCount !== 0 || run.recordMissing !== true || run.scopeVerified !== true) continue
     const ageMs = nowMs - createdMs
     if (ageMs < minAgeMs) {
       notes.push({ id, action: 'skip-young-run', reason: `queued ${Math.round(ageMs / 60000)}m (< ${Math.round(minAgeMs / 60000)}m floor); still within dispatch grace` })
@@ -329,16 +365,42 @@ export function runGhostSweep({
   io = transportIo(),
   nowMs = Date.now(),
   minAgeMs = DEFAULT_GHOST_MIN_AGE_MS,
+  workflow,
+  ref,
+  registry = loadRegistry(),
   dryRun = false,
 } = {}) {
   if (!REPO_SLUG.test(String(repo ?? ''))) throw new Error('--repo owner/name (or GITHUB_REPOSITORY) is required')
   const log = io.log ?? console.log
-  const readQueued = () => {
-    const answer = io.readJson(['api', `repos/${repo}/actions/runs?status=queued&per_page=100`])
-    if (!Array.isArray(answer?.workflow_runs)) throw new Error('queued run listing did not return workflow_runs; refusing rather than judge a partial read')
-    return answer.workflow_runs
+  validateGhostAge(minAgeMs)
+  // Scheduled callers have no implicit delete authority over the repository.
+  if (!registry.queue_sensitive_jobs.some(job => job.workflow === workflow) ||
+      !SAFE_REF.test(String(ref ?? '')) || String(ref).includes('..')) {
+    throw new Error('ghost sweep requires an explicit registered --ghost-workflow and --ghost-ref')
   }
-  const { reap, notes } = planGhostActions(readQueued(), nowMs, minAgeMs)
+  const readQueued = () => readQueuedRuns(io, repo)
+  const candidates = readQueued().filter(run =>
+    run.path === `.github/workflows/${workflow}` && run.head_branch === ref)
+  for (const run of candidates) {
+    run.scopeVerified = true
+    run.recordMissing = false
+    run.jobsCount = undefined
+    if (run.status !== 'queued' || nowMs - Date.parse(run.created_at) < minAgeMs) continue
+    if (!Number.isSafeInteger(run.id) || run.id <= 0) throw new Error('unreadable queued run id')
+    const jobs = io.readJson(['api', `repos/${repo}/actions/runs/${run.id}/jobs?filter=all&per_page=1`])
+    if (!Number.isSafeInteger(jobs?.total_count) || jobs.total_count < 0 || !Array.isArray(jobs.jobs)) throw new Error('run jobs are unreadable')
+    run.jobsCount = jobs.total_count
+    if (run.jobsCount !== 0 || jobs.jobs.length !== 0) continue
+    try {
+      io.readJson(['api', `repos/${repo}/actions/runs/${run.id}`])
+    } catch (error) {
+      // Only an explicit HTTP 404 supports the inaccessible-record signature;
+      // permission errors, outages and arbitrary transport text are not evidence.
+      if (error?.status !== 404 && !/HTTP 404\b/.test(error?.message ?? '')) throw error
+      run.recordMissing = true
+    }
+  }
+  const { reap, notes } = planGhostActions(candidates, nowMs, minAgeMs)
   for (const note of notes) log(`ghost sweep: ${note.action}${note.id ? ` run ${note.id}` : ''}: ${note.reason}`)
   if (!reap.length) {
     log('ghost sweep: no wedged queued runs.')
@@ -380,10 +442,12 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const argv = process.argv.slice(2)
   try {
     if (argv.includes('--sweep-ghosts')) {
-      const minAgeMinutes = Number(argValue(argv, '--min-age-minutes') ?? 30)
+      if (argv.includes('--min-age-minutes')) throw new Error('use --ghost-min-age-minutes for the ghost sweep')
       const result = runGhostSweep({
         repo: argValue(argv, '--repo') ?? process.env.GITHUB_REPOSITORY,
-        minAgeMs: Math.max(0, minAgeMinutes) * 60000,
+        minAgeMs: ageArgument(argv, '--ghost-min-age-minutes', 30, 30),
+        workflow: argValue(argv, '--ghost-workflow'),
+        ref: argValue(argv, '--ghost-ref'),
         dryRun: argv.includes('--dry-run'),
       })
       // Red on unreaped ghosts: they hold concurrency groups and silence is
@@ -391,10 +455,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       if (result.remaining.length) process.exit(1)
       process.exit(0)
     }
-    const minAgeMinutes = Number(argValue(argv, '--min-age-minutes') ?? 5)
     const result = runWatchdog({
       repo: argValue(argv, '--repo') ?? process.env.GITHUB_REPOSITORY,
-      minHeadAgeMs: Math.max(0, minAgeMinutes) * 60000,
+      minHeadAgeMs: ageArgument(argv, '--min-age-minutes', 5, 0),
       dryRun: argv.includes('--dry-run'),
     })
     if (result.failures.length) process.exit(1)

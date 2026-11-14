@@ -4197,6 +4197,24 @@ class ForeignTargetScopeTest(unittest.TestCase):
         held = classify_pending_version("20260817150944", set(), REPO, paths, "production")
         self.assertEqual(held["kind"], "deliberately-held")
 
+    def test_product_description_reissue_keeps_designflow_production_scope(self):
+        version = "20261108135128"
+        paths = local_migrations(REPO)
+        for target in ("production", "preview", "designflow-nonprod"):
+            with self.subTest(target=target):
+                self.assertEqual(
+                    classify_pending_version(version, set(), REPO, paths, target)["kind"],
+                    "foreign-target",
+                )
+                with self.assertRaisesRegex(GuardError, "another database"):
+                    parse_allowlist(version, target=target)
+        self.assertIsNone(foreign_target_entry(version, "designflow-prod"))
+        self.assertEqual(parse_allowlist(version, target="designflow-prod"), [version])
+        self.assertEqual(
+            classify_pending_version("20261106174810", set(), REPO, paths, "designflow-prod")["kind"],
+            "retired",
+        )
+
     def test_hts_rag_split_is_out_of_scope_but_in_scope_work_is_still_pending(self) -> None:
         paths = local_migrations(REPO)
         row = classify_pending_version("20260909121403", set(), REPO, paths, "production")

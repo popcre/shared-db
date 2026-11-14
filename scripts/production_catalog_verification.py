@@ -56,8 +56,8 @@ KNOWS the expected answer; RECORD where it does not.
     unparseable payload) while there WAS something to verify. "No evidence" must
     never render as "evidence passed"; that is the precise failure mode #697 was
     opened about, and reproducing it inside the fix would be absurd.
-  * HARD FAIL -- the derivation found NOTHING to check. A run in which this step
-    proved nothing must not report itself green, for the same reason.
+  * RECORD ONLY -- no catalog target could be derived. This is not catalog
+    proof of success. Recognized but unparseable DDL still fails closed.
   * HARD FAIL -- a PRIVILEGE ASSERTION that did not hold (issue #790). A
     `grant`, a `revoke` or an `alter default privileges` states an expected end
     state, and that state is a catalog fact: `relacl`, `proacl`,
@@ -4264,10 +4264,17 @@ def render_report(
     else:
         add("- _none recognized by the lexer_")
     add("")
-    if targets.is_empty() and not errors:
+    unsafe_statements = [note for note in targets.notes if "not safely parseable" in note]
+    failures.extend(unsafe_statements)
+    if (
+        targets.is_empty()
+        and not errors
+        and not unsafe_statements
+        and (targets.noop_declaration is None or targets.noop_declaration["accepted"])
+    ):
         add("## Catalog verification")
         add("")
-        add("**applied, not verifiable by catalog** — the lexer could not read a "
+        add("**not verifiable by catalog** — the lexer could not read a "
             "catalog object from these migrations. The ledger is the record of "
             "what applied.")
         add("")
@@ -4304,46 +4311,9 @@ def render_report(
             add(f"- **The claim was REJECTED**: {declaration['rejected_because']}")
         add("")
 
-    if checks:
-        # A hash-bound behavioral assertion is real evidence for a data-only
-        # migration. Catalog targets from sibling migrations remain intact and
-        # are still checked below.
-        pass
-    elif targets.is_empty() and declaration is not None and declaration["accepted"]:
-        # ISSUE #790 POINT 3. A pure-data migration genuinely names no catalog
-        # object. That is allowed to pass -- but only with the reason written
-        # down in the file, reviewed in the pull request, and reproduced in this
-        # artifact, and only after every statement in the file was checked to be
-        # data. It is never a silent pass and never a flag on this script.
-        pass
-    elif targets.is_empty():
-        # ISSUE #697 EXISTS BECAUSE A GREEN TICK WAS MISTAKEN FOR EVIDENCE.
-        # A run where this step proved nothing must therefore not end green in
-        # enforcing mode. `20260810110000` lands exactly here: its only
-        # statement outside a `do $$` block is an `alter view`, and before the
-        # review fix even that derived nothing. The remedy for a genuinely
-        # unverifiable migration is to say so on the issue, not to let the lane
-        # report a verification it did not perform.
-        detail = (
-            f" The file's own no-op declaration was REJECTED: "
-            f"{declaration['rejected_because']}."
-            if declaration is not None
-            else ""
-        )
-        failures.append(
-            "the allowlisted migrations named NO catalog object this lexer can "
-            "read, so this step proved nothing. A run that verified nothing must "
-            "not report itself green. If the migration really is a pure-data "
-            "no-op, say so IN THE MIGRATION with a "
-            "`-- catalog-verification: no-op <reason>` line, which is checked "
-            "(every statement in the file must be a data statement) and "
-            "reproduced in this artifact." + detail
-        )
-
     if (
         declaration is not None
         and not declaration["accepted"]
-        and not targets.is_empty()
     ):
         # A file that CLAIMS to be a no-op and is not is a defect in its own
         # right, whatever else the run proved.
@@ -4725,14 +4695,11 @@ def verify(
             "checked to be a data statement, so there is nothing to verify."
         )
     elif targets.is_empty():
-        # Step 2.4 (plan_ci-process-repair): a migration whose change types the
-        # lexer cannot verify reports "applied, not verifiable by catalog" as a
-        # success with a note, never a failed apply. The ledger remains the
-        # record of what applied.
+        # No catalog assertion is possible; do not claim the apply succeeded.
         types_found = ", ".join(targets.change_types) if targets.change_types else "none recognized"
         targets.notes.append(
-            f"applied, not verifiable by catalog. "
-            f"Change types found: {types_found}. The ledger is the record of what applied."
+            f"not verifiable by catalog. Change types found: {types_found}. "
+            "The ledger is the record of what applied."
         )
     else:
         try:

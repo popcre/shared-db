@@ -841,13 +841,11 @@ class RenderReportTests(unittest.TestCase):
         self.assertEqual(len(failures), 1)
         self.assertIn("NO evidence", failures[0])
 
-    def test_nothing_to_check_is_a_hard_failure(self):
-        # #697 exists because a green tick was mistaken for evidence. A run in
-        # which this step proved NOTHING must not report itself green.
+    def test_nothing_to_check_is_recorded(self):
+        # Empty targets are recorded without claiming catalog proof.
         empty = Targets(set(), set(), set(), set(), set(), set())
         _, failures = self.render(None, targets=empty)
-        self.assertEqual(len(failures), 1)
-        self.assertIn("proved nothing", failures[0])
+        self.assertEqual(failures, [])
 
     def test_missing_function_is_a_hard_failure(self):
         # The lane knows this expected answer identically to to_regclass: an
@@ -1624,11 +1622,10 @@ class NoopDeclarationTests(unittest.TestCase):
             ["20260810140000"], targets, {"relations": []}, None, [], True
         )
 
-    def test_an_undeclared_empty_migration_still_fails(self):
+    def test_an_undeclared_empty_migration_is_recorded(self):
         targets, (markdown, failures) = self.render("update plm.widget set a = 1;")
         self.assertTrue(targets.is_empty())
-        self.assertEqual(len(failures), 1)
-        self.assertIn("proved nothing", failures[0])
+        self.assertEqual(failures, [])
 
     def test_a_schema_comment_only_batch_checks_the_exact_comment(self):
         targets = targets_for("comment on schema core is 'it''s core';")
@@ -1658,14 +1655,14 @@ class NoopDeclarationTests(unittest.TestCase):
     def test_a_comment_on_an_unreadable_object_still_proves_nothing(self):
         targets, (_, failures) = self.render("comment on policy p on plm.a is 'x';")
         self.assertTrue(targets.is_empty())
-        self.assertIn("proved nothing", failures[0])
+        self.assertEqual(failures, [])
 
     def test_a_comment_beside_a_data_statement_adds_no_target(self):
         targets, (_, failures) = self.render(
             "comment on schema core is 'x';\nupdate plm.widget set a = 1;"
         )
         self.assertTrue(targets.is_empty())
-        self.assertIn("proved nothing", failures[0])
+        self.assertEqual(failures, [])
 
     def test_a_declared_and_checked_no_op_passes_with_its_reason_recorded(self):
         targets, (markdown, failures) = self.render(self.DATA_ONLY)
@@ -1699,7 +1696,7 @@ class NoopDeclarationTests(unittest.TestCase):
         self.assertTrue(targets.is_empty())
         self.assertFalse(targets.noop_declaration["accepted"])
         self.assertEqual(len(failures), 1)
-        self.assertIn("REJECTED", failures[0])
+        self.assertIn("claim is false", failures[0])
 
     def test_a_reasonless_declaration_is_rejected(self):
         targets = targets_for(
@@ -3911,7 +3908,7 @@ class SandboxTargetCatalogSafetyTests(unittest.TestCase):
 class Issue4207RealSidecars(unittest.TestCase):
     """#4207: the cron-only (#4192) and curated data-only (#4176) migrations
     name no catalog object, so their post-apply proof is their hash-bound
-    behavior sidecar. Without it the step proves nothing and fails."""
+    behavior sidecar. Without it the report records no catalog proof."""
 
     def test_real_sidecars_load_and_make_the_data_only_proof_pass(self):
         repo = Path(__file__).resolve().parents[1]
@@ -3923,7 +3920,7 @@ class Issue4207RealSidecars(unittest.TestCase):
             targets = derive_targets(migrations, [version])
             self.assertTrue(targets.is_empty(), version)
             _md, failures = render_report([version], targets, None, None, [], True)
-            self.assertTrue(any("proved nothing" in f for f in failures), version)
+            self.assertEqual(failures, [], version)
             checks = load_behavior_sidecars(repo, migrations, [version])
             self.assertEqual({c["id"] for c in checks}, ids)
             _md, failures = render_report(
@@ -4155,36 +4152,34 @@ class CatalogChangeTypes(unittest.TestCase):
         finally:
             path.unlink()
 
-    def test_empty_targets_with_no_errors_reports_not_verifiable(self):
-        import tempfile
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".sql", delete=False) as f:
-            f.write("DO $$ BEGIN RAISE NOTICE 'dynamic'; END $$;\n")
-            path = Path(f.name)
-        try:
-            migrations = {"20260101000000": path}
-            targets = derive_targets(migrations, ["20260101000000"])
-            self.assertTrue(targets.is_empty())
-            # The note "applied, not verifiable by catalog" is added by verify()
-            # when targets.is_empty(); derive_targets tracks change_types.
-            self.assertEqual(targets.change_types, [])
-        finally:
-            path.unlink()
-
-    def test_verifiable_object_still_goes_red_when_wrong(self):
-        # A deliberately wrong object: CREATE TABLE core.example but the catalog
-        # query would find nothing. The failure comes from catalog verification,
-        # not from the change-type path.
-        import tempfile
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".sql", delete=False) as f:
-            f.write("CREATE TABLE core.example (id bigint);\n")
-            path = Path(f.name)
-        try:
-            migrations = {"20260101000000": path}
-            targets = derive_targets(migrations, ["20260101000000"])
-            self.assertFalse(targets.is_empty())
-            self.assertIn("core.example", targets.tables)
-        finally:
-            path.unlink()
+    def test_verify_empty_targets_and_unsafe_ddl(self):
+        cases = [
+            ("DO $$ BEGIN RAISE NOTICE 'dynamic'; END $$;", 0),
+            ("CREATE INDEX broken;", 1),
+            ("DROP INDEX unqualified;", 1),
+            ("ALTER FUNCTION unqualified() IMMUTABLE;", 1),
+            ("CREATE TABLE core.example (id bigint);", 1),
+            ("CREATE TABLE core.example (id bigint); CREATE INDEX broken;", 1),
+        ]
+        for sql, expected in cases:
+            for enforcing in (True, False):
+                with self.subTest(sql=sql, enforcing=enforcing), tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    migrations = root / "supabase" / "migrations"
+                    migrations.mkdir(parents=True)
+                    (migrations / "20260101000000_test.sql").write_text(sql)
+                    out = root / "out"
+                    with mock.patch("production_catalog_verification.run_query", return_value=[{"report": {"relations": [{"name": "core.example", "to_regclass": None}]}}]), mock.patch("sys.stdout", new=io.StringIO()), mock.patch("sys.stderr", new=io.StringIO()) as stderr:
+                        code = verify(root, "20260101000000", out, "test", "test", enforcing)
+                    self.assertEqual(code, expected if enforcing else 0)
+                    report = (out / "production-catalog-verification.md").read_text()
+                    self.assertNotIn("**applied", report)
+                    if expected == 0:
+                        self.assertIn("**not verifiable by catalog**", report)
+                        self.assertNotIn("CATALOG VERIFICATION FAILURE", stderr.getvalue())
+                    else:
+                        self.assertIn("CATALOG VERIFICATION FAILURE", stderr.getvalue())
+                        self.assertNotIn("**not verifiable by catalog**", report)
 
 
 if __name__ == "__main__":

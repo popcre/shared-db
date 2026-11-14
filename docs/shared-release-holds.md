@@ -25,10 +25,12 @@ The existing operating contract remains the authority:
 [production promotion](production-promotion-procedure.md).
 The plan is the focused continuation of existing outcome
 [#3779](https://github.com/popcre/shared-db/issues/3779), coordinated with other
-owners identified in its scope. Its companion handoff
-(`HANDOFF.d/2026-10-16T1317Z-hetz-codex-shared-release-holds.md`) was retired
-when #3779 closed (2026-11-05, issue #4241 hygiene) and remains readable in
-[git history](https://github.com/popcre/shared-db/blob/55f6e6a59/HANDOFF.d/2026-10-16T1317Z-hetz-codex-shared-release-holds.md).
+owners identified in its scope. Both companion handoffs are retained:
+[2026-10-16 release holds](../HANDOFF.d/2026-10-16T1317Z-hetz-codex-shared-release-holds.md)
+and [2026-10-22 steps 2–8a](../HANDOFF.d/2026-10-22T1155Z-edge-dev-claude-3779-steps-2-8a.md).
+The #4241 hygiene closure does not establish implementation acceptance or transfer
+unfinished obligations. Those obligations remain in the plan's STATUS table and
+these handoffs under #3779; reconcile the tracker's closure before continuing.
 Do not infer implementation from publication.
 
 ## Reviewer-assignment bookkeeping

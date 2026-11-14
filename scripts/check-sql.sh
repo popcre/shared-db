@@ -725,6 +725,19 @@ while IFS= read -r name; do
     value="${value%"${value##*[![:space:]]}"}"
     if ! [[ "$value" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2}(\.[0-9]+)?)?(Z|[+-][0-9]{2}:?[0-9]{2})$ ]]; then
       promote_by_bad+="  $name: $line"$'\n'
+    elif ! python3 - "$value" <<'PYTHON'
+import sys
+from datetime import datetime
+
+# Use the selector's parser so impossible dates and times cannot lose priority.
+try:
+    deadline = datetime.fromisoformat(sys.argv[1].replace("Z", "+00:00"))
+except ValueError:
+    sys.exit(1)
+sys.exit(0 if deadline.tzinfo is not None else 1)
+PYTHON
+    then
+      promote_by_bad+="  $name: $line"$'\n'
     fi
   done < "$file"
 done < "$migration_names_file"

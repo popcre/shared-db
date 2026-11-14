@@ -1490,6 +1490,23 @@ export const WRITE_REQUIRED_COLUMNS = Object.freeze([
   { schema: "dam", table: "production_order_snapshot", column: "id", type: "uuid" },
   { schema: "dam", table: "production_order_snapshot", column: "production_order_line_id", type: "uuid" },
   { schema: "plm", table: "production_order_line", column: "source_style_type" },
+  // Every production-history column the prod-only claim reads.
+  { schema: "coldlion", table: "prod_history_line", column: "id" },
+  { schema: "coldlion", table: "prod_history_line", column: "sales_order_no" },
+  { schema: "coldlion", table: "prod_history_line", column: "division_code" },
+  { schema: "coldlion", table: "prod_history_line", column: "prod_reference_no" },
+  { schema: "coldlion", table: "prod_history_line", column: "item_no" },
+  { schema: "coldlion", table: "prod_history_line", column: "prod_order_qty" },
+  { schema: "coldlion", table: "prod_history_line", column: "prod_order_no" },
+  { schema: "coldlion", table: "prod_history_line", column: "prod_line_seq" },
+  { schema: "coldlion", table: "prod_history_line", column: "source_observed_at" },
+  { schema: "coldlion", table: "prod_history_line", column: "source_version_seq" },
+  { schema: "coldlion", table: "prod_history_line", column: "fetched_at" },
+  { schema: "coldlion", table: "prod_history_line", column: "created_at" },
+  { schema: "coldlion", table: "prod_history_component", column: "id" },
+  { schema: "coldlion", table: "prod_history_component", column: "line_id" },
+  { schema: "coldlion", table: "prod_history_component", column: "sub_item_no" },
+  { schema: "coldlion", table: "prod_history_component", column: "prepack_item_pkey" },
   // Every staging column the winner selection reads (Phase B specs).
   ...INTAKE_READ_COLUMNS,
 ]);

@@ -1,6 +1,7 @@
 -- Issue popcre/shared-db#6209 — corrected #2541 OPA contract-studio-placement fix-forward.
--- derived-from: 20261112225250 (its post-condition is restated below, in its own DO block,
--- AFTER the writes, so a failure can never roll the writes back).
+-- derived-from: 20261112225250
+-- Its post-condition is restated below, in its own DO block, AFTER the writes,
+-- so a failure can never roll the writes back.
 --
 -- Owner rulings in force (docs/owner-rulings.md):
 --   6.31 (2026-10-26): OPA submission names are 100% canonical.

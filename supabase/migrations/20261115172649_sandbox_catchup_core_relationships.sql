@@ -4,6 +4,75 @@
 
 set check_function_bodies = off;
 
+CREATE OR REPLACE FUNCTION core.assert_canonical_edge_still_supported()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'pg_temp'
+AS $function$
+declare
+  v_bridge    text := tg_argv[0];   -- fully qualified canonical bridge table
+  v_left_col  text := tg_argv[1];
+  v_right_col text := tg_argv[2];
+  v_left      uuid;
+  v_right     uuid;
+  v_bridged   boolean;
+  v_supported boolean;
+begin
+  -- Only the loss of a current direct assertion can orphan anything.
+  if not (old.is_current and old.evidence_kind = 'direct_source_assertion') then
+    return null;
+  end if;
+
+  if tg_op = 'UPDATE'
+     and new.is_current
+     and new.evidence_kind = 'direct_source_assertion'
+     and (to_jsonb(new) ->> v_left_col) is not distinct from (to_jsonb(old) ->> v_left_col)
+     and (to_jsonb(new) ->> v_right_col) is not distinct from (to_jsonb(old) ->> v_right_col) then
+    return null;
+  end if;
+
+  v_left  := (to_jsonb(old) ->> v_left_col)::uuid;
+  v_right := (to_jsonb(old) ->> v_right_col)::uuid;
+
+  execute format(
+    'select exists (select 1 from %s b where b.%I = $1 and b.%I = $2 and b.is_current)',
+    v_bridge, v_left_col, v_right_col)
+  into v_bridged
+  using v_left, v_right;
+
+  if not v_bridged then
+    return null;
+  end if;
+
+  -- At COMMIT the whole transaction is visible, so this sees the true end state: any
+  -- replacement recorded anywhere in the transaction counts, and every withdrawal in it
+  -- has already been applied.
+  execute format(
+    'select exists (select 1 from %I.%I s where s.%I = $1 and s.%I = $2 '
+    'and s.is_current '
+    'and s.evidence_kind = ''direct_source_assertion''::core.relationship_evidence_kind)',
+    tg_table_schema, tg_table_name, v_left_col, v_right_col)
+  into v_supported
+  using v_left, v_right;
+
+  if v_supported then
+    return null;
+  end if;
+
+  raise exception
+    'Refused at commit: the canonical edge in % (% = %, % = %) would be left with no current '
+    'direct source assertion in %.%. Every direct assertion behind it was withdrawn or removed '
+    'in this transaction. Record the replacing direct assertion in the same transaction, or '
+    'retire the retained canonical summary in the same transaction.',
+    v_bridge, v_left_col, v_left, v_right_col, v_right,
+    tg_table_schema, tg_table_name
+    using errcode = 'P0001';
+end;
+$function$
+;
+revoke all on function core.assert_canonical_edge_still_supported() from public, anon, authenticated;
+
 create table if not exists core.franchise (
   "id" uuid default gen_random_uuid() not null,
   "licensor_id" uuid not null,
@@ -90,7 +159,6 @@ create table if not exists core.property_franchise_source_edge (
   "created_by" text,
   "updated_by" text
 );
-alter table core.property_franchise_source_edge add constraint "assert_canonical_edge_still_supported" TRIGGER DEFERRABLE INITIALLY DEFERRED;
 alter table core.property_franchise_source_edge add constraint "property_franchise_source_edge_confidence_range" CHECK (((confidence IS NULL) OR ((confidence >= (0)::numeric) AND (confidence <= (1)::numeric))));
 alter table core.property_franchise_source_edge add constraint "property_franchise_source_edge_direct_has_no_confidence" CHECK (((evidence_kind <> 'direct_source_assertion'::core.relationship_evidence_kind) OR ((confidence IS NULL) AND (observation_count = 0))));
 alter table core.property_franchise_source_edge add constraint "property_franchise_source_edge_observation_count_non_negative" CHECK ((observation_count >= 0));
@@ -130,7 +198,6 @@ create table if not exists core.property_character_source_edge (
   "created_by" text,
   "updated_by" text
 );
-alter table core.property_character_source_edge add constraint "assert_canonical_edge_still_supported" TRIGGER DEFERRABLE INITIALLY DEFERRED;
 alter table core.property_character_source_edge add constraint "property_character_source_edge_confidence_range" CHECK (((confidence IS NULL) OR ((confidence >= (0)::numeric) AND (confidence <= (1)::numeric))));
 alter table core.property_character_source_edge add constraint "property_character_source_edge_direct_has_no_confidence" CHECK (((evidence_kind <> 'direct_source_assertion'::core.relationship_evidence_kind) OR ((confidence IS NULL) AND (observation_count = 0))));
 alter table core.property_character_source_edge add constraint "property_character_source_edge_observation_count_non_negative" CHECK ((observation_count >= 0));
@@ -210,7 +277,6 @@ create table if not exists core.property_style_guide_source_edge (
   "created_by" text,
   "updated_by" text
 );
-alter table core.property_style_guide_source_edge add constraint "assert_canonical_edge_still_supported" TRIGGER DEFERRABLE INITIALLY DEFERRED;
 alter table core.property_style_guide_source_edge add constraint "property_style_guide_source_edge_confidence_range" CHECK (((confidence IS NULL) OR ((confidence >= (0)::numeric) AND (confidence <= (1)::numeric))));
 alter table core.property_style_guide_source_edge add constraint "property_style_guide_source_edge_direct_has_no_confidence" CHECK (((evidence_kind <> 'direct_source_assertion'::core.relationship_evidence_kind) OR ((confidence IS NULL) AND (observation_count = 0))));
 alter table core.property_style_guide_source_edge add constraint "property_style_guide_source_edge_observation_count_non_negative" CHECK ((observation_count >= 0));
@@ -250,7 +316,6 @@ create table if not exists core.style_guide_character_source_edge (
   "created_by" text,
   "updated_by" text
 );
-alter table core.style_guide_character_source_edge add constraint "assert_canonical_edge_still_supported" TRIGGER DEFERRABLE INITIALLY DEFERRED;
 alter table core.style_guide_character_source_edge add constraint "style_guide_character_source_edge_confidence_range" CHECK (((confidence IS NULL) OR ((confidence >= (0)::numeric) AND (confidence <= (1)::numeric))));
 alter table core.style_guide_character_source_edge add constraint "style_guide_character_source_edge_direct_has_no_confidence" CHECK (((evidence_kind <> 'direct_source_assertion'::core.relationship_evidence_kind) OR ((confidence IS NULL) AND (observation_count = 0))));
 alter table core.style_guide_character_source_edge add constraint "style_guide_character_source_edge_observation_count_non_negativ" CHECK ((observation_count >= 0));
@@ -355,7 +420,7 @@ create or replace view core.property_character_associations_current with (securi
     retired_at,
     retired_reason
    FROM core.property_character_associations
-  WHERE is_current;;
+  WHERE is_current;
 revoke all on core.property_character_associations_current from public, anon;
 grant select on core.property_character_associations_current to authenticated;
 grant select on core.property_character_associations_current to service_role;
@@ -369,7 +434,7 @@ create or replace view core.property_franchise_current with (security_invoker=tr
     retired_at,
     retired_reason
    FROM core.property_franchise
-  WHERE is_current;;
+  WHERE is_current;
 revoke all on core.property_franchise_current from public, anon;
 grant select on core.property_franchise_current to authenticated;
 grant select on core.property_franchise_current to service_role;
@@ -383,7 +448,7 @@ create or replace view core.property_style_guide_current with (security_invoker=
     retired_at,
     retired_reason
    FROM core.property_style_guide
-  WHERE is_current;;
+  WHERE is_current;
 revoke all on core.property_style_guide_current from public, anon;
 grant select on core.property_style_guide_current to authenticated;
 grant select on core.property_style_guide_current to service_role;
@@ -397,79 +462,11 @@ create or replace view core.style_guide_character_current with (security_invoker
     retired_at,
     retired_reason
    FROM core.style_guide_character
-  WHERE is_current;;
+  WHERE is_current;
 revoke all on core.style_guide_character_current from public, anon;
 grant select on core.style_guide_character_current to authenticated;
 grant select on core.style_guide_character_current to service_role;
 
-CREATE OR REPLACE FUNCTION core.assert_canonical_edge_still_supported()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'pg_temp'
-AS $function$
-declare
-  v_bridge    text := tg_argv[0];   -- fully qualified canonical bridge table
-  v_left_col  text := tg_argv[1];
-  v_right_col text := tg_argv[2];
-  v_left      uuid;
-  v_right     uuid;
-  v_bridged   boolean;
-  v_supported boolean;
-begin
-  -- Only the loss of a current direct assertion can orphan anything.
-  if not (old.is_current and old.evidence_kind = 'direct_source_assertion') then
-    return null;
-  end if;
-
-  if tg_op = 'UPDATE'
-     and new.is_current
-     and new.evidence_kind = 'direct_source_assertion'
-     and (to_jsonb(new) ->> v_left_col) is not distinct from (to_jsonb(old) ->> v_left_col)
-     and (to_jsonb(new) ->> v_right_col) is not distinct from (to_jsonb(old) ->> v_right_col) then
-    return null;
-  end if;
-
-  v_left  := (to_jsonb(old) ->> v_left_col)::uuid;
-  v_right := (to_jsonb(old) ->> v_right_col)::uuid;
-
-  execute format(
-    'select exists (select 1 from %s b where b.%I = $1 and b.%I = $2 and b.is_current)',
-    v_bridge, v_left_col, v_right_col)
-  into v_bridged
-  using v_left, v_right;
-
-  if not v_bridged then
-    return null;
-  end if;
-
-  -- At COMMIT the whole transaction is visible, so this sees the true end state: any
-  -- replacement recorded anywhere in the transaction counts, and every withdrawal in it
-  -- has already been applied.
-  execute format(
-    'select exists (select 1 from %I.%I s where s.%I = $1 and s.%I = $2 '
-    'and s.is_current '
-    'and s.evidence_kind = ''direct_source_assertion''::core.relationship_evidence_kind)',
-    tg_table_schema, tg_table_name, v_left_col, v_right_col)
-  into v_supported
-  using v_left, v_right;
-
-  if v_supported then
-    return null;
-  end if;
-
-  raise exception
-    'Refused at commit: the canonical edge in % (% = %, % = %) would be left with no current '
-    'direct source assertion in %.%. Every direct assertion behind it was withdrawn or removed '
-    'in this transaction. Record the replacing direct assertion in the same transaction, or '
-    'retire the retained canonical summary in the same transaction.',
-    v_bridge, v_left_col, v_left, v_right_col, v_right,
-    tg_table_schema, tg_table_name
-    using errcode = 'P0001';
-end;
-$function$
-;
-revoke all on function core.assert_canonical_edge_still_supported() from public, anon, authenticated;
 CREATE OR REPLACE FUNCTION core.bump_taxonomy_source_ref_last_seen()
  RETURNS trigger
  LANGUAGE plpgsql

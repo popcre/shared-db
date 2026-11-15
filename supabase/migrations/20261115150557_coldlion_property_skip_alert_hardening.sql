@@ -1,3 +1,4 @@
+-- derived-from: 20261115073715
 -- Review finding popcre/shared-db#6322 on #6320 (issue #6194 skipped-licensor alert).
 --
 -- 1. A malformed `active` value in a skipped entry made `(s->>'active')::boolean` throw, and the

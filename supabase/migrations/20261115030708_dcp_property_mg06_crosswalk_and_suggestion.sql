@@ -33,10 +33,24 @@ create table if not exists plm.dcp_property_mg06_crosswalk (
 
 alter table plm.dcp_property_mg06_crosswalk enable row level security;
 
+-- Same role gate as every other plm.dcp_* table (dcp_vault_landing_contracts.sql
+-- section C requires exactly one non-permissive SELECT policy to {authenticated}
+-- with the common role gate).
+create policy dcp_property_mg06_crosswalk_select
+  on plm.dcp_property_mg06_crosswalk
+  for select
+  to authenticated
+  using (
+    app.has_role('administrator'::app.app_role)
+    OR app.has_app_access('plm'::app.app_name)
+    OR app.has_any_role(ARRAY['sales'::app.app_role, 'licensing'::app.app_role])
+  );
+
 -- Read-only suggestion data: only the migration writes to this table.
 -- Revoke UPDATE/DELETE from service_role to satisfy the plm.dcp_* privilege
 -- contract (dcp_vault_landing_contracts.sql section B).
 revoke update, delete on plm.dcp_property_mg06_crosswalk from service_role;
+grant select on plm.dcp_property_mg06_crosswalk to authenticated;
 
 comment on table plm.dcp_property_mg06_crosswalk is
   'DCP film source_id -> Coldlion MG06 mg_code crosswalk (Disney). '

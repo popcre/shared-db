@@ -66,6 +66,14 @@ jobs:
       - name: Select an explicitly enabled exact-index maintenance operation
         id: index_maintenance
         run: python scripts/automatic_index_maintenance.py
+      # #6352: read-only production ledger so already-live changes are not retried.
+      - name: Read the production migration ledger (read-only)
+        if: always() && steps.index_maintenance.outputs.dispatched != 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/write-production-ledger.mjs "$RUNNER_TEMP/production-ledger.json"
       - name: Start the next automatic promotion
         if: always() && steps.index_maintenance.outputs.dispatched != 'true'
+        env:
+          PRODUCTION_LEDGER_FILE: ${{ runner.temp }}/production-ledger.json
         run: python scripts/automatic_promotion_candidates.py

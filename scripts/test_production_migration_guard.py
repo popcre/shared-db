@@ -451,6 +451,7 @@ class GuardTests(unittest.TestCase):
                 "20261113203604",
                 "20261113162637",
                 "20261101212654",
+                "20261113223432",
             },
         )
 
@@ -4740,6 +4741,7 @@ class StrandedRecovery5932RetirementTests(unittest.TestCase):
         "20261101125528": "20261113160920",
         "20261101192220": "20261115022307",
         "20261102012258": "20261113191352",
+        "20261113223432": "20261115033520",
     }
 
     def test_all_six_are_hard_blocked(self):

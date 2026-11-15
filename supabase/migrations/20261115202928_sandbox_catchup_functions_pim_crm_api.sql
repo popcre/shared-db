@@ -1,5 +1,6 @@
 -- #6356 sandbox catch-up batch 9: DesignFlow sandbox (xupnyeifmpsacrqahwwm) ONLY. Never apply to shared preview or production.
 -- Ports missing and changed api, app, core, crm, dflow, pim and plm functions from production (functions touching dflow_prod, dam-only or claimed by other work are deferred).
+-- Grants to production-only runtime logins (designflow_prod_backend_runtime, pm_jev_triage_worker) are not ported: those roles do not exist on the sandbox.
 -- derived-from: none
 
 set check_function_bodies = off;
@@ -4142,7 +4143,6 @@ end;
 $function$
 ;
 revoke all on function api.dflow_admin_access_history(p_actor_profile_id uuid, p_limit integer) from public, anon, authenticated;
-grant execute on function api.dflow_admin_access_history(p_actor_profile_id uuid, p_limit integer) to designflow_prod_backend_runtime;
 CREATE OR REPLACE FUNCTION api.dflow_admin_actor_profile_id(p_email text)
  RETURNS uuid
  LANGUAGE sql
@@ -4158,7 +4158,6 @@ AS $function$
 $function$
 ;
 revoke all on function api.dflow_admin_actor_profile_id(p_email text) from public, anon, authenticated;
-grant execute on function api.dflow_admin_actor_profile_id(p_email text) to designflow_prod_backend_runtime;
 CREATE OR REPLACE FUNCTION api.dflow_admin_role_list(p_actor_profile_id uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -4183,7 +4182,6 @@ end;
 $function$
 ;
 revoke all on function api.dflow_admin_role_list(p_actor_profile_id uuid) from public, anon, authenticated;
-grant execute on function api.dflow_admin_role_list(p_actor_profile_id uuid) to designflow_prod_backend_runtime;
 CREATE OR REPLACE FUNCTION api.dflow_admin_set_app_access(p_actor_profile_id uuid, p_profile_id uuid, p_app text, p_enabled boolean)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -4208,7 +4206,6 @@ end;
 $function$
 ;
 revoke all on function api.dflow_admin_set_app_access(p_actor_profile_id uuid, p_profile_id uuid, p_app text, p_enabled boolean) from public, anon, authenticated;
-grant execute on function api.dflow_admin_set_app_access(p_actor_profile_id uuid, p_profile_id uuid, p_app text, p_enabled boolean) to designflow_prod_backend_runtime;
 CREATE OR REPLACE FUNCTION api.dflow_admin_set_user_roles(p_actor_profile_id uuid, p_profile_id uuid, p_roles text[])
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -4233,7 +4230,6 @@ end;
 $function$
 ;
 revoke all on function api.dflow_admin_set_user_roles(p_actor_profile_id uuid, p_profile_id uuid, p_roles text[]) from public, anon, authenticated;
-grant execute on function api.dflow_admin_set_user_roles(p_actor_profile_id uuid, p_profile_id uuid, p_roles text[]) to designflow_prod_backend_runtime;
 CREATE OR REPLACE FUNCTION api.dflow_admin_set_user_status(p_actor_profile_id uuid, p_profile_id uuid, p_status text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -4258,7 +4254,6 @@ end;
 $function$
 ;
 revoke all on function api.dflow_admin_set_user_status(p_actor_profile_id uuid, p_profile_id uuid, p_status text) from public, anon, authenticated;
-grant execute on function api.dflow_admin_set_user_status(p_actor_profile_id uuid, p_profile_id uuid, p_status text) to designflow_prod_backend_runtime;
 CREATE OR REPLACE FUNCTION api.dflow_admin_user_directory(p_actor_profile_id uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -4283,7 +4278,6 @@ end;
 $function$
 ;
 revoke all on function api.dflow_admin_user_directory(p_actor_profile_id uuid) from public, anon, authenticated;
-grant execute on function api.dflow_admin_user_directory(p_actor_profile_id uuid) to designflow_prod_backend_runtime;
 CREATE OR REPLACE FUNCTION api.mg06_site_path(p_property_id uuid, p_licensor_site text)
  RETURNS TABLE(site_property_name text, site_property_id text, site_character_name text, site_character_id text)
  LANGUAGE sql
@@ -6510,7 +6504,6 @@ begin
 end $function$
 ;
 revoke all on function pim.pm_complete_activity_triage_worker(p_triage_id uuid, p_lease_token_hash text, p_action_label text, p_result_payload jsonb, p_usage_payload jsonb, p_error_code text) from public, anon, authenticated;
-grant execute on function pim.pm_complete_activity_triage_worker(p_triage_id uuid, p_lease_token_hash text, p_action_label text, p_result_payload jsonb, p_usage_payload jsonb, p_error_code text) to pm_jev_triage_worker;
 CREATE OR REPLACE FUNCTION pim.pm_fail_activity_triage_worker(p_triage_id uuid, p_lease_token_hash text, p_error_code text)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -6563,7 +6556,6 @@ begin
 end $function$
 ;
 revoke all on function pim.pm_fail_activity_triage_worker(p_triage_id uuid, p_lease_token_hash text, p_error_code text) from public, anon, authenticated;
-grant execute on function pim.pm_fail_activity_triage_worker(p_triage_id uuid, p_lease_token_hash text, p_error_code text) to pm_jev_triage_worker;
 CREATE OR REPLACE FUNCTION pim.pm_jev_require_admin_pm_writer()
  RETURNS uuid
  LANGUAGE plpgsql
@@ -6593,7 +6585,6 @@ begin
 end $function$
 ;
 revoke all on function pim.pm_jev_require_admin_pm_writer() from public, anon, authenticated;
-grant execute on function pim.pm_jev_require_admin_pm_writer() to pm_jev_triage_worker;
 CREATE OR REPLACE FUNCTION pim.pm_jev_source_changed_trg_fn()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -6649,7 +6640,6 @@ begin
 end $function$
 ;
 revoke all on function pim.pm_validate_comment_body(p_body text) from public, anon, authenticated;
-grant execute on function pim.pm_validate_comment_body(p_body text) to pm_jev_triage_worker;
 CREATE OR REPLACE FUNCTION pim.pm_verify_jev_hmac_envelope(p_envelope jsonb, p_signature text)
  RETURNS boolean
  LANGUAGE plpgsql
@@ -6730,7 +6720,6 @@ begin
 end $function$
 ;
 revoke all on function pim.pm_verify_jev_hmac_envelope(p_envelope jsonb, p_signature text) from public, anon, authenticated;
-grant execute on function pim.pm_verify_jev_hmac_envelope(p_envelope jsonb, p_signature text) to pm_jev_triage_worker;
 CREATE OR REPLACE FUNCTION plm.alert_coldlion_property_skips(p_run_id bigint)
  RETURNS uuid
  LANGUAGE plpgsql

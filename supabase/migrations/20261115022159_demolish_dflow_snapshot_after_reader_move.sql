@@ -8,6 +8,7 @@
 -- both - the view body is byte-identical except the RFQ source now reads the live
 -- app schema dflow_prod - then demolishes the snapshot behind a live dependent
 -- guard (TOAST/pg_temp excluded; they travel with their parents under CASCADE).
+-- derived-from: 20261029162652
 -- Backup: gs://designflow-storage/backups/dflow-stale-cleanup-2026-11-12/prod_dflow_full_schema.dump
 -- (53 MB, pg_restore --list verified).
 
@@ -153,3 +154,4 @@ end
 $guard$;
 
 drop schema if exists dflow cascade;
+

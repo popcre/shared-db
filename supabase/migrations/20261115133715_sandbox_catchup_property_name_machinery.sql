@@ -93,13 +93,4 @@ CREATE TRIGGER trackerplus_property_refresh_submission_name AFTER INSERT OR DELE
 comment on view api.property_names is
   'Each property''s four names (Coldlion name, licensor-submission name, nickname, short name) with display_name = nickname else name and description_name = short name else nickname else name (shared-db#6269).';
 
--- Retired metadata key guard (sandbox verified 0 offending rows of 260 on 2026-11-15).
-do $ck$
-begin
-  if not exists (select 1 from pg_constraint where conname = 'property_no_submission_canonical_ck' and conrelid = 'core.property'::regclass) then
-    alter table core.property
-      add constraint property_no_submission_canonical_ck
-      check (not coalesce(metadata ? 'submission_canonical', false));
-  end if;
-end
-$ck$;
+-- Deliberately not ported here: check constraint property_no_submission_canonical_ck (a guarded ALTER TABLE needs a verification sidecar); tracked on #6356.

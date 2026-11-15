@@ -1,4 +1,5 @@
 -- Version: 20261115151957
+-- derived-from: 20261115132055
 -- Fix-forward for review finding #6276 on PR #6275.
 --
 -- 1. Function reads plm.coldlion_item_merch_group (consumer view) instead of

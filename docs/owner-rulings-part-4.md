@@ -162,5 +162,5 @@ Verbatim Albert, 2026-11-14, after being shown that the OPA submissions site scr
 **Effect.**
 - The submissions site scrape is the identity source of truth. It lists OPA 640 and OPA 1107 as separate properties, so they ARE separate shared properties — the one-property X-Men half of 6.38 is dropped. The Mickey half of 6.38 (Mickey Mouse, Minnie & Me and Standard Characters are three separate properties) stands unchanged; the scrape agrees with it.
 - Each OPA entry keeps its exact site spelling as its licensor-submission name. Never rename a shared `core.property` row to a different OPA entry's name (that is the error 20261113041225 made).
-- The #2541 placement repair on shared-db#6209 creates the missing records and re-points the links accordingly (migration `20261115030805`).
+- The #2541 placement repair on shared-db#6209 creates the missing records and re-points the links accordingly (migration `20261115041745`).
 - Also authorized 2026-11-14: file the GitHub Support request to purge the 15 GitHub-locked ghost workflow runs from the 2026-11-11 wedge (issue #6215).

@@ -28,7 +28,7 @@
 
 do $fix_forward_6209$
 declare
-  v_actor constant text := 'shared-db migration 20261115030805';
+  v_actor constant text := 'shared-db migration 20261115041745';
   v_reason constant text := '#2541 corrected fix-forward (issue #6209)';
   v_lic_dy uuid;
   v_lic_mv uuid;
@@ -137,7 +137,7 @@ begin
     insert into core.property(licensor_id,name,code,status,metadata,submission_source,submission_property_id)
     values (v_lic372, v_name372, null, 'potential',
       jsonb_build_object('curated',true,'import_owned',false,'authorising_issue',2541,
-        'owner_instruction_date','2026-11-14','migration','20261115030805',
+        'owner_instruction_date','2026-11-14','migration','20261115041745',
         'curated_source',jsonb_build_object('source_system','disney_opa','source_table','plm.opa_property',
           'licensed_property_id','372','studio_code',v_studio372)),
       'disney_opa','372')
@@ -156,7 +156,7 @@ begin
     insert into core.property(licensor_id,name,code,status,metadata,submission_source,submission_property_id)
     values (v_lic640, v_name640, null, 'potential',
       jsonb_build_object('curated',true,'import_owned',false,'authorising_issue',2541,
-        'owner_instruction_date','2026-11-14','migration','20261115030805',
+        'owner_instruction_date','2026-11-14','migration','20261115041745',
         'curated_source',jsonb_build_object('source_system','disney_opa','source_table','plm.opa_property',
           'licensed_property_id','640','studio_code',v_studio640)),
       'disney_opa','640')
@@ -170,13 +170,13 @@ begin
   -- update-or-insert so every OPA id resolves to its own property row.
   insert into core.taxonomy_source_ref(entity_schema,entity_table,entity_id,source_system,source_table,source_id,source_code,source_name,confidence,raw)
   values ('core','property',v_mm_row,'disney_opa','plm.opa_property','361',null,v_name361,'verified',
-          jsonb_build_object('authorising_issue',2541,'identity_method','opa_licensed_property_id','owner_ruling','2026-11-14','migration','20261115030805')),
+          jsonb_build_object('authorising_issue',2541,'identity_method','opa_licensed_property_id','owner_ruling','2026-11-14','migration','20261115041745')),
          ('core','property',v_mm_new,'disney_opa','plm.opa_property','372',null,v_name372,'verified',
-          jsonb_build_object('authorising_issue',2541,'identity_method','opa_licensed_property_id','owner_ruling','2026-11-14','migration','20261115030805')),
+          jsonb_build_object('authorising_issue',2541,'identity_method','opa_licensed_property_id','owner_ruling','2026-11-14','migration','20261115041745')),
          ('core','property',v_xm_new,'disney_opa','plm.opa_property','640',null,v_name640,'verified',
-          jsonb_build_object('authorising_issue',2541,'identity_method','opa_licensed_property_id','owner_ruling','2026-11-14','migration','20261115030805')),
+          jsonb_build_object('authorising_issue',2541,'identity_method','opa_licensed_property_id','owner_ruling','2026-11-14','migration','20261115041745')),
          ('core','property',v_xm_row,'disney_opa','plm.opa_property','1107',null,v_name1107,'verified',
-          jsonb_build_object('authorising_issue',2541,'identity_method','opa_licensed_property_id','owner_ruling','2026-11-14','migration','20261115030805'))
+          jsonb_build_object('authorising_issue',2541,'identity_method','opa_licensed_property_id','owner_ruling','2026-11-14','migration','20261115041745'))
   on conflict (source_system, source_table, source_id)
   do update set entity_id = excluded.entity_id,
                 source_name = excluded.source_name,

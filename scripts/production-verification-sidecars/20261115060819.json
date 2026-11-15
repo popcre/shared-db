@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "migration_version": "20261115060819",
+  "migration_sha256": "3344a1a415ea768d71d4b4ee76e8b9686d7338291aaa79462c6079a3f9486b04",
+  "checks": [
+    {
+      "id": "dflow_art_piece_mg_fks_dflow_prod",
+      "kind": "catalog_contract",
+      "contract": "dflow_art_piece_mg_fks_dflow_prod_v1",
+      "expected_count": 1
+    }
+  ]
+}

@@ -1,9 +1,9 @@
--- Version: 20261115151957
+-- Version: 20261115172551
 -- Fix-forward for review finding #6276 on PR #6275.
 --
 -- 1. Function reads plm.coldlion_item_merch_group (consumer view) instead of
---    coldlion.item_merch_group (RLS-gated base table).  Authenticated callers
---    were seeing zero rows from the base table and always getting empty results.
+--    coldlion.item_merch_group (restricted base table). Under repo-defined
+--    grants, authenticated callers lack schema USAGE and receive SQLSTATE 42501.
 -- 2. Suggestion mapped CTE now filters to confidence='exact' only.  The
 --    needs_review row (lion-king-the-umbrella) and strong_candidate row
 --    (lilo-and-stitch-umbrella) were returned identically to exact rows.
@@ -45,6 +45,7 @@ dcp_match as (
   and exists (
     select 1 from plm.coldlion_item_merch_group img
     where img.item_no = p_sku
+      and img.item_pkey is not null -- Component scope only; never inherit header MG05 (D16).
       and img.slot_no = 5
       and img.mg_code in ('DY','DS')
   )

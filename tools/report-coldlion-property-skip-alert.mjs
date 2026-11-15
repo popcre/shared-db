@@ -2,7 +2,7 @@
 // Delivery leg for the #6194 skipped-licensor alert.
 //
 // plm.sync_core_property_from_coldlion skips active ColdLion MG06 values whose licensor it
-// cannot resolve (it never guesses). The trigger from migration 20261115015616 records each new
+// cannot resolve (it never guesses). The trigger from migration 20261115033518 records each new
 // set of such codes as an unacknowledged 'warning' in plm.taxonomy_sync_alert
 // (source 'coldlion_core_property_sync'). This script reads those rows (one plain SELECT) and
 // prints an issue plan. The workflow opens ONE issue per code set; while an open issue already

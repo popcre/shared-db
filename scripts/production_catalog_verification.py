@@ -6126,6 +6126,18 @@ not exists (
 )
 """
 
+# Claim #6345 (designflow-item-master#205 3.2), migration 20261115061043. The
+# stale core."merchGroup" / "merchGroupHeaders" are gone under their own names
+# and survive (never dropped) as core."*_retired_<YYYYMMDD>" ordinary tables.
+CATALOG_CONTRACTS["core_merch_group_prod_retired_v1"] = (
+    "to_regclass('core.\"merchGroup\"') is null"
+    " and to_regclass('core.\"merchGroupHeaders\"') is null"
+    " and exists (select 1 from pg_class c where c.relnamespace='core'::regnamespace and c.relkind='r'"
+    " and c.relname ~ '^merchGroup_retired_[0-9]{8}$')"
+    " and exists (select 1 from pg_class c where c.relnamespace='core'::regnamespace and c.relkind='r'"
+    " and c.relname ~ '^merchGroupHeaders_retired_[0-9]{8}$')"
+)
+
 if __name__ == "__main__":
     raise SystemExit(main())
 

@@ -19,69 +19,157 @@
 -- dflow_prod."merchGroup" holds no row (unseeded preview, fresh database) the
 -- orphan refusal and VALIDATE are skipped, so the keys stay NOT VALID there;
 -- new rows are still checked. A key already on dflow_prod is left alone
--- (re-apply is a no-op); a missing table is skipped.
+-- (re-apply is a no-op). Statements are static (no dynamic SQL).
 -- Rollback: drop each constraint and re-add it referencing core."merchGroup"(mg_id).
 
 begin;
 set local lock_timeout = '5s';
 set local statement_timeout = '5min';
 
-do $repoint$
+do $check$
 declare
-  k record;
   n bigint;
-  parent_empty boolean;
-  target oid;
 begin
-  if to_regclass('dflow_prod."merchGroup"') is null then
-    raise exception '#6343/20261115060819 self-check: dflow_prod."merchGroup" is missing; production-shape migration only'
+  if to_regclass('dflow_prod."merchGroup"') is null
+     or to_regclass('dflow.art_piece') is null or to_regclass('dflow.artists') is null then
+    raise exception '#6343/20261115060819 self-check: dflow_prod."merchGroup", dflow.art_piece or dflow.artists missing; production-shape migration only'
       using errcode = 'feature_not_supported';
   end if;
-  target := 'dflow_prod."merchGroup"'::regclass;
-  parent_empty := not exists (select 1 from dflow_prod."merchGroup");
+  if not exists (select 1 from dflow_prod."merchGroup") then
+    raise notice '#6343/20261115060819: dflow_prod."merchGroup" is empty (unseeded preview or fresh database); keys will be NOT VALID, orphan check skipped';
+    return;
+  end if;
+  select count(*) into n from (
+    select 1 from dflow.art_piece t where t.age_group_id is not null and not exists (select 1 from dflow_prod."merchGroup" m where m.mg_id = t.age_group_id)
+    union all
+    select 1 from dflow.art_piece t where t.art_source_id is not null and not exists (select 1 from dflow_prod."merchGroup" m where m.mg_id = t.art_source_id)
+    union all
+    select 1 from dflow.art_piece t where t.art_type_id is not null and not exists (select 1 from dflow_prod."merchGroup" m where m.mg_id = t.art_type_id)
+    union all
+    select 1 from dflow.art_piece t where t.artist_id is not null and not exists (select 1 from dflow_prod."merchGroup" m where m.mg_id = t.artist_id)
+    union all
+    select 1 from dflow.art_piece t where t.big_theme_id is not null and not exists (select 1 from dflow_prod."merchGroup" m where m.mg_id = t.big_theme_id)
+    union all
+    select 1 from dflow.art_piece t where t.licensor_id is not null and not exists (select 1 from dflow_prod."merchGroup" m where m.mg_id = t.licensor_id)
+    union all
+    select 1 from dflow.art_piece t where t.little_theme_id is not null and not exists (select 1 from dflow_prod."merchGroup" m where m.mg_id = t.little_theme_id)
+    union all
+    select 1 from dflow.art_piece t where t.property_id is not null and not exists (select 1 from dflow_prod."merchGroup" m where m.mg_id = t.property_id)
+    union all
+    select 1 from dflow.art_piece t where t.style_guide_id is not null and not exists (select 1 from dflow_prod."merchGroup" m where m.mg_id = t.style_guide_id)
+    union all
+    select 1 from dflow.artists t where t.art_source_id is not null and not exists (select 1 from dflow_prod."merchGroup" m where m.mg_id = t.art_source_id)) o;
+  if n <> 0 then
+    raise exception '#6343/20261115060819: % art_piece/artists values are absent from dflow_prod."merchGroup"; refuse (nothing deleted)', n
+      using errcode = 'foreign_key_violation';
+  end if;
+end
+$check$;
 
-  for k in
-    select * from (values
-      ('art_piece', 'age_group_id',    'art_piece_age_group_id_fkey'),
-      ('art_piece', 'art_source_id',   'art_piece_art_source_id_fkey'),
-      ('art_piece', 'art_type_id',     'art_piece_art_type_id_fkey'),
-      ('art_piece', 'artist_id',       'art_piece_artist_id_fkey'),
-      ('art_piece', 'big_theme_id',    'art_piece_big_theme_id_fkey'),
-      ('art_piece', 'licensor_id',     'art_piece_licensor_id_fkey'),
-      ('art_piece', 'little_theme_id', 'art_piece_little_theme_id_fkey'),
-      ('art_piece', 'property_id',     'art_piece_property_id_fkey'),
-      ('art_piece', 'style_guide_id',  'art_piece_style_guide_id_fkey'),
-      ('artists',   'art_source_id',   'artists_art_source_id_fkey')
-    ) v(tbl, col, con)
-  loop
-    if to_regclass(format('dflow.%I', k.tbl)) is null then
-      raise notice '#6343: dflow.% absent here; skipped', k.tbl;
-      continue;
-    end if;
-    if exists (select 1 from pg_constraint
-               where conrelid = format('dflow.%I', k.tbl)::regclass
-                 and conname = k.con and confrelid = target) then
-      continue;
-    end if;
-    if not parent_empty then
-      execute format(
-        'select count(*) from dflow.%I t where t.%I is not null and not exists (select 1 from dflow_prod."merchGroup" m where m.mg_id = t.%I)',
-        k.tbl, k.col, k.col) into n;
-      if n <> 0 then
-        raise exception '#6343/20261115060819: % dflow.%.% values are absent from dflow_prod."merchGroup"; refuse (nothing deleted)', n, k.tbl, k.col
-          using errcode = 'foreign_key_violation';
-      end if;
-    end if;
-    execute format('alter table dflow.%I drop constraint if exists %I', k.tbl, k.con);
-    execute format(
-      'alter table dflow.%I add constraint %I foreign key (%I) references dflow_prod."merchGroup"(mg_id) on update no action on delete no action not valid',
-      k.tbl, k.con, k.col);
-    if parent_empty then
-      raise notice '#6343: dflow_prod."merchGroup" is empty; % left NOT VALID', k.con;
-    else
-      execute format('alter table dflow.%I validate constraint %I', k.tbl, k.con);
-    end if;
-  end loop;
+do $repoint$
+declare
+  parent_empty boolean := not exists (select 1 from dflow_prod."merchGroup");
+begin
+  if not exists (select 1 from pg_constraint where conrelid = 'dflow.art_piece'::regclass
+                 and conname = 'art_piece_age_group_id_fkey' and confrelid = 'dflow_prod."merchGroup"'::regclass) then
+    alter table dflow.art_piece drop constraint if exists art_piece_age_group_id_fkey;
+    alter table dflow.art_piece add constraint art_piece_age_group_id_fkey
+      foreign key (age_group_id) references dflow_prod."merchGroup"(mg_id)
+      on update no action on delete no action not valid;
+  end if;
+  if not parent_empty then
+    alter table dflow.art_piece validate constraint art_piece_age_group_id_fkey;
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid = 'dflow.art_piece'::regclass
+                 and conname = 'art_piece_art_source_id_fkey' and confrelid = 'dflow_prod."merchGroup"'::regclass) then
+    alter table dflow.art_piece drop constraint if exists art_piece_art_source_id_fkey;
+    alter table dflow.art_piece add constraint art_piece_art_source_id_fkey
+      foreign key (art_source_id) references dflow_prod."merchGroup"(mg_id)
+      on update no action on delete no action not valid;
+  end if;
+  if not parent_empty then
+    alter table dflow.art_piece validate constraint art_piece_art_source_id_fkey;
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid = 'dflow.art_piece'::regclass
+                 and conname = 'art_piece_art_type_id_fkey' and confrelid = 'dflow_prod."merchGroup"'::regclass) then
+    alter table dflow.art_piece drop constraint if exists art_piece_art_type_id_fkey;
+    alter table dflow.art_piece add constraint art_piece_art_type_id_fkey
+      foreign key (art_type_id) references dflow_prod."merchGroup"(mg_id)
+      on update no action on delete no action not valid;
+  end if;
+  if not parent_empty then
+    alter table dflow.art_piece validate constraint art_piece_art_type_id_fkey;
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid = 'dflow.art_piece'::regclass
+                 and conname = 'art_piece_artist_id_fkey' and confrelid = 'dflow_prod."merchGroup"'::regclass) then
+    alter table dflow.art_piece drop constraint if exists art_piece_artist_id_fkey;
+    alter table dflow.art_piece add constraint art_piece_artist_id_fkey
+      foreign key (artist_id) references dflow_prod."merchGroup"(mg_id)
+      on update no action on delete no action not valid;
+  end if;
+  if not parent_empty then
+    alter table dflow.art_piece validate constraint art_piece_artist_id_fkey;
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid = 'dflow.art_piece'::regclass
+                 and conname = 'art_piece_big_theme_id_fkey' and confrelid = 'dflow_prod."merchGroup"'::regclass) then
+    alter table dflow.art_piece drop constraint if exists art_piece_big_theme_id_fkey;
+    alter table dflow.art_piece add constraint art_piece_big_theme_id_fkey
+      foreign key (big_theme_id) references dflow_prod."merchGroup"(mg_id)
+      on update no action on delete no action not valid;
+  end if;
+  if not parent_empty then
+    alter table dflow.art_piece validate constraint art_piece_big_theme_id_fkey;
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid = 'dflow.art_piece'::regclass
+                 and conname = 'art_piece_licensor_id_fkey' and confrelid = 'dflow_prod."merchGroup"'::regclass) then
+    alter table dflow.art_piece drop constraint if exists art_piece_licensor_id_fkey;
+    alter table dflow.art_piece add constraint art_piece_licensor_id_fkey
+      foreign key (licensor_id) references dflow_prod."merchGroup"(mg_id)
+      on update no action on delete no action not valid;
+  end if;
+  if not parent_empty then
+    alter table dflow.art_piece validate constraint art_piece_licensor_id_fkey;
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid = 'dflow.art_piece'::regclass
+                 and conname = 'art_piece_little_theme_id_fkey' and confrelid = 'dflow_prod."merchGroup"'::regclass) then
+    alter table dflow.art_piece drop constraint if exists art_piece_little_theme_id_fkey;
+    alter table dflow.art_piece add constraint art_piece_little_theme_id_fkey
+      foreign key (little_theme_id) references dflow_prod."merchGroup"(mg_id)
+      on update no action on delete no action not valid;
+  end if;
+  if not parent_empty then
+    alter table dflow.art_piece validate constraint art_piece_little_theme_id_fkey;
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid = 'dflow.art_piece'::regclass
+                 and conname = 'art_piece_property_id_fkey' and confrelid = 'dflow_prod."merchGroup"'::regclass) then
+    alter table dflow.art_piece drop constraint if exists art_piece_property_id_fkey;
+    alter table dflow.art_piece add constraint art_piece_property_id_fkey
+      foreign key (property_id) references dflow_prod."merchGroup"(mg_id)
+      on update no action on delete no action not valid;
+  end if;
+  if not parent_empty then
+    alter table dflow.art_piece validate constraint art_piece_property_id_fkey;
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid = 'dflow.art_piece'::regclass
+                 and conname = 'art_piece_style_guide_id_fkey' and confrelid = 'dflow_prod."merchGroup"'::regclass) then
+    alter table dflow.art_piece drop constraint if exists art_piece_style_guide_id_fkey;
+    alter table dflow.art_piece add constraint art_piece_style_guide_id_fkey
+      foreign key (style_guide_id) references dflow_prod."merchGroup"(mg_id)
+      on update no action on delete no action not valid;
+  end if;
+  if not parent_empty then
+    alter table dflow.art_piece validate constraint art_piece_style_guide_id_fkey;
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid = 'dflow.artists'::regclass
+                 and conname = 'artists_art_source_id_fkey' and confrelid = 'dflow_prod."merchGroup"'::regclass) then
+    alter table dflow.artists drop constraint if exists artists_art_source_id_fkey;
+    alter table dflow.artists add constraint artists_art_source_id_fkey
+      foreign key (art_source_id) references dflow_prod."merchGroup"(mg_id)
+      on update no action on delete no action not valid;
+  end if;
+  if not parent_empty then
+    alter table dflow.artists validate constraint artists_art_source_id_fkey;
+  end if;
 end
 $repoint$;
 

@@ -288,3 +288,13 @@ create policy "pmt_trackerplus_submission_property_staff_read" on plm."pmt_track
 comment on table plm."pmt_trackerplus_submission_property" is 'Paramount TrackerPlus submission Property vocabulary for one capture. property_local_key is the deterministic SHA-256 of the exact UTF-8 label (identity_method exact-label-sha256) because the authenticated submission picker exposes no stable portal record ID. It is a source-local key only: it is never a Paramount source ID, is never resolved against plm.pmt_property, and no fabricated portal identifier may be stored on these rows.';
 alter table plm."pmt_trackerplus_submission_property" add constraint "pmt_trackerplus_submission_property_capture_id_fkey" FOREIGN KEY (capture_id) REFERENCES plm.pmt_trackerplus_submission_capture(id);
 
+revoke all on plm.pmt_trackerplus_submission_capture,
+  plm.pmt_trackerplus_submission_property from public, anon;
+grant select on plm.pmt_trackerplus_submission_capture,
+  plm.pmt_trackerplus_submission_property to authenticated;
+grant select, insert on plm.pmt_trackerplus_submission_capture,
+  plm.pmt_trackerplus_submission_property to service_role;
+revoke update, delete, truncate on plm.pmt_trackerplus_submission_capture,
+  plm.pmt_trackerplus_submission_property from service_role, authenticated;
+revoke insert on plm.pmt_trackerplus_submission_capture,
+  plm.pmt_trackerplus_submission_property from authenticated;

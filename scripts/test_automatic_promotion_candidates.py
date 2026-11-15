@@ -1820,10 +1820,6 @@ class AdversarialRunIdentity(unittest.TestCase):
         self.assertEqual(m.decide([self.pr], [before] * 3, lambda n: [], main_sha="x")[0], "dispatch")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class ProductionLedgerIsFinal(unittest.TestCase):
     # #6352: changes already in the production ledger were retried for hours.
     def test_a_change_already_in_the_ledger_is_skipped(self):
@@ -1856,3 +1852,34 @@ class ProductionLedgerIsFinal(unittest.TestCase):
             with open(p, "w") as fh:
                 fh.write("not json")
             self.assertIsNone(m.production_ledger(p))
+
+
+    def test_live_base_releases_child_without_run_evidence(self):
+        base = {"number": 7, "merged_at": "2026-01-01", "versions": ["1"]}
+        child = {"number": 8, "merged_at": "2026-01-02", "versions": ["2"],
+                 "production_dependencies": {"1": 7}}
+        action, got, _ = m.decide([base, child], [], lambda n: [], live={"1"})
+        self.assertEqual((action, got["number"]), ("dispatch", 8))
+
+    def test_each_dependency_requires_production_evidence(self):
+        child = {"number": 8, "merged_at": "2026-01-02", "versions": ["3"],
+                 "production_dependencies": {"1": 6, "2": 7}}
+        for live in (None, set(), {"1"}):
+            with self.subTest(live=live):
+                skipped = []
+                action, _, _ = m.decide([child], [], lambda n: [], live=live, skipped=skipped)
+                self.assertEqual(action, "idle")
+                expected = {"2": 7} if live else {"1": 6, "2": 7}
+                self.assertEqual(skipped[0]["pending_dependencies"], expected)
+
+    def test_ledger_and_run_evidence_can_prove_different_bases(self):
+        child = {"number": 8, "merged_at": "2026-01-02", "versions": ["3"],
+                 "production_dependencies": {"20260101000000": 6, "20260102000000": 7}}
+        run = {"display_title": "DB production apply abc PR7 20260102000000",
+               "status": "completed", "conclusion": "success"}
+        action, got, _ = m.decide([child], [run], lambda n: [], live={"20260101000000"})
+        self.assertEqual((action, got["number"]), ("dispatch", 8))
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,9 +1,37 @@
 -- #6356 sandbox catch-up batch 6: DesignFlow sandbox (xupnyeifmpsacrqahwwm) ONLY. Never apply to shared preview or production.
 -- Ports NBCU, Peanuts and WildBrain lifecycle tables, Sesame property options and their publish functions from production.
+-- Shape and functions only: option-table seed rows are deliberately not copied.
+-- Fresh option tables stay empty until the owning application loads authorized source data (#6356).
 -- derived-from: none
 
 set check_function_bodies = off;
 
+create table if not exists plm.nbcu_lifecycle_publication (
+  "published_capture_id" uuid not null,
+  "baseline_capture_id" uuid,
+  "mode" text not null,
+  "derivation_contract" text not null,
+  "scope_sha256" text not null,
+  "source_captured_at" timestamp with time zone not null,
+  "counts" jsonb default '{}'::jsonb not null,
+  "published_at" timestamp with time zone default now() not null,
+  constraint "nbcu_lifecycle_publication_baseline_chk" CHECK ((((mode = 'bootstrap'::text) = (baseline_capture_id IS NULL)) AND ((baseline_capture_id IS NULL) OR (baseline_capture_id <> published_capture_id)))),
+  constraint "nbcu_lifecycle_publication_contract_chk" CHECK ((btrim(derivation_contract) <> ''::text)),
+  constraint "nbcu_lifecycle_publication_counts_chk" CHECK ((jsonb_typeof(counts) = 'object'::text)),
+  constraint "nbcu_lifecycle_publication_mode_chk" CHECK ((mode = ANY (ARRAY['bootstrap'::text, 'comparable'::text, 'rebaseline'::text, 'withdrawal_held'::text]))),
+  constraint "nbcu_lifecycle_publication_pkey" PRIMARY KEY (published_capture_id),
+  constraint "nbcu_lifecycle_publication_scope_chk" CHECK ((scope_sha256 ~ '^[0-9a-f]{64}$'::text)),
+  constraint "nbcu_lifecycle_publication_baseline_capture_id_fkey" FOREIGN KEY (baseline_capture_id) REFERENCES plm.nbcu_lifecycle_publication(published_capture_id) ON DELETE RESTRICT,
+  constraint "nbcu_lifecycle_publication_published_capture_id_fkey" FOREIGN KEY (published_capture_id) REFERENCES plm.nbcu_capture(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS nbcu_lifecycle_publication_baseline_idx ON plm.nbcu_lifecycle_publication USING btree (baseline_capture_id) WHERE (baseline_capture_id IS NOT NULL);
+CREATE INDEX IF NOT EXISTS nbcu_lifecycle_publication_latest_idx ON plm.nbcu_lifecycle_publication USING btree (source_captured_at DESC, published_at DESC);
+alter table plm.nbcu_lifecycle_publication enable row level security;
+revoke all on table plm.nbcu_lifecycle_publication from public, anon, authenticated, service_role;
+grant select on table plm.nbcu_lifecycle_publication to authenticated, service_role;
+drop policy if exists "nbcu_lifecycle_publication_plm_read" on plm.nbcu_lifecycle_publication;
+create policy "nbcu_lifecycle_publication_plm_read" on plm.nbcu_lifecycle_publication as permissive for select to authenticated using ((app.has_app_access('plm'::app.app_name) OR app.has_role('administrator'::app.app_role) OR app.has_any_role(ARRAY['sales'::app.app_role, 'licensing'::app.app_role])));
+comment on table plm.nbcu_lifecycle_publication is 'One row per NBCU capture published into durable entity state (#3683). Its key is published_capture_id, deliberately not capture_id: api.source_capture_inventory treats an nbcu_ table with a capture_id column as a latest-complete capture snapshot, and this mutable ledger must be reported as retained rows only. mode records whether withdrawals were compared (comparable), skipped because the licensed scope set or derivation contract differed (rebaseline), or held by the bulk-drop guard.';
 create table if not exists plm.nbcu_entity_lifecycle (
   "entity_kind" text not null,
   "entity_key" text not null,
@@ -17,23 +45,30 @@ create table if not exists plm.nbcu_entity_lifecycle (
   "status" text default 'active'::text not null,
   "withdrawn_at" timestamp with time zone,
   "first_withdrawn_at" timestamp with time zone,
-  "withdrawn_capture_id" uuid
+  "withdrawn_capture_id" uuid,
+  constraint "nbcu_entity_lifecycle_basis_chk" CHECK ((identity_basis = ANY (ARRAY['dam_path'::text, 'source_id'::text, 'label_sha256'::text, 'id_fallback'::text, 'folder_path'::text]))),
+  constraint "nbcu_entity_lifecycle_history_chk" CHECK ((((withdrawn_at IS NULL) OR (first_withdrawn_at IS NOT NULL)) AND ((first_withdrawn_at IS NULL) OR (withdrawn_at IS NULL) OR (first_withdrawn_at <= withdrawn_at)) AND (first_seen_at <= last_seen_at))),
+  constraint "nbcu_entity_lifecycle_key_chk" CHECK ((btrim(entity_key) <> ''::text)),
+  constraint "nbcu_entity_lifecycle_kind_chk" CHECK ((entity_kind = ANY (ARRAY['asset'::text, 'property'::text, 'character'::text, 'style_guide'::text, 'ip_family'::text]))),
+  constraint "nbcu_entity_lifecycle_pkey" PRIMARY KEY (entity_kind, entity_key),
+  constraint "nbcu_entity_lifecycle_status_chk" CHECK ((status = ANY (ARRAY['active'::text, 'withdrawn'::text]))),
+  constraint "nbcu_entity_lifecycle_withdrawn_at_chk" CHECK ((((status = 'withdrawn'::text) = (withdrawn_at IS NOT NULL)) AND ((status = 'withdrawn'::text) = (withdrawn_capture_id IS NOT NULL)))),
+  constraint "nbcu_entity_lifecycle_first_seen_capture_id_fkey" FOREIGN KEY (first_seen_capture_id) REFERENCES plm.nbcu_lifecycle_publication(published_capture_id) ON DELETE RESTRICT,
+  constraint "nbcu_entity_lifecycle_last_changed_capture_id_fkey" FOREIGN KEY (last_changed_capture_id) REFERENCES plm.nbcu_lifecycle_publication(published_capture_id) ON DELETE RESTRICT,
+  constraint "nbcu_entity_lifecycle_last_seen_capture_id_fkey" FOREIGN KEY (last_seen_capture_id) REFERENCES plm.nbcu_lifecycle_publication(published_capture_id) ON DELETE RESTRICT,
+  constraint "nbcu_entity_lifecycle_withdrawn_capture_id_fkey" FOREIGN KEY (withdrawn_capture_id) REFERENCES plm.nbcu_lifecycle_publication(published_capture_id) ON DELETE RESTRICT
 );
-alter table plm.nbcu_entity_lifecycle add constraint "nbcu_entity_lifecycle_basis_chk" CHECK ((identity_basis = ANY (ARRAY['dam_path'::text, 'source_id'::text, 'label_sha256'::text, 'id_fallback'::text, 'folder_path'::text])));
-alter table plm.nbcu_entity_lifecycle add constraint "nbcu_entity_lifecycle_history_chk" CHECK ((((withdrawn_at IS NULL) OR (first_withdrawn_at IS NOT NULL)) AND ((first_withdrawn_at IS NULL) OR (withdrawn_at IS NULL) OR (first_withdrawn_at <= withdrawn_at)) AND (first_seen_at <= last_seen_at)));
-alter table plm.nbcu_entity_lifecycle add constraint "nbcu_entity_lifecycle_key_chk" CHECK ((btrim(entity_key) <> ''::text));
-alter table plm.nbcu_entity_lifecycle add constraint "nbcu_entity_lifecycle_kind_chk" CHECK ((entity_kind = ANY (ARRAY['asset'::text, 'property'::text, 'character'::text, 'style_guide'::text, 'ip_family'::text])));
-alter table plm.nbcu_entity_lifecycle add constraint "nbcu_entity_lifecycle_pkey" PRIMARY KEY (entity_kind, entity_key);
-alter table plm.nbcu_entity_lifecycle add constraint "nbcu_entity_lifecycle_status_chk" CHECK ((status = ANY (ARRAY['active'::text, 'withdrawn'::text])));
-alter table plm.nbcu_entity_lifecycle add constraint "nbcu_entity_lifecycle_withdrawn_at_chk" CHECK ((((status = 'withdrawn'::text) = (withdrawn_at IS NOT NULL)) AND ((status = 'withdrawn'::text) = (withdrawn_capture_id IS NOT NULL))));
 CREATE INDEX IF NOT EXISTS nbcu_entity_lifecycle_first_seen_idx ON plm.nbcu_entity_lifecycle USING btree (first_seen_capture_id);
 CREATE INDEX IF NOT EXISTS nbcu_entity_lifecycle_kind_last_seen_idx ON plm.nbcu_entity_lifecycle USING btree (last_seen_capture_id, entity_kind, status);
 CREATE INDEX IF NOT EXISTS nbcu_entity_lifecycle_last_changed_idx ON plm.nbcu_entity_lifecycle USING btree (last_changed_capture_id);
 CREATE INDEX IF NOT EXISTS nbcu_entity_lifecycle_withdrawn_capture_idx ON plm.nbcu_entity_lifecycle USING btree (withdrawn_capture_id) WHERE (withdrawn_capture_id IS NOT NULL);
 alter table plm.nbcu_entity_lifecycle enable row level security;
+revoke all on table plm.nbcu_entity_lifecycle from public, anon, authenticated, service_role;
+grant select on table plm.nbcu_entity_lifecycle to authenticated, service_role;
+drop policy if exists "nbcu_entity_lifecycle_plm_read" on plm.nbcu_entity_lifecycle;
 create policy "nbcu_entity_lifecycle_plm_read" on plm.nbcu_entity_lifecycle as permissive for select to authenticated using ((app.has_app_access('plm'::app.app_name) OR app.has_role('administrator'::app.app_role) OR app.has_any_role(ARRAY['sales'::app.app_role, 'licensing'::app.app_role])));
 comment on table plm.nbcu_entity_lifecycle is 'Durable NBCU entity state across captures (#3683). The capture snapshot tables stay the evidence; this table records first/last sighting, the opaque change signal and withdrawal. Rows are written only by plm.nbcu_publish_lifecycle. change_signal is opaque: an asset hashes the portal display_modified and display_size; every other kind hashes its retained raw source record.';
-create table if not exists plm.nbcu_lifecycle_publication (
+create table if not exists plm.peanuts_lifecycle_publication (
   "published_capture_id" uuid not null,
   "baseline_capture_id" uuid,
   "mode" text not null,
@@ -41,19 +76,24 @@ create table if not exists plm.nbcu_lifecycle_publication (
   "scope_sha256" text not null,
   "source_captured_at" timestamp with time zone not null,
   "counts" jsonb default '{}'::jsonb not null,
-  "published_at" timestamp with time zone default now() not null
+  "published_at" timestamp with time zone default now() not null,
+  constraint "peanuts_lifecycle_publication_baseline_chk" CHECK ((((mode = 'bootstrap'::text) = (baseline_capture_id IS NULL)) AND ((baseline_capture_id IS NULL) OR (baseline_capture_id <> published_capture_id)))),
+  constraint "peanuts_lifecycle_publication_contract_chk" CHECK ((btrim(derivation_contract) <> ''::text)),
+  constraint "peanuts_lifecycle_publication_counts_chk" CHECK ((jsonb_typeof(counts) = 'object'::text)),
+  constraint "peanuts_lifecycle_publication_mode_chk" CHECK ((mode = ANY (ARRAY['bootstrap'::text, 'comparable'::text, 'rebaseline'::text, 'withdrawal_held'::text]))),
+  constraint "peanuts_lifecycle_publication_pkey" PRIMARY KEY (published_capture_id),
+  constraint "peanuts_lifecycle_publication_scope_chk" CHECK ((scope_sha256 ~ '^[0-9a-f]{64}$'::text)),
+  constraint "peanuts_lifecycle_publication_baseline_capture_id_fkey" FOREIGN KEY (baseline_capture_id) REFERENCES plm.peanuts_lifecycle_publication(published_capture_id) ON DELETE RESTRICT,
+  constraint "peanuts_lifecycle_publication_published_capture_id_fkey" FOREIGN KEY (published_capture_id) REFERENCES plm.peanuts_capture(id) ON DELETE RESTRICT
 );
-alter table plm.nbcu_lifecycle_publication add constraint "nbcu_lifecycle_publication_baseline_chk" CHECK ((((mode = 'bootstrap'::text) = (baseline_capture_id IS NULL)) AND ((baseline_capture_id IS NULL) OR (baseline_capture_id <> published_capture_id))));
-alter table plm.nbcu_lifecycle_publication add constraint "nbcu_lifecycle_publication_contract_chk" CHECK ((btrim(derivation_contract) <> ''::text));
-alter table plm.nbcu_lifecycle_publication add constraint "nbcu_lifecycle_publication_counts_chk" CHECK ((jsonb_typeof(counts) = 'object'::text));
-alter table plm.nbcu_lifecycle_publication add constraint "nbcu_lifecycle_publication_mode_chk" CHECK ((mode = ANY (ARRAY['bootstrap'::text, 'comparable'::text, 'rebaseline'::text, 'withdrawal_held'::text])));
-alter table plm.nbcu_lifecycle_publication add constraint "nbcu_lifecycle_publication_pkey" PRIMARY KEY (published_capture_id);
-alter table plm.nbcu_lifecycle_publication add constraint "nbcu_lifecycle_publication_scope_chk" CHECK ((scope_sha256 ~ '^[0-9a-f]{64}$'::text));
-CREATE INDEX IF NOT EXISTS nbcu_lifecycle_publication_baseline_idx ON plm.nbcu_lifecycle_publication USING btree (baseline_capture_id) WHERE (baseline_capture_id IS NOT NULL);
-CREATE INDEX IF NOT EXISTS nbcu_lifecycle_publication_latest_idx ON plm.nbcu_lifecycle_publication USING btree (source_captured_at DESC, published_at DESC);
-alter table plm.nbcu_lifecycle_publication enable row level security;
-create policy "nbcu_lifecycle_publication_plm_read" on plm.nbcu_lifecycle_publication as permissive for select to authenticated using ((app.has_app_access('plm'::app.app_name) OR app.has_role('administrator'::app.app_role) OR app.has_any_role(ARRAY['sales'::app.app_role, 'licensing'::app.app_role])));
-comment on table plm.nbcu_lifecycle_publication is 'One row per NBCU capture published into durable entity state (#3683). Its key is published_capture_id, deliberately not capture_id: api.source_capture_inventory treats an nbcu_ table with a capture_id column as a latest-complete capture snapshot, and this mutable ledger must be reported as retained rows only. mode records whether withdrawals were compared (comparable), skipped because the licensed scope set or derivation contract differed (rebaseline), or held by the bulk-drop guard.';
+CREATE INDEX IF NOT EXISTS idx_peanuts_lifecycle_publication_baseline ON plm.peanuts_lifecycle_publication USING btree (baseline_capture_id) WHERE (baseline_capture_id IS NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_peanuts_lifecycle_publication_latest ON plm.peanuts_lifecycle_publication USING btree (source_captured_at DESC, published_at DESC, published_capture_id DESC);
+alter table plm.peanuts_lifecycle_publication enable row level security;
+revoke all on table plm.peanuts_lifecycle_publication from public, anon, authenticated, service_role;
+grant select on table plm.peanuts_lifecycle_publication to authenticated, service_role;
+drop policy if exists "peanuts_lifecycle_publication_plm_read" on plm.peanuts_lifecycle_publication;
+create policy "peanuts_lifecycle_publication_plm_read" on plm.peanuts_lifecycle_publication as permissive for select to authenticated using ((app.has_app_access('plm'::app.app_name) OR app.has_role('administrator'::app.app_role) OR app.has_any_role(ARRAY['sales'::app.app_role, 'licensing'::app.app_role])));
+comment on table plm.peanuts_lifecycle_publication is 'One row per Peanuts capture published into durable entity state (#3684). mode records whether withdrawals were compared (comparable), skipped because the account/endpoint or key contract differed (rebaseline), or held by the bulk-drop guard. The key is published_capture_id, deliberately not capture_id: api.source_capture_inventory treats a peanuts_ table with a capture_id column as a latest-complete capture snapshot, and this mutable ledger must be reported as retained rows only.';
 create table if not exists plm.peanuts_entity_lifecycle (
   "entity_kind" text not null,
   "entity_key" text not null,
@@ -67,42 +107,28 @@ create table if not exists plm.peanuts_entity_lifecycle (
   "withdrawn_at" timestamp with time zone,
   "first_withdrawn_at" timestamp with time zone,
   "withdrawn_capture_id" uuid,
-  "retired_at" timestamp with time zone
+  "retired_at" timestamp with time zone,
+  constraint "peanuts_entity_lifecycle_history_chk" CHECK ((((withdrawn_at IS NULL) OR (first_withdrawn_at IS NOT NULL)) AND ((first_withdrawn_at IS NULL) OR (withdrawn_at IS NULL) OR (first_withdrawn_at <= withdrawn_at)) AND (first_seen_at <= last_seen_at))),
+  constraint "peanuts_entity_lifecycle_key_chk" CHECK ((btrim(entity_key) <> ''::text)),
+  constraint "peanuts_entity_lifecycle_kind_chk" CHECK ((entity_kind = ANY (ARRAY['asset'::text, 'art_program'::text, 'character'::text, 'style_guide'::text, 'initiative'::text]))),
+  constraint "peanuts_entity_lifecycle_pkey" PRIMARY KEY (entity_kind, entity_key),
+  constraint "peanuts_entity_lifecycle_status_chk" CHECK (((status = ANY (ARRAY['active'::text, 'withdrawn'::text, 'retired'::text])) AND ((status <> 'withdrawn'::text) OR (entity_kind <> 'initiative'::text)) AND ((status <> 'retired'::text) OR (entity_kind = 'initiative'::text)))),
+  constraint "peanuts_entity_lifecycle_withdrawn_at_chk" CHECK ((((status = 'withdrawn'::text) = (withdrawn_at IS NOT NULL)) AND ((status = 'withdrawn'::text) = (withdrawn_capture_id IS NOT NULL)) AND ((status = 'retired'::text) = (retired_at IS NOT NULL)))),
+  constraint "peanuts_entity_lifecycle_first_seen_capture_id_fkey" FOREIGN KEY (first_seen_capture_id) REFERENCES plm.peanuts_lifecycle_publication(published_capture_id) ON DELETE RESTRICT,
+  constraint "peanuts_entity_lifecycle_last_changed_capture_id_fkey" FOREIGN KEY (last_changed_capture_id) REFERENCES plm.peanuts_lifecycle_publication(published_capture_id) ON DELETE RESTRICT,
+  constraint "peanuts_entity_lifecycle_last_seen_capture_id_fkey" FOREIGN KEY (last_seen_capture_id) REFERENCES plm.peanuts_lifecycle_publication(published_capture_id) ON DELETE RESTRICT,
+  constraint "peanuts_entity_lifecycle_withdrawn_capture_id_fkey" FOREIGN KEY (withdrawn_capture_id) REFERENCES plm.peanuts_lifecycle_publication(published_capture_id) ON DELETE RESTRICT
 );
-alter table plm.peanuts_entity_lifecycle add constraint "peanuts_entity_lifecycle_history_chk" CHECK ((((withdrawn_at IS NULL) OR (first_withdrawn_at IS NOT NULL)) AND ((first_withdrawn_at IS NULL) OR (withdrawn_at IS NULL) OR (first_withdrawn_at <= withdrawn_at)) AND (first_seen_at <= last_seen_at)));
-alter table plm.peanuts_entity_lifecycle add constraint "peanuts_entity_lifecycle_key_chk" CHECK ((btrim(entity_key) <> ''::text));
-alter table plm.peanuts_entity_lifecycle add constraint "peanuts_entity_lifecycle_kind_chk" CHECK ((entity_kind = ANY (ARRAY['asset'::text, 'art_program'::text, 'character'::text, 'style_guide'::text, 'initiative'::text])));
-alter table plm.peanuts_entity_lifecycle add constraint "peanuts_entity_lifecycle_pkey" PRIMARY KEY (entity_kind, entity_key);
-alter table plm.peanuts_entity_lifecycle add constraint "peanuts_entity_lifecycle_status_chk" CHECK (((status = ANY (ARRAY['active'::text, 'withdrawn'::text, 'retired'::text])) AND ((status <> 'withdrawn'::text) OR (entity_kind <> 'initiative'::text)) AND ((status <> 'retired'::text) OR (entity_kind = 'initiative'::text))));
-alter table plm.peanuts_entity_lifecycle add constraint "peanuts_entity_lifecycle_withdrawn_at_chk" CHECK ((((status = 'withdrawn'::text) = (withdrawn_at IS NOT NULL)) AND ((status = 'withdrawn'::text) = (withdrawn_capture_id IS NOT NULL)) AND ((status = 'retired'::text) = (retired_at IS NOT NULL))));
 CREATE INDEX IF NOT EXISTS idx_peanuts_entity_lifecycle_first_seen ON plm.peanuts_entity_lifecycle USING btree (first_seen_capture_id);
 CREATE INDEX IF NOT EXISTS idx_peanuts_entity_lifecycle_last_changed ON plm.peanuts_entity_lifecycle USING btree (last_changed_capture_id);
 CREATE INDEX IF NOT EXISTS idx_peanuts_entity_lifecycle_last_seen ON plm.peanuts_entity_lifecycle USING btree (entity_kind, status, last_seen_capture_id);
 CREATE INDEX IF NOT EXISTS idx_peanuts_entity_lifecycle_withdrawn_capture ON plm.peanuts_entity_lifecycle USING btree (withdrawn_capture_id) WHERE (withdrawn_capture_id IS NOT NULL);
 alter table plm.peanuts_entity_lifecycle enable row level security;
+revoke all on table plm.peanuts_entity_lifecycle from public, anon, authenticated, service_role;
+grant select on table plm.peanuts_entity_lifecycle to authenticated, service_role;
+drop policy if exists "peanuts_entity_lifecycle_plm_read" on plm.peanuts_entity_lifecycle;
 create policy "peanuts_entity_lifecycle_plm_read" on plm.peanuts_entity_lifecycle as permissive for select to authenticated using ((app.has_app_access('plm'::app.app_name) OR app.has_role('administrator'::app.app_role) OR app.has_any_role(ARRAY['sales'::app.app_role, 'licensing'::app.app_role])));
 comment on table plm.peanuts_entity_lifecycle is 'Durable Peanuts entity state across captures (#3684). The capture snapshot tables stay the evidence; this table records first/last sighting, the opaque change signal, withdrawal, and initiative retirement (owner ruling 6.20: an initiative that stops appearing is retired, not withdrawn). Rows are written only by plm.peanuts_publish_lifecycle. change_signal is opaque: an asset hashes the portal update time, checksum, size and version; a vocabulary value hashes its label and raw record.';
-create table if not exists plm.peanuts_lifecycle_publication (
-  "published_capture_id" uuid not null,
-  "baseline_capture_id" uuid,
-  "mode" text not null,
-  "derivation_contract" text not null,
-  "scope_sha256" text not null,
-  "source_captured_at" timestamp with time zone not null,
-  "counts" jsonb default '{}'::jsonb not null,
-  "published_at" timestamp with time zone default now() not null
-);
-alter table plm.peanuts_lifecycle_publication add constraint "peanuts_lifecycle_publication_baseline_chk" CHECK ((((mode = 'bootstrap'::text) = (baseline_capture_id IS NULL)) AND ((baseline_capture_id IS NULL) OR (baseline_capture_id <> published_capture_id))));
-alter table plm.peanuts_lifecycle_publication add constraint "peanuts_lifecycle_publication_contract_chk" CHECK ((btrim(derivation_contract) <> ''::text));
-alter table plm.peanuts_lifecycle_publication add constraint "peanuts_lifecycle_publication_counts_chk" CHECK ((jsonb_typeof(counts) = 'object'::text));
-alter table plm.peanuts_lifecycle_publication add constraint "peanuts_lifecycle_publication_mode_chk" CHECK ((mode = ANY (ARRAY['bootstrap'::text, 'comparable'::text, 'rebaseline'::text, 'withdrawal_held'::text])));
-alter table plm.peanuts_lifecycle_publication add constraint "peanuts_lifecycle_publication_pkey" PRIMARY KEY (published_capture_id);
-alter table plm.peanuts_lifecycle_publication add constraint "peanuts_lifecycle_publication_scope_chk" CHECK ((scope_sha256 ~ '^[0-9a-f]{64}$'::text));
-CREATE INDEX IF NOT EXISTS idx_peanuts_lifecycle_publication_baseline ON plm.peanuts_lifecycle_publication USING btree (baseline_capture_id) WHERE (baseline_capture_id IS NOT NULL);
-CREATE INDEX IF NOT EXISTS idx_peanuts_lifecycle_publication_latest ON plm.peanuts_lifecycle_publication USING btree (source_captured_at DESC, published_at DESC, published_capture_id DESC);
-alter table plm.peanuts_lifecycle_publication enable row level security;
-create policy "peanuts_lifecycle_publication_plm_read" on plm.peanuts_lifecycle_publication as permissive for select to authenticated using ((app.has_app_access('plm'::app.app_name) OR app.has_role('administrator'::app.app_role) OR app.has_any_role(ARRAY['sales'::app.app_role, 'licensing'::app.app_role])));
-comment on table plm.peanuts_lifecycle_publication is 'One row per Peanuts capture published into durable entity state (#3684). mode records whether withdrawals were compared (comparable), skipped because the account/endpoint or key contract differed (rebaseline), or held by the bulk-drop guard. The key is published_capture_id, deliberately not capture_id: api.source_capture_inventory treats a peanuts_ table with a capture_id column as a latest-complete capture snapshot, and this mutable ledger must be reported as retained rows only.';
 create table if not exists plm.peanuts_submission_property_option (
   "option_key" text not null,
   "exact_label" text not null,
@@ -110,18 +136,50 @@ create table if not exists plm.peanuts_submission_property_option (
   "source_field" text not null,
   "source_captured_at" timestamp with time zone not null,
   "raw" jsonb default '{}'::jsonb not null,
-  "loaded_at" timestamp with time zone default now() not null
+  "loaded_at" timestamp with time zone default now() not null,
+  constraint "peanuts_submission_property_option_field_nonblank_chk" CHECK ((btrim(source_field) <> ''::text)),
+  constraint "peanuts_submission_property_option_label_nonblank_chk" CHECK ((btrim(exact_label) <> ''::text)),
+  constraint "peanuts_submission_property_option_ordinal_chk" CHECK ((ordinal >= 0)),
+  constraint "peanuts_submission_property_option_owner_scope_chk" CHECK ((option_key = ANY (ARRAY['owner-manual:peanuts-classic'::text, 'owner-manual:charlie-brown-tv-special'::text]))),
+  constraint "peanuts_submission_property_option_pkey" PRIMARY KEY (option_key),
+  constraint "peanuts_submission_property_option_raw_obj_chk" CHECK ((jsonb_typeof(raw) = 'object'::text))
 );
-alter table plm.peanuts_submission_property_option add constraint "peanuts_submission_property_option_field_nonblank_chk" CHECK ((btrim(source_field) <> ''::text));
-alter table plm.peanuts_submission_property_option add constraint "peanuts_submission_property_option_label_nonblank_chk" CHECK ((btrim(exact_label) <> ''::text));
-alter table plm.peanuts_submission_property_option add constraint "peanuts_submission_property_option_ordinal_chk" CHECK ((ordinal >= 0));
-alter table plm.peanuts_submission_property_option add constraint "peanuts_submission_property_option_owner_scope_chk" CHECK ((option_key = ANY (ARRAY['owner-manual:peanuts-classic'::text, 'owner-manual:charlie-brown-tv-special'::text])));
-alter table plm.peanuts_submission_property_option add constraint "peanuts_submission_property_option_pkey" PRIMARY KEY (option_key);
-alter table plm.peanuts_submission_property_option add constraint "peanuts_submission_property_option_raw_obj_chk" CHECK ((jsonb_typeof(raw) = 'object'::text));
 alter table plm.peanuts_submission_property_option enable row level security;
+revoke all on table plm.peanuts_submission_property_option from public, anon, authenticated, service_role;
+grant select, insert on table plm.peanuts_submission_property_option to service_role;
+grant select on table plm.peanuts_submission_property_option to authenticated;
+drop policy if exists "peanuts_submission_property_option_plm_read" on plm.peanuts_submission_property_option;
 create policy "peanuts_submission_property_option_plm_read" on plm.peanuts_submission_property_option as permissive for select to authenticated using ((app.has_app_access('plm'::app.app_name) OR app.has_role('administrator'::app.app_role) OR app.has_any_role(ARRAY['sales'::app.app_role, 'licensing'::app.app_role])));
+drop policy if exists "peanuts_submission_property_option_service_read" on plm.peanuts_submission_property_option;
 create policy "peanuts_submission_property_option_service_read" on plm.peanuts_submission_property_option as permissive for select to service_role using (true);
 comment on table plm.peanuts_submission_property_option is 'PEANUTS SUBMISSIONS PROPERTY OPTIONS, NOT CANONICAL MASTER DATA. The POP Peanuts Submissions Properties entered manually by the owner on 2026-10-02 (#3897; u2giants/licensor-source-data#100). Not scraped: option_key is an owner-manual key, never a portal source id. Resolves nothing to core.*.';
+create table if not exists plm.wildbrain_lifecycle_publication (
+  "capture_id" uuid not null,
+  "baseline_capture_id" uuid,
+  "mode" text not null,
+  "derivation_contract" text not null,
+  "guide_rule_versions" text not null,
+  "scope_sha256" text not null,
+  "source_captured_at" timestamp with time zone not null,
+  "counts" jsonb default '{}'::jsonb not null,
+  "published_at" timestamp with time zone default now() not null,
+  constraint "wildbrain_lifecycle_publication_baseline_chk" CHECK ((((mode = 'bootstrap'::text) = (baseline_capture_id IS NULL)) AND ((baseline_capture_id IS NULL) OR (baseline_capture_id <> capture_id)))),
+  constraint "wildbrain_lifecycle_publication_contract_chk" CHECK ((btrim(derivation_contract) <> ''::text)),
+  constraint "wildbrain_lifecycle_publication_counts_chk" CHECK ((jsonb_typeof(counts) = 'object'::text)),
+  constraint "wildbrain_lifecycle_publication_mode_chk" CHECK ((mode = ANY (ARRAY['bootstrap'::text, 'comparable'::text, 'rebaseline'::text, 'withdrawal_held'::text]))),
+  constraint "wildbrain_lifecycle_publication_pkey" PRIMARY KEY (capture_id),
+  constraint "wildbrain_lifecycle_publication_scope_chk" CHECK ((scope_sha256 ~ '^[0-9a-f]{64}$'::text)),
+  constraint "wildbrain_lifecycle_publication_baseline_capture_id_fkey" FOREIGN KEY (baseline_capture_id) REFERENCES plm.wildbrain_lifecycle_publication(capture_id) ON DELETE RESTRICT,
+  constraint "wildbrain_lifecycle_publication_capture_id_fkey" FOREIGN KEY (capture_id) REFERENCES plm.wildbrain_capture(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS wildbrain_lifecycle_publication_baseline_idx ON plm.wildbrain_lifecycle_publication USING btree (baseline_capture_id) WHERE (baseline_capture_id IS NOT NULL);
+CREATE INDEX IF NOT EXISTS wildbrain_lifecycle_publication_latest_idx ON plm.wildbrain_lifecycle_publication USING btree (source_captured_at DESC, published_at DESC);
+alter table plm.wildbrain_lifecycle_publication enable row level security;
+revoke all on table plm.wildbrain_lifecycle_publication from public, anon, authenticated, service_role;
+grant select on table plm.wildbrain_lifecycle_publication to authenticated, service_role;
+drop policy if exists "wildbrain_lifecycle_publication_plm_read" on plm.wildbrain_lifecycle_publication;
+create policy "wildbrain_lifecycle_publication_plm_read" on plm.wildbrain_lifecycle_publication as permissive for select to authenticated using ((app.has_app_access('plm'::app.app_name) OR app.has_role('administrator'::app.app_role) OR app.has_any_role(ARRAY['sales'::app.app_role, 'licensing'::app.app_role])));
+comment on table plm.wildbrain_lifecycle_publication is 'One row per WildBrain capture published into durable entity state (#3685). mode records whether withdrawals were compared (comparable), skipped because the portal or key contract differed (rebaseline), or held by the bulk-drop guard. guide_rule_versions is the inferred-guide rule-version set; guides compare only when it matches the baseline.';
 create table if not exists plm.wildbrain_entity_lifecycle (
   "entity_kind" text not null,
   "entity_key" text not null,
@@ -134,43 +192,28 @@ create table if not exists plm.wildbrain_entity_lifecycle (
   "status" text default 'active'::text not null,
   "withdrawn_at" timestamp with time zone,
   "first_withdrawn_at" timestamp with time zone,
-  "withdrawn_capture_id" uuid
+  "withdrawn_capture_id" uuid,
+  constraint "wildbrain_entity_lifecycle_history_chk" CHECK ((((withdrawn_at IS NULL) OR (first_withdrawn_at IS NOT NULL)) AND ((first_withdrawn_at IS NULL) OR (withdrawn_at IS NULL) OR (first_withdrawn_at <= withdrawn_at)) AND (first_seen_at <= last_seen_at))),
+  constraint "wildbrain_entity_lifecycle_key_chk" CHECK ((btrim(entity_key) <> ''::text)),
+  constraint "wildbrain_entity_lifecycle_kind_chk" CHECK ((entity_kind = ANY (ARRAY['asset'::text, 'era'::text, 'creative_group'::text, 'character'::text, 'guide'::text]))),
+  constraint "wildbrain_entity_lifecycle_pkey" PRIMARY KEY (entity_kind, entity_key),
+  constraint "wildbrain_entity_lifecycle_status_chk" CHECK ((status = ANY (ARRAY['active'::text, 'withdrawn'::text]))),
+  constraint "wildbrain_entity_lifecycle_withdrawn_at_chk" CHECK ((((status = 'withdrawn'::text) = (withdrawn_at IS NOT NULL)) AND ((status = 'withdrawn'::text) = (withdrawn_capture_id IS NOT NULL)))),
+  constraint "wildbrain_entity_lifecycle_first_seen_capture_id_fkey" FOREIGN KEY (first_seen_capture_id) REFERENCES plm.wildbrain_lifecycle_publication(capture_id) ON DELETE RESTRICT,
+  constraint "wildbrain_entity_lifecycle_last_changed_capture_id_fkey" FOREIGN KEY (last_changed_capture_id) REFERENCES plm.wildbrain_lifecycle_publication(capture_id) ON DELETE RESTRICT,
+  constraint "wildbrain_entity_lifecycle_last_seen_capture_id_fkey" FOREIGN KEY (last_seen_capture_id) REFERENCES plm.wildbrain_lifecycle_publication(capture_id) ON DELETE RESTRICT,
+  constraint "wildbrain_entity_lifecycle_withdrawn_capture_id_fkey" FOREIGN KEY (withdrawn_capture_id) REFERENCES plm.wildbrain_lifecycle_publication(capture_id) ON DELETE RESTRICT
 );
-alter table plm.wildbrain_entity_lifecycle add constraint "wildbrain_entity_lifecycle_history_chk" CHECK ((((withdrawn_at IS NULL) OR (first_withdrawn_at IS NOT NULL)) AND ((first_withdrawn_at IS NULL) OR (withdrawn_at IS NULL) OR (first_withdrawn_at <= withdrawn_at)) AND (first_seen_at <= last_seen_at)));
-alter table plm.wildbrain_entity_lifecycle add constraint "wildbrain_entity_lifecycle_key_chk" CHECK ((btrim(entity_key) <> ''::text));
-alter table plm.wildbrain_entity_lifecycle add constraint "wildbrain_entity_lifecycle_kind_chk" CHECK ((entity_kind = ANY (ARRAY['asset'::text, 'era'::text, 'creative_group'::text, 'character'::text, 'guide'::text])));
-alter table plm.wildbrain_entity_lifecycle add constraint "wildbrain_entity_lifecycle_pkey" PRIMARY KEY (entity_kind, entity_key);
-alter table plm.wildbrain_entity_lifecycle add constraint "wildbrain_entity_lifecycle_status_chk" CHECK ((status = ANY (ARRAY['active'::text, 'withdrawn'::text])));
-alter table plm.wildbrain_entity_lifecycle add constraint "wildbrain_entity_lifecycle_withdrawn_at_chk" CHECK ((((status = 'withdrawn'::text) = (withdrawn_at IS NOT NULL)) AND ((status = 'withdrawn'::text) = (withdrawn_capture_id IS NOT NULL))));
 CREATE INDEX IF NOT EXISTS wildbrain_entity_lifecycle_first_seen_idx ON plm.wildbrain_entity_lifecycle USING btree (first_seen_capture_id);
 CREATE INDEX IF NOT EXISTS wildbrain_entity_lifecycle_last_changed_idx ON plm.wildbrain_entity_lifecycle USING btree (last_changed_capture_id);
 CREATE INDEX IF NOT EXISTS wildbrain_entity_lifecycle_last_seen_idx ON plm.wildbrain_entity_lifecycle USING btree (last_seen_capture_id, entity_kind);
 CREATE INDEX IF NOT EXISTS wildbrain_entity_lifecycle_withdrawn_idx ON plm.wildbrain_entity_lifecycle USING btree (withdrawn_capture_id) WHERE (withdrawn_capture_id IS NOT NULL);
 alter table plm.wildbrain_entity_lifecycle enable row level security;
+revoke all on table plm.wildbrain_entity_lifecycle from public, anon, authenticated, service_role;
+grant select on table plm.wildbrain_entity_lifecycle to authenticated, service_role;
+drop policy if exists "wildbrain_entity_lifecycle_plm_read" on plm.wildbrain_entity_lifecycle;
 create policy "wildbrain_entity_lifecycle_plm_read" on plm.wildbrain_entity_lifecycle as permissive for select to authenticated using ((app.has_app_access('plm'::app.app_name) OR app.has_role('administrator'::app.app_role) OR app.has_any_role(ARRAY['sales'::app.app_role, 'licensing'::app.app_role])));
 comment on table plm.wildbrain_entity_lifecycle is 'Durable WildBrain entity state across captures (#3685). The capture snapshot tables stay the evidence; this table records first/last sighting, the opaque change signal and withdrawal. Rows are written only by plm.wildbrain_publish_lifecycle. change_signal is opaque: an asset uses its retained source hash; every other kind hashes its label (and, for an inferred guide, its derivation fields) with its raw record.';
-create table if not exists plm.wildbrain_lifecycle_publication (
-  "capture_id" uuid not null,
-  "baseline_capture_id" uuid,
-  "mode" text not null,
-  "derivation_contract" text not null,
-  "guide_rule_versions" text not null,
-  "scope_sha256" text not null,
-  "source_captured_at" timestamp with time zone not null,
-  "counts" jsonb default '{}'::jsonb not null,
-  "published_at" timestamp with time zone default now() not null
-);
-alter table plm.wildbrain_lifecycle_publication add constraint "wildbrain_lifecycle_publication_baseline_chk" CHECK ((((mode = 'bootstrap'::text) = (baseline_capture_id IS NULL)) AND ((baseline_capture_id IS NULL) OR (baseline_capture_id <> capture_id))));
-alter table plm.wildbrain_lifecycle_publication add constraint "wildbrain_lifecycle_publication_contract_chk" CHECK ((btrim(derivation_contract) <> ''::text));
-alter table plm.wildbrain_lifecycle_publication add constraint "wildbrain_lifecycle_publication_counts_chk" CHECK ((jsonb_typeof(counts) = 'object'::text));
-alter table plm.wildbrain_lifecycle_publication add constraint "wildbrain_lifecycle_publication_mode_chk" CHECK ((mode = ANY (ARRAY['bootstrap'::text, 'comparable'::text, 'rebaseline'::text, 'withdrawal_held'::text])));
-alter table plm.wildbrain_lifecycle_publication add constraint "wildbrain_lifecycle_publication_pkey" PRIMARY KEY (capture_id);
-alter table plm.wildbrain_lifecycle_publication add constraint "wildbrain_lifecycle_publication_scope_chk" CHECK ((scope_sha256 ~ '^[0-9a-f]{64}$'::text));
-CREATE INDEX IF NOT EXISTS wildbrain_lifecycle_publication_baseline_idx ON plm.wildbrain_lifecycle_publication USING btree (baseline_capture_id) WHERE (baseline_capture_id IS NOT NULL);
-CREATE INDEX IF NOT EXISTS wildbrain_lifecycle_publication_latest_idx ON plm.wildbrain_lifecycle_publication USING btree (source_captured_at DESC, published_at DESC);
-alter table plm.wildbrain_lifecycle_publication enable row level security;
-create policy "wildbrain_lifecycle_publication_plm_read" on plm.wildbrain_lifecycle_publication as permissive for select to authenticated using ((app.has_app_access('plm'::app.app_name) OR app.has_role('administrator'::app.app_role) OR app.has_any_role(ARRAY['sales'::app.app_role, 'licensing'::app.app_role])));
-comment on table plm.wildbrain_lifecycle_publication is 'One row per WildBrain capture published into durable entity state (#3685). mode records whether withdrawals were compared (comparable), skipped because the portal or key contract differed (rebaseline), or held by the bulk-drop guard. guide_rule_versions is the inferred-guide rule-version set; guides compare only when it matches the baseline.';
 create table if not exists plm.wildbrain_submission_property_option (
   "option_key" text not null,
   "exact_label" text not null,
@@ -178,16 +221,21 @@ create table if not exists plm.wildbrain_submission_property_option (
   "source_field" text not null,
   "source_captured_at" timestamp with time zone not null,
   "raw" jsonb default '{}'::jsonb not null,
-  "loaded_at" timestamp with time zone default now() not null
+  "loaded_at" timestamp with time zone default now() not null,
+  constraint "wildbrain_submission_property_option_field_nonblank_chk" CHECK ((btrim(source_field) <> ''::text)),
+  constraint "wildbrain_submission_property_option_label_nonblank_chk" CHECK ((btrim(exact_label) <> ''::text)),
+  constraint "wildbrain_submission_property_option_ordinal_chk" CHECK ((ordinal >= 0)),
+  constraint "wildbrain_submission_property_option_owner_scope_chk" CHECK ((option_key = 'e608bfe3-a3e2-439a-899d-dc88a59e9b58'::text)),
+  constraint "wildbrain_submission_property_option_pkey" PRIMARY KEY (option_key),
+  constraint "wildbrain_submission_property_option_raw_obj_chk" CHECK ((jsonb_typeof(raw) = 'object'::text))
 );
-alter table plm.wildbrain_submission_property_option add constraint "wildbrain_submission_property_option_field_nonblank_chk" CHECK ((btrim(source_field) <> ''::text));
-alter table plm.wildbrain_submission_property_option add constraint "wildbrain_submission_property_option_label_nonblank_chk" CHECK ((btrim(exact_label) <> ''::text));
-alter table plm.wildbrain_submission_property_option add constraint "wildbrain_submission_property_option_ordinal_chk" CHECK ((ordinal >= 0));
-alter table plm.wildbrain_submission_property_option add constraint "wildbrain_submission_property_option_owner_scope_chk" CHECK ((option_key = 'e608bfe3-a3e2-439a-899d-dc88a59e9b58'::text));
-alter table plm.wildbrain_submission_property_option add constraint "wildbrain_submission_property_option_pkey" PRIMARY KEY (option_key);
-alter table plm.wildbrain_submission_property_option add constraint "wildbrain_submission_property_option_raw_obj_chk" CHECK ((jsonb_typeof(raw) = 'object'::text));
 alter table plm.wildbrain_submission_property_option enable row level security;
+revoke all on table plm.wildbrain_submission_property_option from public, anon, authenticated, service_role;
+grant select, insert on table plm.wildbrain_submission_property_option to service_role;
+grant select on table plm.wildbrain_submission_property_option to authenticated;
+drop policy if exists "wildbrain_submission_property_option_plm_read" on plm.wildbrain_submission_property_option;
 create policy "wildbrain_submission_property_option_plm_read" on plm.wildbrain_submission_property_option as permissive for select to authenticated using ((app.has_app_access('plm'::app.app_name) OR app.has_role('administrator'::app.app_role) OR app.has_any_role(ARRAY['sales'::app.app_role, 'licensing'::app.app_role])));
+drop policy if exists "wildbrain_submission_property_option_service_read" on plm.wildbrain_submission_property_option;
 create policy "wildbrain_submission_property_option_service_read" on plm.wildbrain_submission_property_option as permissive for select to service_role using (true);
 comment on table plm.wildbrain_submission_property_option is 'LICENSED WILDBRAIN SOURCE EVIDENCE, NOT CANONICAL MASTER DATA. The Property choices offered by WildBrain CPLG MediaBox Product Approvals (Submissions), restricted by owner ruling (2026-09-25, #3545) to the one POP-authorized option, Strawberry Shortcake Classic. Resolves nothing to core.*.';
 create table if not exists plm.sesame_submission_property_option (
@@ -197,34 +245,18 @@ create table if not exists plm.sesame_submission_property_option (
   "source_field" text not null,
   "source_captured_at" timestamp with time zone not null,
   "raw" jsonb default '{}'::jsonb not null,
-  "loaded_at" timestamp with time zone default now() not null
+  "loaded_at" timestamp with time zone default now() not null,
+  constraint "sesame_submission_property_option_field_nonblank_chk" CHECK ((btrim(source_field) <> ''::text)),
+  constraint "sesame_submission_property_option_key_nonblank_chk" CHECK ((btrim(option_key) <> ''::text)),
+  constraint "sesame_submission_property_option_label_nonblank_chk" CHECK ((btrim(exact_label) <> ''::text)),
+  constraint "sesame_submission_property_option_ordinal_chk" CHECK ((ordinal >= 0)),
+  constraint "sesame_submission_property_option_pkey" PRIMARY KEY (option_key),
+  constraint "sesame_submission_property_option_raw_obj_chk" CHECK ((jsonb_typeof(raw) = 'object'::text))
 );
-alter table plm.sesame_submission_property_option add constraint "sesame_submission_property_option_field_nonblank_chk" CHECK ((btrim(source_field) <> ''::text));
-alter table plm.sesame_submission_property_option add constraint "sesame_submission_property_option_key_nonblank_chk" CHECK ((btrim(option_key) <> ''::text));
-alter table plm.sesame_submission_property_option add constraint "sesame_submission_property_option_label_nonblank_chk" CHECK ((btrim(exact_label) <> ''::text));
-alter table plm.sesame_submission_property_option add constraint "sesame_submission_property_option_ordinal_chk" CHECK ((ordinal >= 0));
-alter table plm.sesame_submission_property_option add constraint "sesame_submission_property_option_pkey" PRIMARY KEY (option_key);
-alter table plm.sesame_submission_property_option add constraint "sesame_submission_property_option_raw_obj_chk" CHECK ((jsonb_typeof(raw) = 'object'::text));
 alter table plm.sesame_submission_property_option enable row level security;
+revoke all on table plm.sesame_submission_property_option from public, anon, authenticated;
+grant select, insert, update on table plm.sesame_submission_property_option to service_role;
 comment on table plm.sesame_submission_property_option is 'LICENSED SESAME WORKSHOP SOURCE EVIDENCE, NOT CANONICAL MASTER DATA. The Property choices offered by the Sesame Workshop Submissions (MediaBox) portal, verbatim. Resolves nothing to core.*.';
-alter table plm.nbcu_entity_lifecycle add constraint "nbcu_entity_lifecycle_first_seen_capture_id_fkey" FOREIGN KEY (first_seen_capture_id) REFERENCES plm.nbcu_lifecycle_publication(published_capture_id) ON DELETE RESTRICT;
-alter table plm.nbcu_entity_lifecycle add constraint "nbcu_entity_lifecycle_last_changed_capture_id_fkey" FOREIGN KEY (last_changed_capture_id) REFERENCES plm.nbcu_lifecycle_publication(published_capture_id) ON DELETE RESTRICT;
-alter table plm.nbcu_entity_lifecycle add constraint "nbcu_entity_lifecycle_last_seen_capture_id_fkey" FOREIGN KEY (last_seen_capture_id) REFERENCES plm.nbcu_lifecycle_publication(published_capture_id) ON DELETE RESTRICT;
-alter table plm.nbcu_entity_lifecycle add constraint "nbcu_entity_lifecycle_withdrawn_capture_id_fkey" FOREIGN KEY (withdrawn_capture_id) REFERENCES plm.nbcu_lifecycle_publication(published_capture_id) ON DELETE RESTRICT;
-alter table plm.nbcu_lifecycle_publication add constraint "nbcu_lifecycle_publication_baseline_capture_id_fkey" FOREIGN KEY (baseline_capture_id) REFERENCES plm.nbcu_lifecycle_publication(published_capture_id) ON DELETE RESTRICT;
-alter table plm.nbcu_lifecycle_publication add constraint "nbcu_lifecycle_publication_published_capture_id_fkey" FOREIGN KEY (published_capture_id) REFERENCES plm.nbcu_capture(id) ON DELETE RESTRICT;
-alter table plm.peanuts_entity_lifecycle add constraint "peanuts_entity_lifecycle_first_seen_capture_id_fkey" FOREIGN KEY (first_seen_capture_id) REFERENCES plm.peanuts_lifecycle_publication(published_capture_id) ON DELETE RESTRICT;
-alter table plm.peanuts_entity_lifecycle add constraint "peanuts_entity_lifecycle_last_changed_capture_id_fkey" FOREIGN KEY (last_changed_capture_id) REFERENCES plm.peanuts_lifecycle_publication(published_capture_id) ON DELETE RESTRICT;
-alter table plm.peanuts_entity_lifecycle add constraint "peanuts_entity_lifecycle_last_seen_capture_id_fkey" FOREIGN KEY (last_seen_capture_id) REFERENCES plm.peanuts_lifecycle_publication(published_capture_id) ON DELETE RESTRICT;
-alter table plm.peanuts_entity_lifecycle add constraint "peanuts_entity_lifecycle_withdrawn_capture_id_fkey" FOREIGN KEY (withdrawn_capture_id) REFERENCES plm.peanuts_lifecycle_publication(published_capture_id) ON DELETE RESTRICT;
-alter table plm.peanuts_lifecycle_publication add constraint "peanuts_lifecycle_publication_baseline_capture_id_fkey" FOREIGN KEY (baseline_capture_id) REFERENCES plm.peanuts_lifecycle_publication(published_capture_id) ON DELETE RESTRICT;
-alter table plm.peanuts_lifecycle_publication add constraint "peanuts_lifecycle_publication_published_capture_id_fkey" FOREIGN KEY (published_capture_id) REFERENCES plm.peanuts_capture(id) ON DELETE RESTRICT;
-alter table plm.wildbrain_entity_lifecycle add constraint "wildbrain_entity_lifecycle_first_seen_capture_id_fkey" FOREIGN KEY (first_seen_capture_id) REFERENCES plm.wildbrain_lifecycle_publication(capture_id) ON DELETE RESTRICT;
-alter table plm.wildbrain_entity_lifecycle add constraint "wildbrain_entity_lifecycle_last_changed_capture_id_fkey" FOREIGN KEY (last_changed_capture_id) REFERENCES plm.wildbrain_lifecycle_publication(capture_id) ON DELETE RESTRICT;
-alter table plm.wildbrain_entity_lifecycle add constraint "wildbrain_entity_lifecycle_last_seen_capture_id_fkey" FOREIGN KEY (last_seen_capture_id) REFERENCES plm.wildbrain_lifecycle_publication(capture_id) ON DELETE RESTRICT;
-alter table plm.wildbrain_entity_lifecycle add constraint "wildbrain_entity_lifecycle_withdrawn_capture_id_fkey" FOREIGN KEY (withdrawn_capture_id) REFERENCES plm.wildbrain_lifecycle_publication(capture_id) ON DELETE RESTRICT;
-alter table plm.wildbrain_lifecycle_publication add constraint "wildbrain_lifecycle_publication_baseline_capture_id_fkey" FOREIGN KEY (baseline_capture_id) REFERENCES plm.wildbrain_lifecycle_publication(capture_id) ON DELETE RESTRICT;
-alter table plm.wildbrain_lifecycle_publication add constraint "wildbrain_lifecycle_publication_capture_id_fkey" FOREIGN KEY (capture_id) REFERENCES plm.wildbrain_capture(id) ON DELETE RESTRICT;
 
 CREATE OR REPLACE FUNCTION plm.nbcu_publish_lifecycle(p_capture_id uuid)
  RETURNS jsonb

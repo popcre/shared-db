@@ -827,19 +827,30 @@ function staleCertificateRecoveryCommand(requirement, facts) {
 // source) instead of waiting for someone to paste the recovery command. The
 // dispatched job independently re-proves everything; this grants no authority.
 const RECOVERY_WORKFLOW = 'production-catalog-verification-recovery.yml';
-export function dispatchCurrentLiveReverification(stale, read, write) {
-  if (!stale?.inputs) return { command: stale?.command ?? null, dispatched: false };
-  const main = read(`repos/${CANONICAL}/commits/main`).sha;
-  for (const status of ['queued', 'in_progress', 'waiting', 'pending', 'requested']) {
-    const active = read(`repos/${CANONICAL}/actions/workflows/${RECOVERY_WORKFLOW}/runs?event=workflow_dispatch&status=${status}&per_page=100`);
-    if (Array.isArray(active?.workflow_runs) && active.workflow_runs.length) return { command: stale.command, dispatched: false };
+export function dispatchCurrentLiveReverification(stale, read, write, custody = githubIo) {
+  const fallback = { command: stale?.command ?? null, dispatched: false };
+  if (!stale?.inputs) return fallback;
+  try {
+    const main = read(`repos/${CANONICAL}/commits/main`)?.sha;
+    if (typeof main !== 'string' || !SHA.test(main)) return fallback;
+    const { source_pr, work_issue } = stale.inputs;
+    if (!/^[1-9][0-9]*$/.test(String(source_pr ?? '')) ||
+        !/^[1-9][0-9]*$/.test(String(work_issue ?? ''))) return fallback;
+    // Workflow runs do not expose dispatch inputs. Reserve this exact source
+    // and main atomically instead of guessing its identity from global runs.
+    // This is dispatch custody only; it never counts as readiness evidence.
+    const ref = `refs/designflow-db-current-live-dispatches/${work_issue}/${source_pr}/${main}`;
+    if (custody.readRef(ref)) return fallback;
+    const reserved = write(`repos/${CANONICAL}/git/refs`, { ref, sha: main });
+    if (reserved?.ref !== ref || reserved?.object?.sha !== main) return fallback;
+    // Keep custody even on a failed/ambiguous POST: do not loop or duplicate
+    // a possibly accepted dispatch. The manual recovery command stays usable.
+    write(`repos/${CANONICAL}/actions/workflows/${RECOVERY_WORKFLOW}/dispatches`,
+      { ref: 'main', inputs: { mode: 'current-live-reverification', ...stale.inputs, main_sha: main } });
+    return { command: stale.command, dispatched: true };
+  } catch {
+    return fallback; // best-effort automation must never abort readiness reporting
   }
-  const done = read(`repos/${CANONICAL}/actions/workflows/${RECOVERY_WORKFLOW}/runs?event=workflow_dispatch&head_sha=${main}&per_page=100`);
-  if (Array.isArray(done?.workflow_runs) && done.workflow_runs.some(r => r.status === 'completed' && r.conclusion !== 'success' && r.head_sha === main))
-    return { command: stale.command, dispatched: false }; // a refused attempt on this main needs a person, not a loop
-  write(`repos/${CANONICAL}/actions/workflows/${RECOVERY_WORKFLOW}/dispatches`,
-    { ref: 'main', inputs: { mode: 'current-live-reverification', ...stale.inputs, main_sha: main } });
-  return { command: stale.command, dispatched: true };
 }
 
 async function currentLiveEvidence(requirement,facts,ledger) {

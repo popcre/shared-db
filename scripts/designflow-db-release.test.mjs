@@ -566,19 +566,105 @@ test('trustedPathsMatch treats a certificate missing a newer trusted file as sta
   assert.throws(() => trustedPathsMatch(OLD, MAIN, read, ['a', 'missing-on-main']), /absent/);
 });
 
-test('stale current-live certificates dispatch one read-only reverification on current main', async () => {
-  const { dispatchCurrentLiveReverification } = await import('./designflow-db-release.mjs');
+function recoveryFixture() {
   const inputs = { source_pr: '4735', work_issue: '3869', original_attempt: '1', original_artifact_id: '9',
     apply_main_sha: 'a'.repeat(40), apply_run_id: '7', ordered_allowlist: '20261024234538', apply_artifact_digest: 'sha256:' + 'b'.repeat(64) };
-  const main = 'c'.repeat(40);
-  const reads = (active = [], done = []) => endpoint => endpoint.endsWith('/commits/main') ? { sha: main }
-    : endpoint.includes('status=') ? { workflow_runs: endpoint.includes('status=in_progress') ? active : [] } : { workflow_runs: done };
-  const writes = [];
-  const r = dispatchCurrentLiveReverification({ command: 'cmd', inputs }, reads(), (e, b) => writes.push([e, b]));
-  assert.equal(r.dispatched, true);
-  assert.deepEqual(writes[0][1], { ref: 'main', inputs: { mode: 'current-live-reverification', ...inputs, main_sha: main } });
-  assert.equal(dispatchCurrentLiveReverification({ command: 'cmd', inputs }, reads([{ id: 1 }]), () => assert.fail()).dispatched, false);
-  assert.equal(dispatchCurrentLiveReverification({ command: 'cmd', inputs },
-    reads([], [{ status: 'completed', conclusion: 'failure', head_sha: main }]), () => assert.fail()).dispatched, false);
-  assert.equal(dispatchCurrentLiveReverification(null, reads(), () => assert.fail()).command, null);
+  const main = 'c'.repeat(40), refs = new Map(), dispatches = [];
+  const stale = { command: 'cmd', inputs };
+  const read = endpoint => {
+    assert.equal(endpoint, 'repos/popcre/shared-db/commits/main');
+    return { sha: main };
+  };
+  const custody = { readRef: ref => refs.get(ref) ?? null };
+  const write = (endpoint, body) => {
+    if (endpoint.endsWith('/git/refs')) {
+      if (refs.has(body.ref)) throw Error('Reference already exists');
+      refs.set(body.ref, body.sha);
+      return { ref: body.ref, object: { sha: body.sha } };
+    }
+    assert.equal(endpoint, 'repos/popcre/shared-db/actions/workflows/production-catalog-verification-recovery.yml/dispatches');
+    dispatches.push(body);
+  };
+  return { inputs, main, stale, read, write, custody, refs, dispatches };
+}
+
+test('stale certificates reserve and dispatch once per exact main and source', async () => {
+  const { dispatchCurrentLiveReverification: dispatch } = await import('./designflow-db-release.mjs');
+  const f = recoveryFixture();
+  assert.deepEqual(dispatch(f.stale, f.read, f.write, f.custody), { command: 'cmd', dispatched: true });
+  assert.deepEqual(f.dispatches, [{ ref: 'main', inputs: { mode: 'current-live-reverification', ...f.inputs, main_sha: f.main } }]);
+  assert.equal(f.refs.get(`refs/designflow-db-current-live-dispatches/3869/4735/${f.main}`), f.main);
+  assert.equal(dispatch(f.stale, f.read, f.write, f.custody).dispatched, false);
+  for (const inputs of [{ ...f.inputs, source_pr: '4736' }, { ...f.inputs, work_issue: '3870' }])
+    assert.equal(dispatch({ ...f.stale, inputs }, f.read, f.write, f.custody).dispatched, true);
+  assert.equal(dispatch(f.stale, () => ({ sha: 'd'.repeat(40) }), f.write, f.custody).dispatched, true);
+  assert.equal(f.dispatches.length, 4);
+});
+
+test('more than 100 unrelated sources cannot hide custody or block this source', async () => {
+  const { dispatchCurrentLiveReverification: dispatch } = await import('./designflow-db-release.mjs');
+  const f = recoveryFixture();
+  for (let n = 1; n <= 101; n++) {
+    const stale = { ...f.stale, inputs: { ...f.inputs, source_pr: String(n) } };
+    assert.equal(dispatch(stale, f.read, f.write, f.custody).dispatched, true);
+  }
+  // The read fixture refuses any global run scan. Custody does not depend on
+  // run status or ordering, so running and refused attempts are both covered.
+  assert.equal(dispatch(f.stale, f.read, f.write, f.custody).dispatched, true);
+  assert.equal(dispatch(f.stale, f.read, f.write, f.custody).dispatched, false);
+  assert.equal(f.dispatches.length, 102);
+});
+
+test('malformed main or missing recovery inputs preserve guidance without writes', async () => {
+  const { dispatchCurrentLiveReverification: dispatch } = await import('./designflow-db-release.mjs');
+  const f = recoveryFixture();
+  for (const result of [null, undefined, {}, { sha: null }, { sha: 'main' }, { sha: 'f'.repeat(39) }, { sha: ['f'.repeat(40)] }])
+    assert.deepEqual(dispatch(f.stale, () => result, () => assert.fail('unexpected write'), f.custody),
+      { command: 'cmd', dispatched: false });
+  assert.deepEqual(dispatch(null, f.read, () => assert.fail('unexpected write'), f.custody), { command: null, dispatched: false });
+  for (const source_pr of [undefined, 'bad/source'])
+    assert.deepEqual(dispatch({ ...f.stale, inputs: { ...f.inputs, source_pr } }, f.read,
+      () => assert.fail('unexpected write'), f.custody), { command: 'cmd', dispatched: false });
+});
+
+test('read, reservation and dispatch failures preserve manual recovery and observer reporting', async () => {
+  const { dispatchCurrentLiveReverification: dispatch } = await import('./designflow-db-release.mjs');
+  for (const stage of ['main', 'custody', 'reserve', 'dispatch']) {
+    for (const message of ['403 permissions', 'rate-limit reserve', 'network unavailable']) {
+      const f = recoveryFixture(), fail = () => { throw Error(message); };
+      const read = stage === 'main' ? fail : f.read;
+      const custody = stage === 'custody' ? { readRef: fail } : f.custody;
+      const write = (endpoint, body) => {
+        if (stage === 'reserve' || endpoint.endsWith('/dispatches')) fail();
+        return f.write(endpoint, body);
+      };
+      const result = dispatch(f.stale, read, write, custody);
+      assert.deepEqual(result, { command: 'cmd', dispatched: false });
+      const observer = fixture();
+      observer.io.productionEvidence = async () => null;
+      observer.io.workIssue = async () => ({ state: 'closed', state_reason: 'completed' });
+      observer.io.currentLiveRecovery = () => dispatch(f.stale, read, write, custody).command;
+      assert.equal((await runObserver(observer.policy, observer.io))[0].progress.recovery_command, 'cmd');
+      if (stage === 'dispatch') {
+        assert.equal(dispatch(f.stale, f.read, f.write, f.custody).dispatched, false);
+        assert.equal(f.dispatches.length, 0);
+      }
+    }
+  }
+});
+
+test('a competing reservation or unreadable reservation response never dispatches', async () => {
+  const { dispatchCurrentLiveReverification: dispatch } = await import('./designflow-db-release.mjs');
+  const f = recoveryFixture();
+  assert.equal(dispatch(f.stale, f.read, f.write, { readRef: () => {
+    // A competitor creates the same ref after our absence check.
+    f.refs.set(`refs/designflow-db-current-live-dispatches/3869/4735/${f.main}`, f.main);
+    return null;
+  } }).dispatched, false);
+  assert.equal(f.dispatches.length, 0);
+  for (const response of [null, {}, { ref: 'other', object: { sha: f.main } }]) {
+    const fresh = recoveryFixture();
+    assert.equal(dispatch(fresh.stale, fresh.read, () => response, fresh.custody).dispatched, false);
+    assert.equal(fresh.dispatches.length, 0);
+  }
 });

@@ -31,7 +31,7 @@ begin
     execute format('alter table core.%I rename to "merchGroupHeaders"', r);
   end if;
   perform set_config('zz.mg_rows', (select count(*) from core."merchGroup")::text, true);
-  create table pg_temp.zz6345_child (mg_id integer references core."merchGroup"(mg_id));
+  create table core.zz6345_child (mg_id integer references core."merchGroup"(mg_id));
 end
 $fx$;
 
@@ -46,7 +46,7 @@ do $a$
 begin
   if to_regclass('core."merchGroup"') is null then
     raise exception 'contract A failed: renamed despite a referencing foreign key'; end if;
-  drop table pg_temp.zz6345_child;
+  drop table core.zz6345_child;
 end
 $a$;
 

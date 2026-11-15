@@ -4737,7 +4737,7 @@ class StrandedRecovery5932RetirementTests(unittest.TestCase):
         "20261102155541": "20261102181554",
         "20261101074415": "20261101182210",
         "20261101125528": "20261113160920",
-        "20261101192220": "20261113194956",
+        "20261101192220": "20261115022307",
         "20261102012258": "20261113191352",
     }
 
@@ -4776,8 +4776,8 @@ class StrandedRecovery5932RetirementTests(unittest.TestCase):
 
     def test_review_fix_6261_entries_are_retired(self):
         for version, replacement in (
-            ("20261113162637", "20261113194956"),
-            ("20261101212654", "20261113194956"),
+            ("20261113162637", "20261115022307"),
+            ("20261101212654", "20261115022307"),
         ):
             with self.subTest(version=version):
                 self.assertIn(version, HARD_BLOCKED)

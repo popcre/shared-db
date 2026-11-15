@@ -1,0 +1,5 @@
+{
+  "_comment": "Reviewed exceptions for scripts/sandbox_prod_drift_check.py (#6356). Sandbox-only objects are never drift. A schema here is not compared at all; a pattern is kind:schema.name with * wildcards. Every entry needs an owner decision recorded on #6356.",
+  "ignore_schemas": ["dam", "hts_rag", "archive", "public", "dflow_prod", "dflow_archive", "cron", "repack", "realtime", "temp_status_watch", "auth", "storage", "extensions", "vault", "graphql", "graphql_public", "net", "pgsodium", "pgsodium_masks", "supabase_functions", "supabase_migrations", "_realtime", "pgbouncer"],
+  "ignore_patterns": []
+}

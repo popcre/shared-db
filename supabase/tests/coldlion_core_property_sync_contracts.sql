@@ -89,23 +89,14 @@ begin
   if exists (select 1 from plm.taxonomy_sync_alert where payload->'codes' ? ('Y'||v_s)) then
     raise exception 'inactive skipped value raised an alert';
   end if;
-  -- #6322: a new code set supersedes the older open one; only one alert stays open.
+  -- #6322: a new code set raises its own alert; the newest open alert names every code still skipped.
   insert into plm.coldlion_property_sync_run(applied, counts, skipped)
   values (false, '{}'::jsonb, jsonb_build_array(
     jsonb_build_object('code','Z'||v_s,'name','x','active',true),
     jsonb_build_object('code','W'||v_s,'name','x','active',true)));
-  if (select count(*) from plm.taxonomy_sync_alert where source_name = 'coldlion_core_property_sync'
-       and acknowledged_at is null) <> 1 then
-    raise exception 'older code set was not superseded';
-  end if;
-  if not exists (select 1 from plm.taxonomy_sync_alert where source_name = 'coldlion_core_property_sync'
-                  and acknowledged_at is null
-                  and payload->'codes' = jsonb_build_array('W'||v_s, 'Z'||v_s)) then
-    raise exception 'new code set is not the open alert';
-  end if;
-  if not exists (select 1 from plm.taxonomy_sync_alert where source_name = 'coldlion_core_property_sync'
-                  and acknowledged_by = 'superseded' and payload->'codes' = jsonb_build_array('Z'||v_s)) then
-    raise exception 'older alert not marked superseded';
+  if (select payload->'codes' from plm.taxonomy_sync_alert where source_name = 'coldlion_core_property_sync'
+       and acknowledged_at is null order by (payload->>'sync_run_id')::bigint desc limit 1) <> jsonb_build_array('W'||v_s, 'Z'||v_s) then
+    raise exception 'newest open alert does not carry the full current code set';
   end if;
   -- #6322: malformed entries never break the run insert (and so never break the sync).
   insert into plm.coldlion_property_sync_run(applied, counts, skipped)

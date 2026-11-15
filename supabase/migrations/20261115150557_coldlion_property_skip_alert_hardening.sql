@@ -5,10 +5,10 @@
 --    AFTER INSERT trigger had no guard, so a bad entry could abort the whole property sync. Parsing
 --    is now a plain jsonb comparison that never throws, and the trigger catches any error and
 --    raises a WARNING instead: the alert can never break the sync it reports on.
--- 2. Each run's skipped list is the complete current state, so the newest set supersedes older
---    ones. When a new set is recorded, older unacknowledged alerts from this source are
---    acknowledged as 'superseded' (codes still skipped carry into the new set). At most one alert
---    from this source is ever open, so nothing older can be left undelivered.
+-- 2. Each run's skipped list is the complete current state, so the newest open alert carries every
+--    code still skipped; an older open set never hides a code. Delivery (the reporter) files the
+--    newest set. Older rows stay open until acknowledged through plm.acknowledge_taxonomy_sync_alert,
+--    the only audited acknowledgement path; this migration never writes acknowledged_at.
 -- Never guesses a licensor; never creates an MG06 value.
 
 create or replace function plm.alert_coldlion_property_skips(p_run_id bigint)
@@ -47,11 +47,6 @@ begin
     return null;
   end if;
 
-  update plm.taxonomy_sync_alert
-     set acknowledged_at = now(), acknowledged_by = 'superseded'
-   where source_name = 'coldlion_core_property_sync'
-     and acknowledged_at is null;
-
   insert into plm.taxonomy_sync_alert(severity, source_name, reason, payload)
   values ('warning', 'coldlion_core_property_sync',
           'unresolved_licensor: ' || jsonb_array_length(v_codes)
@@ -67,7 +62,7 @@ end;
 $fn$;
 
 comment on function plm.alert_coldlion_property_skips(bigint) is
-  '#6194/#6322: one deduplicated warning in plm.taxonomy_sync_alert per new set of active MG06 codes the property sync skipped for want of a licensor; a new set supersedes older open ones. Never throws on malformed entries. Returns the new alert id, or null when nothing new.';
+  '#6194/#6322: one deduplicated warning in plm.taxonomy_sync_alert per new set of active MG06 codes the property sync skipped for want of a licensor. Never throws on malformed entries. Returns the new alert id, or null when nothing new.';
 revoke all on function plm.alert_coldlion_property_skips(bigint) from public, anon, authenticated;
 
 create or replace function plm.coldlion_property_sync_run_alert()

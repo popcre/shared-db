@@ -38,7 +38,11 @@ export function marker(key) {
   return `<!-- ${MARKER_PREFIX}: ${key} -->`;
 }
 
-/** Pure. The newest unacknowledged alert is the current state of the skip list. */
+/**
+ * Pure. The newest unacknowledged alert is the current state of the skip list: each sync run
+ * records its complete skipped set, and since migration 20261115150557 a new set acknowledges
+ * older ones as 'superseded', so at most one is open. Older rows, if any, are stale by design.
+ */
 export function buildPlan(probe) {
   if (!probe || !Array.isArray(probe.alerts)) {
     return { ok: false, deliver: false, reason: "alert probe unreadable; failing closed" };

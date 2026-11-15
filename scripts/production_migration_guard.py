@@ -95,6 +95,8 @@ HARD_BLOCKED = {
     "20261113041225",
     # #2541: left OPA 372 linked to Standard Characters (finding #6291); superseded by 20261115015656.
     "20261113203533",
+    # #2541: post-condition refused the X-Men shared row (finding #6324); superseded by 20261115063911.
+    "20261115015656",
     # #5932 stranded-recovery class B: derived-from retired base 20260814223552;
     # intervening changes (20260825010603, 20260825031841) modify the function
     # between the retired base and superseding base 20260825124200, so the
@@ -414,6 +416,7 @@ HARD_BLOCKED = {
 # verifier imports these names from here; pending-status policy must not import
 # that application verifier back into the production guard's execution closure.
 RETIRED_VERSION_REASONS = {
+    "20261115015656": "#2541: never applied; review finding #6324 showed its post-condition refuses the X-Men / X-Men Classic shared row that owner ruling 6.38 blesses, and it skipped the preview restore of coded names. Superseded by 20261115063911, which also completes the supersession of 20261112225250, 20261113041225 and 20261113203533. Never apply this original.",
     "20261113203533": "#2541: never applied; review finding #6291 showed it would keep OPA 372 Mickey Mouse linked to the MM Standard Characters row, against owner ruling 6.38. Superseded by 20261115015656. Never apply this original.",
     "20261113041225": "#2541: PR #6227 fix-forward renames ColdLion-coded rows (MM Standard Characters, X-Men Classic) back to OPA labels, against owner rulings 6.3/6.36 (ColdLion MG06 names are curated); failed promotion 3x. Superseded by 20261113203533, which links coded rows without renaming. Never apply this original.",
     "20261112225250": "#2541: failed production post-condition 527/528 three times (runs 43360874152, 43362398485) because the #6206 ColdLion feed renamed coded rows it would rename back. Superseded by 20261113203533, which never renames a ColdLion-coded row. Never apply this original.",

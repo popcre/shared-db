@@ -1,5 +1,6 @@
 -- Fix-forward copy of 20261113145056 (PR #6245), which ran out of automatic production attempts
 -- (merge-freeze refusals only). Identical body; idempotent where 20261113145056 already ran (preview).
+-- derived-from: 20261113145056
 -- Issue popcre/shared-db#6194: core.licensor is filled from live ColdLion every day, ahead of
 -- core.property, so every ColdLion Property has its ColdLion Licensor.
 --

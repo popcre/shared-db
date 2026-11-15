@@ -6161,7 +6161,7 @@ CATALOG_CONTRACTS["dflow_art_piece_mg_fks_dflow_prod_v1"] = (
     " and (con.convalidated or not exists (select 1 from dflow_prod.\"merchGroup\")))=10"
 )
 
-# Claim #6345 (designflow-item-master#205 3.2), migration 20261115061043. The
+# Claim #6345 (designflow-item-master#205 3.2), migration 20261115085448. The
 # stale core."merchGroup" / "merchGroupHeaders" are gone under their own names
 # and survive (never dropped) as core."*_retired_<YYYYMMDD>" ordinary tables.
 CATALOG_CONTRACTS["core_merch_group_prod_retired_v1"] = (

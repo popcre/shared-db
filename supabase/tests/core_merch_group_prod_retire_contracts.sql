@@ -1,6 +1,6 @@
 -- =====================================================================================
 -- core."merchGroup" / "merchGroupHeaders" production retirement — migration
--- 20261115061043, claim #6345, work issue popcre/designflow-item-master#205 step 3.2.
+-- 20261115085448, claim #6345, work issue popcre/designflow-item-master#205 step 3.2.
 --
 -- Proves: the migration renames both tables to *_retired_<YYYYMMDD> (rows kept,
 -- nothing dropped); a re-run is a no-op; it refuses (nothing renamed) while a
@@ -10,7 +10,7 @@
 -- as the migration owner. One transaction, ends in ROLLBACK.
 -- =====================================================================================
 
-\set mig `sed -e '/^begin;$/d' -e '/^commit;$/d' supabase/migrations/20261115061043_core_merch_group_prod_retire.sql`
+\set mig `sed -e '/^begin;$/d' -e '/^commit;$/d' supabase/migrations/20261115085448_core_merch_group_prod_retire.sql`
 
 begin;
 

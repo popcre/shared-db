@@ -15,7 +15,7 @@
 
 begin;
 
--- #6345 (designflow-item-master#205 step 3.2): migration 20261115061043 renames
+-- #6345 (designflow-item-master#205 step 3.2): migration 20261115085448 renames
 -- core."merchGroup" / "merchGroupHeaders" to *_retired_<date>. This test still
 -- exercises the pre-retirement shape, so it renames the retired copies back
 -- inside its own transaction (rolled back at the end). No-op before retirement.

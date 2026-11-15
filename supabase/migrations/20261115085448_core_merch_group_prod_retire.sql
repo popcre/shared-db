@@ -28,21 +28,21 @@ declare
   n bigint;
 begin
   if to_regnamespace('dflow_prod') is null or to_regclass('dflow_prod."merchGroup"') is null then
-    raise exception '#205/20261115061043 self-check: dflow_prod."merchGroup" missing; production-shape migration only (non-production is 20261113040728)'
+    raise exception '#205/20261115085448 self-check: dflow_prod."merchGroup" missing; production-shape migration only (non-production is 20261113040728)'
       using errcode = 'feature_not_supported';
   end if;
 
   if to_regclass('core."merchGroup"') is null and to_regclass('core."merchGroupHeaders"') is null then
     if exists (select 1 from pg_class c where c.relnamespace = 'core'::regnamespace
                and c.relname like 'merchGroup\_retired\_%') then
-      raise notice '#205/20261115061043: core copies already retired; no-op';
+      raise notice '#205/20261115085448: core copies already retired; no-op';
       return;
     end if;
-    raise exception '#205/20261115061043: core."merchGroup" and its retired copy are both absent; refuse'
+    raise exception '#205/20261115085448: core."merchGroup" and its retired copy are both absent; refuse'
       using errcode = 'undefined_table';
   end if;
   if to_regclass('core."merchGroup"') is null or to_regclass('core."merchGroupHeaders"') is null then
-    raise exception '#205/20261115061043: only one of core."merchGroup" / "merchGroupHeaders" exists; refuse'
+    raise exception '#205/20261115085448: only one of core."merchGroup" / "merchGroupHeaders" exists; refuse'
       using errcode = 'undefined_table';
   end if;
 
@@ -53,7 +53,7 @@ begin
     and confrelid in ('core."merchGroup"'::regclass, 'core."merchGroupHeaders"'::regclass)
     and conrelid not in ('core."merchGroup"'::regclass, 'core."merchGroupHeaders"'::regclass);
   if n <> 0 then
-    raise exception '#205/20261115061043: % foreign keys still reference the core copies; refuse', n
+    raise exception '#205/20261115085448: % foreign keys still reference the core copies; refuse', n
       using errcode = 'dependent_objects_still_exist';
   end if;
 
@@ -62,7 +62,7 @@ begin
     and d.refobjid in ('core."merchGroup"'::regclass, 'core."merchGroupHeaders"'::regclass)
     and r.ev_class not in ('core."merchGroup"'::regclass, 'core."merchGroupHeaders"'::regclass);
   if n <> 0 then
-    raise exception '#205/20261115061043: % views depend on the core copies; refuse', n
+    raise exception '#205/20261115085448: % views depend on the core copies; refuse', n
       using errcode = 'dependent_objects_still_exist';
   end if;
 

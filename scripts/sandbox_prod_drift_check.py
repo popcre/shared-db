@@ -4,7 +4,7 @@
 Compares relations, columns, functions, constraints, indexes, policies, triggers and
 RLS flags. Both sides are read through the Supabase Management API read-only query
 endpoint; nothing is written anywhere. Differences matching the reviewed allowlist
-(config/sandbox-prod-drift-allowlist.json) are ignored; anything else is reported.
+(ALLOWLIST below) are ignored; anything else is reported.
 
 Exit codes: 0 no drift outside the allowlist, 1 drift found, 2 the check could not run.
 """
@@ -15,6 +15,13 @@ from pathlib import Path
 PROD = "qsllyeztdwjgirsysgai"
 SANDBOX = "xupnyeifmpsacrqahwwm"
 SYSTEM = "('pg_catalog','information_schema','pg_toast')"
+# Reviewed exceptions (#6356). Sandbox-only objects are never drift. A schema listed in ignore_schemas is not
+# compared at all; ignore_patterns are kind:schema.name globs. Every entry needs an owner decision on #6356.
+ALLOWLIST = {
+    "ignore_schemas": ["dam", "hts_rag", "archive", "public", "dflow_prod", "dflow_archive", "cron", "repack", "realtime", "temp_status_watch", "auth", "storage", "extensions", "vault", "graphql", "graphql_public", "net", "pgsodium", "pgsodium_masks", "supabase_functions", "supabase_migrations", "_realtime", "pgbouncer"],
+    "ignore_patterns": [],
+}
+
 QUERIES = {
     "relation": f"select n.nspname||'.'||c.relname k, c.relkind::text v from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname not in {SYSTEM} and n.nspname not like 'pg_temp%' and n.nspname not like 'pg_toast%' and c.relkind in ('r','p','v','m','S','f') and not c.relispartition",
     "rls": f"select n.nspname||'.'||c.relname k, c.relrowsecurity::text||'/'||c.relforcerowsecurity::text v from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname not in {SYSTEM} and c.relkind in ('r','p') and not c.relispartition",
@@ -79,7 +86,6 @@ def render(drift: dict[str, list[str]], limit: int = 25) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--allowlist", type=Path, default=Path(__file__).resolve().parents[1] / "config/sandbox-prod-drift-allowlist.json")
     ap.add_argument("--output", type=Path)
     args = ap.parse_args()
     token = os.environ.get("SUPABASE_ACCESS_TOKEN", "")
@@ -87,8 +93,7 @@ def main() -> int:
         print("UNVERIFIABLE: SUPABASE_ACCESS_TOKEN is not set", file=sys.stderr)
         return 2
     try:
-        allowlist = json.loads(args.allowlist.read_text())
-        drift = compare(snapshot(PROD, token), snapshot(SANDBOX, token), allowlist)
+        drift = compare(snapshot(PROD, token), snapshot(SANDBOX, token), ALLOWLIST)
     except Exception as exc:  # noqa: BLE001 - any failure means the check did not run
         print(f"UNVERIFIABLE: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2

@@ -1,4 +1,5 @@
 -- shared-db#6150 step 6 fix-forward for 20261113145255 (review finding #6248).
+-- Re-versioned from 20261115015415 (main advanced); that version stays reserved and unused.
 -- 1. Top-level INSERT ... SELECT so post-apply catalog verification sees the seeded table
 --    (the earlier DO block was invisible to it).
 -- 2. Each property is resolved by (licensor code, property code), never by code alone.

@@ -33,6 +33,11 @@ create table if not exists plm.dcp_property_mg06_crosswalk (
 
 alter table plm.dcp_property_mg06_crosswalk enable row level security;
 
+-- Read-only suggestion data: only the migration writes to this table.
+-- Revoke UPDATE/DELETE from service_role to satisfy the plm.dcp_* privilege
+-- contract (dcp_vault_landing_contracts.sql section B).
+revoke update, delete on plm.dcp_property_mg06_crosswalk from service_role;
+
 comment on table plm.dcp_property_mg06_crosswalk is
   'DCP film source_id -> Coldlion MG06 mg_code crosswalk (Disney). '
   'Seeded from dcp_opa_property_resolution + OPA-to-MG06 mapping sheet + core.property. '

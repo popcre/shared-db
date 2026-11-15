@@ -2,6 +2,10 @@
 -- Ports item assignment/workflow-action history, legacy ERP identity, production PO reservation, ColdLion property sync run and licensor submission PDF tables, with their guard functions and triggers.
 -- derived-from: none
 
+-- Keep cutover and permissions atomic with the new tables and trigger.
+begin;
+lock table plm.production_order in share row exclusive mode;
+
 set check_function_bodies = off;
 
 CREATE OR REPLACE FUNCTION plm.reject_item_assignment_history_rewrite()
@@ -112,14 +116,35 @@ create table if not exists plm.item_user_assignment (
   "assignment_context" jsonb default '{}'::jsonb not null,
   "created_at" timestamp with time zone default clock_timestamp() not null
 );
-alter table plm.item_user_assignment add constraint "item_user_assignment_context_object_check" CHECK ((jsonb_typeof(assignment_context) = 'object'::text));
-alter table plm.item_user_assignment add constraint "item_user_assignment_effective_window_check" CHECK (((effective_to IS NULL) OR (effective_to > effective_from)));
-alter table plm.item_user_assignment add constraint "item_user_assignment_function_key_shape_check" CHECK (((function_key = lower(btrim(function_key))) AND (function_key ~ '^[a-z][a-z0-9_-]*$'::text)));
-alter table plm.item_user_assignment add constraint "item_user_assignment_pkey" PRIMARY KEY (id);
+do $constraint$
+begin
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.item_user_assignment'::regclass
+                   and conname = 'item_user_assignment_context_object_check') then
+    alter table plm.item_user_assignment add constraint "item_user_assignment_context_object_check" CHECK ((jsonb_typeof(assignment_context) = 'object'::text));
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.item_user_assignment'::regclass
+                   and conname = 'item_user_assignment_effective_window_check') then
+    alter table plm.item_user_assignment add constraint "item_user_assignment_effective_window_check" CHECK (((effective_to IS NULL) OR (effective_to > effective_from)));
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.item_user_assignment'::regclass
+                   and conname = 'item_user_assignment_function_key_shape_check') then
+    alter table plm.item_user_assignment add constraint "item_user_assignment_function_key_shape_check" CHECK (((function_key = lower(btrim(function_key))) AND (function_key ~ '^[a-z][a-z0-9_-]*$'::text)));
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.item_user_assignment'::regclass
+                   and conname = 'item_user_assignment_pkey') then
+    alter table plm.item_user_assignment add constraint "item_user_assignment_pkey" PRIMARY KEY (id);
+  end if;
+end
+$constraint$;
 CREATE INDEX IF NOT EXISTS item_user_assignment_active_lookup ON plm.item_user_assignment USING btree (rfq_item_id, function_key, effective_from, id) INCLUDE (user_id) WHERE (effective_to IS NULL);
 CREATE UNIQUE INDEX IF NOT EXISTS item_user_assignment_one_active ON plm.item_user_assignment USING btree (rfq_item_id, function_key, user_id) WHERE (effective_to IS NULL);
 CREATE INDEX IF NOT EXISTS item_user_assignment_rfq_item_id_idx ON plm.item_user_assignment USING btree (rfq_item_id);
 alter table plm.item_user_assignment enable row level security;
+drop trigger if exists item_user_assignment_immutable_history on plm.item_user_assignment;
 CREATE TRIGGER item_user_assignment_immutable_history BEFORE DELETE OR UPDATE ON plm.item_user_assignment FOR EACH ROW EXECUTE FUNCTION plm.reject_item_assignment_history_rewrite();
 comment on table plm.item_user_assignment is 'Final plm item-master home for dflow.item_user_assignment (issues #3498, #3595). Item function-role assignment history; append-only enforced (only closing an active assignment once is allowed). Column shapes, indexes and append-only behavior match the dflow source. Row movement is a separate DesignFlow migration. User-id foreign keys and backend grants are still pending on #3595; deny-by-default until then.';
 create table if not exists plm.item_workflow_action (
@@ -144,15 +169,55 @@ END not null,
   "fallback_reason" text,
   "requires_admin_review" boolean default false not null
 );
-alter table plm.item_workflow_action add constraint "item_workflow_action_action_key_shape_check" CHECK (((action_key = lower(btrim(action_key))) AND (action_key ~ '^[a-z][a-z0-9_-]*$'::text)));
-alter table plm.item_workflow_action add constraint "item_workflow_action_actor_provenance" CHECK ((((actor_identity_source = 'supabase_auth'::text) AND (actor_auth_user_id IS NOT NULL)) OR ((actor_identity_source = 'designflow_jwt'::text) AND (actor_auth_user_id IS NULL) AND (actor_identity_email IS NOT NULL))));
-alter table plm.item_workflow_action add constraint "item_workflow_action_correlation_key_key" UNIQUE (correlation_key);
-alter table plm.item_workflow_action add constraint "item_workflow_action_fallback_is_labeled" CHECK ((((fallback_recipient_user_id IS NULL) AND (fallback_reason IS NULL)) OR ((fallback_recipient_user_id IS NOT NULL) AND (fallback_reason IS NOT NULL) AND (btrim(fallback_reason) <> ''::text) AND (source_action_id IS NOT NULL))));
-alter table plm.item_workflow_action add constraint "item_workflow_action_id_rfq_item_key" UNIQUE (id, rfq_item_id);
-alter table plm.item_workflow_action add constraint "item_workflow_action_pkey" PRIMARY KEY (id);
-alter table plm.item_workflow_action add constraint "item_workflow_action_return_names_its_source" CHECK ((((routing_context ->> 'return_to_original_handoff'::text) IS DISTINCT FROM 'true'::text) OR (source_action_id IS NOT NULL)));
-alter table plm.item_workflow_action add constraint "item_workflow_action_routing_context_object_check" CHECK ((jsonb_typeof(routing_context) = 'object'::text));
-alter table plm.item_workflow_action add constraint "item_workflow_action_source_action_not_self" CHECK (((source_action_id IS NULL) OR (source_action_id <> id)));
+do $constraint$
+begin
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.item_workflow_action'::regclass
+                   and conname = 'item_workflow_action_action_key_shape_check') then
+    alter table plm.item_workflow_action add constraint "item_workflow_action_action_key_shape_check" CHECK (((action_key = lower(btrim(action_key))) AND (action_key ~ '^[a-z][a-z0-9_-]*$'::text)));
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.item_workflow_action'::regclass
+                   and conname = 'item_workflow_action_actor_provenance') then
+    alter table plm.item_workflow_action add constraint "item_workflow_action_actor_provenance" CHECK ((((actor_identity_source = 'supabase_auth'::text) AND (actor_auth_user_id IS NOT NULL)) OR ((actor_identity_source = 'designflow_jwt'::text) AND (actor_auth_user_id IS NULL) AND (actor_identity_email IS NOT NULL))));
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.item_workflow_action'::regclass
+                   and conname = 'item_workflow_action_correlation_key_key') then
+    alter table plm.item_workflow_action add constraint "item_workflow_action_correlation_key_key" UNIQUE (correlation_key);
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.item_workflow_action'::regclass
+                   and conname = 'item_workflow_action_fallback_is_labeled') then
+    alter table plm.item_workflow_action add constraint "item_workflow_action_fallback_is_labeled" CHECK ((((fallback_recipient_user_id IS NULL) AND (fallback_reason IS NULL)) OR ((fallback_recipient_user_id IS NOT NULL) AND (fallback_reason IS NOT NULL) AND (btrim(fallback_reason) <> ''::text) AND (source_action_id IS NOT NULL))));
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.item_workflow_action'::regclass
+                   and conname = 'item_workflow_action_id_rfq_item_key') then
+    alter table plm.item_workflow_action add constraint "item_workflow_action_id_rfq_item_key" UNIQUE (id, rfq_item_id);
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.item_workflow_action'::regclass
+                   and conname = 'item_workflow_action_pkey') then
+    alter table plm.item_workflow_action add constraint "item_workflow_action_pkey" PRIMARY KEY (id);
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.item_workflow_action'::regclass
+                   and conname = 'item_workflow_action_return_names_its_source') then
+    alter table plm.item_workflow_action add constraint "item_workflow_action_return_names_its_source" CHECK ((((routing_context ->> 'return_to_original_handoff'::text) IS DISTINCT FROM 'true'::text) OR (source_action_id IS NOT NULL)));
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.item_workflow_action'::regclass
+                   and conname = 'item_workflow_action_routing_context_object_check') then
+    alter table plm.item_workflow_action add constraint "item_workflow_action_routing_context_object_check" CHECK ((jsonb_typeof(routing_context) = 'object'::text));
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.item_workflow_action'::regclass
+                   and conname = 'item_workflow_action_source_action_not_self') then
+    alter table plm.item_workflow_action add constraint "item_workflow_action_source_action_not_self" CHECK (((source_action_id IS NULL) OR (source_action_id <> id)));
+  end if;
+end
+$constraint$;
 CREATE INDEX IF NOT EXISTS item_workflow_action_admin_review ON plm.item_workflow_action USING btree (rfq_item_id, occurred_at) WHERE requires_admin_review;
 CREATE INDEX IF NOT EXISTS item_workflow_action_item_time ON plm.item_workflow_action USING btree (rfq_item_id, occurred_at, id);
 CREATE INDEX IF NOT EXISTS item_workflow_action_new_step_id_idx ON plm.item_workflow_action USING btree (new_step_id);
@@ -162,6 +227,7 @@ CREATE INDEX IF NOT EXISTS item_workflow_action_prior_step_id_idx ON plm.item_wo
 CREATE INDEX IF NOT EXISTS item_workflow_action_rfq_item_id_idx ON plm.item_workflow_action USING btree (rfq_item_id);
 CREATE INDEX IF NOT EXISTS item_workflow_action_source_action_rfq_item_idx ON plm.item_workflow_action USING btree (source_action_id, rfq_item_id);
 alter table plm.item_workflow_action enable row level security;
+drop trigger if exists item_workflow_action_immutable on plm.item_workflow_action;
 CREATE TRIGGER item_workflow_action_immutable BEFORE DELETE OR UPDATE ON plm.item_workflow_action FOR EACH ROW EXECUTE FUNCTION plm.reject_item_workflow_action_rewrite();
 comment on table plm.item_workflow_action is 'Final plm item-master home for dflow.item_workflow_action (issues #3498, #3595). Workflow action history; append-only enforced (UPDATE and DELETE refused). A return names source_action_id and never rewrites the original actor. Actor identity source is supabase_auth or designflow_jwt; backend email is normalized. Column shapes, indexes and append-only behavior match the dflow source. Row movement is a separate DesignFlow migration. User-id foreign keys and backend grants are still pending on #3595; deny-by-default until then.';
 create table if not exists plm.legacy_erp_item_identity (
@@ -178,9 +244,22 @@ create table if not exists plm.legacy_erp_item_identity (
   "mg06_code" text,
   "frozen_at" timestamp with time zone default now() not null
 );
-alter table plm.legacy_erp_item_identity add constraint "legacy_erp_item_identity_external_id_key" UNIQUE (external_id);
-alter table plm.legacy_erp_item_identity add constraint "legacy_erp_item_identity_pkey" PRIMARY KEY (id);
+do $constraint$
+begin
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.legacy_erp_item_identity'::regclass
+                   and conname = 'legacy_erp_item_identity_external_id_key') then
+    alter table plm.legacy_erp_item_identity add constraint "legacy_erp_item_identity_external_id_key" UNIQUE (external_id);
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.legacy_erp_item_identity'::regclass
+                   and conname = 'legacy_erp_item_identity_pkey') then
+    alter table plm.legacy_erp_item_identity add constraint "legacy_erp_item_identity_pkey" PRIMARY KEY (id);
+  end if;
+end
+$constraint$;
 alter table plm.legacy_erp_item_identity enable row level security;
+drop policy if exists "legacy_erp_item_identity_admin_read" on plm.legacy_erp_item_identity;
 create policy "legacy_erp_item_identity_admin_read" on plm.legacy_erp_item_identity as permissive for select to authenticated using (( SELECT has_role(auth.uid(), 'admin'::app_role) AS has_role));
 comment on table plm.legacy_erp_item_identity is 'Frozen copy (#2482) of the identity and matching columns of the retired DesignFlow item feed. Resolves legacy ERP item UUIDs still carried by api.plm_item_list ids, plm.style_tracker_item_bridge.erp_item_id and public.product_category_predictions.erp_item_id. No feed writes it.';
 create table if not exists plm.production_po_legacy_admission (
@@ -191,17 +270,45 @@ create table if not exists plm.production_po_legacy_admission (
   "admitted_at" timestamp with time zone default now() not null,
   "used_at" timestamp with time zone
 );
-alter table plm.production_po_legacy_admission add constraint "production_po_legacy_admission_pkey" PRIMARY KEY (order_id);
-alter table plm.production_po_legacy_admission add constraint "production_po_legacy_admission_review_receipt_sha256_check" CHECK ((review_receipt_sha256 ~ '^[0-9a-f]{64}$'::text));
-alter table plm.production_po_legacy_admission add constraint "production_po_legacy_admission_source_evidence_sha256_check" CHECK ((source_evidence_sha256 ~ '^[0-9a-f]{64}$'::text));
+do $constraint$
+begin
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.production_po_legacy_admission'::regclass
+                   and conname = 'production_po_legacy_admission_pkey') then
+    alter table plm.production_po_legacy_admission add constraint "production_po_legacy_admission_pkey" PRIMARY KEY (order_id);
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.production_po_legacy_admission'::regclass
+                   and conname = 'production_po_legacy_admission_review_receipt_sha256_check') then
+    alter table plm.production_po_legacy_admission add constraint "production_po_legacy_admission_review_receipt_sha256_check" CHECK ((review_receipt_sha256 ~ '^[0-9a-f]{64}$'::text));
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.production_po_legacy_admission'::regclass
+                   and conname = 'production_po_legacy_admission_source_evidence_sha256_check') then
+    alter table plm.production_po_legacy_admission add constraint "production_po_legacy_admission_source_evidence_sha256_check" CHECK ((source_evidence_sha256 ~ '^[0-9a-f]{64}$'::text));
+  end if;
+end
+$constraint$;
 alter table plm.production_po_legacy_admission enable row level security;
 comment on table plm.production_po_legacy_admission is 'Postgres-owner-only, one-use exact-order historical admissions requiring private evidence and review digests. Application roles and service_role have no access. Never a general import/date-based exemption.';
 create table if not exists plm.production_po_reservation (
   "normalized_po" text not null,
   "reserved_at" timestamp with time zone default now() not null
 );
-alter table plm.production_po_reservation add constraint "production_po_reservation_normalized" CHECK (((normalized_po <> ''::text) AND (normalized_po = plm.normalize_production_po_number(normalized_po))));
-alter table plm.production_po_reservation add constraint "production_po_reservation_pkey" PRIMARY KEY (normalized_po);
+do $constraint$
+begin
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.production_po_reservation'::regclass
+                   and conname = 'production_po_reservation_normalized') then
+    alter table plm.production_po_reservation add constraint "production_po_reservation_normalized" CHECK (((normalized_po <> ''::text) AND (normalized_po = plm.normalize_production_po_number(normalized_po))));
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.production_po_reservation'::regclass
+                   and conname = 'production_po_reservation_pkey') then
+    alter table plm.production_po_reservation add constraint "production_po_reservation_pkey" PRIMARY KEY (normalized_po);
+  end if;
+end
+$constraint$;
 alter table plm.production_po_reservation enable row level security;
 comment on table plm.production_po_reservation is 'Permanent case/outer-whitespace normalized production PO reservations. No cascade: cancellation, voiding and deletion never release a number. Historical duplicate headers remain intact.';
 create table if not exists plm.coldlion_property_sync_run (
@@ -211,7 +318,15 @@ create table if not exists plm.coldlion_property_sync_run (
   "counts" jsonb not null,
   "skipped" jsonb default '[]'::jsonb not null
 );
-alter table plm.coldlion_property_sync_run add constraint "coldlion_property_sync_run_pkey" PRIMARY KEY (id);
+do $constraint$
+begin
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.coldlion_property_sync_run'::regclass
+                   and conname = 'coldlion_property_sync_run_pkey') then
+    alter table plm.coldlion_property_sync_run add constraint "coldlion_property_sync_run_pkey" PRIMARY KEY (id);
+  end if;
+end
+$constraint$;
 alter table plm.coldlion_property_sync_run enable row level security;
 comment on table plm.coldlion_property_sync_run is '#6194: one row per run of plm.sync_core_property_from_coldlion (counts of created, renamed, coded, status changes, skips).';
 create table if not exists plm.licensor_submission_pdf (
@@ -230,12 +345,33 @@ create table if not exists plm.licensor_submission_pdf (
   "text_length" integer not null,
   "created_at" timestamp with time zone default now() not null
 );
-alter table plm.licensor_submission_pdf add constraint "licensor_submission_pdf_capture_id_nas_path_key" UNIQUE (capture_id, nas_path);
-alter table plm.licensor_submission_pdf add constraint "licensor_submission_pdf_file_size_bytes_check" CHECK ((file_size_bytes >= 0));
-alter table plm.licensor_submission_pdf add constraint "licensor_submission_pdf_pkey" PRIMARY KEY (id);
-alter table plm.licensor_submission_pdf add constraint "licensor_submission_pdf_text_length_check" CHECK ((text_length >= 0));
+do $constraint$
+begin
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.licensor_submission_pdf'::regclass
+                   and conname = 'licensor_submission_pdf_capture_id_nas_path_key') then
+    alter table plm.licensor_submission_pdf add constraint "licensor_submission_pdf_capture_id_nas_path_key" UNIQUE (capture_id, nas_path);
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.licensor_submission_pdf'::regclass
+                   and conname = 'licensor_submission_pdf_file_size_bytes_check') then
+    alter table plm.licensor_submission_pdf add constraint "licensor_submission_pdf_file_size_bytes_check" CHECK ((file_size_bytes >= 0));
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.licensor_submission_pdf'::regclass
+                   and conname = 'licensor_submission_pdf_pkey') then
+    alter table plm.licensor_submission_pdf add constraint "licensor_submission_pdf_pkey" PRIMARY KEY (id);
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.licensor_submission_pdf'::regclass
+                   and conname = 'licensor_submission_pdf_text_length_check') then
+    alter table plm.licensor_submission_pdf add constraint "licensor_submission_pdf_text_length_check" CHECK ((text_length >= 0));
+  end if;
+end
+$constraint$;
 CREATE INDEX IF NOT EXISTS licensor_submission_pdf_style_idx ON plm.licensor_submission_pdf USING btree (style_code, capture_id);
 alter table plm.licensor_submission_pdf enable row level security;
+drop policy if exists "licensor_submission_pdf_staff_read" on plm.licensor_submission_pdf;
 create policy "licensor_submission_pdf_staff_read" on plm.licensor_submission_pdf as permissive for select to authenticated using (app.has_any_role(ARRAY['administrator'::app.app_role, 'sales'::app.app_role, 'licensing'::app.app_role, 'designer'::app.app_role]));
 comment on table plm.licensor_submission_pdf is 'Per-PDF readings from licensor submission confirmation pages: the licensor-side properties, sub-properties, characters and style guides printed on the page, keyed to our style number taken from the file name. Evidence only; ColdLion stays authoritative for MG05/MG06 (popcre/shared-db#5952).';
 create table if not exists plm.licensor_submission_pdf_capture (
@@ -253,20 +389,129 @@ create table if not exists plm.licensor_submission_pdf_capture (
   "completed_at" timestamp with time zone,
   "notes" text
 );
-alter table plm.licensor_submission_pdf_capture add constraint "licensor_submission_pdf_capture_capture_key_key" UNIQUE (capture_key);
-alter table plm.licensor_submission_pdf_capture add constraint "licensor_submission_pdf_capture_check" CHECK ((year_from <= year_to));
-alter table plm.licensor_submission_pdf_capture add constraint "licensor_submission_pdf_capture_check1" CHECK (((status = 'complete'::text) = (completed_at IS NOT NULL)));
-alter table plm.licensor_submission_pdf_capture add constraint "licensor_submission_pdf_capture_expected_file_count_check" CHECK ((expected_file_count >= 0));
-alter table plm.licensor_submission_pdf_capture add constraint "licensor_submission_pdf_capture_loaded_file_count_check" CHECK ((loaded_file_count >= 0));
-alter table plm.licensor_submission_pdf_capture add constraint "licensor_submission_pdf_capture_pkey" PRIMARY KEY (id);
-alter table plm.licensor_submission_pdf_capture add constraint "licensor_submission_pdf_capture_status_check" CHECK ((status = ANY (ARRAY['loading'::text, 'complete'::text, 'rejected'::text])));
+do $constraint$
+begin
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.licensor_submission_pdf_capture'::regclass
+                   and conname = 'licensor_submission_pdf_capture_capture_key_key') then
+    alter table plm.licensor_submission_pdf_capture add constraint "licensor_submission_pdf_capture_capture_key_key" UNIQUE (capture_key);
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.licensor_submission_pdf_capture'::regclass
+                   and conname = 'licensor_submission_pdf_capture_check') then
+    alter table plm.licensor_submission_pdf_capture add constraint "licensor_submission_pdf_capture_check" CHECK ((year_from <= year_to));
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.licensor_submission_pdf_capture'::regclass
+                   and conname = 'licensor_submission_pdf_capture_check1') then
+    alter table plm.licensor_submission_pdf_capture add constraint "licensor_submission_pdf_capture_check1" CHECK (((status = 'complete'::text) = (completed_at IS NOT NULL)));
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.licensor_submission_pdf_capture'::regclass
+                   and conname = 'licensor_submission_pdf_capture_expected_file_count_check') then
+    alter table plm.licensor_submission_pdf_capture add constraint "licensor_submission_pdf_capture_expected_file_count_check" CHECK ((expected_file_count >= 0));
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.licensor_submission_pdf_capture'::regclass
+                   and conname = 'licensor_submission_pdf_capture_loaded_file_count_check') then
+    alter table plm.licensor_submission_pdf_capture add constraint "licensor_submission_pdf_capture_loaded_file_count_check" CHECK ((loaded_file_count >= 0));
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.licensor_submission_pdf_capture'::regclass
+                   and conname = 'licensor_submission_pdf_capture_pkey') then
+    alter table plm.licensor_submission_pdf_capture add constraint "licensor_submission_pdf_capture_pkey" PRIMARY KEY (id);
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.licensor_submission_pdf_capture'::regclass
+                   and conname = 'licensor_submission_pdf_capture_status_check') then
+    alter table plm.licensor_submission_pdf_capture add constraint "licensor_submission_pdf_capture_status_check" CHECK ((status = ANY (ARRAY['loading'::text, 'complete'::text, 'rejected'::text])));
+  end if;
+end
+$constraint$;
 alter table plm.licensor_submission_pdf_capture enable row level security;
+drop policy if exists "licensor_submission_pdf_capture_staff_read" on plm.licensor_submission_pdf_capture;
 create policy "licensor_submission_pdf_capture_staff_read" on plm.licensor_submission_pdf_capture as permissive for select to authenticated using (app.has_any_role(ARRAY['administrator'::app.app_role, 'sales'::app.app_role, 'licensing'::app.app_role, 'designer'::app.app_role]));
 comment on table plm.licensor_submission_pdf_capture is 'One run of reading licensor submission confirmation PDFs from the NAS (popcre/shared-db#5952). A capture is usable only when status is complete; its rows in plm.licensor_submission_pdf are never edited, a new run is a new capture.';
-alter table plm.item_user_assignment add constraint "item_user_assignment_rfq_item_id_fkey" FOREIGN KEY (rfq_item_id) REFERENCES plm."RFQItem"("rfqItem_id") ON DELETE CASCADE;
-alter table plm.item_workflow_action add constraint "item_workflow_action_new_step_id_fkey" FOREIGN KEY (new_step_id) REFERENCES plm."RFQStep"("RFQStep_id");
-alter table plm.item_workflow_action add constraint "item_workflow_action_prior_step_id_fkey" FOREIGN KEY (prior_step_id) REFERENCES plm."RFQStep"("RFQStep_id");
-alter table plm.item_workflow_action add constraint "item_workflow_action_rfq_item_id_fkey" FOREIGN KEY (rfq_item_id) REFERENCES plm."RFQItem"("rfqItem_id") ON DELETE RESTRICT;
-alter table plm.item_workflow_action add constraint "item_workflow_action_source_action_id_fkey" FOREIGN KEY (source_action_id, rfq_item_id) REFERENCES plm.item_workflow_action(id, rfq_item_id) ON DELETE RESTRICT;
-alter table plm.production_po_legacy_admission add constraint "production_po_legacy_admission_normalized_po_fkey" FOREIGN KEY (normalized_po) REFERENCES plm.production_po_reservation(normalized_po);
-alter table plm.licensor_submission_pdf add constraint "licensor_submission_pdf_capture_id_fkey" FOREIGN KEY (capture_id) REFERENCES plm.licensor_submission_pdf_capture(id) ON DELETE RESTRICT;
+do $constraint$
+begin
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.item_user_assignment'::regclass
+                   and conname = 'item_user_assignment_rfq_item_id_fkey') then
+    alter table plm.item_user_assignment add constraint "item_user_assignment_rfq_item_id_fkey" FOREIGN KEY (rfq_item_id) REFERENCES plm."RFQItem"("rfqItem_id") ON DELETE CASCADE;
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.item_workflow_action'::regclass
+                   and conname = 'item_workflow_action_new_step_id_fkey') then
+    alter table plm.item_workflow_action add constraint "item_workflow_action_new_step_id_fkey" FOREIGN KEY (new_step_id) REFERENCES plm."RFQStep"("RFQStep_id");
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.item_workflow_action'::regclass
+                   and conname = 'item_workflow_action_prior_step_id_fkey') then
+    alter table plm.item_workflow_action add constraint "item_workflow_action_prior_step_id_fkey" FOREIGN KEY (prior_step_id) REFERENCES plm."RFQStep"("RFQStep_id");
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.item_workflow_action'::regclass
+                   and conname = 'item_workflow_action_rfq_item_id_fkey') then
+    alter table plm.item_workflow_action add constraint "item_workflow_action_rfq_item_id_fkey" FOREIGN KEY (rfq_item_id) REFERENCES plm."RFQItem"("rfqItem_id") ON DELETE RESTRICT;
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.item_workflow_action'::regclass
+                   and conname = 'item_workflow_action_source_action_id_fkey') then
+    alter table plm.item_workflow_action add constraint "item_workflow_action_source_action_id_fkey" FOREIGN KEY (source_action_id, rfq_item_id) REFERENCES plm.item_workflow_action(id, rfq_item_id) ON DELETE RESTRICT;
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.production_po_legacy_admission'::regclass
+                   and conname = 'production_po_legacy_admission_normalized_po_fkey') then
+    alter table plm.production_po_legacy_admission add constraint "production_po_legacy_admission_normalized_po_fkey" FOREIGN KEY (normalized_po) REFERENCES plm.production_po_reservation(normalized_po);
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint
+                 where conrelid = 'plm.licensor_submission_pdf'::regclass
+                   and conname = 'licensor_submission_pdf_capture_id_fkey') then
+    alter table plm.licensor_submission_pdf add constraint "licensor_submission_pdf_capture_id_fkey" FOREIGN KEY (capture_id) REFERENCES plm.licensor_submission_pdf_capture(id) ON DELETE RESTRICT;
+  end if;
+end
+$constraint$;
+
+-- Restore the source contracts explicitly, overriding inherited default grants.
+revoke all on plm.item_user_assignment, plm.item_workflow_action,
+  plm.production_po_reservation, plm.production_po_legacy_admission
+  from public, anon, authenticated, service_role;
+revoke all on plm.legacy_erp_item_identity from public, anon, authenticated, service_role;
+grant select on plm.legacy_erp_item_identity to authenticated, service_role;
+revoke all on plm.coldlion_property_sync_run from public, anon, authenticated;
+
+revoke all on plm.licensor_submission_pdf, plm.licensor_submission_pdf_capture
+  from public, anon, authenticated, service_role;
+grant select on plm.licensor_submission_pdf, plm.licensor_submission_pdf_capture to authenticated;
+grant select, insert on plm.licensor_submission_pdf, plm.licensor_submission_pdf_capture to service_role;
+grant update (loaded_file_count, status, completed_at, notes)
+  on plm.licensor_submission_pdf_capture to service_role;
+
+-- The source PO helper functions are internal to the owner-executed guard.
+revoke all on function plm.guard_production_po_number() from service_role;
+revoke all on function plm.normalize_production_po_number(text) from service_role;
+
+-- Reserve every existing identity while header writers remain locked out.
+-- Preserve historical duplicate numbers, but refuse NULL or blank identities.
+do $cutover$
+begin
+  if exists (select 1 from plm.production_order
+             where plm.normalize_production_po_number(production_order_number) is null
+                or plm.normalize_production_po_number(production_order_number) = '') then
+    raise exception 'Production PO enforcement requires resolving existing blank numbers first.'
+      using errcode = '23514';
+  end if;
+end
+$cutover$;
+
+insert into plm.production_po_reservation(normalized_po)
+select distinct plm.normalize_production_po_number(production_order_number)
+from plm.production_order
+on conflict (normalized_po) do nothing;
+
+drop trigger if exists production_po_no_reuse on plm.production_order;
+create trigger production_po_no_reuse
+before insert or update on plm.production_order
+for each row execute function plm.guard_production_po_number();
+
+commit;

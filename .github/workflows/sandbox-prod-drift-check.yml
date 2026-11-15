@@ -1,0 +1,62 @@
+name: Sandbox vs production structure drift check
+
+# Issue #6356. Weekly, read-only. Compares the DesignFlow sandbox's structure with
+# production through the Supabase Management API read-only query endpoint (no DDL,
+# no data read beyond catalogs) and reports differences outside the reviewed
+# allowlist (config/sandbox-prod-drift-allowlist.json) on one tracking issue.
+# Only schedule and workflow_dispatch: it emits no required status context and
+# cannot hold up any merge. It never writes to production, preview or the sandbox.
+
+on:
+  schedule:
+    - cron: "17 12 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: sandbox-prod-drift-check
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    name: Compare sandbox structure with production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Run the read-only drift check
+        id: check
+        run: |
+          set +e
+          python3 scripts/sandbox_prod_drift_check.py --output "$RUNNER_TEMP/drift.txt"
+          rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          if [ "$rc" -eq 2 ]; then
+            echo "::error::the drift check could not run (see log); this is not a clean result"
+            exit 2
+          fi
+          exit 0
+      - name: Report drift on the tracking issue
+        if: steps.check.outputs.rc == '1'
+        run: |
+          set -euo pipefail
+          title="Sandbox structure drift from production (weekly check)"
+          n="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')"
+          body="$(cat "$RUNNER_TEMP/drift.txt")
+
+          Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+          Allowlist: config/sandbox-prod-drift-allowlist.json
+          Posted by GitHub Actions workflow sandbox-prod-drift-check"
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi

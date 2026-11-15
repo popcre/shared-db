@@ -33,7 +33,7 @@ jobs:
           node-version: 22
 
       - name: Unit tests (offline)
-        run: node --test tools/property-name-match.test.mjs tools/check-coldlion-property-scrape-names.test.mjs
+        run: node --test tools/property-name-match.test.mjs tools/check-coldlion-property-scrape-names.test.mjs tools/report-coldlion-property-skip-alert.test.mjs
 
       - uses: supabase/setup-cli@v1
         with:
@@ -58,3 +58,31 @@ jobs:
 
       - name: Compare names (read-only)
         run: node tools/check-coldlion-property-scrape-names.mjs --linked --summary "$GITHUB_STEP_SUMMARY"
+      # #6194: the property sync never guesses a licensor; each skipped active MG06 value is an
+      # unacknowledged warning in plm.taxonomy_sync_alert. Read it (one SELECT) and file ONE issue
+      # per code set. Codes only: this repository is public.
+      - name: Deliver the skipped-licensor alert (one deduplicated issue)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          node tools/report-coldlion-property-skip-alert.mjs --linked --out skip-plan.json
+          CODE=$?
+          set -e
+          if [ "$CODE" -eq 0 ]; then exit 0; fi
+          if [ "$CODE" -ne 1 ]; then echo "::error::Skipped-licensor alert probe could not run (exit $CODE); this is not an all-clear."; exit "$CODE"; fi
+          node scripts/gh-read.mjs api --paginate "repos/${REPO}/issues?state=open&per_page=100" > open-issues.json
+          EXISTING=$(node tools/report-coldlion-property-skip-alert.mjs --find-duplicate skip-plan.json open-issues.json)
+          CODES=$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('skip-plan.json','utf8')).codes.join(', '))")
+          if [ -n "$EXISTING" ]; then
+            echo "::warning title=ColdLion MG06 values still skipped::Already open as issue #${EXISTING}: ${CODES}"
+            exit 0
+          fi
+          node -e "const p=JSON.parse(require('fs').readFileSync('skip-plan.json','utf8'));require('fs').writeFileSync('skip-body.md',p.body+'\n\nDelivered by '+process.env.RUN_URL+'\n')"
+          TITLE=$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('skip-plan.json','utf8')).title)")
+          gh issue create --repo "$REPO" --title "$TITLE" --body-file skip-body.md --label coldlion-taxonomy-alert \
+            || gh issue create --repo "$REPO" --title "$TITLE" --body-file skip-body.md
+          echo "::warning title=ColdLion MG06 values skipped::New issue filed for: ${CODES}"

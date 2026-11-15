@@ -478,7 +478,7 @@ def decide(prs: list[dict[str, Any]], runs: list[dict[str, Any]], held: callable
                 skipped.append({**pr, "findings": findings if isinstance(findings, list) else []})
             continue
         dependencies = pr.get("production_dependencies", {})
-        proven_bases = set()
+        proven_bases = set(dependencies) & live if live is not None else set()
         for title, run in zip(titles, runs):
             if not title.startswith("DB production apply") or not (named := title_versions(title)) & dependencies.keys():
                 continue

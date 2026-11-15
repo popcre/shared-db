@@ -6126,20 +6126,6 @@ not exists (
 )
 """
 
-# Claim #6345 (designflow-item-master#205 3.2), migration 20261115061043. The
-# stale core."merchGroup" / "merchGroupHeaders" are gone under their own names
-# and survive (never dropped) as core."*_retired_<YYYYMMDD>" ordinary tables.
-CATALOG_CONTRACTS["core_merch_group_prod_retired_v1"] = (
-    "to_regclass('core.\"merchGroup\"') is null"
-    " and to_regclass('core.\"merchGroupHeaders\"') is null"
-    " and exists (select 1 from pg_class c where c.relnamespace='core'::regnamespace and c.relkind='r'"
-    " and c.relname ~ '^merchGroup_retired_[0-9]{8}$')"
-    " and exists (select 1 from pg_class c where c.relnamespace='core'::regnamespace and c.relkind='r'"
-    " and c.relname ~ '^merchGroupHeaders_retired_[0-9]{8}$')"
-)
-
-if __name__ == "__main__":
-    raise SystemExit(main())
 
 
 
@@ -6158,3 +6144,34 @@ CATALOG_CONTRACTS["core_mg_category_merch_group_fk_dflow_prod_v1"] = (
     " and (select count(*) from pg_constraint where conrelid=to_regclass('core.mg_category_merch_group') and contype='f'"
     " and conname='mg_category_merch_group_merch_group_mg_id_fkey')=1"
 )
+
+
+# Claim #6343 (designflow-item-master#205 3.1, remaining links), migration
+# 20261115060819. The ten merchandise-group keys on dflow.art_piece (9) and
+# dflow.artists (1) reference dflow_prod."merchGroup"(mg_id), NO ACTION, and are
+# VALIDATED wherever that parent holds any row (production).
+CATALOG_CONTRACTS["dflow_art_piece_mg_fks_dflow_prod_v1"] = (
+    "(select count(*) from pg_constraint con"
+    " where con.contype='f' and con.conrelid in (to_regclass('dflow.art_piece'), to_regclass('dflow.artists'))"
+    " and con.conname in ('art_piece_age_group_id_fkey','art_piece_art_source_id_fkey','art_piece_art_type_id_fkey',"
+    "'art_piece_artist_id_fkey','art_piece_big_theme_id_fkey','art_piece_licensor_id_fkey','art_piece_little_theme_id_fkey',"
+    "'art_piece_property_id_fkey','art_piece_style_guide_id_fkey','artists_art_source_id_fkey')"
+    " and con.confrelid=to_regclass('dflow_prod.\"merchGroup\"')"
+    " and con.confdeltype='a' and con.confupdtype='a'"
+    " and (con.convalidated or not exists (select 1 from dflow_prod.\"merchGroup\")))=10"
+)
+
+# Claim #6345 (designflow-item-master#205 3.2), migration 20261115061043. The
+# stale core."merchGroup" / "merchGroupHeaders" are gone under their own names
+# and survive (never dropped) as core."*_retired_<YYYYMMDD>" ordinary tables.
+CATALOG_CONTRACTS["core_merch_group_prod_retired_v1"] = (
+    "to_regclass('core.\"merchGroup\"') is null"
+    " and to_regclass('core.\"merchGroupHeaders\"') is null"
+    " and exists (select 1 from pg_class c where c.relnamespace='core'::regnamespace and c.relkind='r'"
+    " and c.relname ~ '^merchGroup_retired_[0-9]{8}$')"
+    " and exists (select 1 from pg_class c where c.relnamespace='core'::regnamespace and c.relkind='r'"
+    " and c.relname ~ '^merchGroupHeaders_retired_[0-9]{8}$')"
+)
+
+if __name__ == "__main__":
+    raise SystemExit(main())

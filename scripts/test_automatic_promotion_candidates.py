@@ -1975,6 +1975,40 @@ class DispatchClaims(unittest.TestCase):
             self.assertFalse(m.claim_dispatch("o/r", pr, [self.arun("in_progress")], None, self.now))
         self.assertIn("already claimed", out.getvalue())
 
+    def test_reclaim_uses_update_ref_endpoint(self):
+        pr = {"number": 7, "versions": ["1"]}
+        with mock.patch.object(m, "gh", side_effect=[
+            {"commit": {"tree": {"sha": "t"}}}, {"sha": "new"}, None,
+        ]) as api, mock.patch.object(m, "read_claim", return_value=None), \
+             mock.patch.object(m.subprocess, "run", side_effect=subprocess.CalledProcessError(1, "gh")), \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertTrue(m.claim_dispatch("o/r", pr, [], None, self.now))
+        self.assertEqual(api.call_args.args, (
+            "-X", "PATCH", "repos/o/r/git/refs/dispatch-claims/pr-7",
+            "-f", "sha=new", "-F", "force=true"))
+
+    def test_release_uses_delete_ref_endpoint(self):
+        with mock.patch.object(m.subprocess, "run") as run:
+            m.release_claim("o/r", 7)
+        self.assertEqual(run.call_args.args[0], [
+            "gh", "api", "-X", "DELETE", "repos/o/r/git/refs/dispatch-claims/pr-7"])
+
+    def test_unreadable_claim_is_missing(self):
+        ref = {"object": {"sha": "old"}}
+        for commit in (subprocess.CalledProcessError(1, "gh"), {},
+                       {"message": "broken"}, {"message": "[]"}, {"message": "{}"}):
+            with self.subTest(commit=commit), mock.patch.object(m, "gh", side_effect=[ref, commit]):
+                self.assertIsNone(m.read_claim("o/r", 7))
+
+    def test_prune_continues_past_malformed_claim(self):
+        refs = [{"ref": "refs/dispatch-claims/pr-7"}, {"ref": "refs/dispatch-claims/pr-8"}]
+        with mock.patch.object(m, "gh", side_effect=[refs,
+            {"object": {"sha": "bad"}}, {"message": "broken"},
+            {"object": {"sha": "good"}}, {"message": json.dumps({**self.claim, "pr": 8})},
+        ]), mock.patch.object(m, "release_claim") as release:
+            m.prune_claims("o/r", set(self.claim["versions"]))
+        release.assert_called_once_with("o/r", 8)
+
     def test_dispatch_error_releases_the_claim(self):
         pr = {"number": 7, "merged_at": "2026-11-16T10:00:00Z", "versions": ["20261116100000"]}
         released = []

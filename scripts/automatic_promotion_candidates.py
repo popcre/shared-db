@@ -991,10 +991,13 @@ def claim_is_stale(claim: dict[str, Any], runs: list[dict[str, Any]], live: set[
 def read_claim(repo: str, pr: int) -> dict[str, Any] | None:
     try:
         ref = gh(f"repos/{repo}/git/ref/{CLAIM_PREFIX[5:]}{pr}")
-    except subprocess.CalledProcessError:
+        commit = gh(f"repos/{repo}/git/commits/{ref['object']['sha']}")
+        claim = json.loads(commit["message"])
+        if not isinstance(claim, dict) or claim.get("pr") != pr:
+            return None
+        return claim
+    except (subprocess.CalledProcessError, ValueError, KeyError, TypeError):
         return None
-    commit = gh(f"repos/{repo}/git/commits/{ref['object']['sha']}")
-    return json.loads(commit["message"])
 
 
 def claim_dispatch(repo: str, pr: dict[str, Any], runs: list[dict[str, Any]], live: set[str] | None,
@@ -1015,7 +1018,7 @@ def claim_dispatch(repo: str, pr: dict[str, Any], runs: list[dict[str, Any]], li
         print(f"skip: PR #{pr['number']} already claimed by selector run {existing.get('run_id')} at {existing.get('claimed_at')}")
         return False
     print(f"reclaiming stale dispatch claim for PR #{pr['number']} ({existing})")
-    gh("-X", "PATCH", f"repos/{repo}/git/{ref[5:]}", "-f", f"sha={sha}", "-F", "force=true")
+    gh("-X", "PATCH", f"repos/{repo}/git/refs/{ref[5:]}", "-f", f"sha={sha}", "-F", "force=true")
     return True
 
 
@@ -1031,7 +1034,7 @@ def claimer_failed(repo: str, run_id: Any) -> bool:
 
 def release_claim(repo: str, pr: int) -> None:
     try:
-        subprocess.run(["gh", "api", "-X", "DELETE", f"repos/{repo}/git/{CLAIM_PREFIX[5:]}{pr}"],
+        subprocess.run(["gh", "api", "-X", "DELETE", f"repos/{repo}/git/refs/{CLAIM_PREFIX[5:]}{pr}"],
                        check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except subprocess.CalledProcessError as exc:
         print(f"::warning::could not release the dispatch claim for PR #{pr} ({exc}); it expires as a stale lease")

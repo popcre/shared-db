@@ -129,6 +129,11 @@ rollback;
 
 -- Master SKU instead of a D-number, and Clear (shared-db#6476). Rolled back.
 begin;
+-- Enable the sandbox-only Clear tool for this transaction; rollback restores
+-- the original configuration and leaves the production default closed (#6523).
+insert into public.admin_config (key, value, updated_at)
+values ('SANDBOX_ENABLED_TOOLS', '["clear_dam_buy_sheet_import"]'::jsonb, now())
+on conflict (key) do update set value = excluded.value, updated_at = excluded.updated_at;
 select set_config('request.jwt.claims', '{"sub":"b5e00000-0000-4000-8000-000000000002","role":"authenticated"}', true);
 do $$
 declare
@@ -184,7 +189,8 @@ begin
   begin
     perform public.clear_dam_buy_sheet_import(v_imp, false);
     raise exception 'non-uploader clear not refused';
-  exception when insufficient_privilege then null;
+  exception when insufficient_privilege then
+    if sqlerrm not like '%only the person who uploaded this buy sheet can clear it%' then raise; end if;
   end;
   perform set_config('request.jwt.claims', '{"sub":"b5e00000-0000-4000-8000-000000000002","role":"authenticated"}', true);
 

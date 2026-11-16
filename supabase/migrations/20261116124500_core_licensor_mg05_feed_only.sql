@@ -1,4 +1,5 @@
 -- Issue popcre/shared-db#6440: core.licensor is the ColdLion MG05 list and nothing else.
+-- derived-from: none
 --
 -- Owner ruling (Albert Hazan, 2026-11-15 8:49 PM EST, exact words): "delete \"our own system's
 -- licensor list\" so no future session can use it. the only thing to be using is the canonical

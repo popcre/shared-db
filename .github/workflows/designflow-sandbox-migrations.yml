@@ -72,7 +72,7 @@ permissions:
 # It is deliberately NOT the preview or production group: those lanes neither
 # guard nor are blocked by the sandbox.
 concurrency:
-  group: designflow-sandbox-migrations
+  group: designflow-sandbox-migrations-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 jobs:

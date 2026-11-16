@@ -13,7 +13,7 @@ on:
         type: string
 
 concurrency:
-  group: shared-db-author-mutex-recovery
+  group: shared-db-author-mutex-recovery-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 permissions:

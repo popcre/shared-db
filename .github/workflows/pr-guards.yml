@@ -63,7 +63,7 @@ concurrency:
   # ref is the key there). A new push cancels the superseded pull_request run.
   # Never cancel a merge_group run: GitHub re-requests checks for the same
   # group, and cancelling the older run could starve it (#2530).
-  group: pr-guards-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: pr-guards-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:

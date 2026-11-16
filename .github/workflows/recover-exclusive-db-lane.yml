@@ -48,7 +48,7 @@ permissions:
   actions: read     # reading the recorded run's live state is the whole safety argument
 
 concurrency:
-  group: recover-exclusive-db-lane
+  group: recover-exclusive-db-lane-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 jobs:

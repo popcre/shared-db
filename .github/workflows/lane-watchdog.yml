@@ -46,7 +46,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: lane-watchdog-${{ github.ref }}
+  group: lane-watchdog-${{ github.ref }}-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 jobs:

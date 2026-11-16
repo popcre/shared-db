@@ -33,7 +33,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: coldlion-taxonomy-alert-monitor
+  group: coldlion-taxonomy-alert-monitor-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 env:

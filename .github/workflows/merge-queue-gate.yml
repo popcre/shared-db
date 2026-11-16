@@ -32,7 +32,7 @@ permissions:
 
 
 concurrency:
-  group: shared-db-merge-queue-${{ github.ref }}
+  group: shared-db-merge-queue-${{ github.ref }}-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 jobs:

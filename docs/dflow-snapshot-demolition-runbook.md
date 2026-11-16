@@ -55,7 +55,7 @@ posted to that issue. Nothing in `supabase/migrations/` changes.
 ## Preconditions (re-check all on the day of execution)
 
 1. `gcloud storage ls gs://designflow-storage/backups/dflow-stale-cleanup-2026-11-12/prod_dflow_full_schema.dump` succeeds.
-2. Reader audit returns **exactly** the two known readers and no new ones:
+2. Reader audit returns **exactly one** outside reader and no new ones (re-verified 2026-11-15: the view is the sole remaining `dflow` reader — `api.resolve_item_mg_category` already reads only `dflow_prod`/`core` and is dropped in step 2 solely per the owner's "moot" retirement ruling):
 
    ```sql
    -- relation-level outside readers of dflow
@@ -71,11 +71,15 @@ posted to that issue. Nothing in `supabase/migrations/` changes.
    -- expected: public | style_tracker_rows_with_bridge
 
    -- definition-scan for qualified dflow references outside the schema
-   select n.nspname, p.proname
+   select distinct n.nspname, p.proname
      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname not in ('dflow')
-      and position('dflow."' in p.prosrc) > 0;
-   -- expected: api | resolve_item_mg_category
+      and position('dflow.' in p.prosrc) > 0;
+   select distinct n.nspname, c.relname
+     from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where c.relkind = 'v' and n.nspname <> 'dflow'
+      and position('dflow.' in pg_get_viewdef(c.oid)) > 0;
+   -- expected: no function rows; the single view row above
    ```
 
 3. Target columns for the view repoint exist in `dflow_prod`:

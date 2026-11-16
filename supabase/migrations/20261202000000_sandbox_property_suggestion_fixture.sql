@@ -10,7 +10,34 @@
 -- references, dcp_crawl.baseline_*), so the fixture never references anything
 -- outside itself. Idempotent: every insert is on conflict do nothing.
 -- Reversal: delete these rows by the ids below (fixture ids are stable).
+--
+-- DECLARED DEPENDENCY (review finding #6534): this fixture seeds DATA only.
+-- The structure it reads -- plm.suggested_property_for_sku and
+-- plm.dcp_property_mg06_crosswalk (16 films, incl. ar/aristocats -> AC and
+-- ti/tim-burton-s-nightmare-before-christmas -> NX) -- comes from migrations
+-- 20261115132055 and 20261116120000, which the DesignFlow sandbox has already
+-- applied (sandbox ledger, verified 2026-11-16). It is deliberately not
+-- re-seeded here; the guard below fails loudly if it is ever missing.
+--
+-- Fidelity notes (review finding #6534): coldlion.item_detail has rows only
+-- for 3FZ27DYNX01 (4); BG12VDYCP01 genuinely has NO item_detail rows and its
+-- item_merch_group rows are header-scope (item_pkey IS NULL) with slot 9
+-- absent -- that is exactly what production holds, not an omission.
 -- derived-from: none
+
+-- Guard: the two structure migrations this fixture depends on must be present.
+do $dep$
+begin
+  if not exists (
+    select 1 from pg_proc
+    where proname = 'suggested_property_for_sku'
+      and pronamespace = 'plm'::regnamespace
+  ) or (select count(*) from plm.dcp_property_mg06_crosswalk) < 16 then
+    raise exception using errcode = 'P0001',
+      message = 'sandbox fixture 20261202000000: plm migrations 20261115132055/20261116120000 (suggested_property_for_sku + crosswalk) must be applied first';
+  end if;
+end
+$dep$;
 -- plm.dcp_crawl: 2 row(s), ported verbatim from production fixture closure
 insert into plm.dcp_crawl ("crawl_id", "source_system", "status", "captured_on", "portal_base_url", "crawler_version", "account_scope", "line_of_business", "started_at", "finished_at", "rows_received", "distinct_assets_received", "captured_by", "private_source_commit", "failure_message", "notes", "metadata", "created_at", "updated_at", "run_kind", "baseline_crawl_id", "assets_added_count", "assets_withdrawn_count", "assets_reactivated_count", "style_guides_added_count", "style_guides_withdrawn_count", "style_guides_reactivated_count") values
 ('49c393e7-c4b4-4a8d-940c-f0cb397cf6f8'::uuid, 'disney_dcpvault', 'running', '2026-08-14'::date, 'https://dcpvault.disney.com', 'browser-checkpoint-v6', 'POP Creations licensed account', 'Merchandise', '2026-08-14T21:49:42.015345-04:00'::timestamptz, '2026-08-14T22:04:24.076903-04:00'::timestamptz, 187487::integer, 187487::integer, 'authorized browser capture', 'af3058913dfd3a7df8b891894d3ccbc2ad54e7d2', null, 'Complete 34-job path crawl; zero recorded gaps; studio-separated evidence.', '{}'::jsonb, '2026-08-14T21:49:42.015345-04:00'::timestamptz, '2026-08-14T22:04:24.076903-04:00'::timestamptz, 'full', null, null, null, null, null, null, null),

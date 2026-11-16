@@ -1,3 +1,5 @@
+-- derived-from: 20261105165947
+--
 -- #6418: matview API surface contract for public.style_guide_folders and
 -- public.style_guide_file_groups. Part of the #2326 program (plan Step 6,
 -- Step 2 finding 2, materialized_view_in_api half).

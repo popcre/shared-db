@@ -92,7 +92,8 @@ jobs:
         env:
           PRODUCTION_LEDGER_FILE: ${{ runner.temp }}/production-ledger.json
           PROMOTION_PR_CACHE_FILE: ${{ runner.temp }}/promotion-pr-cache.json
-        run: python -u scripts/automatic_promotion_candidates.py
+          PYTHONUNBUFFERED: '1'
+        run: python scripts/automatic_promotion_candidates.py
       - name: Save the selector PR cache
         if: always() && steps.selector.outcome != 'skipped'
         continue-on-error: true

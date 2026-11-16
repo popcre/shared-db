@@ -2579,6 +2579,19 @@ jobs:
       # run ends its source PR's freeze here whatever happened above.
       # Idempotent (the apply job's own release usually already cleared it)
       # and scoped to THIS source PR; another holder's freeze is left alone.
+      # This job never checked out the repository (it only posts the nudge),
+      # so the first live test of the release -- 2026-11-15 20:26 UTC, PR
+      # #6368 -- ran the command against a missing file and the TTL alone
+      # ended the freeze. The CLI must be checked out first; the checkout is
+      # gated on the release it serves. Like the nudge, neither step may ever
+      # fail this job (a red run that actually applied burns attempts).
+      - name: Check out the coordination CLI for the run-end freeze release
+        if: always() && inputs.target == 'production' && inputs.mode == 'apply' && inputs.source_pr != ''
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 1
       - name: Release the promotion merge freeze when this production run ends
         if: always() && inputs.target == 'production' && inputs.mode == 'apply' && inputs.source_pr != ''
         continue-on-error: true

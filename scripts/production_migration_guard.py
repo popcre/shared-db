@@ -544,6 +544,12 @@ PREVIEW_ONLY_HISTORICAL_RESTORATIONS = {
 KNOWN_MIGRATION_TARGETS = frozenset({"production", "preview", "designflow-nonprod", "designflow-prod"})
 
 FOREIGN_TARGET_MIGRATIONS = {
+    "20261116120100": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6356",
+        "note": "Sandbox catch-up batch 9: Ports missing and changed api, app, core, crm, dflow, pim and plm functions from production (functions touching dflow_prod, dam-only or claimed by other work are deferred). Production already holds them; source excludes shared preview and production.",
+    },
     "20261115181438": {
         "target": "designflow-nonprod",
         "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
@@ -721,6 +727,12 @@ FOREIGN_TARGET_MIGRATIONS = {
             "as the second physical target for the designflow-backend "
             "HTS_RAG_DB_ENABLED pilot. It was never reviewed against shared production."
         ),
+    },
+    "20261116123000": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6356",
+        "note": "Sandbox catch-up batch 1 table-ACL companion (review finding #6359): restores the source's append-only table privilege block that the 20261115133704 port dropped. Applies after 20261115133704; that version's merged copy is unmodified. Source excludes shared preview and production.",
     },
 }
 

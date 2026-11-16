@@ -17,7 +17,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: sandbox-prod-drift-check
+  group: sandbox-prod-drift-check-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 jobs:

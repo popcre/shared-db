@@ -2,6 +2,7 @@
 -- Ports missing and changed api, app, core, crm, dflow, pim and plm functions from production (functions touching dflow_prod, dam-only or claimed by other work are deferred).
 -- Grants to production-only runtime logins (designflow_prod_backend_runtime, pm_jev_triage_worker) are not ported: those roles do not exist on the sandbox.
 -- Not ported: api.db_data_admin_licensor_property_tree (it reads an end-of-life table; the repository guard forbids new references, #1684).
+-- Not ported: plm.alert_coldlion_property_skips (the repository holds a newer hardened body than production; it follows when production is promoted).
 -- derived-from: none
 
 set check_function_bodies = off;
@@ -6589,53 +6590,6 @@ begin
 end $function$
 ;
 revoke all on function pim.pm_verify_jev_hmac_envelope(p_envelope jsonb, p_signature text) from public, anon, authenticated;
-CREATE OR REPLACE FUNCTION plm.alert_coldlion_property_skips(p_run_id bigint)
- RETURNS uuid
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'plm'
-AS $function$
-declare
-  v_run plm.coldlion_property_sync_run;
-  v_codes jsonb;
-  v_id uuid;
-begin
-  select * into v_run from plm.coldlion_property_sync_run where id = p_run_id;
-  if v_run.id is null then
-    return null;
-  end if;
-
-  select coalesce(jsonb_agg(s->>'code' order by s->>'code'), '[]'::jsonb)
-    into v_codes
-    from jsonb_array_elements(coalesce(v_run.skipped, '[]'::jsonb)) s
-   where coalesce((s->>'active')::boolean, false);
-
-  if jsonb_array_length(v_codes) = 0 then
-    return null;
-  end if;
-
-  if exists (select 1 from plm.taxonomy_sync_alert a
-              where a.source_name = 'coldlion_core_property_sync'
-                and a.acknowledged_at is null
-                and a.payload->'codes' = v_codes) then
-    return null;
-  end if;
-
-  insert into plm.taxonomy_sync_alert(severity, source_name, reason, payload)
-  values ('warning', 'coldlion_core_property_sync',
-          'unresolved_licensor: ' || jsonb_array_length(v_codes)
-            || ' active ColdLion MG06 value(s) skipped because no licensor owns the code and the app list gives no MG05 parent: '
-            || (select string_agg(c, ', ' order by c) from jsonb_array_elements_text(v_codes) c),
-          jsonb_build_object('codes', v_codes, 'reason', 'unresolved_licensor',
-                             'sync_run_id', v_run.id, 'applied', v_run.applied,
-                             'human_response_owner', 'Albert Hazan',
-                             'first_response', 'Match each code to its licensor in ColdLion (MG05 parent) or core.property; never guess.'))
-  returning id into v_id;
-  return v_id;
-end;
-$function$
-;
-revoke all on function plm.alert_coldlion_property_skips(p_run_id bigint) from public, anon, authenticated;
 CREATE OR REPLACE FUNCTION plm.check_taxonomy_sync_health(p_max_success_age interval DEFAULT '36:00:00'::interval, p_options jsonb DEFAULT '{}'::jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql

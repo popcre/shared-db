@@ -7,6 +7,7 @@
 -- Not here: policies and api.oracle_user_directory() (they need production-only runtime roles), temp_status_watch triggers, crm/character_alias/
 -- taxonomy_source_ref (open claims), sku_sg triggers (public schema awaits the owner's call).
 -- derived-from: none
+-- maintains-eol-dependency: function api.db_data_admin_licensor_property_tree
 
 set check_function_bodies = off;
 

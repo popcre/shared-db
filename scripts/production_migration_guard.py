@@ -744,7 +744,7 @@ FOREIGN_TARGET_MIGRATIONS = {
         "issue": "#6356",
         "note": "Sandbox catch-up batch 10: additive indexes, constraints and triggers copied from production, and a forward fix for batch 9. Source excludes shared preview and production.",
     },
-    "20261116153000": {
+    "20261117130000": {
         "target": "designflow-nonprod",
         "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
         "issue": "#6356",

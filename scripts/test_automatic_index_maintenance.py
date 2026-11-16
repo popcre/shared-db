@@ -78,9 +78,9 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(self.run_main([active,active],[0,1,automatic.ACTIVE_WAIT_S]),(2,1,0,''))
     def test_automatic_selector_is_part_of_existing_trigger(self):
         text=(ROOT/'.github/workflows/automatic-production-trigger.yml').read_text()
-        self.assertIn('python scripts/automatic_promotion_candidates.py',text)
+        self.assertIn('python -u scripts/automatic_promotion_candidates.py',text)
         self.assertIn('python scripts/automatic_index_maintenance.py',text)
-        self.assertLess(text.index('python scripts/automatic_index_maintenance.py'),text.index('python scripts/automatic_promotion_candidates.py'))
+        self.assertLess(text.index('python scripts/automatic_index_maintenance.py'),text.index('python -u scripts/automatic_promotion_candidates.py'))
         self.assertIn("if: always() && steps.index_maintenance.outputs.dispatched != 'true'",text)
 
 

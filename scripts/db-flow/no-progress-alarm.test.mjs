@@ -279,6 +279,23 @@ test('the promotion selector trace parser reads holds, exhaustion and the termin
     { pr: 7, note: 'out of refunds (cap 3 per change)' },
   ])
   assert.equal(trace.action, 'dispatch')
+  const timingLines = [
+    'timing: workflow runs read at 1.0s',
+    'timing: merged PRs discovered at 2.0s',
+    'timing: decision made at 3.0s',
+    'timing: fresh recheck done at 4.0s',
+    'timing: dispatch step done at 5.0s',
+  ]
+  const originalOutput = [
+    'held: PR #5630 by #5631; later PRs still promote',
+    'exhausted: PR #7 out of refunds (cap 3 per change); later PRs still promote',
+    'dispatch: PR #5619 versions 20261105044255 not yet in production',
+  ]
+  assert.deepEqual(
+    parsePromotionTrace([...timingLines.slice(0, 2), ...originalOutput,
+      ...timingLines.slice(2)].join('\n')),
+    parsePromotionTrace(originalOutput.join('\n')),
+  )
   assert.deepEqual(parsePromotionTrace('idle: every merged migration PR since activation is in production\n').held, [])
 })
 

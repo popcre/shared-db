@@ -1033,6 +1033,31 @@ class TriggerReporting(unittest.TestCase):
                 else:
                     os.environ[key] = saved[idx]
 
+    def test_dispatch_timing_markers_are_ordered_and_flushed(self):
+        phases = [
+            "workflow runs read",
+            "merged PRs discovered",
+            "decision made",
+            "fresh recheck done",
+            "dispatch step done",
+        ]
+        pr = {"number": 7, "merged_at": "2026-01-01", "versions": ["1"]}
+        with mock.patch.object(m, "production_ledger", return_value=set()), \
+                mock.patch.object(m.time, "monotonic", side_effect=range(6)), \
+                mock.patch("builtins.print", wraps=print) as printed:
+            code, out = self._run_main(prs=[pr], runs=[])
+        self.assertEqual(code, 0)
+        self.assertIn("dispatch:", out)
+        timing_calls = [call for call in printed.call_args_list
+                        if call.args and str(call.args[0]).startswith("timing:")]
+        self.assertEqual([call.args[0] for call in timing_calls], [
+            f"timing: {phase} at {index}.0s"
+            for index, phase in enumerate(phases, start=1)
+        ])
+        self.assertTrue(all(call.kwargs.get("flush") is True for call in timing_calls))
+        self.assertEqual([line for line in out.splitlines() if line.startswith("timing:")],
+                         [call.args[0] for call in timing_calls])
+
     def test_wait_state_exits_zero_with_reason(self):
         runs = [{"status": "in_progress", "display_title": "DB preview apply x"}]
         code, out = self._run_main(prs=[], runs=runs)

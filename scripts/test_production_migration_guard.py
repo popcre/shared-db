@@ -4742,7 +4742,7 @@ class StrandedRecovery5932RetirementTests(unittest.TestCase):
         "20261101074415": "20261101182210",
         "20261101125528": "20261113160920",
         "20261101192220": "20261115022307",
-        "20261102012258": "20261113191352",
+        "20261102012258": "20261119200000",
         "20261113223432": "20261119200000",
         "20261119010000": "20261119200000",
     }
@@ -4779,6 +4779,24 @@ class StrandedRecovery5932RetirementTests(unittest.TestCase):
                     self.assertEqual(
                         classify_pending_version(version, ledger, REPO)["kind"], "retired"
                     )
+
+    def test_live_owner_pins_guard_mirroring_associations_filter(self):
+        """Review finding #6496 finding 1: the P0001 fix is content-pinned so a later
+        edit cannot silently drop it and reintroduce the post-merge preview refusal
+        (run 43925994714, core.require_direct_support_for_canonical_edge)."""
+        sql = (REPO / "supabase" / "migrations"
+               / "20261119200000_curated_licensor_scrape_characters_side_rows.sql").read_text(encoding="utf-8")
+        # All three licensor blocks filter the associations insert through the guard's
+        # own existence probe: a CURRENT direct assertion for the PAIR (any issue).
+        self.assertEqual(
+            sql.count("and d.evidence_kind = 'direct_source_assertion'::core.relationship_evidence_kind"), 3)
+        # All three edge inserts keep the tolerant distinct-on claim-key form (23505 fix).
+        self.assertEqual(sql.count("select distinct on (pr.entity_id, ch.id)"), 3)
+        # The superseded same-issue-only associations filter must not come back (the
+        # edge insert's own not-exists guard legitimately spells e.evidence_kind).
+        self.assertNotIn(
+            "and e.evidence_kind = 'direct_source_assertion'::core.relationship_evidence_kind\n"
+            "  on conflict (property_id, character_id) do nothing;", sql)
 
     def test_review_fix_6261_entries_are_retired(self):
         for version, replacement in (

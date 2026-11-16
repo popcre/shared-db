@@ -12,9 +12,10 @@
 -- 2. 20261119010000 then failed its post-merge preview rehearsal (run 43925994714) at the
 --    associations insert: core.require_direct_support_for_canonical_edge refused a pair
 --    whose only CURRENT edge for this issue is not a direct_source_assertion (SQLSTATE
---    P0001). The associations insert therefore now selects only pairs that hold a CURRENT
---    direct assertion — mirroring the guard's own rule that inferred and co-occurrence
---    evidence are never promoted to a canonical relationship.
+--    P0001). The associations insert therefore now selects a pair only when the PAIR holds
+--    a CURRENT direct assertion (EXISTS, any issue — exactly the guard's own existence
+--    probe), mirroring the rule that inferred and co-occurrence evidence are never
+--    promoted to a canonical relationship (review finding #6496, finding 2).
 -- Idempotent on preview (rows already written) and clean on production (rows absent).
 -- Data-only INSERT load: no function or view replaced, no earlier rewrite needed in the
 -- target ledger (the issue #1608 data-only rule; same class as the #4172 curated row load).
@@ -81,7 +82,10 @@ begin
   select distinct e.property_id, e.character_id, true
     from core.property_character_source_edge e
    where e.licensor_id = v_lic and e.metadata ->> 'issue' = v_issue and e.is_current
-     and e.evidence_kind = 'direct_source_assertion'::core.relationship_evidence_kind
+     and exists (select 1 from core.property_character_source_edge d
+                  where d.property_id = e.property_id and d.character_id = e.character_id
+                    and d.is_current
+                    and d.evidence_kind = 'direct_source_assertion'::core.relationship_evidence_kind)
   on conflict (property_id, character_id) do nothing;
 
   select count(*) into v_n from core.character ch
@@ -145,7 +149,10 @@ begin
   select distinct e.property_id, e.character_id, true
     from core.property_character_source_edge e
    where e.licensor_id = v_lic and e.metadata ->> 'issue' = v_issue and e.is_current
-     and e.evidence_kind = 'direct_source_assertion'::core.relationship_evidence_kind
+     and exists (select 1 from core.property_character_source_edge d
+                  where d.property_id = e.property_id and d.character_id = e.character_id
+                    and d.is_current
+                    and d.evidence_kind = 'direct_source_assertion'::core.relationship_evidence_kind)
   on conflict (property_id, character_id) do nothing;
 
   select count(*) into v_n from core.character ch
@@ -209,7 +216,10 @@ begin
   select distinct e.property_id, e.character_id, true
     from core.property_character_source_edge e
    where e.licensor_id = v_lic and e.metadata ->> 'issue' = v_issue and e.is_current
-     and e.evidence_kind = 'direct_source_assertion'::core.relationship_evidence_kind
+     and exists (select 1 from core.property_character_source_edge d
+                  where d.property_id = e.property_id and d.character_id = e.character_id
+                    and d.is_current
+                    and d.evidence_kind = 'direct_source_assertion'::core.relationship_evidence_kind)
   on conflict (property_id, character_id) do nothing;
 
   select count(*) into v_n from core.character ch

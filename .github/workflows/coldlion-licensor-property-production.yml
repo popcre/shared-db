@@ -88,7 +88,7 @@ permissions:
 # health can never overlap, and a queued run is never cancelled — cancel-in-progress on a
 # write lane would abandon a half-finished promotion window.
 concurrency:
-  group: coldlion-licensor-property-production
+  group: coldlion-licensor-property-production-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 env:

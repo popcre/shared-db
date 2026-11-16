@@ -51,7 +51,7 @@ jobs:
     timeout-minutes: 20
     environment: production
     concurrency:
-      group: designflow-database-release-observer
+      group: designflow-database-release-observer-${{ vars.LANE_EPOCH || '0' }}
       cancel-in-progress: false
     permissions:
       contents: write
@@ -116,7 +116,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
-      group: designflow-contract-sync
+      group: designflow-contract-sync-${{ vars.LANE_EPOCH || '0' }}
       cancel-in-progress: false
     permissions:
       contents: write

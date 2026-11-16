@@ -63,7 +63,7 @@ permissions:
 # The ONE sandbox writer lock, shared with designflow-sandbox-migrations.yml and
 # sandbox-ledger-orphan-reconciliation.yml, so a sync never runs inside a migration apply.
 concurrency:
-  group: designflow-sandbox-migrations
+  group: designflow-sandbox-migrations-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 jobs:

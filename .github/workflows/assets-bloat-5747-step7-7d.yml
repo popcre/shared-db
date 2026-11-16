@@ -19,7 +19,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: assets-bloat-5747-step7
+  group: assets-bloat-5747-step7-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 env:

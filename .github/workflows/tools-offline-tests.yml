@@ -56,7 +56,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: tools-offline-tests-${{ github.ref }}-${{ inputs.lane || 'default' }}
+  group: tools-offline-tests-${{ github.ref }}-${{ inputs.lane || 'default' }}-${{ vars.LANE_EPOCH || '0' }}
   # Never cancel a merge_group run (#2530).
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 

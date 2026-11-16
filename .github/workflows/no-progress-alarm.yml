@@ -45,7 +45,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: no-progress-alarm
+  group: no-progress-alarm-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 jobs:

@@ -65,7 +65,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: migration-ledger-drift-${{ github.ref }}
+  group: migration-ledger-drift-${{ github.ref }}-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: true
 
 jobs:

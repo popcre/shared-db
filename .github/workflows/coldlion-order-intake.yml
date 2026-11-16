@@ -64,7 +64,7 @@ permissions:
 # Never let two intake scans overlap; a queued run is the honest outcome, and
 # the queue must not grow unbounded (cadence > 3x scan duration, §8).
 concurrency:
-  group: coldlion-order-intake
+  group: coldlion-order-intake-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 jobs:

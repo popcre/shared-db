@@ -16,7 +16,7 @@ permissions:
   statuses: write
 
 concurrency:
-  group: documents-only-merge-authorization-${{ github.event.pull_request.number }}
+  group: documents-only-merge-authorization-${{ github.event.pull_request.number }}-${{ vars.LANE_EPOCH || '0' }}
   # Cancellation can strand the global coordination mutex after acquisition.
   cancel-in-progress: false
 

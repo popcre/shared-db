@@ -23,7 +23,7 @@ on:
 # A new push to a pull request supersedes the run for its older head; pushes to
 # main are never cancelled.
 concurrency:
-  group: business-rule-library-${{ github.event.pull_request.number || github.run_id }}
+  group: business-rule-library-${{ github.event.pull_request.number || github.run_id }}-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

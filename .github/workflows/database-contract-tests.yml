@@ -86,7 +86,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: database-contract-tests-${{ github.ref }}
+  group: database-contract-tests-${{ github.ref }}-${{ vars.LANE_EPOCH || '0' }}
   # Never cancel a merge_group run (#2530).
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
@@ -208,6 +208,11 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.qualify_rls4427 == true && 60 || 45 }}
+    env:
+      # Issue #6440: core.licensor refuses every write except the ColdLion MG05 feed. Fixture
+      # seeds and older contracts insert synthetic licensors, so this throwaway database runs as
+      # the feed. supabase/tests/core_licensor_mg05_only_contracts.sql clears it to prove the guard.
+      PGOPTIONS: "-c app.core_licensor_writer=mg05_feed"
     steps:
       - name: Refuse an unreadable applicability decision
         if: needs.classify.result != 'success'

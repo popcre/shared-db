@@ -750,7 +750,7 @@ FOREIGN_TARGET_MIGRATIONS = {
         "issue": "#6356",
         "note": "Sandbox catch-up batch 11: replays 20261113183820's core.property checks and link index, plus production's Coldlion licensor/property sync functions, MG05 licensor guard and relationship/crosswalk triggers with production's exact EXECUTE grants. Source excludes shared preview and production.",
     },
-    "20261117130500": {
+    "20261118030000": {
         "target": "designflow-nonprod",
         "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
         "issue": "#6356",

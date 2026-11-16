@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: curation-sql-tests-${{ github.ref }}
+  group: curation-sql-tests-${{ github.ref }}-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:

@@ -28,7 +28,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: documents-fast-ci-route-${{ github.event.pull_request.number || github.ref }}
+  group: documents-fast-ci-route-${{ github.event.pull_request.number || github.ref }}-${{ vars.LANE_EPOCH || '0' }}
   # Never cancel a merge_group run (#2530).
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 

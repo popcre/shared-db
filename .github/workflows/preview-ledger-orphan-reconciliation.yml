@@ -21,7 +21,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: shared-supabase-migrations
+  group: shared-supabase-migrations-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 jobs:

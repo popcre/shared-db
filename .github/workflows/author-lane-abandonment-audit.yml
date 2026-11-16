@@ -65,7 +65,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: author-lane-abandonment-audit-${{ github.ref }}
+  group: author-lane-abandonment-audit-${{ github.ref }}-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: true
 
 jobs:

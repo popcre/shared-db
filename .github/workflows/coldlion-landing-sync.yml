@@ -98,7 +98,7 @@ permissions:
 # by the ledger rather than corrupt anything, but a queued run is the honest
 # outcome, so cancel-in-progress stays off.
 concurrency:
-  group: coldlion-landing-sync
+  group: coldlion-landing-sync-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 jobs:

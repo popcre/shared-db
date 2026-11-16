@@ -52,7 +52,7 @@ permissions:
   issues: write   # required so a failing lane can deliver its own alert immediately
 
 concurrency:
-  group: coldlion-phase6-parallel-preview
+  group: coldlion-phase6-parallel-preview-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 env:

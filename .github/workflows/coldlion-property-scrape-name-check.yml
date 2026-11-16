@@ -16,7 +16,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: coldlion-property-scrape-name-check
+  group: coldlion-property-scrape-name-check-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 env:

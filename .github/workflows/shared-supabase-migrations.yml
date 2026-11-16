@@ -135,7 +135,7 @@ concurrency:
   # (`scripts/target-queue-identity.mjs`). Exclusive locks, freeze interlocks and
   # exact-head approval are unchanged; this split only stops preview and
   # production preparation from sharing one workflow-wide queue.
-  group: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && format('shared-supabase-migrations-{0}', github.ref) || (inputs.target == 'production' && 'shared-supabase-migrations-production' || 'shared-supabase-migrations-preview') }}
+  group: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && format('shared-supabase-migrations-{0}', github.ref) || (inputs.target == 'production' && 'shared-supabase-migrations-production' || 'shared-supabase-migrations-preview') }}-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 jobs:

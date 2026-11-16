@@ -86,7 +86,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: database-contract-tests-${{ github.ref }}
+  group: database-contract-tests-${{ github.ref }}-${{ vars.LANE_EPOCH || '0' }}
   # Never cancel a merge_group run (#2530).
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 

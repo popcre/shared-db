@@ -57,7 +57,7 @@ permissions:
 # Shares its group with the scheduled sync: both load windows into the same
 # tables, and a backfill running under a sync is a race with no upside.
 concurrency:
-  group: coldlion-landing-sync
+  group: coldlion-landing-sync-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 jobs:

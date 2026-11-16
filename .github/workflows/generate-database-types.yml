@@ -63,9 +63,8 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: generate-database-types
-  cancel-in-progress: false
+# No concurrency group (#6426): read-only, so parallel runs are harmless and a
+# GitHub ghost run has no queue to wedge.
 
 jobs:
   generate:

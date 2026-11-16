@@ -36,7 +36,7 @@ permissions:
 
 # Same policy as the nightly: a queued run is the honest outcome, never cancel.
 concurrency:
-  group: coldlion-item-sweep
+  group: coldlion-item-sweep-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 jobs:

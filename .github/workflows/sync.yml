@@ -29,7 +29,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: sync-shared-db
+  group: sync-shared-db-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 jobs:

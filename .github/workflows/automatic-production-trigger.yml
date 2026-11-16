@@ -39,7 +39,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: automatic-production-trigger
+  group: automatic-production-trigger-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 jobs:

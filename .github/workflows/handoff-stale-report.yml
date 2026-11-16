@@ -23,7 +23,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: handoff-stale-report
+  group: handoff-stale-report-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 jobs:

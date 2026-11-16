@@ -28,7 +28,7 @@ permissions:
   actions: write
 
 concurrency:
-  group: coldlion-item-heartbeat
+  group: coldlion-item-heartbeat-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 jobs:

@@ -38,7 +38,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: db-bloat-weekly
+  group: db-bloat-weekly-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 
 jobs:

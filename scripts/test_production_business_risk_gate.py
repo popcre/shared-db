@@ -2280,8 +2280,9 @@ class ProductionBusinessRiskGateTests(unittest.TestCase):
         # #6258 follow-up: addedUnreferencedDocPaths passes `:(exclude)docs` as a
         # `git grep` pathspec so references INSIDE docs do not count. It is an
         # exclusion and opens nothing; the shape detector files it as a citation
-        # because the call goes through gitRunner, not execFileSync.
-        ("scripts/check-main-tip-freshness.mjs", "message-citation"): 1,
+        # because the call goes through gitRunner, not execFileSync. The second
+        # site is the DOCS_PATH regex that classifies a changed path's NAME.
+        ("scripts/check-main-tip-freshness.mjs", "message-citation"): 2,
         ("scripts/production_migration_guard.py", "message-citation"): 1,
     }
 

@@ -46,7 +46,11 @@ jobs:
   trigger:
     if: github.event_name != 'workflow_run' || (github.event.workflow_run.event == 'workflow_dispatch' && (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.conclusion == 'timed_out'))
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The selector processes the production ledger (~1000 versions) and scans
+    # every merged migration PR via the GitHub API. 10 minutes was too tight:
+    # runs routinely hit 8+ minutes and got cancelled before dispatching.
+    # 30 minutes gives the selector room to complete without changing its logic.
+    timeout-minutes: 30
     permissions:
       contents: write
       actions: write

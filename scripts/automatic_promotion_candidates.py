@@ -800,7 +800,8 @@ def main(now: datetime | None = None) -> int:
     if action == "dispatch":
         # Selecting takes minutes; a run started meanwhile must count (#5558:
         # a re-run began after the snapshot and PR #5539 was dispatched again).
-        action, pr, reason = decide([pr], workflow_runs(repo), lambda n: is_held(repo, n),
+        fresh_runs = workflow_runs(repo)
+        action, pr, reason = decide([pr], fresh_runs, lambda n: is_held(repo, n),
                                     lambda run: applied_in_any_attempt(repo, run), main_sha,
                                     None, lambda run: refused_as_applied(repo, run),
                                     stale=lambda run: stale_main_refusal_only(repo, run),
@@ -816,7 +817,13 @@ def main(now: datetime | None = None) -> int:
         # main SHA"), re-arming the backstop freeze forever. Re-read main now,
         # after the freeze (when set) stops further movement.
         main_sha = gh(f"repos/{repo}/commits/main")["sha"]
-        dispatch(repo, pr, main_sha)
+        prune_claims(repo, live)
+        if claim_dispatch(repo, pr, fresh_runs, live, now):
+            try:
+                dispatch(repo, pr, main_sha)
+            except Exception:
+                release_claim(repo, pr["number"])
+                raise
     for line in alerts:
         print(f"::error title=Production release held over 30 minutes::{line}")
     exhausted = [e for e in skipped if e.get("exhausted") or e.get("refunds")]
@@ -903,6 +910,107 @@ def dispatch(repo: str, pr: dict[str, Any], main_sha: str) -> None:
         check=True,
     )
     print(f"Dispatched the post-merge preview rehearsal for PR #{pr['number']} at {main_sha}.")
+
+
+# #6493 Step 2: duplicate-dispatch guard. One claim ref per PR, created
+# atomically (the create fails when it exists) just before dispatch. The ref
+# points at a parentless commit whose message is the claim record. A claim is a
+# liveness lease, never permanent: it stays live while any associated run is
+# queued/in progress, or completed without failure before the ledger shows the
+# versions. It is reclaimable once the claiming selector failed before any
+# associated run exists, every associated run failed, or (last resort) nothing
+# associated has moved for CLAIM_IDLE_LIMIT. The trigger's concurrency group
+# already serializes selector runs; this is defense in depth.
+CLAIM_PREFIX = "refs/dispatch-claims/pr-"
+CLAIM_IDLE_LIMIT = timedelta(hours=4)
+
+
+def claim_runs(claim: dict[str, Any], runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    tag = f"PR{claim['pr']} "
+    versions = set(claim.get("versions") or [])
+    since = claim.get("claimed_at", "")
+    return [r for r in runs if our_workflow(r) and (r.get("created_at") or "") >= since
+            and (tag in (r.get("display_title") or "") + " "
+                 or title_versions(r.get("display_title") or "") & versions)]
+
+
+def claim_is_stale(claim: dict[str, Any], runs: list[dict[str, Any]], live: set[str] | None,
+                   now: datetime, claimer_failed: callable = lambda run_id: False) -> bool:
+    if live and set(claim.get("versions") or []) <= live:
+        return True
+    associated = claim_runs(claim, runs)
+    if any(r.get("status") != "completed" for r in associated):
+        return False
+    last = max([claim.get("claimed_at", "")] + [r.get("updated_at") or r.get("created_at") or "" for r in associated])
+    if now - _time(last) > CLAIM_IDLE_LIMIT:
+        return True
+    if associated:
+        return all(r.get("conclusion") != "success" for r in associated)
+    return bool(claimer_failed(claim.get("run_id")))
+
+
+def read_claim(repo: str, pr: int) -> dict[str, Any] | None:
+    try:
+        ref = gh(f"repos/{repo}/git/ref/{CLAIM_PREFIX[5:]}{pr}")
+    except subprocess.CalledProcessError:
+        return None
+    commit = gh(f"repos/{repo}/git/commits/{ref['object']['sha']}")
+    return json.loads(commit["message"])
+
+
+def claim_dispatch(repo: str, pr: dict[str, Any], runs: list[dict[str, Any]], live: set[str] | None,
+                   now: datetime) -> bool:
+    record = {"pr": pr["number"], "versions": pr["versions"], "run_id": os.environ.get("GITHUB_RUN_ID"),
+              "claimed_at": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
+    tree = gh(f"repos/{repo}/commits/main")["commit"]["tree"]["sha"]
+    sha = gh("-X", "POST", f"repos/{repo}/git/commits", "-f", f"message={json.dumps(record)}", "-f", f"tree={tree}")["sha"]
+    ref = f"{CLAIM_PREFIX}{pr['number']}"
+    try:
+        subprocess.run(["gh", "api", "-X", "POST", f"repos/{repo}/git/refs", "-f", f"ref={ref}", "-f", f"sha={sha}"],
+                       check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return True
+    except subprocess.CalledProcessError:
+        pass
+    existing = read_claim(repo, pr["number"])
+    if existing is not None and not claim_is_stale(existing, runs, live, now, lambda rid: claimer_failed(repo, rid)):
+        print(f"skip: PR #{pr['number']} already claimed by selector run {existing.get('run_id')} at {existing.get('claimed_at')}")
+        return False
+    print(f"reclaiming stale dispatch claim for PR #{pr['number']} ({existing})")
+    gh("-X", "PATCH", f"repos/{repo}/git/{ref[5:]}", "-f", f"sha={sha}", "-F", "force=true")
+    return True
+
+
+def claimer_failed(repo: str, run_id: Any) -> bool:
+    if not run_id:
+        return True
+    try:
+        run = gh(f"repos/{repo}/actions/runs/{run_id}")
+    except subprocess.CalledProcessError:
+        return False
+    return run.get("status") == "completed" and run.get("conclusion") != "success"
+
+
+def release_claim(repo: str, pr: int) -> None:
+    try:
+        subprocess.run(["gh", "api", "-X", "DELETE", f"repos/{repo}/git/{CLAIM_PREFIX[5:]}{pr}"],
+                       check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except subprocess.CalledProcessError as exc:
+        print(f"::warning::could not release the dispatch claim for PR #{pr} ({exc}); it expires as a stale lease")
+
+
+def prune_claims(repo: str, live: set[str] | None) -> None:
+    """Drop claims whose versions are all in the production ledger."""
+    if not live:
+        return
+    try:
+        refs = gh(f"repos/{repo}/git/matching-refs/{CLAIM_PREFIX[5:-4]}") or []
+        for ref in refs:
+            pr = int(ref["ref"].rsplit("-", 1)[1])
+            claim = read_claim(repo, pr)
+            if claim and set(claim.get("versions") or []) <= live:
+                release_claim(repo, pr)
+    except (subprocess.CalledProcessError, ValueError, KeyError, OSError) as exc:
+        print(f"::warning::dispatch-claim pruning skipped ({exc})")
 
 
 STUCK_ISSUE_TITLE = "Automatic promotion: stuck migrations need repair"

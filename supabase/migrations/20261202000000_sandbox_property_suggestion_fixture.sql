@@ -1,16 +1,47 @@
 -- #6522 sandbox fixture: DesignFlow sandbox (xupnyeifmpsacrqahwwm) ONLY. Never apply to shared preview or production.
--- designflow-backend#408 step 5 live proof: seeds the exact production fixture
--- closure for two SKUs so plm.suggested_property_for_sku can render the Item
+-- designflow-backend#408 step 5 live proof: seeds a scoped fixture
+-- for two SKUs so plm.suggested_property_for_sku can render the Item
 -- Detail suggestion UI on alsand in both states:
 --   BG12VDYCP01  art = Aristocats (4 files)   current MG06 = CP Classic Characters  -> mismatch warning
 --   3FZ27DYNX01  art = Nightmare (1 file)     current MG06 = NX Nightmare           -> agreeing hint
--- Rows are ported verbatim from a read-only production extract (2026-11-16).
+-- Extracted rows come from a read-only production extract (2026-11-16).
+-- This is not a verified complete production closure: the supplied extract has
+-- no BG12VDYCP01 item_detail rows or slot-9 merch-group row. Their absence here
+-- is not evidence that production has none; neither is needed by the suggestion.
+-- Crosswalk rows below come from migration 20261115132055, not that extract.
 -- Cross-boundary FK columns are NULLed (dcp_property.core_property_id and
 -- metadata-run references, dcp_style_guide.core_style_guide_id and crawl
 -- references, dcp_crawl.baseline_*), so the fixture never references anything
--- outside itself. Idempotent: every insert is on conflict do nothing.
+-- outside itself. Feature schema must already be installed (guard below).
+-- Idempotent: every insert is on conflict do nothing.
 -- Reversal: delete these rows by the ids below (fixture ids are stable).
 -- derived-from: none
+-- Require both the crosswalk schema and the corrected, exact-only consumer-view
+-- function before writing any fixture data. Do not silently install an older API.
+do $dependencies$
+begin
+  if to_regclass('supabase_migrations.schema_migrations') is null
+     or to_regclass('plm.dcp_property_mg06_crosswalk') is null
+     or to_regprocedure('plm.suggested_property_for_sku(text)') is null then
+    raise exception 'Fixture #6522 requires migrations 20261115132055 and 20261116120000 on the DesignFlow sandbox first';
+  end if;
+  if not exists (select 1 from supabase_migrations.schema_migrations where version = '20261115132055')
+     or not exists (select 1 from supabase_migrations.schema_migrations where version = '20261116120000') then
+    raise exception 'Fixture #6522 requires migrations 20261115132055 and 20261116120000 on the DesignFlow sandbox first';
+  end if;
+end;
+$dependencies$;
+
+-- The two exact mappings required by the function's mapped CTE.
+insert into plm.dcp_property_mg06_crosswalk
+  (dcp_source_id, mg_code, mg_desc, opa_licensed_property_id, provenance, confidence)
+values
+  ('dcpvault:properties/ar/aristocats', 'AC', 'Aristocats',
+   101, 'opa_resolution+mapping_sheet', 'exact'),
+  ('dcpvault:properties/ti/tim-burton-s-nightmare-before-christmas', 'NX', 'Nightmare Before Christmas',
+   268, 'opa_resolution+mapping_sheet', 'exact')
+on conflict do nothing;
+
 -- plm.dcp_crawl: 2 row(s), ported verbatim from production fixture closure
 insert into plm.dcp_crawl ("crawl_id", "source_system", "status", "captured_on", "portal_base_url", "crawler_version", "account_scope", "line_of_business", "started_at", "finished_at", "rows_received", "distinct_assets_received", "captured_by", "private_source_commit", "failure_message", "notes", "metadata", "created_at", "updated_at", "run_kind", "baseline_crawl_id", "assets_added_count", "assets_withdrawn_count", "assets_reactivated_count", "style_guides_added_count", "style_guides_withdrawn_count", "style_guides_reactivated_count") values
 ('49c393e7-c4b4-4a8d-940c-f0cb397cf6f8'::uuid, 'disney_dcpvault', 'running', '2026-08-14'::date, 'https://dcpvault.disney.com', 'browser-checkpoint-v6', 'POP Creations licensed account', 'Merchandise', '2026-08-14T21:49:42.015345-04:00'::timestamptz, '2026-08-14T22:04:24.076903-04:00'::timestamptz, 187487::integer, 187487::integer, 'authorized browser capture', 'af3058913dfd3a7df8b891894d3ccbc2ad54e7d2', null, 'Complete 34-job path crawl; zero recorded gaps; studio-separated evidence.', '{}'::jsonb, '2026-08-14T21:49:42.015345-04:00'::timestamptz, '2026-08-14T22:04:24.076903-04:00'::timestamptz, 'full', null, null, null, null, null, null, null),

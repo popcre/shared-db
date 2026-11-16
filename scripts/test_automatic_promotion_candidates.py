@@ -1904,6 +1904,20 @@ class AdversarialRunIdentity(unittest.TestCase):
         self.assertEqual(m.decide([self.pr], [before] * 3, lambda n: [], main_sha="x")[0], "dispatch")
 
 
+class LedgerFailsClosed(unittest.TestCase):
+    """#6493 Step 2: a configured but unreadable ledger holds the cycle."""
+    def test_unreadable_ledger_holds_without_reading_or_dispatching(self):
+        with mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "o/r", "PRODUCTION_LEDGER_FILE": "/nonexistent/ledger.json"}), \
+             mock.patch.object(sys, "argv", ["x"]), \
+             mock.patch.object(m, "gh", lambda *a: {"sha": "abc"}), \
+             mock.patch.object(m, "workflow_runs", side_effect=AssertionError("must not read runs")), \
+             mock.patch.object(m, "dispatch", side_effect=AssertionError("must not dispatch")):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(m.main(), 0)
+        self.assertIn("wait: production ledger unreadable", out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -1968,3 +1982,4 @@ class DispatchUsesFreshMain(unittest.TestCase):
                 os.environ.pop("GITHUB_REPOSITORY", None)
             else:
                 os.environ["GITHUB_REPOSITORY"] = saved[8]
+

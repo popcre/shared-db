@@ -765,9 +765,18 @@ def main(now: datetime | None = None) -> int:
     repo = os.environ["GITHUB_REPOSITORY"]
     now = now or datetime.now(timezone.utc)
     main_sha = gh(f"repos/{repo}/commits/main")["sha"]
+    live = production_ledger()
+    # #6493 Step 2: fail closed. The ledger writer only warns and exits 0 when it
+    # cannot read production; deciding on run evidence alone is how already-live
+    # versions burned attempts (#6352). Hold this cycle loudly instead. Only when
+    # the workflow configured a ledger file (local/test runs set none).
+    if live is None and os.environ.get("PRODUCTION_LEDGER_FILE"):
+        print("::error title=Production ledger unreadable::holding this promotion cycle; "
+              "the next trigger retries once the ledger reads")
+        print("wait: production ledger unreadable")
+        return 0
     runs = workflow_runs(repo)
     skipped: list[dict[str, Any]] = []
-    live = production_ledger()
     action, pr, reason = decide(merged_migration_prs(repo), runs, lambda n: is_held(repo, n),
                                 lambda run: applied_in_any_attempt(repo, run), main_sha,
                                 skipped, lambda run: refused_as_applied(repo, run),

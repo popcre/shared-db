@@ -33,7 +33,8 @@
 -- Existence-guarded per object (repository pattern 20260729130000): the same
 -- names live on more than one governed environment and a bare drop against an
 -- absent relation aborts the transaction. Keeper assertion is definition-based
--- (a btree on the same column must remain), which also survives keeper-name
+-- (a valid, non-unique, non-partial plain btree on the same column must remain),
+-- which also survives keeper-name
 -- divergence across environments.
 
 begin;
@@ -57,33 +58,39 @@ begin
     if exists (
       select 1 from pg_class c
       join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname = v.sch and c.relname = v.idx and c.relkind = 'i'
+      where n.nspname = t.sch and c.relname = t.idx and c.relkind = 'i'
     ) then
-      execute format('drop index if exists %I.%I', v.sch, v.idx);
+      execute format('drop index if exists %I.%I', t.sch, t.idx);
       dropped := dropped + 1;
     else
-      skipped := skipped || v.sch || '.' || v.idx || '; ';
+      skipped := skipped || t.sch || '.' || t.idx || '; ';
     end if;
 
     if exists (
       select 1 from pg_class c
       join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname = v.tsch and c.relname = v.tbl and c.relkind = 'r'
+      where n.nspname = t.tsch and c.relname = t.tbl and c.relkind = 'r'
     ) then
       if not exists (
         select 1
         from pg_index ix
         join pg_class i on i.oid = ix.indexrelid
+        join pg_am am on am.oid = i.relam
         join pg_class c on c.oid = ix.indrelid
         join pg_namespace n on n.oid = c.relnamespace
-        where n.nspname = v.tsch and c.relname = v.tbl
-          and i.relname <> v.idx
+        where n.nspname = t.tsch and c.relname = t.tbl
+          and i.relname <> t.idx
+          and not ix.indisunique
+          and am.amname = 'btree'
+          and ix.indisvalid
+          and ix.indpred is null
+          and ix.indexprs is null
           and (select array_agg(a.attname order by u.ord)
                from unnest(ix.indkey) with ordinality as u(attnum, ord)
                join pg_attribute a on a.attrelid = ix.indrelid and a.attnum = u.attnum
-              ) = array[v.col]
+              ) = array[t.col]
       ) then
-        missing := missing || v.tsch || '.' || v.tbl || '(' || v.col || '); ';
+        missing := missing || t.tsch || '.' || t.tbl || '(' || t.col || '); ';
       end if;
     end if;
   end loop;

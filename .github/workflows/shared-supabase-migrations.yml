@@ -1369,6 +1369,7 @@ jobs:
       # --pr <n> (any positive --pr clears an unreadable record); otherwise
       # the 45-minute TTL is the cleanup.
       - name: Acquire the promotion merge freeze for this source PR
+        id: acquire_freeze
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_PR: ${{ steps.source_guard.outputs.source_pr || steps.train_source_guard.outputs.source_pr }}
@@ -1471,6 +1472,7 @@ jobs:
           SOURCE_PR: ${{ steps.source_guard.outputs.source_pr || steps.train_source_guard.outputs.source_pr }}
         run: python scripts/review_finding_hold.py --pr "$SOURCE_PR"
       - name: Dispatch the existing serial production lane
+        id: dispatch_production
         env:
           GH_TOKEN: ${{ github.token }}
           MAIN_SHA: ${{ inputs.commit_sha }}
@@ -1511,6 +1513,27 @@ jobs:
             "repos/${GITHUB_REPOSITORY}/actions/workflows/shared-supabase-migrations.yml/dispatches" \
             --input "$RUNNER_TEMP/automatic-production-dispatch.json"
           echo "Fully qualified production apply dispatched. It remains queued behind the global workflow serialization and must still pass its own fresh dry-run, production lock, evidence rechecks, and live verification."
+      # ISSUE #6340: a freeze this job acquired must not outlive a run that
+      # never dispatched the production lane. Once the dispatch has gone out,
+      # the freeze belongs to that run (the apply job's always() release and
+      # the run-end backstop in notify-production-queue); every other exit
+      # path of THIS run releases it here, so a failure between the acquire
+      # and the dispatch no longer parks merges until the 45-minute TTL.
+      # Released only when our own acquire succeeded: an acquire step that
+      # failed or never ran owns nothing here (another holder's freeze stays).
+      - name: Release the promotion merge freeze when nothing was dispatched
+        if: always() && steps.acquire_freeze.outcome == 'success' && steps.dispatch_production.outcome != 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_PR: ${{ steps.source_guard.outputs.source_pr || steps.train_source_guard.outputs.source_pr }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SOURCE_PR:-}" ]; then
+            echo "No single source PR resolved; no freeze record of ours to release."
+            exit 0
+          fi
+          node scripts/manage-migration-coordination.mjs --release-promotion-freeze --pr "$SOURCE_PR"
 
   # ISSUE #646: this job deliberately has NO `environment:`.
   #
@@ -2547,3 +2570,32 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=production-queue-nudge
+      # ISSUE #6340, second exit path: production-apply releases the promotion
+      # merge freeze under always(), but that job is SKIPPED when a job it
+      # needs fails -- and a skipped job runs no steps at all, so the freeze
+      # then outlived the whole run (seen 2026-11-15 07:44 UTC, PR #6246).
+      # This job is the only one that runs after every other job on every
+      # outcome, so it is the run's end-of-run backstop: this production apply
+      # run ends its source PR's freeze here whatever happened above.
+      # Idempotent (the apply job's own release usually already cleared it)
+      # and scoped to THIS source PR; another holder's freeze is left alone.
+      # This job never checked out the repository (it only posts the nudge),
+      # so the first live test of the release -- 2026-11-15 20:26 UTC, PR
+      # #6368 -- ran the command against a missing file and the TTL alone
+      # ended the freeze. The CLI must be checked out first; the checkout is
+      # gated on the release it serves. Like the nudge, neither step may ever
+      # fail this job (a red run that actually applied burns attempts).
+      - name: Check out the coordination CLI for the run-end freeze release
+        if: always() && inputs.target == 'production' && inputs.mode == 'apply' && inputs.source_pr != ''
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 1
+      - name: Release the promotion merge freeze when this production run ends
+        if: always() && inputs.target == 'production' && inputs.mode == 'apply' && inputs.source_pr != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_PR: ${{ inputs.source_pr }}
+        run: node scripts/manage-migration-coordination.mjs --release-promotion-freeze --pr "$SOURCE_PR"

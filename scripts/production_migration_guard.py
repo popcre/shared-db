@@ -544,6 +544,48 @@ PREVIEW_ONLY_HISTORICAL_RESTORATIONS = {
 KNOWN_MIGRATION_TARGETS = frozenset({"production", "preview", "designflow-nonprod", "designflow-prod"})
 
 FOREIGN_TARGET_MIGRATIONS = {
+    "20261115181438": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6356",
+        "note": "Sandbox catch-up batch 8: Ports pim AI activity triage tables and plm/api/dflow current-state views from production (crm.contact_ext and the dam-backed api views are deferred). Production already holds them; source excludes shared preview and production.",
+    },
+    "20261115172649": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6356",
+        "note": "Sandbox catch-up batch 7: Ports core franchise, canonical edge and factory tables, current-state views and guard functions from production. Production already holds them; source excludes shared preview and production.",
+    },
+    "20261115163555": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6356",
+        "note": "Sandbox catch-up batch 6: Ports NBCU, Peanuts and WildBrain lifecycle tables, Sesame property options and their publish functions from production. Production already holds them; source excludes shared preview and production.",
+    },
+    "20261115163358": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6356",
+        "note": "Sandbox catch-up batch 5: ports licensing consolidation and Disney OPA capture tables, functions and triggers from production. Production already holds them; source excludes shared preview and production.",
+    },
+    "20261115160800": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6356",
+        "note": "Sandbox catch-up batch 4: ports item assignment, workflow action, production PO and licensor PDF tables from production. Production already holds them; source excludes shared preview and production.",
+    },
+    "20261115153254": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6356",
+        "note": "Sandbox catch-up batch 3: ports the plm sample tracking tables from production. Production already holds them; source excludes shared preview and production.",
+    },
+    "20261115133715": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6356",
+        "note": "Sandbox catch-up batch 2: ports the property submission-name functions and triggers of 20261113183820; production already holds them. Source excludes shared preview and production.",
+    },
     "20261115133704": {
         "target": "designflow-nonprod",
         "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
@@ -2935,7 +2977,11 @@ def read_sandbox_dependencies(ledger_name, project_ref, token, query=None, fetch
     statement = """
             SELECT n.nspname || '.' || c.relname AS name
             FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-            WHERE n.nspname IN ('dflow','core','plm') AND c.relkind IN ('r','p','v','m','f')
+            WHERE n.nspname IN ('dflow','core','plm','app','pim','crm') AND c.relkind IN ('r','p','v','m','f')
+            UNION
+            SELECT n.nspname || '.' || p.proname
+            FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+            WHERE n.nspname IN ('dflow','core','plm','app','pim','crm') AND p.prokind IN ('f','p')
             ORDER BY 1
         """
     rows = query(project_ref, token, statement) if query else read_api(
@@ -2945,7 +2991,7 @@ def read_sandbox_dependencies(ledger_name, project_ref, token, query=None, fetch
     names = []
     for row in rows:
         name = row.get("name") if isinstance(row, dict) else None
-        if not isinstance(name, str) or not re.fullmatch(r"(?:dflow|core|plm)\.[A-Za-z_][A-Za-z_0-9]*", name):
+        if not isinstance(name, str) or not re.fullmatch(r"(?:dflow|core|plm|app|pim|crm)\.[A-Za-z_][A-Za-z_0-9]*", name):
             raise GuardError("sandbox dependency catalog contains an invalid relation")
         names.append(name)
     if len(names) != len(set(names)):

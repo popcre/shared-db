@@ -742,6 +742,40 @@ def recent_re_runs(runs: list[dict[str, Any]], now: datetime,
             and now - _time(r.get("updated_at") or r.get("created_at") or "1970-01-01T00:00:00Z") < timedelta(hours=24)]
 
 
+def _pct(values: list[float], q: float) -> float:
+    ordered = sorted(values)
+    return ordered[min(len(ordered) - 1, int(round(q * (len(ordered) - 1))))]
+
+
+def slo_samples(prs: list[dict[str, Any]], runs: list[dict[str, Any]], prefix: str,
+                limit: int = 20) -> list[tuple[int, float]]:
+    """(PR, seconds) from merge to the FIRST post-merge run titled `prefix`
+    naming the PR, newest `limit` PRs. SLO A uses the preview rehearsal the
+    selector dispatches; SLO B the production apply's start (#6493 Step 3)."""
+    out = []
+    for pr in prs:
+        tag = f"PR{pr['number']} "
+        hits = [r for r in runs if (r.get("display_title") or "").startswith(prefix)
+                and tag in (r.get("display_title") or "") + " " and (r.get("created_at") or "") > pr["merged_at"]]
+        if hits:
+            first = min(hits, key=lambda r: r["created_at"])
+            start = first.get("run_started_at") or first["created_at"]
+            out.append((pr["merged_at"], pr["number"], (_time(start) - _time(pr["merged_at"])).total_seconds()))
+    return [(n, s) for _, n, s in sorted(out)[-limit:]]
+
+
+def report_slos(prs: list[dict[str, Any]], runs: list[dict[str, Any]]) -> None:
+    for name, prefix in (("SLO_A merge-to-dispatch", "DB preview apply"),
+                         ("SLO_B merge-to-apply-start", "DB production apply")):
+        samples = slo_samples(prs, [r for r in runs if our_workflow(r)], prefix)
+        if not samples:
+            continue
+        values = [sec for _, sec in samples]
+        last_pr, last = samples[-1]
+        print(f"::notice title={name.split()[0]}::{name}: {int(last)}s (PR #{last_pr}); "
+              f"p50={int(_pct(values, 0.5))}s p95={int(_pct(values, 0.95))}s over last {len(values)} PRs")
+
+
 def production_ledger(path: str | None = None) -> set[str] | None:
     """Applied production versions written by scripts/write-production-ledger.mjs,
     or None when absent or unreadable (selector then relies on run evidence)."""
@@ -777,7 +811,12 @@ def main(now: datetime | None = None) -> int:
         return 0
     runs = workflow_runs(repo)
     skipped: list[dict[str, Any]] = []
-    action, pr, reason = decide(merged_migration_prs(repo), runs, lambda n: is_held(repo, n),
+    candidates = merged_migration_prs(repo)
+    try:
+        report_slos(candidates, runs)
+    except (KeyError, ValueError, TypeError) as exc:
+        print(f"::warning::SLO report skipped ({exc})")
+    action, pr, reason = decide(candidates, runs, lambda n: is_held(repo, n),
                                 lambda run: applied_in_any_attempt(repo, run), main_sha,
                                 skipped, lambda run: refused_as_applied(repo, run),
                                 stale=lambda run: stale_main_refusal_only(repo, run),

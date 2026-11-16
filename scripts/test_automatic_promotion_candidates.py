@@ -1993,6 +1993,22 @@ class DispatchClaims(unittest.TestCase):
         self.assertEqual(released, [7])
 
 
+class SloReport(unittest.TestCase):
+    def test_first_post_merge_run_gives_the_sample(self):
+        prs = [{"number": 7, "merged_at": "2026-11-16T10:00:00Z"}, {"number": 8, "merged_at": "2026-11-16T11:00:00Z"}]
+        runs = [{"display_title": "DB preview apply PR7 1", "created_at": "2026-11-16T10:02:00Z"},
+                {"display_title": "DB preview apply PR7 1", "created_at": "2026-11-16T10:30:00Z"},
+                {"display_title": "DB preview apply PR7 1", "created_at": "2026-11-16T09:00:00Z"},
+                {"display_title": "DB production apply PR8 2", "created_at": "2026-11-16T11:10:00Z",
+                 "run_started_at": "2026-11-16T11:12:00Z"}]
+        self.assertEqual(m.slo_samples(prs, runs, "DB preview apply"), [(7, 120.0)])
+        self.assertEqual(m.slo_samples(prs, runs, "DB production apply"), [(8, 720.0)])
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            m.report_slos(prs, runs)
+        self.assertIn("SLO_A merge-to-dispatch: 120s (PR #7); p50=120s p95=120s", out.getvalue())
+        self.assertIn("SLO_B merge-to-apply-start: 720s (PR #8)", out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()
 

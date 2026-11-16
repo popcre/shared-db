@@ -548,7 +548,7 @@ FOREIGN_TARGET_MIGRATIONS = {
         "target": "designflow-nonprod",
         "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
         "issue": "#6356",
-        "note": "Sandbox catch-up batch 9: Ports missing and changed api, app, core, crm, dflow, pim and plm functions from production (functions touching dflow_prod, dam-only or claimed by other work are deferred). Production already holds them; source excludes shared preview and production.",
+        "note": "Sandbox catch-up batch 9: Ports absent and changed api, app, core, crm, dflow, pim and plm functions from production (functions touching dflow_prod, dam-only or claimed by other work are deferred). Production already holds them; source excludes shared preview and production.",
     },
     "20261115181438": {
         "target": "designflow-nonprod",
@@ -738,7 +738,7 @@ FOREIGN_TARGET_MIGRATIONS = {
         "target": "designflow-nonprod",
         "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
         "issue": "#6356",
-        "note": "Sandbox catch-up batch 10: additive indexes, constraints and triggers copied from production, plus the forward fix for batch 9's app.handle_new_auth_user() ACL assertion (live ACL already equals production). Source excludes shared preview and production.",
+        "note": "Sandbox catch-up batch 10: additive indexes, constraints and triggers copied from production, and a forward fix for batch 9. Source excludes shared preview and production.",
     },
 }
 

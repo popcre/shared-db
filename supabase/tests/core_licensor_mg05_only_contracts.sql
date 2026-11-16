@@ -49,7 +49,7 @@ begin
   if v_row.code <> 'P'||v_s or v_row.name <> 'PAUL FRANK '||v_s then raise exception 'code-less licensor not coded: %', v_row; end if;
   if (select count(*) from core.licensor where code = 'N'||v_s and status::text = 'active') <> 1 then raise exception 'new licensor not created once'; end if;
   select * into v_row from core.licensor where id = v_hand;
-  if v_row.status::text <> 'archived' or v_row.metadata->'mg05_retired'->>'previous_status' <> 'active' then
+  if v_row.status::text <> 'inactive' or v_row.metadata->'mg05_retired'->>'previous_status' <> 'active' then
     raise exception 'row outside MG05 not retired recoverably: %', v_row;
   end if;
   if exists (select 1 from core.licensor l where l.status::text = 'active'

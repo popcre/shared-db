@@ -9,7 +9,7 @@
 --   * its only writer is plm.sync_core_licensor_from_coldlion, fed by the ColdLion MG05 list
 --     (API landing coldlion.merch_group_detail, plus the DesignFlow copy dflow_prod."merchGroup"
 --     for divisions CW001/SP001 when present);
---   * one row per MG05 code; rows outside MG05 are retired recoverably (status archived, the
+--   * one row per MG05 code; rows outside MG05 are retired recoverably (status inactive, the
 --     previous status and code kept in metadata.mg05_retired); nothing is ever deleted;
 --   * every other insert, update, delete or truncate is refused by a trigger.
 -- Supersedes the never-promoted 20261115031325 (same function, without retirement or guard).
@@ -38,18 +38,19 @@ end;
 $fn$;
 revoke all on function app.guard_core_licensor_mg05_only() from public, anon, authenticated;
 
-drop trigger if exists licensor_mg05_only_guard on core.licensor;
-create trigger licensor_mg05_only_guard
+-- Named to sort (and so fire) before licensor_licensing_write_guard.
+drop trigger if exists licensor_00_mg05_only_guard on core.licensor;
+create trigger licensor_00_mg05_only_guard
   before insert or update or delete on core.licensor
   for each row execute function app.guard_core_licensor_mg05_only();
 
-drop trigger if exists licensor_mg05_only_truncate_guard on core.licensor;
-create trigger licensor_mg05_only_truncate_guard
+drop trigger if exists licensor_00_mg05_only_truncate_guard on core.licensor;
+create trigger licensor_00_mg05_only_truncate_guard
   before truncate on core.licensor
   for each statement execute function app.guard_core_licensor_mg05_only();
 
 comment on table core.licensor is
-  'The ColdLion MG05 (Licensor) list, copied nightly by plm.sync_core_licensor_from_coldlion (#6440). Never hand-maintained: rows outside MG05 are archived, other writes are refused.';
+  'The ColdLion MG05 (Licensor) list, copied nightly by plm.sync_core_licensor_from_coldlion (#6440). Never hand-maintained: rows outside MG05 are set inactive, other writes are refused.';
 
 -- 2. The feed.
 create or replace function plm.sync_core_licensor_from_coldlion(p_apply boolean default false)
@@ -162,7 +163,7 @@ begin
   -- Retire, recoverably, every row MG05 does not have. Never deleted; references keep working.
   for r in
     select id, code, status::text st from core.licensor l
-     where l.status::text <> 'archived'
+     where l.status::text <> 'inactive'
        and (l.code is null or not exists (select 1 from _mg05 m where m.c = l.code))
   loop
     v_retired := v_retired + 1;
@@ -171,7 +172,7 @@ begin
       values (pg_backend_pid(), txid_current(), 'core.licensor', 'coldlion_status', gen_random_uuid(),
         encode(extensions.digest('6440/licensor/retire/'||r.id::text,'sha256'),'hex'), v_actor, array['status'], clock_timestamp() + interval '1 minute');
       update core.licensor
-         set status = 'archived',
+         set status = 'inactive',
              metadata = coalesce(metadata,'{}'::jsonb) || jsonb_build_object('mg05_retired',
                jsonb_build_object('issue', 6440, 'retired_at', now(), 'previous_status', r.st, 'code', r.code))
        where id = r.id;
@@ -186,7 +187,7 @@ end;
 $fn$;
 
 comment on function plm.sync_core_licensor_from_coldlion(boolean) is
-  '#6440: the only writer of core.licensor. One row per ColdLion MG05 code; rows outside MG05 archived (recoverable). p_apply=false reports only. Never deletes.';
+  '#6440: the only writer of core.licensor. One row per ColdLion MG05 code; rows outside MG05 set inactive (recoverable). p_apply=false reports only. Never deletes.';
 revoke all on function plm.sync_core_licensor_from_coldlion(boolean) from public, anon, authenticated;
 
 -- 3. Licensors first, then Properties, in one daily job.

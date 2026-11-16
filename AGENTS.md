@@ -145,7 +145,7 @@ from the repository variable; never write a preview ref down.
 
 **Licensors come only from ColdLion MG05** (owner ruling 6.41, 2026-11-15, #6440). There is no
 hand-maintained licensor list: `core.licensor` is a nightly copy of the MG05 list, written only by
-`plm.sync_core_licensor_from_coldlion`, and a trigger refuses every other write. Never read archived
+`plm.sync_core_licensor_from_coldlion`, and a trigger refuses every other write. Never read retired
 (non-MG05) licensor rows as a source, never load licensors from elsewhere, and never bypass the guard.
 
 ## Container and service inventory

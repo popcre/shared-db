@@ -173,6 +173,6 @@ Verbatim Albert, 2026-11-15 8:49 PM EST:
 
 **Effect** (issue #6440, migration `20261116124500`).
 - The licensor list is ColdLion's MG05 (Licensor) list as it arrives from the API (`coldlion.merch_group_detail`, plus `dflow_prod."merchGroup"` divisions CW001/SP001). Nothing else is a licensor source.
-- `core.licensor` stays only as the stable id table every app's foreign keys use. Its single writer is `plm.sync_core_licensor_from_coldlion` (nightly, before the property sync): one row per MG05 code; rows outside MG05 are archived recoverably (`metadata.mg05_retired`), never deleted.
+- `core.licensor` stays only as the stable id table every app's foreign keys use. Its single writer is `plm.sync_core_licensor_from_coldlion` (nightly, before the property sync): one row per MG05 code; rows outside MG05 are set inactive, recoverably (`metadata.mg05_retired` keeps the old status), never deleted.
 - A trigger refuses every other insert, rename, re-code, status change, delete or truncate. Never bypass it, never set `app.core_licensor_writer` by hand, and never load licensors from a spreadsheet, scrape, chat or memory. A missing or wrong licensor is fixed in ColdLion.
 - An MG06 Property's licensor is its MG05 parent's code. Never create MG06 values.

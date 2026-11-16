@@ -13,16 +13,15 @@
 -- UNIQUE "so a future load cannot reintroduce duplicates"; the PK on the same
 -- columns was already live and already provides exactly that.
 --
--- ON CONFLICT PRE-EVIDENCE (issue #6411 comment 2026-11-15)
--- --------------------------------------------------------
--- No consumer names the constraint explicitly (repo-wide search of shared-db
--- and every app repo: the name appears only in evidence captures). All upsert
--- paths use column inference — `on conflict (licensed_property_id, character_id)
--- do update ...` (20260807170100 importer and siblings). The inference
--- rehearsal ran clean on preview (rolled back). After this drop the inference
--- resolves to opa_property_character_pkey; the post-apply preview proof runs
--- the same statement (issue proof #1) plus a duplicate-pair INSERT refusal
--- (proof #2).
+-- ON CONFLICT PRE-EVIDENCE
+-- ------------------------
+-- Local shared-db writers use column inference:
+-- `on conflict (licensed_property_id, character_id) do update ...`
+-- (20260807170100 importer and siblings). No local writer names this
+-- constraint. Cross-app search and rolled-back preview rehearsal are reported
+-- in issue #6411 (2026-11-15); this checkout cannot independently verify them.
+-- The post-apply preview proof on that issue must verify ON CONFLICT inference
+-- and duplicate-pair INSERT refusal.
 --
 -- SCOPE
 -- -----
@@ -82,9 +81,25 @@ begin
       and (select array_agg(a.attname order by u.ord)
            from unnest(conkey) with ordinality as u(attnum, ord)
            join pg_attribute a on a.attrelid = conrelid and a.attnum = u.attnum
-          ) = array['licensed_property_id', 'character_id']
+          ) = array['licensed_property_id', 'character_id']::name[]
   ) then
     raise exception '#6411: primary key on (licensed_property_id, character_id) missing after the drop';
+  end if;
+  -- End state: reject a renamed constraint or standalone duplicate index too.
+  -- Inspect key columns only; INCLUDE columns do not affect uniqueness.
+  if exists (
+    select 1 from pg_index i
+    where i.indrelid = 'plm.opa_property_character'::regclass
+      and i.indisunique
+      and not i.indisprimary
+      and i.indnkeyatts = 2
+      and (select array_agg(a.attname order by a.attname)
+           from unnest(i.indkey) with ordinality as u(attnum, ord)
+           join pg_attribute a on a.attrelid = i.indrelid and a.attnum = u.attnum
+           where u.ord <= i.indnkeyatts
+          ) = array['character_id', 'licensed_property_id']::name[]
+  ) then
+    raise exception '#6411: redundant unique index on (licensed_property_id, character_id) remains after the drop';
   end if;
 end $$;
 

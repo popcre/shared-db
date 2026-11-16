@@ -734,6 +734,12 @@ FOREIGN_TARGET_MIGRATIONS = {
         "issue": "#6356",
         "note": "Sandbox catch-up batch 1 table-ACL companion (review finding #6359): restores the source's append-only table privilege block that the 20261115133704 port dropped. Applies after 20261115133704; that version's merged copy is unmodified. Source excludes shared preview and production.",
     },
+    "20261116124000": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6356",
+        "note": "Sandbox catch-up batch 10: additive indexes, constraints and triggers copied from production, plus the forward fix for batch 9's app.handle_new_auth_user() ACL assertion (live ACL already equals production). Source excludes shared preview and production.",
+    },
 }
 
 for _version, _entry in FOREIGN_TARGET_MIGRATIONS.items():

@@ -59,20 +59,49 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
+      # #6508: queued runs of this trigger were cancelled before any job
+      # started (concurrency queue overflow), so the serial lane never drained.
+      # Cheap lane guard first: while a migration apply run is already in
+      # progress, skip the whole job with success in seconds -- the apply's
+      # completion nudge (or the hourly cron) re-arms this trigger once the
+      # lane frees. Fail-open: a failed query continues to the selector, whose
+      # own wait logic still serializes dispatches.
+      - name: Skip while a migration apply run is in progress
+        id: lane_guard
+        run: |
+          set -eu
+          if ! lane=$(gh run list --repo "$GITHUB_REPOSITORY" \
+              --workflow shared-supabase-migrations.yml \
+              --limit 20 --json status 2>/tmp/lane-guard.err); then
+            echo "::warning::lane guard query failed (fail-open); continuing to the selector"
+            cat /tmp/lane-guard.err || true
+            exit 0
+          fi
+          # Same predicate as the selector's wait: any run not yet completed
+          # (queued, in_progress, waiting) holds the serial lane (#6508 review).
+          count=$(printf '%s' "$lane" | jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)
+          if [ "$count" -gt 0 ]; then
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            echo "skip: a migration workflow run is in progress; its completion nudge re-arms this trigger"
+            exit 0
+          fi
       - uses: actions/checkout@v4
+        if: steps.lane_guard.outputs.skipped != 'true'
       # #5937: the selector arms the backstop merge freeze through the node
       # coordination CLI.
       - uses: actions/setup-node@v4
+        if: steps.lane_guard.outputs.skipped != 'true'
         with:
           node-version: 22
       # Maintenance selects first: a promotion dispatched first would make every
       # selection see an active run, and a held PR fails the promotion step.
       - name: Select an explicitly enabled exact-index maintenance operation
         id: index_maintenance
+        if: steps.lane_guard.outputs.skipped != 'true'
         run: python scripts/automatic_index_maintenance.py
       # #6352: read-only production ledger so already-live changes are not retried.
       - name: Read the production migration ledger (read-only)
-        if: always() && steps.index_maintenance.outputs.dispatched != 'true'
+        if: always() && steps.lane_guard.outputs.skipped != 'true' && steps.index_maintenance.outputs.dispatched != 'true'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: node scripts/write-production-ledger.mjs "$RUNNER_TEMP/production-ledger.json"
@@ -80,7 +109,7 @@ jobs:
       # between runs. Discovery only -- holds, attempts and the ledger are
       # re-read every run. A miss or corrupt cache is a full (slow) scan.
       - name: Restore the selector PR cache
-        if: always() && steps.index_maintenance.outputs.dispatched != 'true'
+        if: always() && steps.lane_guard.outputs.skipped != 'true' && steps.index_maintenance.outputs.dispatched != 'true'
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/promotion-pr-cache.json
@@ -88,7 +117,7 @@ jobs:
           restore-keys: promotion-pr-cache-v1-
       - name: Start the next automatic promotion
         id: selector
-        if: always() && steps.index_maintenance.outputs.dispatched != 'true'
+        if: always() && steps.lane_guard.outputs.skipped != 'true' && steps.index_maintenance.outputs.dispatched != 'true'
         env:
           PRODUCTION_LEDGER_FILE: ${{ runner.temp }}/production-ledger.json
           PROMOTION_PR_CACHE_FILE: ${{ runner.temp }}/promotion-pr-cache.json

@@ -4,6 +4,8 @@
 -- Foreign keys that differ only because production points at dflow_prod.* and the sandbox at its own dflow.* are
 -- the same object (the drift check now maps one to the other). Six core.* user FKs that point at app.users on the
 -- sandbox but dflow_prod.users in production are left for a later batch (they change which user table is trusted).
+-- Not here: core.packaging_type policies (production's text names a person by email; a public repository cannot
+-- carry it). Tracked on #6356.
 -- derived-from: none
 
 alter table plm.dcp_opa_property_resolution_member drop constraint dcp_opa_property_resolution_member_pkey;
@@ -43,10 +45,6 @@ alter table plm."productUserAssignment" add constraint "productUserAssignment_us
 drop index if exists app.user_notification_unread_user_created_idx;
 create index user_notification_unread_user_created_idx ON app.user_notification USING btree (user_id_fk, created_at DESC, id DESC) WHERE (unread = true);
 
-drop policy admin_or_packaging_manager_write on core.packaging_type;
-create policy admin_or_packaging_manager_write on core.packaging_type as PERMISSIVE for ALL to authenticated using ((( SELECT app.has_role('administrator'::app.app_role) AS has_role) OR (lower(COALESCE((auth.jwt() ->> 'email'::text), ''::text)) = 'apinilla@popcre.com'::text))) with check ((( SELECT app.has_role('administrator'::app.app_role) AS has_role) OR (lower(COALESCE((auth.jwt() ->> 'email'::text), ''::text)) = 'apinilla@popcre.com'::text)));
-drop policy shared_read on core.packaging_type;
-create policy shared_read on core.packaging_type as PERMISSIVE for SELECT to authenticated using ((( SELECT app.has_role('administrator'::app.app_role) AS has_role) OR ( SELECT app.has_any_role(ARRAY['sales'::app.app_role, 'licensing'::app.app_role, 'designer'::app.app_role, 'viewer'::app.app_role, 'vendor'::app.app_role]) AS has_any_role) OR (lower(COALESCE((auth.jwt() ->> 'email'::text), ''::text)) = 'apinilla@popcre.com'::text)));
 drop policy dcp_opa_property_resolution_member_read on plm.dcp_opa_property_resolution_member;
 create policy dcp_opa_property_resolution_member_read on plm.dcp_opa_property_resolution_member as PERMISSIVE for SELECT to authenticated using (((EXISTS ( SELECT 1
    FROM plm.dcp_opa_property_resolution h

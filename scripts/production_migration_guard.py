@@ -763,7 +763,7 @@ FOREIGN_TARGET_MIGRATIONS = {
         "issue": "#6356",
         "note": "Sandbox catch-up batch 12: reshapes constraints, columns, one index and four policies that exist on both sides but differ, to production's exact definitions. Source excludes shared preview and production.",
     },
-    "20261118040000": {
+    "20261119060000": {
         "target": "designflow-nonprod",
         "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
         "issue": "#6356",

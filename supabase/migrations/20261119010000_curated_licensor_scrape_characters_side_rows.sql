@@ -1,6 +1,7 @@
--- Version: 20261117200000
+-- Version: 20261119010000
 -- derived-from: none
--- Re-stamped 2026-11-16 above main's then-newest 20261117130000 for the backdate guard (was 20261115033520; content unchanged).
+-- Re-stamped 2026-11-16 above main and the merge queue's newest stamps (20261118030000) for
+-- the backdate guard after two tip races (was 20261115033520, then 20261117200000; content unchanged).
 --
 -- Idempotent fix-forward of the unapplyable reissue 20261113223432 (issue #5932).
 -- That file also carries a stale "Version: 20261113191352" header (the re-reserve

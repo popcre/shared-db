@@ -1,6 +1,6 @@
 -- shared-db#6305 (reopened 2026-11-16): the production copy of
 -- api.resolve_item_mg_category(integer) was removed out-of-band after the
--- clean 2026-11-14 apply of 20261114040632. Migration 20261201110000 restores
+-- clean 2026-11-14 apply of 20261114040632. Migration 20261201120000 restores
 -- it byte-for-byte. This contract pins what "restored" means: the function
 -- exists, reads the DesignFlow app schema's copies (dflow_prod on the shared
 -- databases, dflow on the DesignFlow sandbox) — never a frozen core

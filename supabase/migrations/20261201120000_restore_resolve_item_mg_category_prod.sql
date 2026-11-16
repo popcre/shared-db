@@ -29,7 +29,7 @@ set local statement_timeout = '2min';
 do $target$
 begin
   if to_regclass('dflow_prod."merchGroup"') is null or to_regclass('dflow_prod."itemHeader"') is null then
-    raise exception '#6305/20261201110000 self-check: dflow_prod."merchGroup" or dflow_prod."itemHeader" is missing; wrong database for the production restore'
+    raise exception '#6305/20261201120000 self-check: dflow_prod."merchGroup" or dflow_prod."itemHeader" is missing; wrong database for the production restore'
       using errcode = 'feature_not_supported';
   end if;
 end

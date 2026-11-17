@@ -11,7 +11,7 @@
 -- Idempotent. Site vocabulary names are read from the plm.opa_* scrape at apply time.
 do $mg06_mickey_minnie$
 declare
-  v_lic uuid; v_me uuid; v_mm uuid; v_mmf uuid; v_actor constant text := 'migration 20261204000400 (ruling 6.43)';
+  v_lic uuid; v_me uuid; v_mm uuid; v_mmf uuid; v_actor constant text := 'migration 20261204000500 (ruling 6.43)';
   v_bad integer;
 begin
   select id, licensor_id into v_mm, v_lic from core.property where code = 'MM' and licensor_id = (select licensor_id from core.property where code = 'MMF' limit 1);
@@ -30,7 +30,7 @@ begin
       array['licensor_id','name','code','status'], clock_timestamp() + interval '1 minute');
     insert into core.property(licensor_id, name, code, status, metadata)
     values (v_lic, 'Minnie & Me', 'ME', 'potential',
-      jsonb_build_object('curated', true, 'owner_ruling', '6.43', 'migration', '20261204000400'))
+      jsonb_build_object('curated', true, 'owner_ruling', '6.43', 'migration', '20261204000500'))
     returning id into v_me;
     insert into plm.licensing_write_authorization(backend_pid,transaction_id,target_table,write_kind,plan_id,plan_hash,actor,protected_columns,expires_at)
     values (pg_backend_pid(), txid_current(), 'core.property', 'coldlion_status', gen_random_uuid(),

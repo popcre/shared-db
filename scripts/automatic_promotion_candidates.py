@@ -1361,6 +1361,81 @@ def report_stuck_change(repo: str, entries: list[dict[str, Any]], now: datetime)
         )
 
 
+PARKED_LABEL = "promotion-parked"
+HELD_LABEL = "promotion-held"
+HELD_ESCALATE_AFTER = timedelta(hours=8)
+LABEL_COLOURS = {PARKED_LABEL: "B60205", HELD_LABEL: "FBCA04"}
+LABEL_DESCRIPTIONS = {
+    PARKED_LABEL: "Merged migration out of automatic promotion attempts; not in production",
+    HELD_LABEL: "Merged migration held over 8h by open review findings; not in production",
+}
+
+
+def marker(label: str) -> str:
+    """Hidden marker in the notice comment that proves a label was announced."""
+    return f"<!-- promotion-stranded:{label} -->"
+
+
+def gh_write(method: str, path: str, fields: dict[str, str | list[str]] | None = None) -> tuple[bool, str]:
+    """One GitHub write through `gh api`. A refused call returns (False, text)
+    rather than raising; the caller decides what the failure means."""
+    cmd = ["gh", "api", "-X", method, path]
+    for key, value in (fields or {}).items():
+        if isinstance(value, list):
+            cmd += [arg for item in value for arg in ("-f", f"{key}[]={item}")]
+        else:
+            cmd += ["-f", f"{key}={value}"]
+    try:
+        done = subprocess.run(cmd, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    except OSError as exc:
+        return False, str(exc)
+    if done.returncode == 0:
+        return True, (done.stdout or "").strip()[:200] or "ok"
+    return False, (done.stderr or "").strip() or (done.stdout or "").strip()
+
+
+def ensure_label(repo: str, name: str, description: str) -> bool:
+    """True when the label exists or was just created. A 422 on create means
+    another run created it first (race), which also counts as success."""
+    colour = LABEL_COLOURS.get(name)
+    if colour is None:
+        print(f"::warning::no colour defined for label {name}")
+        return False
+    try:
+        found = subprocess.run(["gh", "api", f"repos/{repo}/labels/{name}"], check=False,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    except OSError as exc:
+        print(f"::warning::could not read label {name} ({exc})")
+        return False
+    if found.returncode == 0:
+        return True
+    text = f"{found.stderr or ''}{found.stdout or ''}"
+    if "Not Found" not in text and "HTTP 404" not in text:
+        print(f"::warning::could not read label {name} ({text.strip()})")
+        return False
+    ok, msg = gh_write("POST", f"repos/{repo}/labels",
+                       {"name": name, "color": colour, "description": description})
+    if ok or "422" in msg or "already_exists" in msg:
+        return True
+    print(f"::warning::could not create label {name} ({msg})")
+    return False
+
+
+def labelled_prs(repo: str, label: str) -> list[int]:
+    """Numbers of pull requests (plain issues dropped) carrying the label, any
+    state. Exceptions propagate; the caller guards."""
+    pages = gh("--paginate", "--slurp", f"repos/{repo}/issues?labels={label}&state=all&per_page=100") or []
+    items = [item for page in pages for item in page]
+    return [item["number"] for item in items if "pull_request" in item]
+
+
+def has_marker(repo: str, n: int, label: str) -> bool:
+    """True when any comment on the PR or issue carries this label's marker."""
+    pages = gh("--paginate", "--slurp", f"repos/{repo}/issues/{n}/comments?per_page=100") or []
+    needle = marker(label)
+    return any(needle in (comment.get("body") or "") for page in pages for comment in page)
+
+
 if __name__ == "__main__":
     try:
         raise SystemExit(main())

@@ -60,7 +60,7 @@ jobs:
       contents: write
       actions: write
       issues: write  # report_stuck_change must open/update the owned stuck-change tracking issue (#5771)
-      pull-requests: read
+      pull-requests: write  # stranded-PR notices and labels (#6561)
     env:
       GH_TOKEN: ${{ github.token }}
     steps:

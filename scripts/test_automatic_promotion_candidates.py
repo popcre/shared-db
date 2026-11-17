@@ -1362,6 +1362,108 @@ class TriggerTokenCanOwnTheTrackingIssue(unittest.TestCase):
         self.assertIn("issues: write", job)
         self.assertNotIn("issues: read", job)
 
+    def test_trigger_job_grants_pull_requests_write(self):
+        # #6561: stranded-PR notices and promotion labels are written with the
+        # job token. Read-only pull-requests makes those writes fail, so guard it.
+        wf = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "..",
+            ".github", "workflows", "automatic-production-trigger.yml",
+        )
+        with open(wf, encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn("  trigger:", text)
+        job = text.split("  trigger:", 1)[1]
+        self.assertIn("pull-requests: write", job)
+        self.assertNotIn("pull-requests: read", job)
+
+
+class PromotionLabelPlumbing(unittest.TestCase):
+    """#6561: labels, notice markers and the PR-only label listing."""
+
+    def test_label_listing_is_prs_only_and_paginated(self):
+        pages = [[{"number": 7, "pull_request": {"url": "x"}}, {"number": 8}],
+                 [{"number": 9, "pull_request": {"url": "y"}}]]
+        with mock.patch.object(m, "gh", side_effect=lambda *a: pages) as fake:
+            self.assertEqual(m.labelled_prs("o/r", m.PARKED_LABEL), [7, 9])
+        # The listing must be read in full (paginated), all states.
+        args = fake.call_args.args
+        self.assertEqual(args[:2], ("--paginate", "--slurp"))
+        self.assertEqual(args[2], "repos/o/r/issues?labels=promotion-parked&state=all&per_page=100")
+
+    def test_missing_label_is_created_and_race_tolerated(self):
+        def proc(rc=0, out="", err=""):
+            return subprocess.CompletedProcess(args=[], returncode=rc, stdout=out, stderr=err)
+
+        def run_with(gets, posts):
+            calls = []
+            def fake_run(cmd, **kw):
+                calls.append(cmd)
+                return (posts if "-X" in cmd else gets).pop(0)
+            return calls, fake_run
+
+        # Missing: GET 404, POST creates it.
+        calls, fake_run = run_with([proc(1, err="gh: Not Found (HTTP 404)")], [proc(0, out="{}")])
+        with mock.patch.object(m.subprocess, "run", fake_run):
+            self.assertTrue(m.ensure_label("o/r", m.PARKED_LABEL, m.LABEL_DESCRIPTIONS[m.PARKED_LABEL]))
+        post = calls[1]
+        self.assertEqual(post[:6], ["gh", "api", "-X", "POST", "repos/o/r/labels", "-f"])
+        self.assertIn("name=promotion-parked", post)
+        self.assertIn("color=B60205", post)
+
+        # Race: another run created it between our GET and POST (422).
+        calls, fake_run = run_with([proc(1, err="gh: Not Found (HTTP 404)")],
+                                   [proc(1, err='gh: Validation Failed (HTTP 422) {"code":"already_exists"}')])
+        with mock.patch.object(m.subprocess, "run", fake_run):
+            self.assertTrue(m.ensure_label("o/r", m.HELD_LABEL, m.LABEL_DESCRIPTIONS[m.HELD_LABEL]))
+
+        # Already present: GET succeeds, nothing is created.
+        calls, fake_run = run_with([proc(0, out="{}")], [])
+        with mock.patch.object(m.subprocess, "run", fake_run):
+            self.assertTrue(m.ensure_label("o/r", m.HELD_LABEL, m.LABEL_DESCRIPTIONS[m.HELD_LABEL]))
+        self.assertEqual(len(calls), 1)
+
+        # Any other read failure: warning, False, no create attempted.
+        calls, fake_run = run_with([proc(1, err="gh: Server Error (HTTP 500)")], [])
+        buf = io.StringIO()
+        with mock.patch.object(m.subprocess, "run", fake_run), contextlib.redirect_stdout(buf):
+            self.assertFalse(m.ensure_label("o/r", m.HELD_LABEL, m.LABEL_DESCRIPTIONS[m.HELD_LABEL]))
+        self.assertIn("::warning::", buf.getvalue())
+        self.assertEqual(len(calls), 1)
+
+    def test_gh_write_expands_lists_and_reports_refusals(self):
+        def proc(rc, out="", err=""):
+            return subprocess.CompletedProcess(args=[], returncode=rc, stdout=out, stderr=err)
+
+        seen = []
+        def fake_run(cmd, **kw):
+            seen.append(cmd)
+            return proc(0, out='{"id": 1}\n')
+
+        with mock.patch.object(m.subprocess, "run", fake_run):
+            ok, _ = m.gh_write("POST", "repos/o/r/issues/7/labels", {"labels": ["promotion-held", "x"]})
+        self.assertTrue(ok)
+        self.assertEqual(seen[0], ["gh", "api", "-X", "POST", "repos/o/r/issues/7/labels",
+                                   "-f", "labels[]=promotion-held", "-f", "labels[]=x"])
+
+        with mock.patch.object(m.subprocess, "run",
+                               lambda cmd, **kw: proc(1, err="gh: Resource not accessible by integration (HTTP 403)\n")):
+            self.assertEqual(m.gh_write("POST", "repos/o/r/issues/7/comments", {"body": "hi"}),
+                             (False, "gh: Resource not accessible by integration (HTTP 403)"))
+
+        def missing_gh(cmd, **kw):
+            raise OSError("gh not found")
+        with mock.patch.object(m.subprocess, "run", missing_gh):
+            self.assertEqual(m.gh_write("DELETE", "repos/o/r/issues/7/labels/x"), (False, "gh not found"))
+
+    def test_has_marker_reads_all_pages_and_matches_label(self):
+        self.assertEqual(m.marker(m.PARKED_LABEL), "<!-- promotion-stranded:promotion-parked -->")
+        pages = [[{"body": "chatter"}, {"body": None}], [{"body": m.marker(m.HELD_LABEL)}]]
+        with mock.patch.object(m, "gh", side_effect=lambda *a: pages) as fake:
+            self.assertTrue(m.has_marker("o/r", 7, m.HELD_LABEL))
+            self.assertFalse(m.has_marker("o/r", 7, m.PARKED_LABEL))
+        self.assertEqual(fake.call_args.args[:2], ("--paginate", "--slurp"))
+        self.assertEqual(fake.call_args.args[2], "repos/o/r/issues/7/comments?per_page=100")
+
 
 class CompletePullDiscovery(unittest.TestCase):
     def test_old_pending_base_and_child_survive_more_than_one_hundred_prs(self):

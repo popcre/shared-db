@@ -72,13 +72,17 @@ jobs:
           set -eu
           if ! lane=$(gh run list --repo "$GITHUB_REPOSITORY" \
               --workflow shared-supabase-migrations.yml \
+              --event workflow_dispatch \
               --limit 20 --json status 2>/tmp/lane-guard.err); then
             echo "::warning::lane guard query failed (fail-open); continuing to the selector"
             cat /tmp/lane-guard.err || true
             exit 0
           fi
-          # Same predicate as the selector's wait: any run not yet completed
-          # (queued, in_progress, waiting) holds the serial lane (#6508 review).
+          # Same predicate as the selector's wait (automatic_promotion_candidates
+          # fetches event=workflow_dispatch only): a dispatched run not yet
+          # completed holds the serial lane. CI runs (pull_request, merge_group)
+          # of the same workflow never hold the lane -- counting them starved
+          # every nudge on busy CI nights.
           count=$(printf '%s' "$lane" | jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)
           if [ "$count" -gt 0 ]; then
             echo "skipped=true" >> "$GITHUB_OUTPUT"

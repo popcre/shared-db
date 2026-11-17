@@ -4,7 +4,12 @@
 -- Detail suggestion UI on alsand in both states:
 --   BG12VDYCP01  art = Aristocats (4 files)   current MG06 = CP Classic Characters  -> mismatch warning
 --   3FZ27DYNX01  art = Nightmare (1 file)     current MG06 = NX Nightmare           -> agreeing hint
--- Rows are ported verbatim from a read-only production extract (2026-11-16).
+-- Rows are ported from a read-only production extract (2026-11-16). One
+-- deliberate divergence: plm.dcp_crawl rows stay status 'running' (production
+-- had crawl 49c393e7 complete) because the repo-wide source_capture_inventory
+-- contract requires "No complete DCP crawl exists" on a freshly migrated
+-- database, and nothing in the suggestion feature reads crawl status. The
+-- metadata runs finalize to 'complete' exactly as production recorded.
 -- Cross-boundary FK columns are NULLed (dcp_property.core_property_id and
 -- metadata-run references, dcp_style_guide.core_style_guide_id and crawl
 -- references, dcp_crawl.baseline_*), so the fixture never references anything
@@ -198,7 +203,3 @@ insert into coldlion.item_merch_group ("company_code", "division_code", "item_no
 ('EDGEHOME', 'CW001', 'BG12VDYCP01', 8::smallint, 'D', '83c6c864-12d5-4371-a94a-f18ef4e4d280'::uuid, '2026-11-16T08:46:29.728-05:00'::timestamptz, '6fa5b26e49f2e9186730968d11c7c6b8a12ebb3a2559638da2a169b875d4b70d', '2026-09-08T18:28:13.467-04:00'::timestamptz, '2026-11-16T08:46:29.728-05:00'::timestamptz, null, null, 'd0ca4f1a-7c70-460d-a905-6e5cb4472690'::uuid),
 ('EDGEHOME', 'CW001', 'BG12VDYCP01', 10::smallint, 'SG', '83c6c864-12d5-4371-a94a-f18ef4e4d280'::uuid, '2026-11-16T08:46:29.728-05:00'::timestamptz, 'dffa7d9abc9f7bbfd52010640c0b8a5263a50eafeae83d2f8278a03a3ae3c831', '2026-09-08T18:28:13.467-04:00'::timestamptz, '2026-11-16T08:46:29.728-05:00'::timestamptz, null, null, '8dacd316-39d1-4be5-884e-a9886b2724f4'::uuid)
 on conflict do nothing;
-
--- Finalize the crawl lifecycle to the status production recorded (only crawls that were complete there; the one running crawl stays running).
-
-update plm.dcp_crawl set status = 'complete' where crawl_id in ('49c393e7-c4b4-4a8d-940c-f0cb397cf6f8') and status is distinct from 'complete';

@@ -238,6 +238,9 @@ class AcceptanceProbeTests(unittest.TestCase):
         corrected = ROOT / 'docs/verification/issue-5609-trigger-acceptance/5609-third-failed-window-corrected.sql'
         self.assertEqual(hashlib.sha256(corrected.read_bytes()).hexdigest(),
                          '4ebc6ddcacbb3b2e1ae885472a2c6659405a2ffdd4e23137d6e83de4c0239a9e')
+        november17 = ROOT / 'docs/verification/issue-5609-trigger-acceptance/5609-20261117-failed-window.sql'
+        self.assertEqual(hashlib.sha256(november17.read_bytes()).hexdigest(),
+                         'f588afb03d66cd7fdb369f5f9fb385df641a310b54162814b3a4ca5dfb72ab6d')
         strip_comments = lambda source: re.sub(r'(?m)^--[^\n]*\n', '', source)
         expected = archived.read_text().replace(
             'public.assets a tablesample system(1) repeatable(5609) cross join baseline b',

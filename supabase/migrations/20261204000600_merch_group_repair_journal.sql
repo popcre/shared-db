@@ -49,7 +49,7 @@ revoke all on table core."merchGroupRepairJournal" from anon, authenticated;
 do $prod$
 begin
   if to_regnamespace('dflow_prod') is null then
-    raise notice '#6584/20261117173202: schema dflow_prod absent; only core journal created';
+    raise notice '#6584/20261204000600: schema dflow_prod absent; only core journal created';
     return;
   end if;
   execute $ddl$
@@ -76,7 +76,7 @@ begin
   if exists (select 1 from pg_roles where rolname = 'designflow_prod_data_sync_grants') then
     execute 'grant select, insert, update on table dflow_prod."merchGroupRepairJournal" to designflow_prod_data_sync_grants';
   else
-    raise notice '#6584/20261117173202: role designflow_prod_data_sync_grants absent; grant skipped';
+    raise notice '#6584/20261204000600: role designflow_prod_data_sync_grants absent; grant skipped';
   end if;
 end
 $prod$;

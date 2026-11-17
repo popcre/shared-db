@@ -1,0 +1,62 @@
+name: Sandbox vs production structure drift check
+
+# Issue #6356. Weekly, read-only. Compares the DesignFlow sandbox's structure with
+# production through the Supabase Management API read-only query endpoint (no DDL,
+# no data read beyond catalogs) and reports differences outside the reviewed
+# allowlist (ALLOWLIST in scripts/sandbox_prod_drift_check.py) on issue #6356
+# every run, clean or not.
+# Only schedule and workflow_dispatch: it emits no required status context and
+# cannot hold up any merge. It never writes to production, preview or the sandbox.
+
+on:
+  schedule:
+    - cron: "17 12 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: sandbox-prod-drift-check-${{ vars.LANE_EPOCH || '0' }}
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    name: Compare sandbox structure with production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Run the read-only drift check
+        id: check
+        run: |
+          set +e
+          python3 scripts/sandbox_prod_drift_check.py --output "$RUNNER_TEMP/drift.txt"
+          rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          if [ "$rc" -eq 2 ]; then
+            echo "::error::the drift check could not run (see log); this is not a clean result"
+            exit 2
+          fi
+          exit 0
+      - name: Report the result on issue #6356
+        if: steps.check.outputs.rc == '0' || steps.check.outputs.rc == '1'
+        env:
+          RC: ${{ steps.check.outputs.rc }}
+        run: |
+          set -euo pipefail
+          if [ "$RC" = "0" ]; then verdict="No unexpected drift (outside the reviewed allowlist)."; else verdict="Unexpected drift found:"; fi
+          body="Weekly sandbox vs production structure drift check — $verdict
+
+          $(cat "$RUNNER_TEMP/drift.txt" 2>/dev/null || true)
+
+          Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+          Allowlist (production-only and reviewed exclusions): ALLOWLIST in scripts/sandbox_prod_drift_check.py
+          Posted by GitHub Actions workflow sandbox-prod-drift-check"
+          gh issue comment 6356 --repo "$GITHUB_REPOSITORY" --body "$body"

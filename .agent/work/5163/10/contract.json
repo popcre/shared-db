@@ -1,0 +1,69 @@
+{
+  "schema_version": 2,
+  "generation": 10,
+  "evidence_parent": {
+    "work_issue": 5163,
+    "generation": 9,
+    "contract_sha256": "1ebfade3a28c391a94968b7ccbf862d4184ab46611c8fb79d855a0620d072962"
+  },
+  "work_issue": 5163,
+  "work_type": "structural",
+  "route": "claim-first",
+  "goal": "Re-issue the stranded CBP ruling search migration 20261030190639 as idempotent 20261101000005 with a longer statement timeout (designflow-backend#254 step 6)",
+  "base_sha": "69b71688f2f53772cb4db0782c3b584c517725bc",
+  "dispatcher": "Claude chat d702b076-ad71-4b0c-b525-6908181756d1 on edge-dev3",
+  "worker": "same session",
+  "branch": "claude/designflow-backend-254-search-timeout",
+  "worktree": "/home/ahazan/repos/shared-db-wt-254-search-timeout",
+  "allowed_paths": [
+    "supabase/migrations/20261101000005_hts_rag_ruling_search.sql",
+    "config/preview-ledger-orphan-reconciliations.json",
+    "scripts/test_preview_ledger_orphan_reconcile.py",
+    ".agent/work/5163/8/contract.json",
+    ".agent/work/5163/8/completion.json",
+    ".agent/work/5163/9/contract.json",
+    ".agent/work/5163/9/completion.json",
+    ".agent/work/5163/10/contract.json",
+    ".agent/work/5163/10/completion.json"
+  ],
+  "file_writes": [
+    "supabase/migrations/20261101000005_hts_rag_ruling_search.sql",
+    "config/preview-ledger-orphan-reconciliations.json",
+    "scripts/test_preview_ledger_orphan_reconcile.py",
+    ".agent/work/5163/8/contract.json",
+    ".agent/work/5163/8/completion.json",
+    ".agent/work/5163/9/contract.json",
+    ".agent/work/5163/9/completion.json",
+    ".agent/work/5163/10/contract.json",
+    ".agent/work/5163/10/completion.json"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "column hts_rag.hts_rag_rulings.search_tsv",
+    "function hts_rag.hts_rag_search_rulings",
+    "function hts_rag.hts_rag_search_rulings_pass",
+    "index hts_rag.hts_rag_ruling_codes_held_chapter_idx",
+    "index hts_rag.hts_rag_rulings_search_tsv_active_idx",
+    "index hts_rag.hts_rag_rulings_subject_trgm_active_idx",
+    "policy hts_rag_alsand_runtime_library_read on hts_rag.hts_rag_rulings",
+    "policy hts_rag_prod_runtime_library_read on hts_rag.hts_rag_rulings",
+    "schema extensions",
+    "table hts_rag.hts_rag_ruling_codes",
+    "table hts_rag.hts_rag_rulings"
+  ],
+  "prohibited_actions": [
+    "Additive only; hts_rag_rulings gains one generated column and two runtime read policies, the runtime roles gain USAGE on schema extensions; nothing is removed",
+    "Never invent or reuse a migration version; claim #5174 was reissued to 20261101000005"
+  ],
+  "required_checks": [
+    "bash scripts/check-sql.sh",
+    "git diff --check origin/main...HEAD",
+    "python3 -m pytest -q scripts/test_preview_ledger_orphan_reconcile.py"
+  ],
+  "assumptions": [
+    "pg_trgm and pgvector are installed in schema extensions on the shared project (verified read-only 2026-10-30)"
+  ],
+  "stop_conditions": [
+    "Stop if a required check fails"
+  ]
+}

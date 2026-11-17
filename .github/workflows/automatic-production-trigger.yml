@@ -68,8 +68,26 @@ jobs:
       # own wait logic still serializes dispatches.
       - name: Skip while a migration apply run is in progress
         id: lane_guard
+        env:
+          SOURCE_RUN_ID: ${{ github.event.client_payload.source_run_id }}
         run: |
           set -eu
+          # #6493 Step 4: the nudge is sent from inside the apply run that just
+          # finished its work, so that run is still in_progress when we look.
+          # Counting it skipped every nudge; with GitHub dropping hourly cron
+          # runs the queue then idled for hours (2026-11-17: 04:54 to 12:18
+          # UTC). Wait, bounded, for the nudging run itself to complete.
+          case "${SOURCE_RUN_ID:-}" in
+            ''|*[!0-9]*) ;;
+            *)
+              for _ in $(seq 1 24); do
+                st=$(gh run view "$SOURCE_RUN_ID" --repo "$GITHUB_REPOSITORY" --json status -q .status 2>/dev/null || echo unknown)
+                [ "$st" = completed ] && break
+                sleep 10
+              done
+              echo "nudging run $SOURCE_RUN_ID status: $st"
+              ;;
+          esac
           if ! lane=$(gh run list --repo "$GITHUB_REPOSITORY" \
               --workflow shared-supabase-migrations.yml \
               --event workflow_dispatch \

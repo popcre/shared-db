@@ -564,6 +564,14 @@ class MigrationsWorkflowPokesTheTrigger(unittest.TestCase):
         # applied would burn automatic attempts and retry an applied batch.
         self.assertIn("continue-on-error: true", body)
 
+    def test_the_nudge_names_its_run_and_the_lane_guard_waits_for_it(self):
+        # #6493 Step 4: the nudging run is still in_progress when the nudge
+        # lands; the lane guard must wait for it, not skip on it.
+        self.assertIn("client_payload[source_run_id]=${GITHUB_RUN_ID}", self.notify_body())
+        guard = self.trigger.split("id: lane_guard", 1)[1].split("- uses: actions/checkout@v4", 1)[0]
+        self.assertIn("github.event.client_payload.source_run_id", guard)
+        self.assertLess(guard.index('gh run view "$SOURCE_RUN_ID"'), guard.index("gh run list"))
+
     def test_the_trigger_listens_for_the_nudge(self):
         self.assertIn("repository_dispatch:", self.trigger)
         self.assertIn("production-queue-nudge", self.trigger)

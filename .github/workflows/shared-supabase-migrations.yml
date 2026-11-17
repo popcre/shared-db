@@ -2569,7 +2569,9 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=production-queue-nudge
+        # #6493 Step 4: name this run so the trigger's lane guard waits for it
+        # to finish instead of counting it as an apply still in progress.
+        run: gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=production-queue-nudge -f "client_payload[source_run_id]=${GITHUB_RUN_ID}"
       # ISSUE #6340, second exit path: production-apply releases the promotion
       # merge freeze under always(), but that job is SKIPPED when a job it
       # needs fails -- and a skipped job runs no steps at all, so the freeze

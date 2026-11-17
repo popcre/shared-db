@@ -4,7 +4,8 @@
 --
 -- Creates one permanent, empty journal table per repair schema:
 --   core."merchGroupRepairJournal"        (every database; non-production repair)
---   dflow_prod."merchGroupRepairJournal"  (only where schema dflow_prod exists)
+--   dflow_prod."merchGroupRepairJournal"  (production shape; the DesignFlow
+--     sandbox route conditions away statements on its absent dflow_prod)
 -- Same columns in both. Identity primary key, action limited to
 -- rename / relink / retire, index (run_id, action). No foreign key. The repair
 -- run owns the rows.
@@ -13,8 +14,7 @@
 -- that already writes dflow_prod."merchGroup" is designflow_prod_data_sync_grants
 -- (INSERT, SELECT, UPDATE). It gets INSERT, SELECT, UPDATE here; never DELETE.
 -- DesignFlow non-production has no dedicated runtime role (services connect as
--- the table owner), so core gets no extra grant; the role grant below is applied
--- only where that role exists.
+-- the table owner), so core gets no extra grant.
 -- Row security stays off, matching dflow_prod."merchGroup" (the runtime role
 -- does not bypass it, so enabling it with no policy would block the repair);
 -- anon and authenticated get nothing. Identity sequences need no grant.
@@ -46,39 +46,29 @@ create index if not exists "merchGroupRepairJournal_run_id_action_idx"
   on core."merchGroupRepairJournal" (run_id, action);
 revoke all on table core."merchGroupRepairJournal" from anon, authenticated;
 
-do $prod$
-begin
-  if to_regnamespace('dflow_prod') is null then
-    raise notice '#6584/20261204000600: schema dflow_prod absent; only core journal created';
-    return;
-  end if;
-  execute $ddl$
-    create table if not exists dflow_prod."merchGroupRepairJournal" (
-      journal_id bigint generated always as identity primary key,
-      run_id text not null,
-      action text not null,
-      mg_id integer,
-      mg_code text,
-      previous_desc text,
-      parent_id integer,
-      is_active boolean,
-      previous_active boolean,
-      item_id_pk text,
-      column_name text,
-      from_id integer,
-      to_id integer,
-      recorded_at timestamptz not null default now(),
-      constraint "merchGroupRepairJournal_action_check"
-        check (action in ('rename', 'relink', 'retire'))
-    )$ddl$;
-  execute 'create index if not exists "merchGroupRepairJournal_run_id_action_idx" on dflow_prod."merchGroupRepairJournal" (run_id, action)';
-  execute 'revoke all on table dflow_prod."merchGroupRepairJournal" from anon, authenticated';
-  if exists (select 1 from pg_roles where rolname = 'designflow_prod_data_sync_grants') then
-    execute 'grant select, insert, update on table dflow_prod."merchGroupRepairJournal" to designflow_prod_data_sync_grants';
-  else
-    raise notice '#6584/20261204000600: role designflow_prod_data_sync_grants absent; grant skipped';
-  end if;
-end
-$prod$;
+create table if not exists dflow_prod."merchGroupRepairJournal" (
+  journal_id bigint generated always as identity primary key,
+  run_id text not null,
+  action text not null,
+  mg_id integer,
+  mg_code text,
+  previous_desc text,
+  parent_id integer,
+  is_active boolean,
+  previous_active boolean,
+  item_id_pk text,
+  column_name text,
+  from_id integer,
+  to_id integer,
+  recorded_at timestamptz not null default now(),
+  constraint "merchGroupRepairJournal_action_check"
+    check (action in ('rename', 'relink', 'retire'))
+);
+create index if not exists "merchGroupRepairJournal_run_id_action_idx"
+  on dflow_prod."merchGroupRepairJournal" (run_id, action);
+revoke all on table dflow_prod."merchGroupRepairJournal" from anon, authenticated;
+
+grant select, insert, update on table dflow_prod."merchGroupRepairJournal" to designflow_prod_data_sync_grants;
+
 
 commit;

@@ -2044,14 +2044,13 @@ class LaneGuardWaitsForAFinishingRun(unittest.TestCase):
     ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     STUB = """#!/usr/bin/env bash
 d="$GH_STUB_DIR"
-if [ "$1" = run ]; then
+if [ "$2" = list ]; then
   n=$(cat "$d/n" 2>/dev/null || echo 0); echo $((n + 1)) > "$d/n"
   f="$d/list.$n"; [ -f "$f" ] || f="$d/list.last"
   [ -f "$f" ] || exit 1
   cat "$f"
 else
-  id=$(printf '%s' "$2" | sed -E 's#.*/runs/([0-9]+)/jobs.*#\\1#')
-  cat "$d/jobs.$id"
+  cat "$d/jobs.$3"
 fi
 """
 

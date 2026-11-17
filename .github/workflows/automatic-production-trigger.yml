@@ -93,7 +93,7 @@ jobs:
           finishing() {
             local id n
             for id in $1; do
-              n=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/jobs?per_page=100" 2>/dev/null \
+              n=$(gh run view "$id" --repo "$GITHUB_REPOSITORY" --json jobs 2>/dev/null \
                 | jq '[.jobs[] | select(.name == "Nudge the production queue" and (.status == "in_progress" or .status == "completed"))] | length') || return 1
               [ "$n" -gt 0 ] || return 1
             done

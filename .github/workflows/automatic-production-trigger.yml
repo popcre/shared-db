@@ -38,8 +38,13 @@ on:
 permissions:
   contents: read
 
+# #6493 Step 4: a group holds ONE pending run; a newer one cancels it. Every CI
+# run of the migrations workflow also lands here as a workflow_run event whose
+# job is skipped, and while a selector run was in progress those no-op events
+# cancelled the pending completion nudge (seen 2026-11-17 13:21 UTC). They now
+# queue in their own group, so only real wake-ups compete for the lane's slot.
 concurrency:
-  group: automatic-production-trigger-${{ vars.LANE_EPOCH || '0' }}
+  group: automatic-production-trigger-${{ vars.LANE_EPOCH || '0' }}${{ github.event_name == 'workflow_run' && github.event.workflow_run.event != 'workflow_dispatch' && '-ci-noise' || '' }}
   cancel-in-progress: false
 
 jobs:

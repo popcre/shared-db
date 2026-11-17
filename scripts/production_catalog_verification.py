@@ -4875,15 +4875,15 @@ def render_report(
             key = (row.get("schema"), row.get("table"), row.get("column"))
             seen_columns.add(key)  # type: ignore[arg-type]
             label = ".".join(str(x) for x in key)
-            add(f"| `{label}` | `{row.get('expected')}` | `{row.get('actual') or 'MISSING'}` |")
+            add(f"| `{label}` | `{row.get('expected')}` | `{row.get('actual') or 'ABSENT'}` |")
             if row.get("actual") is None:
-                failures.append(f"{label}: column is missing")
+                failures.append(f"{label}: column is absent")
             elif row.get("actual") != expected_columns.get(key):  # type: ignore[arg-type]
                 failures.append(
                     f"{label}: live type {row.get('actual')!r}, expected {expected_columns.get(key)!r}"  # type: ignore[arg-type]
                 )
-        for missing in sorted(set(expected_columns) - seen_columns):
-            failures.append(f"{'.'.join(missing)}: catalog returned no column evidence row")
+        for unseen in sorted(set(expected_columns) - seen_columns):
+            failures.append(f"{'.'.join(unseen)}: catalog returned no column evidence row")
         add("")
 
     add("## Relations (`to_regclass`)")

@@ -73,7 +73,7 @@ class AlterColumnTypeTest(unittest.TestCase):
 
     def test_missing_column_fails(self):
         _, failures = render_report([VERSION], real_targets(), catalog(None), None, [], True)
-        self.assertTrue(any("column is missing" in f for f in failures))
+        self.assertTrue(any("column is absent" in f for f in failures))
 
     def test_no_evidence_row_fails(self):
         _, failures = render_report(

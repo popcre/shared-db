@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "migration_version": "20261105023331",
+  "migration_sha256": "d8a96e82548c4c8264c4887b2002a283d4aed914a6830b019c69531e7117b37f",
+  "checks": [
+    {
+      "id": "popsg_search_v2_pdf_body_ties",
+      "kind": "catalog_contract",
+      "contract": "popsg_search_v2_pdf_body_ties_v1",
+      "expected_count": 1
+    }
+  ],
+  "marker_schema_version": 1,
+  "marker_reviews": [
+    {
+      "line_start": 398,
+      "line_end": 398,
+      "disposition": "checks",
+      "check_ids": [
+        "popsg_search_v2_pdf_body_ties"
+      ],
+      "reason": "This marker covers the dynamic guides-body execution at line 398. The migration changes keyword rank weights in both files-mode (line 284) and guides-mode (line 462); the catalog check pins the exact installed body, settings and privileges, not ranking behavior. Contract 13 in supabase/tests/popsg_search_style_guide_library_v2_contracts.sql separately asserts that an A-weight filename match outranks twenty D-weight PDF-body mentions in both modes when CI runs the SQL contracts."
+    }
+  ]
+}

@@ -1,3 +1,6 @@
+-- INVALIDATED November 17, 2026, 5:36:03.763737 PM EST: deallocation75 differs from pinned74.
+-- Exact opening source remains in docs/verification/issue-5609-trigger-acceptance/5609-20261117-failed-window.sql.
+-- No replacement opening or relaxed acceptance control is activated.
 -- #5609 new first complete predeclared observation: November 17, 2026, 5:16:02.552460 PM EST.
 -- Prior invalid windows and original unmet WAL results remain preserved.
 -- Corrected prior probe archived as 5609-third-failed-window-corrected.sql.

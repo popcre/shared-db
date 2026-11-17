@@ -1,13 +1,23 @@
 ---
-summary: "Issue 5609 first predeclared November 17 measurement: complete 226-entry vector, unchanged criteria, full-day acceptance pending."
+summary: "Issue 5609 November 17 complete 226-entry opening invalidated by statement eviction; original criteria and failed source preserved."
 kind: proof
 status: open
 read-when: "continuing the November 17 assets trigger acceptance window or verifying its source and counter bindings"
 ---
 
-# November 17 first complete observation opening
+# November 17 first complete opening — INVALIDATED
 
 Owner: Codex coordinator 01a1eb75 on [#5609](https://github.com/popcre/shared-db/issues/5609). This is an observation opening, not completed acceptance. The same issue retains its unchecked live-proof item.
+
+## Authoritative invalidation
+
+At **November 17, 2026, 5:36:03.763737 PM EST**, independent target-proved diagnosis found deallocation **75** against opening **74**. Postmaster/reset identities and all observed family identities still matched; genuine surviving call delta was **0**, post-opening metadata count **0**. Endpoint survival cannot exclude an intermediate new family tuple being created then evicted. This opening is INVALID and its former November 18 full-day date is WITHDRAWN. No successor opening is selected. Preserve the exact original [failed opening probe](5609-20261117-failed-window.sql), SHA256 `f588afb03d66cd7fdb369f5f9fb385df641a310b54162814b3a4ca5dfb72ab6d`.
+
+A further target-proved capacity read found `pg_stat_statements.max=5000`, 4777 current entries and deallocation75; its context is `postmaster`. This is an actual finite-capacity eviction, not a missing original tuple or a reason to weaken the global guard. PostgreSQL documents that a capacity change takes effect only at server start; Supabase's supported Management API exposes the setting. A restart would invalidate #5610's remaining valid fourteen-day observation. The coordinator therefore preserves that observation and serializes any justified controlled capacity/restart repair after its eligible index decisions/delivery, using an authorized infrastructure route, never ad-hoc production SQL. No restart/configuration/statistics mutation is performed here. This technical dependency is not complete delivery.
+
+Sources: [PostgreSQL17 capacity rules](https://www.postgresql.org/docs/17/pgstatstatements.html#PGSTATSTATEMENTS-CONFIG-PARAMS), [Supabase supported configuration API](https://supabase.com/docs/reference/api/v1-update-postgres-config), [Supabase configuration/restart guidance](https://supabase.com/docs/guides/database/custom-postgres-config).
+
+The selection and snapshot below remain the immutable historical opening record. Its conditional date never became acceptance. All unchanged original savings/correctness requirements, including the hosted WAL deficit, remain pending. Existing source/fixtures still fail closed.
 
 ## Selection and actual live qualification
 
@@ -37,4 +47,4 @@ The November 6 window remains INVALID because observed deallocation reached 74 a
 
 The authentic original PRE references remain frozen and their stricter LEAST remains binding: weighted mean runtime strictly below **81.80826627638924305 ms/call**, WAL strictly below **29548.5825136248835 bytes/call**, and document-update rate below **8829/5050.846546 per second**. At least 24 real hours and 100 genuine calls across the COMPLETE original prefix family are required, with every opening tuple, query hash/start/counter and table identity intact, unchanged postmaster/reset/deallocation, and valid genuinely new tuple timing. Three current post-opening metadata matches, ten exact bindings, original image/read access and zero thumbnail drift remain required. The hosted **33.08% versus required 50%** WAL deficit and all historical invalid/interim deficits remain unresolved.
 
-At/after the conditional full-day time, the coordinator freshly verifies target/source, runs the exact committed probe through the existing Shared DB Live Proof workflow for issue 5609, and examines every failed predicate if it refuses. A successful functional fragment is insufficient. If continuity fails, retain the failure and diagnose it before explicitly selecting any successor. If genuine calls or savings remain insufficient, keep the same issue open and investigate actual attributable workload; never generate traffic, change thresholds, or take a favorable subset. Current deployed relevant ingestion/licensing files were independently source-hash verified on [the same issue](https://github.com/popcre/shared-db/issues/5609#issuecomment-6962080787); no additional producer repair was proved.
+The former full-day time is withdrawn after the invalidation above. After an actual supported continuity repair and a new explicitly selected full capture, the coordinator freshly verifies target/source, runs the exact committed probe through the existing Shared DB Live Proof workflow for issue 5609, and examines every failed predicate if it refuses. A successful functional fragment is insufficient. If continuity fails, retain the failure and diagnose it before explicitly selecting any successor. If genuine calls or savings remain insufficient, keep the same issue open and investigate actual attributable workload; never generate traffic, change thresholds, or take a favorable subset. Current deployed relevant ingestion/licensing files were independently source-hash verified on [the same issue](https://github.com/popcre/shared-db/issues/5609#issuecomment-6962080787); no additional producer repair was proved.

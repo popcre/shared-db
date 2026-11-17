@@ -130,11 +130,25 @@ jobs:
         if: steps.lane_guard.outputs.skipped != 'true'
         with:
           node-version: 22
+      # #6493 Step 1c: workflow-run snapshot shared by index maintenance and the
+      # selector and carried between trigger runs. Discovery only -- recent,
+      # in-flight and non-terminal runs are re-read every time, and attempts,
+      # dependency evidence and the wait are re-read before any dispatch. A
+      # miss, corrupt or expired cache is a full read.
+      - name: Restore the workflow-run cache
+        if: steps.lane_guard.outputs.skipped != 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/promotion-run-cache.json
+          key: promotion-run-cache-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: promotion-run-cache-v1-
       # Maintenance selects first: a promotion dispatched first would make every
       # selection see an active run, and a held PR fails the promotion step.
       - name: Select an explicitly enabled exact-index maintenance operation
         id: index_maintenance
         if: steps.lane_guard.outputs.skipped != 'true'
+        env:
+          PROMOTION_RUN_CACHE_FILE: ${{ runner.temp }}/promotion-run-cache.json
         run: python scripts/automatic_index_maintenance.py
       # #6352: read-only production ledger so already-live changes are not retried.
       - name: Read the production migration ledger (read-only)
@@ -158,6 +172,7 @@ jobs:
         env:
           PRODUCTION_LEDGER_FILE: ${{ runner.temp }}/production-ledger.json
           PROMOTION_PR_CACHE_FILE: ${{ runner.temp }}/promotion-pr-cache.json
+          PROMOTION_RUN_CACHE_FILE: ${{ runner.temp }}/promotion-run-cache.json
           PYTHONUNBUFFERED: '1'
         run: python scripts/automatic_promotion_candidates.py
       - name: Save the selector PR cache
@@ -167,3 +182,10 @@ jobs:
         with:
           path: ${{ runner.temp }}/promotion-pr-cache.json
           key: promotion-pr-cache-v1-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Save the workflow-run cache
+        if: always() && steps.index_maintenance.outcome != 'skipped'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/promotion-run-cache.json
+          key: promotion-run-cache-v1-${{ github.run_id }}-${{ github.run_attempt }}

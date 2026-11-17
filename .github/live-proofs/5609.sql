@@ -1,4 +1,10 @@
 -- #5609 read-only acceptance; first healthy post-restart opening November 6, 2026, 12:04:19.556744 PM EST.
+-- That opening is invalid: November 17 observed dealloc74 against pinned0.
+-- Its exact pre-correction probe is retained as 5609-third-failed-window.sql
+-- in docs/verification/issue-5609-trigger-acceptance/, SHA256
+-- abe17944933a4dda492bb59983df584b9b56470a0446d15b8aa546e8ae56a508.
+-- Deterministic metadata selection repairs page-sample underfill only; it
+-- neither replaces the acceptance opening nor waives any failed requirement.
 -- Both earlier windows were invalidated; the second original source is preserved at
 -- docs/verification/issue-5609-trigger-acceptance/5609-second-failed-window.sql
 -- SHA256 1ca64b803b828c93778a4d4708d0bab6dc89725fe79bfcdc04e6919746211b47
@@ -131,9 +137,9 @@ with baseline as (
   ('trg_sync_primary_on_thumbnail_ins_del','public.sync_primary_asset_on_thumbnail()',5,array['f7870cdb13d8aedf4901696cf1bc5622'])
  )e(trigger_name,function_name,event_type,definition_md5s)
 ), recent as (
- select a.* from public.assets a tablesample system(1) repeatable(5609) cross join baseline b
+ select a.* from public.assets a cross join baseline b
  where not a.is_deleted and a.last_seen_at>=greatest(b.observed_at,now()-interval '24 hours')
-   and a.last_seen_at<=now() limit 3
+   and a.last_seen_at<=now() order by a.id limit 3
 ), metadata_source as (
  select a.id,a.modified_at,a.file_size,a.thumbnail_url,
   d.metadata as actual_metadata,d.indexed_at,d.source_updated_at,q.render_completed_at as current_queue_render,d.embedding_lease_token,d.embedding_lease_owner,d.embedding_lease_expires_at,

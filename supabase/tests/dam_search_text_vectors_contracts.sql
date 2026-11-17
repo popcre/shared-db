@@ -7,13 +7,14 @@
 --      description change (D5): independent storage, independent queue.
 --   2. A search_text change that leaves the embedding input identical
 --      enqueues nothing; a description change enqueues exactly one job.
---   3. Claim -> upsert round trip as the worker role writes one vector with
+--   3. Claim -> upsert round trip (service-role actor) writes one vector with
 --      the admin_config model stamp and removes the job; a stale lease, wrong
 --      model or wrong dimension is refused cleanly.
 --   4. Empty input is marked permanent at claim time, never returned.
 --   5. anon / authenticated cannot read dam.search_text_vectors or execute
 --      the four RPCs; dam_image_embed_worker can execute all four.
---   6. Deleting a search document cascades its vector and job.
+--   6. Deleting a search document cascades its vector and job (FKs also
+--      cascade key moves, which popdam_dense_group_vectors_contracts performs).
 
 begin;
 
@@ -81,8 +82,7 @@ begin
   update dam.search_text_embed_jobs set next_retry_at = now() + interval '1 day'
    where entity_id not in (v_sg, v_empty);
 
-  -- 3/4. claim as the worker
-  execute 'set local role dam_image_embed_worker';
+  -- 3/4. claim (privileges are pinned above; the CI runner cannot SET ROLE)
   perform set_config('request.jwt.claim.role', 'service_role', true);
   select * into r from public.claim_dam_search_text_embedding_documents(10, 'contract', 60) c where c.entity_id = v_sg;
   if r.entity_id is null or r.model <> v_model or r.input_text is null then
@@ -104,7 +104,6 @@ begin
   if not public.upsert_dam_search_text_embedding('style_group', v_sg, r.input_sha256, r.lease_token, v_vec::extensions.halfvec, v_model) then
     raise exception 'CONTRACT FAILED: valid upsert refused';
   end if;
-  execute 'reset role';
 
   if not exists (select 1 from dam.search_text_vectors where entity_id = v_sg and model = v_model and input_sha256 = r.input_sha256)
      or exists (select 1 from dam.search_text_embed_jobs where entity_id = v_sg) then

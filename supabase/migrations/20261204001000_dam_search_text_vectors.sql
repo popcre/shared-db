@@ -65,7 +65,7 @@ create table dam.search_text_vectors (
   embedded_at timestamptz not null default now(),
   primary key (document_type, entity_id),
   foreign key (document_type, entity_id)
-    references public.dam_search_documents(document_type, entity_id) on delete cascade
+    references public.dam_search_documents(document_type, entity_id) on update cascade on delete cascade
 );
 comment on table dam.search_text_vectors is
   'PopDAM text-meaning vectors (u2giants/popdam3#1037). One per search document; model stamp on every row. Independent of the picture vector (D5).';
@@ -94,7 +94,7 @@ create table dam.search_text_embed_jobs (
   error_category text check (error_category is null or error_category in ('transient', 'permanent')),
   primary key (document_type, entity_id),
   foreign key (document_type, entity_id)
-    references public.dam_search_documents(document_type, entity_id) on delete cascade
+    references public.dam_search_documents(document_type, entity_id) on update cascade on delete cascade
 );
 comment on table dam.search_text_embed_jobs is
   'Work queue for dam.search_text_vectors. A row exists while a document needs (re-)embedding; it is deleted when its vector is written.';

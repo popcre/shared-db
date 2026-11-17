@@ -1823,6 +1823,100 @@ class StrandedLabelReconciler(unittest.TestCase):
             self.assertNotIn("actions/runs", m.notice_body(PARKED, parked, NOW))
 
 
+class StrandedWiringInMain(unittest.TestCase):
+    """#6561 plan §10: main() contains reconciler defects and dry-run writes nothing."""
+
+    def _main(self, *, prs, runs, labels=None, live=None, argv=("x", "--dry-run"), extra=None):
+        labels = labels or {}
+        sp_calls = []
+
+        def fake_gh(*args):
+            text = " ".join(args)
+            if "commits/main" in text:
+                return {"sha": "abc"}
+            for label in (PARKED, HELD):
+                if f"labels={label}&" in text:
+                    return [[{"number": n, "pull_request": {}} for n in labels.get(label, [])]]
+            if "/comments?" in text:
+                return [[]]
+            raise AssertionError(f"unexpected read in main(): {text}")
+
+        def recording_run(cmd, **kw):
+            sp_calls.append(list(cmd))
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        patches = dict(
+            gh=fake_gh, merged_migration_prs=lambda repo: prs, workflow_runs=lambda repo, **_: runs,
+            is_held=lambda repo, n: [], production_ledger=lambda path=None: live,
+            applied_in_any_attempt=lambda repo, run: False,
+            refused_as_applied=lambda repo, run: set(),
+            stale_main_refusal_only=lambda repo, run: False,
+            refund_eligible_in_any_attempt=lambda repo, run: False,
+        )
+        patches.update(extra or {})
+        out = io.StringIO()
+        with mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "o/r"}), \
+             mock.patch.dict(os.environ), \
+             mock.patch.object(sys, "argv", list(argv)), \
+             mock.patch.object(m.subprocess, "run", recording_run), \
+             mock.patch.multiple(m, **patches), \
+             contextlib.redirect_stdout(out):
+            os.environ.pop("GITHUB_STEP_SUMMARY", None)
+            code = m.main(NOW)
+        return code, out.getvalue(), sp_calls
+
+    def test_reconciler_crash_is_contained(self):
+        crash = mock.Mock(side_effect=RuntimeError("boom"))
+        code, out, _ = self._main(prs=[], runs=[], extra={"reconcile_stranded_marks": crash})
+        crash.assert_called_once()
+        self.assertEqual(code, 0)
+        self.assertIn("Stranded-PR reconciler defect", out)
+
+    def test_dry_run_issues_no_writes(self):
+        gh_write = mock.Mock(return_value=(True, "ok"))
+        ensure = mock.Mock(return_value=True)
+        notice_failures = mock.Mock()
+        stuck = mock.Mock()
+        extra = {"gh_write": gh_write, "ensure_label": ensure,
+                 "report_notice_failures": notice_failures, "report_stuck_change": stuck}
+        code, out, sp_calls = self._main(
+            prs=[_pr(7), _pr(9)], runs=_exhausted(7), labels={PARKED: [9]}, live={ver(9)}, extra=extra)
+        self.assertEqual(code, 0)
+        gh_write.assert_not_called()
+        ensure.assert_not_called()
+        notice_failures.assert_not_called()
+        stuck.assert_not_called()
+        writes = [c for c in sp_calls if {"POST", "PATCH", "DELETE", "create", "comment"} & set(c)]
+        self.assertEqual(writes, [])
+        self.assertIn("dry-run: would mark PR #7 promotion-parked", out)
+        self.assertIn("dry-run: would clear PR #9 promotion-parked (delivered)", out)
+
+    def test_rollup_line_carries_pr_notice_outcome(self):
+        entries = [{"number": 7, "merged_at": "2026-11-01T00:00:00Z", "versions": [ver(7)],
+                    "findings": [], "exhausted": 3, "notice": "posted"}]
+        calls = []
+
+        def fake_run(cmd, **kw):
+            calls.append(cmd)
+            class R:
+                stdout = "https://github.com/o/r/issues/99\n"
+                stderr = ""
+            return R()
+        saved_run = subprocess.run
+        saved_gh = m.gh
+        subprocess.run = fake_run
+        m.gh = lambda *a: []  # no existing roll-up issue
+        try:
+            m.report_stuck_change("o/r", entries, datetime(2026, 11, 2, 20, 0, tzinfo=timezone.utc))
+        finally:
+            subprocess.run = saved_run
+            m.gh = saved_gh
+        creates = [c for c in calls if "create" in c]
+        self.assertEqual(len(creates), 1)
+        body = creates[0][creates[0].index("--body") + 1]
+        self.assertIn("— PR notice: posted", body)
+
+
 class CompletePullDiscovery(unittest.TestCase):
     def test_old_pending_base_and_child_survive_more_than_one_hundred_prs(self):
         base = {"number": 5619, "merged_at": "2026-11-05T05:15:00Z"}

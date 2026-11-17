@@ -3,7 +3,7 @@
   "source": ".github/workflows/shared-supabase-migrations.yml",
   "sites": [
     {
-      "site": ".github/workflows/shared-supabase-migrations.yml:335",
+      "site": ".github/workflows/shared-supabase-migrations.yml:347",
       "semantic_key": ".github/workflows/shared-supabase-migrations.yml:12fc6b5de8352cf3c4ab95f80110f4d55239282e25dd3afa152da67b38c86fca:context-851f518a89667bb5b545eed2f105c63ad19bb61955401ee10d762bb2de6f24e8",
       "line_sha256": "12fc6b5de8352cf3c4ab95f80110f4d55239282e25dd3afa152da67b38c86fca",
       "disposition": "excluded",
@@ -12,7 +12,7 @@
     },
     {
       "site": ".github/workflows/shared-supabase-migrations.yml:461",
-      "semantic_key": ".github/workflows/shared-supabase-migrations.yml:5e49dc0ac830a0755ba64af6efe98e17f898ff7997f187dc09724dfcc8c058c9:context-82ca1a121a5212232665d6729b8ed0cd3094cf24d46c2a9119adf17c22109cb5",
+      "semantic_key": ".github/workflows/shared-supabase-migrations.yml:5e49dc0ac830a0755ba64af6efe98e17f898ff7997f187dc09724dfcc8c058c9:context-a0a62cacc366b502e266da8bf0809eb2a2ad744db8c4175a8e22af42fab1f499",
       "line_sha256": "5e49dc0ac830a0755ba64af6efe98e17f898ff7997f187dc09724dfcc8c058c9",
       "disposition": "excluded",
       "reason": "This existing call site keeps its established refusal behavior and is outside this no-behavior-change implementation.",
@@ -67,7 +67,7 @@
       "legacy_semantic_key": ".github/workflows/shared-supabase-migrations.yml:c55162ca3a127335dea9cfd0cee37750a963ad0d367a518f4e6b683db61759a1:1"
     },
     {
-      "site": ".github/workflows/shared-supabase-migrations.yml:323",
+      "site": ".github/workflows/shared-supabase-migrations.yml:335",
       "semantic_key": ".github/workflows/shared-supabase-migrations.yml:d22dc0e6c19313eea6935a253f733d84b6b045760c8083cf42c96c0181ea25e2:context-735e679e6e90ec3c2bb467324483274d78018074b70cd3f4984c2dfebbf1ec28",
       "line_sha256": "d22dc0e6c19313eea6935a253f733d84b6b045760c8083cf42c96c0181ea25e2",
       "disposition": "excluded",

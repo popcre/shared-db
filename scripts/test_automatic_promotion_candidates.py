@@ -2277,8 +2277,6 @@ class PreMergeRefusalWorkflowTests(unittest.TestCase):
         self.assertIn("needs: validate", preview[:400])
 
 
-
-
 if __name__ == "__main__":
     unittest.main()
 

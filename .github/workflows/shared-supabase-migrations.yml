@@ -169,6 +169,18 @@ jobs:
       - name: Fetch the base branch ref explicitly on merge queue runs
         if: github.event_name == 'merge_group'
         run: git fetch --no-tags origin main
+      # #6574: a pre-merge (claim-lane) preview APPLY of a high-risk migration would
+      # make its only preview evidence permanently unacceptable to production once
+      # anything apply-shaping changes before merge. Refuse it here, before any
+      # preview database credential is used. Dry-run writes nothing and stays allowed.
+      # Not in COORDINATION_STEPS: claim-lane runs are never selector attempts.
+      - name: Refuse pre-merge apply of a high-risk migration
+        if: inputs.claim_pr != '' && inputs.mode == 'apply'
+        env:
+          PREVIEW_ALLOWLIST: ${{ inputs.preview_allowlist }}
+        run: |
+          set -euo pipefail
+          python3 scripts/production_business_risk_gate.py premerge-preview-check --allowlist "$PREVIEW_ALLOWLIST"
       # #5937 behavior 2 (closes the review finding #5958 gap): while a
       # promotion merge freeze is live, a merge-queue group must be REFUSED, and
       # the refusal must land on a REQUIRED context -- merge-queue-gate.yml is
@@ -441,18 +453,6 @@ jobs:
           # checks out a pull-request head.
           ref: ${{ (inputs.merged_preview_source_pr != '' || inputs.merged_preview_source_pr_map != '' || inputs.historical_preview_source_pr != '' || inputs.historical_preview_source_pr_map != '') && inputs.commit_sha || inputs.claim_head_sha }}
           fetch-depth: 0
-      # #6574: a pre-merge (claim-lane) preview APPLY of a high-risk migration would
-      # make its only preview evidence permanently unacceptable to production once
-      # anything apply-shaping changes before merge. Refuse it here, before any
-      # preview database credential is used. Dry-run writes nothing and stays allowed.
-      # Not in COORDINATION_STEPS: claim-lane runs are never selector attempts.
-      - name: Refuse pre-merge apply of a high-risk migration
-        if: inputs.claim_pr != '' && inputs.mode == 'apply'
-        env:
-          PREVIEW_ALLOWLIST: ${{ inputs.preview_allowlist }}
-        run: |
-          set -euo pipefail
-          python3 scripts/production_business_risk_gate.py premerge-preview-check --allowlist "$PREVIEW_ALLOWLIST"
       # POST-MERGE PREVIEW REHEARSAL (#1208). This is the step that makes
       # "merge first, then rehearse on preview from merged main, then promote"
       # executable. Its authorisation is merge-commit ancestry of the current

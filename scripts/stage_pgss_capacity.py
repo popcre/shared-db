@@ -258,14 +258,18 @@ def stage(api, plan, target, fence):
             'capacity decrease refused')
     changed = before.get(SETTING) != DESIRED
     if changed:
-        # API PUT replaces overrides; copying is required to preserve every other key.
-        # Fixed false is the vendor's explicit staging-only control, never a restart.
-        payload = dict(before, **{SETTING:DESIRED, 'restart_database':False})
-        require(validate_config(api.call('GET','config')) == before, 'concurrent config change refused')
         fence()
         identity = api.call('GET','identity')
         require(type(identity) is dict and identity.get('id') == api.ref,
                 'point-of-use target identity refused')
+        # Last remote observation immediately precedes PUT, after fencing and identity.
+        # The vendor offers no CAS: native locks serialize cooperating governed writers,
+        # but cannot exclude an unrelated control-plane client after this final GET.
+        latest = validate_config(api.call('GET','config'))
+        require(latest == before, 'concurrent config change refused')
+        # PUT replaces overrides. Copy the latest verified snapshot, never a stale one.
+        # Fixed false is the vendor's explicit staging-only control, never a restart.
+        payload = dict(latest, **{SETTING:DESIRED, 'restart_database':False})
         validate_config(api.call('PUT','config',payload))
     after = validate_config(api.call('GET','config'))
     later = validate_catalog(api.call('POST','catalog',{'query':SQL,'read_only':True}), plan, target)

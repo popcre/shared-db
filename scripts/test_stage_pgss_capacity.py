@@ -39,6 +39,7 @@ class Transport:
         self.change_second = False
         self.target = 'a'*20
         self.identity_override = None
+        self.identity_hook = None
         self.after_hook = None
         self.put_error = False
         self.redirect = False
@@ -57,6 +58,8 @@ class Transport:
             if self.config_reads == 2 and self.change_second:
                 result['work_mem'] = '8MB'
         elif request.method == 'GET':
+            if self.identity_hook:
+                self.identity_hook(self)
             result = {'id':self.target if self.identity_override is None else self.identity_override}
         elif request.method == 'POST':
             if payload != {'query':m.SQL,'read_only':True}:
@@ -96,6 +99,8 @@ class StageTests(unittest.TestCase):
         self.assertEqual(json.loads(self.puts(transport)[0].data),
                          dict(before,**{m.SETTING:40000,'restart_database':False}))
         self.assertEqual([r.method for r in transport.requests],['GET','POST','GET','GET','PUT','GET','POST'])
+        self.assertEqual(transport.requests[2].full_url,'https://api.supabase.com/v1/projects/'+'a'*20)
+        self.assertTrue(transport.requests[3].full_url.endswith('/config/database/postgres'))
         self.assertTrue(result['changed'])
         self.assertEqual(result['effective_capacity'],5000)
         self.assertTrue(result['pending_restart'])
@@ -130,6 +135,20 @@ class StageTests(unittest.TestCase):
         transport=Transport();transport.change_second=True
         with self.assertRaisesRegex(m.Refused,'concurrent'):self.execute(transport)
         self.assertFalse(self.puts(transport))
+
+    def test_identity_get_mutation_aborts_without_put_or_restoration(self):
+        transport=Transport()
+        transport.identity_hook=lambda t:t.config.update(work_mem='8MB')
+        with self.assertRaisesRegex(m.Refused,'concurrent'):self.execute(transport)
+        self.assertFalse(self.puts(transport))
+        self.assertEqual(transport.config['work_mem'],'8MB')
+
+    def test_fence_time_mutation_aborts_without_put_or_restoration(self):
+        transport=Transport()
+        def fence():transport.config['work_mem']='8MB'
+        with self.assertRaisesRegex(m.Refused,'concurrent'):self.execute(transport,fence=fence)
+        self.assertFalse(self.puts(transport))
+        self.assertEqual(transport.config['work_mem'],'8MB')
 
     def test_target_mismatch_and_fence_loss_abort_without_put(self):
         transport=Transport();transport.identity_override='b'*20

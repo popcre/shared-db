@@ -54,9 +54,13 @@ is a request instruction, not a persisted configuration override. Returned
 configuration must omit it and preserve every other prior key exactly. Nothing
 silently strips an unexpected returned field.
 
-An immediate second configuration GET must equal the original snapshot. Under
-the owned native fence, an exact protected-target GET immediately precedes the
-PUT. There is one PUT at most. An uncertain response is a failure, never an
+Under the owned native fence, an exact protected-target GET runs first. A final
+configuration GET must then equal the original snapshot, and its verified
+contents supply the merged PUT with no intervening remote call. Native fencing
+serializes cooperating governed writers. The vendor offers no compare-and-swap
+contract; this does not exclude unrelated, uncoordinated control-plane clients
+changing configuration after that last GET. There is one PUT at most. An
+uncertain response is a failure, never an
 automatic replay or stale restoration. A later independent retry re-reads state
 and is idempotent if the fixed value is already stored.
 

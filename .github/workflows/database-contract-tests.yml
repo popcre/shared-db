@@ -713,6 +713,41 @@ jobs:
             fi
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
+      # #6574 follow-up: the 2026-11-17 reissues (20261117020001, 20261117120000,
+      # 20261118020001) failed BOTH replay passes here before merge, but those
+      # failures are tolerated noise among the historical ones and only a
+      # contract-test FAIL fails the job. Name any migration THIS change adds that
+      # did not replay, as its own annotation. ADVISORY ONLY (owner lean-checks
+      # ruling 2026-10-30): it never fails the job.
+      - name: Flag new migrations that did not replay (advisory)
+        if: ${{ !cancelled() && needs.classify.outputs.database_contract_tests == 'applicable' }}
+        continue-on-error: true
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: |
+          set -uo pipefail
+          if [ -z "$BASE_SHA" ]; then echo "No base commit on this event; nothing to compare."; exit 0; fi
+          git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null || git fetch --quiet --no-tags --depth=1 origin "$BASE_SHA" || { echo "::notice::Could not fetch base $BASE_SHA; new-migration replay check skipped."; exit 0; }
+          git diff --no-renames --diff-filter=A --name-only "$BASE_SHA" HEAD -- 'supabase/migrations/*.sql' | sed 's#.*/##' | sort > "$RUNNER_TEMP/added-migrations.txt"
+          p1="$RUNNER_TEMP/failed-migrations.txt"; p2="$RUNNER_TEMP/failed-migrations-pass2.txt"
+          touch "$p1" "$p2"
+          still=$(sort "$p2" | comm -12 "$RUNNER_TEMP/added-migrations.txt" -)
+          first=$(sort "$p1" | comm -12 "$RUNNER_TEMP/added-migrations.txt" - | comm -23 - <(printf '%s\n' "$still" | sort))
+          for b in $still; do
+            err=$(grep -m1 'ERROR' "$RUNNER_TEMP/migration-logs-pass2/$b.log" 2>/dev/null | tr -d '\r' | cut -c1-300)
+            echo "::warning file=supabase/migrations/$b,title=NEW migration does not replay (advisory)::$b failed replay pass 1 AND pass 2 on an empty database. It will very likely fail on preview/production. ${err:-see the pass-2 log artifact}"
+          done
+          for b in $first; do
+            echo "::notice file=supabase/migrations/$b,title=NEW migration needed the baseline::$b failed replay pass 1 and applied only in pass 2 (on the captured baseline)."
+          done
+          {
+            echo "## New migrations in this change: replay result (advisory)"
+            echo ""
+            if [ -z "$still$first" ]; then echo "Every migration this change adds replayed cleanly."; fi
+            for b in $still; do echo "- **did NOT replay (pass 1 and pass 2): \`$b\`**"; done
+            for b in $first; do echo "- failed pass 1, applied in pass 2: \`$b\`"; done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Prove pass-2 routine restoration against live PostgreSQL
         if: needs.classify.outputs.database_contract_tests == 'applicable'
         env:

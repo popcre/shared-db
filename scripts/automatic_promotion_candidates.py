@@ -847,6 +847,14 @@ def _time(text: str) -> datetime:
     return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
 
 
+def hold_since(entry: dict[str, Any]) -> datetime:
+    """When this PR's review hold began: the later of its merge and its oldest
+    blocking finding (the merge alone when no finding carries a date)."""
+    opened = [_time(f["created_at"]) for f in entry.get("findings") or [] if f.get("created_at")]
+    merged = _time(entry["merged_at"])
+    return max(merged, min(opened)) if opened else merged
+
+
 def overdue_holds(skipped: list[dict[str, Any]], now: datetime) -> list[str]:
     """One line per PR held longer than ALERT_AFTER. A PR is held from the later
     of its merge and its oldest blocking finding (unknown findings: the merge).
@@ -855,8 +863,7 @@ def overdue_holds(skipped: list[dict[str, Any]], now: datetime) -> list[str]:
     for pr in skipped:
         if pr.get("exhausted") or pr.get("refunds") or pr.get("pending_dependencies"):
             continue
-        opened = [_time(f["created_at"]) for f in pr["findings"] if f.get("created_at")]
-        since = max(_time(pr["merged_at"]), min(opened)) if opened else _time(pr["merged_at"])
+        since = hold_since(pr)
         if now - since > ALERT_AFTER:
             refs = ", ".join(f"#{f.get('number')}" for f in pr["findings"]) or "an unreadable finding query"
             minutes = int((now - since).total_seconds() // 60)
@@ -1429,11 +1436,266 @@ def labelled_prs(repo: str, label: str) -> list[int]:
     return [item["number"] for item in items if "pull_request" in item]
 
 
+def cleared_marker(label: str) -> str:
+    """Hidden marker in the clear comment; it closes the episode the notice opened."""
+    return f"<!-- promotion-stranded-cleared:{label} -->"
+
+
 def has_marker(repo: str, n: int, label: str) -> bool:
-    """True when any comment on the PR or issue carries this label's marker."""
+    """True when the PR's latest episode for this label was announced: the last
+    comment carrying this label's notice or clear marker is a notice. A cleared
+    episode does not count, so a PR stranded again gets a fresh notice (R4)."""
     pages = gh("--paginate", "--slurp", f"repos/{repo}/issues/{n}/comments?per_page=100") or []
-    needle = marker(label)
-    return any(needle in (comment.get("body") or "") for page in pages for comment in page)
+    notice, cleared = marker(label), cleared_marker(label)
+    last = None
+    for page in pages:
+        for comment in page:
+            body = comment.get("body") or ""
+            if notice in body:
+                last = True
+            elif cleared in body:
+                last = False
+    return bool(last)
+
+
+OUTCOMES = ("posted", "repaired", "relabelled", "already", "cleared", "FAILED", "unknown")
+PLAN_URL = "https://github.com/popcre/shared-db/blob/main/plan_promotion_stranding_watch.md"
+CLEAR_TEXT = {
+    "delivered": "Delivered: every version of this PR is in production.",
+    "released": "No longer held by review findings.",
+    "untracked": "No longer tracked by the automatic lane (versions retired, removed from main, or superseded).",
+}
+
+
+def _footer() -> str:
+    server = os.environ.get("GITHUB_SERVER_URL")
+    repository = os.environ.get("GITHUB_REPOSITORY")
+    run_id = os.environ.get("GITHUB_RUN_ID")
+    run = f" (run {server}/{repository}/actions/runs/{run_id})" if server and repository and run_id else ""
+    return f"_Posted automatically by the automatic production trigger{run}._"
+
+
+def notice_body(label: str, entry: dict[str, Any], now: datetime) -> str:
+    """The notice comment for one PR. Public-safe: versions, counts, ages and
+    links to this repository only (plan R8)."""
+    versions = ",".join(entry.get("versions") or [])
+    if label == PARKED_LABEL:
+        refunds = f", {entry['refunds']} refunds used" if entry.get("refunds") else ""
+        hours = int((now - _time(entry["merged_at"])).total_seconds() // 3600)
+        status = (
+            "**This merged migration is parked and is not in production.** "
+            f"The automatic promotion lane stopped after {entry.get('exhausted', 0)} failed automatic attempts{refunds}. "
+            f"Versions: {versions}. Merged {hours}h ago."
+        )
+    else:
+        findings = entry.get("findings") or []
+        refs = ", ".join(f"#{f.get('number')}" for f in findings)
+        verb = "has" if len(findings) == 1 else "have"
+        hours = int((now - hold_since(entry)).total_seconds() // 3600)
+        status = (
+            "**This merged migration is held and is not in production.** "
+            f"Open review finding{'' if len(findings) == 1 else 's'} {refs} {verb} blocked it for {hours}h."
+        )
+    repair = (
+        "Repair by fix-forward (a new governed version) or retire-and-reissue. "
+        "Never re-run a failed run; there is no manual production command. "
+        "Attempts may resume on their own; this label is removed automatically when the versions reach production."
+    )
+    listing = f"Open stranded changes: PRs labelled `{PARKED_LABEL}` or `{HELD_LABEL}`. Plan: {PLAN_URL}"
+    return "\n\n".join([marker(label), status, repair, listing, _footer()])
+
+
+def clear_body(label: str, reason: str) -> str:
+    """The comment posted when a stranded label is removed."""
+    return f"{cleared_marker(label)}\n`{label}` removed. {CLEAR_TEXT[reason]}\n\n{_footer()}"
+
+
+def reconcile_stranded_marks(repo: str, candidates: list[dict[str, Any]], runs: list[dict[str, Any]],
+                             live: set[str] | None, now: datetime, held: callable,
+                             applied: callable, refused: callable, stale: callable, refunded: callable,
+                             discovery_ok: bool, dry_run: bool = False,
+                             fresh_held: callable | None = None) -> list[dict[str, Any]]:
+    """Plan R1-R6: make the stranded-PR labels and notices match the shared
+    classifier, once per selector pass. Returns one dict per (PR, label) touched.
+    A per-PR problem is recorded and the pass goes on; nothing here raises."""
+    results: list[dict[str, Any]] = []
+
+    def record(number: int, label: str, outcome: str, detail: str = "") -> None:
+        results.append({"number": number, "label": label, "outcome": outcome, "detail": detail})
+
+    def attempt(number: int, label: str, action: str, method: str, path: str,
+                fields: dict[str, Any] | None = None, gone_ok: bool = False) -> tuple[bool, str]:
+        ok, msg = gh_write(method, path, fields)
+        if not ok and gone_ok and ("Not Found" in msg or "HTTP 404" in msg):
+            ok = True
+        print(f"reconcile: PR #{number} {label} {action}: " + ("ok" if ok else f"refused: {msg}"))
+        return ok, msg
+
+    def fail(number: int, label: str, action: str, msg: str) -> None:
+        print(f"::error title=Stranded-PR notice not delivered::PR #{number} {label} {action}: {msg}")
+        record(number, label, "FAILED", f"{action}: {msg}")
+
+    runs = [r for r in runs if our_workflow(r)]
+    in_flight = [r for r in runs if r.get("status") != "completed"]
+    wait = bool(in_flight)
+    if wait:
+        print(f"reconcile: wait pass (run {in_flight[0].get('id')} in flight); parked labels neither added nor cleared")
+
+    applied_m, refused_m = memoised_evidence(applied), memoised_evidence(refused)
+    stale_m, refunded_m = memoised_evidence(stale), memoised_evidence(refunded)
+    dependency_evidence = dependency_evidence_reader(applied_m, refused_m)
+
+    def delivered_live(pr: dict[str, Any]) -> bool:
+        return bool(live) and bool(pr.get("versions")) and set(pr["versions"]) <= live
+
+    by_number = {pr["number"]: pr for pr in candidates}
+    desired: dict[str, dict[int, dict[str, Any]]] = {PARKED_LABEL: {}, HELD_LABEL: {}}
+    unclassified: dict[int, str] = {}
+    for pr in candidates:
+        number = pr["number"]
+        if delivered_live(pr):
+            continue
+        try:
+            kind, detail = classify_pr(pr, runs, held, applied_m, refused_m, stale_m, refunded_m,
+                                       live, dependency_evidence)
+            entry = {**pr, **detail}
+            if kind == "held" and now - hold_since(entry) > HELD_ESCALATE_AFTER:
+                desired[HELD_LABEL][number] = entry
+            elif kind == "unknown-hold":
+                unclassified[number] = "review finding read failed"
+            elif kind == "parked" and not wait:
+                desired[PARKED_LABEL][number] = entry
+        except Exception as exc:
+            print(f"::warning::reconcile: PR #{number} could not be classified ({exc}); its labels are left unchanged")
+            unclassified[number] = f"classification failed: {exc}"
+
+    current: dict[str, set[int]] = {}
+    for label in (PARKED_LABEL, HELD_LABEL):
+        try:
+            current[label] = set(labelled_prs(repo, label))
+        except Exception as exc:
+            print(f"::warning::reconcile: could not list {label} PRs ({exc}); that label is left alone this pass")
+
+    label_ready: dict[str, bool] = {}
+    for label in (PARKED_LABEL, HELD_LABEL):
+        if label not in current:
+            continue
+        for number, entry in sorted(desired[label].items()):
+            try:
+                if dry_run:
+                    print(f"dry-run: would mark PR #{number} {label}")
+                    record(number, label, "unknown", "dry-run")
+                    continue
+                labelled = number in current[label]
+                marked = has_marker(repo, number, label)
+                if labelled and marked:
+                    record(number, label, "already")
+                elif labelled:
+                    ok, msg = attempt(number, label, "notice post", "POST",
+                                      f"repos/{repo}/issues/{number}/comments",
+                                      {"body": notice_body(label, entry, now)})
+                    if ok:
+                        record(number, label, "repaired")
+                    else:
+                        fail(number, label, "notice post", msg)
+                else:
+                    if label not in label_ready:
+                        label_ready[label] = ensure_label(repo, label, LABEL_DESCRIPTIONS[label])
+                    if not label_ready[label]:
+                        fail(number, label, "label create", "the label could not be created")
+                        continue
+                    ok, msg = attempt(number, label, "label add", "POST",
+                                      f"repos/{repo}/issues/{number}/labels", {"labels": [label]})
+                    if not ok:
+                        fail(number, label, "label add", msg)
+                    elif marked:
+                        record(number, label, "relabelled")
+                    else:
+                        ok, msg = attempt(number, label, "notice post", "POST",
+                                          f"repos/{repo}/issues/{number}/comments",
+                                          {"body": notice_body(label, entry, now)})
+                        if ok:
+                            record(number, label, "posted")
+                        else:
+                            attempt(number, label, "label remove", "DELETE",
+                                    f"repos/{repo}/issues/{number}/labels/{label}", gone_ok=True)
+                            fail(number, label, "notice post", msg)
+            except Exception as exc:
+                print(f"::warning::reconcile: PR #{number} {label} not reconciled ({type(exc).__name__}: {exc})")
+                record(number, label, "unknown", f"reconcile error: {exc}")
+
+    for label in (PARKED_LABEL, HELD_LABEL):
+        if label not in current or (label == PARKED_LABEL and wait):
+            continue
+        for number in sorted(current[label]):
+            if number in desired[label]:
+                continue
+            try:
+                pr = by_number.get(number)
+                if pr is None:
+                    if not discovery_ok:
+                        continue
+                    reason = "untracked"
+                elif delivered_live(pr):
+                    reason = "delivered"
+                elif label == PARKED_LABEL:
+                    continue
+                elif number in unclassified:
+                    record(number, label, "unknown", unclassified[number])
+                    continue
+                else:
+                    fresh = (fresh_held or (lambda n: is_held(repo, n)))(number)
+                    if not (isinstance(fresh, list) and not fresh):
+                        continue
+                    reason = "released"
+                if dry_run:
+                    print(f"dry-run: would clear PR #{number} {label} ({reason})")
+                    record(number, label, "unknown", "dry-run")
+                    continue
+                ok, msg = attempt(number, label, "label remove", "DELETE",
+                                  f"repos/{repo}/issues/{number}/labels/{label}", gone_ok=True)
+                if not ok:
+                    fail(number, label, "label remove", msg)
+                    continue
+                ok, msg = attempt(number, label, "clear notice post", "POST",
+                                  f"repos/{repo}/issues/{number}/comments",
+                                  {"body": clear_body(label, reason)})
+                if ok:
+                    record(number, label, "cleared", reason)
+                else:
+                    fail(number, label, "clear notice post", msg)
+            except Exception as exc:
+                print(f"::warning::reconcile: PR #{number} {label} not reconciled ({type(exc).__name__}: {exc})")
+                record(number, label, "unknown", f"reconcile error: {exc}")
+
+    counts = {name: sum(1 for r in results if r["outcome"] == name) for name in OUTCOMES}
+    print("reconcile: " + ", ".join(f"{name}={counts[name]}" for name in OUTCOMES))
+    return results
+
+
+def report_notice_failures(repo: str, failures: list[dict[str, Any]]) -> None:
+    """R7: every FAILED stranded-PR write is also written to the roll-up issue.
+    Never fatal: the run's exit code does not depend on this comment."""
+    failed = [f for f in failures if f.get("outcome") == "FAILED"]
+    if not failed:
+        return
+    lines = [f"- PR #{f['number']} {f['label']}: {f.get('detail') or 'no detail'}" for f in failed]
+    body = (
+        "## Stranded-PR notices or labels not delivered\n\n"
+        "The automatic promotion trigger could not add, repair or remove a stranded-PR label or "
+        "notice on this run. Each line names the PR, the label and the refused step.\n\n"
+        + "\n".join(lines) + "\n\n" + _footer() + "\n"
+    )
+    try:
+        existing = find_stuck_issue(repo)
+        if existing:
+            subprocess.run(["gh", "issue", "comment", str(existing["number"]), "--repo", repo, "--body", body],
+                           check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        else:
+            subprocess.run(["gh", "issue", "create", "--repo", repo, "--title", STUCK_ISSUE_TITLE, "--body", body],
+                           check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    except Exception as exc:
+        print(f"::warning::could not write the stranded-PR failures to the roll-up issue ({exc})")
 
 
 if __name__ == "__main__":

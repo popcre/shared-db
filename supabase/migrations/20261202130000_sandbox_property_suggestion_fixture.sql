@@ -39,7 +39,7 @@ begin
       and pronamespace = 'plm'::regnamespace
   ) or (select count(*) from plm.dcp_property_mg06_crosswalk) < 16 then
     raise exception using errcode = 'P0001',
-      message = 'sandbox fixture 20261202000000: plm migrations 20261115132055/20261116120000 (suggested_property_for_sku + crosswalk) must be applied first';
+      message = 'sandbox fixture 20261202130000: plm migrations 20261115132055/20261116120000 (suggested_property_for_sku + crosswalk) must be applied first';
   end if;
 end
 $dep$;

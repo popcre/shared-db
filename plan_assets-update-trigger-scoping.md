@@ -11,7 +11,7 @@ Historical planning handoff (write-once record, not current execution state): (h
 Current state: [owning issue #5609](https://github.com/popcre/shared-db/issues/5609), the STATUS below, and [production/recovery evidence](docs/verification/database-efficiency/20261105T033714Z/assets-trigger-scoping-production-live.md). The remaining acceptance is not complete.
 Owning issue: popcre/shared-db#5609. Overlaps and references: [plan_database_efficiency_and_api_security.md](plan_database_efficiency_and_api_security.md) (its §6 items 2, 7 and "delete/reinsert" note name `sync_asset_effective_tags()` and trigger write amplification on `assets`; this plan is the concrete fix for the `assets` part), #2421 (style-group change watermark; owns `stamp_style_group_asset_change()` — do not touch it), #1966 (unused-index evidence on `assets` / `dam_search_documents` — no index drops here). Sibling: [plan_dam-embedding-claim-speed.md](plan_dam-embedding-claim-speed.md) (the search-document rewrites this plan removes are also what re-queue embedding work).
 
-## STATUS (2026-11-17 diagnosis — full acceptance NOT met)
+## STATUS (2026-11-17 new complete observation — full acceptance NOT met)
 
 | Step | State | Evidence |
 |---|---|---|
@@ -21,18 +21,12 @@ Owning issue: popcre/shared-db#5609. Overlaps and references: [plan_database_eff
 | 3 Migration: re-scope triggers | merged | PR #5618; immutable migration 20261105033827 |
 | 4 Preview rehearsal + equivalence check | partial; hosted WAL target NOT met | Hosted behavior matches except legitimate wall-clock metadata; fixed representative trials improve mean runtime 74.20%, WAL 33.08%, not the required 50%. All trials retained in `assets-trigger-scoping-hosted-preview.md` |
 | 5 Land via automatic promotion | VERIFIED complete | Run 41974228042 committed 20261105033827. After PR #5642, verification-only recovery 41979854831 succeeded with enforcing=true, errors=[], exact contract actual1/expected1, original hash/ledger bindings preserved; no SQL replay |
-| 6 Live proof on production | November 6 window invalid; no replacement opening | [November 17 diagnosis](docs/verification/issue-5609-trigger-acceptance/20261117-current-diagnosis.md): deallocation74 versus pinned0 invalidates the third opening. Apparent surviving WAL90,576.0144/call exceeds unchanged29,548.5825 ceiling and is diagnostic only. Deterministic metadata selection corrects sample underfill; actual3/3 metadata,10 bindings,zero drift are functional evidence only. Hosted and prior interim deficits remain |
+| 6 Live proof on production | New predeclared complete opening; acceptance PENDING | [November 17 opening](docs/verification/issue-5609-trigger-acceptance/20261117-new-opening.md): 5:16:02.552460 PM EST,226 lossless tuples/hash8431240c38706c96991024f40198899c,dealloc74; earliest November18 same EST time only if EVERY unchanged original criterion passes. Previous windows/deficits remain failures |
 | 7 Cross-repo follow-up filed | complete | https://github.com/u2giants/popdam3/issues/753 |
 
 Current application delivery: the existing [follow-up753](https://github.com/u2giants/popdam3/issues/753) is CLOSED and implemented by [app825](https://github.com/u2giants/popdam3/pull/825), merge `5e222ef452226de50103d49e499ce0b7b20f47d3`; do not refile or redo it. A separate selected-primary cache-writer omission was corrected and deployed by [app841](https://github.com/u2giants/popdam3/pull/841); root confirmed1,214 bounded cache repairs with preserved selected primary/non-cache fields. [Published app receipt](https://github.com/u2giants/popdam3/blob/5f6bc7191794355d59f63806dbd23a61ba8510e8/docs/verification/5609-primary-cache-repair.md) retains failed/partial/final attempts. These deliveries do not establish the unmet hosted or full-day WAL targets.
 
-November 17 continuation: the original November 6 opening is no longer eligible
-for acceptance, including after the metadata selector correction. The old probe
-is archived byte-for-byte as `5609-third-failed-window.sql`; all thresholds and
-reset/deallocation guards remain. No new opening or speculative writer repair
-is activated. Refreshed source skips wholly unchanged ingest rows; current
-surviving request composition differs from PRE and does not provide causal
-OLD/NEW proof of another redundant writer. See the diagnosis above.
+November 17 continuation: the original November 6 opening remains invalid and its exact pre-correction and selector-corrected probes are archived. After #6617 actually merged and live functional checks passed, the coordinator selected the predeclared FIRST complete capture on November 17, 2026, **5:16:02.552460 PM EST**, with all 226 tuples and unchanged stricter PRE references. [Opening receipt and complete vector](docs/verification/issue-5609-trigger-acceptance/20261117-new-opening.md). No favorable selection, generated traffic, counter reset or speculative producer repair. Full-day acceptance, hosted WAL target and genuine future post-opening metadata proof remain pending.
 
 Search timestamp judgment: omit asset `updated_at` from the predicate; catalog inspection found no staleness detector reading the search document timestamp. All original functions remain unchanged. Derived thumbnail-cache writers were confirmed; reconciliation updates only differing cache fields for the existing primary asset. Image embedding, group clocks, counts and effective-tag functions remain intact. Optional cheap BEFORE-trigger changes were omitted because no per-trigger evidence justified expanding scope.
 
@@ -181,18 +175,7 @@ Gate: migration applies cleanly on a fresh DB in CI; `pg_get_triggerdef` output 
 
 **Step 5 — Land.** Merge when required checks pass; the automatic promotion workflow applies it. Never apply manually. Reviews are advice only.
 
-**Step 6 — Live proof (NOT accepted).** All three prior windows remain invalid
-and preserved. The November 6 first-healthy opening is historical, not an active
-eligible interval: November 17 observed deallocation74 against pinned0. The
-[November 17 diagnosis](docs/verification/issue-5609-trigger-acceptance/20261117-current-diagnosis.md)
-records the exact archived probe, deterministic metadata-selector correction
-and current functional checks. It activates no replacement opening. A future
-justified measurement must preserve the complete authentic prefix, original
-and stricter family targets, 24 hours/100 calls, complete identities and unchanged
-deallocation/reset controls; no generated traffic or favorable recapture. The
-hosted33.08%/required50% and previous genuine interim WAL deficit remain
-unresolved. Keep this issue OPEN and live proof unchecked until the complete
-actual period and all functional criteria pass.
+**Step 6 — Live proof (NOT accepted).** The three earlier windows remain invalid and preserved. The [November 17 first complete opening](docs/verification/issue-5609-trigger-acceptance/20261117-new-opening.md) is pinned to 226 exact tuples, typed hash8431240c38706c96991024f40198899c and deallocation74. Earliest full-day eligibility is **November 18, 2026, 5:16:02.552460 PM EST**, conditional on every unchanged complete-family, counter/reset, 100-genuine-call, strict cost, metadata, binding/image/access and thumbnail criterion. The whole acceptance suffix and all PRE-reference lines remain byte-identical to the delivered selector correction. A source-pinned official production live-proof artifact is still required. The hosted33.08%/required50% and historical interim deficits remain unresolved; do not mark Step4 or the same issue complete from this opening.
 
 **Step 7 — Cross-repo follow-up** (file, do not implement): issue in `u2giants/popdam3`, title "agent-api ingest: send only changed asset fields", body: in `supabase/functions/agent-api/index.ts` `handleIngest`, the existing-path branch (`updateFields`, ~line 1216) and move branch (`moveUpdates`, ~line 1156) should diff against the already-fetched row (extend the `existingByPath` select to the compared columns) and send only changed fields plus `last_seen_at`; reference `apps/bridge-agent/src/index.ts:~1265` (`api.ingest`) and this plan. Gate: issue URL recorded on popcre/shared-db#5609.
 

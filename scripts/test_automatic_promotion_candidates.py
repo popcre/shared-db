@@ -790,13 +790,48 @@ class EarlierPreviewApply(unittest.TestCase):
             {"id": 5, "conclusion": "success", "created_at": "2026-10-31T01:40:00Z", "display_title": "DB preview apply a PR 202610301906390"},
         ]
         self.assertEqual(m.earlier_preview_apply(pr, runs), 7)
-        self.assertEqual(m.earlier_preview_apply(pr, [runs[2]]), 3)  # pre-merge is the fallback
+        # #6574: a pre-merge apply is never the fallback; it is reported instead.
+        self.assertIsNone(m.earlier_preview_apply(pr, [runs[2]]))
+        self.assertEqual(m.pre_merge_preview_apply(pr, runs), 3)
+        self.assertIsNone(m.pre_merge_preview_apply(pr, runs[:2]))
         self.assertIsNone(m.earlier_preview_apply(pr, runs[3:]))
         recovery = {"id": 4, "conclusion": "success", "created_at": "2026-10-31T01:50:00Z", "display_title": "DB preview apply a PR 20261030190639"}
         self.assertEqual(m.earlier_preview_apply(pr, runs + [recovery]), 4)
         held = {**recovery, "id": 2, "conclusion": "failure", "created_at": "2026-10-31T01:45:00Z"}
         self.assertEqual(m.earlier_preview_apply(pr, runs + [held]), 7)
         self.assertEqual(m.earlier_preview_apply(pr, runs + [held], lambda r: r["id"] == 2), 2)
+
+    def _dispatch(self, runs):
+        pr = {"number": 6400, "merged_at": "2026-11-16T12:00:00Z", "versions": ["20261116013153"]}
+        out = io.StringIO()
+        with mock.patch.object(m.subprocess, "run") as sent, \
+             mock.patch.object(m, "preview_job_succeeded_in_any_attempt", return_value=False), \
+             contextlib.redirect_stdout(out):
+            m.dispatch("o/r", pr, "abc", runs)
+        return sent.call_args[0][0], out.getvalue()
+
+    def test_stale_pre_merge_apply_is_ignored_and_engineer_action_is_loud(self):
+        pre = {"id": 43789639543, "conclusion": "success", "created_at": "2026-11-16T02:00:00Z",
+               "display_title": "DB preview apply a PR6400 20261116013153"}
+        cmd, out = self._dispatch([pre])
+        self.assertIn("merged_preview_source_pr=6400", cmd)
+        self.assertFalse(any(a.startswith("historical_preview") for a in cmd))
+        self.assertIn("ENGINEER ACTION REQUIRED", out)
+        self.assertIn("REISSUE", out)
+        self.assertIn("43789639543", out)
+
+    def test_post_merge_apply_still_recovers_and_stays_quiet(self):
+        pre = {"id": 1, "conclusion": "success", "created_at": "2026-11-16T02:00:00Z",
+               "display_title": "DB preview apply a PR6400 20261116013153"}
+        post = {**pre, "id": 2, "created_at": "2026-11-16T13:00:00Z"}
+        cmd, out = self._dispatch([pre, post])
+        self.assertIn("historical_preview_original_run_map=20261116013153:2", cmd)
+        self.assertNotIn("ENGINEER ACTION REQUIRED", out)
+
+    def test_no_preview_apply_is_a_quiet_fresh_rehearsal(self):
+        cmd, out = self._dispatch([])
+        self.assertIn("merged_preview_source_pr=6400", cmd)
+        self.assertNotIn("ENGINEER ACTION REQUIRED", out)
 
 
 class AlreadyInProduction(unittest.TestCase):
@@ -2730,6 +2765,55 @@ class PrefetchHolds(unittest.TestCase):
         with mock.patch.object(m.review_finding_hold, "gh_issues_many", lambda repo, prs: {}), \
              mock.patch.object(m, "is_held", lambda repo, n: ["fresh"]):
             self.assertEqual(REAL_PREFETCH_HOLDS("o/r", [])(9), ["fresh"])
+
+
+class PermanentRefusalTests(unittest.TestCase):
+    """#6574 Fix B: a permanent producer-mismatch refusal parks on the first run."""
+    RUN = {"id": 5, "run_attempt": 1}
+    PR = {"number": 6433, "merged_at": "2026-11-16T04:57:00Z", "versions": ["20261116013153"]}
+    FAIL = {"display_title": "DB production apply PR6433 20261116013153", "status": "completed",
+            "conclusion": "failure", "created_at": "2026-11-17T13:10:00Z"}
+    DIED = ("##[error]ENGINEER ACTION REQUIRED: automatic qualification found no evidence route the "
+            "production gate accepts: RiskGateError: the production gate would refuse this preview evidence "
+            "(scripts/production_business_risk_gate.py:1562: produced evidence with a different "
+            "scripts/production_migration_guard.py than the merge commit), and the migration is high-risk "
+            "to live data so the ephemeral CI route cannot substitute. Nothing was dispatched.\n")
+
+    def check(self, log=None, raises=None):
+        jobs = [{"id": 11, "steps": [{"name": "Qualify", "conclusion": "failure"}]}]
+        def fake_run(cmd, **kw):
+            if raises:
+                raise raises
+            class R:
+                stdout = log
+            return R()
+        with mock.patch.object(m, "attempt_jobs", return_value=[jobs]), \
+                mock.patch.object(m.subprocess, "run", side_effect=fake_run):
+            return m.permanent_refusal("o/r", self.RUN)
+
+    def test_permanent_refusal_is_recognised(self):
+        self.assertTrue(self.check(self.DIED))
+
+    def test_permanent_refusal_parks_on_first_run(self):
+        action, got, reason = m.decide([self.PR], [self.FAIL], lambda n: [],
+                                       main_sha="new", permanent=lambda run: True)
+        self.assertEqual(action, "idle")
+        self.assertIn("permanent refusal", reason)
+
+    def test_permanent_refusal_unreadable_log_counts_as_ordinary_attempt(self):
+        self.assertFalse(self.check(raises=subprocess.CalledProcessError(1, "gh")))
+        action, got, _ = m.decide([self.PR], [self.FAIL], lambda n: [],
+                                  main_sha="new", permanent=lambda run: False)
+        self.assertEqual((action, got["number"]), ("dispatch", 6433))
+
+    def test_stale_refusal_is_not_permanent(self):
+        self.assertFalse(self.check("##[error]REFUSED: has moved past the dispatched commit\n"))
+
+    def test_ordinary_failure_still_needs_three(self):
+        self.assertEqual(m.decide([self.PR], [self.FAIL] * 2, lambda n: [], main_sha="new",
+                                  permanent=lambda run: False)[0], "dispatch")
+        self.assertEqual(m.decide([self.PR], [self.FAIL] * 3, lambda n: [], main_sha="new",
+                                  permanent=lambda run: False)[0], "idle")
 
 
 if __name__ == "__main__":

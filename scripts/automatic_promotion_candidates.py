@@ -541,6 +541,14 @@ STALE_MAIN_RE = re.compile(
     r"|a promotion merge freeze is already set"
     r"|##\[error\]ENGINEER ACTION REQUIRED: main moved after preview")
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+# #6574: a refusal that no retry can cure. The preview evidence was made by a
+# different apply-shaping producer than the gate pins to, and the change is
+# high-risk, so no evidence route exists. Retrying burns the lane (PR #6433:
+# 7 runs, 2026-11-17 13:07-14:07 UTC).
+PERMANENT_REFUSAL_RE = re.compile(
+    r"ENGINEER ACTION REQUIRED: automatic qualification found no evidence route"
+    r".*produced evidence with (?:a different \S+ than|\S+ (?:present|absent) where)"
+    r".*high-risk to live data")
 
 
 def stale_main_refusal_only(repo: str, run: dict[str, Any]) -> bool:
@@ -572,6 +580,22 @@ def stale_main_refusal_only(repo: str, run: dict[str, Any]) -> bool:
     except (subprocess.CalledProcessError, ValueError, OSError):
         return False
     return bool(STALE_MAIN_RE.search(ANSI_RE.sub("", logs)))
+
+
+def permanent_refusal(repo: str, run: dict[str, Any]) -> bool:
+    """True when a failed job of this run logged a permanent producer-mismatch
+    refusal on a high-risk change (#6574). Any read error returns False, so the
+    run counts as an ordinary attempt (fail safe)."""
+    try:
+        refused_jobs = [job for jobs in attempt_jobs(repo, run) for job in jobs
+                        if any(s.get("conclusion") == "failure" for s in job.get("steps") or [])]
+        logs = "".join(subprocess.run(
+            ["gh", "run", "view", "--repo", repo, "--job", str(job["id"]), "--log-failed"],
+            check=True, stdout=subprocess.PIPE, text=True, encoding="utf-8", errors="replace").stdout
+            for job in refused_jobs)
+    except (subprocess.CalledProcessError, ValueError, OSError, KeyError, TypeError):
+        return False
+    return any(PERMANENT_REFUSAL_RE.search(line) for line in ANSI_RE.sub("", logs).splitlines())
 
 
 def our_workflow(run: dict[str, Any]) -> bool:
@@ -653,7 +677,8 @@ def dependency_evidence_reader(applied: callable, refused: callable) -> callable
 def classify_pr(pr: dict[str, Any], runs: list[dict[str, Any]], held: callable,
                 applied: callable, refused: callable, stale: callable,
                 refunded: callable, live: set[str] | None,
-                dependency_evidence: callable) -> tuple[str, dict[str, Any]]:
+                dependency_evidence: callable,
+                permanent: callable = lambda run: False) -> tuple[str, dict[str, Any]]:
     """Classify one candidate PR against this pass's evidence; the single source
     of per-PR status shared by decide() and the stranded-PR reconciler
     (plan_promotion_stranding_watch.md R3). `runs` must already be filtered to
@@ -663,7 +688,9 @@ def classify_pr(pr: dict[str, Any], runs: list[dict[str, Any]], held: callable,
     - ("held", {"findings": [...]})                blocking review findings
     - ("unknown-hold", {"findings": []})           finding read failed; held, findings unknown
     - ("waiting-on-dependency", {"pending_dependencies": {...}})
-    - ("parked", {"exhausted": n, "refunds": n})   out of attempts or refunds
+    - ("parked", {"exhausted": n, "refunds": n, "permanent": bool})
+                                                   out of attempts or refunds, or a
+                                                   permanent refusal (#6574)
     - ("dispatchable", {"stale_streak": n})
     """
     # #6352: the production ledger is the final word. Versions already applied
@@ -735,7 +762,13 @@ def classify_pr(pr: dict[str, Any], runs: list[dict[str, Any]], held: callable,
                 and r.get("created_at", "") > pr["merged_at"]
                 and r.get("conclusion") != "success"]
     attempts, refunds, refund_parked, stale_streak = 0, 0, False, 0
+    permanent_hit = False
     for failure in sorted(failures, key=lambda r: r.get("created_at", "")):
+        # #6574: a permanent refusal cannot be cured by a retry; park on this
+        # first run instead of spending the remaining attempts.
+        if permanent(failure):
+            attempts, permanent_hit = MAX_ATTEMPTS, True
+            break
         # #5937: a main-moved refusal never touched a database and is caused
         # by other people's merges -- it counts neither attempt nor refund.
         if stale(failure):
@@ -752,7 +785,7 @@ def classify_pr(pr: dict[str, Any], runs: list[dict[str, Any]], held: callable,
             if attempts >= MAX_ATTEMPTS:
                 break
     if attempts >= MAX_ATTEMPTS or refund_parked:
-        return "parked", {"exhausted": attempts, "refunds": refunds}
+        return "parked", {"exhausted": attempts, "refunds": refunds, "permanent": permanent_hit}
     return "dispatchable", {"stale_streak": stale_streak}
 
 
@@ -762,7 +795,8 @@ def decide(prs: list[dict[str, Any]], runs: list[dict[str, Any]], held: callable
            refused: callable = lambda run: set(),
            stale: callable = lambda run: False,
            refunded: callable = lambda run: False,
-           live: set[str] | None = None) -> tuple[str, dict[str, Any] | None, str]:
+           live: set[str] | None = None,
+           permanent: callable = lambda run: False) -> tuple[str, dict[str, Any] | None, str]:
     """Return (action, pr, reason); action is dispatch, wait or idle. Held PRs
     and PRs out of automatic attempts are passed over and appended to `skipped`
     (the latter carry an `exhausted` count instead of `findings`). A PR whose
@@ -792,7 +826,7 @@ def decide(prs: list[dict[str, Any]], runs: list[dict[str, Any]], held: callable
     dependency_evidence = dependency_evidence_reader(applied, refused)
     for pr in prs:
         kind, detail = classify_pr(pr, runs, held, applied, refused, stale, refunded,
-                                   live, dependency_evidence)
+                                   live, dependency_evidence, permanent)
         if kind == "delivered":
             continue
         if kind in ("held", "unknown-hold"):
@@ -810,7 +844,8 @@ def decide(prs: list[dict[str, Any]], runs: list[dict[str, Any]], held: callable
             # PR, with a loud alert in main(), so one dead PR cannot park every
             # later promotion while still refusing to retry it (#5532).
             passed_over += 1
-            entry = {**pr, "findings": [], "exhausted": detail["exhausted"], "refunds": detail["refunds"]}
+            entry = {**pr, "findings": [], "exhausted": detail["exhausted"], "refunds": detail["refunds"],
+                     "permanent": detail["permanent"]}
             out_of_attempts.append(entry)
             if skipped is not None:
                 skipped.append(entry)
@@ -822,6 +857,8 @@ def decide(prs: list[dict[str, Any]], runs: list[dict[str, Any]], held: callable
         base = "every merged migration PR not held by a review finding, production dependency or exhausted automatic attempts is in production"
         if out_of_attempts:
             names = ", ".join(
+                f"PR #{e['number']} (permanent refusal: producer mismatch on a high-risk change -- reissue under a new version)"
+                if e.get("permanent") else
                 f"PR #{e['number']} ({e['exhausted']} attempts"
                 + (f", {e['refunds']} refunds used" if e.get("refunds") else "") + ")"
                 for e in out_of_attempts)
@@ -830,17 +867,45 @@ def decide(prs: list[dict[str, Any]], runs: list[dict[str, Any]], held: callable
     return "idle", None, "every merged migration PR since activation is in production"
 
 
-def earlier_preview_apply(pr: dict[str, Any], runs: list[dict[str, Any]],
-                          preview_ok: callable = lambda run: False) -> int | None:
-    """The oldest preview apply of this PR whose preview job succeeded, if any."""
-    hits = [r for r in runs
+def _preview_apply_hits(pr: dict[str, Any], runs: list[dict[str, Any]],
+                        preview_ok: callable) -> list[dict[str, Any]]:
+    return [r for r in runs
             if (r.get("display_title") or "").startswith("DB preview apply") and names_pr(pr, r.get("display_title") or "")
             # A run can fail after preview applied, e.g. at the review-finding hold.
             and (r.get("conclusion") == "success" or preview_ok(r))]
-    # A pre-merge rehearsal also leaves the versions on preview, so it is the
-    # fallback; the recovery lane refuses an original run whose bytes differ.
-    post_merge = [r for r in hits if r.get("created_at", "") > pr["merged_at"]]
-    return min(post_merge or hits, key=lambda r: r.get("created_at", ""))["id"] if hits else None
+
+
+def earlier_preview_apply(pr: dict[str, Any], runs: list[dict[str, Any]],
+                          preview_ok: callable = lambda run: False) -> int | None:
+    """The oldest POST-MERGE preview apply of this PR whose preview job succeeded.
+
+    #6574: a preview apply made before the PR merged is never recovery evidence.
+    Its bytes are not the merged bytes the gate binds to, so production
+    qualification refuses it permanently (20261116013153, run 43789639543).
+    Without a post-merge apply the lane always does a fresh rehearsal."""
+    post_merge = [r for r in _preview_apply_hits(pr, runs, preview_ok)
+                  if r.get("created_at", "") > pr["merged_at"]]
+    return min(post_merge, key=lambda r: r.get("created_at", ""))["id"] if post_merge else None
+
+
+def pre_merge_preview_apply(pr: dict[str, Any], runs: list[dict[str, Any]],
+                            preview_ok: callable = lambda run: False) -> int | None:
+    """The oldest successful preview apply of this PR made BEFORE it merged, if
+    any. Such an apply leaves the versions in preview's ledger, so the fresh
+    post-merge rehearsal cannot prove them and the gate refuses the stale one:
+    only reissuing the migration under a new version clears it (#6574)."""
+    pre = [r for r in _preview_apply_hits(pr, runs, preview_ok)
+           if r.get("created_at", "") <= pr["merged_at"]]
+    return min(pre, key=lambda r: r.get("created_at", ""))["id"] if pre else None
+
+
+def stale_pre_merge_alert(pr: dict[str, Any], run_id: int) -> str:
+    return (f"::error title=ENGINEER ACTION REQUIRED: pre-merge preview apply::"
+            f"PR #{pr['number']} versions {','.join(pr['versions'])} were applied to preview by "
+            f"pre-merge run {run_id}, before the PR merged. That apply is never used as recovery "
+            f"evidence and production qualification refuses it permanently. Cure: REISSUE the "
+            f"migration(s) under new version(s) in a new PR and retire the originals. "
+            f"A fresh post-merge rehearsal is dispatched anyway.")
 
 
 def _time(text: str) -> datetime:
@@ -1026,10 +1091,11 @@ def main(now: datetime | None = None) -> int:
     pass_applied = memoised_evidence(lambda run: applied_in_any_attempt(repo, run))
     pass_refused = memoised_evidence(lambda run: refused_as_applied(repo, run))
     pass_stale = memoised_evidence(lambda run: stale_main_refusal_only(repo, run))
+    pass_permanent = memoised_evidence(lambda run: permanent_refusal(repo, run))
     pass_refunded = memoised_evidence(lambda run: refund_eligible_in_any_attempt(repo, run))
     action, pr, reason = decide(candidates, runs, held, pass_applied, main_sha,
                                 skipped, pass_refused, stale=pass_stale,
-                                refunded=pass_refunded, live=live)
+                                refunded=pass_refunded, live=live, permanent=pass_permanent)
     for entry in skipped:
         if entry.get("pending_dependencies"):
             refs = ", ".join(f"{v} (PR #{owner})" for v, owner in entry["pending_dependencies"].items())
@@ -1062,6 +1128,7 @@ def main(now: datetime | None = None) -> int:
                                     lambda run: applied_in_any_attempt(repo, run), main_sha,
                                     None, lambda run: refused_as_applied(repo, run),
                                     stale=lambda run: stale_main_refusal_only(repo, run),
+                                    permanent=lambda run: permanent_refusal(repo, run),
                                     refunded=lambda run: refund_eligible_in_any_attempt(repo, run),
                                     live=live)
         phase("fresh recheck done")
@@ -1099,6 +1166,7 @@ def main(now: datetime | None = None) -> int:
                                     lambda run: applied_in_any_attempt(repo, run), main_sha,
                                     None, lambda run: refused_as_applied(repo, run),
                                     stale=lambda run: stale_main_refusal_only(repo, run),
+                                    permanent=lambda run: permanent_refusal(repo, run),
                                     refunded=lambda run: refund_eligible_in_any_attempt(repo, run),
                                     live=live)
         print(f"{action}: {reason} (after passing over claimed PR(s) "
@@ -1112,7 +1180,8 @@ def main(now: datetime | None = None) -> int:
     try:
         marks = reconcile_stranded_marks(repo, candidates, reconcile_runs, live, now, held,
                                          pass_applied, pass_refused, pass_stale, pass_refunded,
-                                         discovery_ok=True, dry_run=args.dry_run)
+                                         discovery_ok=True, dry_run=args.dry_run,
+                                         permanent=pass_permanent)
     except Exception as exc:
         print(f"::warning title=Stranded-PR reconciler defect::{type(exc).__name__}: {exc}; "
               "labels and notices were not reconciled this pass")
@@ -1201,7 +1270,13 @@ def dispatch(repo: str, pr: dict[str, Any], main_sha: str, runs: list[dict[str, 
     # `runs` is the pre-dispatch recheck's fresh read (seconds old); re-reading
     # the whole history here cost another ~20 s per dispatch (#6493 Step 1c).
     source = [f"merged_preview_source_pr={pr['number']}"]
-    original = earlier_preview_apply(pr, runs if runs is not None else workflow_runs(repo), lambda run: preview_job_succeeded_in_any_attempt(repo, run))
+    runs = runs if runs is not None else workflow_runs(repo)
+    preview_ok = lambda run: preview_job_succeeded_in_any_attempt(repo, run)  # noqa: E731
+    original = earlier_preview_apply(pr, runs, preview_ok)
+    if not original:
+        stale = pre_merge_preview_apply(pr, runs, preview_ok)
+        if stale:
+            print(stale_pre_merge_alert(pr, stale))
     if original:
         # A retry after a failed production apply: preview already holds the
         # versions, so only the historical-recovery lane can re-prove them.
@@ -1514,8 +1589,11 @@ def notice_body(label: str, entry: dict[str, Any], now: datetime) -> str:
         hours = int((now - _time(entry["merged_at"])).total_seconds() // 3600)
         status = (
             "**This merged migration is parked and is not in production.** "
-            f"The automatic promotion lane stopped after {entry.get('exhausted', 0)} failed automatic attempts{refunds}. "
-            f"Versions: {versions}. Merged {hours}h ago."
+            + ("The automatic promotion lane stopped on a permanent refusal (producer mismatch on a "
+               "high-risk change); only a reissue under a new version can deliver it. "
+               if entry.get("permanent") else
+               f"The automatic promotion lane stopped after {entry.get('exhausted', 0)} failed automatic attempts{refunds}. ")
+            + f"Versions: {versions}. Merged {hours}h ago."
         )
     else:
         findings = entry.get("findings") or []
@@ -1544,7 +1622,8 @@ def reconcile_stranded_marks(repo: str, candidates: list[dict[str, Any]], runs: 
                              live: set[str] | None, now: datetime, held: callable,
                              applied: callable, refused: callable, stale: callable, refunded: callable,
                              discovery_ok: bool, dry_run: bool = False,
-                             fresh_held: callable | None = None) -> list[dict[str, Any]]:
+                             fresh_held: callable | None = None,
+                             permanent: callable = lambda run: False) -> list[dict[str, Any]]:
     """Plan R1-R6: make the stranded-PR labels and notices match the shared
     classifier, once per selector pass. Returns one dict per (PR, label) touched.
     A per-PR problem is recorded and the pass goes on; nothing here raises."""
@@ -1573,6 +1652,7 @@ def reconcile_stranded_marks(repo: str, candidates: list[dict[str, Any]], runs: 
 
     applied_m, refused_m = memoised_evidence(applied), memoised_evidence(refused)
     stale_m, refunded_m = memoised_evidence(stale), memoised_evidence(refunded)
+    permanent_m = memoised_evidence(permanent)
     dependency_evidence = dependency_evidence_reader(applied_m, refused_m)
 
     def delivered_live(pr: dict[str, Any]) -> bool:
@@ -1587,7 +1667,7 @@ def reconcile_stranded_marks(repo: str, candidates: list[dict[str, Any]], runs: 
             continue
         try:
             kind, detail = classify_pr(pr, runs, held, applied_m, refused_m, stale_m, refunded_m,
-                                       live, dependency_evidence)
+                                       live, dependency_evidence, permanent_m)
             entry = {**pr, **detail}
             if kind == "held" and now - hold_since(entry) > HELD_ESCALATE_AFTER:
                 desired[HELD_LABEL][number] = entry

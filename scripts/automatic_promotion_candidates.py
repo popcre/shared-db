@@ -612,6 +612,150 @@ def title_versions(title: str) -> set[str]:
     return {v for word in title.split() for v in word.split(",") if re.fullmatch(r"\d{14}", v)}
 
 
+def memoised_evidence(fn: callable) -> callable:
+    """Wrap one run-evidence callable (applied, refused, stale, refunded) so a
+    selector pass reads each run's evidence once, keyed by (run id, run attempt)
+    (plan_promotion_stranding_watch.md R3). Exceptions are not cached: the next
+    caller reads again and handles the failure as it always has."""
+    cache: dict[tuple[Any, Any], Any] = {}
+
+    def wrapped(run):
+        key = (run.get("id", id(run)), run.get("run_attempt", 1))
+        if key not in cache:
+            cache[key] = fn(run)
+        return cache[key]
+    return wrapped
+
+
+def dependency_evidence_reader(applied: callable, refused: callable) -> callable:
+    """Per-pass reader of a failed production run's dependency receipt:
+    (actually applied, versions refused as already applied). Unreadable evidence
+    is unproved, never fatal (#5651)."""
+    receipts: dict[tuple[Any, Any], tuple[bool, set[str]]] = {}
+
+    def read(run):
+        key = (run.get("id", id(run)), run.get("run_attempt", 1))
+        if key not in receipts:
+            actual_apply, already_applied = False, set()
+            try:
+                actual_apply = applied(run)
+            except (OSError, ValueError, subprocess.CalledProcessError):
+                print("::warning::dependency apply evidence unreadable; treating this receipt as unproved")
+            try:
+                already_applied = set(refused(run))
+            except (OSError, ValueError, subprocess.CalledProcessError):
+                print("::warning::dependency ledger refusal evidence unreadable; treating this receipt as unproved")
+            receipts[key] = (actual_apply, already_applied)
+        return receipts[key]
+    return read
+
+
+def classify_pr(pr: dict[str, Any], runs: list[dict[str, Any]], held: callable,
+                applied: callable, refused: callable, stale: callable,
+                refunded: callable, live: set[str] | None,
+                dependency_evidence: callable) -> tuple[str, dict[str, Any]]:
+    """Classify one candidate PR against this pass's evidence; the single source
+    of per-PR status shared by decide() and the stranded-PR reconciler
+    (plan_promotion_stranding_watch.md R3). `runs` must already be filtered to
+    our workflow. Returns (kind, detail):
+
+    - ("delivered", {})                            versions already in production
+    - ("held", {"findings": [...]})                blocking review findings
+    - ("unknown-hold", {"findings": []})           finding read failed; held, findings unknown
+    - ("waiting-on-dependency", {"pending_dependencies": {...}})
+    - ("parked", {"exhausted": n, "refunds": n})   out of attempts or refunds
+    - ("dispatchable", {"stale_streak": n})
+    """
+    # #6352: the production ledger is the final word. Versions already applied
+    # (by any route) are delivered; retrying them only burns attempts and
+    # fails "already applied on preview", parking every later change.
+    if live and pr.get("versions") and set(pr["versions"]) <= live:
+        print(f"skip: PR #{pr['number']} versions {','.join(pr['versions'])} already in the production ledger")
+        return "delivered", {}
+    tag = f"PR{pr['number']} "
+    titles = [(r.get("display_title") or "") + " " for r in runs]
+    prod = [r for t, r in zip(titles, runs) if t.startswith("DB production apply") and tag in t]
+    if any(r.get("conclusion") == "success" for r in prod):
+        print(f"skip: PR #{pr['number']} has a successful production apply")
+        return "delivered", {}
+    if any(r.get("conclusion") == "failure" and applied(r) for r in prod):
+        print(f"skip: PR #{pr['number']} applied; a later post-apply step failed")
+        return "delivered", {}
+    wanted = set(pr["versions"])
+    in_production: set[str] = set()
+    for t, r in zip(titles, runs):
+        if not t.startswith("DB production apply") or not (named := title_versions(t)) & wanted:
+            continue
+        if r.get("conclusion") == "success":
+            in_production |= named
+        elif r.get("conclusion") == "failure":
+            in_production |= refused(r)
+        if wanted <= in_production:
+            break
+    if wanted <= in_production:
+        print(f"skip: PR #{pr['number']} versions {','.join(pr['versions'])} already in production via another run")
+        return "delivered", {}
+    findings = held(pr["number"])
+    if findings:
+        if isinstance(findings, list):
+            return "held", {"findings": findings}
+        return "unknown-hold", {"findings": []}
+    dependencies = pr.get("production_dependencies", {})
+    proven_bases = set()
+    for title, run in zip(titles, runs):
+        if not title.startswith("DB production apply") or not (named := title_versions(title)) & dependencies.keys():
+            continue
+        if run.get("conclusion") == "success":
+            proven_bases |= named
+        elif run.get("conclusion") == "failure":
+            actual_apply, already_applied = dependency_evidence(run)
+            if actual_apply:
+                proven_bases |= named
+            proven_bases |= already_applied
+    missing_bases = {v: owner for v, owner in dependencies.items() if v not in proven_bases}
+    if missing_bases:
+        return "waiting-on-dependency", {"pending_dependencies": missing_bases}
+    # Attempts count per change since its merge, NOT per main commit (#5683/#5686,
+    # Nov 5 2026): resetting on every main advance let one stuck change be retried
+    # after each unrelated merge and starve every later promotion. A cure for a stuck
+    # change is a new governed version, which is a new candidate. The WHOLE automatic cycle counts, not only preview applies (#5532): a failed
+    # production apply re-enters through a historical recovery preview that succeeds
+    # by design, so counting only preview failures could never bound that loop. A
+    # recovery run titles itself "PR " with no number, hence the version match.
+    # CLASSIFIED failures (plan §9 2.1–2.3): a pure main-SHA staleness refusal
+    # never touched a database (#5856) and a run marked refund-eligible-fault
+    # is an infrastructure/coordination fault, not the change's — neither burns
+    # an attempt while this change's refund budget (MAX_REFUNDS) lasts. The
+    # classified failure that finds the budget empty parks the change, and so
+    # does the MAX_ATTEMPTS-th ordinary (unclassified) failure, exactly as
+    # before. Per-attempt evidence (applied / refused / preview) is unaffected.
+    failures = [r for t, r in zip(titles, runs)
+                if (t.startswith("DB preview apply") or t.startswith("DB production apply"))
+                and (tag in t or names_pr(pr, t))
+                and r.get("created_at", "") > pr["merged_at"]
+                and r.get("conclusion") != "success"]
+    attempts, refunds, refund_parked, stale_streak = 0, 0, False, 0
+    for failure in sorted(failures, key=lambda r: r.get("created_at", "")):
+        # #5937: a main-moved refusal never touched a database and is caused
+        # by other people's merges -- it counts neither attempt nor refund.
+        if stale(failure):
+            stale_streak += 1
+            continue
+        stale_streak = 0
+        if refunded(failure):
+            if refunds >= MAX_REFUNDS:
+                refund_parked = True
+                break
+            refunds += 1
+        else:
+            attempts += 1
+            if attempts >= MAX_ATTEMPTS:
+                break
+    if attempts >= MAX_ATTEMPTS or refund_parked:
+        return "parked", {"exhausted": attempts, "refunds": refunds}
+    return "dispatchable", {"stale_streak": stale_streak}
+
+
 def decide(prs: list[dict[str, Any]], runs: list[dict[str, Any]], held: callable,
            applied: callable = lambda run: False, main_sha: str = "",
            skipped: list[dict[str, Any]] | None = None,
@@ -645,124 +789,34 @@ def decide(prs: list[dict[str, Any]], runs: list[dict[str, Any]], held: callable
     out_of_attempts: list[dict[str, Any]] = []
     # #5651: only dependency receipts share reads within this decision pass.
     # The fresh recheck invokes decide again and must read new evidence.
-    dependency_receipts = {}
-
-    def dependency_evidence(run):
-        key = (run.get("id", id(run)), run.get("run_attempt", 1))
-        if key not in dependency_receipts:
-            actual_apply, already_applied = False, set()
-            try:
-                actual_apply = applied(run)
-            except (OSError, ValueError, subprocess.CalledProcessError):
-                print("::warning::dependency apply evidence unreadable; treating this receipt as unproved")
-            try:
-                already_applied = set(refused(run))
-            except (OSError, ValueError, subprocess.CalledProcessError):
-                print("::warning::dependency ledger refusal evidence unreadable; treating this receipt as unproved")
-            dependency_receipts[key] = (actual_apply, already_applied)
-        return dependency_receipts[key]
+    dependency_evidence = dependency_evidence_reader(applied, refused)
     for pr in prs:
-        # #6352: the production ledger is the final word. Versions already applied
-        # (by any route) are delivered; retrying them only burns attempts and
-        # fails "already applied on preview", parking every later change.
-        if live and pr.get("versions") and set(pr["versions"]) <= live:
-            print(f"skip: PR #{pr['number']} versions {','.join(pr['versions'])} already in the production ledger")
+        kind, detail = classify_pr(pr, runs, held, applied, refused, stale, refunded,
+                                   live, dependency_evidence)
+        if kind == "delivered":
             continue
-        tag = f"PR{pr['number']} "
-        titles = [(r.get("display_title") or "") + " " for r in runs]
-        prod = [r for t, r in zip(titles, runs) if t.startswith("DB production apply") and tag in t]
-        if any(r.get("conclusion") == "success" for r in prod):
-            print(f"skip: PR #{pr['number']} has a successful production apply")
-            continue
-        if any(r.get("conclusion") == "failure" and applied(r) for r in prod):
-            print(f"skip: PR #{pr['number']} applied; a later post-apply step failed")
-            continue
-        wanted = set(pr["versions"])
-        in_production: set[str] = set()
-        for t, r in zip(titles, runs):
-            if not t.startswith("DB production apply") or not (named := title_versions(t)) & wanted:
-                continue
-            if r.get("conclusion") == "success":
-                in_production |= named
-            elif r.get("conclusion") == "failure":
-                in_production |= refused(r)
-            if wanted <= in_production:
-                break
-        if wanted <= in_production:
-            print(f"skip: PR #{pr['number']} versions {','.join(pr['versions'])} already in production via another run")
-            continue
-        findings = held(pr["number"])
-        if findings:
+        if kind in ("held", "unknown-hold"):
             passed_over += 1
             if skipped is not None:
-                skipped.append({**pr, "findings": findings if isinstance(findings, list) else []})
+                skipped.append({**pr, "findings": detail["findings"]})
             continue
-        dependencies = pr.get("production_dependencies", {})
-        proven_bases = set()
-        for title, run in zip(titles, runs):
-            if not title.startswith("DB production apply") or not (named := title_versions(title)) & dependencies.keys():
-                continue
-            if run.get("conclusion") == "success":
-                proven_bases |= named
-            elif run.get("conclusion") == "failure":
-                actual_apply, already_applied = dependency_evidence(run)
-                if actual_apply:
-                    proven_bases |= named
-                proven_bases |= already_applied
-        missing_bases = {v: owner for v, owner in dependencies.items() if v not in proven_bases}
-        if missing_bases:
+        if kind == "waiting-on-dependency":
             passed_over += 1
             if skipped is not None:
-                skipped.append({**pr, "pending_dependencies": missing_bases})
+                skipped.append({**pr, "pending_dependencies": detail["pending_dependencies"]})
             continue
-        # Attempts count per change since its merge, NOT per main commit (#5683/#5686,
-        # Nov 5 2026): resetting on every main advance let one stuck change be retried
-        # after each unrelated merge and starve every later promotion. A cure for a stuck
-        # change is a new governed version, which is a new candidate. The WHOLE automatic cycle counts, not only preview applies (#5532): a failed
-        # production apply re-enters through a historical recovery preview that succeeds
-        # by design, so counting only preview failures could never bound that loop. A
-        # recovery run titles itself "PR " with no number, hence the version match.
-        # CLASSIFIED failures (plan §9 2.1–2.3): a pure main-SHA staleness refusal
-        # never touched a database (#5856) and a run marked refund-eligible-fault
-        # is an infrastructure/coordination fault, not the change's — neither burns
-        # an attempt while this change's refund budget (MAX_REFUNDS) lasts. The
-        # classified failure that finds the budget empty parks the change, and so
-        # does the MAX_ATTEMPTS-th ordinary (unclassified) failure, exactly as
-        # before. Per-attempt evidence (applied / refused / preview) is unaffected.
-        failures = [r for t, r in zip(titles, runs)
-                    if (t.startswith("DB preview apply") or t.startswith("DB production apply"))
-                    and (tag in t or names_pr(pr, t))
-                    and r.get("created_at", "") > pr["merged_at"]
-                    and r.get("conclusion") != "success"]
-        attempts, refunds, refund_parked, stale_streak = 0, 0, False, 0
-        for failure in sorted(failures, key=lambda r: r.get("created_at", "")):
-            # #5937: a main-moved refusal never touched a database and is caused
-            # by other people's merges -- it counts neither attempt nor refund.
-            if stale(failure):
-                stale_streak += 1
-                continue
-            stale_streak = 0
-            if refunded(failure):
-                if refunds >= MAX_REFUNDS:
-                    refund_parked = True
-                    break
-                refunds += 1
-            else:
-                attempts += 1
-                if attempts >= MAX_ATTEMPTS:
-                    break
-        if attempts >= MAX_ATTEMPTS or refund_parked:
+        if kind == "parked":
             # Out of automatic attempts or out of refunds: passed over like a held
             # PR, with a loud alert in main(), so one dead PR cannot park every
             # later promotion while still refusing to retry it (#5532).
             passed_over += 1
-            entry = {**pr, "findings": [], "exhausted": attempts, "refunds": refunds}
+            entry = {**pr, "findings": [], "exhausted": detail["exhausted"], "refunds": detail["refunds"]}
             out_of_attempts.append(entry)
             if skipped is not None:
                 skipped.append(entry)
             continue
-        if stale_streak >= BACKSTOP_AFTER_STALE:
-            pr = {**pr, "stale_streak": stale_streak}
+        if detail["stale_streak"] >= BACKSTOP_AFTER_STALE:
+            pr = {**pr, "stale_streak": detail["stale_streak"]}
         return "dispatch", pr, f"PR #{pr['number']} versions {','.join(pr['versions'])} not yet in production"
     if passed_over:
         base = "every merged migration PR not held by a review finding, production dependency or exhausted automatic attempts is in production"

@@ -1,6 +1,8 @@
 -- Sandbox catch-up batch 18 (#6356): DesignFlow sandbox (xupnyeifmpsacrqahwwm) ONLY. Never apply to shared preview or production.
 -- Production's current definitions and EXECUTE grants for seven functions changed in production on 2026-11-16 (or,
 -- for dam.orderlist_product_facts, restored to production's exact BEGIN ATOMIC body from 20261102003158).
+-- plm.suggested_property_for_sku is left out: its newer repository version (20261201210000) has not reached
+-- production yet, and copying production's older body would undo it.
 -- derived-from: none
 
 set check_function_bodies = off;
@@ -544,93 +546,6 @@ revoke all on function public.import_dam_buy_sheet(uuid,text,text,jsonb,jsonb,js
 grant execute on function public.import_dam_buy_sheet(uuid,text,text,jsonb,jsonb,jsonb,boolean,jsonb) to service_role;
 grant execute on function public.import_dam_buy_sheet(uuid,text,text,jsonb,jsonb,jsonb,boolean,jsonb) to authenticated;
 
-CREATE OR REPLACE FUNCTION plm.suggested_property_for_sku(p_sku text)
- RETURNS TABLE(mg_code text, mg_desc text, file_count bigint, basis text, file_names text[])
- LANGUAGE sql
- STABLE
-AS $function$
-with
--- SKU's used files with a normalised name (lower, no extension)
-files as (
-  select distinct u.file_name,
-         lower(regexp_replace(u.file_name, '\.[A-Za-z0-9]{2,5}$', '')) as norm_name
-  from public.sku_files_used u
-  where u.sku = p_sku
-),
--- Match to DCP assets by normalised file name.  DCP assets are Disney-only
--- (DCP = Disney Consumer Products), so this join is inherently Disney.
--- Licensor restriction: the SKU's Coldlion MG05 licensor must be Disney
--- (mg_code DY or DS — one company, two spellings).  This removes
--- cross-licensor file-name collisions (Stitch file on a Care Bears SKU etc.).
--- Secondary check on the file's style-guide licensor where available.
-dcp_match as (
-  select f.file_name, a.id as asset_id
-  from files f
-  join plm.dcp_asset a
-    on lower(regexp_replace(a.file_name, '\.[A-Za-z0-9]{2,5}$', '')) = f.norm_name
-  where f.file_name in (
-    select u2.file_name
-    from public.sku_files_used u2
-    left join public.style_guide_files sgf on sgf.id = u2.style_guide_file_id
-    where u2.sku = p_sku
-      and (sgf.licensor_name ilike '%disney%' or u2.style_guide_file_id is null)
-  )
-  -- SKU-level Disney restriction (MG05 = DY or DS)
-  and exists (
-    select 1 from coldlion.item_merch_group img
-    where img.item_no = p_sku
-      and img.slot_no = 5
-      and img.mg_code in ('DY','DS')
-  )
-),
--- Film tags on those assets (ignoring classics)
-films as (
-  select distinct dm.file_name, p.source_id
-  from dcp_match dm
-  join plm.dcp_asset_property_observation o on o.dcp_asset_id = dm.asset_id
-  join plm.dcp_property p on p.id = o.dcp_property_id
-  where p.source_id <> 'dcpvault:properties/cl/classics'
-),
--- Has classics tag?
-has_classics as (
-  select bool_or(p.source_id = 'dcpvault:properties/cl/classics') as val
-  from dcp_match dm
-  join plm.dcp_asset_property_observation o on o.dcp_asset_id = dm.asset_id
-  join plm.dcp_property p on p.id = o.dcp_property_id
-),
--- Count distinct non-classics films
-nfilms as (
-  select count(distinct source_id) as n from films
-),
--- Map films to MG06 via the crosswalk (unmapped films yield no suggestion)
-mapped as (
-  select f.source_id, f.file_name, x.mg_code, x.mg_desc
-  from films f
-  join plm.dcp_property_mg06_crosswalk x on x.dcp_source_id = f.source_id
-  where x.mg_code is not null
-),
--- Aggregate per MG06
-agg as (
-  select m.mg_code,
-         min(m.mg_desc) as mg_desc,
-         count(distinct m.file_name) as file_count,
-         array_agg(distinct m.file_name order by m.file_name) as file_names
-  from mapped m
-  group by m.mg_code
-)
-select a.mg_code,
-       a.mg_desc,
-       a.file_count,
-       case
-         when (select n from nfilms) <= 1 then 'single_film'
-         when (select val from has_classics) then 'classics_multi'
-         else 'multi_film'
-       end as basis,
-       a.file_names
-from agg a
-order by a.file_count desc, a.mg_code;
-$function$;
-grant execute on function plm.suggested_property_for_sku(text) to public;
 
 CREATE OR REPLACE FUNCTION api.resolve_item_mg_category(p_item_id integer)
  RETURNS TABLE(id uuid, code text, name text)

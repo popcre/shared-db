@@ -268,7 +268,8 @@ AS $function$
           where a.id = c.asset_id
             and a.licensor_id = any((select semantic_licensor_ids from params)::uuid[]))))
       -- popdam3#1037: property accepted set, picture-only matches only.
-      and ((select semantic_property_ids from params) is null
+      and (((select semantic_property_ids from params) is null
+            and (select semantic_property_character_ids from params) is null)
         or max(c.keyword_rank) is not null
         or exists (select 1 from public.style_groups g
           where g.id = c.style_group_id
@@ -528,7 +529,7 @@ begin
   end if;
   if p_query_embedding is null
      or (v_licensors is null and v_characters is null and v_legacy is null and v_names is null
-         and v_properties is null) then
+         and v_properties is null and v_property_characters is null) then
     return public.dam_search_semantic_anchor(p_query_embedding, p_document_types);
   end if;
 
@@ -553,7 +554,7 @@ begin
           or (d.style_group_id is null and exists (select 1 from public.assets a
                 where a.id = d.asset_id and a.licensor_id = any(v_licensors))))
         -- property accepted set (#1037): the property itself or one of its linked characters
-        and (v_properties is null
+        and ((v_properties is null and v_property_characters is null)
           or (d.style_group_id is not null and exists (select 1 from public.style_groups g
                 where g.id = d.style_group_id and g.property_id = any(v_properties)))
           or (d.style_group_id is null and exists (select 1 from public.assets a
@@ -593,7 +594,7 @@ begin
           or (d.style_group_id is null and exists (select 1 from public.assets a
                 where a.id = d.asset_id and a.licensor_id = any(v_licensors))))
         -- property accepted set (#1037): the property itself or one of its linked characters
-        and (v_properties is null
+        and ((v_properties is null and v_property_characters is null)
           or (d.style_group_id is not null and exists (select 1 from public.style_groups g
                 where g.id = d.style_group_id and g.property_id = any(v_properties)))
           or (d.style_group_id is null and exists (select 1 from public.assets a

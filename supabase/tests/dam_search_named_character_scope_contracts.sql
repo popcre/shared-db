@@ -155,6 +155,22 @@ begin
     raise exception 'popdam3#1037 property set: total % ids %', n, ids;
   end if;
 
+  -- Either accepted-set key alone must scope picture-only matches; keywords stay.
+  f := jsonb_build_object('semanticPropertyCharacterIds', jsonb_build_array(ch1));
+  select array_agg(entity_id), min(total_count) into ids, n
+  from public.search_dam_documents('zq1037token', f, 50, 0, null, e0, 0, 0.5);
+  if n is distinct from 4 or not coalesce(ids @> array[g1,g2,g3,a8], false)
+     or ids && array[g4,g5,g6,g7] then
+    raise exception 'popdam3#1037 property characters only: total % ids %', n, ids;
+  end if;
+  f := jsonb_build_object('semanticPropertyIds', jsonb_build_array(prop));
+  select array_agg(entity_id), min(total_count) into ids, n
+  from public.search_dam_documents('zq1037token', f, 50, 0, null, e0, 0, 0.5);
+  if n is distinct from 3 or not coalesce(ids @> array[g1,g2,g4], false)
+     or ids && array[g3,g5,g6,g7,a8] then
+    raise exception 'popdam3#1037 properties only: total % ids %', n, ids;
+  end if;
+
   -- Oversized lists fail with a clean invalid-parameter error.
   raised := false;
   begin
@@ -173,6 +189,30 @@ begin
   if s is null or s > 0.75 or s < 0.65 then raise exception 'popdam3#1037 character anchor %', s; end if;
   s := public.dam_search_semantic_anchor_named(e0, array['style_group'], jsonb_build_object('requiredCharacterIds', jsonb_build_array(ch1)));
   if s is null or s > 0.75 or s < 0.65 then raise exception 'popdam3#1037 style-group character anchor %', s; end if;
+
+  -- Lone property-character scope must not return the unscoped score (1.0).
+  -- Exercise both the mixed-document and exact style-group anchor branches.
+  s := public.dam_search_semantic_anchor_named(e0, null,
+    jsonb_build_object('semanticPropertyCharacterIds', jsonb_build_array(ch1)));
+  if s is null or s > 0.75 or s < 0.65 then
+    raise exception 'popdam3#1037 property characters only anchor %', s;
+  end if;
+  s := public.dam_search_semantic_anchor_named(e0, array['style_group'],
+    jsonb_build_object('semanticPropertyCharacterIds', jsonb_build_array(ch1)));
+  if s is null or s > 0.75 or s < 0.65 then
+    raise exception 'popdam3#1037 style-group property characters only anchor %', s;
+  end if;
+  -- Property alone accepts g4, whose score is 1.0, without requiring character ids.
+  s := public.dam_search_semantic_anchor_named(e0, null,
+    jsonb_build_object('semanticPropertyIds', jsonb_build_array(prop)));
+  if s is null or abs(s - 1.0) > 0.001 then
+    raise exception 'popdam3#1037 properties only anchor %', s;
+  end if;
+  s := public.dam_search_semantic_anchor_named(e0, array['style_group'],
+    jsonb_build_object('semanticPropertyIds', jsonb_build_array(prop)));
+  if s is null or abs(s - 1.0) > 0.001 then
+    raise exception 'popdam3#1037 style-group properties only anchor %', s;
+  end if;
 
   if has_function_privilege('anon', 'public.dam_search_semantic_anchor_named(extensions.vector,text[],jsonb)', 'execute')
      or has_function_privilege('anon', 'public.dam_search_uuid_list(jsonb)', 'execute')

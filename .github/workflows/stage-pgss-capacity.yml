@@ -1,0 +1,123 @@
+name: Stage fixed statement capacity without restart
+run-name: Stage statement capacity 5609 ${{ inputs.expected_head }}
+on:
+  workflow_dispatch:
+    inputs:
+      work_issue:
+        description: Fixed owning issue (5609 only)
+        required: true
+        default: '5609'
+        type: string
+      expected_head:
+        description: Exact current main source SHA
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: shared-db-pg-stat-statements-capacity-stage
+  cancel-in-progress: false
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: write
+      issues: read
+      pull-requests: read
+    env:
+      EXPECTED_HEAD: ${{ inputs.expected_head }}
+      WORK_ISSUE: ${{ inputs.work_issue }}
+      PREVIEW_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Verify exact current main without database credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$WORK_ISSUE" = 5609
+          test "$EXPECTED_HEAD" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          node scripts/gh-read.mjs --out "$RUNNER_TEMP/main.json" api "repos/$GITHUB_REPOSITORY/commits/main"
+          python -c 'import json,os; assert json.load(open(os.environ["RUNNER_TEMP"]+"/main.json"))["sha"]==os.environ["GITHUB_SHA"]'
+      - name: Acquire existing native preview lane
+        id: native_lock
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/pgss-stage-exclusive.mjs acquire preview
+      - name: Stage fixed preview capacity and prove no restart
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: python scripts/stage_pgss_capacity.py --target preview --output "$RUNNER_TEMP/preview/preview-stage.json"
+      - name: Release only this job's native preview lane
+        if: ${{ always() && steps.native_lock.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/pgss-stage-exclusive.mjs release preview
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pgss-stage-preview-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: ${{ runner.temp }}/preview/preview-stage.json
+          if-no-files-found: error
+          retention-days: 30
+  production:
+    needs: preview
+    if: ${{ needs.preview.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: write
+      actions: read
+      issues: read
+      pull-requests: read
+    env:
+      EXPECTED_HEAD: ${{ inputs.expected_head }}
+      WORK_ISSUE: ${{ inputs.work_issue }}
+      PREVIEW_PROJECT_REF: ${{ vars.PREVIEW_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: pgss-stage-preview-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: ${{ runner.temp }}/preview
+      - name: Verify exact current main without database credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$WORK_ISSUE" = 5609
+          test "$EXPECTED_HEAD" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          node scripts/gh-read.mjs --out "$RUNNER_TEMP/main.json" api "repos/$GITHUB_REPOSITORY/commits/main"
+          python -c 'import json,os; assert json.load(open(os.environ["RUNNER_TEMP"]+"/main.json"))["sha"]==os.environ["GITHUB_SHA"]'
+      - name: Acquire existing native production lane
+        id: native_lock
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/pgss-stage-exclusive.mjs acquire production
+      - name: Stage fixed production capacity after same-run preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: python scripts/stage_pgss_capacity.py --target production --preview-receipt "$RUNNER_TEMP/preview/preview-stage.json" --output "$RUNNER_TEMP/production/production-stage.json"
+      - name: Release only this job's native production lane
+        if: ${{ always() && steps.native_lock.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/pgss-stage-exclusive.mjs release production
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pgss-stage-production-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: ${{ runner.temp }}/production/production-stage.json
+          if-no-files-found: error
+          retention-days: 30

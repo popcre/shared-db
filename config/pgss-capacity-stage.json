@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "operation": "pg-stat-statements-capacity-stage/v1",
+  "work_issue": 5609,
+  "source_pr": null,
+  "owner": "shared-db issue 5609 coordinator",
+  "necessity": "Preserve complete authentic statement observations after capacity eviction invalidated acceptance.",
+  "retirement": "Remove this staging route after effective capacity is independently verified and issue 5609 accepted.",
+  "setting": "pg_stat_statements.max",
+  "desired": 40000,
+  "restart_database": false,
+  "expected_effective": [5000, 40000],
+  "production_candidates": [
+    {"schema":"public","index":"idx_assets_full_text_search","index_oid":"464884","table_oid":"17809","definition_md5":"c5f859e1843ec268608c9f3bdda91140"},
+    {"schema":"public","index":"idx_assets_tags","index_oid":"17966","table_oid":"17809","definition_md5":"ef912b57eaaac8358f8a3326e8e12198"},
+    {"schema":"public","index":"idx_sgf_directory_path_trgm","index_oid":"2957816","table_oid":"18497","definition_md5":"88e1c3b7f461295813b75466830bcbec"},
+    {"schema":"public","index":"idx_style_guide_files_tag_search_trgm","index_oid":"3822946","table_oid":"18497","definition_md5":"19eb10d68eeaf9c5214c0526f55426f7"}
+  ]
+}

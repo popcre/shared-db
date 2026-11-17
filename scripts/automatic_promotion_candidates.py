@@ -1020,12 +1020,16 @@ def main(now: datetime | None = None) -> int:
     held = prefetch_holds(repo, [c["number"] for c in candidates
                                  if not (live and c.get("versions") and set(c["versions"]) <= live)])
     phase("review-finding holds read")
-    action, pr, reason = decide(candidates, runs, held,
-                                lambda run: applied_in_any_attempt(repo, run), main_sha,
-                                skipped, lambda run: refused_as_applied(repo, run),
-                                stale=lambda run: stale_main_refusal_only(repo, run),
-                                refunded=lambda run: refund_eligible_in_any_attempt(repo, run),
-                                live=live)
+    # Plan R3 (#6561): one read of each run's evidence per pass, shared by the
+    # first decision and the stranded-PR reconciler. The fresh recheck below
+    # keeps reading new evidence.
+    pass_applied = memoised_evidence(lambda run: applied_in_any_attempt(repo, run))
+    pass_refused = memoised_evidence(lambda run: refused_as_applied(repo, run))
+    pass_stale = memoised_evidence(lambda run: stale_main_refusal_only(repo, run))
+    pass_refunded = memoised_evidence(lambda run: refund_eligible_in_any_attempt(repo, run))
+    action, pr, reason = decide(candidates, runs, held, pass_applied, main_sha,
+                                skipped, pass_refused, stale=pass_stale,
+                                refunded=pass_refunded, live=live)
     for entry in skipped:
         if entry.get("pending_dependencies"):
             refs = ", ".join(f"{v} (PR #{owner})" for v, owner in entry["pending_dependencies"].items())
@@ -1042,6 +1046,7 @@ def main(now: datetime | None = None) -> int:
     print(f"{action}: {reason}")
     alerts = overdue_holds(skipped, now)
     claimed_elsewhere: set[int] = set()
+    reconcile_runs = runs
     while action == "dispatch":
         # Selecting takes minutes; a run started meanwhile must count (#5558:
         # a re-run began after the snapshot and PR #5539 was dispatched again).
@@ -1052,6 +1057,7 @@ def main(now: datetime | None = None) -> int:
         fresh_since = min([pr["merged_at"]] + [merged_at[n] for n in pr.get("production_dependencies", {}).values()
                                                if n in merged_at])
         fresh_runs = workflow_runs(repo, fresh_since=fresh_since)
+        reconcile_runs = fresh_runs
         action, pr, reason = decide([pr], fresh_runs, lambda n: is_held(repo, n),
                                     lambda run: applied_in_any_attempt(repo, run), main_sha,
                                     None, lambda run: refused_as_applied(repo, run),
@@ -1099,7 +1105,24 @@ def main(now: datetime | None = None) -> int:
               f"{', '.join(f'#{n}' for n in sorted(claimed_elsewhere))})")
     for line in alerts:
         print(f"::error title=Production release held over 30 minutes::{line}")
-    exhausted = [e for e in skipped if e.get("exhausted") or e.get("refunds")]
+    # Plan R1/R7 (#6561): mark stranded PRs on the PRs themselves, over every
+    # candidate. Contained: a reconciler defect never changes the exit code.
+    # merged_migration_prs raises on incomplete discovery, so reaching here
+    # means discovery this pass was complete (discovery_ok, card decision 1).
+    try:
+        marks = reconcile_stranded_marks(repo, candidates, reconcile_runs, live, now, held,
+                                         pass_applied, pass_refused, pass_stale, pass_refunded,
+                                         discovery_ok=True, dry_run=args.dry_run)
+    except Exception as exc:
+        print(f"::warning title=Stranded-PR reconciler defect::{type(exc).__name__}: {exc}; "
+              "labels and notices were not reconciled this pass")
+        marks = []
+    notice_failures = [r for r in marks if r["outcome"] == "FAILED"]
+    if notice_failures and not args.dry_run:
+        report_notice_failures(repo, notice_failures)
+    parked_notice = {r["number"]: r["outcome"] for r in marks if r["label"] == PARKED_LABEL}
+    exhausted = [{**e, "notice": parked_notice[e["number"]]} if e["number"] in parked_notice else e
+                 for e in skipped if e.get("exhausted") or e.get("refunds")]
     for entry in exhausted:
         cap_note = (f" {entry['refunds']} refunds used, now parked (refund cap {MAX_REFUNDS} per change)"
                     if entry.get("refunds") else "")
@@ -1144,6 +1167,12 @@ def main(now: datetime | None = None) -> int:
                 fh.write(f"- Overdue holds: {len(alerts)}\n")
             if reruns:
                 fh.write(f"- Acknowledged re-runs: {len(reruns)}\n")
+            for r in notice_failures:
+                fh.write(f"- Stranded-PR notice not delivered: PR #{r['number']} {r['label']}: {r['detail']}\n")
+            touched = [r for r in marks if r["outcome"] not in ("already", "unknown")]
+            if touched:
+                fh.write("- Stranded-PR marks: " + ", ".join(
+                    f"PR #{r['number']} {r['label']} {r['outcome']}" for r in touched) + "\n")
     return 0
 
 
@@ -1333,6 +1362,7 @@ def report_stuck_change(repo: str, entries: list[dict[str, Any]], now: datetime)
             f"failed {e['exhausted']} automatic attempts"
             + (f" and used its {e['refunds']} refunds (refund cap {MAX_REFUNDS} per change)" if e.get("refunds") else "")
             + f"; merged {hours}h ago and not live"
+            + (f" — PR notice: {e['notice']}" if e.get("notice") else "")
         )
     body = (
         "## Delivery needed\n\n"

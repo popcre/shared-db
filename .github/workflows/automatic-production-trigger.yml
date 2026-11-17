@@ -69,26 +69,54 @@ jobs:
       - name: Skip while a migration apply run is in progress
         id: lane_guard
         run: |
-          set -eu
-          if ! lane=$(gh run list --repo "$GITHUB_REPOSITORY" \
-              --workflow shared-supabase-migrations.yml \
-              --event workflow_dispatch \
-              --limit 20 --json status 2>/tmp/lane-guard.err); then
-            echo "::warning::lane guard query failed (fail-open); continuing to the selector"
-            cat /tmp/lane-guard.err || true
-            exit 0
-          fi
+          set -euo pipefail
           # Same predicate as the selector's wait (automatic_promotion_candidates
           # fetches event=workflow_dispatch only): a dispatched run not yet
           # completed holds the serial lane. CI runs (pull_request, merge_group)
           # of the same workflow never hold the lane -- counting them starved
           # every nudge on busy CI nights.
-          count=$(printf '%s' "$lane" | jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)
-          if [ "$count" -gt 0 ]; then
-            echo "skipped=true" >> "$GITHUB_OUTPUT"
-            echo "skip: a migration workflow run is in progress; its completion nudge re-arms this trigger"
-            exit 0
-          fi
+          pending_runs() {
+            gh run list --repo "$GITHUB_REPOSITORY" \
+              --workflow shared-supabase-migrations.yml \
+              --event workflow_dispatch \
+              --limit 20 --json databaseId,status 2>/tmp/lane-guard.err \
+              | jq -r '[.[] | select(.status != "completed") | .databaseId] | join(" ")'
+          }
+          # #6493 Step 4: the completion nudge is sent from INSIDE the run it
+          # reports, 10-25 s before that run turns "completed". Skipping on it
+          # dropped every completion nudge on 2026-11-17 (5 of 5), so the lane
+          # idled until the next merge or the timer (which fires every ~6 h in
+          # practice, not hourly). A run whose last job -- the queue nudge --
+          # has started is finishing, not holding the lane: wait for it to
+          # complete (bounded) and then select. A run still applying skips at
+          # once, exactly as before.
+          finishing() {
+            local id n
+            for id in $1; do
+              n=$(gh run view "$id" --repo "$GITHUB_REPOSITORY" --json jobs 2>/dev/null \
+                | jq '[.jobs[] | select(.name == "Nudge the production queue" and (.status == "in_progress" or .status == "completed"))] | length') || return 1
+              [ "$n" -gt 0 ] || return 1
+            done
+          }
+          polls=0
+          while :; do
+            if ! pending=$(pending_runs); then
+              echo "::warning::lane guard query failed (fail-open); continuing to the selector"
+              cat /tmp/lane-guard.err || true
+              exit 0
+            fi
+            if [ -z "$pending" ]; then
+              break
+            fi
+            if [ "$polls" -ge 36 ] || ! finishing "$pending"; then
+              echo "skipped=true" >> "$GITHUB_OUTPUT"
+              echo "skip: a migration workflow run is in progress; its completion nudge re-arms this trigger"
+              exit 0
+            fi
+            echo "wait: migration run(s) $pending finishing (queue nudge job started); polling for completion"
+            polls=$((polls + 1))
+            sleep "${LANE_GUARD_POLL_SECONDS:-5}"
+          done
       - uses: actions/checkout@v4
         if: steps.lane_guard.outputs.skipped != 'true'
       # #5937: the selector arms the backstop merge freeze through the node

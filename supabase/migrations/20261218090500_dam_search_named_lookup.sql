@@ -1,4 +1,6 @@
 -- popcre/shared-db#6706, claim #6707, u2giants/popdam3#1037
+-- Reissue of 20261218084707 (PR #6709), parked after preview-lane mutex contention (#6352).
+-- Idempotent: preview already holds these objects from the original version.
 -- Resolve only the names and property associations relevant to a typed search.
 begin;
 set local lock_timeout = '1s';
@@ -8,14 +10,14 @@ set local statement_timeout = '5s';
 -- U+0130 (i plus a combining separator) and U+212A (k) lowercase into ASCII
 -- from outside ASCII. The explicit mappings and C collation make indexes
 -- independent of the database locale.
-create index character_dam_search_name_idx on core.character (
+create index if not exists character_dam_search_name_idx on core.character (
   (btrim(regexp_replace(lower(replace(replace(name, U&'\0130', 'i '), U&'\212A', 'k') collate pg_catalog."C"), '[^a-z0-9]+', ' ', 'g')))
 );
-create index characters_dam_search_name_idx on public.characters (
+create index if not exists characters_dam_search_name_idx on public.characters (
   (btrim(regexp_replace(lower(replace(replace(name, U&'\0130', 'i '), U&'\212A', 'k') collate pg_catalog."C"), '[^a-z0-9]+', ' ', 'g')))
 );
 
-create function public.get_dam_search_named_rows(p_keys text[])
+create or replace function public.get_dam_search_named_rows(p_keys text[])
 returns jsonb
 language plpgsql
 stable

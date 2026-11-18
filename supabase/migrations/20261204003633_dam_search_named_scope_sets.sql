@@ -21,7 +21,7 @@ set local search_path=pg_catalog,public,extensions;
 do $guard$
 begin
   if not exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real)')
-      and md5(p.prosrc) in ('d66a2af948ed737b1b163c9e209f9b17','c3cf9d3e061e2072a1de1b54f6828ed5')) then
+      and md5(p.prosrc) in ('d66a2af948ed737b1b163c9e209f9b17','3e63567a19109fa8803d646680f020c5')) then
     raise exception 'popdam3#1037 pre-change search_dam_documents differs from 20261204003632; reconcile rather than overwrite';
   end if;
   if not exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.dam_search_semantic_anchor_named(extensions.vector,text[],jsonb)')
@@ -325,6 +325,66 @@ AS $function$
       and ((select character_groups from params) is null
         or c.style_group_id = any((select character_groups from params)::uuid[])
         or c.asset_id = any((select character_assets from params)::uuid[]))
+  ), text_floor as materialized (
+    select greatest(coalesce((select min_text_score from params),0),
+      max(c.text_rank_raw) - (select text_score_margin from params))::real floor
+    from candidate_pool c
+  ), classified as materialized (
+    select c.document_type,c.entity_id,c.asset_id,c.style_group_id,c.keyword_rank,c.semantic_rank,
+      (case when c.text_rank_raw >= (select floor from text_floor) then c.text_rank_raw end)::real text_rank
+    from candidate_pool c
+  ), visibility_params as materialized (
+    -- semanticLicensorIds and the #1037 character/property scopes are not visibility filters
+    -- (they are applied to candidates above): strip them so the unfiltered fast paths still apply.
+    select coalesce(p_filters,'{}'::jsonb)-'search'-'semanticLicensorIds'
+      -'requiredCharacterIds'-'requiredLegacyCharacterIds'-'requiredCharacterNames'
+      -'semanticPropertyIds'-'semanticPropertyCharacterIds' f,
+    public.assets_thumbnail_min_date() thumbnail_min_date
+  ), justified_visible as materialized (
+    -- popdam3#1037 Step 6 picture demotion: when the text leg is on, a match by picture ALONE (no
+    -- exact-word match, no text match above the floor) is kept only when the word and text legs
+    -- together found fewer than 10 visible results. Counting stops at 10.
+    select count(*) n from (
+      select 1
+      from classified c
+      where (select has_text_embedding from params)
+        and (c.keyword_rank is not null or c.text_rank is not null)
+        and exists (
+          select 1
+          from (
+            select c.asset_id id where c.document_type='asset' and c.asset_id is not null
+            union all
+            select m.id from public.assets m
+            where c.document_type='style_group' and c.style_group_id is not null
+              and m.style_group_id=c.style_group_id and not m.is_deleted
+          ) x
+          join public.assets a on a.id = x.id
+          left join public.style_groups sg on sg.id=a.style_group_id
+          cross join visibility_params v
+          where public.dam_asset_matches_filters(
+            a.id, a.is_deleted, a.modified_at, a.file_created_at, a.thumbnail_url,
+            a.style_group_id, a.licensor_id, sg.licensor_id, a.property_id, sg.property_id,
+            a.customer_id, sg.customer_id, a.file_type, a.content_type, a.product_material,
+            a.status, a.workflow_status, a.stage, a.is_licensed, a.asset_type, a.art_source,
+            a.thumbnail_error, a.product_category, a.relative_path, a.customer, a.program,
+            v.f, v.thumbnail_min_date))
+      limit 10
+    ) j
+  ), candidate_ranks as materialized (
+    -- Text leg off: rank = keyword + 0.35 x picture (unchanged). On (plan O3 start):
+    -- rank = keyword + 0.6 x text + 0.15 x picture.
+    select r.* from (
+      select c.document_type,c.entity_id,c.asset_id,c.style_group_id,c.keyword_rank,c.semantic_rank,c.text_rank,
+        (coalesce(c.keyword_rank,0) + case when (select has_text_embedding from params)
+          then coalesce(c.text_rank,0) * 0.6 + coalesce(c.semantic_rank,0) * 0.15
+          else coalesce(c.semantic_rank,0) * 0.35 end)::real rank
+      from classified c
+      where not (select has_text_embedding from params)
+         or c.keyword_rank is not null or c.text_rank is not null
+         -- a text match below the floor is no match; a picture-only match needs the < 10 rule
+         or (c.semantic_rank is not null and (select n from justified_visible) < 10)
+    ) r
+    where r.rank >= (select min_rank from params)
   ), ordered_candidates as materialized (
     select c.document_type,c.entity_id,c.asset_id,c.style_group_id,c.keyword_rank,c.semantic_rank,c.rank,c.text_rank,
       row_number() over (order by c.rank desc, c.document_type, c.entity_id) rn
@@ -599,7 +659,7 @@ $function$;
 do $guard$
 begin
   if not exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real)')
-      and md5(p.prosrc)='c3cf9d3e061e2072a1de1b54f6828ed5'
+      and md5(p.prosrc)='3e63567a19109fa8803d646680f020c5'
       and pg_get_userbyid(p.proowner)='postgres'
       and p.prosecdef and p.provolatile='s' and p.proretset
       and p.proconfig=ARRAY['search_path=public, extensions','statement_timeout=30s']::text[]

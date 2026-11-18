@@ -46,7 +46,8 @@ begin
      -- #5053: exact_docs is the third pre-pagination consumer of the helper
      -- (summary probe, page EXISTS, exact_docs EXISTS ... LIMIT 1).
      or (length(v_search) - length(replace(v_search, 'dam_asset_matches_filters', '')))
-        / length('dam_asset_matches_filters') <> 3
+        / length('dam_asset_matches_filters') <> 4
+     -- popdam3#1037 Step 6: justified_visible (picture-demotion count) is the fourth.
      or position('dam_asset_matches_filters' in v_search)
         > position('page as materialized' in lower(v_search))
      or position(reverse('dam_asset_matches_filters') in reverse(v_search))

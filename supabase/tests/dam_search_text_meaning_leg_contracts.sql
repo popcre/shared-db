@@ -126,9 +126,9 @@ begin
 
   -- 5. Ten or more justified results: the picture-only match is dropped.
   insert into dam.search_text_vectors (document_type, entity_id, model, input_sha256, embedding)
-  select 'style_group', g[i], model, repeat('e', 64),
+  select 'style_group', g[k], model, repeat('e', 64),
     (array[0.93::real, sqrt(1 - 0.93*0.93)::real] || array_fill(0::real, array[1022]))::extensions.halfvec
-  from generate_series(8, 20) i
+  from generate_series(8, 20) k
   on conflict (document_type, entity_id) do update set model = excluded.model, embedding = excluded.embedding;
   select array_agg(entity_id), min(total_count) into ids, n
   from public.search_dam_documents('zq1037sxword', '{}'::jsonb, 50, 0, array['style_group'], e0, 0, 0.5, q, null, null);

@@ -152,6 +152,20 @@ insert into t2873_expected values
   ('designflow_prod_backend_grants','table','dflow_prod.user_roles','UPDATE'),
   ('designflow_prod_backend_grants','table','dflow_prod.user_roles','DELETE'),
   ('designflow_prod_item_master_grants','view','dflow_prod.item_detail_upc','SELECT'),
+  ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.item_pk','SELECT'),
+  ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.item_num_id','SELECT'),
+  ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.compan_code_fk','SELECT'),
+  ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.div_code_fk','SELECT'),
+  ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.UPC','SELECT'),
+  ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.EAN','SELECT'),
+  ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.GTIN','SELECT'),
+  ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.color_code_fk','SELECT'),
+  ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.size_code_fk','SELECT'),
+  ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.size_seq','SELECT'),
+  ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.whse_sku_id','SELECT'),
+  ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.item_active_status','SELECT'),
+  ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.coldlion_synced_at','SELECT'),
+  ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.prepack_code_fk','SELECT'),
   ('designflow_prod_backend_grants','table','dflow_prod.user_notification','SELECT'),
   ('designflow_prod_backend_grants','table','dflow_prod.user_notification','INSERT'),
   ('designflow_prod_backend_grants','table','dflow_prod.user_notification','UPDATE'),
@@ -525,6 +539,13 @@ begin
     from pg_class c join pg_namespace n on n.oid=c.relnamespace
     cross join lateral aclexplode(c.relacl) a join pg_roles r on r.oid=a.grantee
     where r.rolname like 'designflow\_prod\_%\_grants' or r.rolname = 'designflow_prod_tracking_runtime'
+    union all
+    select r.rolname::text, 'column', n.nspname||'.'||c.relname||'.'||col.attname,
+           case when a.is_grantable then a.privilege_type||' WITH GRANT OPTION' else a.privilege_type end
+    from pg_attribute col join pg_class c on c.oid=col.attrelid join pg_namespace n on n.oid=c.relnamespace
+    cross join lateral aclexplode(col.attacl) a join pg_roles r on r.oid=a.grantee
+    where col.attnum>0 and not col.attisdropped
+      and (r.rolname like 'designflow\_prod\_%\_grants' or r.rolname like 'designflow\_prod\_%\_runtime')
     union all
     select r.rolname::text, 'function', n.nspname||'.'||p.proname, a.privilege_type
     from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join lateral aclexplode(p.proacl) a join pg_roles r on r.oid=a.grantee

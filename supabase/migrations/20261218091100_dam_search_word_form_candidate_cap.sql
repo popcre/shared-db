@@ -2,9 +2,11 @@
 -- Bare "frame" went from 0.3 s to 8.8 s cold / 3.2 s warm after word forms (20261218084203):
 -- the word-form-only step re-tested every row's word list (and its exact-name list when a name
 -- was recognised), detoasting ~10.7k rows. Now: the GIN index proves the match; the name test
--- runs only on surviving rows; unfiltered searches keep the 300 best word-form-only rows
--- (they score 0.05-0.09, below every exact match) and skip word forms entirely when exact
--- matches already fill twice the requested page. Function body only; no data change.
+-- runs only on surviving rows; unfiltered searches rank only the best greatest(300, page end)
+-- word-form-only rows (they score 0.05-0.09, below every exact match), or none when exact
+-- matches already fill twice the requested page; rows left out still count toward the exact
+-- total. Read-only parity on production: identical pages and totals for frame (two pages),
+-- frames, framed, sticker, print and marie frame. Function body only; no data change.
 -- derived-from: 20261218084706
 begin;
 set local lock_timeout='2s';
@@ -15,7 +17,7 @@ do $guard$
 begin
   if not exists (
     select 1 from pg_proc p where p.oid=to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real)')
-      and md5(p.prosrc) in ('1483210ba34245a52e60ec3ea6fd7737','44bd7685a32aba9e6b9f870b9e51108b')
+      and md5(p.prosrc) in ('1483210ba34245a52e60ec3ea6fd7737','4bcf1efa6a0f75c4713eb45ee2926ba7')
   ) then
     raise exception 'DAM ranked search source differs from 20261218084706; reconcile rather than overwrite';
   end if;
@@ -98,16 +100,9 @@ AS $function$
     -- match, so no per-row re-test here (re-testing detoasted ~10.7k word lists: 8.8 s cold for
     -- "frame"). Only narrow key columns are read. The named-character scope (applied to every leg
     -- in candidate_pool anyway) is applied here too so the cap below never drops an in-scope row.
-    -- Skipped entirely when, unfiltered, exact matches already fill twice the requested page
-    -- (word-form-only rows score 0.05-0.09, below every exact match).
-    select d.document_type,d.entity_id,greatest(length(d.title_key),1) key_len
+    select d.document_type,d.entity_id,d.asset_id,d.style_group_id,greatest(length(d.title_key),1) key_len
     from public.dam_search_keys d
     where (p_document_types is null or d.document_type = any(p_document_types))
-      and not ((coalesce(p_filters,'{}'::jsonb)-'search'-'semanticLicensorIds'
-          -'requiredCharacterIds'-'requiredLegacyCharacterIds'-'requiredCharacterNames'
-          -'semanticPropertyIds'-'semanticPropertyCharacterIds') = '{}'::jsonb
-        and (select count(*) from exact_text_matches)
-          >= 2 * (select page_offset + page_limit from params) + 50)
       and d.search_tsv_en @@ any(array(select distinct q.tsq_en from queries q where q.tsq_en::text <> ''))
       and ((select character_groups from params) is null
         or d.style_group_id = any((select character_groups from params)::uuid[])
@@ -118,19 +113,30 @@ AS $function$
         select e.document_type, e.entity_id from exact_text_matches e)
   ), word_form_matches as materialized (
     -- The per-query test is needed only when a recognised name must also be present in its exact
-    -- form; it then runs on the surviving rows only. Unfiltered, keep the ~300 best word-form-only
-    -- rows (shortest title first = highest word-form score), enough for any visible page.
-    select w.document_type,w.entity_id
+    -- form; it then runs on the surviving rows only.
+    select w.*, row_number() over (order by w.key_len, w.document_type, w.entity_id) wf_rn
     from word_form_keys w
     where not exists (select 1 from queries q where q.names_tsq is not null)
        or exists (select 1 from public.dam_search_keys d join queries q on q.tsq_en::text <> ''
          where d.document_type = w.document_type and d.entity_id = w.entity_id
            and d.search_tsv_en @@ q.tsq_en
            and (q.names_tsq is null or d.search_tsv @@ q.names_tsq))
-    order by w.key_len, w.document_type, w.entity_id
-    limit (case when (coalesce(p_filters,'{}'::jsonb)-'search'-'semanticLicensorIds'
-          -'requiredCharacterIds'-'requiredLegacyCharacterIds'-'requiredCharacterNames'
-          -'semanticPropertyIds'-'semanticPropertyCharacterIds') = '{}'::jsonb then 300 else 1000000000 end)
+  ), word_form_cap as materialized (
+    -- Word-form-only rows score 0.05-0.09, below every exact match. Unfiltered (and min rank
+    -- <= 0.05): rank only the best greatest(300, offset+limit+1) of them (shortest title first =
+    -- highest word-form score), or none when exact matches already fill twice the requested
+    -- page plus 50. The rest still count toward the exact total (word_form_overflow below).
+    -- Any filter: no cap (filters are applied later, so every row may be needed).
+    select case
+      when (coalesce(p_filters,'{}'::jsonb)-'search'-'semanticLicensorIds'
+        -'requiredCharacterIds'-'requiredLegacyCharacterIds'-'requiredCharacterNames'
+        -'semanticPropertyIds'-'semanticPropertyCharacterIds') = '{}'::jsonb
+       and (select min_rank from params) <= 0.05
+      then case
+        when (select count(*) from exact_text_matches)
+             >= 2 * (select page_offset + page_limit from params) + 50 then 0
+        else greatest(300, (select page_offset + page_limit + 1 from params)) end
+      else null end::bigint cap
   ), full_text_matches as materialized (
     -- popdam3#1037 Step 7: exact words first (today's index and score); then documents that match
     -- only by English word form (search_tsv_en), scored below every exact match. A recognised
@@ -140,6 +146,7 @@ AS $function$
     select d.document_type,d.entity_id,d.asset_id,d.style_group_id,d.title,d.title_key,d.title_tsv,true
     from word_form_matches w
     join public.dam_search_keys d on d.document_type = w.document_type and d.entity_id = w.entity_id
+    where w.wf_rn <= coalesce((select cap from word_form_cap), w.wf_rn)
   ), substring_matches as materialized (
     select d.document_type,d.entity_id,d.asset_id,d.style_group_id,d.title,d.path,d.customer,d.program,d.title_key,d.title_tsv
     from substring_regex r
@@ -476,6 +483,45 @@ AS $function$
     limit (select page_offset + page_limit + 1 from params)
   ), page_state as materialized (
     select count(*) visible_through_page from page_documents
+  ), word_form_overflow as materialized (
+    -- 20261218091100: word-form-only rows left out by word_form_cap (unfiltered requests only)
+    -- still count toward the exact total (owner ask #5053): a maintained flag when current,
+    -- otherwise the same per-document visibility probe. Rows another leg already brought in are
+    -- counted by exact_docs and skipped here.
+    select count(*) n
+    from word_form_matches w
+    left join public.dam_search_documents d
+      on d.document_type = w.document_type and d.entity_id = w.entity_id
+    cross join visibility_params v
+    where w.wf_rn > coalesce((select cap from word_form_cap), w.wf_rn)
+      and not exists (select 1 from ordered_candidates c
+        where c.document_type = w.document_type and c.entity_id = w.entity_id)
+      and case
+        when d.has_default_visible_member is not null
+         and d.default_visible_min_date = v.thumbnail_min_date
+         and d.asset_id is not distinct from w.asset_id
+         and d.style_group_id is not distinct from w.style_group_id
+        then d.has_default_visible_member
+        else exists (
+          select 1
+          from (
+            select w.asset_id id where w.document_type='asset' and w.asset_id is not null
+            union all
+            select m.id from public.assets m
+            where w.document_type='style_group' and w.style_group_id is not null
+              and m.style_group_id=w.style_group_id and not m.is_deleted
+          ) x
+          join public.assets a on a.id = x.id
+          left join public.style_groups sg on sg.id=a.style_group_id
+          where public.dam_asset_matches_filters(
+            a.id, a.is_deleted, a.modified_at, a.file_created_at, a.thumbnail_url,
+            a.style_group_id, a.licensor_id, sg.licensor_id, a.property_id, sg.property_id,
+            a.customer_id, sg.customer_id, a.file_type, a.content_type, a.product_material,
+            a.status, a.workflow_status, a.stage, a.is_licensed, a.asset_type, a.art_source,
+            a.thumbnail_error, a.product_category, a.relative_path, a.customer, a.program,
+            v.f, v.thumbnail_min_date)
+          limit 1)
+      end
   ), exact_docs as materialized (
     -- Owner ask 2026-10-29 (issue #5053): totals must be exact, never lower
     -- bounds. Fast path (#5747): unfiltered request with every flag current
@@ -516,7 +562,7 @@ AS $function$
     end total_count
   ), summary as materialized (
     select
-      (select total_count from exact_docs) total_count,
+      ((select total_count from exact_docs) + (select n from word_form_overflow)) total_count,
       case when (select truncated from probe_state)
         -- Facet aggregates count assets, and the probe sees only the first
         -- 1,001; past the cap the per-key counts would be lower bounds, which
@@ -556,7 +602,7 @@ $function$;
 do $guard$
 begin
   if not exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real)')
-      and md5(p.prosrc)='44bd7685a32aba9e6b9f870b9e51108b'
+      and md5(p.prosrc)='4bcf1efa6a0f75c4713eb45ee2926ba7'
       and pg_get_userbyid(p.proowner)='postgres'
       and p.prosecdef and p.provolatile='s' and p.proretset
       and p.proconfig=ARRAY['search_path=public, extensions','statement_timeout=30s']::text[]

@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "migration_version": "20261218035022",
-  "migration_sha256": "a3f407b164b9bd2dcdc02aa32ef1ea93c9f32792bf77cac2038db8eb66e5843c",
+  "migration_sha256": "dbef0216fe543d7825914d9874f047913ef7dba5a778d4b31ff606294c2c04e1",
   "marker_schema_version": 1,
   "marker_reviews": [
     {
-      "line_start": 192,
-      "line_end": 193,
+      "line_start": 149,
+      "line_end": 150,
       "disposition": "no_durable_target",
-      "reason": "The dynamic marker is the existence-guarded REVOKE EXECUTE loop over the 99 named revoke-candidate functions (issue #6457). No sidecar check kind can assert role privileges: the supported kinds are exact_row_count, catalog_contract and catalog_absence, none of which expresses has_function_privilege state. The durable proof is the in-migration assertion (the same DO block raises if any in-scope anon/authenticated/PUBLIC EXECUTE grant survives on the revoke set) plus the preview after-census and issue #6457's acceptance check. Same shape and rationale as the #6415 sidecar for migration 20261116013153."
+      "reason": "The dynamic marker is the existence-guarded REVOKE EXECUTE loop over the 80 named revoke-candidate functions (issue #6457). No sidecar check kind can assert role privileges: the supported kinds are exact_row_count, catalog_contract and catalog_absence, none of which expresses has_function_privilege state. The durable proof is the in-migration assertion (the same DO block raises if any in-scope anon/authenticated/PUBLIC EXECUTE grant survives on the revoke set) plus the preview after-census and issue #6457's acceptance check. Same shape and rationale as the #6415 sidecar for migration 20261116013153."
     }
   ],
   "checks": []

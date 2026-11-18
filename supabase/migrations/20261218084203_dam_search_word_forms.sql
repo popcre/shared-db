@@ -19,8 +19,9 @@
 --   public.dam_search_exact_names(text, jsonb)  the recognised names in a query that must stay in
 --       exact form: the character names the edge function already recognised and sends
 --       (p_filters.requiredCharacterNames, with its guards: no product words, 3+ characters),
---       plus licensor names/aliases and property names that appear as a whole phrase in the
---       query (curated lists, 39 + 855 rows; the edge function only forwards those in picture
+--       plus licensor names and property names that appear as a whole phrase in the
+--       query (curated lists, 39 + 855 rows; core.licensor_alias is not in every replay baseline,
+--       so aliases are not read; the edge function only forwards those in picture
 --       mode, so they are matched here).
 --   search_dam_documents: full_text_matches gains a second, lower-scored alternative. Exact-word
 --       matches keep today's score; a document found only by word form scores 0.05-0.09, below
@@ -114,7 +115,6 @@ as $function$
     union
     select pg_catalog.phraseto_tsquery('pg_catalog.simple'::regconfig, left(x.name, 200))
     from (select l.name from core.licensor l
-          union select a.alias from core.licensor_alias a
           union select p.name from core.property p) x
     where length(btrim(x.name)) >= 3
   )

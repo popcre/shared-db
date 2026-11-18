@@ -13,8 +13,8 @@ read-when: checking #6457 revoke-candidate dispositions or the contract-test KEE
 
 | disposition | count |
 |---|---|
-| revoke | **37** |
-| keep | **69** |
+| revoke | **36** |
+| keep | **70** |
 | total | **106 unique names / 107 signatures** |
 
 ## Method

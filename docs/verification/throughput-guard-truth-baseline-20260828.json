@@ -1,7 +1,7 @@
 {
   "command": "node scripts/check-production-verification-sidecars.mjs",
   "detector_schema_version": 1,
-  "detector_source_sha256": "8c06deb31625adb3c5e8ff2956b57a91764026c56bc4e775c331f3b4bb666b87",
+  "detector_source_sha256": "a8af4bf0a9f41e3dab27561834ef260672d509eff33a2f5b9b4d26355c2536df",
   "enforced_versions": [
     "20260621151155",
     "20260701154948",

@@ -21,7 +21,7 @@ import { canonicalReviewerAllowlist, REVIEWER_FALLBACK_PROVIDERS, orderedReviewe
 import { inheritReviewerAllowlist, isReviewerAllowlistSuperset, sameReviewerAllowlist } from './manage-migration-coordination.mjs'
 import { parseAssignmentRef } from './manage-migration-coordination.mjs'
 import { setScopeStatus, wrongOwnerMessage } from './manage-migration-coordination.mjs'
-import { RETIREMENT_CLOSE_REASON, sameOwnerLabel, parkComment, authorCheckinRef, AUTHOR_CHECKIN_MESSAGE, retiredClaimRef } from './manage-migration-coordination.mjs'
+import { RETIREMENT_CLOSE_REASON, sameOwnerLabel, parkComment, authorCheckinRef, AUTHOR_CHECKIN_MESSAGE, retiredClaimRef, resetRetirementSnapshot } from './manage-migration-coordination.mjs'
 import { readyRecord, persistInitialReady } from './db-flow/reconcile.mjs'
 import { canonicalJson, sha256 } from './db-flow/evidence-bundle.mjs'
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -547,6 +547,7 @@ function claimIo(){
   io.localHead=()=>CL_HEAD
   io.localBranch=()=>'codex/2110-old'
   io.makeOwnerCommit=(message)=>{const sha=`cl-${++seq}`;commits.set(sha,{message});return sha}
+  io.readCommitMessage=(sha)=>commits.get(sha)?.message ?? null
   io.getCommit=(sha)=>commits.get(sha)??{message:'db-coordination permanent version reservation'}
   io.refs.set(`refs/db-claims/${CL_VERSION}`,CL_RES)
   io.commentIssue=()=>{}
@@ -608,7 +609,7 @@ test('--release-claim refuses while the claim branch still has an open pull requ
 test('--park closes the open pull request with a resume note, then releases the claim',()=>{
   const io=claimIo()
   const closed=[]
-  io.openPulls=()=>[{number:4102,head:{ref:'codex/2110-old'}}]
+  io.openPulls=()=>closed.length ? [] : [{number:4102,head:{ref:'codex/2110-old'}}]
   io.closePull=(number,comment)=>closed.push({number,comment})
   const out=runClaimCli(['--release-claim','4101','--owner','author-1','--confirm-finished','--park'],io)
   assert.equal(out.exit,0,out.stderr)
@@ -617,6 +618,16 @@ test('--park closes the open pull request with a resume note, then releases the 
   assert.match(closed[0].comment,/Parked: claim #4101 was released with `--release-claim --park`/)
   assert.match(closed[0].comment,/Migration version 20260814170219 stays permanently reserved/)
   assert.equal(io.closed?.reason,CLAIM_CLOSE_REASONS.explicitRelease)
+})
+
+test('--park keeps the claim open if the pull request close has no effect',()=>{
+  const io=claimIo()
+  io.openPulls=()=>[{number:4102,head:{ref:'codex/2110-old'}}]
+  io.closePull=()=>{}
+  const out=runClaimCli(['--release-claim','4101','--owner','author-1','--confirm-finished','--park'],io)
+  assert.equal(out.exit,2)
+  assert.match(out.stderr,/still has an open pull request after --park/)
+  assert.equal(io.closed,undefined)
 })
 
 test('--park and --confirm-finished never apply without --release-claim, and park cannot combine with --retire',()=>{
@@ -641,6 +652,45 @@ test('--release-claim --retire writes the terminal tombstone and closes with the
   assert.ok(io.refs.has(retiredClaimRef(CL_VERSION)),'the terminal tombstone must exist')
   assert.equal(io.closed?.reason,RETIREMENT_CLOSE_REASON)
   assert.equal(io.refs.has(MUTEX_REF),false)
+})
+
+test('--release-claim and --park refuse to mutate a reopened retired claim',(t)=>{
+  t.after(resetRetirementSnapshot)
+  const io=claimIo()
+  const release=['--release-claim','4101','--owner','author-1','--confirm-finished']
+  const retired=runClaimCli([...release,'--retire','abandoned-worktree','--pr','4102','--head-sha',CL_HEAD,'--worktree-state','absent','--evidence','issue #2110'],io)
+  assert.equal(retired.exit,0,retired.stderr)
+  io.openPulls=()=>[{number:4102,head:{ref:'codex/2110-old'}}]
+  const closedPulls=[]
+  io.closePull=(number)=>closedPulls.push(number)
+  for (const args of [release,[...release,'--park']]) {
+    const out=runClaimCli(args,io)
+    assert.equal(out.exit,2)
+    assert.match(out.stderr,/terminally retired.*can never be released/)
+    assert.equal(io.closed?.reason,RETIREMENT_CLOSE_REASON)
+    assert.deepEqual(closedPulls,[])
+  }
+})
+
+test('--retire rejects invalid arguments before creating a mutex owner commit',()=>{
+  const valid={'--retire':'abandoned-worktree','--worktree-state':'absent','--pr':'4102','--head-sha':CL_HEAD,'--evidence':'issue #2110'}
+  for (const [flag,value,message] of [
+    ['--retire','gave-up',/--retire decision/],
+    ['--worktree-state','unknown',/--worktree-state/],
+    ['--pr','0',/exact --pr and --head-sha/],
+    ['--head-sha','short',/exact --pr and --head-sha/],
+    ['--evidence',' ',/--evidence/],
+  ]) {
+    const io=claimIo()
+    const ownerCommits=[]
+    io.makeOwnerCommit=(message)=>{ownerCommits.push(message);return 'owner-sha'}
+    const args=Object.entries({...valid,[flag]:value}).flat()
+    const out=runClaimCli(['--release-claim','4101','--owner','author-1','--confirm-finished',...args],io)
+    assert.equal(out.exit,2)
+    assert.match(out.stderr,message)
+    assert.deepEqual(ownerCommits,[])
+    assert.deepEqual(io.calls,[])
+  }
 })
 
 test('--stop-author relinquishes author capacity on a preserved clean exact source head',()=>{

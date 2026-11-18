@@ -23,7 +23,7 @@
 // Matching is deliberately narrow (never a guess):
 //   * key = (production reference, SKU); Google header number compared
 //     case-insensitively, the SKU exactly;
-//   * a Google line is a candidate only when it carries NO coldlion ref yet,
+//   * a Google line is a candidate only when it carries no non-production coldlion ref,
 //     is not voided, cancelled, or source-cancelled;
 //   * exactly one candidate Google line for the key → every unattached
 //     ColdLion item of that key attaches to it (one order, possibly split
@@ -99,7 +99,8 @@ g as materialized (
     and exists (select 1 from plm.production_order_line_source_ref r
                 where r.production_order_line_id = gl.id and r.source_system in ('google_order_list', 'popdam_buy_sheet'))
     and not exists (select 1 from plm.production_order_line_source_ref r
-                    where r.production_order_line_id = gl.id and r.source_system = 'coldlion')
+                    where r.production_order_line_id = gl.id and r.source_system = 'coldlion'
+                      and r.source_id !~ '${PROD_REF_PATTERN}')
 ),
 gcount as materialized (select ref, sku, count(*) as n from g group by ref, sku),
 single as (
@@ -152,9 +153,12 @@ select ${sqlUuid(runId)}, '/prodHistory', 'POP',
        'no-sales-order production lines attached to Google OrderList lines'
 where exists (select 1 from pg_temp.coldlion_prod_claim);
 
+-- Production refs are supplemental evidence, not a sales-order identity.
+-- Keeping them secondary preserves catalog recipes and Google editor corrections
+-- until a real sales-order ref becomes primary.
 insert into plm.production_order_line_source_ref (production_order_line_id, source_system, source_id, is_primary, metadata)
 select c.google_line, 'coldlion', c.source_id,
-       c.source_id = min(c.source_id) over (partition by c.google_line),
+       false,
        jsonb_build_object('linked_by', 'coldlion-prod-only-claim', 'run_id', ${sqlText(runId)},
          'prod_order_no', split_part(c.source_id, ':', 3)::bigint,
          'prod_line_seq', split_part(c.source_id, ':', 5)::bigint)

@@ -1,7 +1,7 @@
 ---
 issue: 2541
 status: OPEN
-owner: mimo/6084-doc-health
+owner: unowned
 ---
 
 # Coordinator prompt — MG06 / AI licensor submissions (2026-11-11, 5:16 PM EST)

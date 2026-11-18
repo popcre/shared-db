@@ -1,7 +1,7 @@
 ---
 issue: 6150
 status: OPEN
-owner: mimo/6084-doc-health
+owner: unowned
 ---
 
 # Handoff — MG06 merch-group fix + site-path store (2026-11-11, 5:10 PM EST)

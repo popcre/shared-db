@@ -120,6 +120,41 @@ test('Guard C rejects a timezone-less promote-by header', () => {
   })
 })
 
+for (const deadline of [
+  '2026-13-07T03:00:00Z',
+  '2026-99-07T03:00:00Z',
+  '2026-11-32T03:00:00Z',
+  '2026-04-31T03:00:00Z',
+  '2026-02-29T03:00:00Z',
+  '0000-11-07T03:00:00Z',
+  '2026-11-07T25:00:00Z',
+  '2026-11-07T03:60:00Z',
+  '2026-11-07T03:00:60Z',
+  '2026-11-07T03:00:00+25:00',
+]) {
+  test(`Guard C rejects an impossible promote-by timestamp: ${deadline}`, () => {
+    withFixture(['20260801120000_urgent.sql'], (dir) => {
+      writeFileSync(path.join(dir, '20260801120000_urgent.sql'),
+        `-- promote-by: ${deadline}\nselect 1;\n`)
+      const { status, stderr } = runGuards(dir, { mainNewest: '20260801100000' })
+      assert.notEqual(status, 0)
+      assert.match(stderr, /malformed promote-by deadline header/)
+      assert.match(stderr, /20260801120000_urgent\.sql/)
+    })
+  })
+}
+
+for (const deadline of ['2028-02-29T03:00:00Z', '2026-11-07T03:00:00.123+05:30']) {
+  test(`Guard C accepts a valid promote-by timestamp: ${deadline}`, () => {
+    withFixture(['20260801120000_urgent.sql'], (dir) => {
+      writeFileSync(path.join(dir, '20260801120000_urgent.sql'),
+        `-- promote-by: ${deadline}\nselect 1;\n`)
+      const { status, stderr } = runGuards(dir, { mainNewest: '20260801100000' })
+      assert.equal(status, 0, `expected a pass. stderr:\n${stderr}`)
+    })
+  })
+}
+
 test('Guard A fails and names BOTH colliding files', () => {
   withFixture(
     [

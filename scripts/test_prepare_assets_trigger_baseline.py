@@ -19,6 +19,7 @@ class BaselineTests(unittest.TestCase):
         row='(16486,5,t,-9223372036854775808,1793973600.123456,'+'a'*32+',9007199254740993,123456789.123456789,18446744073709551615)'
         self.assertEqual(digest,hashlib.md5(row.encode()).hexdigest())
         self.assertIn('9007199254740993::bigint',values)
+        self.assertIn("'-9223372036854775808'::bigint",values)
         c['family'][0]['stats_since']='2026-11-06T14:00:00.123456+00:00'
         self.assertEqual(m.prepare(c)[1],digest)
 

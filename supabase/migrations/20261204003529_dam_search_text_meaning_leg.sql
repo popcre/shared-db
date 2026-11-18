@@ -552,7 +552,9 @@ $function$;
 
 alter function public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real) owner to postgres;
 revoke all on function public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real) from public, anon;
-grant execute on function public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real) to authenticated, service_role;
+-- separate grants keep the ACL text identical to before ({postgres,service_role,authenticated}).
+grant execute on function public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real) to service_role;
+grant execute on function public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real) to authenticated;
 
 do $guard$
 declare

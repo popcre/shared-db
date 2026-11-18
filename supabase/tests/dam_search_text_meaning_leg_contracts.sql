@@ -91,7 +91,7 @@ begin
   select array_agg(entity_id), min(total_count) into ids, n
   from public.search_dam_documents('zq1037sxword', '{}'::jsonb, 50, 0, array['style_group'], e0, 0, 0.5, q, null, null);
   if not (ids @> array[g[1], g[2], g[3], g[5], g[7]]) or ids && array[g[4], g[6]] then
-    raise exception 'popdam3#1037 S6 text on: total % ids %', n, ids;
+    raise exception 'popdam3#1037 S6 text on: total % groups %', n, (select array_agg(i order by i) from generate_series(1,20) i where g[i] = any(ids));
   end if;
   -- Ranking: text-only cosine 1.0 = 0.6.
   select d.rank into r from public.search_dam_documents('zq1037sxword', '{}'::jsonb, 50, 0, array['style_group'], e0, 0, 0.5, q, null, null) d

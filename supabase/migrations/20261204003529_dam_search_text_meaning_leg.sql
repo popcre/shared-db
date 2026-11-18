@@ -350,7 +350,8 @@ AS $function$
       from classified c
       where not (select has_text_embedding from params)
          or c.keyword_rank is not null or c.text_rank is not null
-         or (select n from justified_visible) < 10
+         -- a text match below the floor is no match; a picture-only match needs the < 10 rule
+         or (c.semantic_rank is not null and (select n from justified_visible) < 10)
     ) r
     where r.rank >= (select min_rank from params)
   ), ordered_candidates as materialized (

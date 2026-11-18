@@ -227,6 +227,58 @@ ALTER_RELATION_RE = re.compile(
     r"^\s*alter\s+(table|view|materialized\s+view|foreign\s+table)\s+"
     rf"(if\s+exists\s+)?(?:only\s+)?{QUALIFIED}"
 )
+# Issue #6603: `alter table <schema>.<table> alter column <col> [set data] type
+# <type>` changes `pg_attribute.atttypid`/`atttypmod` only. The relation may be a
+# quoted mixed-case name (`dflow_prod."itemHeader"`), which `QUALIFIED` cannot
+# read, so it has its own pattern. strip_sql lowercases, so the case-preserving
+# names are re-read from the comment-stripped raw text with the same shape.
+# Only a plain type spelling is accepted (no USING, COLLATE, or second action);
+# anything else falls through to the generic ALTER handling unchanged.
+_COL_IDENT = r'(?:"[A-Za-z_][A-Za-z0-9_$ ]*"|[A-Za-z_][A-Za-z0-9_$]*)'
+_COL_TYPE = r"[a-z][a-z0-9_ ]*?(?:\(\s*\d+\s*(?:,\s*\d+\s*)?\))?(?:\s*\[\s*\])?"
+ALTER_COLUMN_TYPE_RE = re.compile(
+    rf"^\s*alter\s+table\s+(?:only\s+)?({_COL_IDENT})\.({_COL_IDENT})\s+"
+    rf"alter\s+(?:column\s+)?({_COL_IDENT})\s+(?:set\s+data\s+)?type\s+({_COL_TYPE})\s*$",
+    re.IGNORECASE,
+)
+ALTER_COLUMN_TYPE_RAW_RE = re.compile(
+    rf"\balter\s+table\s+(?:only\s+)?({_COL_IDENT})\.({_COL_IDENT})\s+"
+    rf"alter\s+(?:column\s+)?({_COL_IDENT})\s+(?:set\s+data\s+)?type\s+({_COL_TYPE})\s*;",
+    re.IGNORECASE,
+)
+_TYPE_ALIASES = {
+    "varchar": "character varying", "char": "character", "bpchar": "character",
+    "int": "integer", "int4": "integer", "int8": "bigint", "int2": "smallint",
+    "bool": "boolean", "float8": "double precision", "float4": "real",
+    "decimal": "numeric", "timestamptz": "timestamp with time zone",
+    "timestamp": "timestamp without time zone", "timetz": "time with time zone",
+    "time": "time without time zone",
+}
+
+
+def _ident_name(token: str) -> str:
+    """Catalog name of one identifier token: quoted keeps case, bare folds."""
+    return token[1:-1] if token.startswith('"') else token.lower()
+
+
+def normalize_column_type(spelling: str) -> str:
+    """The `format_type()` spelling of a plain SQL type name (#6603)."""
+    text = re.sub(r"\s+", " ", spelling.strip().lower())
+    text = re.sub(r"\s*\(\s*", "(", text)
+    text = re.sub(r"\s*,\s*", ",", text)
+    text = re.sub(r"\s*\)", ")", text)
+    text = re.sub(r"\s*\[\s*\]", "[]", text)
+    match = re.fullmatch(r"([a-z0-9_ ]+?)(\([0-9,]+\))?(\[\])?", text)
+    if not match:
+        return text
+    base, mod, arr = match.group(1), match.group(2) or "", match.group(3) or ""
+    base = _TYPE_ALIASES.get(base, base)
+    for zone in (" with time zone", " without time zone"):
+        if mod and base.endswith(zone):
+            return base[: -len(zone)] + mod + zone + arr
+    return base + mod + arr
+
+
 # Issue #4761: `alter function <name>(<args>) set|reset <setting>` changes only
 # `pg_proc.proconfig`. It names a routine that must still exist and a setting
 # whose presence is a catalog fact, so it is derived and checked rather than
@@ -1993,6 +2045,7 @@ class Targets:
         schema_comments: dict[str, str | None] | None = None,
         change_types: set[str] | None = None,
         extensions: set[str] | None = None,
+        column_types: set[tuple[str, str, str, str]] | None = None,
     ) -> None:
         # ORDER IS LOAD-BEARING and must be the order the statements appear in,
         # not sorted: a batch may `grant` a privilege and then `revoke` it, and
@@ -2018,6 +2071,8 @@ class Targets:
         self.seeded = sorted(seeded)
         self.indexes = sorted(indexes or set())
         self.extensions = sorted(extensions or set())
+        # (schema, table, column, expected format_type) -- catalog names, case kept.
+        self.column_types = sorted(column_types or set())
         self.schema_renames = sorted(schema_renames or set())
         # Filled only for a batch of nothing but `comment on` statements.
         self.schema_comments = sorted((schema_comments or {}).items())
@@ -2065,6 +2120,7 @@ class Targets:
             or self.schema_comments
             or self.function_settings
             or self.extensions
+            or self.column_types
         )
 
     def as_dict(self) -> dict[str, list[str]]:
@@ -2087,6 +2143,7 @@ class Targets:
                 for family, signature, setting, action in self.function_settings
             ],
             "extensions": self.extensions,
+            "column_types": [f"{s}.{t}.{c}|{ty}" for s, t, c, ty in self.column_types],
             "privilege_assertions": [e.describe() for e in self.privileges],
             "unassertable_statements": self.notes,
             "change_types": self.change_types,
@@ -3158,6 +3215,7 @@ def derive_targets(migrations: dict[str, Path], allowlist: list[str]) -> Targets
     settings: dict[tuple[str, str | None, str], tuple[str, str | None, str, str]] = {}
     batch_statements: list[str] = []
     extensions: set[str] = set()
+    column_types: dict[tuple[str, str, str], str] = {}
 
     for version in allowlist:
         path = migrations.get(version)
@@ -3185,6 +3243,12 @@ def derive_targets(migrations: dict[str, Path], allowlist: list[str]) -> Targets
             pure_versions.append(version)
         text = strip_sql(raw)
         batch_statements.extend(split_statements(text))
+        # Case-preserving reading of every ALTER COLUMN TYPE, keyed by its
+        # lowercased shape so the statement loop below can look it up.
+        raw_column_types = {
+            tuple(g.lower() for g in m.groups()): m.groups()
+            for m in ALTER_COLUMN_TYPE_RAW_RE.finditer(_strip_sql_comments(raw))
+        }
         for statement in split_statements(text):
             if match := CREATE_EXTENSION_RE.match(statement):
                 name = match.group(1) or match.group(2).lower()
@@ -3328,6 +3392,21 @@ def derive_targets(migrations: dict[str, Path], allowlist: list[str]) -> Targets
                     f"silently accepted: `{statement.strip()[:240]}`"
                 )
                 continue
+            if match := ALTER_COLUMN_TYPE_RE.match(statement):
+                key = tuple(g.lower() for g in match.groups())
+                original = raw_column_types.get(key)
+                if original is None:
+                    notes.append(
+                        f"{version}: ALTER COLUMN TYPE could not be re-read with its "
+                        f"original case: `{statement.strip()[:240]}`"
+                    )
+                else:
+                    schema, table, column, type_text = original
+                    column_types[(_ident_name(schema), _ident_name(table), _ident_name(column))] = (
+                        normalize_column_type(type_text)
+                    )
+                change_types.add("alter column type")
+                continue
             if match := ALTER_RELATION_RE.match(statement):
                 kind, if_exists = match.group(1), match.group(2)
                 name = f"{match.group(3)}.{match.group(4)}"
@@ -3418,6 +3497,7 @@ def derive_targets(migrations: dict[str, Path], allowlist: list[str]) -> Targets
         noop_declaration=noop,
         pure_data={"versions": sorted(pure_versions), "rejected": pure_rejections},
         indexes=indexes,
+        column_types={k + (v,) for k, v in column_types.items()},
         schema_renames=schema_renames,
         function_settings=list(settings.values()),
         schema_comments=verified_schema_comments,
@@ -3511,6 +3591,25 @@ def _objtype_array(values: list[str]) -> str:
     return "array[" + ", ".join(f"'{v}'" for v in values) + "]::text[]"
 
 
+_SAFE_CATALOG_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_$ ]*")
+_SAFE_TYPE_TEXT_RE = re.compile(r"[a-z][a-z0-9_ ]*(?:\([0-9,]+\))?[a-z ]*(?:\[\])?")
+
+
+def _column_type_values(rows: list[tuple[str, str, str, str]]) -> str:
+    """A VALUES list for the #6603 column-type reading, validated before use."""
+    if not rows:
+        return "(null::text, null::text, null::text, null::text)"
+    out = []
+    for schema, table, column, expected in rows:
+        for part in (schema, table, column):
+            if not _SAFE_CATALOG_NAME_RE.fullmatch(part):
+                raise GuardError(f"refusing to interpolate unsafe identifier: {part!r}")
+        if not _SAFE_TYPE_TEXT_RE.fullmatch(expected):
+            raise GuardError(f"refusing to interpolate unsafe type: {expected!r}")
+        out.append("(" + ", ".join(f"'{v}'" for v in (schema, table, column, expected)) + ")")
+    return ", ".join(out)
+
+
 def build_catalog_sql(targets: Targets) -> str:
     """One read-only statement returning the whole catalog reading as JSON.
 
@@ -3538,6 +3637,7 @@ def build_catalog_sql(targets: Targets) -> str:
         )
     )
     extension_names = _sql_array(targets.extensions)
+    column_type_rows = _column_type_values(targets.column_types)
     defacl = targets.default_acls
     defacl_schemas = _sql_array([row[0] for row in defacl])
     defacl_roles = _sql_array([row[1] for row in defacl])
@@ -3598,6 +3698,20 @@ select jsonb_build_object(
     ) order by s.name)
     from unnest({schema_names}) as s(name)
     left join pg_namespace n on n.nspname = s.name
+  ), '[]'::jsonb),
+  'column_types', coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'schema', t.schema_name, 'table', t.table_name, 'column', t.column_name,
+      'expected', t.expected,
+      'actual', case when a.attnum is null then null
+        else format_type(a.atttypid, a.atttypmod) end
+    ) order by t.schema_name, t.table_name, t.column_name)
+    from (values {column_type_rows}) as t(schema_name, table_name, column_name, expected)
+    left join pg_namespace n on n.nspname = t.schema_name
+    left join pg_class c on c.relnamespace = n.oid and c.relname = t.table_name
+    left join pg_attribute a on a.attrelid = c.oid and a.attname = t.column_name
+      and a.attnum > 0 and not a.attisdropped
+    where t.schema_name is not null
   ), '[]'::jsonb),
   'indexes', coalesce((
     select jsonb_agg(jsonb_build_object(
@@ -4218,6 +4332,38 @@ def assert_privileges(
     return rows, failures
 
 
+def reviewed_no_durable_target_versions(
+    repo: Path, migrations: dict[str, Path], allowlist: list[str]
+) -> list[str]:
+    """Allowlisted versions whose sidecar records that nothing durable exists.
+
+    Issue #6571. A migration that names its objects only through
+    `execute format(...)` gives the lexer nothing to read. When its sidecar is
+    hash-bound, has NO checks, and every marker review carries disposition
+    `no_durable_target`, the reviewed claim is that no durable catalog object
+    results. Call only AFTER `load_behavior_sidecars` validated these files
+    (hash, strict keys, marker coverage); anything else is excluded here, so
+    the caller stays fail-closed.
+    """
+    reviewed: list[str] = []
+    for version in allowlist:
+        path = repo / BEHAVIOR_SIDECAR_DIR / f"{version}.json"
+        migration = migrations.get(version)
+        if not path.exists() or migration is None:
+            continue
+        item = json.loads(path.read_text(encoding="utf-8"))
+        reviews = item.get("marker_reviews")
+        if item.get("checks") or not isinstance(reviews, list) or not reviews:
+            continue
+        if any(r.get("disposition") != "no_durable_target" for r in reviews):
+            continue
+        sql = migration.read_bytes().replace(b"\r\n", b"\n").decode("utf-8")
+        if not dynamic_execution_marker_lines(sql):
+            continue
+        reviewed.append(version)
+    return reviewed
+
+
 def render_report(
     allowlist: list[str],
     targets: Targets,
@@ -4228,6 +4374,7 @@ def render_report(
     behavior_checks: list[dict] | None = None,
     behavior_results: object = None,
     behavior_error: str | None = None,
+    reviewed_no_durable: list[str] | None = None,
 ) -> tuple[str, list[str]]:
     """Render the Markdown artifact and return the HARD FAILURES it found.
 
@@ -4463,6 +4610,26 @@ def render_report(
         # artifact, and only after every statement in the file was checked to be
         # data. It is never a silent pass and never a flag on this script.
         pass
+    elif (
+        targets.is_empty()
+        and reviewed_no_durable
+        and set(allowlist)
+        <= set(reviewed_no_durable)
+        | ({declaration["version"]} if declaration and declaration["accepted"] else set())
+    ):
+        # ISSUE #6571. Every allowlisted file is either a checked no-op or has a
+        # hash-bound sidecar whose reviewed markers all say no durable target.
+        add("## Reviewed dynamic SQL with no durable target")
+        add("")
+        add(
+            "- Migration(s) "
+            + ", ".join(f"`{v}`" for v in reviewed_no_durable)
+            + " name objects only through dynamic SQL, and each has a "
+            "hash-bound sidecar whose every marker review records "
+            "`no_durable_target`. No catalog object is expected; the ledger "
+            "remains the record of what applied."
+        )
+        add("")
     elif targets.is_empty() and declaration is None and targets.pure_data_ok:
         # ISSUE #5932. A genuinely pure-data migration -- only DML (INSERT/
         # UPDATE/DELETE/COPY and the statements around them, including `do`
@@ -4697,6 +4864,28 @@ def render_report(
         add("| _no CREATE INDEX target was derived_ | | | | | |")
     add("")
 
+    if targets.column_types:
+        add("## Column types (`pg_attribute` / `format_type`)")
+        add("")
+        add("| column | expected type | live type |")
+        add("| --- | --- | --- |")
+        seen_columns: set[tuple[str, str, str]] = set()
+        expected_columns = {(s_, t_, c_): ty for s_, t_, c_, ty in targets.column_types}
+        for row in data.get("column_types") or []:
+            key = (row.get("schema"), row.get("table"), row.get("column"))
+            seen_columns.add(key)  # type: ignore[arg-type]
+            label = ".".join(str(x) for x in key)
+            add(f"| `{label}` | `{row.get('expected')}` | `{row.get('actual') or 'ABSENT'}` |")
+            if row.get("actual") is None:
+                failures.append(f"{label}: column is absent")
+            elif row.get("actual") != expected_columns.get(key):  # type: ignore[arg-type]
+                failures.append(
+                    f"{label}: live type {row.get('actual')!r}, expected {expected_columns.get(key)!r}"  # type: ignore[arg-type]
+                )
+        for unseen in sorted(set(expected_columns) - seen_columns):
+            failures.append(f"{'.'.join(unseen)}: catalog returned no column evidence row")
+        add("")
+
     add("## Relations (`to_regclass`)")
     add("")
     add("| name | required | to_regclass | relkind | reloptions |")
@@ -4850,6 +5039,9 @@ def verify(
     migrations = local_migrations(repo)
     targets = derive_targets(migrations, allowlist)
     behavior_checks = load_behavior_sidecars(repo, migrations, allowlist)
+    reviewed_no_durable = reviewed_no_durable_target_versions(
+        repo, migrations, allowlist
+    )
 
     errors: list[str] = []
     catalog: object = None
@@ -4967,6 +5159,7 @@ def verify(
         behavior_checks=behavior_checks,
         behavior_results=behavior_results,
         behavior_error=behavior_error,
+        reviewed_no_durable=reviewed_no_durable,
     )
     (output_dir / "production-catalog-verification.md").write_text(
         markdown, encoding="utf-8"

@@ -256,6 +256,7 @@ export function classifyMainTip({ mainSha, tipSha, cwd, gitRunner = git, product
   let appended = new Set()
   if (production) {
     try { appended = laterAppendedMigrationPaths({ mainSha, tipSha, paths, cwd, gitRunner }) } catch { appended = new Set() }
+    try { for (const path of addedUnreferencedDocPaths({ mainSha, tipSha, paths, cwd, gitRunner })) appended.add(path) } catch { /* refuse as before */ }
   }
   const blocking = paths.filter((path) => !inert(path) && !appended.has(path)).sort()
   if (blocking.length > 0) {
@@ -276,7 +277,7 @@ export function classifyMainTip({ mainSha, tipSha, cwd, gitRunner = git, product
       ok: true,
       reason:
         `origin/main has advanced to ${tipSha}, but every change since ${mainSha} is ` +
-        `production-inert or a collision-free migration added past the dispatched commit (${appended.size}), ` +
+        `production-inert, a collision-free migration, or documentation evidence added past the dispatched commit (${appended.size}), ` +
         'so the dispatched commit is a verified prefix of main for the purposes of this gate.',
       movedBy: paths,
     }
@@ -290,6 +291,52 @@ export function classifyMainTip({ mainSha, tipSha, cwd, gitRunner = git, product
       'commit is still current for the purposes of this gate.',
     movedBy: paths,
   }
+}
+
+// DOCUMENTATION EVIDENCE UNDER docs/ (#6258 follow-up). Rehearsal run
+// 43495421317 was refused because main gained a verification `.json` under
+// docs/verification/. The header explains why "anything under docs/" stays
+// WRONG: a gate (the reviewed detector baseline) reads a JSON file there, so
+// editing such a file must keep refusing. This exemption therefore keeps the
+// extension rule intact and adds a narrower, git-proven one, production only:
+//   - the file is under docs/ and was ADDED between the two commits (a
+//     modified, deleted or renamed file -- the baseline case -- still refuses);
+//   - no tracked non-prose file outside docs/ at the tip names the file, a
+//     directory below docs/<area>/ that holds it, or the dated stem of its
+//     docs/<area>/ entry (gates that scan a docs folder see new files).
+//     Test files are not searched: no production step runs them.
+// Any git error tolerates nothing, so the caller refuses exactly as before.
+const DOCS_PATH = /^docs\/(?:[^/]+\/)*[^/]+$/
+function escapeRegex(text) { return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
+export function addedUnreferencedDocPaths({ mainSha, tipSha, paths, cwd, gitRunner = git }) {
+  const added = new Set(nulPaths(gitRunner(['diff', '--name-only', '--no-renames', '--diff-filter=A', '-z', mainSha, tipSha], { cwd })))
+  const tolerated = new Set()
+  for (const path of paths) {
+    if (!added.has(path) || !DOCS_PATH.test(path) || path.includes('\n') || path.includes('\0')) continue
+    const parts = path.split('/')
+    if (parts.length < 3) continue
+    // The exact file, and every directory below the docs/<area>/ level, by name.
+    const names = [escapeRegex(path)]
+    for (let depth = 3; depth < parts.length; depth += 1) {
+      names.push(`${escapeRegex(parts.slice(0, depth).join('/'))}/?([^A-Za-z0-9_./-]|$)`)
+    }
+    // docs/<area>/ itself is named by tooling that only writes or ignores it, but a
+    // gate may scan it for entries by NAME PREFIX (the ColdLion step-8 approval
+    // reader does). So the entry's stem -- extension and trailing date stripped --
+    // must not appear in code either. A stem too short to search refuses.
+    const stem = parts[2].replace(/\.[A-Za-z0-9]+$/, '').replace(/[-_.]?\d[\dTZ_.-]*$/, '')
+    if (stem.length < 6) continue
+    names.push(`${escapeRegex(stem)}([^/]|$)`)
+    let hits
+    try {
+      hits = gitRunner(['grep', '-l', '-E', '-e', names.join('|'), tipSha, '--', '.', ':(exclude)docs', ':(exclude)*.md', ':(exclude)*.markdown', ':(exclude)*.test.mjs', ':(exclude)*/test_*.py'], { cwd })
+    } catch (error) {
+      if (error?.status !== 1) throw error
+      hits = ''
+    }
+    if (hits.trim() === '') tolerated.add(path)
+  }
+  return tolerated
 }
 
 const MIGRATION_PATH = /^supabase\/migrations\/(\d{14})_[^/]+\.sql$/
@@ -310,8 +357,13 @@ const MIGRATION_PATH = /^supabase\/migrations\/(\d{14})_[^/]+\.sql$/
 //   - the dispatched tree has at least one migration (a dispatch without a
 //     ledger cannot happen, and stays refused).
 // Added `supabase/tests/*.sql` files ride along: no production step reads them.
+// So does the ADDED verification sidecar of a tolerated migration (#6493: run
+// 43995587657 lost a whole promotion cycle to one). The sidecar gate reads the
+// dispatched tree, which cannot hold a sidecar for a version it does not have.
+// A sidecar for any other version, or a modified one, still refuses.
 // Any git error returns the empty set, so the caller refuses exactly as before.
 const SUPABASE_TEST_PATH = /^supabase\/tests\/[^/]+\.sql$/
+const SIDECAR_PATH = /^scripts\/production-verification-sidecars\/(\d{14})\.json$/
 export function laterAppendedMigrationPaths({ mainSha, tipSha, paths, cwd, gitRunner = git }) {
   const added = new Set(nulPaths(gitRunner(['diff', '--name-only', '--no-renames', '--diff-filter=A', '-z', mainSha, tipSha], { cwd })))
   const dispatched = new Set(nulPaths(gitRunner(['ls-tree', '-r', '-z', '--name-only', mainSha, '--', 'supabase/migrations'], { cwd }))
@@ -330,7 +382,35 @@ export function laterAppendedMigrationPaths({ mainSha, tipSha, paths, cwd, gitRu
       migrations += 1
     } else if (SUPABASE_TEST_PATH.test(path)) tolerated.add(path)
   }
+  for (const path of paths) {
+    const version = SIDECAR_PATH.exec(path)?.[1]
+    if (version && added.has(path) && addedVersions.has(version)) tolerated.add(path)
+  }
+  if (paths.includes(SIDECAR_REGISTRY) && registryOnlyGained({ mainSha, tipSha, versions: addedVersions, cwd, gitRunner })) tolerated.add(SIDECAR_REGISTRY)
   return migrations > 0 ? tolerated : new Set()
+}
+
+// A sidecar is always declared in the registry (review finding #6600), so the
+// registry rides along only when the tip's copy is the dispatched copy plus
+// entries for appended migration versions: nothing removed, nothing edited.
+// Any read or parse error tolerates nothing.
+const SIDECAR_REGISTRY = 'config/production-verification-sidecar-registry.json'
+function registryOnlyGained({ mainSha, tipSha, versions, cwd, gitRunner }) {
+  try {
+    const read = (sha) => JSON.parse(String(gitRunner(['show', `${sha}:${SIDECAR_REGISTRY}`], { cwd })))
+    const [base, tip] = [read(mainSha), read(tipSha)]
+    for (const data of [base, tip]) {
+      if (data === null || typeof data !== 'object' || Array.isArray(data)) return false
+      if (Object.keys(data).sort().join() !== 'schema_version,sidecars' || !Array.isArray(data.sidecars)) return false
+    }
+    if (base.schema_version !== tip.schema_version) return false
+    const known = new Set(base.sidecars.map((entry) => entry?.version))
+    const gained = tip.sidecars.filter((entry) => !known.has(entry?.version))
+    if (gained.length === 0 || new Set(gained.map((entry) => entry?.version)).size !== gained.length) return false
+    if (!gained.every((entry) => entry !== null && typeof entry === 'object' && Object.keys(entry).sort().join() === 'issue,version' && versions.has(entry.version))) return false
+    const kept = tip.sidecars.filter((entry) => known.has(entry?.version))
+    return JSON.stringify(kept) === JSON.stringify(base.sidecars)
+  } catch { return false }
 }
 
 function nulPaths(raw) {

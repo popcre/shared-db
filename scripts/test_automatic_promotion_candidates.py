@@ -3,17 +3,43 @@ import io
 import json
 import os
 import re
+import subprocess
 import sys
+import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import automatic_promotion_candidates as m  # noqa: E402
 import refund_fault_classification as classifier  # noqa: E402
 
+# Main-path tests stub is_held; route the batched hold read through it so no
+# test reaches the network. PrefetchHolds tests the real function.
+REAL_PREFETCH_HOLDS = m.prefetch_holds
+m.prefetch_holds = lambda repo, prs: (lambda n: m.is_held(repo, n))
+
 APPLIED = [{"steps": [{"name": m.APPLY_STEP, "conclusion": "success"}, {"name": m.CATALOG_STEP, "conclusion": "failure"}]}]
 NOT_APPLIED = [{"steps": [{"name": m.APPLY_STEP, "conclusion": "failure"}, {"name": m.CATALOG_STEP, "conclusion": "failure"}]}]
+
+
+class GhostRunsDoNotParkTheLane(unittest.TestCase):
+    """#6426 / 2026-11-16 run 43938147152: a never-dispatched queued run."""
+    now = datetime(2026, 11, 16, 20, 0, tzinfo=timezone.utc)
+
+    def mk(self, rid, created, status="queued"):
+        return {"id": rid, "status": status, "created_at": created}
+
+    def test_old_jobless_queued_run_is_dropped(self):
+        runs = [self.mk(1, "2026-11-16T19:19:34Z"), self.mk(2, "2026-11-16T19:00:00Z", "completed")]
+        with contextlib.redirect_stdout(io.StringIO()):
+            kept = m.drop_ghost_runs(runs, lambda r: 0, self.now)
+        self.assertEqual([r["id"] for r in kept], [2])
+
+    def test_young_or_started_queued_runs_are_kept(self):
+        runs = [self.mk(1, "2026-11-16T19:45:00Z"), self.mk(3, "2026-11-16T19:00:00Z")]
+        kept = m.drop_ghost_runs(runs, lambda r: 1 if r["id"] == 3 else 0, self.now)
+        self.assertEqual([r["id"] for r in kept], [1, 3])
 
 
 class AttemptsPerChange(unittest.TestCase):
@@ -285,6 +311,71 @@ class ForeignTargetVersions(unittest.TestCase):
         self.assertEqual(self.prs("20261102215524", "20261102224413")[0]["versions"], ["20261102224413"])
 
 
+class SelectorPrCache(unittest.TestCase):
+    """#6493 Step 1b: the PR cache holds API facts only and is discovery-only."""
+    old = {"number": 5045, "merged_at": "2026-10-30T00:37:42Z", "updated_at": "2026-10-30T00:37:42Z"}
+    new = {"number": 5066, "merged_at": "2026-10-30T01:41:04Z", "updated_at": "2026-11-16T10:00:00Z"}
+    old_files = [[{"status": "added", "filename": "supabase/migrations/20261029162652_x.sql"}]]
+    new_files = [[{"status": "added", "filename": "supabase/migrations/20261029213845_x.sql"}]]
+
+    def setUp(self):
+        import tempfile
+        self.dir = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self.dir.name, "cache.json")
+        self.env = mock.patch.dict(os.environ, {"PROMOTION_PR_CACHE_FILE": self.path})
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+        self.dir.cleanup()
+
+    def run_selector(self, api):
+        with mock.patch.object(m, "gh", side_effect=api) as gh:
+            return m.merged_migration_prs("o/r"), gh.call_args_list
+
+    def test_cold_scan_writes_cache_and_warm_scan_reads_no_files(self):
+        cold, _ = self.run_selector([[[self.old]], self.old_files])
+        self.assertTrue(os.path.exists(self.path))
+        warm, calls = self.run_selector([[self.new], self.new_files])
+        # One incremental list page, files only for the newly seen PR.
+        self.assertEqual(len(calls), 2)
+        self.assertNotIn("--paginate", calls[0].args)
+        self.assertEqual([p["number"] for p in warm], [5045, 5066])
+        self.assertEqual(warm[0], cold[0])
+
+    def test_warm_scan_matches_a_full_scan(self):
+        self.run_selector([[[self.old, self.new]], self.old_files, self.new_files])
+        warm, calls = self.run_selector([[self.new]])
+        self.assertEqual(len(calls), 1)
+        os.remove(self.path)
+        full, _ = self.run_selector([[[self.old, self.new]], self.old_files, self.new_files])
+        self.assertEqual(warm, full)
+
+    def test_corrupt_or_old_schema_cache_falls_back_to_a_full_scan(self):
+        for body in ("garbage", json.dumps({"schema_version": 0, "prs": {}})):
+            with open(self.path, "w", encoding="utf-8") as fh:
+                fh.write(body)
+            with contextlib.redirect_stdout(io.StringIO()):
+                found, calls = self.run_selector([[[self.old]], self.old_files])
+            self.assertIn("--paginate", calls[0].args)
+            self.assertEqual(found[0]["versions"], ["20261029162652"])
+
+    def test_live_merged_at_overrides_a_stale_cached_row(self):
+        self.run_selector([[[self.old]], self.old_files])
+        moved = {**self.old, "merged_at": "2026-10-30T02:00:00Z", "updated_at": "2026-11-16T11:00:00Z"}
+        found, calls = self.run_selector([[moved], self.new_files])
+        self.assertEqual(len(calls), 2)  # files re-read because merged_at changed
+        self.assertEqual(found[0]["merged_at"], "2026-10-30T02:00:00Z")
+        self.assertEqual(found[0]["versions"], ["20261029213845"])
+
+    def test_incremental_listing_pages_until_it_passes_the_watermark(self):
+        self.run_selector([[[self.new]], self.new_files])
+        recent = [{"number": 9000 + i, "merged_at": None, "updated_at": "2026-11-16T12:00:00Z"} for i in range(100)]
+        _, calls = self.run_selector([recent, [self.new]])
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(calls[1].args[0].endswith("&page=2"))
+
+
 class PerMigrationHold(unittest.TestCase):
     first = {"number": 5456, "merged_at": "2026-11-02T17:00:00Z", "versions": ["20261102170000"]}
     second = {"number": 5460, "merged_at": "2026-11-02T17:10:00Z", "versions": ["20261102171000"]}
@@ -349,7 +440,7 @@ class OverdueHoldAlert(unittest.TestCase):
         saved = (m.gh, m.merged_migration_prs, m.workflow_runs, m.is_held, sys.argv, os.environ.get("GITHUB_REPOSITORY"))
         m.gh = lambda *a: {"sha": "abc"}
         m.merged_migration_prs = lambda repo: [pr]
-        m.workflow_runs = lambda repo: []
+        m.workflow_runs = lambda repo, **_: []
         m.is_held = lambda repo, n: self.pr["findings"]
         sys.argv, os.environ["GITHUB_REPOSITORY"] = ["x", "--dry-run"], "o/r"
         try:
@@ -377,7 +468,7 @@ class ExhaustedAlert(unittest.TestCase):
         saved = (m.gh, m.merged_migration_prs, m.workflow_runs, m.is_held, sys.argv, os.environ.get("GITHUB_REPOSITORY"))
         m.gh = lambda *a: {"sha": "abc"}
         m.merged_migration_prs = lambda repo: [self.pr]
-        m.workflow_runs = lambda repo: self.fails
+        m.workflow_runs = lambda repo, **_: self.fails
         m.is_held = lambda repo, n: []
         sys.argv, os.environ["GITHUB_REPOSITORY"] = ["x", "--dry-run"], "o/r"
         try:
@@ -596,7 +687,7 @@ class ProductionReRunAlert(unittest.TestCase):
                  sys.argv, os.environ.get("GITHUB_REPOSITORY"))
         m.gh = lambda *a: {"sha": "abc"}
         m.merged_migration_prs = lambda repo: []
-        m.workflow_runs = lambda repo: [self.rerun]
+        m.workflow_runs = lambda repo, **_: [self.rerun]
         m.is_held = lambda repo, n: []
         m.applied_in_any_attempt = lambda repo, run: False
         sys.argv, os.environ["GITHUB_REPOSITORY"] = ["x", "--dry-run"], "o/r"
@@ -624,6 +715,8 @@ class FreshRecheckBeforeDispatch(unittest.TestCase):
              mock.patch.object(m, "workflow_runs", mock.Mock(side_effect=snapshots)), \
              mock.patch.object(m, "is_held", lambda repo, n: []), \
              mock.patch.object(m, "dispatch") as sent, \
+             mock.patch.object(m, "prune_claims", lambda *a: None), \
+             mock.patch.object(m, "claim_dispatch", lambda *a: True), \
              mock.patch.object(sys, "argv", ["x"]), \
              mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "o/r"}), \
              contextlib.redirect_stdout(io.StringIO()) as out:
@@ -675,7 +768,7 @@ class ManualReRunInFlight(unittest.TestCase):
         busy = self._run("in_progress", None)
         with mock.patch.object(m, "gh", lambda *a: {"sha": "abc"}), \
              mock.patch.object(m, "merged_migration_prs", lambda repo: [self.PR]), \
-             mock.patch.object(m, "workflow_runs", lambda repo: [busy]), \
+             mock.patch.object(m, "workflow_runs", lambda repo, **_: [busy]), \
              mock.patch.object(m, "is_held", lambda repo, n: []), \
              mock.patch.object(m, "dispatch") as sent, \
              mock.patch.object(sys, "argv", ["x"]), \
@@ -697,13 +790,48 @@ class EarlierPreviewApply(unittest.TestCase):
             {"id": 5, "conclusion": "success", "created_at": "2026-10-31T01:40:00Z", "display_title": "DB preview apply a PR 202610301906390"},
         ]
         self.assertEqual(m.earlier_preview_apply(pr, runs), 7)
-        self.assertEqual(m.earlier_preview_apply(pr, [runs[2]]), 3)  # pre-merge is the fallback
+        # #6574: a pre-merge apply is never the fallback; it is reported instead.
+        self.assertIsNone(m.earlier_preview_apply(pr, [runs[2]]))
+        self.assertEqual(m.pre_merge_preview_apply(pr, runs), 3)
+        self.assertIsNone(m.pre_merge_preview_apply(pr, runs[:2]))
         self.assertIsNone(m.earlier_preview_apply(pr, runs[3:]))
         recovery = {"id": 4, "conclusion": "success", "created_at": "2026-10-31T01:50:00Z", "display_title": "DB preview apply a PR 20261030190639"}
         self.assertEqual(m.earlier_preview_apply(pr, runs + [recovery]), 4)
         held = {**recovery, "id": 2, "conclusion": "failure", "created_at": "2026-10-31T01:45:00Z"}
         self.assertEqual(m.earlier_preview_apply(pr, runs + [held]), 7)
         self.assertEqual(m.earlier_preview_apply(pr, runs + [held], lambda r: r["id"] == 2), 2)
+
+    def _dispatch(self, runs):
+        pr = {"number": 6400, "merged_at": "2026-11-16T12:00:00Z", "versions": ["20261116013153"]}
+        out = io.StringIO()
+        with mock.patch.object(m.subprocess, "run") as sent, \
+             mock.patch.object(m, "preview_job_succeeded_in_any_attempt", return_value=False), \
+             contextlib.redirect_stdout(out):
+            m.dispatch("o/r", pr, "abc", runs)
+        return sent.call_args[0][0], out.getvalue()
+
+    def test_stale_pre_merge_apply_is_ignored_and_engineer_action_is_loud(self):
+        pre = {"id": 43789639543, "conclusion": "success", "created_at": "2026-11-16T02:00:00Z",
+               "display_title": "DB preview apply a PR6400 20261116013153"}
+        cmd, out = self._dispatch([pre])
+        self.assertIn("merged_preview_source_pr=6400", cmd)
+        self.assertFalse(any(a.startswith("historical_preview") for a in cmd))
+        self.assertIn("ENGINEER ACTION REQUIRED", out)
+        self.assertIn("REISSUE", out)
+        self.assertIn("43789639543", out)
+
+    def test_post_merge_apply_still_recovers_and_stays_quiet(self):
+        pre = {"id": 1, "conclusion": "success", "created_at": "2026-11-16T02:00:00Z",
+               "display_title": "DB preview apply a PR6400 20261116013153"}
+        post = {**pre, "id": 2, "created_at": "2026-11-16T13:00:00Z"}
+        cmd, out = self._dispatch([pre, post])
+        self.assertIn("historical_preview_original_run_map=20261116013153:2", cmd)
+        self.assertNotIn("ENGINEER ACTION REQUIRED", out)
+
+    def test_no_preview_apply_is_a_quiet_fresh_rehearsal(self):
+        cmd, out = self._dispatch([])
+        self.assertIn("merged_preview_source_pr=6400", cmd)
+        self.assertNotIn("ENGINEER ACTION REQUIRED", out)
 
 
 class AlreadyInProduction(unittest.TestCase):
@@ -927,7 +1055,7 @@ class TriggerReporting(unittest.TestCase):
                  sys.argv, os.environ.get("GITHUB_REPOSITORY"), os.environ.get("GITHUB_STEP_SUMMARY"))
         m.gh = lambda *a: {"sha": "abc"}
         m.merged_migration_prs = lambda repo: prs
-        m.workflow_runs = lambda repo: runs
+        m.workflow_runs = lambda repo, **_: runs
         m.is_held = held or (lambda repo, n: [])
         sys.argv, os.environ["GITHUB_REPOSITORY"] = ["x", "--dry-run"], "o/r"
         if summary_path:
@@ -1268,6 +1396,560 @@ class TriggerTokenCanOwnTheTrackingIssue(unittest.TestCase):
         job = text.split("  trigger:", 1)[1]
         self.assertIn("issues: write", job)
         self.assertNotIn("issues: read", job)
+
+    def test_trigger_job_grants_pull_requests_write(self):
+        # #6561: stranded-PR notices and promotion labels are written with the
+        # job token. Read-only pull-requests makes those writes fail, so guard it.
+        wf = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "..",
+            ".github", "workflows", "automatic-production-trigger.yml",
+        )
+        with open(wf, encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn("  trigger:", text)
+        job = text.split("  trigger:", 1)[1]
+        self.assertIn("pull-requests: write", job)
+        self.assertNotIn("pull-requests: read", job)
+
+
+class PromotionLabelPlumbing(unittest.TestCase):
+    """#6561: labels, notice markers and the PR-only label listing."""
+
+    def test_label_listing_is_prs_only_and_paginated(self):
+        pages = [[{"number": 7, "pull_request": {"url": "x"}}, {"number": 8}],
+                 [{"number": 9, "pull_request": {"url": "y"}}]]
+        with mock.patch.object(m, "gh", side_effect=lambda *a: pages) as fake:
+            self.assertEqual(m.labelled_prs("o/r", m.PARKED_LABEL), [7, 9])
+        # The listing must be read in full (paginated), all states.
+        args = fake.call_args.args
+        self.assertEqual(args[:2], ("--paginate", "--slurp"))
+        self.assertEqual(args[2], "repos/o/r/issues?labels=promotion-parked&state=all&per_page=100")
+
+    def test_missing_label_is_created_and_race_tolerated(self):
+        def proc(rc=0, out="", err=""):
+            return subprocess.CompletedProcess(args=[], returncode=rc, stdout=out, stderr=err)
+
+        def run_with(gets, posts):
+            calls = []
+            def fake_run(cmd, **kw):
+                calls.append(cmd)
+                return (posts if "-X" in cmd else gets).pop(0)
+            return calls, fake_run
+
+        # Missing: GET 404, POST creates it.
+        calls, fake_run = run_with([proc(1, err="gh: Not Found (HTTP 404)")], [proc(0, out="{}")])
+        with mock.patch.object(m.subprocess, "run", fake_run):
+            self.assertTrue(m.ensure_label("o/r", m.PARKED_LABEL, m.LABEL_DESCRIPTIONS[m.PARKED_LABEL]))
+        post = calls[1]
+        self.assertEqual(post[:6], ["gh", "api", "-X", "POST", "repos/o/r/labels", "-f"])
+        self.assertIn("name=promotion-parked", post)
+        self.assertIn("color=B60205", post)
+
+        # Race: another run created it between our GET and POST (422).
+        calls, fake_run = run_with([proc(1, err="gh: Not Found (HTTP 404)")],
+                                   [proc(1, err='gh: Validation Failed (HTTP 422) {"code":"already_exists"}')])
+        with mock.patch.object(m.subprocess, "run", fake_run):
+            self.assertTrue(m.ensure_label("o/r", m.HELD_LABEL, m.LABEL_DESCRIPTIONS[m.HELD_LABEL]))
+
+        # Already present: GET succeeds, nothing is created.
+        calls, fake_run = run_with([proc(0, out="{}")], [])
+        with mock.patch.object(m.subprocess, "run", fake_run):
+            self.assertTrue(m.ensure_label("o/r", m.HELD_LABEL, m.LABEL_DESCRIPTIONS[m.HELD_LABEL]))
+        self.assertEqual(len(calls), 1)
+
+        # Any other read failure: warning, False, no create attempted.
+        calls, fake_run = run_with([proc(1, err="gh: Server Error (HTTP 500)")], [])
+        buf = io.StringIO()
+        with mock.patch.object(m.subprocess, "run", fake_run), contextlib.redirect_stdout(buf):
+            self.assertFalse(m.ensure_label("o/r", m.HELD_LABEL, m.LABEL_DESCRIPTIONS[m.HELD_LABEL]))
+        self.assertIn("::warning::", buf.getvalue())
+        self.assertEqual(len(calls), 1)
+
+    def test_gh_write_expands_lists_and_reports_refusals(self):
+        def proc(rc, out="", err=""):
+            return subprocess.CompletedProcess(args=[], returncode=rc, stdout=out, stderr=err)
+
+        seen = []
+        def fake_run(cmd, **kw):
+            seen.append(cmd)
+            return proc(0, out='{"id": 1}\n')
+
+        with mock.patch.object(m.subprocess, "run", fake_run):
+            ok, _ = m.gh_write("POST", "repos/o/r/issues/7/labels", {"labels": ["promotion-held", "x"]})
+        self.assertTrue(ok)
+        self.assertEqual(seen[0], ["gh", "api", "-X", "POST", "repos/o/r/issues/7/labels",
+                                   "-f", "labels[]=promotion-held", "-f", "labels[]=x"])
+
+        with mock.patch.object(m.subprocess, "run",
+                               lambda cmd, **kw: proc(1, err="gh: Resource not accessible by integration (HTTP 403)\n")):
+            self.assertEqual(m.gh_write("POST", "repos/o/r/issues/7/comments", {"body": "hi"}),
+                             (False, "gh: Resource not accessible by integration (HTTP 403)"))
+
+        def missing_gh(cmd, **kw):
+            raise OSError("gh not found")
+        with mock.patch.object(m.subprocess, "run", missing_gh):
+            self.assertEqual(m.gh_write("DELETE", "repos/o/r/issues/7/labels/x"), (False, "gh not found"))
+
+    def test_has_marker_reads_all_pages_and_matches_label(self):
+        self.assertEqual(m.marker(m.PARKED_LABEL), "<!-- promotion-stranded:promotion-parked -->")
+        pages = [[{"body": "chatter"}, {"body": None}], [{"body": m.marker(m.HELD_LABEL)}]]
+        with mock.patch.object(m, "gh", side_effect=lambda *a: pages) as fake:
+            self.assertTrue(m.has_marker("o/r", 7, m.HELD_LABEL))
+            self.assertFalse(m.has_marker("o/r", 7, m.PARKED_LABEL))
+        self.assertEqual(fake.call_args.args[:2], ("--paginate", "--slurp"))
+        self.assertEqual(fake.call_args.args[2], "repos/o/r/issues/7/comments?per_page=100")
+
+    def test_cleared_episode_needs_a_fresh_notice(self):
+        """A PR stranded again after a clear must get a new notice (R4), so
+        only the latest notice-or-clear comment counts."""
+        cleared = m.clear_body(m.PARKED_LABEL, "delivered")
+        notice = m.marker(m.PARKED_LABEL)
+        for comments, expected in (([notice, cleared], False),
+                                   ([notice, cleared, notice], True),
+                                   ([cleared], False)):
+            pages = [[{"body": b} for b in comments]]
+            with mock.patch.object(m, "gh", side_effect=lambda *a: pages):
+                self.assertEqual(m.has_marker("o/r", 7, m.PARKED_LABEL), expected, comments)
+
+
+NOW = datetime(2026, 11, 17, 12, 0, tzinfo=timezone.utc)
+REFUSAL = "gh: Resource not accessible by integration (HTTP 403)"
+PARKED, HELD = m.PARKED_LABEL, m.HELD_LABEL
+
+
+def ver(n):
+    return f"2026111000{n:04d}"
+
+
+def _pr(number, versions=None, merged="2026-11-10T00:00:00Z", **extra):
+    return {"number": number, "merged_at": merged, "versions": versions or [ver(number)], **extra}
+
+
+def _exhausted(number):
+    title = f"DB preview apply abc PR{number} {ver(number)}"
+    return [{"display_title": title, "status": "completed", "conclusion": "failure",
+             "created_at": "2026-11-11T01:00:00Z"}] * 3
+
+
+def _finding(number, created):
+    return {"number": number, "created_at": created}
+
+
+OLD_FINDING = _finding(901, "2026-11-01T00:00:00Z")
+
+
+class StrandedRepoFake:
+    """In-memory GitHub side of the stranded labels and notices. Every write is
+    recorded; a write applies to state only when `refuse` does not refuse it."""
+
+    def __init__(self, labels=None, comments=None, refuse=None):
+        self.labels = {n: set(v) for n, v in (labels or {}).items()}
+        self.comments = {n: list(v) for n, v in (comments or {}).items()}
+        self.refuse = refuse or (lambda method, path, fields: None)
+        self.writes = []
+        self.ensured = []
+
+    def labelled_prs(self, repo, label):
+        return sorted(n for n, names in self.labels.items() if label in names)
+
+    def has_marker(self, repo, n, label):
+        return any(m.marker(label) in body for body in self.comments.get(n, []))
+
+    def ensure_label(self, repo, name, description):
+        self.ensured.append(name)
+        return True
+
+    def gh_write(self, method, path, fields=None):
+        fields = dict(fields or {})
+        self.writes.append((method, path, fields))
+        refusal = self.refuse(method, path, fields)
+        if refusal:
+            return False, refusal
+        n = int(re.search(r"issues/(\d+)", path).group(1))
+        if method == "POST" and path.endswith("/labels"):
+            self.labels.setdefault(n, set()).update(fields["labels"])
+        elif method == "DELETE" and "/labels/" in path:
+            self.labels.get(n, set()).discard(path.rsplit("/", 1)[1])
+        elif method == "POST" and path.endswith("/comments"):
+            self.comments.setdefault(n, []).append(fields["body"])
+        return True, "ok"
+
+    def touched(self):
+        return sorted({int(re.search(r"issues/(\d+)", p).group(1)) for _, p, _ in self.writes})
+
+
+def _reconcile(fake, candidates, runs=(), live=None, held=None, discovery_ok=True,
+               fresh_held=None, dry_run=False, now=NOW):
+    held = held or (lambda n: [])
+    out = io.StringIO()
+    with mock.patch.multiple(m, labelled_prs=fake.labelled_prs, has_marker=fake.has_marker,
+                             ensure_label=fake.ensure_label, gh_write=fake.gh_write,
+                             is_held=lambda repo, n: held(n)), contextlib.redirect_stdout(out):
+        results = m.reconcile_stranded_marks("o/r", candidates, list(runs), live, now, held,
+                                             lambda r: False, lambda r: set(), lambda r: False,
+                                             lambda r: False, discovery_ok, dry_run=dry_run,
+                                             fresh_held=fresh_held)
+    return results, out.getvalue()
+
+
+def _outcomes(results):
+    return {(r["number"], r["label"]): r["outcome"] for r in results}
+
+
+class StrandedLabelReconciler(unittest.TestCase):
+    """#6561 plan §10: R1-R7 of plan_promotion_stranding_watch.md."""
+
+    def test_parked_pr_is_marked_once(self):
+        fake = StrandedRepoFake()
+        pr = _pr(7)
+        results, _ = _reconcile(fake, [pr], runs=_exhausted(7))
+        self.assertEqual(_outcomes(results), {(7, PARKED): "posted"})
+        self.assertEqual([(meth, path) for meth, path, _ in fake.writes], [
+            ("POST", "repos/o/r/issues/7/labels"), ("POST", "repos/o/r/issues/7/comments")])
+        self.assertEqual(fake.writes[0][2], {"labels": [PARKED]})
+        body = fake.writes[1][2]["body"]
+        self.assertEqual(body.splitlines()[0], m.marker(PARKED))
+        self.assertIn("3 failed automatic attempts", body)
+        # A second pass with no state change performs zero writes.
+        results, _ = _reconcile(fake, [pr], runs=_exhausted(7))
+        self.assertEqual(_outcomes(results), {(7, PARKED): "already"})
+        self.assertEqual(len(fake.writes), 2)
+
+    def test_held_pr_behind_dispatch_pick_is_marked(self):
+        fake = StrandedRepoFake()
+        dispatch, held_pr = _pr(9), _pr(8)
+        held = lambda n: [OLD_FINDING] if n == 8 else []
+        results, _ = _reconcile(fake, [dispatch, held_pr], held=held)
+        self.assertEqual(_outcomes(results), {(8, HELD): "posted"})
+        self.assertEqual(fake.touched(), [8])
+
+    def test_parked_pr_behind_dispatch_pick_is_marked(self):
+        fake = StrandedRepoFake()
+        results, _ = _reconcile(fake, [_pr(9), _pr(7)], runs=_exhausted(7))
+        self.assertEqual(_outcomes(results), {(7, PARKED): "posted"})
+        self.assertEqual(fake.touched(), [7])
+
+    def test_wait_pass_reconciles_holds_only(self):
+        fake = StrandedRepoFake(labels={5: {HELD}, 6: {PARKED}})
+        inflight = {"display_title": "DB production apply inflight", "status": "in_progress",
+                    "id": 555, "conclusion": None, "created_at": "2026-11-17T11:00:00Z"}
+        candidates = [_pr(5), _pr(6), _pr(7), _pr(8)]
+        held = lambda n: [OLD_FINDING] if n == 8 else []
+        results, out = _reconcile(fake, candidates, runs=[inflight] + _exhausted(7), held=held)
+        self.assertIn("wait pass (run 555 in flight)", out)
+        # Held 8 is marked; held 5 (no longer held on a fresh read) is released;
+        # parked 7 is not marked and parked 6 is not cleared.
+        self.assertEqual(fake.touched(), [5, 8])
+        self.assertEqual(_outcomes(results), {(8, HELD): "posted", (5, HELD): "cleared"})
+        self.assertIn(PARKED, fake.labels[6])
+
+    def test_held_threshold_and_unknown_read(self):
+        fake = StrandedRepoFake(labels={11: {HELD}})
+        finding = _finding(901, "2026-11-17T00:00:00Z")
+        nine_hours = _pr(9, merged="2026-11-17T03:00:00Z", findings=[finding])
+        seven_hours = _pr(10, merged="2026-11-17T05:00:00Z")
+        unknown = _pr(11, merged="2026-11-17T03:00:00Z")
+        held = lambda n: {9: [finding], 10: [finding], 11: True}.get(n, [])
+        results, _ = _reconcile(fake, [nine_hours, seven_hours, unknown], held=held)
+        self.assertEqual(fake.touched(), [9])
+        self.assertEqual(_outcomes(results), {(9, HELD): "posted", (11, HELD): "unknown"})
+        self.assertIn(HELD, fake.labels[11])
+
+    def test_alert_and_escalation_thresholds_differ(self):
+        self.assertEqual(m.ALERT_AFTER, timedelta(minutes=30))
+        self.assertEqual(m.HELD_ESCALATE_AFTER, timedelta(hours=8))
+        finding = _finding(901, "2026-11-17T10:00:00Z")
+        one_hour = _pr(10, merged="2026-11-17T11:00:00Z", findings=[finding])
+        # Held one hour: the operator alert fires, the label does not.
+        self.assertEqual(len(m.overdue_holds([one_hour], NOW)), 1)
+        fake = StrandedRepoFake()
+        results, _ = _reconcile(fake, [one_hour], held=lambda n: [finding])
+        self.assertEqual(results, [])
+        self.assertEqual(fake.writes, [])
+
+    def test_marked_pr_is_left_alone(self):
+        fake = StrandedRepoFake(labels={7: {PARKED}, 8: {HELD}},
+                                comments={7: [m.marker(PARKED)], 8: [m.marker(HELD)]})
+        held = lambda n: [OLD_FINDING] if n == 8 else []
+        results, _ = _reconcile(fake, [_pr(7), _pr(8)], runs=_exhausted(7), held=held)
+        self.assertEqual(_outcomes(results), {(7, PARKED): "already", (8, HELD): "already"})
+        self.assertEqual(fake.writes, [])
+
+    def test_label_without_notice_is_repaired(self):
+        fake = StrandedRepoFake(labels={7: {PARKED}})
+        results, _ = _reconcile(fake, [_pr(7)], runs=_exhausted(7))
+        self.assertEqual(_outcomes(results), {(7, PARKED): "repaired"})
+        self.assertEqual([(meth, path) for meth, path, _ in fake.writes],
+                         [("POST", "repos/o/r/issues/7/comments")])
+
+    def test_removed_label_is_restored_without_duplicate_notice(self):
+        fake = StrandedRepoFake(comments={7: [m.marker(PARKED)]})
+        results, _ = _reconcile(fake, [_pr(7)], runs=_exhausted(7))
+        self.assertEqual(_outcomes(results), {(7, PARKED): "relabelled"})
+        self.assertEqual([(meth, path) for meth, path, _ in fake.writes],
+                         [("POST", "repos/o/r/issues/7/labels")])
+
+    def test_failed_notice_rolls_back_label_and_continues(self):
+        def refuse(method, path, fields):
+            if method == "POST" and path.endswith("/issues/7/comments"):
+                return "gh: Server Error (HTTP 500)"
+            return None
+        fake = StrandedRepoFake(refuse=refuse)
+        runs = _exhausted(7) + _exhausted(8)
+        results, out = _reconcile(fake, [_pr(7), _pr(8)], runs=runs)
+        self.assertEqual(_outcomes(results), {(7, PARKED): "FAILED", (8, PARKED): "posted"})
+        self.assertEqual([(meth, path) for meth, path, _ in fake.writes], [
+            ("POST", "repos/o/r/issues/7/labels"), ("POST", "repos/o/r/issues/7/comments"),
+            ("DELETE", f"repos/o/r/issues/7/labels/{PARKED}"),
+            ("POST", "repos/o/r/issues/8/labels"), ("POST", "repos/o/r/issues/8/comments")])
+        self.assertNotIn(PARKED, fake.labels.get(7, set()))
+        self.assertIn(PARKED, fake.labels[8])
+        self.assertIn(f"::error title=Stranded-PR notice not delivered::PR #7 {PARKED} notice post", out)
+
+    def test_permission_refusal_is_loud_not_fatal(self):
+        # (a) the label add is refused: nothing else is attempted.
+        fake = StrandedRepoFake(refuse=lambda method, path, fields: REFUSAL)
+        results, out = _reconcile(fake, [_pr(7)], runs=_exhausted(7))
+        self.assertEqual(results, [{"number": 7, "label": PARKED, "outcome": "FAILED",
+                                    "detail": f"label add: {REFUSAL}"}])
+        self.assertEqual(len(fake.writes), 1)
+        self.assertIn(f"::error title=Stranded-PR notice not delivered::PR #7 {PARKED} label add", out)
+        # (b) the label removal on a delivered PR is refused.
+        fake = StrandedRepoFake(labels={7: {PARKED}}, refuse=lambda method, path, fields: REFUSAL)
+        results, out = _reconcile(fake, [_pr(7)], live={ver(7)})
+        self.assertEqual(_outcomes(results), {(7, PARKED): "FAILED"})
+        self.assertEqual([meth for meth, _, _ in fake.writes], ["DELETE"])
+        self.assertIn("::error", out)
+        # (c) the notice post is refused and the rollback removal is refused too.
+        def refuse_notice_and_removal(method, path, fields):
+            return REFUSAL if method == "DELETE" or path.endswith("/comments") else None
+        fake = StrandedRepoFake(refuse=refuse_notice_and_removal)
+        results, out = _reconcile(fake, [_pr(7)], runs=_exhausted(7))
+        self.assertEqual(_outcomes(results), {(7, PARKED): "FAILED"})
+        self.assertIn(PARKED, fake.labels[7])
+        self.assertIn(f"::error title=Stranded-PR notice not delivered::PR #7 {PARKED} notice post", out)
+
+    def test_held_only_failure_is_recorded_durably(self):
+        import subprocess as sp
+        failures = [
+            {"number": 8, "label": HELD, "outcome": "FAILED", "detail": "notice post: gh: Server Error (HTTP 500)"},
+            {"number": 7, "label": PARKED, "outcome": "posted", "detail": ""},
+        ]
+        calls = []
+        def fake_run(cmd, **kw):
+            calls.append(cmd)
+            return sp.CompletedProcess(cmd, 0, "", "")
+        with mock.patch.object(m, "find_stuck_issue", lambda repo: {"number": 42}), \
+             mock.patch.object(m.subprocess, "run", fake_run):
+            m.report_notice_failures("o/r", failures)
+        self.assertEqual(calls[0][:5], ["gh", "issue", "comment", "42", "--repo"])
+        body = calls[0][calls[0].index("--body") + 1]
+        self.assertIn(f"PR #8 {HELD}: notice post: gh: Server Error (HTTP 500)", body)
+        self.assertNotIn("PR #7", body)
+        # With no open roll-up issue, the failure opens one under the same title.
+        calls.clear()
+        with mock.patch.object(m, "find_stuck_issue", lambda repo: None), \
+             mock.patch.object(m.subprocess, "run", fake_run):
+            m.report_notice_failures("o/r", failures)
+        self.assertEqual(calls[0][:4], ["gh", "issue", "create", "--repo"])
+        self.assertIn(m.STUCK_ISSUE_TITLE, calls[0])
+
+    def test_rollup_failure_does_not_fail_run(self):
+        import subprocess as sp
+        failures = [{"number": 8, "label": HELD, "outcome": "FAILED", "detail": "label add: x"}]
+        buf = io.StringIO()
+        with mock.patch.object(m, "find_stuck_issue", side_effect=OSError("gh missing")), \
+             contextlib.redirect_stdout(buf):
+            self.assertIsNone(m.report_notice_failures("o/r", failures))
+        self.assertIn("::warning::", buf.getvalue())
+        def broken(cmd, **kw):
+            raise sp.CalledProcessError(1, cmd, stderr="Resource not accessible by integration")
+        buf = io.StringIO()
+        with mock.patch.object(m, "find_stuck_issue", lambda repo: {"number": 42}), \
+             mock.patch.object(m.subprocess, "run", broken), contextlib.redirect_stdout(buf):
+            self.assertIsNone(m.report_notice_failures("o/r", failures))
+        self.assertIn("::warning::", buf.getvalue())
+
+    def test_delivered_pr_is_cleared(self):
+        fake = StrandedRepoFake(labels={7: {PARKED}})
+        results, _ = _reconcile(fake, [_pr(7)], live={ver(7)})
+        self.assertEqual(_outcomes(results), {(7, PARKED): "cleared"})
+        self.assertEqual(fake.writes[0][:2], ("DELETE", f"repos/o/r/issues/7/labels/{PARKED}"))
+        self.assertEqual(fake.writes[1][:2], ("POST", "repos/o/r/issues/7/comments"))
+        self.assertTrue(fake.writes[1][2]["body"].splitlines()[1].startswith(
+            f"`{PARKED}` removed. Delivered: every version of this PR is in production."))
+        self.assertNotIn(PARKED, fake.labels[7])
+
+    def test_no_clearing_without_a_ledger_read(self):
+        fake = StrandedRepoFake(labels={7: {PARKED}})
+        for live in (None, set()):
+            results, _ = _reconcile(fake, [_pr(7)], live=live)
+            self.assertEqual(results, [])
+        self.assertEqual(fake.writes, [])
+        self.assertIn(PARKED, fake.labels[7])
+
+    def test_partial_delivery_is_not_cleared(self):
+        fake = StrandedRepoFake(labels={7: {PARKED}})
+        pr = _pr(7, versions=[ver(7), ver(70)])
+        results, _ = _reconcile(fake, [pr], live={ver(7)})
+        self.assertEqual(results, [])
+        self.assertEqual(fake.writes, [])
+
+    def test_held_cleared_only_on_fresh_read(self):
+        # The pass's own hold read is empty, but a fresh read says the hold is
+        # unknown: no clear.
+        fake = StrandedRepoFake(labels={8: {HELD}})
+        results, _ = _reconcile(fake, [_pr(8)], held=lambda n: [], fresh_held=lambda n: True)
+        self.assertEqual(results, [])
+        self.assertEqual(fake.writes, [])
+        # A fresh empty read clears it.
+        results, _ = _reconcile(fake, [_pr(8)], held=lambda n: [], fresh_held=lambda n: [])
+        self.assertEqual(_outcomes(results), {(8, HELD): "cleared"})
+        self.assertTrue(fake.writes[1][2]["body"].splitlines()[1].startswith(
+            f"`{HELD}` removed. No longer held by review findings."))
+
+    def test_withdrawn_dispatch_clears_nothing(self):
+        # The dispatch looked clear, but the pre-dispatch fresh read finds a hold.
+        fake = StrandedRepoFake(labels={8: {HELD}})
+        results, _ = _reconcile(fake, [_pr(8)], held=lambda n: [], fresh_held=lambda n: [OLD_FINDING])
+        self.assertEqual(results, [])
+        self.assertEqual(fake.writes, [])
+        self.assertIn(HELD, fake.labels[8])
+
+    def test_parked_label_does_not_flap(self):
+        fake = StrandedRepoFake(labels={7: {PARKED}, 8: {PARKED}})
+        dispatchable = _pr(7)
+        waiting = _pr(8, production_dependencies={ver(6): 6})
+        results, _ = _reconcile(fake, [dispatchable, waiting])
+        self.assertEqual(results, [])
+        self.assertEqual(fake.writes, [])
+
+    def test_untracked_pr_cleared_only_on_complete_discovery(self):
+        fake = StrandedRepoFake(labels={9: {PARKED}})
+        results, _ = _reconcile(fake, [_pr(7)], discovery_ok=False)
+        self.assertEqual(results, [])
+        self.assertEqual(fake.writes, [])
+        results, _ = _reconcile(fake, [_pr(7)], discovery_ok=True)
+        self.assertEqual(_outcomes(results), {(9, PARKED): "cleared"})
+        self.assertEqual(fake.writes[0][:2], ("DELETE", f"repos/o/r/issues/9/labels/{PARKED}"))
+        self.assertIn("No longer tracked by the automatic lane", fake.writes[1][2]["body"])
+
+    def test_notice_bodies_are_public_safe(self):
+        parked = {**_pr(7), "exhausted": 3, "refunds": 1}
+        held = {**_pr(8), "findings": [OLD_FINDING]}
+        env = {"GITHUB_SERVER_URL": "https://github.com", "GITHUB_REPOSITORY": "popcre/shared-db",
+               "GITHUB_RUN_ID": "123"}
+        with mock.patch.dict(os.environ, env):
+            bodies = [m.notice_body(PARKED, parked, NOW), m.notice_body(HELD, held, NOW)]
+            bodies += [m.clear_body(PARKED, reason) for reason in ("delivered", "released", "untracked")]
+        self.assertEqual(bodies[0].splitlines()[0], m.marker(PARKED))
+        self.assertEqual(bodies[1].splitlines()[0], m.marker(HELD))
+        self.assertIn("#901", bodies[1])
+        self.assertIn("1 refunds used", bodies[0])
+        self.assertIn("actions/runs/123", bodies[0])
+        for body in bodies:
+            for url in re.findall(r"https?://\S+", body):
+                self.assertTrue(url.startswith("https://github.com/popcre/shared-db"), url)
+            for banned in ("supabase", "postgres", "database", "service_role", "secret", "token"):
+                self.assertNotIn(banned, body.lower())
+        with mock.patch.dict(os.environ, {}, clear=False):
+            for key in env:
+                os.environ.pop(key, None)
+            self.assertNotIn("actions/runs", m.notice_body(PARKED, parked, NOW))
+
+
+class StrandedWiringInMain(unittest.TestCase):
+    """#6561 plan §10: main() contains reconciler defects and dry-run writes nothing."""
+
+    def _main(self, *, prs, runs, labels=None, live=None, argv=("x", "--dry-run"), extra=None):
+        labels = labels or {}
+        sp_calls = []
+
+        def fake_gh(*args):
+            text = " ".join(args)
+            if "commits/main" in text:
+                return {"sha": "abc"}
+            for label in (PARKED, HELD):
+                if f"labels={label}&" in text:
+                    return [[{"number": n, "pull_request": {}} for n in labels.get(label, [])]]
+            if "/comments?" in text:
+                return [[]]
+            raise AssertionError(f"unexpected read in main(): {text}")
+
+        def recording_run(cmd, **kw):
+            sp_calls.append(list(cmd))
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        patches = dict(
+            gh=fake_gh, merged_migration_prs=lambda repo: prs, workflow_runs=lambda repo, **_: runs,
+            is_held=lambda repo, n: [], production_ledger=lambda path=None: live,
+            applied_in_any_attempt=lambda repo, run: False,
+            refused_as_applied=lambda repo, run: set(),
+            stale_main_refusal_only=lambda repo, run: False,
+            refund_eligible_in_any_attempt=lambda repo, run: False,
+        )
+        patches.update(extra or {})
+        out = io.StringIO()
+        with mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "o/r"}), \
+             mock.patch.dict(os.environ), \
+             mock.patch.object(sys, "argv", list(argv)), \
+             mock.patch.object(m.subprocess, "run", recording_run), \
+             mock.patch.multiple(m, **patches), \
+             contextlib.redirect_stdout(out):
+            os.environ.pop("GITHUB_STEP_SUMMARY", None)
+            code = m.main(NOW)
+        return code, out.getvalue(), sp_calls
+
+    def test_reconciler_crash_is_contained(self):
+        crash = mock.Mock(side_effect=RuntimeError("boom"))
+        code, out, _ = self._main(prs=[], runs=[], extra={"reconcile_stranded_marks": crash})
+        crash.assert_called_once()
+        self.assertEqual(code, 0)
+        self.assertIn("Stranded-PR reconciler defect", out)
+
+    def test_dry_run_issues_no_writes(self):
+        gh_write = mock.Mock(return_value=(True, "ok"))
+        ensure = mock.Mock(return_value=True)
+        notice_failures = mock.Mock()
+        stuck = mock.Mock()
+        extra = {"gh_write": gh_write, "ensure_label": ensure,
+                 "report_notice_failures": notice_failures, "report_stuck_change": stuck}
+        code, out, sp_calls = self._main(
+            prs=[_pr(7), _pr(9)], runs=_exhausted(7), labels={PARKED: [9]}, live={ver(9)}, extra=extra)
+        self.assertEqual(code, 0)
+        gh_write.assert_not_called()
+        ensure.assert_not_called()
+        notice_failures.assert_not_called()
+        stuck.assert_not_called()
+        writes = [c for c in sp_calls if {"POST", "PATCH", "DELETE", "create", "comment"} & set(c)]
+        self.assertEqual(writes, [])
+        self.assertIn("dry-run: would mark PR #7 promotion-parked", out)
+        self.assertIn("dry-run: would clear PR #9 promotion-parked (delivered)", out)
+
+    def test_rollup_line_carries_pr_notice_outcome(self):
+        entries = [{"number": 7, "merged_at": "2026-11-01T00:00:00Z", "versions": [ver(7)],
+                    "findings": [], "exhausted": 3, "notice": "posted"}]
+        calls = []
+
+        def fake_run(cmd, **kw):
+            calls.append(cmd)
+            class R:
+                stdout = "https://github.com/o/r/issues/99\n"
+                stderr = ""
+            return R()
+        saved_run = subprocess.run
+        saved_gh = m.gh
+        subprocess.run = fake_run
+        m.gh = lambda *a: []  # no existing roll-up issue
+        try:
+            m.report_stuck_change("o/r", entries, datetime(2026, 11, 2, 20, 0, tzinfo=timezone.utc))
+        finally:
+            subprocess.run = saved_run
+            m.gh = saved_gh
+        creates = [c for c in calls if "create" in c]
+        self.assertEqual(len(creates), 1)
+        body = creates[0][creates[0].index("--body") + 1]
+        self.assertIn("— PR notice: posted", body)
 
 
 class CompletePullDiscovery(unittest.TestCase):
@@ -1731,7 +2413,7 @@ class ClassifiedRefundBudget(unittest.TestCase):
                  sys.argv, os.environ.get("GITHUB_REPOSITORY"))
         m.gh = lambda *a: {"sha": "abc"}
         m.merged_migration_prs = lambda repo: [pr]
-        m.workflow_runs = lambda repo: runs
+        m.workflow_runs = lambda repo, **_: runs
         m.is_held = lambda repo, n: []
         m.refund_eligible_in_any_attempt = lambda repo, run: True
         m.stale_main_refusal_only = lambda repo, run: False
@@ -1820,6 +2502,335 @@ class AdversarialRunIdentity(unittest.TestCase):
         self.assertEqual(m.decide([self.pr], [before] * 3, lambda n: [], main_sha="x")[0], "dispatch")
 
 
+class LedgerFailsClosed(unittest.TestCase):
+    """#6493 Step 2: a configured but unreadable ledger holds the cycle."""
+    def test_unreadable_ledger_holds_without_reading_or_dispatching(self):
+        with mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "o/r", "PRODUCTION_LEDGER_FILE": "/nonexistent/ledger.json"}), \
+             mock.patch.object(sys, "argv", ["x"]), \
+             mock.patch.object(m, "gh", lambda *a: {"sha": "abc"}), \
+             mock.patch.object(m, "workflow_runs", side_effect=AssertionError("must not read runs")), \
+             mock.patch.object(m, "dispatch", side_effect=AssertionError("must not dispatch")):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(m.main(), 0)
+        self.assertIn("wait: production ledger unreadable", out.getvalue())
+
+
+class ClaimRefPaths(unittest.TestCase):
+    def test_release_deletes_the_full_ref_path(self):
+        with mock.patch.object(m.subprocess, "run") as run:
+            m.release_claim("o/r", 7)
+        self.assertEqual(run.call_args[0][0][:5], ["gh", "api", "-X", "DELETE", "repos/o/r/git/refs/dispatch-claims/pr-7"])
+
+
+class DispatchClaims(unittest.TestCase):
+    """#6493 Step 2: per-PR liveness lease against duplicate dispatch."""
+    now = datetime(2026, 11, 16, 20, 0, tzinfo=timezone.utc)
+    claim = {"pr": 7, "versions": ["20261116100000"], "run_id": "11", "claimed_at": "2026-11-16T19:00:00Z"}
+
+    def arun(self, status, conclusion=None, title="DB preview apply PR7 20261116100000", at="2026-11-16T19:01:00Z"):
+        return {"display_title": title, "status": status, "conclusion": conclusion, "created_at": at, "updated_at": at}
+
+    def test_in_flight_run_keeps_the_claim_live(self):
+        self.assertFalse(m.claim_is_stale(self.claim, [self.arun("in_progress")], None, self.now))
+
+    def test_version_titled_run_without_pr_number_counts(self):
+        r = self.arun("queued", title="DB production apply recovery PR 20261116100000")
+        self.assertFalse(m.claim_is_stale(self.claim, [r], None, self.now))
+
+    def test_successful_preview_before_ledger_shows_keeps_claim(self):
+        self.assertFalse(m.claim_is_stale(self.claim, [self.arun("completed", "success")], set(), self.now))
+
+    def test_every_associated_run_failed_reclaims(self):
+        self.assertTrue(m.claim_is_stale(self.claim, [self.arun("completed", "failure")], None, self.now))
+
+    def test_failed_claimer_with_no_run_reclaims_but_live_claimer_does_not(self):
+        self.assertTrue(m.claim_is_stale(self.claim, [], None, self.now, lambda rid: True))
+        self.assertFalse(m.claim_is_stale(self.claim, [], None, self.now, lambda rid: False))
+
+    def test_ledger_applied_claim_is_stale(self):
+        self.assertTrue(m.claim_is_stale(self.claim, [self.arun("in_progress")], {"20261116100000"}, self.now))
+
+    def test_nothing_moving_for_four_hours_reclaims(self):
+        later = self.now + timedelta(hours=5)
+        self.assertTrue(m.claim_is_stale(self.claim, [self.arun("completed", "success")], set(), later))
+        self.assertFalse(m.claim_is_stale(self.claim, [self.arun("in_progress")], set(), later))
+
+    def test_runs_before_the_claim_are_ignored(self):
+        old = self.arun("completed", "failure", at="2026-11-16T18:00:00Z")
+        self.assertFalse(m.claim_is_stale(self.claim, [old], None, self.now, lambda rid: False))
+
+    def test_second_selector_is_blocked_by_a_live_claim(self):
+        pr = {"number": 7, "versions": ["20261116100000"]}
+        api = {"commits/main": {"commit": {"tree": {"sha": "t"}}}, "git/commits": {"sha": "c"}}
+
+        def gh(*args):
+            path = [a for a in args if a.startswith("repos/")][0]
+            if path.endswith("git/ref/dispatch-claims/pr-7"):
+                return {"object": {"sha": "old"}}
+            if path.endswith("git/commits/old"):
+                return {"message": json.dumps(self.claim)}
+            return next(v for k, v in api.items() if path.endswith(k))
+        refused = subprocess.CalledProcessError(1, "gh")
+        with mock.patch.object(m, "gh", gh), mock.patch.object(m.subprocess, "run", side_effect=refused), \
+             contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertFalse(m.claim_dispatch("o/r", pr, [self.arun("in_progress")], None, self.now))
+        self.assertIn("already claimed", out.getvalue())
+
+    def test_failed_production_after_a_passed_preview_reclaims(self):
+        # 2026-11-17, PR #6370: preview passed, production apply failed, and the
+        # claim stayed live -- the queue parked behind it for 97 minutes.
+        preview = self.arun("completed", "success")
+        prod = self.arun("completed", "failure", title="DB production apply PR7 20261116100000", at="2026-11-16T19:06:00Z")
+        self.assertTrue(m.claim_is_stale(self.claim, [prod, preview], set(), self.now))
+
+    def test_recovery_success_after_a_failure_keeps_the_claim(self):
+        failed = self.arun("completed", "failure")
+        retry = self.arun("completed", "success", at="2026-11-16T19:10:00Z")
+        self.assertFalse(m.claim_is_stale(self.claim, [failed, retry], set(), self.now))
+
+    def test_a_claimed_pr_is_passed_over_and_the_next_dispatches(self):
+        first = {"number": 7, "merged_at": "2026-11-16T10:00:00Z", "versions": ["20261116100000"]}
+        second = {"number": 8, "merged_at": "2026-11-16T11:00:00Z", "versions": ["20261116110000"]}
+        sent = []
+        with mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "o/r"}), mock.patch.object(sys, "argv", ["x"]), \
+             mock.patch.object(m, "gh", lambda *a: {"sha": "abc"}), \
+             mock.patch.object(m, "merged_migration_prs", lambda repo: [first, second]), \
+             mock.patch.object(m, "workflow_runs", lambda repo, **_: []), \
+             mock.patch.object(m, "is_held", lambda repo, n: []), \
+             mock.patch.object(m, "prune_claims", lambda *a: None), \
+             mock.patch.object(m, "claim_dispatch", lambda repo, pr, *a: pr["number"] != 7), \
+             mock.patch.object(m, "dispatch", lambda repo, pr, sha, *_: sent.append(pr["number"])), \
+             contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(m.main(self.now), 0)
+        self.assertEqual(sent, [8])
+        self.assertIn("after passing over claimed PR(s) #7", out.getvalue())
+
+    def test_dispatch_error_releases_the_claim(self):
+        pr = {"number": 7, "merged_at": "2026-11-16T10:00:00Z", "versions": ["20261116100000"]}
+        released = []
+        with mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "o/r"}), mock.patch.object(sys, "argv", ["x"]), \
+             mock.patch.object(m, "gh", lambda *a: {"sha": "abc"}), \
+             mock.patch.object(m, "merged_migration_prs", lambda repo: [pr]), \
+             mock.patch.object(m, "workflow_runs", lambda repo, **_: []), \
+             mock.patch.object(m, "is_held", lambda repo, n: []), \
+             mock.patch.object(m, "prune_claims", lambda *a: None), \
+             mock.patch.object(m, "claim_dispatch", lambda *a: True), \
+             mock.patch.object(m, "release_claim", lambda repo, n: released.append(n)), \
+             mock.patch.object(m, "dispatch", side_effect=RuntimeError("boom")), \
+             contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(RuntimeError):
+                m.main(self.now)
+        self.assertEqual(released, [7])
+
+
+class LaneGuardWaitsForAFinishingRun(unittest.TestCase):
+    """#6493 Step 4: the completion nudge arrives while its own run is still
+    closing. The guard must wait for that run instead of dropping the nudge,
+    and must still skip at once while a run is really applying. Runs the
+    workflow step's own shell against a scripted `gh`."""
+
+    ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    STUB = """#!/usr/bin/env bash
+d="$GH_STUB_DIR"
+if [ "$2" = list ]; then
+  n=$(cat "$d/n" 2>/dev/null || echo 0); echo $((n + 1)) > "$d/n"
+  f="$d/list.$n"; [ -f "$f" ] || f="$d/list.last"
+  [ -f "$f" ] || exit 1
+  cat "$f"
+else
+  cat "$d/jobs.$3"
+fi
+"""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(os.path.join(cls.ROOT, ".github", "workflows", "automatic-production-trigger.yml"), encoding="utf-8") as fh:
+            cls.trigger = fh.read()
+        with open(os.path.join(cls.ROOT, ".github", "workflows", "shared-supabase-migrations.yml"), encoding="utf-8") as fh:
+            cls.migrations = fh.read()
+        block = cls.trigger.split("id: lane_guard\n        run: |\n", 1)[1]
+        lines = []
+        for line in block.split("\n"):
+            if line.strip() and not line.startswith(" " * 10):
+                break
+            lines.append(line[10:])
+        cls.script = "\n".join(lines)
+
+    def guard(self, files):
+        with tempfile.TemporaryDirectory() as tmp:
+            bindir = os.path.join(tmp, "bin")
+            os.mkdir(bindir)
+            stub = os.path.join(bindir, "gh")
+            with open(stub, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(self.STUB)
+            os.chmod(stub, 0o755)
+            for name, value in files.items():
+                with open(os.path.join(tmp, name), "w", encoding="utf-8") as fh:
+                    fh.write(json.dumps(value))
+            output = os.path.join(tmp, "out")
+            open(output, "w").close()
+            env = {**os.environ, "PATH": bindir + os.pathsep + os.environ["PATH"], "GH_STUB_DIR": tmp,
+                   "GITHUB_REPOSITORY": "o/r", "GITHUB_OUTPUT": output, "LANE_GUARD_POLL_SECONDS": "0"}
+            done = subprocess.run(["bash", "-e", "-c", self.script], env=env, stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, text=True)
+            with open(output, encoding="utf-8") as fh:
+                return done.returncode, "skipped=true" in fh.read(), done.stdout
+
+    BUSY = [{"databaseId": 5, "status": "in_progress"}, {"databaseId": 4, "status": "completed"}]
+    DONE = [{"databaseId": 5, "status": "completed"}]
+    NUDGING = {"jobs": [{"name": "Production apply (automatic evidence gates)", "status": "completed"},
+                        {"name": "Nudge the production queue", "status": "in_progress"}]}
+    APPLYING = {"jobs": [{"name": "Production apply (automatic evidence gates)", "status": "in_progress"}]}
+
+    def test_idle_lane_proceeds(self):
+        self.assertEqual(self.guard({"list.last": self.DONE})[:2], (0, False))
+
+    def test_a_run_still_applying_skips_at_once(self):
+        code, skipped, out = self.guard({"list.last": self.BUSY, "jobs.5": self.APPLYING})
+        self.assertEqual((code, skipped), (0, True))
+        self.assertNotIn("wait:", out)
+
+    def test_a_finishing_run_is_waited_for_then_the_selector_runs(self):
+        code, skipped, out = self.guard({"list.0": self.BUSY, "list.1": self.BUSY, "list.last": self.DONE,
+                                         "jobs.5": self.NUDGING})
+        self.assertEqual((code, skipped), (0, False), out)
+        self.assertIn("wait: migration run(s) 5 finishing", out)
+
+    def test_a_finishing_run_beside_an_applying_run_skips(self):
+        both = [{"databaseId": 5, "status": "in_progress"}, {"databaseId": 6, "status": "queued"}]
+        code, skipped, _ = self.guard({"list.last": both, "jobs.5": self.NUDGING, "jobs.6": {"jobs": []}})
+        self.assertEqual((code, skipped), (0, True))
+
+    def test_a_run_that_never_completes_skips_after_the_bounded_wait(self):
+        code, skipped, out = self.guard({"list.last": self.BUSY, "jobs.5": self.NUDGING})
+        self.assertEqual((code, skipped), (0, True))
+        self.assertEqual(out.count("wait:"), 36)
+
+    def test_a_failed_lane_query_fails_open(self):
+        code, skipped, out = self.guard({})
+        self.assertEqual((code, skipped), (0, False))
+        self.assertIn("fail-open", out)
+
+    def test_the_guard_names_the_real_nudge_job(self):
+        body = self.migrations.split("\n  notify-production-queue:", 1)[1]
+        self.assertIn("name: Nudge the production queue\n", body[:200])
+        self.assertIn('.name == "Nudge the production queue"', self.trigger)
+
+
+class SloReport(unittest.TestCase):
+    def test_first_post_merge_run_gives_the_sample(self):
+        prs = [{"number": 7, "merged_at": "2026-11-16T10:00:00Z"}, {"number": 8, "merged_at": "2026-11-16T11:00:00Z"}]
+        runs = [{"display_title": "DB preview apply PR7 1", "created_at": "2026-11-16T10:02:00Z"},
+                {"display_title": "DB preview apply PR7 1", "created_at": "2026-11-16T10:30:00Z"},
+                {"display_title": "DB preview apply PR7 1", "created_at": "2026-11-16T09:00:00Z"},
+                {"display_title": "DB production apply PR8 2", "created_at": "2026-11-16T11:10:00Z",
+                 "run_started_at": "2026-11-16T11:12:00Z"}]
+        self.assertEqual(m.slo_samples(prs, runs, "DB preview apply"), [(7, 120.0)])
+        self.assertEqual(m.slo_samples(prs, runs, "DB production apply"), [(8, 720.0)])
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            m.report_slos(prs, runs)
+        self.assertIn("SLO_A merge-to-dispatch: 120s (PR #7); p50=120s p95=120s", out.getvalue())
+        self.assertIn("SLO_B merge-to-apply-start: 720s (PR #8)", out.getvalue())
+
+
+class PrefetchHolds(unittest.TestCase):
+    """#6493 Step 1c: one settle for all candidates, same fail-toward-holding."""
+    finding = {"number": 900, "state": "open", "labels": [{"name": "review-finding"}],
+               "body": "Source PR: https://github.com/o/r/pull/7", "created_at": "2026-11-16T00:00:00Z"}
+
+    def test_one_settle_and_shared_label_read_for_many_prs(self):
+        import review_finding_hold as rfh
+        sleeps, labelled = [], []
+        out = rfh.gh_issues_many("o/r", [7, 8], sleep=sleeps.append,
+                                 labelled=lambda r, p: labelled.append(1) or [self.finding],
+                                 crossed=lambda r, p: [])
+        self.assertEqual(sleeps, [rfh.SETTLE_SECONDS])
+        self.assertEqual(len(labelled), 2)
+        self.assertEqual(len(out[7]), 2)
+
+    def test_failed_batch_falls_back_to_per_pr_is_held(self):
+        with mock.patch.object(m.review_finding_hold, "gh_issues_many",
+                               side_effect=subprocess.CalledProcessError(1, "gh")), \
+             mock.patch.object(m, "is_held", lambda repo, n: True), \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertIs(REAL_PREFETCH_HOLDS("o/r", [7])(7), True)
+
+    def test_prefetched_blocking_finding_holds(self):
+        with mock.patch.object(m.review_finding_hold, "gh_issues_many", lambda repo, prs: {7: [self.finding]}), \
+             mock.patch.object(m.review_finding_hold, "blocking_findings", lambda issues, repo, n: issues):
+            self.assertEqual(REAL_PREFETCH_HOLDS("o/r", [7])(7), [self.finding])
+
+    def test_pr_outside_the_batch_reads_fresh(self):
+        with mock.patch.object(m.review_finding_hold, "gh_issues_many", lambda repo, prs: {}), \
+             mock.patch.object(m, "is_held", lambda repo, n: ["fresh"]):
+            self.assertEqual(REAL_PREFETCH_HOLDS("o/r", [])(9), ["fresh"])
+
+
+class PermanentRefusalTests(unittest.TestCase):
+    """#6574 Fix B: a permanent producer-mismatch refusal parks on the first run."""
+    RUN = {"id": 5, "run_attempt": 1}
+    PR = {"number": 6433, "merged_at": "2026-11-16T04:57:00Z", "versions": ["20261116013153"]}
+    FAIL = {"display_title": "DB production apply PR6433 20261116013153", "status": "completed",
+            "conclusion": "failure", "created_at": "2026-11-17T13:10:00Z"}
+    DIED = ("##[error]ENGINEER ACTION REQUIRED: automatic qualification found no evidence route the "
+            "production gate accepts: RiskGateError: the production gate would refuse this preview evidence "
+            "(scripts/production_business_risk_gate.py:1562: produced evidence with a different "
+            "scripts/production_migration_guard.py than the merge commit), and the migration is high-risk "
+            "to live data so the ephemeral CI route cannot substitute. Nothing was dispatched.\n")
+
+    def check(self, log=None, raises=None):
+        jobs = [{"id": 11, "steps": [{"name": "Qualify", "conclusion": "failure"}]}]
+        def fake_run(cmd, **kw):
+            if raises:
+                raise raises
+            class R:
+                stdout = log
+            return R()
+        with mock.patch.object(m, "attempt_jobs", return_value=[jobs]), \
+                mock.patch.object(m.subprocess, "run", side_effect=fake_run):
+            return m.permanent_refusal("o/r", self.RUN)
+
+    def test_permanent_refusal_is_recognised(self):
+        self.assertTrue(self.check(self.DIED))
+
+    def test_permanent_refusal_parks_on_first_run(self):
+        action, got, reason = m.decide([self.PR], [self.FAIL], lambda n: [],
+                                       main_sha="new", permanent=lambda run: True)
+        self.assertEqual(action, "idle")
+        self.assertIn("permanent refusal", reason)
+
+    def test_permanent_refusal_unreadable_log_counts_as_ordinary_attempt(self):
+        self.assertFalse(self.check(raises=subprocess.CalledProcessError(1, "gh")))
+        action, got, _ = m.decide([self.PR], [self.FAIL], lambda n: [],
+                                  main_sha="new", permanent=lambda run: False)
+        self.assertEqual((action, got["number"]), ("dispatch", 6433))
+
+    def test_stale_refusal_is_not_permanent(self):
+        self.assertFalse(self.check("##[error]REFUSED: has moved past the dispatched commit\n"))
+
+    def test_ordinary_failure_still_needs_three(self):
+        self.assertEqual(m.decide([self.PR], [self.FAIL] * 2, lambda n: [], main_sha="new",
+                                  permanent=lambda run: False)[0], "dispatch")
+        self.assertEqual(m.decide([self.PR], [self.FAIL] * 3, lambda n: [], main_sha="new",
+                                  permanent=lambda run: False)[0], "idle")
+class PreMergeRefusalWorkflowTests(unittest.TestCase):
+    """#6574 Fix A: the refusal runs in the validate job, which the preview job needs,
+    so a refused claim-lane apply never reaches any preview database step."""
+
+    def test_premerge_refusal_step_gated_and_runs_before_preview(self):
+        import os
+        root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+        with open(os.path.join(root, ".github", "workflows", "shared-supabase-migrations.yml"), encoding="utf-8") as fh:
+            text = fh.read()
+        validate = text[text.index("\n  validate:\n"):text.index("\n  preview:\n")]
+        step = validate.index("- name: Refuse pre-merge apply of a high-risk migration")
+        self.assertIn("inputs.claim_pr != '' && inputs.mode == 'apply'", validate[step:step + 300])
+        self.assertIn("premerge-preview-check", validate[step:step + 600])
+        preview = text[text.index("\n  preview:\n"):]
+        self.assertIn("needs: validate", preview[:400])
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -1867,14 +2878,16 @@ class DispatchUsesFreshMain(unittest.TestCase):
         calls = []
         m.gh = lambda path: {"sha": next(shas)}
         m.decide = lambda *a, **k: ("dispatch", pr, "ok")
-        m.workflow_runs = lambda repo: []
+        m.workflow_runs = lambda repo, **_: []
         m.production_ledger = lambda: None
         m.merged_migration_prs = lambda repo: [pr]
         m.backstop_freeze = lambda p: calls.append("freeze")
-        m.dispatch = lambda repo, p, sha: calls.append(sha)
+        m.dispatch = lambda repo, p, sha, runs=None: calls.append(sha)
         sys.argv, os.environ["GITHUB_REPOSITORY"] = ["x"], "o/r"
         try:
-            with contextlib.redirect_stdout(io.StringIO()):
+            with contextlib.redirect_stdout(io.StringIO()), \
+                 mock.patch.object(m, "prune_claims", lambda *a: None), \
+                 mock.patch.object(m, "claim_dispatch", lambda *a: True):
                 self.assertEqual(m.main(datetime(2026, 11, 15, 22, 0, tzinfo=timezone.utc)), 0)
             self.assertEqual(calls, ["freeze", "new"])
         finally:
@@ -1884,3 +2897,151 @@ class DispatchUsesFreshMain(unittest.TestCase):
                 os.environ.pop("GITHUB_REPOSITORY", None)
             else:
                 os.environ["GITHUB_REPOSITORY"] = saved[8]
+
+
+
+class SelectorRunCache(unittest.TestCase):
+    """#6493 Step 1c: the workflow-run cache is discovery-only."""
+    NOW = "2026-11-17T12:00:00Z"
+
+    def run_(self, i, status="completed", conclusion="failure", at="2026-11-17T09:00:00Z",
+             title="DB preview apply a PR7 20261116100000"):
+        return {"id": i, "status": status, "conclusion": conclusion, "created_at": at,
+                "display_title": title, "run_attempt": 1}
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self.dir.name, "runs.json")
+        self.env = mock.patch.dict(os.environ, {"PROMOTION_RUN_CACHE_FILE": self.path})
+        self.env.start()
+        m._RUN_SNAPSHOT = None
+        self.calls = []
+        self.clock = mock.patch.object(m, "_utcnow", lambda: m._time(self.NOW))
+        self.clock.start()
+        self.jobs = mock.patch.object(m, "run_jobs", lambda *a: [{"name": "job"}])
+        self.jobs.start()
+
+    def tearDown(self):
+        m._RUN_SNAPSHOT = None
+        self.clock.stop()
+        self.jobs.stop()
+        self.env.stop()
+        self.dir.cleanup()
+
+    def api(self, full=(), recent=(), in_flight=(), by_id=None):
+        def gh(*args):
+            url = args[-1]
+            self.calls.append(url)
+            if "/actions/runs/" in url:
+                return (by_id or {})[int(url.rsplit("/", 1)[1])]
+            if "status=" in url:
+                status = url.split("status=")[1]
+                return [{"workflow_runs": [r for r in in_flight if r["status"] == status]}]
+            if f"created=>={m.ACTIVATED_AT[:10]}" in url:
+                return [{"workflow_runs": list(full)}]
+            return [{"workflow_runs": list(recent)}]
+        return gh
+
+    def write_cache(self, runs, read_at="2026-11-17T11:00:00Z"):
+        with open(self.path, "w", encoding="utf-8") as fh:
+            json.dump({"schema_version": m.RUN_CACHE_SCHEMA, "activated_at": m.ACTIVATED_AT,
+                       "read_at": read_at, "runs": runs}, fh)
+
+    def read(self, gh, **kw):
+        m._RUN_SNAPSHOT = None
+        with mock.patch.object(m, "gh", gh), contextlib.redirect_stdout(io.StringIO()):
+            return m.workflow_runs("o/r", **kw)
+
+    def full_reads(self):
+        return [c for c in self.calls if f"created=>={m.ACTIVATED_AT[:10]}" in c]
+
+    def test_cold_cache_does_a_full_read_and_writes_the_cache(self):
+        runs = self.read(self.api(full=[self.run_(1)]))
+        self.assertEqual([r["id"] for r in runs], [1])
+        self.assertEqual(len(self.full_reads()), 1)
+        with open(self.path, encoding="utf-8") as fh:
+            self.assertEqual([r["id"] for r in json.load(fh)["runs"]], [1])
+
+    def test_warm_cache_reads_only_recent_and_in_flight_runs(self):
+        self.write_cache([self.run_(1, at="2026-11-01T00:00:00Z")])
+        new = self.run_(2, at="2026-11-17T11:30:00Z", conclusion="success")
+        runs = self.read(self.api(recent=[new]))
+        self.assertEqual([r["id"] for r in runs], [2, 1])
+        self.assertEqual(self.full_reads(), [])
+        self.assertTrue(any("created=>=2026-11-17T10:50:00Z" in c for c in self.calls))
+
+    def test_corrupt_or_expired_cache_falls_back_to_a_full_read(self):
+        for body in ("{not json", json.dumps({"schema_version": 99})):
+            with open(self.path, "w", encoding="utf-8") as fh:
+                fh.write(body)
+            self.calls = []
+            self.read(self.api(full=[self.run_(1)]))
+            self.assertEqual(len(self.full_reads()), 1, body)
+        self.write_cache([self.run_(1)], read_at="2026-11-16T00:00:00Z")
+        self.calls = []
+        self.read(self.api(full=[self.run_(1)]))
+        self.assertEqual(len(self.full_reads()), 1)
+
+    def test_a_failed_refresh_falls_back_to_a_full_read(self):
+        self.write_cache([self.run_(1, status="in_progress", conclusion=None)])
+        def gh(*args):
+            if "/actions/runs/" in args[-1]:
+                raise subprocess.CalledProcessError(1, "gh")
+            return self.api(full=[self.run_(1)])(*args)
+        runs = self.read(gh)
+        self.assertEqual(runs[0]["status"], "completed")
+        self.assertEqual(len(self.full_reads()), 1)
+
+    def test_cached_non_terminal_runs_are_refetched(self):
+        self.write_cache([self.run_(5, status="in_progress", conclusion=None, at="2026-11-01T00:00:00Z")])
+        done = self.run_(5, at="2026-11-01T00:00:00Z", conclusion="success")
+        runs = self.read(self.api(by_id={5: done}))
+        self.assertEqual((runs[0]["status"], runs[0]["conclusion"]), ("completed", "success"))
+        self.assertIn("repos/o/r/actions/runs/5", self.calls)
+
+    def test_a_rerun_of_an_old_completed_run_is_seen_in_flight(self):
+        self.write_cache([self.run_(6, at="2026-11-01T00:00:00Z")])
+        rerun = self.run_(6, status="queued", conclusion=None, at="2026-11-01T00:00:00Z")
+        runs = self.read(self.api(in_flight=[rerun]))
+        self.assertEqual(runs[0]["status"], "queued")
+        action, _, _ = m.decide([{"number": 7, "merged_at": "2026-10-31T00:00:00Z", "versions": ["1"]}],
+                                runs, lambda n: [])
+        self.assertEqual(action, "wait")
+
+    def test_attempts_are_never_counted_from_the_cache(self):
+        """The cache says PR 7's three attempts all failed; fresh GitHub says one
+        was re-run to success. The pre-dispatch read (fresh_since = merge) must
+        re-read every run of the PR, not trust the cached conclusions."""
+        title = "DB preview apply a PR7 20261116100000"
+        cached = [self.run_(i, at=f"2026-11-16T1{i}:00:00Z", title=title) for i in (1, 2, 3)]
+        self.write_cache(cached)
+        fresh = [{**cached[0], "conclusion": "success"}, cached[1], cached[2]]
+        def gh(*args):
+            url = args[-1]
+            if "created=>=2026-11-16T10:00:00Z" in url:
+                self.calls.append(url)
+                return [{"workflow_runs": fresh}]
+            return self.api()(*args)
+        runs = self.read(gh, fresh_since="2026-11-16T10:00:00Z")
+        self.assertEqual({r["id"]: r["conclusion"] for r in runs}[1], "success")
+        self.assertEqual(self.full_reads(), [])
+
+    def test_main_rechecks_with_the_candidate_and_dependency_merge_times(self):
+        dep = {"number": 6, "merged_at": "2026-11-15T00:00:00Z", "versions": ["20261115000000"]}
+        pr = {"number": 7, "merged_at": "2026-11-16T10:00:00Z", "versions": ["20261116100000"],
+              "production_dependencies": {"20261115000000": 6}}
+        seen, sent = [], []
+        prod = {"id": 9, "status": "completed", "conclusion": "success", "created_at": "2026-11-15T01:00:00Z",
+                "display_title": "DB production apply a PR6 20261115000000"}
+        with mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "o/r"}), mock.patch.object(sys, "argv", ["x"]), \
+             mock.patch.object(m, "gh", lambda *a: {"sha": "abc"}), \
+             mock.patch.object(m, "merged_migration_prs", lambda repo: [dep, pr]), \
+             mock.patch.object(m, "workflow_runs", lambda repo, **kw: seen.append(kw) or [prod]), \
+             mock.patch.object(m, "is_held", lambda repo, n: []), \
+             mock.patch.object(m, "prune_claims", lambda *a: None), \
+             mock.patch.object(m, "claim_dispatch", lambda *a: True), \
+             mock.patch.object(m, "dispatch", lambda repo, p, sha, runs: sent.append(runs)), \
+             contextlib.redirect_stdout(io.StringIO()):
+            m.main(m._time("2026-11-17T00:00:00Z"))
+        self.assertEqual(seen, [{}, {"fresh_since": "2026-11-15T00:00:00Z"}])
+        self.assertEqual(sent, [[prod]])  # dispatch reuses the fresh read, no third read

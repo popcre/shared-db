@@ -16,6 +16,29 @@ HISTORY = ROOT / 'docs/verification/issue-5609-trigger-acceptance/5609-original-
 ORIGINAL_SHA = '4db994c5425617fe5c211f688b6d35dd520f2af5449ef80d7c7e0c96d6a0eb9f'
 
 
+def recent_fixture_sql():
+    """Exercise the actual production selection against eligible/ineligible rows."""
+    source = PROBE.read_text()
+    recent = source[source.index('recent as ('):source.index('), metadata_source as (') + 1]
+    recent = recent.replace('public.assets', 'fixture_assets')
+    def scenario(age, expected, eligible):
+        return "with baseline as(select now()-interval '" + age + "' observed_at)," + """
+fixture_assets as (
+ select n as id, n=1 as is_deleted,
+  case when n=2 then now()-interval '3 days'
+       when n=3 then now()+interval '1 day'
+       when n=4 then now()-interval '45 minutes'
+       else now()-interval '10 minutes' end last_seen_at
+ from generate_series(9,1,-1) n
+), """ + recent + """
+select (select count(*) from fixture_assets where not is_deleted
+ and last_seen_at>=greatest((select observed_at from baseline),now()-interval '24 hours')
+ and last_seen_at<=now())=""" + str(eligible) + """
+ and (select array_agg(id order by id) from recent)=array[""" + expected + """] as passed;
+"""
+    return scenario('2 days', '4,5,6', 6) + scenario('30 minutes', '5,6,7', 5)
+
+
 def fixture_sql():
     source = PROBE.read_text()
     block = source[source.index('), metadata_source as (') + 3:source.index('\nselect case')]
@@ -208,6 +231,39 @@ def family_fixture_sql():
 
 
 class AcceptanceProbeTests(unittest.TestCase):
+    def test_third_failed_window_preserved_and_acceptance_guards_unchanged(self):
+        archived = ROOT / 'docs/verification/issue-5609-trigger-acceptance/5609-third-failed-window.sql'
+        self.assertEqual(hashlib.sha256(archived.read_bytes()).hexdigest(),
+                         'abe17944933a4dda492bb59983df584b9b56470a0446d15b8aa546e8ae56a508')
+        corrected = ROOT / 'docs/verification/issue-5609-trigger-acceptance/5609-third-failed-window-corrected.sql'
+        self.assertEqual(hashlib.sha256(corrected.read_bytes()).hexdigest(),
+                         '4ebc6ddcacbb3b2e1ae885472a2c6659405a2ffdd4e23137d6e83de4c0239a9e')
+        november17 = ROOT / 'docs/verification/issue-5609-trigger-acceptance/5609-20261117-failed-window.sql'
+        self.assertEqual(hashlib.sha256(november17.read_bytes()).hexdigest(),
+                         'f588afb03d66cd7fdb369f5f9fb385df641a310b54162814b3a4ca5dfb72ab6d')
+        strip_comments = lambda source: re.sub(r'(?m)^--[^\n]*\n', '', source)
+        expected = archived.read_text().replace(
+            'public.assets a tablesample system(1) repeatable(5609) cross join baseline b',
+            'public.assets a cross join baseline b').replace(
+            'and a.last_seen_at<=now() limit 3',
+            'and a.last_seen_at<=now() order by a.id limit 3')
+        current = PROBE.read_text()
+        tail = '), query_stats as ('
+        self.assertEqual(strip_comments(current[current.index(tail):]),
+                         strip_comments(expected[expected.index(tail):]))
+        self.assertEqual([line for line in current.splitlines() if ' as pre_' in line],
+                         [line for line in expected.splitlines() if ' as pre_' in line])
+
+    def test_recent_selection_fills_three_from_all_eligible_rows(self):
+        source = PROBE.read_text()
+        recent = source[source.index('recent as ('):source.index('), metadata_source as (')]
+        self.assertNotIn('tablesample', recent.lower())
+        self.assertIn('order by a.id limit 3', recent)
+        self.assertIn('not a.is_deleted', recent)
+        self.assertIn("greatest(b.observed_at,now()-interval '24 hours')", recent)
+        self.assertIn('a.last_seen_at<=now()', recent)
+        self.assertNotRegex(recent, r'(?i)metadata|all_match|thumbnail_url')
+
     def test_original_failed_window_bytes_are_preserved(self):
         self.assertEqual(hashlib.sha256(HISTORY.read_bytes()).hexdigest(), ORIGINAL_SHA)
 
@@ -222,7 +278,7 @@ class AcceptanceProbeTests(unittest.TestCase):
             for alias in aliases:
                 self.assertNotRegex(current,r'null::\w+ as '+alias+r'\b')
             self.assertNotIn('where false',current)
-            rows=re.findall(r"\(\d+::oid,\d+::oid,(?:true|false),-?\d+::bigint,'[^']+'::timestamptz,'[0-9a-f]{32}',\d+::bigint,[0-9.]+::numeric,[0-9.]+::numeric\)",current)
+            rows=re.findall(r"\(\d+::oid,\d+::oid,(?:true|false),(?:-?\d+|'-?\d+')::bigint,'[^']+'::timestamptz,'[0-9a-f]{32}',\d+::bigint,[0-9.]+::numeric,[0-9.]+::numeric\)",current)
             count=int(re.search(r'(\d+)::bigint as family_entry_count',current)[1])
             self.assertGreater(count,0)
             self.assertEqual(len(rows),count)
@@ -231,9 +287,9 @@ class AcceptanceProbeTests(unittest.TestCase):
             spec=importlib.util.spec_from_file_location('baseline',ROOT/'scripts/prepare_assets_trigger_baseline.py')
             module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
             parsed=[]
-            pattern=r"\((\d+)::oid,(\d+)::oid,(true|false),(-?\d+)::bigint,'([^']+)'::timestamptz,'([0-9a-f]{32})',(\d+)::bigint,([0-9.]+)::numeric,([0-9.]+)::numeric\)"
+            pattern=r"\((\d+)::oid,(\d+)::oid,(true|false),(-?\d+|'-?\d+')::bigint,'([^']+)'::timestamptz,'([0-9a-f]{32})',(\d+)::bigint,([0-9.]+)::numeric,([0-9.]+)::numeric\)"
             for row in re.findall(pattern,current):
-                parsed.append(dict(zip(module.FIELDS,[row[0],row[1],row[2]=='true',*row[3:]])))
+                parsed.append(dict(zip(module.FIELDS,[row[0],row[1],row[2]=='true',row[3].strip("'"),*row[4:]])))
             opening=re.search(r"'([^']+)'::timestamptz as observed_at",current)[1]
             digest=re.search(r"'([0-9a-f]{32})'::text as family_vector_md5",current)[1]
             self.assertEqual(module.prepare({'family':parsed,'observed_at':opening})[:2],(count,digest))
@@ -291,7 +347,9 @@ class AcceptanceProbeTests(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    if '--emit-family-fixture' in sys.argv:
+    if '--emit-recent-fixture' in sys.argv:
+        print(recent_fixture_sql())
+    elif '--emit-family-fixture' in sys.argv:
         print(family_fixture_sql())
     elif '--emit-trigger-fixture' in sys.argv:
         print(trigger_fixture_sql())

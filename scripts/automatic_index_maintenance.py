@@ -20,7 +20,6 @@ def select(policy,read_receipt,active_runs,held,source_sha):
     if active_runs:return None
     for operation_id in sorted(policy['operations']):
         entry=maintenance.operation(policy,operation_id)
-        if held(entry['source_pr']):continue
         base=f'refs/db-index-maintenance/{operation_id}'
         def completed(target):
             record=read_receipt(base+'/'+target+'/complete')
@@ -30,10 +29,20 @@ def select(policy,read_receipt,active_runs,held,source_sha):
                 or record.get('policy_digest')!=maintenance.digest(entry)):
                 raise maintenance.Refusal('completion receipt binding refused')
             return record
-        if completed('production') is not None:continue
-        preview=completed('preview')
+        # #6493 Step 4: receipts first, the hold last. Each hold read settles
+        # for 20 s, and reading it for every operation -- finished ones too --
+        # cost every trigger run ~80 s before the promotion selector started.
+        # A finished operation needs no hold read; a held operation is still
+        # never dispatched, and still never fails the step on its receipts.
+        try:
+            if completed('production') is not None:continue
+            preview=completed('preview')
+        except maintenance.Refusal:
+            if held(entry['source_pr']):continue
+            raise
         # Test-mode operations (weekly check, Step 7 gate) stop after preview.
         if entry.get('preview_only') and preview is not None:continue
+        if held(entry['source_pr']):continue
         target='production' if preview is not None else 'preview'
         return dict(operation_id=operation_id,target=target,source_sha=source_sha)
     return None
@@ -60,10 +69,20 @@ def main():
         record=receipts.read(ref)
         if record is not None and ref.endswith('/complete'):receipts.verify_run(record)
         return record
-    candidate=select(policy,verified_read,active,lambda pr:bool(promotion.is_held(maintenance.REPO,pr)),maintenance.gh('commits/main')['sha'])
+    # #6493 Step 1c: one batched hold read (one 20 s settle) for every
+    # operation's source PR, taken only when select() first needs a hold --
+    # never when nothing is dispatchable. Fresh every run; a failed batch
+    # falls back to per-PR reads that fail toward held.
+    batch=[]
+    def held(pr):
+        if not batch:batch.append(promotion.prefetch_holds(maintenance.REPO,sorted({e['source_pr'] for e in policy['operations'].values()})))
+        return bool(batch[0](pr))
+    candidate=select(policy,verified_read,active,held,maintenance.gh('commits/main')['sha'])
     if candidate is None:
         print('No ready index maintenance operation.');return 0
     # Existing 3-attempt policy, operation-qualified and exact main-qualified.
+    # Attempts are never counted from the run cache: re-read every run now.
+    runs=promotion.workflow_runs(maintenance.REPO,fresh_since=promotion.ACTIVATED_AT)
     dispatch_ref=f"refs/db-index-maintenance-operations/{candidate['operation_id']}/{candidate['target']}/{candidate['source_sha']}"
     title=f"INDEX {candidate['target']} {dispatch_ref} {candidate['source_sha']}"
     attempts=[r for r in runs if r.get('display_title')==title and r.get('conclusion') in {'failure','cancelled','timed_out'}]

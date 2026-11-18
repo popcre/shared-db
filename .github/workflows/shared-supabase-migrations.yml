@@ -169,6 +169,18 @@ jobs:
       - name: Fetch the base branch ref explicitly on merge queue runs
         if: github.event_name == 'merge_group'
         run: git fetch --no-tags origin main
+      # #6574: a pre-merge (claim-lane) preview APPLY of a high-risk migration would
+      # make its only preview evidence permanently unacceptable to production once
+      # anything apply-shaping changes before merge. Refuse it here, before any
+      # preview database credential is used. Dry-run writes nothing and stays allowed.
+      # Not in COORDINATION_STEPS: claim-lane runs are never selector attempts.
+      - name: Refuse pre-merge apply of a high-risk migration
+        if: inputs.claim_pr != '' && inputs.mode == 'apply'
+        env:
+          PREVIEW_ALLOWLIST: ${{ inputs.preview_allowlist }}
+        run: |
+          set -euo pipefail
+          python3 scripts/production_business_risk_gate.py premerge-preview-check --allowlist "$PREVIEW_ALLOWLIST"
       # #5937 behavior 2 (closes the review finding #5958 gap): while a
       # promotion merge freeze is live, a merge-queue group must be REFUSED, and
       # the refusal must land on a REQUIRED context -- merge-queue-gate.yml is
@@ -237,7 +249,7 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: node scripts/check-applied-migration-edit.mjs --base "origin/${GITHUB_BASE_REF:-main}"
       - name: Test SQL migration guards
-        run: node --test scripts/check-sql.test.mjs scripts/check-applied-migration-edit.test.mjs
+        run: node --test scripts/check-sql.test.mjs scripts/check-applied-migration-edit.test.mjs scripts/lint-plpgsql-migrations.test.mjs
       # Issue #2579. The coverage manifest is the machine-readable authority for
       # all-licensor Property-source exposure; it is a gate only if CI runs it.
       - name: Validate DB Data Admin Property-source coverage

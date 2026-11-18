@@ -204,6 +204,32 @@ def gh_issues(repository: str, pr: int, sources=SOURCES, settle: float = SETTLE_
     return reads
 
 
+def gh_issues_many(repository: str, prs: Iterable[int], settle: float = SETTLE_SECONDS,
+                   sleep: Callable[[float], None] = time.sleep,
+                   labelled=labelled_issues, crossed=cross_referenced_issues) -> dict[int, list[dict[str, Any]]]:
+    """gh_issues for several PRs with ONE settle (#6493 Step 1c). Same two
+    reads of both indexes per PR, same union and fail-toward-holding rule; the
+    repository-wide label listing is read once per round and shared, and the
+    settle runs once for the batch instead of once per PR (20 s x every
+    candidate was ~90% of the selector's warm runtime)."""
+    prs = list(prs)
+    reads: dict[int, list[dict[str, Any]]] = {pr: [] for pr in prs}
+    for attempt in range(2):
+        if attempt:
+            sleep(settle)
+        # The reads within one round are independent; run them together
+        # (same reads, same union, same settle between rounds).
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            shared_read = pool.submit(labelled, repository, 0)
+            crossed_reads = {pr: pool.submit(crossed, repository, pr) for pr in prs}
+            shared = shared_read.result()
+            for pr in prs:
+                reads[pr].extend(shared)
+                reads[pr].extend(crossed_reads[pr].result())
+    return reads
+
+
 def blocking_findings(issues: list[dict[str, Any]], repository: str, pr: int, now: datetime | None = None,
                       verify_invalid: Callable[..., bool] | None = None) -> list[dict[str, Any]]:
     verify_invalid = verify_invalid or invalid_verifier()

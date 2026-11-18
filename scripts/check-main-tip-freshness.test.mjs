@@ -488,6 +488,60 @@ function prefixFixture() {
 }
 const prod = (repo, mainSha, tipSha) => classifyMainTip({ mainSha, tipSha, gitRunner: (args) => git(repo, args), production: true })
 
+test('#6493: the added sidecar of an appended migration rides along; any other sidecar still refuses', () => {
+  const migration = { 'supabase/migrations/20261026155023_b.sql': 'create table b (id int);\n' }
+  const cases = [
+    [{ ...migration, 'scripts/production-verification-sidecars/20261026155023.json': '{}\n' }, true],
+    [{ ...migration, 'scripts/production-verification-sidecars/20261026150931.json': '{}\n' }, false],
+    [{ 'scripts/production-verification-sidecars/20261026155023.json': '{}\n' }, false],
+  ]
+  for (const [files, ok] of cases) {
+    const { repo, sha } = prefixFixture()
+    try {
+      const verdict = prod(repo, sha, commitFiles(repo, files, 'later'))
+      assert.equal(verdict.ok, ok, verdict.reason)
+    } finally {
+      rmSync(repo, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+    }
+  }
+  // A sidecar that already existed and is MODIFIED alongside a new migration refuses.
+  const { repo } = makeRepo()
+  try {
+    const sha = commitFiles(repo, { 'supabase/migrations/20261026150931_a.sql': 'select 1;\n', 'scripts/production-verification-sidecars/20261026155023.json': '{}\n' }, 'base')
+    const tip = commitFiles(repo, { ...migration, 'scripts/production-verification-sidecars/20261026155023.json': '{"x":1}\n' }, 'edit')
+    assert.equal(prod(repo, sha, tip).ok, false)
+  } finally {
+    rmSync(repo, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+  }
+})
+
+test('#6600: the registry rides along only when it purely gains entries for appended migrations', () => {
+  const REG = 'config/production-verification-sidecar-registry.json'
+  const reg = (...sidecars) => JSON.stringify({ schema_version: 1, sidecars }) + '\n'
+  const old = { version: '20261026150931', issue: null }
+  const add = { version: '20261026155023', issue: 7 }
+  const trio = { 'supabase/migrations/20261026155023_b.sql': 'create table b (id int);\n', 'scripts/production-verification-sidecars/20261026155023.json': '{}\n' }
+  const cases = [
+    ['compliant trio', { ...trio, [REG]: reg(old, add) }, true],
+    ['entry for a version that is not appended', { ...trio, [REG]: reg(old, add, { version: '20261026160000', issue: 1 }) }, false],
+    ['existing entry edited', { ...trio, [REG]: reg({ ...old, issue: 9 }, add) }, false],
+    ['existing entry removed', { ...trio, [REG]: reg(add) }, false],
+    ['extra key', { ...trio, [REG]: JSON.stringify({ schema_version: 1, sidecars: [old, add], x: 1 }) }, false],
+    ['unparseable', { ...trio, [REG]: '{' }, false],
+    ['registry without a migration', { [REG]: reg(old, add) }, false],
+  ]
+  for (const [name, files, ok] of cases) {
+    const { repo } = makeRepo()
+    try {
+      const sha = commitFiles(repo, { 'supabase/migrations/20261026150931_a.sql': 'select 1;\n', [REG]: reg(old) }, 'base')
+      const verdict = prod(repo, sha, commitFiles(repo, files, 'later'))
+      assert.equal(verdict.ok, ok, `${name}: ${verdict.reason}`)
+    } finally {
+      rmSync(repo, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+    }
+  }
+})
+
 test('#4845: production accepts a tip moved only by a strictly later appended migration, its test and evidence', () => {
   const { repo, sha } = prefixFixture()
   try {
@@ -590,4 +644,46 @@ test('step 2.5: an appended migration plus unrelated workflow edits is still a v
     assert.equal(verdict.ok, true, verdict.reason)
     assert.match(verdict.reason, /verified prefix/)
   } finally { rmSync(repo, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }) }
+})
+
+// #6258 follow-up: rehearsal run 43495421317 was refused when main gained only a
+// verification .json under docs/verification/.
+test('#6258: production accepts newly added documentation evidence under docs/', () => {
+  const { repo, sha } = makeRepo()
+  try {
+    const tip = commitFiles(repo, {
+      'docs/verification/database-efficiency/20261113T180512Z-step4-closure-audit/q-step4-measurements.json': '{"x":1}\n',
+      'docs/verification/database-efficiency/20261113T180512Z-step4-closure-audit/raw.txt': 'x\n',
+    }, 'evidence')
+    assert.equal(classify(repo, sha, tip).ok, false, 'the default lane is unchanged')
+    assert.equal(prod(repo, sha, tip).ok, true, prod(repo, sha, tip).reason)
+  } finally {
+    rmSync(repo, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+  }
+})
+
+test('POSITIVE CONTROL #6258: gate-read docs data, gate code, workflows, config and migrations still refuse', () => {
+  const { repo } = makeRepo()
+  try {
+    const sha = commitFiles(repo, {
+      'docs/verification/baseline.json': '{"v":1}\n',
+      'scripts/gate.mjs': "readFileSync('docs/verification/baseline.json'); glob('docs/verification/dispositions/*'); readdirSync('../docs/verification/').filter((n) => /^licensor-step8-approval-/.test(n))\n",
+    }, 'gate reads docs data')
+    const cases = {
+      'docs/verification/baseline.json': '{"v":2}\n',
+      'docs/verification/dispositions/new.json': '{}\n',
+      'docs/verification/licensor-step8-approval-20261201/approval.json': '{}\n',
+      'scripts/check-anything.mjs': 'x\n',
+      '.github/workflows/shared-supabase-migrations.yml': 'x\n',
+      'config/task-gates.json': '{}\n',
+      'supabase/migrations/20260101000000_x.sql': 'select 1;\n',
+    }
+    for (const [path, body] of Object.entries(cases)) {
+      execFileSync('git', ['checkout', '-q', sha], { cwd: repo })
+      const tip = commitFiles(repo, { [path]: body }, path)
+      assert.equal(prod(repo, sha, tip).ok, false, `${path} must refuse`)
+    }
+  } finally {
+    rmSync(repo, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+  }
 })

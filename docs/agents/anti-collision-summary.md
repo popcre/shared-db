@@ -38,7 +38,8 @@ object/version/source protection. See the current procedure in the full text.
 
    ```bash
    node scripts/check-dispatch-collision.mjs \
-     --objects "<every exact object written, comma-separated>" --reserve-version
+     --objects "<every exact object written, comma-separated>" \
+     --reserve-version --future-minutes 30
 
    node scripts/check-dispatch-collision.mjs \
      --task "<issue and outcome>" \
@@ -52,6 +53,25 @@ object/version/source protection. See the current procedure in the full text.
    (`refs/db-claims/<version>`, create-if-absent); the second writes the fenced
    claim body to a file so no shell quoting rule can lose the block (#669) and
    prints the filing command.
+
+   **Use `--future-minutes 30` on every reservation that will go through CI
+   (#6423).** A reservation stamped "now" sits in CI (~10 min) and the merge
+   queue (~15 min) while other migration PRs keep merging; any merge in that
+   window carries a higher version, the queue rebases your branch onto it, and
+   the `SQL migration guards` check fails it as "backdated" — forcing a renumber
+   and another full CI round (PRs #6275 and #6370 each burned three renumbers
+   over 7+ hours on 2026-11-15). Thirty minutes covers CI + queue latency with
+   margin, so the first CI run is also the last. The allocator computes
+   `max(newest version on live origin/main + 1 minute, now + N minutes)` — the
+   live read matters because a stale checkout would hand out a version already
+   behind main — and the ref create is the atomic serialization point: on
+   conflict the allocator bumps and retries, so two sessions can never be handed
+   the same number. Future-dated versions are legal everywhere it matters: the
+   ledger and every guard compare versions to each other, never to the clock
+   (proven end-to-end by `20261116120000`, merged 2026-11-15). Manually pushing
+   `refs/db-claims/<version>` remains an accepted fallback; the flag is
+   preferred. A reserved version is never freed, so refs abandoned by dead PRs
+   permanently consume their versions — a known cost, not a correctness issue.
 
    Allocation is serialized across computers by a GitHub-backed lock and **fails closed**. The
    created issue body is authoritative and machine-readable — **never hand-edit its fenced
@@ -160,6 +180,10 @@ object/version/source protection. See the current procedure in the full text.
    ⚠️ **A tree-identical re-push keeps valid existing reviews (#4206; owner 2026-10-14: "change the rules so that we don't need 2 reviews").** When the git tree is unchanged, or the pull request diff is unchanged ignoring `.agent/`, slot 1 is not re-drawn and no paid attempt is burned to re-pin the same bytes. For equivalent content, the newest valid historical slot-1 assignment may carry forward; the latest valid replacement is used, with its failure binding verified. A returned or refused slot is never revived from an older assignment. A new-head assignment or return controls that slot; an ancestor approval cannot fill a returned or refused new-head slot. Carried reviews do not consume another paid attempt.
 
    ⚠️ **Owner-quoted allowlist widening for a fresh later draw (source history includes PR #4294).** For a new slot, the earliest live peer anchors policy; a fresh later draw may widen that policy only with a recorded verbatim owner quote and a strict-superset allowlist. A slot's own durable policy controls its retries and replacements exactly. The quote is stored only when widening actually occurs. Narrowing, disjoint policies, unquoted widening, or restricting an unrestricted peer are refused. Fresh peer, carried-history and policy reads are rechecked under the assignment mutex.
+
+   **High-risk migrations are refused a pre-merge preview APPLY (#6574).** A claim-lane apply of a
+   migration the risk gate classes high-risk stops in the validate job, before any preview database step.
+   Use `mode=dry-run` before merge; the automatic queue rehearses it after merge.
 
    **Merge first, then rehearse on preview from merged `main`, then promote.** A rehearsal runs
    **once** — an applied version can never be applied again, so a re-dispatch and a GitHub

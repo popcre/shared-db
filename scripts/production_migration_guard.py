@@ -97,6 +97,17 @@ HARD_BLOCKED = {
     "20261113041225",
     # #2541: left OPA 372 linked to Standard Characters (finding #6291); superseded by 20261115015656.
     "20261113203533",
+    # #6433: preview evidence predates its merge; gate refuses it permanently. Reissued 20261204000300.
+    "20261116013153",
+    # #6263 stranded: byte-equivalent reissue 20261115024204 is applied in production.
+    "20261113174422",
+    # #6317 stranded: its #2541 outcome is live via applied 20261115041745 (finding #6324).
+    "20261115015656",
+    # #2326 index twins: originals fail deterministically (record alias out of scope,
+    # name[] = text[]); reissued as 20261204000000/000100/000200.
+    "20261117020001",
+    "20261117120000",
+    "20261118020001",
     # #5932 stranded-recovery class B: derived-from retired base 20260814223552;
     # intervening changes (20260825010603, 20260825031841) modify the function
     # between the retired base and superseding base 20260825124200, so the
@@ -106,6 +117,26 @@ HARD_BLOCKED = {
     # #5932 stranded-recovery: Disney side rows; reissued as 20261113191352
     # with byte-identical executable SQL.
     "20261102012258",
+    # #5932 stranded-recovery finish: unapplyable reissue of the side rows --
+    # byte-identical SQL whose edge insert collides on the current-claim key
+    # wherever the original already wrote the rows (23505). Superseded by the
+    # tolerant fix-forward chain ending at 20261202120000; carries a stale "-- Version:
+    # 20261113191352" header from its re-reserve rename. Never apply.
+    "20261113223432",
+    # #5932 stranded-recovery finish, second hop: 20261119010000 (merged PR #6335)
+    # cured the 23505 edge collision but failed its post-merge preview rehearsal
+    # (run 43925994714, SQLSTATE P0001) at the associations insert --
+    # core.require_direct_support_for_canonical_edge refused pairs whose only
+    # CURRENT edge for the issue is not a direct_source_assertion. Superseded by
+    # 20261202120000, which filters the associations insert to CURRENT direct
+    # assertions. Never apply.
+    "20261119010000",
+    # #5932 stranded-recovery finish, third hop: 20261119200000 (merged PR #6495)
+    # cured the associations refusal with a guard-mirroring EXISTS filter but never
+    # applied anywhere -- it lost three backdate tip races against main's evening
+    # stamps and its live copy was re-stamped as 20261202120000 when review finding
+    # #6496's fixes landed. Never apply; the re-stamp owns the rows.
+    "20261119200000",
     # #5950: parked 20261106214905 (PR #5913) declared derived-from:
     # 20261015132149, a retired stamp held by no preview or production ledger,
     # so the issue #1608 base-absent derivation gate blocked its preview
@@ -413,12 +444,22 @@ HARD_BLOCKED = {
     # #6440: superseded by 20261116124500 (core.licensor is the MG05 list only, owner
     # ruling 2026-11-15); applying this older body after it would drop the retirement step.
     "20261115031325",
+    # #6605: production apply (run 44189714544) hit the statement timeout on its
+    # 183k-row backfill and rolled back; applied to preview only. Superseded by
+    # idempotent reissue 20261204003429 (no bulk backfill); never apply original.
+    "20261204001000",
 }
 
 # One authority for versions that must never be applied. The post-batch
 # verifier imports these names from here; pending-status policy must not import
 # that application verifier back into the production guard's execution closure.
 RETIRED_VERSION_REASONS = {
+    "20261116013153": "PR #6433 (#6415 revoke anon/authenticated EXECUTE on trigger functions): applied on preview before merge (run 43789639543 at a2311d0); automatic qualification refuses that evidence permanently because the guard differs from merge commit 3b0c25e and the migration is high-risk (runs 44092383652, 44093787649). Never applied to production. Reissued with identical SQL as 20261204000300. Never apply this original.",
+    "20261113174422": "PR #6263 (MM nickname 'Mickey Group'): parked after transient refusals (runs 43509901476, 43511779725, 43522272522, 43527810278); never applied. Superseded by applied reissue 20261115024204 (same SQL plus one comment line); production core.property MM nickname reads 'Mickey Group'. Never apply this original.",
+    "20261115015656": "PR #6317 (#2541 separate OPA Mickey from Standard Characters): held by review finding #6324; never applied. Superseded by applied 20261115041745 (issue #6209), which already links OPA 361 to MM Standard Characters, OPA 372 to its own DY Mickey Mouse row, OPA 640/1107 to separate MV rows (verified read-only in production 2026-11-17). Never apply this original.",
+    "20261117020001": "PR #6447 (#2326 index-twin family): never applied; review finding #6448 showed the keeper assertion fails deterministically (operator does not exist: name[] = text[], reproduced read-only in production 2026-11-17) and the loop body reads an out-of-scope record alias. Reissued corrected as 20261204000000. Never apply this original.",
+    "20261117120000": "PR #6444 (#2326 index-twin family): never applied; review finding #6445 showed the keeper assertion fails deterministically (operator does not exist: name[] = text[], reproduced read-only in production 2026-11-17) and the loop body reads an out-of-scope record alias. Reissued corrected as 20261204000100. Never apply this original.",
+    "20261118020001": "PR #6454 (#2326 index-twin family): never applied; review finding #6458 showed the keeper assertion fails deterministically (operator does not exist: name[] = text[], reproduced read-only in production 2026-11-17). Reissued corrected as 20261204000200. Never apply this original.",
     "20261113203533": "#2541: never applied; review finding #6291 showed it would keep OPA 372 Mickey Mouse linked to the MM Standard Characters row, against owner ruling 6.38. Superseded by 20261115015656. Never apply this original.",
     "20261113041225": "#2541: PR #6227 fix-forward renames ColdLion-coded rows (MM Standard Characters, X-Men Classic) back to OPA labels, against owner rulings 6.3/6.36 (ColdLion MG06 names are curated); failed promotion 3x. Superseded by 20261113203533, which links coded rows without renaming. Never apply this original.",
     "20261113162637": "#6261 review-fix (issue #5932): wrong derived-from base — 20260825124200 does not define replace_asset_ai_tag_result; real last replacer is 20260825165139 (review-finding #6261). Preview-only (applied on preview run 43477670482). Corrected replacement 20261115022307 has derived-from: 20260825165139. Never apply this version.",
@@ -432,6 +473,9 @@ RETIRED_VERSION_REASONS = {
     "20261101125528": "#5932 stranded-recovery (Muse ruling stranded-recovery-ruling-20261113): stranded-already-on-preview (historical-recovery needed; applied version never re-applies so no qualifying ledger delta can exist). Reissued as 20261113160920 with executable SQL equivalent (statement sha256 7893c227e019965b8408a77f5d08292ae92013f75b8a7c9c3ae08983d440e341; two blank lines before the SQL block dropped in reissue header, per review-finding #6261 finding 4). Never apply this original.",
     "20261101192220": "#5932 stranded-recovery class B (Muse ruling stranded-recovery-ruling-20261113, corrected per review-finding #6261): derived-from retired base 20260814223552; intervening changes modify replace_asset_ai_tag_result between the retired base and the real last replacer 20260825165139. The --derivation-override is refused per ruling condition 2.2. Corrected replacement 20261115022307 has derived-from: 20260825165139 (statement sha256 d1a91858ecc05f8485a9b881ae0c63fff09a4ba4376c414da4cad75fea9e727a). Never apply this original.",
     "20261102012258": "#5932 stranded-recovery (Muse ruling stranded-recovery-ruling-20261113): Disney provenance/side rows; reissued as 20261113191352 with byte-identical executable SQL (statement sha256 eeeb1b7d4132d75c30444dfb774143eeded5a1166b4c8ff8e4ef2a84ed273a98; git blob 012dbb91cda0acbb02a0600e2ce8bd7e16cdc2fc after stripping header). Never apply this original.",
+    "20261113223432": "#5932 stranded-recovery finish (issue #5932): unapplyable reissue of 20261102012258's Disney side rows -- byte-identical executable SQL whose edge insert collides on property_character_source_edge_current_claim_key (SQLSTATE 23505) wherever the byte-identical original already wrote the rows (preview refusals 43539890705, 43541656623, 43543125049, 43672079740). Superseded by the tolerant fix-forward chain ending at 20261202120000 (select distinct on the claim key with a source_id tie-break, the 20261101133201/20261101153043 pattern). This file also carries a stale '-- Version: 20261113191352' header from its re-reserve rename. Never apply this original; 20261202120000 owns the rows.",
+    "20261119010000": "#5932 stranded-recovery finish, second hop (issue #5932): merged PR #6335's tolerant fix-forward of 20261113223432. Its edge insert is fine, but the post-merge preview rehearsal refused the associations insert (run 43925994714, SQLSTATE P0001): core.require_direct_support_for_canonical_edge rejects a canonical association whose only CURRENT edge for the issue is not a direct_source_assertion. Never applied anywhere (preview failed, production never attempted). Superseded by 20261202120000, which keeps the tolerant edge insert and restricts the associations insert to CURRENT direct assertions. Never apply this original; 20261202120000 owns the rows.",
+    "20261119200000": "#5932 stranded-recovery finish, third hop (issue #5932): merged PR #6495's guard-mirroring fix-forward (EXISTS direct-support filter, review finding #6496). Never applied anywhere: held by review finding #6496 through three backdate tip races, then re-stamped as 20261202120000 when the finding's fixes landed. Never apply; 20261202120000 owns the rows.",
     "20261106205842": "#5758: one-shot coldlion.change_log rotation for the 2026-11-06 10:00 PM EST slot (PR #5929, re-issued from #5885's 20261106152843 after that stamp was parked by main-staleness refusals). The queue lost every tip race and the slot closed before either stamp reached production. The body schedules nothing after 02:55 UTC 2026-11-07, so a production apply would be inert; the weekly job 20261106021547 (applied by PR #5807, live in production) runs the same rotation on its own schedule. Preview holds this version from run 42298839910, so the file stays to keep source truth aligned with that ledger. Never apply.",
     "20261021152741": "#4540 drain disposition (2026-11-06): superseded by the applied re-land. The work (#4529) was re-landed reviewed as 20261021190510 (commit 630623a4e, popdam_search_exact_relevance_paging_reland.sql), which production applied; this original drops and recreates search_assets_full_text, search_style_groups_full_text and search_dam_document_counts with the pre-re-land bodies, so promoting it would roll those live functions back. The historical lane also cannot prove it: its only preview evidence is pull_request rehearsal run 39628737449 (wrong event per the production gate, run 42307695050) and the migration is high-risk (destructive drops), so the ephemeral route cannot substitute. Never apply; the applied 20261021190510 owns the change.",
     "20261015132149": "#4540 drain disposition (2026-11-06): stamp re-reserved AFTER its PR #4221 merged (commit 8717fc09f renamed 20261013144638_pm_jev_activity_triage_contract_a.sql), so no merged pull request adds this stamp and the post-merge rehearsal proof can never accept it; the historical lane cannot name an original apply run because it was never applied to preview. Retire this stamp; reissued byte-identical (body cmp-identical) under issue #3298 (PR #5913; the queue ejected the initial 20261106190000 stamp as backdated and the file was renamed 20261106214905, SQL unchanged), which the normal automatic lane carries. Never apply this stamp.",
@@ -548,6 +592,12 @@ PREVIEW_ONLY_HISTORICAL_RESTORATIONS = {
 KNOWN_MIGRATION_TARGETS = frozenset({"production", "preview", "designflow-nonprod", "designflow-prod"})
 
 FOREIGN_TARGET_MIGRATIONS = {
+    "20261202130000": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6522",
+        "note": "Sandbox property-suggestion fixture: ports the production rows for SKUs BG12VDYCP01 and 3FZ27DYNX01 (sku_files_used, dcp asset/property/observation closure, coldlion merch groups) so designflow-backend#408 step 5 can live-proof the suggestion UI on alsand. The sandbox shared schemas have zero rows in every table the feature reads. Data seed only; never applied to shared preview or production.",
+    },
     "20261116120100": {
         "target": "designflow-nonprod",
         "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
@@ -744,11 +794,59 @@ FOREIGN_TARGET_MIGRATIONS = {
         "issue": "#6356",
         "note": "Sandbox catch-up batch 10: additive indexes, constraints and triggers copied from production, and a forward fix for batch 9. Source excludes shared preview and production.",
     },
+    "20261204000900": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6584",
+        "note": "Sandbox half of 20261204000800: creates core.merchGroupRepairJournal only, because the sandbox has no dflow_prod schema. Source excludes shared preview and production.",
+    },
     "20261117130000": {
         "target": "designflow-nonprod",
         "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
         "issue": "#6356",
         "note": "Sandbox catch-up batch 11: replays 20261113183820's core.property checks and link index, plus production's Coldlion licensor/property sync functions, MG05 licensor guard and relationship/crosswalk triggers with production's exact EXECUTE grants. Source excludes shared preview and production.",
+    },
+    "20261118030000": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6356",
+        "note": "Sandbox catch-up batch 12: reshapes constraints, columns, one index and four policies that exist on both sides but differ, to production's exact definitions. Source excludes shared preview and production.",
+    },
+    "20261119060000": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6356",
+        "note": "Sandbox catch-up batch 13: copies production's existing character_alias, taxonomy_source_ref, CRM contact/customer structure, CRM api functions and related triggers with production's exact grants. Source excludes shared preview and production.",
+    },
+    "20261121000000": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6356",
+        "note": "Sandbox catch-up batch 14: api.crm_ingested_domain_list customer columns and grants, and core lookup-table user links pointed at the DesignFlow user table as in production. Source excludes shared preview and production.",
+    },
+    "20261121100000": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6356",
+        "note": "Sandbox catch-up batch 15: production's current plm.guard_production_po_number() body. Source excludes shared preview and production.",
+    },
+    "20261201100000": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6356",
+        "note": "Sandbox catch-up batch 16: owner-approved copy of production's dam, hts_rag, archive and public structure (no rows), excluding production service logins. Source excludes shared preview and production.",
+    },
+    "20261201200000": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6356",
+        "note": "Sandbox catch-up batch 17: production's appended columns on api.source_resolution and three plm ColdLion views, plus api.source_resolution grants. Source excludes shared preview and production.",
+    },
+    "20261203000000": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6356",
+        "note": "Sandbox catch-up batch 18: production's current definitions and EXECUTE grants for seven functions changed on 2026-11-16. Source excludes shared preview and production.",
     },
 }
 
@@ -2999,13 +3097,14 @@ def read_sandbox_dependencies(ledger_name, project_ref, token, query=None, fetch
     statement = """
             SELECT n.nspname || '.' || c.relname AS name
             FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-            WHERE n.nspname IN ('dflow','core','plm','app','pim','crm','ingest') AND c.relkind IN ('r','p','v','m','f')
+            WHERE n.nspname IN ('dflow','core','plm','app','pim','crm','ingest','api','dam','hts_rag','archive','public') AND c.relkind IN ('r','p','v','m','f')
             UNION
             SELECT n.nspname || '.' || p.proname
             FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-            WHERE n.nspname IN ('dflow','core','plm','app','pim','crm','ingest') AND p.prokind IN ('f','p')
+            WHERE n.nspname IN ('dflow','core','plm','app','pim','crm','ingest','api','dam','hts_rag','archive','public') AND p.prokind IN ('f','p')
             ORDER BY 1
         """
+    # api, dam, hts_rag, archive and public joined the sandbox on owner approval (#6356, 2026-11-16).
     rows = query(project_ref, token, statement) if query else read_api(
         "/database/query", {"query": statement, "read_only": True})
     if not isinstance(rows, list) or not rows:
@@ -3013,7 +3112,7 @@ def read_sandbox_dependencies(ledger_name, project_ref, token, query=None, fetch
     names = []
     for row in rows:
         name = row.get("name") if isinstance(row, dict) else None
-        if not isinstance(name, str) or not re.fullmatch(r"(?:dflow|core|plm|app|pim|crm|ingest)\.[A-Za-z_][A-Za-z_0-9]*", name):
+        if not isinstance(name, str) or not re.fullmatch(r"(?:dflow|core|plm|app|pim|crm|ingest|api|dam|hts_rag|archive|public)\.[A-Za-z_][A-Za-z_0-9]*", name):
             raise GuardError("sandbox dependency catalog contains an invalid relation")
         names.append(name)
     if len(names) != len(set(names)):

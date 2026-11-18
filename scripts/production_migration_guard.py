@@ -448,6 +448,10 @@ HARD_BLOCKED = {
     # 183k-row backfill and rolled back; applied to preview only. Superseded by
     # idempotent reissue 20261204003429 (no bulk backfill); never apply original.
     "20261204001000",
+    # popdam3#1037: written against the 8-argument search_dam_documents but merged after
+    # 20261204003632 changed it to 11 arguments, so its guard refuses. Content reissued with
+    # the text leg as 20261204003733; never apply this original.
+    "20261204003633",
 }
 
 # One authority for versions that must never be applied. The post-batch

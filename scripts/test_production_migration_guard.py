@@ -4803,5 +4803,19 @@ class StrandedRecovery5932RetirementTests(unittest.TestCase):
                 self.assertNotIn(replacement, HARD_BLOCKED)
 
 
+class DamSearchRetirementTests(unittest.TestCase):
+    def test_original_is_retired_and_reissue_remains_eligible(self):
+        original = "20261204003633"
+        reissue = "20261204003733"
+        for ledger in (set(), {original}):
+            with self.subTest(ledger=ledger):
+                with self.assertRaisesRegex(GuardError, "general production lane blocks"):
+                    parse_allowlist(original, remote=ledger)
+                status = classify_pending_version(original, ledger, REPO)
+                self.assertEqual(status["kind"], "retired")
+                self.assertIn(reissue, status["reason"])
+                self.assertEqual(parse_allowlist(reissue, remote=ledger), [reissue])
+
+
 if __name__ == "__main__":
     unittest.main()

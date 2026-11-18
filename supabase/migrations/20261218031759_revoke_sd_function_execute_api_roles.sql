@@ -7,46 +7,42 @@
 --
 -- WHY
 -- ---
--- 16 of the 17 signatures live in schemas NOT in pgrst.db_schemas (plm,
--- dflow_prod, dam, net — live pin 2026-11-15: public, graphql_public, api,
--- crm, pim, core, app), so they are not Data-API reachable and the API-role
--- EXECUTE grants are pure surface. The 17th (public.lock_down_new_public_
--- function_execute) is an event-trigger function, not an RPC — same class as
--- the trigger-function grants revoked in 20261116013153 (#6415). SQL-level
--- callers (postgres / service_role / the event trigger itself) are unaffected:
--- their grants are untouched.
+-- The #6416 disposition rule ("not-in-pgrst.db_schemas -> API-role grant is
+-- superfluous") is mechanical and missed the deliberate SQL-consumer contracts
+-- on the plm/dam functions (see CARVE-OUT below). What IS superfluous and is
+-- revoked here:
+--   * PUBLIC/anon EXECUTE everywhere in scope (the function-default ACL is the
+--     real grant on most of these — revoking `from anon, authenticated` alone
+--     is a NO-OP, same trap as #6415 and the 2026-07-29 lockdown);
+--   * authenticated EXECUTE on the 6 dflow_prod.* signatures and on
+--     public.lock_down_new_public_function_execute — their creating migrations
+--     grant only to service_role / designflow_prod_*_grants roles, so the
+--     API-role grant is pure surface (and lock_down is an event-trigger
+--     function, not an RPC — same class as #6415);
+--   * net.http_get / net.http_post are attempted but land on the platform
+--     boundary (below) — their anon grant is a landmine if `net` ever enters
+--     pgrst.db_schemas.
 --
--- Call out: net.http_get / net.http_post carry anon EXECUTE — non-exposed
--- today, but a landmine if `net` ever enters pgrst.db_schemas.
---
--- WHY `from public, anon, authenticated` AND NOT JUST `from anon, authenticated`
+-- CARVE-OUT — deliberate `to authenticated, service_role` grants (8 signatures)
 -- -----------------------------------------------------------------------
--- Most of these functions carry no explicit role grant at all: their ACL is
--- the function default (PUBLIC EXECUTE). Revoking the named roles alone is a
--- no-op — anon/authenticated still hold EXECUTE through PUBLIC and the census
--- query would never drop. The PUBLIC pseudo-role is the real grant here (same
--- trap as #6415 and the 2026-07-29 public EXECUTE lockdown). postgres /
--- service_role / admin-role grants are left untouched.
---
--- CARVE-OUT (live contract, supabase/tests/coldlion_unit6_consumer_contracts.sql
--- + its creating migration 20261011224904_coldlion_unit6_consumer_contracts_
--- safe.sql): plm.coldlion_merch_group_candidates(text,text) carries a
--- DELIBERATE `grant execute ... to authenticated, service_role` (issue #2176
--- unit 6, "Read-only merch-group candidates for hand-curated licensor/property
--- linking") — `authenticated` is an intended consumer. The #6416 mechanical
--- disposition ("not-in-exposed-schema -> revoke") missed that grant. For this
--- one signature the revoke is `from public, anon` ONLY and `authenticated` is
--- kept; its contract test asserts exactly that shape (anon must NOT execute it,
--- authenticated must).
---
--- SCOPE (pinned at authoring time 2026-11-17 11:20 PM EST)
--- -----
--- The 17 exact signatures in the VALUES list below — 15 function names, with
--- plm.set_source_resolution and plm.source_resolution_target_missing each
--- carrying two overloads. NOT in scope: the api.set_source_resolution /
--- dflow.record_item_workflow_action / dflow.set_item_user_assignment
--- same-named functions (their schemas differ and are dispositioned
--- separately) and public.rls_auto_enable (#6456, another agent's object).
+-- dam.orderlist_sales_order_received_date(text) (20261019113819:57),
+-- plm.coldlion_merch_group_candidates(text,text) (20261011224904:681,
+--   issue #2176 unit 6),
+-- plm.latest_sesame_capture() (20260819212002:2343-2344),
+-- plm.prepack_role(text,text,text) (20260917081048:74),
+-- plm.set_source_resolution x2 overloads (20260814224937:282,
+--   20260902024541:390, 20260907051735:413),
+-- plm.source_resolution_target_missing x2 overloads (20260902024541:149,
+--   20260911045438:70).
+-- Each creating migration does `revoke all ... from public, anon` then
+-- `grant execute ... to authenticated, service_role` — `authenticated` is an
+-- intended SQL consumer (exercised as `set local role authenticated` in
+-- supabase/tests/source_resolution_coherence_contracts.sql and required by
+-- supabase/tests/coldlion_unit6_consumer_contracts.sql). For these 8 the
+-- revoke is `from public, anon` ONLY (their public/anon is already revoked by
+-- the creating migrations, so this is an idempotent re-assertion) and
+-- `authenticated` is kept. The #6416 mechanical disposition missed this
+-- caller class; the contract tests caught it on the ephemeral lane.
 --
 -- PLATFORM-OWNED BOUNDARY — net.http_get / net.http_post (live-proven
 -- 2026-11-17 on preview, read-back after REVOKE as `postgres`): both are
@@ -67,6 +63,24 @@
 -- migration. A wrong migration role (owns nothing in scope while functions
 -- are present) also aborts — an unrevocable apply must not read green.
 --
+-- WHY `from public, anon, authenticated` AND NOT JUST `from anon, authenticated`
+-- -----------------------------------------------------------------------
+-- Most of these functions carry no explicit role grant at all: their ACL is
+-- the function default (PUBLIC EXECUTE). Revoking the named roles alone is a
+-- no-op — anon/authenticated still hold EXECUTE through PUBLIC and the census
+-- query would never drop. The PUBLIC pseudo-role is the real grant here (same
+-- trap as #6415 and the 2026-07-29 public EXECUTE lockdown). postgres /
+-- service_role / admin-role / designflow_prod_*_grants grants are untouched.
+--
+-- SCOPE (pinned at authoring time 2026-11-18 12:40 AM EST)
+-- -----
+-- The 17 exact signatures in the VALUES list below — 15 function names, with
+-- plm.set_source_resolution and plm.source_resolution_target_missing each
+-- carrying two overloads. NOT in scope: the api.set_source_resolution /
+-- dflow.record_item_workflow_action / dflow.set_item_user_assignment
+-- same-named functions (their schemas differ and are dispositioned
+-- separately) and public.rls_auto_enable (#6456, another agent's object).
+--
 -- Existence-guarded loop (repository pattern 20260729130000_production_safe_
 -- public_execute_lockdown.sql): each signature is resolved through
 -- to_regprocedure and skipped when absent, so this migration cannot abort on
@@ -76,32 +90,28 @@
 --
 -- ROLLBACK (named)
 -- ----------------
--- Forward migration re-granting EXECUTE on exactly these signatures:
---   grant execute on function dam.orderlist_sales_order_received_date(text) to public, anon, authenticated;
+-- Forward migration re-granting EXECUTE on exactly these signatures.
+-- Full-revoke signatures (restore `to public, anon, authenticated`):
 --   grant execute on function dflow_prod.claim_sample_shipment_notice(bigint) to public, anon, authenticated;
 --   grant execute on function dflow_prod.pack_sample_reservation(uuid,integer,bigint,text,text,text,text,text,text,text,text) to public, anon, authenticated;
 --   grant execute on function dflow_prod.post_sample_remote_request_event(uuid,text,text,text,text,text,text,jsonb) to public, anon, authenticated;
 --   grant execute on function dflow_prod.record_item_workflow_action(integer,integer,text,uuid,text,text,boolean,text,text,text,jsonb) to public, anon, authenticated;
 --   grant execute on function dflow_prod.reserve_sample_remote_request_item(uuid,text,text,text,text) to public, anon, authenticated;
 --   grant execute on function dflow_prod.set_item_user_assignment(integer,text,integer,boolean,jsonb) to public, anon, authenticated;
---   grant execute on function net.http_get(text,jsonb,jsonb,integer) to public, anon, authenticated;
---   grant execute on function net.http_post(text,jsonb,jsonb,jsonb,integer) to public, anon, authenticated;
---   grant execute on function plm.coldlion_merch_group_candidates(text,text) to authenticated, service_role;
---     (carve-out: its pre-change state is `to authenticated, service_role` per
---      20261011224904 — public/anon were already revoked there; this migration
---      only re-asserts that, so the rollback restores that exact grant set and
---      does NOT re-grant public/anon.)
---   grant execute on function plm.latest_sesame_capture() to public, anon, authenticated;
---   grant execute on function plm.prepack_role(text,text,text) to public, anon, authenticated;
---   grant execute on function plm.set_source_resolution(text,text,text,text,uuid,uuid,uuid,uuid,text,timestamp with time zone) to public, anon, authenticated;
---   grant execute on function plm.set_source_resolution(text,text,text,text,uuid,uuid,uuid,uuid,text,timestamp with time zone,uuid,uuid) to public, anon, authenticated;
---   grant execute on function plm.source_resolution_target_missing(text,uuid,uuid,uuid,uuid) to public, anon, authenticated;
---   grant execute on function plm.source_resolution_target_missing(text,uuid,uuid,uuid,uuid,uuid,uuid) to public, anon, authenticated;
 --   grant execute on function public.lock_down_new_public_function_execute() to public, anon, authenticated;
--- For names whose only pre-change grant was the function default, `to public`
--- restores the original state; the explicit anon/authenticated grants it also
--- writes match the explicit grants that existed before (net/http, dflow_prod).
--- The net.http_* re-grants are refused on the same ownership boundary as the
+-- Carve-out signatures (this migration only re-asserts `from public, anon`;
+-- their pre-change state is `to authenticated, service_role` per the creating
+-- migrations above — the rollback restores that exact grant set and does NOT
+-- re-grant public/anon):
+--   grant execute on function dam.orderlist_sales_order_received_date(text) to authenticated, service_role;
+--   grant execute on function plm.coldlion_merch_group_candidates(text,text) to authenticated, service_role;
+--   grant execute on function plm.latest_sesame_capture() to authenticated, service_role;
+--   grant execute on function plm.prepack_role(text,text,text) to authenticated, service_role;
+--   grant execute on function plm.set_source_resolution(text,text,text,text,uuid,uuid,uuid,uuid,text,timestamp with time zone) to authenticated, service_role;
+--   grant execute on function plm.set_source_resolution(text,text,text,text,uuid,uuid,uuid,uuid,text,timestamp with time zone,uuid,uuid) to authenticated, service_role;
+--   grant execute on function plm.source_resolution_target_missing(text,uuid,uuid,uuid,uuid) to authenticated, service_role;
+--   grant execute on function plm.source_resolution_target_missing(text,uuid,uuid,uuid,uuid,uuid,uuid) to authenticated, service_role;
+-- net.http_* re-grants are refused on the same ownership boundary as the
 -- revoke (supabase_admin-owned) and need platform action to restore. The event
 -- trigger that installs lock_down_new_public_function_execute is unaffected:
 -- trigger creation checks EXECUTE at CREATE TRIGGER time and the event trigger
@@ -120,6 +130,16 @@ declare
   boundary text;
   leftover_count integer;
   leftover text;
+  carve_out constant text[] := array[
+    'dam.orderlist_sales_order_received_date(text)',
+    'plm.coldlion_merch_group_candidates(text,text)',
+    'plm.latest_sesame_capture()',
+    'plm.prepack_role(text,text,text)',
+    'plm.set_source_resolution(text,text,text,text,uuid,uuid,uuid,uuid,text,timestamp with time zone)',
+    'plm.set_source_resolution(text,text,text,text,uuid,uuid,uuid,uuid,text,timestamp with time zone,uuid,uuid)',
+    'plm.source_resolution_target_missing(text,uuid,uuid,uuid,uuid)',
+    'plm.source_resolution_target_missing(text,uuid,uuid,uuid,uuid,uuid,uuid)'
+  ];
 begin
   select oid into owner_oid from pg_roles where rolname = current_user;
 
@@ -151,7 +171,7 @@ begin
     else
       begin
         execute format(
-          case when r.sig = 'plm.coldlion_merch_group_candidates(text,text)'
+          case when r.sig = any (carve_out)
             then 'revoke execute on function %s from public, anon'
             else 'revoke execute on function %s from public, anon, authenticated'
           end, r.sig);
@@ -166,8 +186,8 @@ begin
   raise notice 'revoked EXECUTE on % of 17 in-scope signatures (% absent)', n, absent;
 
   -- Wrong-role guard: if in-scope functions exist but the migration role owns
-  -- none of them, this is not the role the 15 postgres-owned functions belong
-  -- to (live pin 2026-11-17) — an unrevocable apply must not read green.
+  -- none of them, this is not the role the postgres-owned functions belong to
+  -- (live pin 2026-11-17) — an unrevocable apply must not read green.
   select count(*) into owned_count
   from (values
     ('dam.orderlist_sales_order_received_date(text)'),
@@ -232,8 +252,10 @@ begin
       boundary_count, boundary;
   end if;
 
-  -- Assert: no in-scope signature OWNED BY THE MIGRATION ROLE still carries
-  -- anon or authenticated EXECUTE.
+  -- Assert: no in-scope signature OWNED BY THE MIGRATION ROLE still grants
+  -- what this migration means to remove: anon EXECUTE anywhere, or
+  -- authenticated EXECUTE outside the carve-out (whose deliberate
+  -- authenticated grant is kept).
   select count(*), string_agg(t.sig, ', ')
     into leftover_count, leftover
   from (values
@@ -257,7 +279,7 @@ begin
   ) as t(sig)
   where to_regprocedure(t.sig) is not null
     and (has_function_privilege('anon', to_regprocedure(t.sig)::oid, 'EXECUTE')
-      or (t.sig <> 'plm.coldlion_merch_group_candidates(text,text)'
+      or (not (t.sig = any (carve_out))
           and has_function_privilege('authenticated', to_regprocedure(t.sig)::oid, 'EXECUTE')))
     and (select p.proowner from pg_proc p where p.oid = to_regprocedure(t.sig)) = owner_oid;
 

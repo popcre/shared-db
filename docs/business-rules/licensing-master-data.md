@@ -70,6 +70,16 @@ Where the canonical submission lists and reviewed mappings live (private reposit
 - Other licensors' scraped submission vocabularies: `api.db_data_admin_scraped_source_inventory('property')` in production, rows with `source_purpose='Submissions'`.
 - Paramount = Viacom = Nickelodeon is the one `VM` Licensor: [licensing-master-data.md § Licensor naming aliases](licensing-master-data.md#licensor-naming-aliases).
 
+## Mickey and Minnie solo art: which submission Property and Character
+
+**Settled - Albert Hazan, 2026-11-13 (ruling 6.38, Mickey/Minnie split) and 2026-11-16 (ruling 6.43, ColdLion codes). Verbatim 2026-11-13: "if a design has only mickey in it, it goes under 'Mickey Mouse' which sits under 'Mickey Mouse Family'. if a design has only Minnie in it, it goes under 'Minnie & Me' which sits under 'Mickey Mouse Family'. If a design has Mickey + anyone else in it, it goes under 'Standard Characters'."** Records: [owner-rulings §6.38](../owner-rulings-part-4.md), [§6.43](../owner-rulings-part-4.md#643-owner-ruling--mickeyminnie-mm-is-mickey-alone-new-code-me-is-minnie-alone-mmf-is-mickey-group--standard-characters-albert-hazan-2026-11-16). Confirmed by Laura's guidance relayed by Albert on 2026-11-17.
+
+- **Mickey alone** (ColdLion MG06 `MM`, "Mickey Mouse"): submit under the Disney OPA property **"Mickey Mouse Family"**, character **"Mickey Mouse"**. Never use the root "Mickey Mouse" property for solo Mickey art.
+- **Minnie alone** (ColdLion MG06 `ME`, "Minnie & Me"): submit under the Disney OPA property **"Minnie"** (a root property), character **"Minnie & Me"**. Never use "Minnie Mouse" under "Mickey Mouse Family" for solo Minnie art.
+- **Mickey plus anyone else** (ColdLion MG06 `MMF`, "Mickey Group"): submit under the Disney OPA property **"Standard Characters"**.
+- Three separate properties: never merge them or link one to another's OPA property.
+- Current database state (verified 2026-11-17): the `MM`, `ME` and `MMF` rows carry exactly these submission paths; see migration `20261204000500`.
+
 ## Licensor naming aliases
 
 **Settled - Albert Hazan, 2026-09-06.** The Licensor recorded as `VM` / "Viacom Multi" is Paramount, and is also the Nickelodeon licensor. Paramount, Viacom and Nickelodeon are one Licensor under this single record, not three. Any item, property or asset whose description names Paramount or Nickelodeon resolves to this Licensor. Never create a separate Paramount or Nickelodeon Licensor, and never report such an item as having an unknown Licensor because the word "Paramount" does not appear in the Licensor list.

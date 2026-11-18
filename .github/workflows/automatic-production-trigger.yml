@@ -33,7 +33,19 @@ on:
     types: [production-queue-nudge]
   schedule:
     - cron: '23 * * * *'
+  # #6493 Step 4b: a hold clearing re-arms the trigger at once. PR #6631's
+  # lane idled 18 min after review-finding #6632 closed because nothing woke
+  # the selector. Only closes of, or removal of, the three hold labels count;
+  # every other issue event is filtered out in the job-level `if:` (no runner)
+  # and parked in its own concurrency group.
+  issues:
+    types: [closed, unlabeled]
   workflow_dispatch:
+    inputs:
+      recheck_hop:
+        description: 'Internal: self-scheduled re-check depth (#6493 Step 4b); leave 0'
+        required: false
+        default: '0'
 
 permissions:
   contents: read
@@ -43,14 +55,23 @@ permissions:
 # job is skipped, and while a selector run was in progress those no-op events
 # cancelled the pending completion nudge (seen 2026-11-17 13:21 UTC). They now
 # queue in their own group, so only real wake-ups compete for the lane's slot.
-concurrency:
-  group: automatic-production-trigger-${{ vars.LANE_EPOCH || '0' }}${{ github.event_name == 'workflow_run' && github.event.workflow_run.event != 'workflow_dispatch' && '-ci-noise' || '' }}
-  cancel-in-progress: false
-
+# Step 4b: hold-clear issue events are real wake-ups and share the main group;
+# every other issue event queues in '-issue-noise', like CI noise, so it can
+# never cancel a pending real wake-up. The group sits on the trigger JOB, not
+# the workflow, so the re-check job's bounded sleep below never holds the slot.
 jobs:
   trigger:
-    if: github.event_name != 'workflow_run' || (github.event.workflow_run.event == 'workflow_dispatch' && (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.conclusion == 'timed_out'))
+    if: >-
+      (github.event_name != 'workflow_run' && github.event_name != 'issues')
+      || (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'workflow_dispatch' && (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.conclusion == 'timed_out'))
+      || (github.event_name == 'issues' && github.event.action == 'closed' && (contains(github.event.issue.labels.*.name, 'review-finding') || contains(github.event.issue.labels.*.name, 'promotion-held') || contains(github.event.issue.labels.*.name, 'promotion-parked')))
+      || (github.event_name == 'issues' && github.event.action == 'unlabeled' && (github.event.label.name == 'review-finding' || github.event.label.name == 'promotion-held' || github.event.label.name == 'promotion-parked'))
+    concurrency:
+      group: automatic-production-trigger-${{ vars.LANE_EPOCH || '0' }}${{ github.event_name == 'workflow_run' && github.event.workflow_run.event != 'workflow_dispatch' && '-ci-noise' || '' }}${{ github.event_name == 'issues' && !(contains(github.event.issue.labels.*.name, 'review-finding') || contains(github.event.issue.labels.*.name, 'promotion-held') || contains(github.event.issue.labels.*.name, 'promotion-parked') || github.event.label.name == 'review-finding' || github.event.label.name == 'promotion-held' || github.event.label.name == 'promotion-parked') && '-issue-noise' || '' }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
+    outputs:
+      recheck: ${{ steps.selector.outputs.recheck }}
     # The selector processes the production ledger (~1000 versions) and scans
     # every merged migration PR via the GitHub API. 10 minutes was too tight:
     # runs routinely hit 8+ minutes and got cancelled before dispatching.
@@ -189,3 +210,37 @@ jobs:
         with:
           path: ${{ runner.temp }}/promotion-run-cache.json
           key: promotion-run-cache-v1-${{ github.run_id }}-${{ github.run_attempt }}
+
+  # #6493 Step 4b backstop, independent of GitHub cron (the '23 * * * *'
+  # schedule fires hours apart in practice). When the selector dispatched
+  # nothing but a candidate waits on a transient condition (lane busy, ledger
+  # unreadable, production dependency, another selector's claim), this run
+  # schedules its own re-check: a bounded sleep, then one workflow_dispatch of
+  # this workflow. Chosen over a second cron (equally unreliable) and over the
+  # migrations workflow's notify-production-queue job (it only fires after a
+  # dispatched run, which is exactly what did not happen here). Bounded: holds
+  # and parked PRs never request a re-check (holds re-arm via the issues event),
+  # each hop carries recheck_hop and the chain stops at 8 hops (~2 h), and its
+  # own group (newest sleeper wins) keeps it off the trigger job's slot.
+  recheck:
+    name: Schedule a bounded re-check
+    needs: trigger
+    if: always() && needs.trigger.outputs.recheck == 'true' && fromJSON(inputs.recheck_hop || '0') < 8
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: automatic-production-trigger-${{ vars.LANE_EPOCH || '0' }}-recheck
+      cancel-in-progress: true
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HOP: ${{ inputs.recheck_hop || '0' }}
+    steps:
+      - name: Wait, then re-arm the trigger
+        run: |
+          set -euo pipefail
+          sleep "${RECHECK_DELAY_SECONDS:-720}"
+          gh workflow run automatic-production-trigger.yml --repo "$GITHUB_REPOSITORY" --ref main \
+            -f recheck_hop="$((HOP + 1))"
+          echo "re-check $((HOP + 1)) of 8 dispatched"

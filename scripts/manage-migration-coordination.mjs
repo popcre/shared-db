@@ -2655,24 +2655,33 @@ export function main(argv, now = new Date(), io = githubIo) {
     // reason it can write states the mechanism that actually ran (#2448).
     if (o.releaseClaim) {
       if (!o.confirmFinished || !o.owner) throw new LaneError('--release-claim requires exact --owner and --confirm-finished')
+      if (o.park && o.retire) throw new LaneError('--park cannot be combined with --retire')
+      if (o.retire) {
+        if (!RETIREMENT_DECISIONS.includes(o.retire)) throw new LaneError(`--retire decision must be one of ${RETIREMENT_DECISIONS.join(', ')}`)
+        if (!WORKTREE_STATES.includes(o.worktreeState)) throw new LaneError(`--retire requires --worktree-state to be one of ${WORKTREE_STATES.join(', ')}`)
+        if (!Number.isSafeInteger(Number(o.pr)) || Number(o.pr) <= 0 || !/^[0-9a-f]{40}$/i.test(o.headSha ?? '')) throw new LaneError('--retire requires the exact --pr and --head-sha the retired work reached')
+        if (!o.evidence?.trim()) throw new LaneError('--retire requires --evidence naming where the retirement decision is recorded')
+      }
       const result = withAuthorMutex('claim-release', io, o, (ownerSha) => {
         const fresh = io.openClaims(), claim = fresh.find((x) => String(x.number) === String(o.releaseClaim))
         if (!claim) throw new LaneError(`claim #${o.releaseClaim} is not open`)
         const lease = parseAuthorLease(claim.body, now)
         if (!sameOwnerLabel(lease.owner, o.owner)) throw new LaneError(wrongOwnerMessage({ claim: o.releaseClaim, onRecord: lease.owner, supplied: o.owner, command: laneCommand(['--release-claim', String(o.releaseClaim), '--owner', JSON.stringify(String(lease.owner ?? '')), '--confirm-finished']) }))
-        const branchPulls = (io.openPulls?.() ?? io.prSources()).filter((pr) => (pr.head?.ref ?? pr.branch) === lease.branch)
+        if (!o.retire) assertClaimNotRetired(lease.version, 'released', io)
+        const openBranchPulls = () => (io.openPulls?.() ?? io.prSources()).filter((pr) => (pr.head?.ref ?? pr.branch) === lease.branch)
+        const branchPulls = openBranchPulls()
         // --park: a stuck session frees its claim without losing work. The open
         // pull request is CLOSED (never deleted, branch kept) with a resume note,
         // then the ordinary release runs. Owner, mutex and claim checks above are
         // unchanged; park never combines with terminal retirement.
         if (branchPulls.length && !o.park) throw new LaneError(`claim branch ${lease.branch} still has an open pull request; add --park to close it (reopenable, branch kept) and release`)
-        if (o.park && o.retire) throw new LaneError('--park cannot be combined with --retire')
         if (o.park && branchPulls.length) {
           if (typeof io.closePull !== 'function') throw new LaneError('--park requires a pull-request close capability')
           for (const pr of branchPulls) {
             requireOwnedRef(MUTEX_REF, ownerSha, io)
             io.closePull(Number(pr.number), parkComment({ claim: Number(claim.number), lease, pr: Number(pr.number) }))
           }
+          if (openBranchPulls().length) throw new LaneError(`claim branch ${lease.branch} still has an open pull request after --park`)
         }
         // #2301 Step 3 -- TERMINAL RETIREMENT.
         //
@@ -2689,10 +2698,6 @@ export function main(argv, now = new Date(), io = githubIo) {
         // about whether the work is finished.
         if (o.retire) {
           if (lease.legacy) throw new LaneError('a legacy claim cannot be terminally retired; reconcile its lease first')
-          if (!RETIREMENT_DECISIONS.includes(o.retire)) throw new LaneError(`--retire decision must be one of ${RETIREMENT_DECISIONS.join(', ')}`)
-          if (!WORKTREE_STATES.includes(o.worktreeState)) throw new LaneError(`--retire requires --worktree-state to be one of ${WORKTREE_STATES.join(', ')}`)
-          if (!o.pr || !o.headSha) throw new LaneError('--retire requires the exact --pr and --head-sha the retired work reached')
-          if (!o.evidence) throw new LaneError('--retire requires --evidence naming where the retirement decision is recorded')
           const record = {
             schema_version: RETIREMENT_SCHEMA_VERSION,
             claim: Number(claim.number),

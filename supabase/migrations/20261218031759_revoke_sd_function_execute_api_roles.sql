@@ -142,6 +142,15 @@ begin
     'revoked EXECUTE on % of 17 in-scope signatures (% absent, % refused as not-owner)',
     n, absent, coalesce(array_length(skipped, 1), 0);
 
+  -- Fail closed on a wrong migration role: if every present signature was
+  -- refused as not-owner, this is not the role the 15 postgres-owned functions
+  -- belong to (live pin 2026-11-17) — an unrevocable apply must not read green.
+  if n = 0 and absent = 0 then
+    raise exception
+      'no in-scope signature was revocable by migration role % — wrong role or whole scope platform-owned',
+      current_user;
+  end if;
+
   -- Assert: no in-scope signature that exists on this database, and that the
   -- migration role was allowed to touch, still carries anon or authenticated
   -- EXECUTE. Signatures refused as not-owner are the recorded platform
@@ -168,8 +177,8 @@ begin
     ('public.lock_down_new_public_function_execute()')
   ) as t(sig)
   where to_regprocedure(t.sig) is not null
-    and (has_function_privilege(to_regprocedure(t.sig), 'anon', 'EXECUTE')
-      or has_function_privilege(to_regprocedure(t.sig), 'authenticated', 'EXECUTE'))
+    and (has_function_privilege('anon', to_regprocedure(t.sig)::oid, 'EXECUTE')
+      or has_function_privilege('authenticated', to_regprocedure(t.sig)::oid, 'EXECUTE'))
     and not (t.sig = any (skipped));
 
   if leftover_count > 0 then

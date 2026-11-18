@@ -330,7 +330,7 @@ export function addedUnreferencedDocPaths({ mainSha, tipSha, paths, cwd, gitRunn
     names.push(`${escapeRegex(stem)}([^/]|$)`)
     let hits
     try {
-      hits = gitRunner(['grep', '-l', '-E', '-e', names.join('|'), tipSha, '--', '.', ':(exclude)docs', ':(glob,exclude).github/live-proofs/*.sql', ':(exclude)*.md', ':(exclude)*.markdown', ':(exclude)*.test.mjs', ':(exclude)*/test_*.py'], { cwd })
+      hits = gitRunner(['grep', '-l', '-E', '-e', names.join('|'), tipSha, '--', '.', ':(exclude)docs', ':(exclude).github/live-proofs', ':(exclude)*.md', ':(exclude)*.markdown', ':(exclude)*.test.mjs', ':(exclude)*/test_*.py'], { cwd })
     } catch (error) {
       if (error?.status !== 1) throw error
       hits = ''

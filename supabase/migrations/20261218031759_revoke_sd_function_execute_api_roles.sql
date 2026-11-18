@@ -28,6 +28,17 @@
 -- trap as #6415 and the 2026-07-29 public EXECUTE lockdown). postgres /
 -- service_role / admin-role grants are left untouched.
 --
+-- CARVE-OUT (live contract, supabase/tests/coldlion_unit6_consumer_contracts.sql
+-- + its creating migration 20261011224904_coldlion_unit6_consumer_contracts_
+-- safe.sql): plm.coldlion_merch_group_candidates(text,text) carries a
+-- DELIBERATE `grant execute ... to authenticated, service_role` (issue #2176
+-- unit 6, "Read-only merch-group candidates for hand-curated licensor/property
+-- linking") — `authenticated` is an intended consumer. The #6416 mechanical
+-- disposition ("not-in-exposed-schema -> revoke") missed that grant. For this
+-- one signature the revoke is `from public, anon` ONLY and `authenticated` is
+-- kept; its contract test asserts exactly that shape (anon must NOT execute it,
+-- authenticated must).
+--
 -- SCOPE (pinned at authoring time 2026-11-17 11:20 PM EST)
 -- -----
 -- The 17 exact signatures in the VALUES list below — 15 function names, with
@@ -75,7 +86,11 @@
 --   grant execute on function dflow_prod.set_item_user_assignment(integer,text,integer,boolean,jsonb) to public, anon, authenticated;
 --   grant execute on function net.http_get(text,jsonb,jsonb,integer) to public, anon, authenticated;
 --   grant execute on function net.http_post(text,jsonb,jsonb,jsonb,integer) to public, anon, authenticated;
---   grant execute on function plm.coldlion_merch_group_candidates(text,text) to public, anon, authenticated;
+--   grant execute on function plm.coldlion_merch_group_candidates(text,text) to authenticated, service_role;
+--     (carve-out: its pre-change state is `to authenticated, service_role` per
+--      20261011224904 — public/anon were already revoked there; this migration
+--      only re-asserts that, so the rollback restores that exact grant set and
+--      does NOT re-grant public/anon.)
 --   grant execute on function plm.latest_sesame_capture() to public, anon, authenticated;
 --   grant execute on function plm.prepack_role(text,text,text) to public, anon, authenticated;
 --   grant execute on function plm.set_source_resolution(text,text,text,text,uuid,uuid,uuid,uuid,text,timestamp with time zone) to public, anon, authenticated;
@@ -136,7 +151,10 @@ begin
     else
       begin
         execute format(
-          'revoke execute on function %s from public, anon, authenticated', r.sig);
+          case when r.sig = 'plm.coldlion_merch_group_candidates(text,text)'
+            then 'revoke execute on function %s from public, anon'
+            else 'revoke execute on function %s from public, anon, authenticated'
+          end, r.sig);
         n := n + 1;
       exception
         when insufficient_privilege then
@@ -239,7 +257,8 @@ begin
   ) as t(sig)
   where to_regprocedure(t.sig) is not null
     and (has_function_privilege('anon', to_regprocedure(t.sig)::oid, 'EXECUTE')
-      or has_function_privilege('authenticated', to_regprocedure(t.sig)::oid, 'EXECUTE'))
+      or (t.sig <> 'plm.coldlion_merch_group_candidates(text,text)'
+          and has_function_privilege('authenticated', to_regprocedure(t.sig)::oid, 'EXECUTE')))
     and (select p.proowner from pg_proc p where p.oid = to_regprocedure(t.sig)) = owner_oid;
 
   if leftover_count > 0 then

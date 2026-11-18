@@ -9,7 +9,9 @@
 --   retirement sets the EH001 art themes made licensors by 20261116124500 (DF, RB) inactive,
 --   keeping their previous status in metadata.mg05_retired. Nothing is deleted.
 -- * plm.sync_core_property_from_coldlion reads MG06 only from CW001/SP001 and resolves each value's
---   MG05 parent within its own division. No MG06 value is created; no property is inactivated.
+--   MG05 parent within its own division. No MG06 value is created upstream.
+--   Existing properties under retired art-theme licensors retain their status and links for
+--   recovery; this correction does not infer a replacement licensor or cascade retirement.
 -- (Property body derived from 20261112232209; only the division filters change.)
 
 create or replace function plm.sync_core_licensor_from_coldlion(p_apply boolean default false)
@@ -166,10 +168,12 @@ begin
   if to_regclass('coldlion.merch_group_detail') is null then
     return jsonb_build_object('note','coldlion landing absent; nothing to do');
   end if;
-  if (select count(*) from coldlion.merch_group_detail where mg_type_code = '06') = 0 then
+  if (select count(*) from coldlion.merch_group_detail where mg_type_code = '06'
+        and division_code in ('CW001', 'SP001')) = 0 then
     return jsonb_build_object('note','no ColdLion MG06 rows landed; nothing to do');
   end if;
   if (select count(*) from coldlion.merch_group_detail where mg_type_code = '06'
+        and division_code in ('CW001', 'SP001')
         and last_seen_at > now() - interval '3 days') = 0 then
     raise exception '#6194: ColdLion MG06 landing is older than 3 days; refusing to sync from a stale copy';
   end if;

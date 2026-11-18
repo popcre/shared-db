@@ -17,7 +17,7 @@ do $guard$
 begin
   if not exists (
     select 1 from pg_proc p where p.oid=to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real)')
-      and md5(p.prosrc) in ('25acea0ef28fc884d64a922c9f2f1e52','f3f0862319d5349c5b87ace7f8b595db')
+      and md5(p.prosrc) in ('25acea0ef28fc884d64a922c9f2f1e52','0209882590307ebaa792a3928aba5fb2')
   ) then
     raise exception 'DAM ranked search source differs from 20261218093000; reconcile rather than overwrite';
   end if;
@@ -369,8 +369,8 @@ AS $function$
     -- every row that passes. Measured: "frame" with a licensor filter sent ~22k member assets
     -- through the helper in each of three passes (13-35 s).
     select r.f, r.thumbnail_min_date, t.*
-    from visibility_params_raw r
-    cross join lateral public.dam_search_filter_pretest_values(r.f) t
+    -- (a function in FROM is implicitly lateral)
+    from visibility_params_raw r, public.dam_search_filter_pretest_values(r.f) t
   ), visibility_params as materialized (
     -- One switch, and one opaque CASE at each call site: the planner keeps the row estimates (and
     -- so the plan shapes) it had for the function call alone; 13 separate tests made it expect one
@@ -725,7 +725,7 @@ $function$;
 do $guard$
 begin
   if not exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real)')
-      and md5(p.prosrc)='f3f0862319d5349c5b87ace7f8b595db'
+      and md5(p.prosrc)='0209882590307ebaa792a3928aba5fb2'
       and pg_get_userbyid(p.proowner)='postgres'
       and p.prosecdef and p.provolatile='s' and p.proretset
       and p.proconfig=ARRAY['search_path=public, extensions','statement_timeout=30s']::text[]

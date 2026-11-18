@@ -450,7 +450,7 @@ HARD_BLOCKED = {
     "20261204001000",
     # popdam3#1037: written against the 8-argument search_dam_documents but merged after
     # 20261204003632 changed it to 11 arguments, so its guard refuses. Content reissued with
-    # the text leg as 20261204003733; never apply this original.
+    # the text leg as 20261218031854; never apply this original.
     "20261204003633",
 }
 

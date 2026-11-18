@@ -1,4 +1,4 @@
--- Issue #6685 (claim #6710, version 20261218120000). Cap concurrent
+-- Issue #6685 (claim #6760, version 20261218093101). Cap concurrent
 -- connections for the DesignFlow sandbox HTS worker login role.
 -- derived-from: none
 --

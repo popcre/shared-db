@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "migration_version": "20261218031759",
-  "migration_sha256": "41ba283678ee2b986938a8f7a039b93ff9bfcc379773663cf4743b91c849a8a9",
+  "migration_sha256": "37eb0a80dcb3215b716e2622424d8dda35f3c815d1ca897db0ffebe8efbe92eb",
   "marker_schema_version": 1,
   "marker_reviews": [
     {
-      "line_start": 128,
-      "line_end": 128,
+      "line_start": 138,
+      "line_end": 138,
       "disposition": "no_durable_target",
-      "reason": "The dynamic marker is the existence-guarded REVOKE EXECUTE loop over the 17 pinned security-definer signatures (per-signature subtransaction catches insufficient_privilege for the platform-owned net.http_* boundary). No sidecar check kind can assert role privileges: the supported kinds are exact_row_count, catalog_contract and catalog_absence, none of which expresses has_function_privilege state, and the functions remain present (catalog_absence would be false). The durable proof is the in-migration post-revoke assertion (the same DO block raises if any in-scope signature that exists, and that the migration role was allowed to touch, still grants EXECUTE to anon or authenticated) plus the preview after-census on issue #6455 and the named rollback in the migration header."
+      "reason": "The dynamic marker is the existence-guarded REVOKE EXECUTE loop over the 17 pinned security-definer signatures. No sidecar check kind can assert role privileges: the supported kinds are exact_row_count, catalog_contract and catalog_absence, none of which expresses has_function_privilege state, and the functions remain present (catalog_absence would be false). The durable proof is the in-migration post-revoke assertion (the same DO block raises if any in-scope signature owned by the migration role still grants EXECUTE to anon or authenticated, refuses a wrong migration role, and names the platform-owned net.http_* boundary) plus the preview after-census on issue #6455 and the named rollback in the migration header."
     }
   ],
   "checks": []

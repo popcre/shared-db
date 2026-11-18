@@ -37,19 +37,24 @@
 -- same-named functions (their schemas differ and are dispositioned
 -- separately) and public.rls_auto_enable (#6456, another agent's object).
 --
--- PLATFORM-OWNED BOUNDARY — net.http_get / net.http_post (live-verified
--- 2026-11-17, preview + production, read-only): both are owned by
--- `supabase_admin`. The migration role is `postgres` (not superuser, not a
--- member of supabase_admin — #6415's read-only verification), so REVOKE on
--- those two is refused (`must be owner of function`, 42501). This is the same
--- boundary class #6415 recorded for the platform-owned trigger functions: the
--- Prime Directive keeps this repo out of vendor/platform objects. The loop
--- therefore wraps each REVOKE in a per-signature subtransaction that catches
--- ONLY `insufficient_privilege`, counts the refusal, and raises a NOTICE
--- naming the signature — never silently. Any other error aborts the whole
--- migration (fail-closed). Environments where the migration role does own the
--- functions (some ephemeral CI builds) still get the revoke. The post-loop
--- assertion refuses any leftover that is NOT one of these recorded refusals.
+-- PLATFORM-OWNED BOUNDARY — net.http_get / net.http_post (live-proven
+-- 2026-11-17 on preview, read-back after REVOKE as `postgres`): both are
+-- owned by `supabase_admin` and their PUBLIC EXECUTE is granted BY
+-- supabase_admin (proacl after REVOKE: {=X/supabase_admin, ...};
+-- has_function_privilege('anon'|'authenticated', ...) stays TRUE). A REVOKE
+-- from a role that neither owns the object nor made the grant is ACCEPTED as
+-- a statement and is a SILENT NO-OP: it strips only grants made by the
+-- migration role and raises no error, so no exception can be caught. This is
+-- the same boundary class #6415 recorded for the platform-owned trigger
+-- functions: the Prime Directive keeps this repo out of vendor/platform
+-- objects, and `postgres` is not a member of supabase_admin. Environments
+-- where the migration role does own the functions still get the revoke.
+-- The post-loop classification therefore keys on OWNERSHIP, not on errors:
+-- any in-scope signature that still carries API EXECUTE and is NOT owned by
+-- the migration role is recorded as the platform boundary (NOTICE, named);
+-- any such signature that IS owned by the migration role aborts the
+-- migration. A wrong migration role (owns nothing in scope while functions
+-- are present) also aborts — an unrevocable apply must not read green.
 --
 -- Existence-guarded loop (repository pattern 20260729130000_production_safe_
 -- public_execute_lockdown.sql): each signature is resolved through
@@ -94,10 +99,15 @@ declare
   r record;
   n integer := 0;
   absent integer := 0;
-  skipped text[] := '{}';
-  leftover text;
+  owner_oid oid;
+  owned_count integer;
+  boundary_count integer;
+  boundary text;
   leftover_count integer;
+  leftover text;
 begin
+  select oid into owner_oid from pg_roles where rolname = current_user;
+
   for r in
     select t.sig
     from (values
@@ -130,31 +140,82 @@ begin
         n := n + 1;
       exception
         when insufficient_privilege then
-          skipped := skipped || r.sig;
-          raise notice
-            'REVOKE refused (insufficient privilege, not object owner) - platform-owned boundary: %',
-            r.sig;
+          raise notice 'REVOKE refused (insufficient privilege) - classified by ownership below: %', r.sig;
       end;
     end if;
   end loop;
 
-  raise notice
-    'revoked EXECUTE on % of 17 in-scope signatures (% absent, % refused as not-owner)',
-    n, absent, coalesce(array_length(skipped, 1), 0);
+  raise notice 'revoked EXECUTE on % of 17 in-scope signatures (% absent)', n, absent;
 
-  -- Fail closed on a wrong migration role: if every present signature was
-  -- refused as not-owner, this is not the role the 15 postgres-owned functions
-  -- belong to (live pin 2026-11-17) — an unrevocable apply must not read green.
-  if n = 0 and absent = 0 then
+  -- Wrong-role guard: if in-scope functions exist but the migration role owns
+  -- none of them, this is not the role the 15 postgres-owned functions belong
+  -- to (live pin 2026-11-17) — an unrevocable apply must not read green.
+  select count(*) into owned_count
+  from (values
+    ('dam.orderlist_sales_order_received_date(text)'),
+    ('dflow_prod.claim_sample_shipment_notice(bigint)'),
+    ('dflow_prod.pack_sample_reservation(uuid,integer,bigint,text,text,text,text,text,text,text,text)'),
+    ('dflow_prod.post_sample_remote_request_event(uuid,text,text,text,text,text,text,jsonb)'),
+    ('dflow_prod.record_item_workflow_action(integer,integer,text,uuid,text,text,boolean,text,text,text,jsonb)'),
+    ('dflow_prod.reserve_sample_remote_request_item(uuid,text,text,text,text)'),
+    ('dflow_prod.set_item_user_assignment(integer,text,integer,boolean,jsonb)'),
+    ('net.http_get(text,jsonb,jsonb,integer)'),
+    ('net.http_post(text,jsonb,jsonb,jsonb,integer)'),
+    ('plm.coldlion_merch_group_candidates(text,text)'),
+    ('plm.latest_sesame_capture()'),
+    ('plm.prepack_role(text,text,text)'),
+    ('plm.set_source_resolution(text,text,text,text,uuid,uuid,uuid,uuid,text,timestamp with time zone)'),
+    ('plm.set_source_resolution(text,text,text,text,uuid,uuid,uuid,uuid,text,timestamp with time zone,uuid,uuid)'),
+    ('plm.source_resolution_target_missing(text,uuid,uuid,uuid,uuid)'),
+    ('plm.source_resolution_target_missing(text,uuid,uuid,uuid,uuid,uuid,uuid)'),
+    ('public.lock_down_new_public_function_execute()')
+  ) as t(sig)
+  where to_regprocedure(t.sig) is not null
+    and (select p.proowner from pg_proc p where p.oid = to_regprocedure(t.sig)) = owner_oid;
+
+  if owned_count = 0 and absent < 17 then
     raise exception
-      'no in-scope signature was revocable by migration role % — wrong role or whole scope platform-owned',
-      current_user;
+      'migration role % owns none of the % in-scope functions present on this database - wrong role?',
+      current_user, 17 - absent;
   end if;
 
-  -- Assert: no in-scope signature that exists on this database, and that the
-  -- migration role was allowed to touch, still carries anon or authenticated
-  -- EXECUTE. Signatures refused as not-owner are the recorded platform
-  -- boundary above and are excluded from this assertion.
+  -- Platform boundary: in-scope signatures that still carry API EXECUTE and
+  -- are NOT owned by the migration role (the REVOKE was a silent no-op on a
+  -- grant the migration role did not make). Recorded, named, not silent.
+  select count(*), string_agg(t.sig, ', ')
+    into boundary_count, boundary
+  from (values
+    ('dam.orderlist_sales_order_received_date(text)'),
+    ('dflow_prod.claim_sample_shipment_notice(bigint)'),
+    ('dflow_prod.pack_sample_reservation(uuid,integer,bigint,text,text,text,text,text,text,text,text)'),
+    ('dflow_prod.post_sample_remote_request_event(uuid,text,text,text,text,text,text,jsonb)'),
+    ('dflow_prod.record_item_workflow_action(integer,integer,text,uuid,text,text,boolean,text,text,text,jsonb)'),
+    ('dflow_prod.reserve_sample_remote_request_item(uuid,text,text,text,text)'),
+    ('dflow_prod.set_item_user_assignment(integer,text,integer,boolean,jsonb)'),
+    ('net.http_get(text,jsonb,jsonb,integer)'),
+    ('net.http_post(text,jsonb,jsonb,jsonb,integer)'),
+    ('plm.coldlion_merch_group_candidates(text,text)'),
+    ('plm.latest_sesame_capture()'),
+    ('plm.prepack_role(text,text,text)'),
+    ('plm.set_source_resolution(text,text,text,text,uuid,uuid,uuid,uuid,text,timestamp with time zone)'),
+    ('plm.set_source_resolution(text,text,text,text,uuid,uuid,uuid,uuid,text,timestamp with time zone,uuid,uuid)'),
+    ('plm.source_resolution_target_missing(text,uuid,uuid,uuid,uuid)'),
+    ('plm.source_resolution_target_missing(text,uuid,uuid,uuid,uuid,uuid,uuid)'),
+    ('public.lock_down_new_public_function_execute()')
+  ) as t(sig)
+  where to_regprocedure(t.sig) is not null
+    and (has_function_privilege('anon', to_regprocedure(t.sig)::oid, 'EXECUTE')
+      or has_function_privilege('authenticated', to_regprocedure(t.sig)::oid, 'EXECUTE'))
+    and (select p.proowner from pg_proc p where p.oid = to_regprocedure(t.sig)) <> owner_oid;
+
+  if boundary_count > 0 then
+    raise notice
+      'platform-owned boundary - % signature(s) still API-executable, grant belongs to a non-migration owner: %',
+      boundary_count, boundary;
+  end if;
+
+  -- Assert: no in-scope signature OWNED BY THE MIGRATION ROLE still carries
+  -- anon or authenticated EXECUTE.
   select count(*), string_agg(t.sig, ', ')
     into leftover_count, leftover
   from (values
@@ -179,11 +240,12 @@ begin
   where to_regprocedure(t.sig) is not null
     and (has_function_privilege('anon', to_regprocedure(t.sig)::oid, 'EXECUTE')
       or has_function_privilege('authenticated', to_regprocedure(t.sig)::oid, 'EXECUTE'))
-    and not (t.sig = any (skipped));
+    and (select p.proowner from pg_proc p where p.oid = to_regprocedure(t.sig)) = owner_oid;
 
   if leftover_count > 0 then
-    raise exception 'in-scope signatures still API-executable after revoke: %',
-      leftover;
+    raise exception
+      'in-scope signatures owned by migration role % still API-executable after revoke: %',
+      current_user, leftover;
   end if;
 end
 $$;

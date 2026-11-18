@@ -2,6 +2,7 @@
 """Offline tests for immutable production-apply review evidence."""
 
 import copy
+from contextlib import redirect_stderr
 import hashlib
 import io
 import json
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import Mock
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -31,6 +33,98 @@ SOURCE_PR = 2716
 SOURCE_HEAD = "1" * 40
 WORK_ISSUE = 2493
 PREVIEW_DIGEST = "sha256:" + "b" * 64
+
+
+class GitHubReadTests(unittest.TestCase):
+    def call_read(self, kind, runner, sleep):
+        if kind == "json":
+            return gate.gh_json("endpoint", runner=runner, sleep=sleep)
+        with tempfile.TemporaryDirectory() as temp:
+            gate.download_artifact_zip(77, Path(temp, "artifact.zip"), runner=runner, sleep=sleep)
+
+    def test_transient_json_error_then_success(self):
+        runner = Mock(side_effect=[
+            subprocess.CalledProcessError(1, ["gh"], stderr="HTTP 503: unavailable"),
+            subprocess.CompletedProcess([], 0, '{"ok":true}'),
+        ])
+        sleeps = []
+        diagnostics = io.StringIO()
+        with redirect_stderr(diagnostics):
+            result = gate.gh_json("endpoint", runner=runner, sleep=sleeps.append)
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(runner.call_count, 2)
+        self.assertEqual(sleeps, [5])
+        self.assertIn("attempt 1/3 failed: HTTP 503", diagnostics.getvalue())
+
+    def test_permanent_errors_fail_immediately_for_both_reads(self):
+        for kind in ("json", "zip"):
+            for status in (400, 401, 403, 404, 422):
+                with self.subTest(kind=kind, status=status):
+                    error = f"HTTP {status}: request refused"
+                    runner = Mock(side_effect=subprocess.CalledProcessError(
+                        1, ["gh"], stderr=error if kind == "json" else error.encode(),
+                    ))
+                    sleep = Mock()
+                    with self.assertRaisesRegex(gate.EvidenceError, f"after 1 attempt.*HTTP {status}"):
+                        self.call_read(kind, runner, sleep)
+                    self.assertEqual(runner.call_count, 1)
+                    sleep.assert_not_called()
+
+    def test_transient_exhaustion_is_bounded_for_both_reads(self):
+        for kind in ("json", "zip"):
+            with self.subTest(kind=kind):
+                runner = Mock(side_effect=subprocess.CalledProcessError(
+                    1, ["gh"], stderr=b"HTTP 502: bad gateway",
+                ))
+                sleeps = []
+                diagnostics = io.StringIO()
+                with redirect_stderr(diagnostics), self.assertRaisesRegex(
+                    gate.EvidenceError, "after 3 attempt.*HTTP 502: bad gateway",
+                ):
+                    self.call_read(kind, runner, sleeps.append)
+                self.assertEqual(runner.call_count, 3)
+                self.assertEqual(sleeps, [5, 10])
+                self.assertIn("attempt 2/3 failed", diagnostics.getvalue())
+
+    def test_invalid_json_then_success(self):
+        runner = Mock(side_effect=[
+            subprocess.CompletedProcess([], 0, "<html>proxy error</html>"),
+            subprocess.CompletedProcess([], 0, '{"ok":true}'),
+        ])
+        sleeps = []
+        with redirect_stderr(io.StringIO()):
+            result = gate.gh_json("endpoint", runner=runner, sleep=sleeps.append)
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(runner.call_count, 2)
+        self.assertEqual(sleeps, [5])
+
+    def test_invalid_json_exhaustion_fails_closed(self):
+        runner = Mock(return_value=subprocess.CompletedProcess([], 0, "invalid"))
+        sleeps = []
+        with redirect_stderr(io.StringIO()), self.assertRaisesRegex(
+            gate.EvidenceError, "after 3 attempt.*invalid JSON",
+        ):
+            gate.gh_json("endpoint", runner=runner, sleep=sleeps.append)
+        self.assertEqual(runner.call_count, 3)
+        self.assertEqual(sleeps, [5, 10])
+
+    def test_download_retry_replaces_partial_bytes(self):
+        calls = []
+        def runner(command, **kwargs):
+            calls.append(command)
+            if len(calls) == 1:
+                kwargs["stdout"].write(b"partial response longer than success")
+                raise subprocess.CalledProcessError(1, command, stderr=b"connection reset")
+            kwargs["stdout"].write(b"complete")
+            return subprocess.CompletedProcess(command, 0)
+        sleeps = []
+        with tempfile.TemporaryDirectory() as temp, redirect_stderr(io.StringIO()):
+            destination = Path(temp, "artifact.zip")
+            gate.download_artifact_zip(77, destination, runner=runner, sleep=sleeps.append)
+            self.assertEqual(destination.read_bytes(), b"complete")
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0], ["gh", "api", f"repos/{gate.REPOSITORY}/actions/artifacts/77/zip"])
+        self.assertEqual(sleeps, [5])
 
 
 class ImportCompatibilityTests(unittest.TestCase):

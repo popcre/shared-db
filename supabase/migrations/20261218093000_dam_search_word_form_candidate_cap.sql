@@ -17,7 +17,7 @@ do $guard$
 begin
   if not exists (
     select 1 from pg_proc p where p.oid=to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real)')
-      and md5(p.prosrc) in ('1483210ba34245a52e60ec3ea6fd7737','4bcf1efa6a0f75c4713eb45ee2926ba7')
+      and md5(p.prosrc) in ('1483210ba34245a52e60ec3ea6fd7737','25acea0ef28fc884d64a922c9f2f1e52')
   ) then
     raise exception 'DAM ranked search source differs from 20261218084706; reconcile rather than overwrite';
   end if;
@@ -96,7 +96,7 @@ AS $function$
     where (p_document_types is null or d.document_type = any(p_document_types))
       and d.search_tsv @@ any(array(select distinct q.tsq from queries q))
   ), word_form_keys as materialized (
-    -- popdam3#1037 Step 7 performance (20261218091100): the GIN index alone proves the word-form
+    -- popdam3#1037 Step 7 performance (20261218093000): the GIN index alone proves the word-form
     -- match, so no per-row re-test here (re-testing detoasted ~10.7k word lists: 8.8 s cold for
     -- "frame"). Only narrow key columns are read. The named-character scope (applied to every leg
     -- in candidate_pool anyway) is applied here too so the cap below never drops an in-scope row.
@@ -484,7 +484,7 @@ AS $function$
   ), page_state as materialized (
     select count(*) visible_through_page from page_documents
   ), word_form_overflow as materialized (
-    -- 20261218091100: word-form-only rows left out by word_form_cap (unfiltered requests only)
+    -- 20261218093000: word-form-only rows left out by word_form_cap (unfiltered requests only)
     -- still count toward the exact total (owner ask #5053): a maintained flag when current,
     -- otherwise the same per-document visibility probe. Rows another leg already brought in are
     -- counted by exact_docs and skipped here.
@@ -602,7 +602,7 @@ $function$;
 do $guard$
 begin
   if not exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real)')
-      and md5(p.prosrc)='4bcf1efa6a0f75c4713eb45ee2926ba7'
+      and md5(p.prosrc)='25acea0ef28fc884d64a922c9f2f1e52'
       and pg_get_userbyid(p.proowner)='postgres'
       and p.prosecdef and p.provolatile='s' and p.proretset
       and p.proconfig=ARRAY['search_path=public, extensions','statement_timeout=30s']::text[]

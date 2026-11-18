@@ -21,7 +21,7 @@ set local search_path=pg_catalog,public,extensions;
 do $guard$
 begin
   if not exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real)')
-      and md5(p.prosrc) in ('d66a2af948ed737b1b163c9e209f9b17','084775e3db814c7de17ccfa561d0e9a2')) then
+      and md5(p.prosrc) in ('d66a2af948ed737b1b163c9e209f9b17','c3cf9d3e061e2072a1de1b54f6828ed5')) then
     raise exception 'popdam3#1037 pre-change search_dam_documents differs from 20261204003632; reconcile rather than overwrite';
   end if;
   if not exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.dam_search_semantic_anchor_named(extensions.vector,text[],jsonb)')
@@ -319,12 +319,12 @@ AS $function$
       -- popdam3#1037: property accepted set, picture-only matches only.
       and ((select property_groups from params) is null
         or max(c.keyword_rank) is not null
-        or c.style_group_id = any((select property_groups from params))
-        or (c.style_group_id is null and c.asset_id = any((select property_assets from params))))
+        or c.style_group_id = any((select property_groups from params)::uuid[])
+        or (c.style_group_id is null and c.asset_id = any((select property_assets from params)::uuid[])))
       -- popdam3#1037: named character, every leg.
       and ((select character_groups from params) is null
-        or c.style_group_id = any((select character_groups from params))
-        or c.asset_id = any((select character_assets from params)))
+        or c.style_group_id = any((select character_groups from params)::uuid[])
+        or c.asset_id = any((select character_assets from params)::uuid[]))
   ), ordered_candidates as materialized (
     select c.document_type,c.entity_id,c.asset_id,c.style_group_id,c.keyword_rank,c.semantic_rank,c.rank,c.text_rank,
       row_number() over (order by c.rank desc, c.document_type, c.entity_id) rn
@@ -599,7 +599,7 @@ $function$;
 do $guard$
 begin
   if not exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real)')
-      and md5(p.prosrc)='084775e3db814c7de17ccfa561d0e9a2'
+      and md5(p.prosrc)='c3cf9d3e061e2072a1de1b54f6828ed5'
       and pg_get_userbyid(p.proowner)='postgres'
       and p.prosecdef and p.provolatile='s' and p.proretset
       and p.proconfig=ARRAY['search_path=public, extensions','statement_timeout=30s']::text[]

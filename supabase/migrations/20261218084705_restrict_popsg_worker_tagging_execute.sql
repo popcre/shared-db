@@ -1,4 +1,5 @@
 -- #6657: reissue the evidenced worker-only subset of the retired #6655.
+-- #6690 quarantines the original, which was absent in both hosted ledgers.
 -- The July tagging contracts granted only service_role on these exact
 -- signatures. Their deployed bodies also enforce that service identity.
 -- Keep all existing caller grants outside these three worker routines.

@@ -19,15 +19,22 @@ caller_routines(signature) as (
 )
 select (
   select bool_and(
-    coalesce(has_function_privilege('service_role', to_regprocedure(signature), 'execute'), false)
-    and has_function_privilege('authenticated', to_regprocedure(signature), 'execute') is false
-    and has_function_privilege('anon', to_regprocedure(signature), 'execute') is false
-    and has_function_privilege('public', to_regprocedure(signature), 'execute') is false
+    p.oid is not null
+    and p.prosecdef is true
+    and position('auth.role() <> ''service_role''' in lower(p.prosrc)) > 0
+    and has_function_privilege('service_role', p.oid, 'execute') is true
+    and has_function_privilege('postgres', p.oid, 'execute') is true
+    and has_function_privilege('supabase_admin', p.oid, 'execute') is true
+    and has_function_privilege('authenticated', p.oid, 'execute') is false
+    and has_function_privilege('anon', p.oid, 'execute') is false
+    and has_function_privilege('public', p.oid, 'execute') is false
   )
-  from worker_routines
+  from worker_routines r
+  left join pg_catalog.pg_proc p on p.oid = to_regprocedure(r.signature)
 ) and (
   select bool_and(
-    coalesce(has_function_privilege('authenticated', to_regprocedure(signature), 'execute'), false)
+    to_regprocedure(signature) is not null
+    and has_function_privilege('authenticated', to_regprocedure(signature), 'execute') is true
     and has_function_privilege('anon', to_regprocedure(signature), 'execute') is false
   )
   from caller_routines

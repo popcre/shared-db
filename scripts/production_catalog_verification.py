@@ -3205,7 +3205,7 @@ def _case_folded_sql(raw: str) -> str:
     Postgres folds unquoted identifiers to lower case and keeps quoted ones
     verbatim. A fully lowercased text turns `core."merchGroupRepairJournal"`
     into a name that does not exist, so the post-apply check reported a
-    successful apply as missing its table. Quoted tokens that are already
+    successful apply as lacking its table. Quoted tokens that are already
     plain lowercase identifiers are unquoted so existing patterns still match.
     """
     text = strip_sql(raw, keep_case=True)

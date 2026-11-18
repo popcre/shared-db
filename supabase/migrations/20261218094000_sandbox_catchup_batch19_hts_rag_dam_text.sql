@@ -1,7 +1,7 @@
 -- Sandbox catch-up batch 19 (#6472): DesignFlow sandbox (xupnyeifmpsacrqahwwm) ONLY. Never apply to shared preview or production.
 -- Replays production's 20261204000400, 000501, 003429, 003532, 20261218043336, 084203, 084707, 090000 and 093000 unchanged except that
--- every grant, revoke or policy naming a production service login (designflow_hts_*, dam_image_embed_worker) runs
--- only when that login exists, and the 003429 verify skips the worker-privilege check when the worker is absent.
+-- grants and policies naming production service logins (designflow_hts_*, dam_image_embed_worker; excluded from the
+-- sandbox by #6356) are omitted, revokes drop only those names, and the 003429 verify skips the worker check when absent.
 -- The sandbox has none of those logins, so applying the originals fails (runs 44412984805, 44413380489), and the re-derived ones are refused because the sandbox lacks their bases (run 44413554207).
 -- derived-from: none
 
@@ -37,74 +37,16 @@ create index hts_rag_product_embeddings_ruling_idx
 alter table hts_rag.hts_rag_product_embeddings enable row level security;
 revoke all on hts_rag.hts_rag_product_embeddings
   from public, anon, authenticated, service_role;
-do $sbx$ begin
-  if exists (select 1 from pg_roles where rolname = 'designflow_hts_prod_runtime') and exists (select 1 from pg_roles where rolname = 'designflow_hts_alsand_runtime') and exists (select 1 from pg_roles where rolname = 'designflow_hts_prod_worker') and exists (select 1 from pg_roles where rolname = 'designflow_hts_alsand_worker') then
-    execute $s$revoke all on hts_rag.hts_rag_product_embeddings
-  from public, anon, authenticated, service_role,
-       designflow_hts_prod_runtime, designflow_hts_alsand_runtime,
-       designflow_hts_prod_worker, designflow_hts_alsand_worker$s$;
-  end if;
-end $sbx$;
-do $sbx$ begin
-  if exists (select 1 from pg_roles where rolname = 'designflow_hts_prod_worker') and exists (select 1 from pg_roles where rolname = 'designflow_hts_alsand_worker') then
-    execute $s$grant select, insert, delete on hts_rag.hts_rag_product_embeddings
-  to designflow_hts_prod_worker, designflow_hts_alsand_worker$s$;
-  end if;
-end $sbx$;
-do $sbx$ begin
-  if exists (select 1 from pg_roles where rolname = 'designflow_hts_prod_runtime') and exists (select 1 from pg_roles where rolname = 'designflow_hts_alsand_runtime') then
-    execute $s$grant select on hts_rag.hts_rag_product_embeddings
-  to designflow_hts_prod_runtime, designflow_hts_alsand_runtime$s$;
-  end if;
-end $sbx$;
-do $sbx$ begin
-  if exists (select 1 from pg_roles where rolname = 'designflow_hts_prod_worker') then
-    execute $s$create policy hts_rag_prod_worker_access on hts_rag.hts_rag_product_embeddings
-  for select to designflow_hts_prod_worker using (true)$s$;
-  end if;
-end $sbx$;
-do $sbx$ begin
-  if exists (select 1 from pg_roles where rolname = 'designflow_hts_prod_worker') then
-    execute $s$create policy hts_rag_prod_worker_insert on hts_rag.hts_rag_product_embeddings
-  for insert to designflow_hts_prod_worker with check (source_environment = 'production')$s$;
-  end if;
-end $sbx$;
-do $sbx$ begin
-  if exists (select 1 from pg_roles where rolname = 'designflow_hts_prod_worker') then
-    execute $s$create policy hts_rag_prod_worker_delete on hts_rag.hts_rag_product_embeddings
-  for delete to designflow_hts_prod_worker using (source_environment = 'production')$s$;
-  end if;
-end $sbx$;
-do $sbx$ begin
-  if exists (select 1 from pg_roles where rolname = 'designflow_hts_alsand_worker') then
-    execute $s$create policy hts_rag_alsand_worker_access on hts_rag.hts_rag_product_embeddings
-  for select to designflow_hts_alsand_worker using (true)$s$;
-  end if;
-end $sbx$;
-do $sbx$ begin
-  if exists (select 1 from pg_roles where rolname = 'designflow_hts_alsand_worker') then
-    execute $s$create policy hts_rag_alsand_worker_insert on hts_rag.hts_rag_product_embeddings
-  for insert to designflow_hts_alsand_worker with check (source_environment = 'alsand')$s$;
-  end if;
-end $sbx$;
-do $sbx$ begin
-  if exists (select 1 from pg_roles where rolname = 'designflow_hts_alsand_worker') then
-    execute $s$create policy hts_rag_alsand_worker_delete on hts_rag.hts_rag_product_embeddings
-  for delete to designflow_hts_alsand_worker using (source_environment = 'alsand')$s$;
-  end if;
-end $sbx$;
-do $sbx$ begin
-  if exists (select 1 from pg_roles where rolname = 'designflow_hts_prod_runtime') then
-    execute $s$create policy hts_rag_prod_runtime_read on hts_rag.hts_rag_product_embeddings
-  for select to designflow_hts_prod_runtime using (true)$s$;
-  end if;
-end $sbx$;
-do $sbx$ begin
-  if exists (select 1 from pg_roles where rolname = 'designflow_hts_alsand_runtime') then
-    execute $s$create policy hts_rag_alsand_runtime_read on hts_rag.hts_rag_product_embeddings
-  for select to designflow_hts_alsand_runtime using (true)$s$;
-  end if;
-end $sbx$;
+-- sandbox: omitted, names production service login(s) absent here: designflow_hts_prod_worker, designflow_hts_alsand_worker
+-- sandbox: omitted, names production service login(s) absent here: designflow_hts_prod_runtime, designflow_hts_alsand_runtime
+-- sandbox: omitted, names production service login(s) absent here: designflow_hts_prod_worker
+-- sandbox: omitted, names production service login(s) absent here: designflow_hts_prod_worker
+-- sandbox: omitted, names production service login(s) absent here: designflow_hts_prod_worker
+-- sandbox: omitted, names production service login(s) absent here: designflow_hts_alsand_worker
+-- sandbox: omitted, names production service login(s) absent here: designflow_hts_alsand_worker
+-- sandbox: omitted, names production service login(s) absent here: designflow_hts_alsand_worker
+-- sandbox: omitted, names production service login(s) absent here: designflow_hts_prod_runtime
+-- sandbox: omitted, names production service login(s) absent here: designflow_hts_alsand_runtime
 
 -- Nearest products by cosine distance for one embed_version. The HTS logins have no USAGE
 -- on schema extensions, so the vector type and operator live behind this definer function;
@@ -144,13 +86,7 @@ $function$;
 comment on function hts_rag.hts_rag_nearest_products(text, text, integer, text[]) is
   'Nearest active trusted ruling products for one embed_version (cosine). designflow-backend#278 Phase 3 step 2.';
 revoke all on function hts_rag.hts_rag_nearest_products(text, text, integer, text[]) from public, anon, authenticated, service_role;
-do $sbx$ begin
-  if exists (select 1 from pg_roles where rolname = 'designflow_hts_prod_runtime') and exists (select 1 from pg_roles where rolname = 'designflow_hts_alsand_runtime') and exists (select 1 from pg_roles where rolname = 'designflow_hts_prod_worker') and exists (select 1 from pg_roles where rolname = 'designflow_hts_alsand_worker') then
-    execute $s$grant execute on function hts_rag.hts_rag_nearest_products(text, text, integer, text[])
-  to designflow_hts_prod_runtime, designflow_hts_alsand_runtime,
-     designflow_hts_prod_worker, designflow_hts_alsand_worker$s$;
-  end if;
-end $sbx$;
+-- sandbox: omitted, names production service login(s) absent here: designflow_hts_prod_runtime, designflow_hts_alsand_runtime, designflow_hts_prod_worker, designflow_hts_alsand_worker
 
 -- ===== replay of 20261204000501_hts_rag_type_code6_stats.sql =====
 -- Issue #6590 (claim #6591, popcre/designflow-backend#278, plan_hts-4-upgrades.md Phase 2
@@ -207,19 +143,7 @@ comment on materialized view hts_rag.hts_rag_type_code6_stats is
 
 revoke all on hts_rag.hts_rag_type_code6_stats
   from public, anon, authenticated, service_role;
-do $sbx$ begin
-  if exists (select 1 from pg_roles where rolname = 'designflow_hts_prod_runtime') and exists (select 1 from pg_roles where rolname = 'designflow_hts_alsand_runtime') then
-    execute $s$revoke all on hts_rag.hts_rag_type_code6_stats
-  from public, anon, authenticated, service_role,
-       designflow_hts_prod_runtime, designflow_hts_alsand_runtime$s$;
-  end if;
-end $sbx$;
-do $sbx$ begin
-  if exists (select 1 from pg_roles where rolname = 'designflow_hts_prod_worker') and exists (select 1 from pg_roles where rolname = 'designflow_hts_alsand_worker') then
-    execute $s$grant select on hts_rag.hts_rag_type_code6_stats
-  to designflow_hts_prod_worker, designflow_hts_alsand_worker$s$;
-  end if;
-end $sbx$;
+-- sandbox: omitted, names production service login(s) absent here: designflow_hts_prod_worker, designflow_hts_alsand_worker
 
 create function hts_rag.hts_rag_refresh_type_code6_stats()
 returns void
@@ -240,12 +164,7 @@ $$;
 comment on function hts_rag.hts_rag_refresh_type_code6_stats() is
   'designflow-backend#278. Refreshes hts_rag_type_code6_stats after a harvest or extraction batch.';
 revoke all on function hts_rag.hts_rag_refresh_type_code6_stats() from public, anon, authenticated, service_role;
-do $sbx$ begin
-  if exists (select 1 from pg_roles where rolname = 'designflow_hts_prod_worker') and exists (select 1 from pg_roles where rolname = 'designflow_hts_alsand_worker') then
-    execute $s$grant execute on function hts_rag.hts_rag_refresh_type_code6_stats()
-  to designflow_hts_prod_worker, designflow_hts_alsand_worker$s$;
-  end if;
-end $sbx$;
+-- sandbox: omitted, names production service login(s) absent here: designflow_hts_prod_worker, designflow_hts_alsand_worker
 
 -- ===== replay of 20261204003429_dam_search_text_vectors_reissue.sql =====
 -- Claim popcre/shared-db#6605. Application issue u2giants/popdam3#1037, plan
@@ -733,21 +652,9 @@ revoke all on function public.claim_dam_search_text_embedding_documents(integer,
                        public.mark_dam_search_text_embedding_error(text, uuid, text, uuid, text, text),
                        public.get_dam_search_text_embedding_status()
   from public, anon, authenticated, service_role;
-do $sbx$ begin
-  if exists (select 1 from pg_roles where rolname = 'dam_image_embed_worker') then
-    execute $s$grant execute on function public.claim_dam_search_text_embedding_documents(integer, text, integer),
-                          public.upsert_dam_search_text_embedding(text, uuid, text, uuid, extensions.halfvec, text),
-                          public.mark_dam_search_text_embedding_error(text, uuid, text, uuid, text, text),
-                          public.get_dam_search_text_embedding_status()
-  to dam_image_embed_worker$s$;
-  end if;
-end $sbx$;
+-- sandbox: omitted, names production service login(s) absent here: dam_image_embed_worker
 -- The definer RPCs call these helpers as their owner; the worker needs no direct grant.
-do $sbx$ begin
-  if exists (select 1 from pg_roles where rolname = 'dam_image_embed_worker') then
-    execute $s$grant usage on schema dam to dam_image_embed_worker$s$;
-  end if;
-end $sbx$;
+-- sandbox: omitted, names production service login(s) absent here: dam_image_embed_worker
 
 -- ---------------------------------------------------------------- health
 -- Same signature and columns; adds corpus 'dam_text'. Pending excludes jobs

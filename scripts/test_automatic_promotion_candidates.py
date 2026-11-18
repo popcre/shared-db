@@ -288,7 +288,8 @@ class StaleRefusalWordingStaysRuntimeOnly(unittest.TestCase):
         for phrase in ("has moved past the dispatched commit",
                        "has advanced past the dispatched commit",
                        "does not contain the dispatched commit",
-                       "requires the exact current main SHA"):
+                       "requires the exact current main SHA",
+                       "a promotion merge freeze is already set"):
             self.assertNotIn(phrase, self.text)
         self.assertNotIn("##[error]", self.text)
 

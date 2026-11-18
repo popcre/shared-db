@@ -6,6 +6,22 @@
 begin;
 set local search_path=pg_catalog,public,extensions;
 
+-- The historical alias-table migration also seeds a production licensor that the
+-- disposable replay does not have. Supply its lookup columns when that replay
+-- rolls the migration back. This fixture and its grant roll back with the test.
+do $alias_fixture$
+begin
+  if to_regclass('core.licensor_alias') is null then
+    create table core.licensor_alias (
+      licensor_id uuid not null references core.licensor(id),
+      alias text not null,
+      source_system text
+    );
+    grant select on core.licensor_alias to service_role;
+  end if;
+end;
+$alias_fixture$;
+
 do $test$
 declare
   lic uuid; prop uuid; ch1 uuid; ch2 uuid; leg_lic uuid := gen_random_uuid(); leg_prop uuid := gen_random_uuid();

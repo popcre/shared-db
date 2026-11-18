@@ -14,7 +14,7 @@
     "no_ownership": true,
     "passwordless": true,
     "schema_exact": true,
-    "matrix_entries": 473,
+    "matrix_entries": 495,
     "global_no_create": true,
     "no_grant_options": true,
     "inherited_helpers": [

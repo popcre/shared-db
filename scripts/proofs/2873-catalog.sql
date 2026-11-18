@@ -147,6 +147,20 @@ WITH expected(grantee,kind,name,priv) AS (VALUES
   ('designflow_prod_backend_grants','table','dflow_prod.user_roles','UPDATE'),
   ('designflow_prod_backend_grants','table','dflow_prod.user_roles','DELETE'),
   ('designflow_prod_item_master_grants','view','dflow_prod.item_detail_upc','SELECT'),
+ ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.item_pk','SELECT'),
+ ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.item_num_id','SELECT'),
+ ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.compan_code_fk','SELECT'),
+ ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.div_code_fk','SELECT'),
+ ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.UPC','SELECT'),
+ ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.EAN','SELECT'),
+ ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.GTIN','SELECT'),
+ ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.color_code_fk','SELECT'),
+ ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.size_code_fk','SELECT'),
+ ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.size_seq','SELECT'),
+ ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.whse_sku_id','SELECT'),
+ ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.item_active_status','SELECT'),
+ ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.coldlion_synced_at','SELECT'),
+ ('designflow_prod_item_master_grants','column','dflow_prod.itemDetail.prepack_code_fk','SELECT'),
  ('designflow_prod_backend_grants','table','dflow_prod.user_notification','SELECT'),
  ('designflow_prod_backend_grants','table','dflow_prod.user_notification','INSERT'),
  ('designflow_prod_backend_grants','table','dflow_prod.user_notification','UPDATE'),
@@ -487,6 +501,11 @@ WITH expected(grantee,kind,name,priv) AS (VALUES
  n.nspname||'.'||c.relname name,a.privilege_type priv
  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace CROSS JOIN LATERAL aclexplode(c.relacl) a JOIN roles r ON r.oid=a.grantee
  UNION ALL
+ SELECT r.rolname::text,'column',n.nspname||'.'||c.relname||'.'||col.attname,a.privilege_type
+ FROM pg_attribute col JOIN pg_class c ON c.oid=col.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+ CROSS JOIN LATERAL aclexplode(col.attacl) a JOIN roles r ON r.oid=a.grantee
+ WHERE col.attnum>0 AND NOT col.attisdropped
+ UNION ALL
  SELECT r.rolname::text,'function',COALESCE(e.name,p.oid::regprocedure::text),a.privilege_type
  FROM pg_proc p CROSS JOIN LATERAL aclexplode(p.proacl) a JOIN roles r ON r.oid=a.grantee
  LEFT JOIN expected e ON e.kind='function' AND e.grantee=r.rolname AND to_regprocedure(e.name)=p.oid AND e.priv=a.privilege_type
@@ -518,6 +537,7 @@ SELECT jsonb_build_object(
  AND (SELECT count(*) FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='coldlion' AND c.relname IN ('order_history_line','prod_history_line') AND p.polname='coldlion_history_tracking_read' AND p.polcmd='r' AND p.polpermissive AND p.polroles=ARRAY['designflow_prod_tracking_grants'::regrole]::oid[] AND pg_get_expr(p.polqual,p.polrelid)='true' AND p.polwithcheck IS NULL)=2,
  'no_ownership',NOT EXISTS(SELECT 1 FROM pg_class WHERE relowner IN(SELECT oid FROM roles)) AND NOT EXISTS(SELECT 1 FROM pg_proc WHERE proowner IN(SELECT oid FROM roles)) AND NOT EXISTS(SELECT 1 FROM pg_namespace WHERE nspowner IN(SELECT oid FROM roles)),
  'no_defaults',NOT EXISTS(SELECT 1 FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) a WHERE d.defaclrole IN(SELECT oid FROM roles) OR a.grantee IN(SELECT oid FROM roles)),
- 'no_grant_options',NOT EXISTS(SELECT 1 FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) a WHERE a.grantee IN(SELECT oid FROM roles) AND a.is_grantable) AND NOT EXISTS(SELECT 1 FROM pg_proc p CROSS JOIN LATERAL aclexplode(p.proacl) a WHERE a.grantee IN(SELECT oid FROM roles) AND a.is_grantable),
+ 'no_grant_options',NOT EXISTS(SELECT 1 FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) a WHERE a.grantee IN(SELECT oid FROM roles) AND a.is_grantable) AND NOT EXISTS(SELECT 1 FROM pg_proc p CROSS JOIN LATERAL aclexplode(p.proacl) a WHERE a.grantee IN(SELECT oid FROM roles) AND a.is_grantable)
+ AND NOT EXISTS(SELECT 1 FROM pg_attribute col CROSS JOIN LATERAL aclexplode(col.attacl) a WHERE a.grantee IN(SELECT oid FROM roles) AND a.is_grantable),
  'client_schema_closed',NOT EXISTS(SELECT 1 FROM pg_roles r WHERE r.rolname IN ('anon','authenticated','service_role') AND has_schema_privilege(r.oid,'dflow_prod','USAGE,CREATE'))
 ) catalog;

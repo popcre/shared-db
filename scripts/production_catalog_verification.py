@@ -195,7 +195,16 @@ MAINTAIN_PRIVILEGE = "MAINTAIN"
 ALWAYS_PROBED_ROLES = ("public", "anon", "authenticated", "service_role")
 
 IDENT = r"[a-z_][a-z0-9_]*"
-QUALIFIED = rf"({IDENT})\.({IDENT})"
+# #6716: a relation may be a quoted mixed-case identifier. `_case_folded_sql`
+# keeps exactly those tokens (quotes and case intact) and turns every other
+# quoted token into its bare lowercase form, so a match is directly usable in
+# `to_regclass`/`has_table_privilege` and plain names read as before.
+# Quoted names are limited to letters, digits, `_` and `$`: no dot, quote or
+# apostrophe can reach the interpolated SQL (`_sql_array` re-asserts this).
+QUOTED_IDENT = r'"[A-Za-z_][A-Za-z0-9_$]*"'
+QUOTED_IDENT_RE = re.compile(rf"^{QUOTED_IDENT}$")
+QIDENT = rf"(?:{IDENT}|{QUOTED_IDENT})"
+QUALIFIED = rf"({QIDENT})\.({QIDENT})"
 ROLE_RE = re.compile(rf"^{IDENT}$")
 
 # Every pattern below is anchored at the START of an already-split statement, so
@@ -332,7 +341,7 @@ INSERT_INTO_RE = re.compile(rf"^\s*insert\s+into\s+{QUALIFIED}")
 CREATE_INDEX_HEAD_RE = re.compile(r"^\s*create\s+(?:unique\s+)?index\b")
 CREATE_INDEX_RE = re.compile(
     rf"^\s*create\s+(unique\s+)?index\s+(concurrently\s+)?"
-    rf"(?:if\s+not\s+exists\s+)?({IDENT})\s+on\s+(?:only\s+)?{QUALIFIED}\b"
+    rf"(?:if\s+not\s+exists\s+)?({QIDENT})\s+on\s+(?:only\s+)?{QUALIFIED}(?![a-z0-9_$])"
 )
 # A later migration in the SAME ordered batch may drop an index an earlier one
 # created (issue #2035: the review fix removed
@@ -344,7 +353,7 @@ CREATE_INDEX_RE = re.compile(
 DROP_INDEX_HEAD_RE = re.compile(r"^\s*drop\s+index\b")
 DROP_INDEX_RE = re.compile(
     rf"^\s*drop\s+index\s+(?:concurrently\s+)?"
-    rf"(?:if\s+exists\s+)?{QUALIFIED}\b"
+    rf"(?:if\s+exists\s+)?{QUALIFIED}(?![a-z0-9_$])"
 )
 GRANT_RE = re.compile(r"^\s*(grant|revoke)\b")
 # The object of a GRANT/REVOKE. `all tables in schema` is DELIBERATELY NOT
@@ -3187,6 +3196,31 @@ def parse_dynamic_acl(
     return expectations, relations, functions, notes
 
 
+_DQ_TOKEN_RE = re.compile(r'"(?:[^"]|"")*"')
+
+
+def _case_folded_sql(raw: str) -> str:
+    """`strip_sql`, but a quoted identifier keeps its case (#6716).
+
+    Postgres folds unquoted identifiers to lower case and keeps quoted ones
+    verbatim. A fully lowercased text turns `core."merchGroupRepairJournal"`
+    into a name that does not exist, so the post-apply check reported a
+    successful apply as missing its table. Quoted tokens that are already
+    plain lowercase identifiers are unquoted so existing patterns still match.
+    """
+    text = strip_sql(raw, keep_case=True)
+    out: list[str] = []
+    last = 0
+    for match in _DQ_TOKEN_RE.finditer(text):
+        out.append(text[last:match.start()].lower())
+        token = match.group(0)
+        inner = token[1:-1]
+        out.append(inner if re.fullmatch(IDENT, inner) else token)
+        last = match.end()
+    out.append(text[last:].lower())
+    return "".join(out)
+
+
 def derive_targets(migrations: dict[str, Path], allowlist: list[str]) -> Targets:
     """Read the allowlisted migration files and list what to go and look at.
 
@@ -3241,7 +3275,7 @@ def derive_targets(migrations: dict[str, Path], allowlist: list[str]) -> Targets
             pure_rejections[version] = pure_offenders
         else:
             pure_versions.append(version)
-        text = strip_sql(raw)
+        text = _case_folded_sql(raw)
         batch_statements.extend(split_statements(text))
         # Case-preserving reading of every ALTER COLUMN TYPE, keyed by its
         # lowercased shape so the statement loop below can look it up.
@@ -3567,7 +3601,7 @@ def _sql_array(values: list[str]) -> str:
         # is interpolated into SQL, and a silent change to a regex upstream must
         # not turn into an injection downstream.
         for part in value.split("."):
-            if not ROLE_RE.fullmatch(part):
+            if not (ROLE_RE.fullmatch(part) or QUOTED_IDENT_RE.fullmatch(part)):
                 raise GuardError(f"refusing to interpolate unsafe identifier: {value}")
     if not values:
         return "array[]::text[]"
@@ -3719,15 +3753,19 @@ select jsonb_build_object(
       'relation', t.relation_name,
       'exists', c.oid is not null,
       'actual_relation', case when tc.oid is null then null
-        else tn.nspname || '.' || tc.relname end,
+        -- Same spelling the migration reader uses: bare when plain lowercase,
+        -- quoted otherwise (#6716).
+        else case when tn.nspname ~ '^[a-z_][a-z0-9_]*$' then tn.nspname
+                  else quote_ident(tn.nspname) end
+          || '.' || case when tc.relname ~ '^[a-z_][a-z0-9_]*$' then tc.relname
+                  else quote_ident(tc.relname) end end,
       'valid', i.indisvalid,
       'ready', i.indisready,
       'definition', case when c.oid is null then null else pg_get_indexdef(c.oid) end
     ) order by t.index_name)
     from index_target t
-    left join pg_namespace n on n.nspname = split_part(t.index_name, '.', 1)
-    left join pg_class c on c.relnamespace = n.oid
-      and c.relname = split_part(t.index_name, '.', 2)
+    -- to_regclass reads a quoted mixed-case name correctly (#6716).
+    left join pg_class c on c.oid = to_regclass(t.index_name)
       and c.relkind = 'i'
     left join pg_index i on i.indexrelid = c.oid
     left join pg_class tc on tc.oid = i.indrelid
@@ -6539,6 +6577,47 @@ CATALOG_CONTRACTS["core_merch_group_prod_retired_v1"] = (
     " and exists (select 1 from pg_class c where c.relnamespace='core'::regnamespace and c.relkind='r'"
     " and c.relname ~ '^merchGroupHeaders_retired_[0-9]{8}$')"
 )
+
+
+# Issue #6693. The shared preview contains both service schemas. Production
+# and the separate sandbox each install only their existing schema's facade.
+# The SQL lives in a guarded DO block, so the ordinary catalog lexer cannot
+# derive these targets directly.
+CATALOG_CONTRACTS["dflow_property_suggestion_service_facade_v1"] = """
+  (to_regnamespace('dflow_prod') is not null or to_regnamespace('dflow') is not null)
+  and not exists (
+    select 1
+    from (values
+      ('dflow_prod', to_regprocedure('dflow_prod.suggested_property_for_sku(text)')),
+      ('dflow', to_regprocedure('dflow.suggested_property_for_sku(text)'))
+    ) as target(schema_name, routine)
+    where to_regnamespace(target.schema_name) is not null
+      and not exists (
+        select 1 from pg_proc p
+        where p.oid = target.routine and p.proowner = 'postgres'::regrole
+          and p.prosecdef and p.proisstrict and p.provolatile = 's'
+          and p.proconfig = array['search_path=pg_catalog, pg_temp']
+          and pg_get_function_result(p.oid) =
+            'TABLE(mg_code text, mg_desc text, file_count bigint, basis text, file_names text[])'
+          and not has_function_privilege('public', p.oid, 'EXECUTE')
+          and not has_function_privilege('anon', p.oid, 'EXECUTE')
+          and not has_function_privilege('authenticated', p.oid, 'EXECUTE')
+          and not has_function_privilege('service_role', p.oid, 'EXECUTE')
+          and (
+            target.schema_name = 'dflow'
+            or (
+              has_function_privilege(to_regrole('designflow_prod_backend_runtime'), p.oid, 'EXECUTE')
+              and not has_schema_privilege(to_regrole('designflow_prod_backend_runtime'), 'plm', 'USAGE,CREATE')
+            )
+          )
+      )
+  )
+  and exists (
+    select 1 from pg_proc p
+    where p.oid = to_regprocedure('plm.suggested_property_for_sku(text)')
+      and not p.prosecdef and md5(p.prosrc) = '5a545f4b0e46a3b0b596000216d92163'
+  )
+"""
 
 # #6658: these checks recover historical apply evidence for guarded dynamic DDL.
 # Test the retired name and a valid keeper on the exact, ordered key columns.

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "migration_version": "20261218093101",
-  "migration_sha256": "fc38351f6d66ecfc31870fca13d21df5e0bbb9896e054ccc53ef25d5f4824f8c",
+  "migration_version": "20261218140000",
+  "migration_sha256": "b45571878c13c12841f732c5578acd3ea73b41a702dcf87fbca69dd5eaefa8a9",
   "checks": [
     {
       "id": "alsand_worker_connection_limit_ceiling",

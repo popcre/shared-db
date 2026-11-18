@@ -1,4 +1,4 @@
--- Behavioural contract for migration 20261218093101 (issue #6685, claim #6760):
+-- Behavioural contract for migration 20261218140000 (issue #6685, claim #6764):
 -- the DesignFlow sandbox HTS worker role carries a durable connection ceiling,
 -- so the 16-way saturation of 2026-11-17/18 cannot recur from the database
 -- side. Runs inside the usual rolled-back transaction.

@@ -28,13 +28,28 @@
 -- trap as #6415 and the 2026-07-29 public EXECUTE lockdown). postgres /
 -- service_role / admin-role grants are left untouched.
 --
--- SCOPE (pinned at authoring time 2026-11-17 10:30 PM EST)
+-- SCOPE (pinned at authoring time 2026-11-17 11:20 PM EST)
 -- -----
 -- The 17 exact signatures in the VALUES list below — 15 function names, with
 -- plm.set_source_resolution and plm.source_resolution_target_missing each
--- carrying two overloads. NOT in scope: the api.set_source_resolution
--- overloads (schema `api` IS Data-API exposed; dispositioned separately) and
--- public.rls_auto_enable (#6456, another agent's object).
+-- carrying two overloads. NOT in scope: the api.set_source_resolution /
+-- dflow.record_item_workflow_action / dflow.set_item_user_assignment
+-- same-named functions (their schemas differ and are dispositioned
+-- separately) and public.rls_auto_enable (#6456, another agent's object).
+--
+-- PLATFORM-OWNED BOUNDARY — net.http_get / net.http_post (live-verified
+-- 2026-11-17, preview + production, read-only): both are owned by
+-- `supabase_admin`. The migration role is `postgres` (not superuser, not a
+-- member of supabase_admin — #6415's read-only verification), so REVOKE on
+-- those two is refused (`must be owner of function`, 42501). This is the same
+-- boundary class #6415 recorded for the platform-owned trigger functions: the
+-- Prime Directive keeps this repo out of vendor/platform objects. The loop
+-- therefore wraps each REVOKE in a per-signature subtransaction that catches
+-- ONLY `insufficient_privilege`, counts the refusal, and raises a NOTICE
+-- naming the signature — never silently. Any other error aborts the whole
+-- migration (fail-closed). Environments where the migration role does own the
+-- functions (some ephemeral CI builds) still get the revoke. The post-loop
+-- assertion refuses any leftover that is NOT one of these recorded refusals.
 --
 -- Existence-guarded loop (repository pattern 20260729130000_production_safe_
 -- public_execute_lockdown.sql): each signature is resolved through
@@ -66,9 +81,11 @@
 -- For names whose only pre-change grant was the function default, `to public`
 -- restores the original state; the explicit anon/authenticated grants it also
 -- writes match the explicit grants that existed before (net/http, dflow_prod).
--- The event trigger that installs lock_down_new_public_function_execute is
--- unaffected: trigger creation checks EXECUTE at CREATE TRIGGER time and the
--- event trigger itself fires as its owner.
+-- The net.http_* re-grants are refused on the same ownership boundary as the
+-- revoke (supabase_admin-owned) and need platform action to restore. The event
+-- trigger that installs lock_down_new_public_function_execute is unaffected:
+-- trigger creation checks EXECUTE at CREATE TRIGGER time and the event trigger
+-- itself fires as its owner.
 
 begin;
 
@@ -77,6 +94,7 @@ declare
   r record;
   n integer := 0;
   absent integer := 0;
+  skipped text[] := '{}';
   leftover text;
   leftover_count integer;
 begin
@@ -106,17 +124,28 @@ begin
       absent := absent + 1;
       raise notice 'signature absent on this database, skipped: %', r.sig;
     else
-      execute format(
-        'revoke execute on function %s from public, anon, authenticated', r.sig);
-      n := n + 1;
+      begin
+        execute format(
+          'revoke execute on function %s from public, anon, authenticated', r.sig);
+        n := n + 1;
+      exception
+        when insufficient_privilege then
+          skipped := skipped || r.sig;
+          raise notice
+            'REVOKE refused (insufficient privilege, not object owner) - platform-owned boundary: %',
+            r.sig;
+      end;
     end if;
   end loop;
 
-  raise notice 'revoked EXECUTE on % of 17 in-scope signatures (% absent)',
-    n, absent;
+  raise notice
+    'revoked EXECUTE on % of 17 in-scope signatures (% absent, % refused as not-owner)',
+    n, absent, coalesce(array_length(skipped, 1), 0);
 
-  -- Assert: no in-scope signature that exists on this database still carries
-  -- anon or authenticated EXECUTE.
+  -- Assert: no in-scope signature that exists on this database, and that the
+  -- migration role was allowed to touch, still carries anon or authenticated
+  -- EXECUTE. Signatures refused as not-owner are the recorded platform
+  -- boundary above and are excluded from this assertion.
   select count(*), string_agg(t.sig, ', ')
     into leftover_count, leftover
   from (values
@@ -140,7 +169,8 @@ begin
   ) as t(sig)
   where to_regprocedure(t.sig) is not null
     and (has_function_privilege(to_regprocedure(t.sig), 'anon', 'EXECUTE')
-      or has_function_privilege(to_regprocedure(t.sig), 'authenticated', 'EXECUTE'));
+      or has_function_privilege(to_regprocedure(t.sig), 'authenticated', 'EXECUTE'))
+    and not (t.sig = any (skipped));
 
   if leftover_count > 0 then
     raise exception 'in-scope signatures still API-executable after revoke: %',

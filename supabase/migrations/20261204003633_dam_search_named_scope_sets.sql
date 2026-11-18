@@ -11,7 +11,7 @@
 -- document now qualifies through its style group (tag or group text) or, ungrouped, its own tag;
 -- name matching no longer reads the 171k asset texts (~10k rows, 13 s cold for a common name).
 -- Body-only changes to both existing functions.
--- derived-from: 20261204003632 (search_dam_documents, after the Step 6 text leg) and 20261204003530 (anchor)
+-- derived-from: 20261204003632
 begin;
 set local lock_timeout='500ms';
 set local statement_timeout='2500ms';

@@ -7,7 +7,7 @@
 --     p_min_text_score (optional absolute text floor) and p_text_score_margin (relative floor,
 --     default 0.10 below the best in-scope text score). One new output column, text_rank.
 --     Every existing caller (named or positional, 8 arguments) is unaffected: with no text vector
---     the body ranks, filters and pages exactly as 20261204003329 did.
+--     the body ranks, filters and pages exactly as 20261204003530 did.
 --   * With a text vector: text_candidates (HNSW over dam.search_text_vectors; style-group-only
 --     searches walk the style-group partial index), model equal to
 --     dam.search_text_embedding_model(); rank = keyword + 0.6 x text + 0.15 x picture; licensor,
@@ -20,7 +20,7 @@
 --     (search_assets_full_text, search_style_groups_full_text) resolve by name at run time.
 --   * admin_config SEARCH_TEXT_LEG_MODE = 'off' (insert only; never overwrites a set value).
 --     The edge function sends a text vector only when it is 'on'.
--- derived-from: 20261204003329
+-- derived-from: 20261204003530
 begin;
 set local lock_timeout='500ms';
 set local statement_timeout='2500ms';
@@ -30,8 +30,8 @@ set local search_path=pg_catalog,public,extensions;
 do $guard$
 begin
   if not exists (select 1 from pg_proc p where p.oid=to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real)')
-      and md5(p.prosrc)='7d49762f87b9ea8322808920734917b3') then
-    raise exception 'popdam3#1037 Step 6: pre-change search_dam_documents differs from 20261204003329; reconcile rather than overwrite';
+      and md5(p.prosrc)='eb6a2babf5fdee4f54f3bfd968679e32') then
+    raise exception 'popdam3#1037 Step 6: pre-change search_dam_documents differs from 20261204003530; reconcile rather than overwrite';
   end if;
   if to_regprocedure('dam.search_text_embedding_model()') is null or to_regclass('dam.search_text_vectors') is null then
     raise exception 'popdam3#1037 Step 6: text-vector storage (20261204003429) is missing';
@@ -264,6 +264,7 @@ AS $function$
             and a.licensor_id = any((select semantic_licensor_ids from params)::uuid[]))))
       -- popdam3#1037: property accepted set, picture-only matches only.
       and ((select semantic_property_ids from params) is null
+           and (select semantic_property_character_ids from params) is null
         or max(c.keyword_rank) is not null
         or exists (select 1 from public.style_groups g
           where g.id = c.style_group_id
@@ -552,7 +553,6 @@ $function$;
 
 alter function public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real) owner to postgres;
 revoke all on function public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real) from public, anon;
--- separate grants keep the ACL text identical to before ({postgres,service_role,authenticated}).
 grant execute on function public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real) to service_role;
 grant execute on function public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real) to authenticated;
 

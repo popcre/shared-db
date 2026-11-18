@@ -234,5 +234,66 @@ class TheRefusalSurvivesEverythingThatIsNotPureData(unittest.TestCase):
         self.assertIn("REJECTED", failures[0])
 
 
+class Review6364Regressions(unittest.TestCase):
+    def test_uppercase_body_operations_are_refused(self):
+        for operation in (
+            "EXECUTE 'CREATE TABLE plm.x(id int)'",
+            "CREATE TABLE plm.x(id int)",
+            "SET ROLE service_role",
+            "RESET ALL",
+            "PERFORM DBLINK_EXEC('select 1')",
+            "UPDATE PG_CATALOG.PG_CLASS SET relacl = NULL",
+            "DELETE FROM PG_CLASS",
+        ):
+            with self.subTest(operation=operation):
+                self.assertTrue(pure_data_offenders(f"DO $$ BEGIN {operation}; END $$;"))
+
+    def test_quoted_tokens_cannot_hide_following_ddl(self):
+        for prefix in (
+            'PERFORM 1 AS "a--b";',
+            'PERFORM 1 AS "a\'b";',
+            'PERFORM 1 AS "a""--b";',
+            "PERFORM $text$it's -- literal text$text$;",
+            "PERFORM $text$/* literal text */ '$text$;",
+        ):
+            with self.subTest(prefix=prefix):
+                sql = f"DO $body$ BEGIN {prefix} EXECUTE 'CREATE TABLE plm.x(id int)'; END $body$;"
+                self.assertTrue(pure_data_offenders(sql))
+                self.assertFalse(targets_for(sql).pure_data_ok)
+
+    def test_literals_and_quoted_identifiers_keep_data_work_allowed(self):
+        for sql in (
+            "SELECT $text$it's -- CREATE TABLE$text$;",
+            'SELECT "into" FROM plm.widget;',
+            'DO $$ BEGIN PERFORM 1 AS "a--b"; END $$;',
+            "DO LANGUAGE plpgsql $body$ BEGIN PERFORM $text$it's CREATE TABLE$text$; END $body$;",
+            "DO $$ BEGIN SELECT id INTO saved_id FROM plm.widget; END $$;",
+            "WITH x AS (SELECT 1) INSERT INTO plm.widget SELECT * FROM x;",
+        ):
+            with self.subTest(sql=sql):
+                self.assertEqual(pure_data_offenders(sql), [])
+
+    def test_catalog_changing_or_program_statements_are_refused(self):
+        for sql in (
+            "SELECT * INTO plm.new_table FROM plm.widget;",
+            "SELECT 1 INTO TEMP TABLE new_table;",
+            'SELECT "insert", "merge" INTO plm.new_table FROM plm.widget;',
+            "SELECT merge INTO plm.new_table FROM plm.widget;",
+            "WITH x AS (SELECT 1) SELECT * INTO new_table FROM x;",
+            "COPY plm.widget FROM PROGRAM 'cmd';",
+            "COPY plm.widget TO PROGRAM 'cmd';",
+            "DO $$ BEGIN COPY plm.widget FROM PROGRAM 'cmd'; END $$;",
+            "SECURITY LABEL ON TABLE plm.widget IS 'label';",
+            "DO $$ BEGIN SECURITY LABEL ON TABLE plm.widget IS 'label'; END $$;",
+        ):
+            with self.subTest(sql=sql):
+                self.assertTrue(pure_data_offenders(sql))
+                targets = targets_for(sql)
+                self.assertFalse(targets.pure_data_ok)
+                self.assertFalse(targets_for(HEADER + sql).noop_declaration["accepted"])
+                _, failures = render(targets, {"relations": []})
+                self.assertTrue(failures)
+
+
 if __name__ == "__main__":
     unittest.main()

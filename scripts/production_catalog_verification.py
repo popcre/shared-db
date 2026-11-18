@@ -155,6 +155,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from production_migration_guard import (  # noqa: E402
     GuardError,
+    DOLLAR_OPEN_RE,
     local_migrations,
     parse_allowlist,
     LEDGER_NAMES,
@@ -503,6 +504,13 @@ CATALOG_SCHEMAS = {"pg_catalog", "information_schema"}
 REMOTE_EXEC_RE = re.compile(r"\bdblink\w*\s*\(")
 
 
+# Track SELECT/INTO at matching parenthesis depths so a CTE's SELECT
+# does not turn the following INSERT INTO into a table-creation statement.
+SELECT_INTO_TOKEN_RE = re.compile(r"\b(?:select|into)\b|[()]")
+QUOTED_IDENTIFIER_RE = re.compile(r'"(?:[^"]|"")*"')
+COPY_PROGRAM_RE = re.compile(r"\bcopy\b[^;]*\b(?:from|to)\s+program\b")
+
+
 def data_statement_rejection(statement: str) -> str | None:
     """Why this statement is NOT a pure-data statement, or None if it is.
 
@@ -512,6 +520,22 @@ def data_statement_rejection(statement: str) -> str | None:
     """
     if not DATA_STATEMENT_RE.match(statement):
         return "not a data statement"
+    keywords = QUOTED_IDENTIFIER_RE.sub(" ", statement)
+    depth = 0
+    select_depths: set[int] = set()
+    for match in SELECT_INTO_TOKEN_RE.finditer(keywords):
+        token = match.group(0)
+        if token == "(":
+            depth += 1
+        elif token == ")":
+            select_depths.discard(depth)
+            depth -= 1
+        elif token == "select":
+            select_depths.add(depth)
+        elif depth in select_depths:
+            return "SELECT INTO creates a catalog table, so the file is not pure data"
+    if COPY_PROGRAM_RE.search(keywords):
+        return "COPY PROGRAM executes an operating-system command, so the file is not pure data"
     if PRINCIPAL_CHANGE_RE.match(statement):
         return (
             "changes the executing principal (set/reset role or session "
@@ -550,7 +574,7 @@ DO_BLOCK_HEAD_RE = re.compile(r"^\s*do\b")
 # is NOT pure data and the "proved nothing" refusal still applies.
 PURE_DATA_HIDDEN_RE = re.compile(
     r"\b(?:create|alter|drop|comment|grant|revoke|truncate|execute|prepare|"
-    r"deallocate|discard|call|lock|vacuum|cluster|reindex|refresh)\b"
+    r"deallocate|discard|call|lock|vacuum|cluster|reindex|refresh|security\s+label)\b"
 )
 # Unanchored variants of the #805 narrowing patterns, for scanning whole files
 # (statement boundaries are not visible inside a `do` body).
@@ -560,53 +584,80 @@ PRINCIPAL_CHANGE_ANYWHERE_RE = re.compile(
 )
 
 
-def blank_comments_and_strings(sql: str) -> str:
-    """Blank `--`/`/* */` comments and `'...'` string literals, keep the code.
+def blank_comments_and_strings(sql: str, *, scan_do_bodies: bool = True) -> str:
+    """Blank literals/comments, scanning only DO dollar bodies as PL code.
 
-    Dollar-quoted bodies are NOT special-cased: their PL code stays visible and
-    their own string literals are blanked with every other literal, which is
-    exactly what the pure-data scan needs (DDL hidden in a body is seen; prose
-    in a PL string is not). Single left-to-right pass, the Postgres token order
-    -- see the strip_sql lexer for why independent passes are wrong.
+    Quoted identifiers are opaque to the lexer. Nested dollar literals inside
+    a DO body are opaque too, so their quotes cannot hide subsequent code.
+    Preserve offsets and newlines for the offender's source line.
     """
-    chars = list(sql)
+    out: list[str] = []
     i = 0
-    state = "code"
-    escape_string = False
-    block_depth = 0
-    while i < len(chars):
-        if state == "code" and sql.startswith("--", i):
-            state = "line_comment"; chars[i] = chars[i + 1] = " "; i += 2; continue
-        if state == "line_comment":
-            if chars[i] == "\n": state = "code"
-            else: chars[i] = " "
-            i += 1; continue
-        if state == "code" and sql.startswith("/*", i):
-            state = "block_comment"; block_depth = 1; chars[i] = chars[i + 1] = " "; i += 2; continue
-        if state == "block_comment":
-            if sql.startswith("/*", i): chars[i] = chars[i + 1] = " "; block_depth += 1; i += 2
-            elif sql.startswith("*/", i):
-                chars[i] = chars[i + 1] = " "; block_depth -= 1; i += 2
-                if block_depth == 0: state = "code"
-            else:
-                if chars[i] != "\n": chars[i] = " "
+    while i < len(sql):
+        start = i
+        if sql.startswith("--", i):
+            end = sql.find("\n", i)
+            i = len(sql) if end < 0 else end
+        elif sql.startswith("/*", i):
+            depth = 1
+            i += 2
+            while i < len(sql) and depth:
+                if sql.startswith("/*", i):
+                    depth += 1
+                    i += 2
+                elif sql.startswith("*/", i):
+                    depth -= 1
+                    i += 2
+                else:
+                    i += 1
+        elif sql[i] in "'\"":
+            quote = sql[i]
+            escaped = (
+                quote == "'" and i > 0 and sql[i - 1] in "eE"
+                and (i < 2 or not (sql[i - 2].isalnum() or sql[i - 2] in "_$"))
+            )
+            i += 1
+            while i < len(sql):
+                if escaped and sql[i] == "\\":
+                    i = min(i + 2, len(sql))
+                elif sql[i] == quote:
+                    i += 1
+                    if i < len(sql) and sql[i] == quote:
+                        i += 1
+                    else:
+                        break
+                else:
+                    i += 1
+            if quote == '"':
+                out.append(sql[start:i])
+                continue
+        elif (
+            sql[i] == "$" and (match := DOLLAR_OPEN_RE.match(sql, i))
+            and not (i > 0 and (sql[i - 1].isalnum() or sql[i - 1] in "_$"))
+        ):
+            end = sql.find(match.group(0), match.end())
+            if end < 0:
+                out.append(sql[i])
                 i += 1
+                continue
+            i = end + len(match.group(0))
+            # SQL DO permits LANGUAGE before or after the code literal.
+            if scan_do_bodies and re.search(
+                r"\bdo\s*(?:language\s+(?:[a-z_]\w*|\"(?:[^\"]|\"\")*\"|''))?\s*$",
+                strip_sql(sql[:start]),
+            ):
+                out.append(" " * len(match.group(0)))
+                out.append(blank_comments_and_strings(
+                    sql[match.end():end], scan_do_bodies=False,
+                ))
+                out.append(" " * len(match.group(0)))
+                continue
+        else:
+            out.append(sql[i])
+            i += 1
             continue
-        if state == "code" and chars[i] == "'":
-            escape_string = i > 0 and sql[i - 1] in "eE" and (i < 2 or not (sql[i - 2].isalnum() or sql[i - 2] in "_$"))
-            state = "string"; i += 1; continue
-        if state == "string":
-            if escape_string and chars[i] == "\\" and i + 1 < len(chars):
-                chars[i] = " "
-                if chars[i + 1] != "\n": chars[i + 1] = " "
-                i += 2; continue
-            if chars[i] == "'" and i + 1 < len(chars) and chars[i + 1] == "'":
-                chars[i] = chars[i + 1] = " "; i += 2; continue
-            if chars[i] == "'": state = "code"
-            elif chars[i] != "\n": chars[i] = " "
-            i += 1; continue
-        i += 1
-    return "".join(chars)
+        out.append(re.sub(r"[^\n]", " ", sql[start:i]))
+    return "".join(out)
 
 
 def pure_data_offenders(raw: str) -> list[str]:
@@ -629,7 +680,7 @@ def pure_data_offenders(raw: str) -> list[str]:
             offenders.append(f"{' '.join(statement.split())[:120]} [{rejection}]")
     if offenders:
         return offenders
-    scan = blank_comments_and_strings(raw)
+    scan = blank_comments_and_strings(raw).lower()
     match = PURE_DATA_HIDDEN_RE.search(scan)
     if match:
         line = scan.count("\n", 0, match.start()) + 1
@@ -645,6 +696,9 @@ def pure_data_offenders(raw: str) -> list[str]:
             "principal (set/reset role or session authorization), so the file "
             "is not pure data]"
         )
+        return offenders
+    if COPY_PROGRAM_RE.search(scan):
+        offenders.append("COPY PROGRAM [executes an operating-system command]")
         return offenders
     if REMOTE_EXEC_RE.search(scan):
         offenders.append(

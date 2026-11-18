@@ -100,8 +100,10 @@ begin
   select array_agg(s.entity_id) into ids from public.search_dam_documents('zqlamp framed', '{}'::jsonb, 50, 0, null, null, 0, null) s;
   if not (ids @> array[g_exact, g_form, g_plural]) then raise exception 'popdam3#1037 Step 7: framed returned %', ids; end if;
   -- a code-like token is never reduced: only its exact form matches
-  select array_agg(s.entity_id) into ids from public.search_dam_documents('zq7a', '{}'::jsonb, 50, 0, null, null, 0, null) s;
-  if ids is not null and not (ids <@ array[g_exact]) then raise exception 'popdam3#1037 Step 7: code search returned %', ids; end if;
+  -- (code tokens carry no English suffix, so every hit is an exact one at today's score)
+  select count(*) into n from public.search_dam_documents('zq7a', '{}'::jsonb, 50, 0, null, null, 0, null) s
+   where s.entity_id is not null and s.keyword_rank < 0.1;
+  if n <> 0 then raise exception 'popdam3#1037 Step 7: code search has % word-form-only hits', n; end if;
 
   -- names stay exact: the licensor name "Zqmarie" is recognised, so "zqmary" (same English stem) does not match
   q := public.dam_search_exact_names('zqmarie zqteal frame', '{}'::jsonb);

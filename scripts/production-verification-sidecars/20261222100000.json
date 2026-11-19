@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "migration_version": "20261222100000",
-  "migration_sha256": "1849188afa55de84d6355922577a40ef0a47c84090ca9e667febef23aca82648",
+  "migration_sha256": "bdbf2dcfedddd4ce52d23061a3afe0985ad58512448c54f55a683c482756fef3",
   "checks": [
     {
       "id": "curated_alias_pooh",

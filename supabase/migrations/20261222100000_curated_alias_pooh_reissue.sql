@@ -12,7 +12,11 @@ begin
   select c.id, c.licensor_id into target_id, target_licensor
     from core."character" c join core.licensor l on l.id = c.licensor_id
     where l.name = 'DISNEY' and c.name = 'Winnie The Pooh'
-    order by c.id limit 1 for share of c;
+    for share of c;
+  if (select count(*) from core."character" c join core.licensor l on l.id = c.licensor_id
+      where l.name = 'DISNEY' and c.name = 'Winnie The Pooh') > 1 then
+    raise exception 'More than one Disney Winnie The Pooh; alias abstained';
+  end if;
   if target_id is null then
     raise notice 'Winnie The Pooh parent absent in this database; no alias written';
     return;

@@ -7,14 +7,16 @@ read-when: checking #6457 revoke-candidate dispositions or the contract-test KEE
 
 # #6457 revoke-candidate disposition table — 2026-11-17 (final)
 
-**Migration:** `20261218062459` (Guard B re-date of the authored `20261218035022` — pure `git mv`, SQL unchanged) · **Claim:** #6652 (closed)
+**Retired migration (never applied):** `20261218062459` (Guard B re-date of the authored `20261218035022` — pure `git mv`, SQL unchanged) · **Claim:** #6652 (closed)
 
-## Summary
+## Historical candidate counts
+
+The proposed reissue `20261225010205` was withdrawn. The 36/70 split records the earlier assessment. Only three worker signatures were separately qualified in `20261218084807`. The [#6657 acceptance check](../../../../.github/live-proofs/6657.sql) covers those workers and preserves signed-in access to seven CRM dashboard routines and the ColdLion resolver.
 
 | disposition | count |
 |---|---|
-| revoke | **37** |
-| keep | **69** |
+| revoke | **36** |
+| keep | **70** |
 | total | **106 unique names / 107 signatures** |
 
 ## Method
@@ -33,14 +35,14 @@ read-when: checking #6457 revoke-candidate dispositions or the contract-test KEE
 
 ### Live-proof-pinned carve-out (1): `public.resolve_coldlion_triage` — its creating migration 20261029023554 deliberately does `revoke all … from public, anon` then `grant execute … to authenticated, service_role` for the guided-triage journey (`v_actor := auth.uid()`), and `.github/live-proofs/5004.sql` asserts `authenticated` can execute and `anon` cannot. The supabase/tests-only caller scan missed it because the pin lives in live-proofs (issue #6657); removed from the revoke set by the 2026-11-18 fix-forward.
 
-## REVOKE (36 names)
+## Originally proposed for revocation (36 names)
 
-Truly unused surface — no `.rpc()` caller, no RLS/invoker chain, no contract-test or live-proof coverage:
+The original scan proposed these names. Subsequent caller evidence supersedes that assessment.
 
 `api.clickup_task_sync_run_list`, `api.coldlion_parallel_observation_list`, `api.coldlion_promotion_audit_list`, `api.coldlion_promotion_quarantine_list`, `api.crm_email_routing_segment_counts`, `api.crm_overview_counts`, `api.crm_overview_email_counts`, `api.crm_overview_email_volume`, `api.crm_overview_pending_approvals`, `api.crm_overview_pipeline_stages`, `api.crm_overview_recent_meetings`, `api.crm_overview_recent_unrouted`, `api.crm_update_account`, `api.pm_cancel_product_comment_reservation`, `api.pm_dismiss_activity_triage`, `api.pm_get_activity_triage`, `api.pm_list_active_jev_triage`, `api.pm_list_reviewed_jev_triage`, `api.pm_record_jev_suggestion_impression`, `api.pm_recover_product_comment_handle`, `api.pm_repair_comment_triage_queue`, `api.pm_update_reminder_status`, `api.pm_verify_jev_runtime_fence`, `api.taxonomy_baseline_pin_list`, `api.taxonomy_sync_alert_list`, `api.vendor_exclusion_list`, `api.vendor_quarantine_list`, `api.vendor_sync_run_list`, `public.add_style_guide_manual_tag`, `public.bulk_assign_style_groups`, `public.get_style_guide_deterministic_tag_batch`, `public.rebuild_dam_search_documents`, `public.reject_style_guide_auto_tag`, `public.remove_style_guide_manual_tag`, `public.replace_style_guide_deterministic_tags`, `public.replace_style_guide_folder_consensus_tags`
 
 ## Key finding
 
-The #6416 matrix's `.rpc()` call-site search **under-signaled**: contract tests exercise ~43 of the 107 revoke-candidates as `authenticated` via direct SQL (`perform api.fn(...)`), not via supabase-js `.rpc()`. A `.rpc()` grep alone is insufficient for dispositioning; the contract-test scan is the decisive evidence class.
+The #6416 matrix's `.rpc()` call-site search **under-signaled**: contract tests exercise ~43 of the 107 revoke-candidates as `authenticated` via direct SQL (`perform api.fn(...)`), not via supabase-js `.rpc()`. A `.rpc()` grep alone is insufficient for dispositioning; qualification also requires checking live proofs and intentional caller grants.
 
 Posted by MiMo chat ses_ffe5e136 on edge-dev

@@ -119,6 +119,17 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/designflow-db-release.mjs --observe | tee "$RUNNER_TEMP/designflow-database-readiness.json"
+      - name: Record which allowance the observer spent (counts only, shared-db#6772)
+        if: always()
+        continue-on-error: true
+        env:
+          OPERATOR_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          READ_TOKEN: ${{ steps.reader.outputs.token }}
+        shell: bash
+        run: |
+          for who in OPERATOR_TOKEN READ_TOKEN; do
+            GH_TOKEN="${!who}" gh api rate_limit --jq ".resources.core | \"$who used=\(.used) limit=\(.limit)\"" || echo "$who unavailable"
+          done
       - name: Preserve exact-source readiness results, including refusals
         if: always()
         uses: actions/upload-artifact@v4

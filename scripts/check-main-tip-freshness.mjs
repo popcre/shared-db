@@ -1,0 +1,576 @@
+#!/usr/bin/env node
+// Prove that the main tip a governed run was dispatched against is still the
+// main tip that matters.
+//
+// WHY THIS EXISTS (issues #2047 and #2030, owner-authorized 2026-09-01)
+// ---------------------------------------------------------------------
+// Twelve places across seven workflows asserted the tip with a bare
+//
+//     test "$(git rev-parse origin/main)" = "$MAIN_SHA"
+//
+// which is exact-equality against a branch that other sessions land on
+// continuously. A promotion, a rehearsal, or a piece of review evidence was
+// therefore voided by ANY commit reaching main between dispatch and run --
+// including a handover document, which cannot change what a single line of SQL
+// does. That is a real cost: during claim-first session identity #2026 the promotion had
+// to be re-dispatched for exactly this reason, and #2030 records the same defect
+// against the historical-recovery lane.
+//
+// This narrows the assertion and narrows NOTHING else. The tip is accepted when:
+//
+//   (a) origin/main is exactly MAIN_SHA -- the pre-existing behaviour, unchanged;
+//       or
+//   (b) origin/main is strictly AHEAD of MAIN_SHA, MAIN_SHA is a real ancestor
+//       of it, and EVERY file touched by EVERY commit in between is on the
+//       documentation allowlist below.
+//
+// Everything else is refused exactly as before.
+//
+// THE ALLOWLIST IS BY EXTENSION, NOT BY DIRECTORY -- READ THIS BEFORE WIDENING IT
+// -------------------------------------------------------------------------------
+// The obvious implementation is "anything under `docs/` is documentation". It is
+// WRONG here and would have punched a hole straight through the promotion
+// evidence chain: the REVIEWED DETECTOR BASELINE that
+// `check-production-verification-sidecars.mjs` pins the catalog detector
+// against is a JSON file that lives under the documentation directory. A directory rule would have let that file --
+// the very thing designed to make the detector un-editable without a deliberate
+// re-review -- change silently underneath a promotion that had already been
+// approved. It is a data file that lives in a documentation folder, and that is
+// precisely the case a directory rule cannot see.
+//
+// So the rule is: a path is documentation only if it ENDS in one of the
+// extensions below. A `.json`, `.sql`, `.mjs`, `.py`, or `.yml` is never
+// documentation no matter where it sits.
+//
+// FAIL-CLOSED IS THE WHOLE POINT
+// ------------------------------
+// Every uncertainty refuses. An unreadable range, a MAIN_SHA that is not an
+// ancestor (main was force-pushed, or the run names a commit from a different
+// line of history), a rename whose OTHER side is code, an empty commit list that
+// contradicts a non-equal tip -- all refuse. A gate that guesses in the
+// permissive direction is worse than the bare `test` it replaces.
+
+import { execFileSync } from 'node:child_process'
+import { appendFileSync } from 'node:fs'
+
+function writeRefundSink(text) {
+  try {
+    const sink = process.env.REFUND_FAULT_EVIDENCE || (process.env.RUNNER_TEMP ? `${process.env.RUNNER_TEMP}/refund-fault-evidence.log` : null)
+    if (sink) appendFileSync(sink, text + '\n')
+  } catch { /* sink write must never fail the printer */ }
+}
+import { diffDigest, verifiedEvidencePaths } from './lib/pr-content-equivalence.mjs'
+
+// Prose only. Deliberately short, deliberately not directory-based -- see above.
+// `.txt` was here and was REMOVED after external review (GLM, 2026-09-01):
+// the contract-test QUARANTINE FILE is a plain-text file that CONTROLS WHICH
+// CONTRACT TESTS MAY FAIL THE JOB (see QUARANTINE_FILE in the contract-test
+// workflow).
+// Treating it as prose would have let a quarantine edit land on main during a
+// merge window without forcing the branch update and contract-test re-run the
+// old exact gate forced. The extension rule does not save you if the extension
+// itself is not inert -- so the list is Markdown only.
+const DOCUMENTATION_SUFFIXES = ['.md', '.markdown']
+
+// `.github/` is never documentation even when it is Markdown: an issue or pull
+// request TEMPLATE is inert, but this directory also carries workflows, actions
+// and CODEOWNERS, and a rule that reasons about "the Markdown ones" inside it is
+// one refactor away from admitting a workflow edit. Refuse the whole directory
+// and keep the reasoning trivial.
+const NEVER_DOCUMENTATION_PREFIXES = ['.github/']
+
+export function isDocumentationPath(path) {
+  if (typeof path !== 'string' || path.length === 0) return false
+  // A path git could not report cleanly is not something to reason about.
+  if (path.includes('\n') || path.includes('\0')) return false
+  const lower = path.toLowerCase()
+  if (NEVER_DOCUMENTATION_PREFIXES.some((prefix) => lower.startsWith(prefix))) {
+    return false
+  }
+  return DOCUMENTATION_SUFFIXES.some((suffix) => lower.endsWith(suffix))
+}
+
+// PRODUCTION-INERT PATHS (#3153). A production job checks out the dispatched
+// commit and executes only that commit's bytes, so main moving past it matters
+// only when the move could change what production would run or prove. Test-only
+// files and regenerated `.agent/` pull-request evidence cannot: no production
+// step runs a test or reads `.agent/`, and no executed script imports a test file.
+// #3091's run 35178463315 was refused because #3141 added one test file and its
+// `.agent/` pair. The rule stays narrow and fail-closed: migrations, workflows,
+// config, SQL, and every non-test script still refuse. It applies only where a
+// caller passes `--production`; merge and preview lanes are unchanged.
+// #2708 moved the pair to `.agent/work/<work_issue>/<generation>/`, so the
+// production-inert rule follows it down the tree. Both shapes stay inert for the
+// same unchanged reason -- no production step reads `.agent/` at all -- which
+// does not depend on how deep the path is.
+const PRODUCTION_INERT_EVIDENCE = /^\.agent\/(?:work\/[1-9]\d*\/[1-9]\d*\/)?[^/]+\.json$/
+const PRODUCTION_INERT_TEST_FILE = /^scripts\/(?:[^/]+\/)*(?:test_[^/]+\.py|[^/]+\.test\.mjs)$/
+
+// Queue-selection and sandbox automation no production job runs or imports. Exact
+// paths only, each guarded by a test that the production workflow never names it:
+// merges of these restarted in-flight production runs for nothing.
+export const PRODUCTION_INERT_AUTOMATION = new Set([
+  '.github/workflows/automatic-production-trigger.yml',
+  'scripts/automatic_promotion_candidates.py',
+  '.github/workflows/designflow-sandbox-migrations.yml',
+  'scripts/sandbox-migration-binding.mjs',
+  'scripts/sandbox_migration_preflight.py',
+])
+
+// STEP 2.5 (plan_ci-process-repair.md, #2367): a production dispatch runs the
+// dispatched commit's pinned bytes, so whether its evidence survives main
+// moving is decided by the DATABASE surface alone -- migration bytes, the
+// ledger prefix, and the apply tool that executes them. An unrelated WORKFLOW
+// file (a fixer lane, a report job, a gate for a different lane) is outside
+// that surface: no production step reads it and the dispatched checkout is
+// pinned, so it could change neither what the run applies nor what it proves.
+// Refusing those edits forced identical SQL to be reissued under fresh
+// versions, up to nine times, only to refresh evidence. Exactly one workflow
+// file IS the apply tool -- the one that carries the production job's own
+// steps -- and it stays blocking. The default (merge/preview) lane still
+// refuses every workflow edit, exactly as before.
+const APPLY_TOOL_WORKFLOW_PATH = '.github/workflows/shared-supabase-migrations.yml'
+
+export function isProductionInertPath(path) {
+  if (isDocumentationPath(path)) return true
+  if (PRODUCTION_INERT_AUTOMATION.has(path)) return true
+  if (typeof path !== 'string' || path.includes('\n') || path.includes('\0')) return false
+  if (path.toLowerCase().startsWith('.github/workflows/') && path !== APPLY_TOOL_WORKFLOW_PATH) return true
+  return PRODUCTION_INERT_EVIDENCE.test(path) || PRODUCTION_INERT_TEST_FILE.test(path)
+}
+
+function git(args, { cwd } = {}) {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+}
+
+/**
+ * Classify a main tip against the SHA a run was dispatched for.
+ *
+ * Returns `{ ok, reason, movedBy }`. `ok: false` always carries a reason that
+ * names what was refused; callers print it verbatim.
+ */
+export function classifyMainTip({ mainSha, tipSha, cwd, gitRunner = git, production = false }) {
+  const inert = production ? isProductionInertPath : isDocumentationPath
+  if (!/^[0-9a-f]{40}$/.test(mainSha ?? '')) {
+    return { ok: false, reason: 'REFUSED: MAIN_SHA is not a full 40-character commit SHA.' }
+  }
+  if (!/^[0-9a-f]{40}$/.test(tipSha ?? '')) {
+    return { ok: false, reason: 'REFUSED: the live origin/main tip could not be resolved.' }
+  }
+
+  if (mainSha === tipSha) {
+    return { ok: true, reason: 'origin/main is exactly the dispatched commit.', movedBy: [] }
+  }
+
+  // The tip moved. It is only acceptable if it moved FORWARD from this commit.
+  // `merge-base --is-ancestor` is the only question worth asking: a tip that
+  // does not contain MAIN_SHA is a different line of history, not a newer one.
+  let isAncestor
+  try {
+    gitRunner(['merge-base', '--is-ancestor', mainSha, tipSha], { cwd })
+    isAncestor = true
+  } catch (error) {
+    // git exits 1 for "not an ancestor" and >1 for a real failure. Both refuse,
+    // but they refuse with different reasons, because "main was rewritten" and
+    // "git is broken" are not the same incident.
+    if (error?.status === 1) {
+      isAncestor = false
+    } else {
+      return {
+        ok: false,
+        reason:
+          'REFUSED: could not determine whether the dispatched commit is an ancestor of ' +
+          'origin/main, so the tip cannot be proven to have only moved forward.',
+      }
+    }
+  }
+
+  if (!isAncestor) {
+    return {
+      ok: false,
+      reason:
+        `REFUSED: origin/main (${tipSha}) does not contain the dispatched commit ` +
+        `(${mainSha}). The tip did not simply advance -- this is a different line of ` +
+        'history, and no documentation allowance applies to it.',
+    }
+  }
+
+  let raw
+  try {
+    // ISSUE #2465 -- CLASSIFY WHAT MAIN MOVED BY, AND NOTHING ELSE.
+    //
+    // This was `git log --name-only -m <mainSha>..<tipSha>`, and `-m` was the
+    // defect. For a merge commit M with parents P1 (main) and P2 (the merged
+    // branch), `-m` emits a diff against EACH parent: M-vs-P1 is the branch's
+    // own change, but M-vs-P2 is everything main had gained since that branch
+    // forked. Main advancing by two Markdown files therefore reported the
+    // unrelated code files of whatever pull request was merged, so the
+    // documentation exemption could never fire and every open pull request was
+    // forced into a new head and a fresh pair of reviewer slots.
+    //
+    // A two-point `git diff <mainSha> <tipSha>` is the movement the refusal
+    // message already describes: the net difference between the dispatched
+    // commit and the live tip. It also answers the concern `-m` was reaching
+    // for -- a plain `git log --name-only` shows NOTHING for a merge commit, so
+    // code could hide behind it, while a two-point diff cannot hide a file
+    // whose content differs between the two ends.
+    //
+    // --name-only, NUL-separated so a path containing a space or a quote cannot
+    // be mis-split.
+    //
+    // --no-renames is LOAD-BEARING (added after external review, GLM 2026-09-01).
+    // `diff.renames` defaults to true, and with rename detection on, --name-only
+    // reports ONLY THE DESTINATION of a rename. `git mv scripts/foo.mjs
+    // docs/foo.md` would therefore have reported one Markdown path and PASSED,
+    // while deleting a code file. With --no-renames both sides are reported and
+    // the `.mjs` side blocks. Do not remove this flag.
+    raw = gitRunner(['diff', '--name-only', '--no-renames', '-z', mainSha, tipSha], {
+      cwd,
+    })
+  } catch {
+    return {
+      ok: false,
+      reason:
+        'REFUSED: the commits between the dispatched commit and origin/main could not be ' +
+        'read, so they cannot be proven to be documentation.',
+    }
+  }
+
+  const paths = [...new Set(raw.split('\0').filter((entry) => entry.length > 0))]
+
+  if (paths.length === 0) {
+    // Non-equal SHAs with no changed file at all: an empty commit, or a range
+    // git declined to describe. Neither is a case worth a permissive answer.
+    return {
+      ok: false,
+      reason:
+        'REFUSED: origin/main has advanced past the dispatched commit but reports no changed ' +
+        'file, which cannot be proven to be a documentation-only move.',
+    }
+  }
+
+  let appended = new Set()
+  if (production) {
+    try { appended = laterAppendedMigrationPaths({ mainSha, tipSha, paths, cwd, gitRunner }) } catch { appended = new Set() }
+    try { for (const path of addedUnreferencedDocPaths({ mainSha, tipSha, paths, cwd, gitRunner })) appended.add(path) } catch { /* refuse as before */ }
+    try { for (const path of liveProofProbePaths({ mainSha, tipSha, paths, cwd, gitRunner })) appended.add(path) } catch { /* refuse as before */ }
+  }
+  const blocking = paths.filter((path) => !inert(path) && !appended.has(path)).sort()
+  if (blocking.length > 0) {
+    const shown = blocking.slice(0, 10)
+    const suffix = blocking.length > shown.length ? `, and ${blocking.length - shown.length} more` : ''
+    return {
+      ok: false,
+      reason:
+        `REFUSED: origin/main (${tipSha}) has moved past the dispatched commit ` +
+        `(${mainSha}) with changes that are not ${production ? 'production-inert (documentation, .agent evidence, test files or non-production automation)' : 'documentation'}: ` +
+        `${shown.join(', ')}${suffix}. Re-dispatch against the current tip.`,
+      movedBy: paths,
+    }
+  }
+
+  if (appended.size > 0) {
+    return {
+      ok: true,
+      reason:
+        `origin/main has advanced to ${tipSha}, but every change since ${mainSha} is ` +
+        `production-inert, a collision-free migration, or documentation evidence added past the dispatched commit (${appended.size}), ` +
+        'so the dispatched commit is a verified prefix of main for the purposes of this gate.',
+      movedBy: paths,
+    }
+  }
+
+  return {
+    ok: true,
+    reason:
+      `origin/main has advanced to ${tipSha}, but every change since ${mainSha} is ` +
+      `${production ? 'production-inert (documentation, .agent evidence, test files or non-production automation)' : 'documentation'} (${paths.length} file${paths.length === 1 ? '' : 's'}), so the dispatched ` +
+      'commit is still current for the purposes of this gate.',
+    movedBy: paths,
+  }
+}
+
+// DOCUMENTATION EVIDENCE UNDER docs/ (#6258 follow-up). Rehearsal run
+// 43495421317 was refused because main gained a verification `.json` under
+// docs/verification/. The header explains why "anything under docs/" stays
+// WRONG: a gate (the reviewed detector baseline) reads a JSON file there, so
+// editing such a file must keep refusing. This exemption therefore keeps the
+// extension rule intact and adds a narrower, git-proven one, production only:
+//   - the file is under docs/ and was ADDED between the two commits (a
+//     modified, deleted or renamed file -- the baseline case -- still refuses);
+//   - no tracked non-prose file outside docs/ at the tip names the file, a
+//     directory below docs/<area>/ that holds it, or the dated stem of its
+//     docs/<area>/ entry (gates that scan a docs folder see new files).
+//     Test files are not searched: no production step runs them.
+// Any git error tolerates nothing, so the caller refuses exactly as before.
+const DOCS_PATH = /^docs\/(?:[^/]+\/)*[^/]+$/
+function escapeRegex(text) { return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
+export function addedUnreferencedDocPaths({ mainSha, tipSha, paths, cwd, gitRunner = git }) {
+  const added = new Set(nulPaths(gitRunner(['diff', '--name-only', '--no-renames', '--diff-filter=A', '-z', mainSha, tipSha], { cwd })))
+  const tolerated = new Set()
+  for (const path of paths) {
+    if (!added.has(path) || !DOCS_PATH.test(path) || path.includes('\n') || path.includes('\0')) continue
+    const parts = path.split('/')
+    if (parts.length < 3) continue
+    // The exact file, and every directory below the docs/<area>/ level, by name.
+    const names = [escapeRegex(path)]
+    for (let depth = 3; depth < parts.length; depth += 1) {
+      names.push(`${escapeRegex(parts.slice(0, depth).join('/'))}/?([^A-Za-z0-9_./-]|$)`)
+    }
+    // docs/<area>/ itself is named by tooling that only writes or ignores it, but a
+    // gate may scan it for entries by NAME PREFIX (the ColdLion step-8 approval
+    // reader does). So the entry's stem -- extension and trailing date stripped --
+    // must not appear in code either. A stem too short to search refuses.
+    const stem = parts[2].replace(/\.[A-Za-z0-9]+$/, '').replace(/[-_.]?\d[\dTZ_.-]*$/, '')
+    if (stem.length < 6) continue
+    names.push(`${escapeRegex(stem)}([^/]|$)`)
+    let hits
+    try {
+      hits = gitRunner(['grep', '-l', '-E', '-e', names.join('|'), tipSha, '--', '.', ':(exclude)docs', ':(exclude).github/live-proofs', ':(exclude)*.md', ':(exclude)*.markdown', ':(exclude)*.test.mjs', ':(exclude)*/test_*.py'], { cwd })
+    } catch (error) {
+      if (error?.status !== 1) throw error
+      hits = ''
+    }
+    if (hits.trim() === '') tolerated.add(path)
+  }
+  return tolerated
+}
+
+// LIVE-PROOF PROBES (#6493). Production run 44187977315 was refused because main
+// gained an edited `.github/live-proofs/5609.sql` and a docs file that only that
+// probe's comment named. Probes are run by the separate live-proof workflow; no
+// step of the production jobs in shared-supabase-migrations.yml, nor any script
+// they call, reads, globs, lints or hashes `.github/live-proofs/`. So, production
+// only, a top-level `.github/live-proofs/<name>.sql` that was ADDED or MODIFIED
+// (git-proven) rides along. Deleted, renamed, nested or non-.sql paths refuse.
+// The docs reference search above skips these probes for the same reason.
+const LIVE_PROOF_PATH = /^\.github\/live-proofs\/[A-Za-z0-9][A-Za-z0-9_-]*\.sql$/
+export function liveProofProbePaths({ mainSha, tipSha, paths, cwd, gitRunner = git }) {
+  const kept = new Set(nulPaths(gitRunner(['diff', '--name-only', '--no-renames', '--diff-filter=AM', '-z', mainSha, tipSha], { cwd })))
+  return new Set(paths.filter((path) => kept.has(path) && LIVE_PROOF_PATH.test(path)))
+}
+
+const MIGRATION_PATH = /^supabase\/migrations\/(\d{14})_[^/]+\.sql$/
+
+// VERIFIED-PREFIX PROMOTION (#4845, widened by step 2.7 of the CI process
+// repair, #2367). A production run executes only the dispatched commit's
+// bytes, so a migration that main gained AFTER it cannot change what that run
+// applies or proves -- it still needs its own promotion. Step 2.7 let merged
+// migrations carry crossed versions, so an added migration may sort anywhere
+// relative to the dispatched ledger, and only the duplicate class still
+// refuses: the ledger keys on the version alone, so a version that already
+// exists in the dispatched tree (or twice in the added set) would silently
+// skip one migration at apply time. Tolerated only when ALL hold, proven from
+// git, and only in --production:
+//   - it was ADDED between the two commits (never modified, deleted or renamed);
+//   - its version collides with no migration in the dispatched tree and with
+//     no other added migration;
+//   - the dispatched tree has at least one migration (a dispatch without a
+//     ledger cannot happen, and stays refused).
+// Added `supabase/tests/*.sql` files ride along: no production step reads them.
+// So does the ADDED verification sidecar of a tolerated migration (#6493: run
+// 43995587657 lost a whole promotion cycle to one). The sidecar gate reads the
+// dispatched tree, which cannot hold a sidecar for a version it does not have.
+// A sidecar for any other version, or a modified one, still refuses.
+// Any git error returns the empty set, so the caller refuses exactly as before.
+const SUPABASE_TEST_PATH = /^supabase\/tests\/[^/]+\.sql$/
+const SIDECAR_PATH = /^scripts\/production-verification-sidecars\/(\d{14})\.json$/
+export function laterAppendedMigrationPaths({ mainSha, tipSha, paths, cwd, gitRunner = git }) {
+  const added = new Set(nulPaths(gitRunner(['diff', '--name-only', '--no-renames', '--diff-filter=A', '-z', mainSha, tipSha], { cwd })))
+  const dispatched = new Set(nulPaths(gitRunner(['ls-tree', '-r', '-z', '--name-only', mainSha, '--', 'supabase/migrations'], { cwd }))
+    .map((path) => MIGRATION_PATH.exec(path)?.[1]).filter(Boolean))
+  if (dispatched.size === 0) return new Set()
+  const tolerated = new Set()
+  const addedVersions = new Set()
+  let migrations = 0
+  for (const path of paths) {
+    if (!added.has(path)) continue
+    const version = MIGRATION_PATH.exec(path)?.[1]
+    if (version) {
+      if (dispatched.has(version) || addedVersions.has(version)) return new Set()
+      addedVersions.add(version)
+      tolerated.add(path)
+      migrations += 1
+    } else if (SUPABASE_TEST_PATH.test(path)) tolerated.add(path)
+  }
+  for (const path of paths) {
+    const version = SIDECAR_PATH.exec(path)?.[1]
+    if (version && added.has(path) && addedVersions.has(version)) tolerated.add(path)
+  }
+  if (paths.includes(SIDECAR_REGISTRY) && registryOnlyGained({ mainSha, tipSha, versions: addedVersions, cwd, gitRunner })) tolerated.add(SIDECAR_REGISTRY)
+  return migrations > 0 ? tolerated : new Set()
+}
+
+// A sidecar is always declared in the registry (review finding #6600), so the
+// registry rides along only when the tip's copy is the dispatched copy plus
+// entries for appended migration versions: nothing removed, nothing edited.
+// Any read or parse error tolerates nothing.
+const SIDECAR_REGISTRY = 'config/production-verification-sidecar-registry.json'
+function registryOnlyGained({ mainSha, tipSha, versions, cwd, gitRunner }) {
+  try {
+    const read = (sha) => JSON.parse(String(gitRunner(['show', `${sha}:${SIDECAR_REGISTRY}`], { cwd })))
+    const [base, tip] = [read(mainSha), read(tipSha)]
+    for (const data of [base, tip]) {
+      if (data === null || typeof data !== 'object' || Array.isArray(data)) return false
+      if (Object.keys(data).sort().join() !== 'schema_version,sidecars' || !Array.isArray(data.sidecars)) return false
+    }
+    if (base.schema_version !== tip.schema_version) return false
+    const known = new Set(base.sidecars.map((entry) => entry?.version))
+    const gained = tip.sidecars.filter((entry) => !known.has(entry?.version))
+    if (gained.length === 0 || new Set(gained.map((entry) => entry?.version)).size !== gained.length) return false
+    if (!gained.every((entry) => entry !== null && typeof entry === 'object' && Object.keys(entry).sort().join() === 'issue,version' && versions.has(entry.version))) return false
+    const kept = tip.sidecars.filter((entry) => known.has(entry?.version))
+    return JSON.stringify(kept) === JSON.stringify(base.sidecars)
+  } catch { return false }
+}
+
+function nulPaths(raw) {
+  return [...new Set(String(raw).split('\0').filter((entry) => entry.length > 0))]
+}
+
+/**
+ * The `--contains` question: may this pull request head merge although main has
+ * moved past its merge base with changes that are not documentation?
+ *
+ * MAIN MOVING IS NOT A REFUSAL BY ITSELF (claim-first session identity #2758, 2026-09-11).
+ * A guarded merge round takes ~25 minutes and main moves faster, so PR #2761 lost
+ * the race twice while nothing it touched had changed. Main may have moved when
+ * ALL of these hold, each proven from git:
+ *   - no file the pull request changed was also changed on main since the merge
+ *     base (`.agent/` evidence aside -- every pull request regenerates it);
+ *   - no migration version the pull request adds or edits exists on the main tip
+ *     under a different file name;
+ *   - git can merge the main tip and the head with no conflict at all, `.agent/`
+ *     included (`git merge-tree`, exactly what the merge button will produce); and
+ *   - the pull request's own diff is unchanged by that merge: the diff from the
+ *     main tip to the merged tree is identical to the diff from the merge base to
+ *     the head (`.agent/` evidence aside).
+ * Every other case, and every git error, refuses exactly as before.
+ */
+export function classifyBranchFreshness({ headSha, tipSha, cwd, gitRunner = git }) {
+  if (!/^[0-9a-f]{40}$/.test(headSha ?? '')) return { ok: false, reason: 'REFUSED: the pull request head is not a full 40-character commit SHA.' }
+  if (!/^[0-9a-f]{40}$/.test(tipSha ?? '')) return { ok: false, reason: 'REFUSED: the live origin/main tip could not be resolved.' }
+  let base
+  try { base = String(gitRunner(['merge-base', headSha, tipSha], { cwd })).trim() } catch { base = '' }
+  if (!/^[0-9a-f]{40}$/.test(base)) return { ok: false, reason: 'REFUSED: could not compute the merge base of HEAD and origin/main.' }
+  const documentation = classifyMainTip({ mainSha: base, tipSha, cwd, gitRunner })
+  if (documentation.ok || !Array.isArray(documentation.movedBy)) return documentation
+  const refuse = (detail) => ({ ok: false, reason: `${documentation.reason} It cannot merge without an update from main: ${detail}`, movedBy: documentation.movedBy })
+  let prPaths, tipMigrations, mergedTree
+  try {
+    prPaths = nulPaths(gitRunner(['diff', '--name-only', '--no-renames', '-z', base, headSha], { cwd }))
+    tipMigrations = nulPaths(gitRunner(['ls-tree', '-r', '-z', '--name-only', tipSha, '--', 'supabase/migrations'], { cwd }))
+  } catch { return refuse('the pull request change or the main migration list could not be read.') }
+  const mainPaths = new Set(documentation.movedBy)
+  let evidence
+  try {
+    const runner = (args) => gitRunner(args, { cwd })
+    const prEvidence = new Set(verifiedEvidencePaths(base, headSha, { gitRunner: runner }))
+    evidence = new Set(verifiedEvidencePaths(base, tipSha, { gitRunner: runner }).filter((path) => prEvidence.has(path)))
+  } catch { return refuse('the overlapping evidence records could not be verified.') }
+  const overlap = prPaths.filter((path) => mainPaths.has(path) && !evidence.has(path)).sort()
+  if (overlap.length) return refuse(`main also changed ${overlap.slice(0, 10).join(', ')}${overlap.length > 10 ? `, and ${overlap.length - 10} more` : ''}.`)
+  const collisions = []
+  for (const path of prPaths) {
+    const version = MIGRATION_PATH.exec(path)?.[1]
+    if (!version) continue
+    for (const other of tipMigrations) if (other !== path && MIGRATION_PATH.exec(other)?.[1] === version) collisions.push(`${path} and ${other}`)
+  }
+  if (collisions.length) return refuse(`migration version collision on main: ${collisions.join('; ')}.`)
+  try {
+    mergedTree = String(gitRunner(['merge-tree', '--write-tree', '--no-messages', tipSha, headSha], { cwd })).trim().split('\n')[0]
+  } catch (error) {
+    return refuse(error?.status === 1 ? 'merging origin/main into the head conflicts.' : 'git could not trial-merge origin/main into the head.')
+  }
+  if (!/^[0-9a-f]{40}$/.test(mergedTree)) return refuse('git could not trial-merge origin/main into the head.')
+  let before, after
+  try {
+    before = diffDigest(base, headSha, { gitRunner: (args) => gitRunner(args, { cwd }) })
+    after = diffDigest(tipSha, mergedTree, { gitRunner: (args) => gitRunner(args, { cwd }) })
+  } catch { return refuse('the pull request diff could not be compared across the trial merge.') }
+  if (before !== after) return refuse("the trial merge changes the pull request's own diff.")
+  return {
+    ok: true,
+    reason: `origin/main has advanced to ${tipSha} with non-documentation changes, but none touches a file or migration version this pull request changes, the head merges into it cleanly, and the pull request's own diff is unchanged by that merge.`,
+    movedBy: documentation.movedBy,
+    independent: true,
+  }
+}
+
+function resolveTip() {
+  // `origin/main` is what every one of the twelve replaced sites resolved, so
+  // resolve exactly that and nothing cleverer. A fallback chain here would be a
+  // way for this gate to answer from a ref the old `test` never consulted.
+  return git(['rev-parse', 'origin/main']).trim()
+}
+
+function main() {
+  const contains = process.argv.includes('--contains')
+  const production = process.argv.includes('--production')
+  if (contains && production) {
+    console.error('REFUSED: --contains and --production are different questions; name one.')
+    process.exit(1)
+  }
+
+  let tipSha
+  try {
+    tipSha = resolveTip()
+  } catch {
+    console.error('REFUSED: could not resolve origin/main. Fetch origin/main first.')
+    process.exit(1)
+  }
+
+  let mainSha
+  if (contains) {
+    // "May this branch merge into the current main?" -- the question
+    // guarded-migration-merge asks. See `classifyBranchFreshness`.
+    let headSha
+    try { headSha = git(['rev-parse', 'HEAD']).trim() } catch {
+      console.error('REFUSED: could not resolve HEAD.')
+      process.exit(1)
+    }
+    const verdict = classifyBranchFreshness({ headSha, tipSha })
+    if (!verdict.ok) {
+      // "::error::" renders the refusal as a check-run annotation, the only
+      // failure text a still-running job can read (refund_fault_classification).
+      console.error(`::error::${verdict.reason}`)
+      writeRefundSink(verdict.reason)
+      console.error('This branch must be updated from origin/main before it can merge.')
+      process.exit(1)
+    }
+    console.log(`OK -- ${verdict.reason}`)
+    for (const path of verdict.movedBy ?? []) console.log(`  ${verdict.independent ? 'moved on main' : 'documentation'}: ${path}`)
+    return
+  } else {
+    mainSha = (process.env.MAIN_SHA ?? '').trim()
+    if (!mainSha) {
+      console.error('REFUSED: MAIN_SHA is unset; this gate never defaults to the live tip.')
+      process.exit(1)
+    }
+  }
+
+  const verdict = classifyMainTip({ mainSha, tipSha, production })
+  if (!verdict.ok) {
+    // Same annotation channel as the --contains refusal above.
+    console.error(`::error::${verdict.reason}`)
+    writeRefundSink(verdict.reason)
+    if (contains) {
+      console.error(
+        'This branch must be updated from origin/main before it can merge.',
+      )
+    }
+    process.exit(1)
+  }
+  console.log(`OK -- ${verdict.reason}`)
+  if (verdict.movedBy?.length) {
+    for (const path of verdict.movedBy) console.log(`  ${production ? (/^supabase\/(?:migrations|tests)\//.test(path) ? 'added past the dispatched commit' : 'production-inert') : 'documentation'}: ${path}`)
+  }
+}
+
+if (process.argv[1]?.endsWith('check-main-tip-freshness.mjs')) {
+  main()
+}

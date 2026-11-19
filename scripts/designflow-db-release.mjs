@@ -92,6 +92,8 @@ export async function assessRelease({ repository, head, manifest, policy, branch
 }
 
 function command(args, { input, timeout = 60_000, token } = {}) {
+  // Reads without an explicit token use DFLOW_GITHUB_READ_TOKEN inside the
+  // shared transport (shared-db#6772); writes use the operator credential.
   const executor = token ? ((file, argv, options) => execFileSync(file, argv, { ...options, env: { ...process.env, GH_TOKEN: token } })) : undefined;
   try { return runGitHubCommand(args, { executor, input, timeoutMs: timeout, maxBuffer: 20 * 1024 * 1024 }); }
   catch { throw Error(`GitHub operation refused or unavailable: ${args[0]}`); }

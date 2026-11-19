@@ -249,7 +249,7 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: node scripts/check-applied-migration-edit.mjs --base "origin/${GITHUB_BASE_REF:-main}"
       - name: Test SQL migration guards
-        run: node --test scripts/check-sql.test.mjs scripts/check-applied-migration-edit.test.mjs scripts/lint-plpgsql-migrations.test.mjs
+        run: node --test scripts/check-sql.test.mjs scripts/guard-b-reserved-inversion.test.mjs scripts/check-applied-migration-edit.test.mjs scripts/lint-plpgsql-migrations.test.mjs
       # Issue #2579. The coverage manifest is the machine-readable authority for
       # all-licensor Property-source exposure; it is a gate only if CI runs it.
       - name: Validate DB Data Admin Property-source coverage
@@ -2611,3 +2611,23 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SOURCE_PR: ${{ inputs.source_pr }}
         run: node scripts/manage-migration-coordination.mjs --release-promotion-freeze --pr "$SOURCE_PR"
+      # #6805 follow-up: the selector now arms a backstop freeze before EVERY
+      # post-merge preview. When that preview fails, or qualification never
+      # dispatches production, nothing takes the freeze over, so it outlived the
+      # run and blocked every merge until its TTL (2026-11-19 05:53 UTC, PR
+      # #6812, blocking PR #6818). Release ONLY the selector's own backstop
+      # freeze; a qualification-owned freeze for a dispatched production run is
+      # left for that run's own release above.
+      - name: Check out the coordination CLI for the failed-preview backstop freeze release
+        if: always() && inputs.target == 'preview' && (inputs.merged_preview_source_pr != '' || inputs.merged_preview_source_pr_map != '') && needs.automatic-production-promotion.result != 'success'
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 1
+      - name: Release the selector backstop freeze when this preview run dispatched no production apply
+        if: always() && inputs.target == 'preview' && (inputs.merged_preview_source_pr != '' || inputs.merged_preview_source_pr_map != '') && needs.automatic-production-promotion.result != 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/manage-migration-coordination.mjs --release-promotion-freeze --owner automatic-promotion-backstop

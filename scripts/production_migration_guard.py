@@ -456,6 +456,7 @@ HARD_BLOCKED = {
 # verifier imports these names from here; pending-status policy must not import
 # that application verifier back into the production guard's execution closure.
 RETIRED_VERSION_REASONS = {
+    "20261221010000": "PR #6782 (#6781 Pooh alias): preview apply run 44446439987 abstained by design (parent id differs in preview); never applied anywhere. Reissued as 20261223100000, which resolves the parent by licensor and name. Never apply this original.",
     "20261218062459": "PR #6655 (#6457): review finding #6657 confirmed that the merged revoke set breaks the authenticated ColdLion triage contract (#5004), and November 18, 2026 read-only production ledger verification found no applied row. Preserve this source for audit; never apply it. Deliver separately qualified grants under a fresh version.",
     "20261116013153": "PR #6433 (#6415 revoke anon/authenticated EXECUTE on trigger functions): applied on preview before merge (run 43789639543 at a2311d0); automatic qualification refuses that evidence permanently because the guard differs from merge commit 3b0c25e and the migration is high-risk (runs 44092383652, 44093787649). Never applied to production. Reissued with identical SQL as 20261204000300. Never apply this original.",
     "20261113174422": "PR #6263 (MM nickname 'Mickey Group'): parked after transient refusals (runs 43509901476, 43511779725, 43522272522, 43527810278); never applied. Superseded by applied reissue 20261115024204 (same SQL plus one comment line); production core.property MM nickname reads 'Mickey Group'. Never apply this original.",
@@ -851,6 +852,54 @@ FOREIGN_TARGET_MIGRATIONS = {
         "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
         "issue": "#6356",
         "note": "Sandbox catch-up batch 18: production's current definitions and EXECUTE grants for seven functions changed on 2026-11-16. Source excludes shared preview and production.",
+    },
+    "20261220000000": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6472",
+        "note": "Sandbox catch-up batch 19: replays nine production migrations (hts_rag embeddings and code6 stats, dam text vectors and health, gated style-guide views, dam search word forms and named lookup) with grants to absent production service logins made conditional. Source excludes shared preview and production.",
+    },
+    "20261223000000": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6472",
+        "note": "Sandbox catch-up batch 20: replaces batch 19 and replays sixteen production migrations (hts_rag embeddings and stats, dam text vectors and health, the full search_dam_documents chain, gated style-guide views, word forms, named lookup) with grants to absent production service logins omitted. Source excludes shared preview and production.",
+    },
+    "20261223010000": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6472",
+        "note": "Sandbox catch-up batch 21: replays the remaining production dam search chain, licensor submission identifiers, style-guide grants and preview side-table count, plus one production index without a migration file; grants to absent production service logins omitted. Source excludes shared preview and production.",
+    },
+    "20261223020000": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6472",
+        "note": "Sandbox catch-up batch 22: batch 21 plus production's explicit EXECUTE grants on the 8-argument search_dam_documents first. Source excludes shared preview and production.",
+    },
+    "20261224000000": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6472",
+        "note": "Sandbox catch-up batch 23: drops the sandbox-only 7-argument search_dam_documents, then replays the rest of the production dam search chain and related versions; grants to absent production service logins omitted. Source excludes shared preview and production.",
+    },
+    "20261224010000": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6472",
+        "note": "Sandbox catch-up batch 24: replays the remaining production dam search word forms, named lookup, style-guide grants, visibility pretest, licensor submission identifiers and preview side-table count; no pg_cron on the sandbox, so the word-form backfill runs inline. Source excludes shared preview and production.",
+    },
+    "20261225000000": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6472",
+        "note": "Sandbox catch-up batch 25: replays production's three dam word-form backfill migrations (084303, 084403, 084604) without scheduling the pg_cron job the sandbox lacks. Source excludes shared preview and production.",
+    },
+    "20261225010000": {
+        "target": "designflow-nonprod",
+        "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
+        "issue": "#6472",
+        "note": "Sandbox catch-up batch 26: replays production's 20261222100000 and 20261224120000 search_dam_documents changes. Source excludes shared preview and production.",
     },
 }
 
@@ -2691,7 +2740,9 @@ def dropped_objects(raw: str) -> set[str]:
     return {obj for obj, created in final.items() if not created}
 
 
-def hard_reference_events(raw: str) -> list[tuple[int, str, str]]:
+def hard_reference_events(
+    raw: str, *, sandbox_dflow_prod_absent: bool = False,
+) -> list[tuple[int, str, str]]:
     """Non-deferrable references in statement order.
 
     Ordering matters inside one migration: dropping a trigger on a table and
@@ -2704,6 +2755,13 @@ def hard_reference_events(raw: str) -> list[tuple[int, str, str]]:
     found: list[tuple[int, str, str]] = []
     for reason, pattern in REFERENCE_RES:
         for match in pattern.finditer(text):
+            if (sandbox_dflow_prod_absent and reason == "alter table" and
+                    match.group(1) == "dflow_prod" and
+                    match.group(0).split()[:4] == ["alter", "table", "if", "exists"]):
+                # The exact sandbox has no production schema; the bounded
+                # sandbox conditioner guards this explicit optional target.
+                # References carried by the statement still get checked.
+                continue
             found.append(
                 # A bounded regex may begin at an earlier keyword (for example
                 # an unrelated GRANT before a CREATE FUNCTION).  The catalog
@@ -2795,6 +2853,7 @@ def _created_by_applied_dynamic_ddl(
 def preflight_batch(
     migrations: dict[str, Path], allowlist: list[str], remote: set[str],
     existing_relations: frozenset[str] = frozenset(),
+    *, sandbox_dflow_prod_absent: bool = False,
 ) -> None:
     """Reject a batch that cannot run end to end. Never an approval."""
     creators: dict[str, list[str]] = {}
@@ -2848,7 +2907,9 @@ def preflight_batch(
             for position, obj, created in object_events(raw)
         ] + [
             (position, 1, obj, False, reason)
-            for position, obj, reason in hard_reference_events(raw)
+            for position, obj, reason in hard_reference_events(
+                raw, sandbox_dflow_prod_absent=sandbox_dflow_prod_absent,
+            )
         ]
         for _position, kind, obj, created, reason in sorted(ordered_events):
             if kind == 0:
@@ -2925,14 +2986,18 @@ def preflight(
     derivation_overrides: dict[tuple[str, str], str] | None = None,
     ledger_name: str = "production",
     existing_relations: frozenset[str] = frozenset(),
+    *, sandbox_dflow_prod_absent: bool = False,
 ) -> None:
     remote = parse_remote_versions(ledger)
     allowlist = parse_allowlist(raw_allowlist, remote, migration_target_for_ledger(ledger_name))
     migrations = local_migrations(repo)
     validate_candidates(migrations, allowlist, remote, derivation_overrides, ledger_name)
-    if existing_relations and ledger_name != "sandbox":
+    if (existing_relations or sandbox_dflow_prod_absent) and ledger_name != "sandbox":
         raise GuardError("live dependency catalog is supported only for sandbox")
-    preflight_batch(migrations, allowlist, remote, existing_relations)
+    preflight_batch(
+        migrations, allowlist, remote, existing_relations,
+        sandbox_dflow_prod_absent=sandbox_dflow_prod_absent,
+    )
     print(
         f"PREFLIGHT OK: {len(allowlist)} migrations, no missing non-deferrable "
         "dependency. This is a pre-filter, NOT an approval -- the rehearsal "
@@ -2949,6 +3014,7 @@ def prepare(
     derivation_overrides: dict[tuple[str, str], str] | None = None,
     ledger_name: str = "production",
     existing_relations: frozenset[str] = frozenset(),
+    *, sandbox_dflow_prod_absent: bool = False,
 ) -> None:
     remote = parse_remote_versions(ledger)
     allowlist = parse_allowlist(raw_allowlist, remote, migration_target_for_ledger(ledger_name))
@@ -2956,9 +3022,12 @@ def prepare(
     validate_candidates(migrations, allowlist, remote, derivation_overrides, ledger_name)
     # AGENTS.md section 6.8: the whole batch must be proven runnable end to end
     # before anything is applied, never one migration at a time.
-    if existing_relations and ledger_name != "sandbox":
+    if (existing_relations or sandbox_dflow_prod_absent) and ledger_name != "sandbox":
         raise GuardError("live dependency catalog is supported only for sandbox")
-    preflight_batch(migrations, allowlist, remote, existing_relations)
+    preflight_batch(
+        migrations, allowlist, remote, existing_relations,
+        sandbox_dflow_prod_absent=sandbox_dflow_prod_absent,
+    )
     if output.exists():
         raise GuardError(f"bounded checkout already exists: {output}")
     subprocess.run(
@@ -3074,8 +3143,10 @@ def _add_derivation_override(sub: argparse.ArgumentParser) -> None:
     )
 
 
-def read_sandbox_dependencies(ledger_name, project_ref, token, query=None, fetch=None):
-    """Read current relations, never invent ledger entries for pre-ledger tables."""
+def read_sandbox_dependencies(
+    ledger_name, project_ref, token, query=None, fetch=None,
+) -> tuple[frozenset[str], bool]:
+    """Read current relations and whether the conditioned production schema is absent."""
     if ledger_name != "sandbox" or project_ref != "xupnyeifmpsacrqahwwm":
         raise GuardError("live dependency reads require the exact DesignFlow sandbox target")
     if not token:
@@ -3102,13 +3173,18 @@ def read_sandbox_dependencies(ledger_name, project_ref, token, query=None, fetch
     if not isinstance(project, dict) or (project.get("id") or project.get("ref")) != project_ref:
         raise GuardError("Management API returned a different sandbox project identity")
     statement = """
-            SELECT n.nspname || '.' || c.relname AS name
-            FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-            WHERE n.nspname IN ('dflow','core','plm','app','pim','crm','ingest','api','dam','hts_rag','archive','public') AND c.relkind IN ('r','p','v','m','f')
-            UNION
-            SELECT n.nspname || '.' || p.proname
-            FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-            WHERE n.nspname IN ('dflow','core','plm','app','pim','crm','ingest','api','dam','hts_rag','archive','public') AND p.prokind IN ('f','p')
+            WITH dependencies AS (
+                SELECT n.nspname || '.' || c.relname AS name
+                FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                WHERE n.nspname IN ('dflow','core','plm','app','pim','crm','ingest','api','dam','hts_rag','archive','public') AND c.relkind IN ('r','p','v','m','f')
+                UNION
+                SELECT n.nspname || '.' || p.proname
+                FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                WHERE n.nspname IN ('dflow','core','plm','app','pim','crm','ingest','api','dam','hts_rag','archive','public') AND p.prokind IN ('f','p')
+            )
+            SELECT name, NULL::boolean AS dflow_prod_present FROM dependencies
+            UNION ALL
+            SELECT NULL::text, EXISTS (SELECT 1 FROM pg_namespace WHERE nspname='dflow_prod')
             ORDER BY 1
         """
     # api, dam, hts_rag, archive and public joined the sandbox on owner approval (#6356, 2026-11-16).
@@ -3117,16 +3193,22 @@ def read_sandbox_dependencies(ledger_name, project_ref, token, query=None, fetch
     if not isinstance(rows, list) or not rows:
         raise GuardError("sandbox dependency catalog is missing or empty")
     names = []
+    dflow_prod_presence = []
     for row in rows:
         name = row.get("name") if isinstance(row, dict) else None
+        if isinstance(row, dict) and "name" in row and name is None and type(row.get("dflow_prod_present")) is bool:
+            dflow_prod_presence.append(row["dflow_prod_present"])
+            continue
         if not isinstance(name, str) or not re.fullmatch(r"(?:dflow|core|plm|app|pim|crm|ingest|api|dam|hts_rag|archive|public)\.[A-Za-z_][A-Za-z_0-9]*", name):
             raise GuardError("sandbox dependency catalog contains an invalid relation")
         names.append(name)
+    if len(dflow_prod_presence) != 1 or not names:
+        raise GuardError("sandbox dependency catalog lacks exact production schema presence evidence")
     if len(names) != len(set(names)):
         raise GuardError("sandbox dependency catalog contains duplicate relations")
     print(f"LIVE SANDBOX DEPENDENCIES: {len(names)} relations, sha256=" +
           hashlib.sha256(json.dumps(sorted(names)).encode()).hexdigest())
-    return frozenset(names)
+    return frozenset(names), not dflow_prod_presence[0]
 
 
 def main() -> int:
@@ -3170,8 +3252,9 @@ def main() -> int:
     try:
         overrides = parse_overrides(getattr(args, "derivation_override", []))
         existing_relations = frozenset()
+        sandbox_dflow_prod_absent = False
         if getattr(args, "sandbox_live_dependencies", False):
-            existing_relations = read_sandbox_dependencies(
+            existing_relations, sandbox_dflow_prod_absent = read_sandbox_dependencies(
                 args.ledger_name, os.environ.get("SANDBOX_PROJECT_REF", ""),
                 os.environ.get("SUPABASE_ACCESS_TOKEN", ""))
         if args.command == "prepare":
@@ -3184,12 +3267,14 @@ def main() -> int:
                 overrides,
                 args.ledger_name,
                 existing_relations,
+                sandbox_dflow_prod_absent=sandbox_dflow_prod_absent,
             )
         elif args.command == "preflight":
             preflight(
                 args.repo.resolve(), args.allowlist, args.remote_ledger, overrides,
                 args.ledger_name,
                 existing_relations,
+                sandbox_dflow_prod_absent=sandbox_dflow_prod_absent,
             )
         elif args.command == "assert-bounded":
             assert_bounded(

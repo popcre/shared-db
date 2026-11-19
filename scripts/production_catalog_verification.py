@@ -322,6 +322,19 @@ CREATE_EXTENSION_RE = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 CREATE_EXTENSION_HEAD_RE = re.compile(r"^\s*create\s+extension\b", re.IGNORECASE)
+# Issue #6747: `drop schema [if exists] <name>[, ...] [cascade|restrict]` names
+# pg_namespace rows that must be ABSENT afterwards (PR #6303 dropped
+# dflow_prod_old and the verifier refused it for naming no catalog object).
+# Only plain or double-quoted lowercase identifiers are read (they are
+# interpolated into the catalog query); anything else is noted, never guessed.
+_SCHEMA_IDENT = r'(?:"[a-z_][a-z0-9_$]*"|[a-z_][a-z0-9_$]*)'
+DROP_SCHEMA_RE = re.compile(
+    rf'^\s*drop\s+schema\s+(?:if\s+exists\s+)?'
+    rf'({_SCHEMA_IDENT}(?:\s*,\s*{_SCHEMA_IDENT})*)'
+    rf'(?:\s+(?:cascade|restrict))?\s*$',
+    re.DOTALL,
+)
+DROP_SCHEMA_HEAD_RE = re.compile(r"^\s*drop\s+schema\b", re.IGNORECASE)
 COMMENT_RELATION_RE = re.compile(
     rf"^\s*comment\s+on\s+(?:table|view|materialized\s+view|foreign\s+table)\s+{QUALIFIED}\s+is\b"
 )
@@ -1387,7 +1400,37 @@ select (select count(*) from actor_characters)=98
 """
 
 CATALOG_CONTRACTS = {
-    "character_load_20261105074028_active_rows_v1": CHARACTER_LOAD_20261105074028_ACTIVE_ROWS,
+    # Issue #6781: curated alias Pooh -> Winnie The Pooh (Disney); exactly one row.
+    "curated_alias_pooh_v2": r"""
+(select count(*) from core.character_alias a
+  where a.character_id='c80171c3-cd42-4d61-9a98-177e83ce0917'::uuid
+    and a.alias='Pooh' and a.source_system='popdam3#1037'
+    and a.normalized_alias='pooh'
+    and a.evidence_notes='Common short name used in PopDAM search (shared-db #6781)')=1
+and (select count(*) from core.character_alias a
+  where a.normalized_alias='pooh')=1
+""",
+    # Issue #6735: admin role editor create; exact column INSERT, no DELETE.
+    "dflow_prod_role_create_insert_v1": r"""
+to_regclass('dflow_prod."Roles"') is not null
+and has_column_privilege('designflow_prod_backend_grants','dflow_prod."Roles"','Name','INSERT')
+and has_column_privilege('designflow_prod_backend_grants','dflow_prod."Roles"','kind','INSERT')
+and has_column_privilege('designflow_prod_backend_grants','dflow_prod."Roles"','parent_id','INSERT')
+and has_column_privilege('designflow_prod_backend_grants','dflow_prod."Roles"','is_active','INSERT')
+and not has_column_privilege('designflow_prod_backend_grants','dflow_prod."Roles"','app_role_id','INSERT')
+and not has_table_privilege('designflow_prod_backend_grants','dflow_prod."Roles"','DELETE')
+""",
+    "dflow_prod_role_create_insert_id_v1": r"""
+to_regclass('dflow_prod."Roles"') is not null
+and has_column_privilege('designflow_prod_backend_grants','dflow_prod."Roles"','Id','INSERT')
+and has_column_privilege('designflow_prod_backend_grants','dflow_prod."Roles"','Name','INSERT')
+and has_column_privilege('designflow_prod_backend_grants','dflow_prod."Roles"','kind','INSERT')
+and has_column_privilege('designflow_prod_backend_grants','dflow_prod."Roles"','parent_id','INSERT')
+and has_column_privilege('designflow_prod_backend_grants','dflow_prod."Roles"','is_active','INSERT')
+and not has_column_privilege('designflow_prod_backend_grants','dflow_prod."Roles"','app_role_id','INSERT')
+and not has_table_privilege('designflow_prod_backend_grants','dflow_prod."Roles"','DELETE')
+""",
+ "character_load_20261105074028_active_rows_v1": CHARACTER_LOAD_20261105074028_ACTIVE_ROWS,
     "rls_public_admin_install_v1": RLS_PUBLIC_ADMIN_INSTALL_CONTRACT,
     # Issue2336: selected current/history lifecycle and private physical engine.
     "licensing_support_forward_v2": r"""
@@ -2055,6 +2098,7 @@ class Targets:
         change_types: set[str] | None = None,
         extensions: set[str] | None = None,
         column_types: set[tuple[str, str, str, str]] | None = None,
+        dropped_schemas: set[str] | None = None,
     ) -> None:
         # ORDER IS LOAD-BEARING and must be the order the statements appear in,
         # not sorted: a batch may `grant` a privilege and then `revoke` it, and
@@ -2080,6 +2124,8 @@ class Targets:
         self.seeded = sorted(seeded)
         self.indexes = sorted(indexes or set())
         self.extensions = sorted(extensions or set())
+        # Schemas a `drop schema` removed: each must be ABSENT afterwards.
+        self.dropped_schemas = sorted(dropped_schemas or set())
         # (schema, table, column, expected format_type) -- catalog names, case kept.
         self.column_types = sorted(column_types or set())
         self.schema_renames = sorted(schema_renames or set())
@@ -2130,6 +2176,7 @@ class Targets:
             or self.function_settings
             or self.extensions
             or self.column_types
+            or self.dropped_schemas
         )
 
     def as_dict(self) -> dict[str, list[str]]:
@@ -2152,6 +2199,7 @@ class Targets:
                 for family, signature, setting, action in self.function_settings
             ],
             "extensions": self.extensions,
+            "dropped_schemas": self.dropped_schemas,
             "column_types": [f"{s}.{t}.{c}|{ty}" for s, t, c, ty in self.column_types],
             "privilege_assertions": [e.describe() for e in self.privileges],
             "unassertable_statements": self.notes,
@@ -3249,6 +3297,7 @@ def derive_targets(migrations: dict[str, Path], allowlist: list[str]) -> Targets
     settings: dict[tuple[str, str | None, str], tuple[str, str | None, str, str]] = {}
     batch_statements: list[str] = []
     extensions: set[str] = set()
+    dropped_schemas: set[str] = set()
     column_types: dict[tuple[str, str, str], str] = {}
 
     for version in allowlist:
@@ -3284,6 +3333,18 @@ def derive_targets(migrations: dict[str, Path], allowlist: list[str]) -> Targets
             for m in ALTER_COLUMN_TYPE_RAW_RE.finditer(_strip_sql_comments(raw))
         }
         for statement in split_statements(text):
+            if match := DROP_SCHEMA_RE.match(statement):
+                for name in match.group(1).split(","):
+                    dropped_schemas.add(name.strip().strip('"'))
+                change_types.add("drop schema")
+                continue
+            if DROP_SCHEMA_HEAD_RE.match(statement):
+                change_types.add("drop schema")
+                notes.append(
+                    f"{version}: DROP SCHEMA was not safely parseable and was not "
+                    f"silently accepted: `{statement.strip()[:240]}`"
+                )
+                continue
             if match := CREATE_EXTENSION_RE.match(statement):
                 name = match.group(1) or match.group(2).lower()
                 extensions.add(name)
@@ -3537,6 +3598,7 @@ def derive_targets(migrations: dict[str, Path], allowlist: list[str]) -> Targets
         schema_comments=verified_schema_comments,
         change_types=change_types,
         extensions=extensions,
+        dropped_schemas=dropped_schemas,
     )
 
 
@@ -3668,6 +3730,7 @@ def build_catalog_sql(targets: Targets) -> str:
         sorted(
             {name for source, destination, _ in targets.schema_renames for name in (source, destination)}
             | {name for name, _ in targets.schema_comments}
+            | set(targets.dropped_schemas)
         )
     )
     extension_names = _sql_array(targets.extensions)
@@ -3737,6 +3800,7 @@ select jsonb_build_object(
     select jsonb_agg(jsonb_build_object(
       'schema', t.schema_name, 'table', t.table_name, 'column', t.column_name,
       'expected', t.expected,
+      'schema_exists', n.oid is not null,
       'actual', case when a.attnum is null then null
         else format_type(a.atttypid, a.atttypmod) end
     ) order by t.schema_name, t.table_name, t.column_name)
@@ -4413,6 +4477,7 @@ def render_report(
     behavior_results: object = None,
     behavior_error: str | None = None,
     reviewed_no_durable: list[str] | None = None,
+    tolerate_absent_schemas: bool = False,
 ) -> tuple[str, list[str]]:
     """Render the Markdown artifact and return the HARD FAILURES it found.
 
@@ -4811,6 +4876,26 @@ def render_report(
                 failures.append(f"extension {name}: must be installed (pg_extension)")
         add("")
 
+    if targets.dropped_schemas:
+        add("## Dropped schemas (`pg_namespace`)")
+        add("")
+        add("| schema | absent |")
+        add("| --- | --- |")
+        dropped_rows = {
+            str(row.get("name")): row for row in (data.get("schemas") or [])
+            if isinstance(row, dict)
+        }
+        for name in targets.dropped_schemas:
+            row = dropped_rows.get(name)
+            # A missing probe row is NOT proof of absence: fail closed.
+            absent = row is not None and row.get("exists") is False
+            add(f"| `{name}` | {absent} |")
+            if not absent:
+                failures.append(
+                    f"schema {name}: must be absent after DROP SCHEMA (pg_namespace)"
+                )
+        add("")
+
     add("## Schema rename assertions (`pg_namespace`)")
     add("")
     add("| source | destination | source absent | destination present | comment matches |")
@@ -4914,7 +4999,12 @@ def render_report(
             seen_columns.add(key)  # type: ignore[arg-type]
             label = ".".join(str(x) for x in key)
             add(f"| `{label}` | `{row.get('expected')}` | `{row.get('actual') or 'ABSENT'}` |")
-            if row.get("actual") is None:
+            if row.get("actual") is None and row.get("schema_exists") is False and tolerate_absent_schemas:
+                # Issue #6720: a non-production ledger (the DesignFlow sandbox)
+                # need not carry every schema; the migration conditions those
+                # statements out. Record it; production still fails.
+                add(f"| `{label}` | schema `{key[0]}` absent on this target: recorded, not required | |")
+            elif row.get("actual") is None:
                 failures.append(f"{label}: column is absent")
             elif row.get("actual") != expected_columns.get(key):  # type: ignore[arg-type]
                 failures.append(
@@ -5188,6 +5278,7 @@ def verify(
         behavior_results=behavior_results,
         behavior_error=behavior_error,
         reviewed_no_durable=reviewed_no_durable,
+        tolerate_absent_schemas=ledger_name != "production",
     )
     (output_dir / "production-catalog-verification.md").write_text(
         markdown, encoding="utf-8"

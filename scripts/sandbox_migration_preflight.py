@@ -63,6 +63,26 @@ VERSION_RE = re.compile(r"^\d{14}$")
 
 # Versions this route refuses outright, with the reason printed on refusal.
 SANDBOX_BLOCKED = {
+    "20261224000000": (
+        "issue #6472: sandbox catch-up batch 23 committed its first four blocks and then stopped on the sandbox's "
+        "missing pg_cron (run 44483769361). Superseded by batch 24, 20261224010000."
+    ),
+    "20261223020000": (
+        "issue #6472: sandbox catch-up batch 22 committed 003329 and 003530 and then stopped on the sandbox's extra "
+        "7-argument search_dam_documents (run 44467040950). Superseded by batch 23, 20261224000000."
+    ),
+    "20261223010000": (
+        "issue #6472: sandbox catch-up batch 21 fails 003329's search contract check on the sandbox's default "
+        "search_dam_documents ACL (run 44462336157). Superseded by batch 22, 20261223020000."
+    ),
+    "20261223000000": (
+        "issue #6472: sandbox catch-up batch 20 would recreate objects batch 19's failed apply already left on "
+        "the sandbox (run 44456503857). Superseded by batch 21, 20261223010000."
+    ),
+    "20261220000000": (
+        "issue #6472: sandbox catch-up batch 19 skipped links of the search_dam_documents chain and its "
+        "apply failed and rolled back (run 44441411258). Superseded by batch 20, 20261223000000."
+    ),
     "20261009191951": (
         "issue #3869: this migration moves the sandbox's 2026-09-29 coldlion table copy "
         "aside and must run in ONE transaction with the canonical landing migrations and the "
@@ -109,6 +129,11 @@ TRIGGER_RE = re.compile(
 DROP_RE = re.compile(
     r"\bdrop\s+(?:materialized\s+view|view|table|sequence|type|function|procedure|index)\s+"
     r"(?:concurrently\s+)?(?:if\s+exists\s+)?" + IDENT
+)
+
+RENAME_RE = re.compile(
+    r"\balter\s+(?:materialized\s+view|view|table|sequence|index)\s+(?:if\s+exists\s+)?(?:only\s+)?"
+    + IDENT + r"\s+rename\s+to\s+" + NAME
 )
 
 
@@ -189,6 +214,8 @@ def created_names(raw: str) -> list[tuple[str, str]]:
     for m in TRIGGER_RE.finditer(text):
         events.append((m.start(), "trigger", f"{m.group(2)}.{m.group(3)}.{m.group(1)}"))
     drops = [(m.start(), f"{m.group(1)}.{m.group(2)}") for m in DROP_RE.finditer(text)]
+    # Renaming a relation away frees its old name just as a drop does (#6472).
+    drops += [(m.start(), f"{m.group(1)}.{m.group(2)}") for m in RENAME_RE.finditer(text)]
     drops += [
         (m.start(), f"{m.group(2)}.{m.group(3)}.{m.group(1)}")
         for m in re.finditer(r"\bdrop\s+(?:policy|trigger)\s+(?:if\s+exists\s+)?" + NAME + r"\s+on\s+" + IDENT, text)

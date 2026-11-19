@@ -21,6 +21,12 @@
 -- clear-field shape and drops the pre-batch overload. Every legacy named
 -- parameter exists in the new signature, so existing callers keep resolving.
 --
+-- restores-retired-object: api.crm_update_contact dropped-by: 20261225010003
+-- (this file re-creates the name with the approved 18-argument shape and
+-- re-retires the pre-batch 15-argument overload; the declaration above is
+-- what production_migration_guard's retired-object-restoration validation
+-- requires for referencing a name an earlier file dropped.)
+
 -- derived-from: 20261223010101, 20261225010001, 20261225010003
 
 CREATE OR REPLACE FUNCTION api.crm_update_contact(p_contact_id uuid, p_first_name text DEFAULT NULL::text, p_last_name text DEFAULT NULL::text, p_full_name text DEFAULT NULL::text, p_email text DEFAULT NULL::text, p_phone text DEFAULT NULL::text, p_job_title text DEFAULT NULL::text, p_company_id uuid DEFAULT NULL::uuid, p_crm_department_id uuid DEFAULT NULL::uuid, p_contact_type text DEFAULT NULL::text, p_scope text DEFAULT NULL::text, p_clear_company boolean DEFAULT false, p_clear_crm_department boolean DEFAULT false, p_clear_contact_type boolean DEFAULT false, p_clear_scope boolean DEFAULT false, p_clear_email boolean DEFAULT false, p_clear_phone boolean DEFAULT false, p_clear_job_title boolean DEFAULT false)

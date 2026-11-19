@@ -57,17 +57,22 @@ begin
   insert into app.user_role (profile_id, role_id) values (v_profile, v_sales_role);
   insert into app.app_access (profile_id, app) values (v_profile, 'crm');
 
-  select c.id, c.domain into v_customer_a, v_a_domain
-    from core.customer c where c.domain is not null
-    order by c.created_at, c.id limit 1;
-  select c.id into v_customer_b from core.customer c
-    where c.id <> v_customer_a order by c.created_at, c.id limit 1;
-  if v_customer_a is null or v_customer_b is null or v_a_domain is null then
-    raise exception 'fixture requires two customers and a domain on the first';
+  -- Self-sufficient fixture customers (the ephemeral CI database carries no
+  -- domain-bearing customers, so ambient rows cannot be relied on).
+  v_a_domain := 'clear6819a.test';
+  insert into core.customer (name, company_type, status, domain, customer_status)
+  values ('6819 Clear Fixture A', 'customer', 'active', v_a_domain, 'active')
+  returning id into v_customer_a;
+  insert into core.customer (name, company_type, status, customer_status)
+  values ('6819 Clear Fixture B', 'customer', 'active', 'active')
+  returning id into v_customer_b;
+  if v_customer_a is null or v_customer_b is null then
+    raise exception 'fixture customers were not created';
   end if;
 
   perform set_config('request.jwt.claim.sub', v_auth::text, true);
   perform set_config('role', 'authenticated', true);
+
 
   -- ------------------------------------------------------------------
   -- 1 + 2: normalization, then clear precedence for all three fields.

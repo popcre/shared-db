@@ -852,7 +852,7 @@ FOREIGN_TARGET_MIGRATIONS = {
         "issue": "#6356",
         "note": "Sandbox catch-up batch 18: production's current definitions and EXECUTE grants for seven functions changed on 2026-11-16. Source excludes shared preview and production.",
     },
-    "20261219000500": {
+    "20261220000000": {
         "target": "designflow-nonprod",
         "project": "DesignFlow sandbox xupnyeifmpsacrqahwwm",
         "issue": "#6472",

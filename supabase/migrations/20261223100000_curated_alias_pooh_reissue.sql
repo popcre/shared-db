@@ -27,5 +27,5 @@ begin
   end if;
   insert into core.character_alias (character_id, licensor_id, alias, source_system, evidence_notes, created_by, updated_by)
   values (target_id, target_licensor, 'Pooh', 'popdam3#1037',
-    'Common short name used in PopDAM search (shared-db #6781)', 'shared-db migration 20261222100000', 'shared-db migration 20261222100000');
+    'Common short name used in PopDAM search (shared-db #6781)', 'shared-db migration 20261223100000', 'shared-db migration 20261223100000');
 end $curation$;

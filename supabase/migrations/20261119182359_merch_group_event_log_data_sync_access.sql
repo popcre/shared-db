@@ -6,7 +6,8 @@
 -- backend runtime: schema USAGE, SELECT, INSERT, UPDATE(status, reason,
 -- rows_touched, processed_at), role-scoped RLS policies; never DELETE.
 -- Guarded: the role exists only where the DesignFlow runtime is provisioned.
--- derived-from: 20261112221917_merch_group_event_log_runtime_access.sql
+-- derived-from: none
+-- Mirrors the grants of 20261112221917_merch_group_event_log_runtime_access.sql.
 
 do $g$
 begin

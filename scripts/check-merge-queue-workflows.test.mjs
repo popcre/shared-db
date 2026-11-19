@@ -520,7 +520,7 @@ test('a failed post-merge preview releases only the selector backstop freeze', (
   const job = jobBlockByName(text, 'Nudge the production queue')
   const release = stepBlock(job, 'Release the selector backstop freeze when this preview run dispatched no production apply')
   assert.ok(release, 'the failed-preview backstop release is missing from the notify job')
-  const gate = /^ {8}if: always\(\) && inputs\.target == 'preview' && inputs\.merged_preview_source_pr != '' && needs\.automatic-production-promotion\.result != 'success'$/m
+  const gate = /^ {8}if: always\(\) && inputs\.target == 'preview' && \(inputs\.merged_preview_source_pr != '' \|\| inputs\.merged_preview_source_pr_map != ''\) && needs\.automatic-production-promotion\.result != 'success'$/m
   assert.match(release, gate)
   assert.match(release, /continue-on-error: true/)
   assert.match(release, /--release-promotion-freeze --owner automatic-promotion-backstop$/m)

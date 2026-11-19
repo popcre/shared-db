@@ -2619,14 +2619,14 @@ jobs:
       # freeze; a qualification-owned freeze for a dispatched production run is
       # left for that run's own release above.
       - name: Check out the coordination CLI for the failed-preview backstop freeze release
-        if: always() && inputs.target == 'preview' && inputs.merged_preview_source_pr != '' && needs.automatic-production-promotion.result != 'success'
+        if: always() && inputs.target == 'preview' && (inputs.merged_preview_source_pr != '' || inputs.merged_preview_source_pr_map != '') && needs.automatic-production-promotion.result != 'success'
         continue-on-error: true
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.commit_sha }}
           fetch-depth: 1
       - name: Release the selector backstop freeze when this preview run dispatched no production apply
-        if: always() && inputs.target == 'preview' && inputs.merged_preview_source_pr != '' && needs.automatic-production-promotion.result != 'success'
+        if: always() && inputs.target == 'preview' && (inputs.merged_preview_source_pr != '' || inputs.merged_preview_source_pr_map != '') && needs.automatic-production-promotion.result != 'success'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}

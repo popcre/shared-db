@@ -346,7 +346,7 @@ jobs:
 
       - name: Test separate current-live evidence and native stage publication
         if: steps.route.outputs.pure_prose != 'true'
-        run: node --test scripts/lib/production-catalog-recovery.test.mjs scripts/lib/current-live-attestation.test.mjs scripts/designflow-db-release.test.mjs scripts/db-flow/admission-outcome.test.mjs scripts/publish-work-stage-evidence.test.mjs
+        run: node --test scripts/lib/production-catalog-recovery.test.mjs scripts/lib/current-live-attestation.test.mjs scripts/designflow-db-release.test.mjs scripts/report-observer-allowance.test.mjs scripts/db-flow/admission-outcome.test.mjs scripts/publish-work-stage-evidence.test.mjs
 
       - name: Run the self-hosted runner router tests
         # Named explicitly: scripts/*.test.mjs has no glob. Proves every state

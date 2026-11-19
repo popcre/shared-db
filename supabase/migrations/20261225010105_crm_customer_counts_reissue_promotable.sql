@@ -20,7 +20,10 @@
 -- Preview: no-op (same shape already rehearsed). Production: creates the
 -- server-side counts function that popcrm-web CustomersPage consumes.
 --
--- derived-from: 20261223010102, 20261225010001, 20261225010004
+-- This file writes the whole function body from scratch, so it depends on
+-- no earlier rewrite and declares no base (issue #1608 gate: the named
+-- strands sit in no ledger outside preview and can never be bases).
+-- derived-from: none
 
 create or replace function api.crm_customer_counts()
 returns table (

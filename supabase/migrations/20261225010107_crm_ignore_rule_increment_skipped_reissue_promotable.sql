@@ -15,7 +15,9 @@
 -- 20261223010104 (service_role only, never decreases). Preview: no-op (same
 -- shape already rehearsed). Production: creates it for the popcrm-web worker.
 --
--- derived-from: 20261223010104
+-- CREATE OR REPLACE of a self-contained function body: written from
+-- scratch, no earlier rewrite dependency, no declared base.
+-- derived-from: none
 
 create or replace function crm.increment_ignore_rule_emails_skipped(
   p_rule_id uuid,

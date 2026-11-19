@@ -17,7 +17,10 @@
 -- create index if not exists). Preview: no-op (same shapes already rehearsed).
 -- Production: creates all three objects.
 --
--- derived-from: 20261223010105
+-- The index and both function bodies are written from scratch (IF NOT
+-- EXISTS / CREATE OR REPLACE, self-contained), so this file depends on
+-- no earlier rewrite and declares no base.
+-- derived-from: none
 
 create index if not exists crm_email_message_sender_idx
   on crm.email_message (sender);

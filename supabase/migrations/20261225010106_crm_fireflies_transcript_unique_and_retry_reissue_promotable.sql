@@ -18,7 +18,10 @@
 -- ONLY, loads no data; rows arrive at runtime from the popcrm-web Fireflies
 -- webhook/worker.
 --
--- derived-from: 20261223010103
+-- The index, table and comments below are written from scratch (IF NOT
+-- EXISTS everywhere), so this file depends on no earlier rewrite and
+-- declares no base.
+-- derived-from: none
 
 -- (a) One meeting note per Fireflies transcript, forever.
 create unique index if not exists crm_meeting_note_fireflies_transcript_uidx

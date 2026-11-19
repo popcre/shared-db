@@ -1,4 +1,5 @@
 -- popdam3#1037: a named style-group picture anchor reads only group scope.
+-- derived-from: 20261204003633
 -- Do not materialize unused individual-file scopes on that branch.
 -- Body guards pin the deployed #6643 scope and anchor. Ranked-search calls
 -- keep the original one-argument full scope; grants and all ranking stay intact.

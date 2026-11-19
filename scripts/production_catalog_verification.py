@@ -1402,13 +1402,16 @@ select (select count(*) from actor_characters)=98
 CATALOG_CONTRACTS = {
     # Issue #6781: curated alias Pooh -> Winnie The Pooh (Disney); exactly one row.
     "curated_alias_pooh_v2": r"""
-(select count(*) from core.character_alias a
-  where a.character_id='c80171c3-cd42-4d61-9a98-177e83ce0917'::uuid
+(select count(*) from core."character" c
+  join core.licensor l on l.id=c.licensor_id
+  where l.name='DISNEY' and c.name='Winnie The Pooh')=1
+and (select count(*) from core.character_alias a
+  join core."character" c on c.id=a.character_id and c.licensor_id=a.licensor_id
+  join core.licensor l on l.id=c.licensor_id
+  where l.name='DISNEY' and c.name='Winnie The Pooh'
     and a.alias='Pooh' and a.source_system='popdam3#1037'
     and a.normalized_alias=core.normalize_popsg_property_observation('Pooh')
     and a.evidence_notes='Common short name used in PopDAM search (shared-db #6781)')=1
-and (select count(*) from core.character_alias a
-  where a.normalized_alias=core.normalize_popsg_property_observation('Pooh'))=1
 """,
     # Issue #6735: admin role editor create; exact column INSERT, no DELETE.
     "dflow_prod_role_create_insert_v1": r"""

@@ -82,10 +82,34 @@ jobs:
             designflow-data-syncing
           permission-contents: read
           permission-statuses: write
+      - name: Mint a read-only App token for the observer's GitHub reads
+        id: reader
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.POP_AI_WATCHERS_APP_ID }}
+          private-key: ${{ secrets.POP_AI_WATCHERS_PRIVATE_KEY }}
+          owner: popcre
+          repositories: |
+            shared-db
+            designflow-backend
+            designflow-bff
+            designflow-frontend
+            designflow-item-master
+            designflow-tracking
+            designflow-data-syncing
+          permission-contents: read
+          permission-actions: read
+          permission-issues: read
+          permission-pull-requests: read
+          permission-statuses: read
       - name: Observe exact releases and reuse qualified canonical promotion
         env:
           # Existing central operator credential. Never copied to applications.
           GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          # Reads use this App token when minted (own allowance, shared-db#6772);
+          # writes and refused reads stay on the operator credential.
+          DFLOW_GITHUB_READ_TOKEN: ${{ steps.reader.outputs.token }}
           DFLOW_READINESS_STATUS_TOKEN: ${{ steps.publisher.outputs.token }}
           DFLOW_READINESS_APP_SLUG: ${{ steps.publisher.outputs.app-slug }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

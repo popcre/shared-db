@@ -36,7 +36,7 @@ begin
     values ('ZZC', 'ZZ001', 'Z9', 'ZCAT', 'ZA', 'zz one', 'Y', v_run, now(), h, now(), now()),
            ('ZZC', 'ZZ001', 'Z9', 'ZCAT', 'ZB', 'zz two', 'Y', v_run, now(), h, now(), now());
   insert into dflow_prod."merchGroup" (mg_id, "companyCode_fk", "divisionCode_fk", "mgTypeCode",
-      mg_code, "mgCategory")
+      mg_code, "mgCategory") overriding system value
     values (-470601, 'ZZC', 'ZZ001', 'Z9', 'ZA', 'ZCAT'),
            (-470602, 'ZZC', 'ZZ001', 'Z9', 'ZB', 'ZCAT'),
            (-470603, 'ZZC', 'ZZ001', 'Z9', 'ZB', 'ZCAT'),

@@ -19,7 +19,7 @@ END IF;
 END
 $setup$;
 \ir ../migrations/20261219003000_dflow_prod_role_create_insert_grant.sql
-\ir ../migrations/20261222110000_dflow_prod_role_create_insert_id_grant.sql
+\ir ../migrations/20261223010000_dflow_prod_role_create_insert_id_grant.sql
 DO $contract$
 DECLARE new_id integer;
 BEGIN

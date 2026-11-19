@@ -476,6 +476,15 @@ class GuardTests(unittest.TestCase):
             },
         )
 
+    def test_crm_contact_first_reissue_reason_names_eligible_split(self) -> None:
+        reason = production_migration_guard.RETIRED_VERSION_REASONS["20261225010104"]
+        self.assertIn("20261225010406 + 20261225010407", reason)
+        self.assertNotIn("20261225010304", reason)
+        self.assertEqual(
+            parse_allowlist("20261225010406,20261225010407"),
+            ["20261225010406", "20261225010407"],
+        )
+
     def test_5950_parked_derivation_reissue_original_is_retired(self) -> None:
         """20261106214905 was parked by the issue #1608 base-absent derivation
         gate: it declared derived-from: 20261015132149, a retired stamp held by

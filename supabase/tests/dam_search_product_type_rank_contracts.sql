@@ -75,9 +75,9 @@ begin
   end if;
   -- the minimum rank is met by every returned row, and nothing is hidden by the step
   select array_agg(d.entity_id order by d.entity_id), min(d.total_count) into ids, n2
-  from public.search_dam_documents('zqptype frame', '{}'::jsonb, 50, 0, array['style_group'], null, rc - 0.01, null, q, null, 0.10) d;
+  from public.search_dam_documents('zqptype frame', '{}'::jsonb, 50, 0, array['style_group'], null, (rc - 0.01)::real, null, q, null, 0.10) d;
   if not (ids @> array[g[1], g[2], g[3]]) or n2 <> n1 then raise exception 'product type: min rank hid % (total % vs %)', ids, n2, n1; end if;
-  if exists (select 1 from public.search_dam_documents('zqptype frame', '{}'::jsonb, 50, 0, array['style_group'], null, rc - 0.01, null, q, null, 0.10) d
+  if exists (select 1 from public.search_dam_documents('zqptype frame', '{}'::jsonb, 50, 0, array['style_group'], null, (rc - 0.01)::real, null, q, null, 0.10) d
              where d.rank < rc - 0.01 - 0.0001) then
     raise exception 'product type: a returned rank is below the minimum';
   end if;

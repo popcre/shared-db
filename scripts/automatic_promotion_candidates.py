@@ -71,16 +71,10 @@ ALERT_AFTER = timedelta(minutes=30)
 # timestamp>` (e.g. `-- promote-by: 2026-11-07T03:00:00Z`) in its file. Eligible
 # candidates promote earliest deadline first, then merge order.
 PROMOTE_BY_RE = re.compile(r"^--\s*promote-by:\s*(\S+)\s*$", re.MULTILINE | re.IGNORECASE)
-# #5937 backstop: after this many consecutive main-moved refusals of the SAME
-# change, the selector freezes merges for BACKSTOP_FREEZE_TTL_MINUTES before
-# re-dispatching, so the rehearsal can finish against an unmoving main.
-BACKSTOP_AFTER_STALE = 2
-# Covers the merge-queue drain wait plus the preview rehearsal until production
-# qualification takes the freeze over for the same PR (#6800).
-BACKSTOP_FREEZE_TTL_MINUTES = 40
-# #6800: a merge group validated BEFORE the freeze was set still lands after it
-# (the freeze is checked once, when the group starts). So after freezing, wait
-# for the queue to drain before reading the main SHA the rehearsal pins.
+# #6800: one freeze window starts at acquisition on every dispatch. The
+# drain spends at most 15 minutes of it, leaving the rest for dispatch and
+# preview rehearsal until production qualification takes over for the same PR.
+PROMOTION_FREEZE_TTL_MINUTES = 60
 QUEUE_DRAIN_TIMEOUT_SECONDS = 15 * 60
 QUEUE_DRAIN_POLL_SECONDS = 20
 BACKSTOP_FREEZE_OWNER = "automatic-promotion-backstop"
@@ -702,7 +696,7 @@ def classify_pr(pr: dict[str, Any], runs: list[dict[str, Any]], held: callable,
     - ("parked", {"exhausted": n, "refunds": n, "permanent": bool})
                                                    out of attempts or refunds, or a
                                                    permanent refusal (#6574)
-    - ("dispatchable", {"stale_streak": n})
+    - ("dispatchable", {})
     """
     # #6352: the production ledger is the final word. Versions already applied
     # (by any route) are delivered; retrying them only burns attempts and
@@ -772,7 +766,7 @@ def classify_pr(pr: dict[str, Any], runs: list[dict[str, Any]], held: callable,
                 and (tag in t or names_pr(pr, t))
                 and r.get("created_at", "") > pr["merged_at"]
                 and r.get("conclusion") != "success"]
-    attempts, refunds, refund_parked, stale_streak = 0, 0, False, 0
+    attempts, refunds, refund_parked = 0, 0, False
     permanent_hit = False
     for failure in sorted(failures, key=lambda r: r.get("created_at", "")):
         # #6574: a permanent refusal cannot be cured by a retry; park on this
@@ -783,9 +777,7 @@ def classify_pr(pr: dict[str, Any], runs: list[dict[str, Any]], held: callable,
         # #5937: a main-moved refusal never touched a database and is caused
         # by other people's merges -- it counts neither attempt nor refund.
         if stale(failure):
-            stale_streak += 1
             continue
-        stale_streak = 0
         if refunded(failure):
             if refunds >= MAX_REFUNDS:
                 refund_parked = True
@@ -797,7 +789,7 @@ def classify_pr(pr: dict[str, Any], runs: list[dict[str, Any]], held: callable,
                 break
     if attempts >= MAX_ATTEMPTS or refund_parked:
         return "parked", {"exhausted": attempts, "refunds": refunds, "permanent": permanent_hit}
-    return "dispatchable", {"stale_streak": stale_streak}
+    return "dispatchable", {}
 
 
 def decide(prs: list[dict[str, Any]], runs: list[dict[str, Any]], held: callable,
@@ -861,8 +853,6 @@ def decide(prs: list[dict[str, Any]], runs: list[dict[str, Any]], held: callable
             if skipped is not None:
                 skipped.append(entry)
             continue
-        if detail["stale_streak"] >= BACKSTOP_AFTER_STALE:
-            pr = {**pr, "stale_streak": detail["stale_streak"]}
         return "dispatch", pr, f"PR #{pr['number']} versions {','.join(pr['versions'])} not yet in production"
     if passed_over:
         base = "every merged migration PR not held by a review finding, production dependency or exhausted automatic attempts is in production"
@@ -1367,8 +1357,15 @@ def merge_queue_entries(repo: str) -> int:
     query = ("query($o:String!,$n:String!){repository(owner:$o,name:$n){"
              "mergeQueue(branch:\"main\"){entries(first:50){totalCount}}}}")
     data = gh("graphql", "-f", f"query={query}", "-f", f"o={owner}", "-f", f"n={name}")
-    queue = (((data or {}).get("data") or {}).get("repository") or {}).get("mergeQueue")
-    return int(((queue or {}).get("entries") or {}).get("totalCount") or 0)
+    if not isinstance(data, dict) or data.get("errors"):
+        raise ValueError("invalid merge-queue GraphQL response")
+    try:
+        count = data["data"]["repository"]["mergeQueue"]["entries"]["totalCount"]
+    except (KeyError, TypeError) as error:
+        raise ValueError("missing merge-queue entry count") from error
+    if type(count) is not int or count < 0:
+        raise ValueError("invalid merge-queue entry count")
+    return count
 
 
 def wait_for_merge_queue_drain(repo: str, timeout: float | None = None, poll: float | None = None,
@@ -1391,25 +1388,26 @@ def wait_for_merge_queue_drain(repo: str, timeout: float | None = None, poll: fl
         if count == 0:
             print("freeze: merge queue drained; main is stable for the rehearsal")
             return True
-        if clock() >= deadline:
+        remaining = deadline - clock()
+        if remaining <= 0:
             print(f"::warning::merge queue still holds {count} entr(ies) after {int(timeout)} s; dispatching anyway")
             return False
         print(f"freeze: waiting for {count} merge-queue entr(ies) validated before the freeze")
-        sleep(poll)
+        sleep(min(poll, remaining))
 
 
 def backstop_freeze(pr: dict[str, Any]) -> bool:
-    """#5937/#6800: freeze merges for BACKSTOP_FREEZE_TTL_MINUTES before every
+    """#5937/#6800: freeze merges for PROMOTION_FREEZE_TTL_MINUTES before every
     dispatch. The merge-queue gate refuses non-tolerant groups while it is live;
     production qualification takes it over for this PR and the production
     job's always() cleanup releases it, else the TTL does. Failure to freeze
     (e.g. another PR's freeze is live) is a warning: dispatch still proceeds."""
-    print(f"freeze: PR #{pr['number']} (main-moved refusals in a row: {pr.get('stale_streak', 0)}); "
-          f"freezing merges for {BACKSTOP_FREEZE_TTL_MINUTES} minutes")
+    print(f"freeze: PR #{pr['number']}; "
+          f"freezing merges for {PROMOTION_FREEZE_TTL_MINUTES} minutes")
     result = subprocess.run(
         ["node", os.path.join(HERE, "manage-migration-coordination.mjs"), "--acquire-promotion-freeze",
          "--pr", str(pr["number"]), "--owner", BACKSTOP_FREEZE_OWNER,
-         "--ttl-minutes", str(BACKSTOP_FREEZE_TTL_MINUTES)],
+         "--ttl-minutes", str(PROMOTION_FREEZE_TTL_MINUTES)],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
     print(result.stdout.strip())
     if result.returncode != 0:

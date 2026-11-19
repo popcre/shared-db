@@ -16,6 +16,7 @@ begin;
 
 do $$
 declare
+  v_runner_role text;
   v_profile uuid;
   v_auth uuid;
   v_sales_role uuid;
@@ -70,6 +71,7 @@ begin
     raise exception 'fixture customers were not created';
   end if;
 
+  select current_user into v_runner_role;  -- harness role for fixture surgery
   perform set_config('request.jwt.claim.sub', v_auth::text, true);
   perform set_config('role', 'authenticated', true);
 
@@ -121,7 +123,11 @@ begin
   v_hazard := api.crm_create_contact(
     p_full_name => '6819 Hazard Contract',
     p_email => 'hazard6819' || chr(64) || v_a_domain);
+  -- Relation surgery runs as the harness role: the authenticated test role
+  -- must not (and cannot) delete relation rows directly.
+  perform set_config('role', v_runner_role, true);
   delete from core.contact_company where contact_id = v_hazard;
+  perform set_config('role', 'authenticated', true);
   perform api.crm_update_contact(
     p_contact_id => v_hazard,
     p_email => 'stillmatches' || chr(64) || v_a_domain,
@@ -143,9 +149,15 @@ begin
     raise exception 'counts rows missing for fixture customers';
   end if;
 
-  -- Secondary relation to B: must NOT move the count (old bug: any buyer row).
+  -- The view's attribution tiebreak is the random uuid id, so a fixture with
+  -- two unflagged rows is not deterministic. Real data marks the primary row:
+  -- pin A as primary (as the CRM UI does), then add B as a secondary.
+  perform set_config('role', v_runner_role, true);
+  update core.contact_company set is_primary = true
+   where contact_id = v_contact and company_id = v_customer_a;
   insert into core.contact_company (contact_id, company_id, relationship_type, is_primary)
   values (v_contact, v_customer_b, 'buyer', false);
+  perform set_config('role', 'authenticated', true);
   select contact_count into v_count_a_after
     from api.crm_customer_counts() where customer_id = v_customer_a;
   select contact_count into v_count_b_after
@@ -155,9 +167,11 @@ begin
       v_count_b_before, v_count_b_after;
   end if;
 
-  -- Making B the contact's ONLY relation (drop the A row) must move the count:
-  -- B gains one, A loses one.
-  delete from core.contact_company where contact_id = v_contact and company_id = v_customer_a;
+  -- Moving the primary flag to B must move the count: B gains one, A loses one.
+  perform set_config('role', v_runner_role, true);
+  update core.contact_company set is_primary = (company_id = v_customer_b)
+   where contact_id = v_contact;
+  perform set_config('role', 'authenticated', true);
   select contact_count into v_count_a_after
     from api.crm_customer_counts() where customer_id = v_customer_a;
   select contact_count into v_count_b_after

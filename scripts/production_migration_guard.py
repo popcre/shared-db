@@ -139,6 +139,12 @@ HARD_BLOCKED = {
     # stamps and its live copy was re-stamped as 20261202120000 when review finding
     # #6496's fixes landed. Never apply; the re-stamp owns the rows.
     "20261119200000",
+    # #6805: 20261223010100 (merged PR #6812) used its three automatic attempts
+    # on preview runs 44466640483, 44467450263 and 44468368913, all refused by
+    # unmerged PR #6818's rehearsal rows in the shared preview ledger (not by
+    # this change). Never applied anywhere. Reissued byte-identical as
+    # 20261223020101. Never apply.
+    "20261223010100",
     # #5950: parked 20261106214905 (PR #5913) declared derived-from:
     # 20261015132149, a retired stamp held by no preview or production ledger,
     # so the issue #1608 base-absent derivation gate blocked its preview
@@ -456,6 +462,7 @@ HARD_BLOCKED = {
 # verifier imports these names from here; pending-status policy must not import
 # that application verifier back into the production guard's execution closure.
 RETIRED_VERSION_REASONS = {
+    "20261223010100": "PR #6812 (popdam #1103 style_guide_file_groups gate): never applied anywhere; out of automatic attempts after preview runs 44466640483, 44467450263, 44468368913 were refused by unmerged PR #6818 rehearsal rows in the preview ledger (issue #6805). Reissued byte-identical as 20261223020101, which owns the change. Never apply.",
     "20261218062459": "PR #6655 (#6457): review finding #6657 confirmed that the merged revoke set breaks the authenticated ColdLion triage contract (#5004), and November 18, 2026 read-only production ledger verification found no applied row. Preserve this source for audit; never apply it. Deliver separately qualified grants under a fresh version.",
     "20261116013153": "PR #6433 (#6415 revoke anon/authenticated EXECUTE on trigger functions): applied on preview before merge (run 43789639543 at a2311d0); automatic qualification refuses that evidence permanently because the guard differs from merge commit 3b0c25e and the migration is high-risk (runs 44092383652, 44093787649). Never applied to production. Reissued with identical SQL as 20261204000300. Never apply this original.",
     "20261113174422": "PR #6263 (MM nickname 'Mickey Group'): parked after transient refusals (runs 43509901476, 43511779725, 43522272522, 43527810278); never applied. Superseded by applied reissue 20261115024204 (same SQL plus one comment line); production core.property MM nickname reads 'Mickey Group'. Never apply this original.",

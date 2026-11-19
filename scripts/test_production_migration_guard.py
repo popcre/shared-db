@@ -4792,6 +4792,15 @@ class StrandedRecovery5932RetirementTests(unittest.TestCase):
                         classify_pending_version(version, ledger, REPO)["kind"], "retired"
                     )
 
+    def test_style_guide_file_groups_reissue_is_byte_identical(self) -> None:
+        migrations = REPO / "supabase" / "migrations"
+        original = migrations / "20261223010100_style_guide_file_groups_popsg_gate.sql"
+        reissue = migrations / "20261223020101_style_guide_file_groups_popsg_gate.sql"
+        self.assertEqual(
+            original.read_bytes().replace(b"\r\n", b"\n"),
+            reissue.read_bytes().replace(b"\r\n", b"\n"),
+        )
+
     def test_review_fix_6261_entries_are_retired(self):
         for version, replacement in (
             ("20261113162637", "20261115022307"),

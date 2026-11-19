@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "source": "scripts/report-token-allowance.mjs",
+  "sites": [
+    {
+      "source": "scripts/report-token-allowance.mjs",
+      "site": "scripts/report-token-allowance.mjs:6",
+      "semantic_key": "scripts/report-token-allowance.mjs:4c3f61463f0168a037ccc77e0ffa20abc8d4284f8385f8b731e5ea2b67c1a48e:context-a18b6597cfbbe8bbed646bc940b0a41e0dadf665dc8961f6f69b1aaedf29e434",
+      "legacy_semantic_key": "scripts/report-token-allowance.mjs:4c3f61463f0168a037ccc77e0ffa20abc8d4284f8385f8b731e5ea2b67c1a48e:1",
+      "line_sha256": "4c3f61463f0168a037ccc77e0ffa20abc8d4284f8385f8b731e5ea2b67c1a48e",
+      "disposition": "excluded",
+      "reason": "Comment naming the gh api rate_limit command this script replaces (shared-db#6772); a diagnostic token-allowance report that derives no throughput claim."
+    }
+  ]
+}

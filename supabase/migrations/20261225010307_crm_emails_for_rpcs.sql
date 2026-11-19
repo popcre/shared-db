@@ -1,30 +1,17 @@
--- Per-record email pages/counts for the CRM drawers.
--- Claim: popcrm-web issue #40, comment 7000445984 (2026-11-19).
--- Objects: new index crm_email_message_sender_idx on crm.email_message(sender);
---          new function api.crm_emails_for_page(uuid, text, uuid, integer, integer);
---          new function api.crm_emails_for_count(uuid, text, uuid).
+-- Promotable re-issue of 20261223010105_crm_emails_for_rpcs.sql (CRM audit batch, popcrm-web #39/#57/#68/#69/#40).
+-- Claim: popcre/shared-db#6820 (CRM audit fixes batch); re-issue chain claim
+-- filed alongside this PR. Version reserved atomically (refs/db-claims).
 --
--- The customer/contact/program drawers read emails by filtering the
--- security-invoker view api.crm_email_routing_queue per record; that view's
--- per-row crm_read policy evaluates app.has_app_access('crm') for every one of
--- tens of thousands of rows and times out on full-history reads (the measured
--- pattern that produced 20261027182138). These two functions follow
--- api.crm_email_routing_stage_page / _stage_counts exactly: security definer,
--- ONE app.has_app_access('crm') check, granted to authenticated only, reading
--- crm.email_message directly. Row shape is the stage page's shape, which is
--- the queue view's shape (id .. updated_at below).
+-- WHY RE-ISSUED: the original batch rehearsed on preview outside the dispatch
+-- lane, leaving orphaned preview-ledger rows that no recovery or reconciliation
+-- flow can clear (no dispatched run exists to prove), so neither the batch nor
+-- any derived migration can pass the production base guard. This PR reverts the
+-- whole unproductive chain from main and re-authors its content under fresh
+-- versions, so every lane applies it normally.
 --
--- Exactly one of (p_company_id, p_sender, p_opportunity_id) must be provided;
--- a drawer asks for one record's emails, and an unfiltered call would be the
--- full-table scan this function exists to avoid. p_sender is matched with
--- e.sender = p_sender so the new sender index serves it; an empty string
--- counts as not provided.
+-- CONTENT: byte-identical to 20261223010105_crm_emails_for_rpcs.sql.
 --
--- The sender index: sender had no index (verified against production indexes
--- 2026-11-19); company/department/opportunity/received_at already have theirs.
---
--- derived-from: none
--- (the structure follows 20261027182138).
+-- reverted-in-this-pr: 20261223010105_crm_emails_for_rpcs.sql
 
 create index if not exists crm_email_message_sender_idx
   on crm.email_message (sender);

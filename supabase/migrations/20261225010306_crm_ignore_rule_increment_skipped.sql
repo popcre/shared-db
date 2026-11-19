@@ -1,21 +1,17 @@
--- Atomic ignore-rule skip counter.
--- Claim: popcrm-web issue #69, comment 7000445808 (2026-11-19).
--- Object: new function crm.increment_ignore_rule_emails_skipped(uuid, integer).
+-- Promotable re-issue of 20261223010104_crm_ignore_rule_increment_skipped.sql (CRM audit batch, popcrm-web #39/#57/#68/#69/#40).
+-- Claim: popcre/shared-db#6820 (CRM audit fixes batch); re-issue chain claim
+-- filed alongside this PR. Version reserved atomically (refs/db-claims).
 --
--- The popcrm-web worker increments crm.ignore_rule.emails_skipped as
--- read-modify-write (fetch row, add in JS, update), so two concurrent worker
--- passes lose counts (popcrm-web #69, fix_bugs.md item F). This function makes
--- the increment one atomic UPDATE inside the database.
+-- WHY RE-ISSUED: the original batch rehearsed on preview outside the dispatch
+-- lane, leaving orphaned preview-ledger rows that no recovery or reconciliation
+-- flow can clear (no dispatched run exists to prove), so neither the batch nor
+-- any derived migration can pass the production base guard. This PR reverts the
+-- whole unproductive chain from main and re-authors its content under fresh
+-- versions, so every lane applies it normally.
 --
--- Schema crm, NOT api: the consumer is the host worker's service_role key, the
--- crm.worker_delta_cursor function pattern (20260812010000) -- no browser role
--- ever calls it, so it is not exposed through the api schema. crm.ignore_rule
--- has no updated_at column (verified 2026-11-19), so nothing else is touched.
+-- CONTENT: byte-identical to 20261223010104_crm_ignore_rule_increment_skipped.sql.
 --
--- greatest(coalesce(p_n,1),0): a null or negative argument can never DECREASE
--- the counter -- this function only ever adds.
--- derived-from: none
--- (the grant pattern follows 20260812010000).
+-- reverted-in-this-pr: 20261223010104_crm_ignore_rule_increment_skipped.sql
 
 create or replace function crm.increment_ignore_rule_emails_skipped(
   p_rule_id uuid,

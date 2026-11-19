@@ -1,19 +1,17 @@
--- Rewrite api.crm_customer_counts to compute each contact's top relation
--- exactly once.
--- Claim: popcre/shared-db#6819 / #6837 (PR #6836 follow-up; found by running
--- the contract test against preview).
+-- Promotable re-issue of 20261225010004_crm_customer_counts_one_pass.sql (CRM audit batch, popcrm-web #39/#57/#68/#69/#40).
+-- Claim: popcre/shared-db#6820 (CRM audit fixes batch); re-issue chain claim
+-- filed alongside this PR. Version reserved atomically (refs/db-claims).
 --
--- The 20261225010001 shape evaluated the top-relation lateral subquery per
--- (contact, customer) pair, which is quadratic and does not finish on real
--- volumes (the contract test itself timed out calling the function on
--- preview). This rewrite computes the per-contact attribution once in a
--- single lateral pass, aggregates both counts with hash aggregates, and
--- joins them to the customer list — same semantics (top core.contact_company
--- row by is_primary desc nulls last, id; any relationship_type;
--- crm.contact_ext.archived_at excluded; program_count = non-archived
--- crm.opportunity), one scan each.
+-- WHY RE-ISSUED: the original batch rehearsed on preview outside the dispatch
+-- lane, leaving orphaned preview-ledger rows that no recovery or reconciliation
+-- flow can clear (no dispatched run exists to prove), so neither the batch nor
+-- any derived migration can pass the production base guard. This PR reverts the
+-- whole unproductive chain from main and re-authors its content under fresh
+-- versions, so every lane applies it normally.
 --
--- derived-from: 20261225010001
+-- CONTENT: byte-identical to 20261225010004_crm_customer_counts_one_pass.sql. Supersedes the shapes from 20261223010101/10102 (also reverted here) with this one-pass definition.
+--
+-- reverted-in-this-pr: 20261225010004_crm_customer_counts_one_pass.sql
 
 create or replace function api.crm_customer_counts()
 returns table (

@@ -1,24 +1,20 @@
--- Fix-forward for review finding popcre/shared-db#6819 on PR #6818
--- (popcrm-web #39 / #57).
--- Claim: popcre/shared-db#6819 (this migration closes its three findings).
+-- Promotable re-issue of the approved api.crm_update_contact clear-field shape.
+-- Claim: popcre/shared-db#6820 (CRM audit fixes batch; popcrm-web #39), re-issue
+-- chain claim filed alongside this PR. Version reserved atomically
+-- (refs/db-claims).
 --
--- 1. Precedence made explicit and pinned: a p_clear_email / p_clear_phone /
---    p_clear_job_title flag WINS over a same-call value. The case expressions
---    in 20261223010101 already produce null when the flag is set (so the
---    contact_attach_customer_by_email trigger never sees a re-attached
---    address on a clear), but the contract was undocumented; it is now
---    stated here and pinned by supabase/tests/crm_update_contact_clear_contracts.sql.
--- 2. Normalization parity with api.crm_create_contact (finding 2): email is
---    lowercased and trimmed before the citext cast, phone and job title are
---    trimmed (nullif(btrim())), so the same value round-trips identically
---    whichever RPC wrote it.
--- 3. api.crm_customer_counts.contact_count mirrors api.crm_contact_list
---    exactly (finding 3): the view attributes a contact to the customer of
---    its TOP contact_company row (is_primary desc, id), regardless of
---    relationship_type; the count now uses the same top-row rule instead of
---    counting every buyer relation.
+-- WHY: the original chain (20261223010101 + 20261225010001 + 20261225010003,
+-- all reverted in this PR) cannot promote: its preview rehearsal predates the
+-- governed lane, so preview's orphaned ledger rows leave no dispatch evidence
+-- and the production base guard refuses every derived migration. This file
+-- carries the identical approved end state under a fresh version, with the
+-- legacy 15-argument overload dropped in the same transaction (every legacy
+-- named parameter exists in the new signature, so existing callers keep
+-- resolving). The drop references no retired name: the pre-batch overload is
+-- the live shape on production and nothing in this history dropped it.
 --
--- derived-from: 20261223010101, 20261223010102
+-- reverted-in-this-pr: 20261223010101, 20261225010001, 20261225010003,
+-- 20261225010104
 
 CREATE OR REPLACE FUNCTION api.crm_update_contact(p_contact_id uuid, p_first_name text DEFAULT NULL::text, p_last_name text DEFAULT NULL::text, p_full_name text DEFAULT NULL::text, p_email text DEFAULT NULL::text, p_phone text DEFAULT NULL::text, p_job_title text DEFAULT NULL::text, p_company_id uuid DEFAULT NULL::uuid, p_crm_department_id uuid DEFAULT NULL::uuid, p_contact_type text DEFAULT NULL::text, p_scope text DEFAULT NULL::text, p_clear_company boolean DEFAULT false, p_clear_crm_department boolean DEFAULT false, p_clear_contact_type boolean DEFAULT false, p_clear_scope boolean DEFAULT false, p_clear_email boolean DEFAULT false, p_clear_phone boolean DEFAULT false, p_clear_job_title boolean DEFAULT false)
  RETURNS core.contact
@@ -214,51 +210,7 @@ grant execute on function api.crm_update_contact(uuid, text, text, text, text, t
 comment on function api.crm_update_contact(uuid, text, text, text, text, text, text, uuid, uuid, text, text, boolean, boolean, boolean, boolean, boolean, boolean, boolean) is
   'CRM contact update. Precedence: p_clear_email / p_clear_phone / p_clear_job_title beat a same-call value (both = clear). Values are normalized like crm_create_contact (email lowercased+trimmed, phone/title trimmed).';
 
-create or replace function api.crm_customer_counts()
-returns table (
-  customer_id uuid,
-  contact_count bigint,
-  program_count bigint
-)
-language plpgsql
-stable
-security definer
-set search_path = 'app', 'core', 'crm', 'public'
-as $$
-begin
-  if not app.has_app_access('crm') then
-    raise exception 'crm: not authorized' using errcode = 'insufficient_privilege';
-  end if;
-
-  return query
-  select c.id,
-         (select count(*)
-            from core.contact ct
-           where (select x.company_id
-                    from core.contact_company x
-                   where x.contact_id = ct.id
-                   order by x.is_primary desc nulls last, x.id
-                   limit 1) = c.id
-             and not exists (
-                   select 1 from crm.contact_ext xe
-                    where xe.contact_id = ct.id and xe.archived_at is not null
-                 )) as contact_count,
-         (select count(*)
-            from crm.opportunity o
-           where o.company_id = c.id
-             and coalesce(o.status, '') <> 'archived') as program_count
-  from core.customer c
-  where not exists (
-    select 1 from crm.customer_ext xe
-     where xe.customer_id = c.id and xe.archived_at is not null
-  );
-end;
-$$;
-
-revoke all on function api.crm_customer_counts() from public;
-revoke all on function api.crm_customer_counts() from anon;
-revoke all on function api.crm_customer_counts() from authenticated;
-grant execute on function api.crm_customer_counts() to authenticated;
-
-comment on function api.crm_customer_counts() is
-  'CRM per-customer counts. contact_count mirrors api.crm_contact_list exactly: a contact counts for the customer of its TOP core.contact_company row (is_primary desc, id, any relationship_type), excluding CRM-archived contacts; program_count = non-archived crm.opportunity rows. One row per non-archived customer. Hard-gated on app.has_app_access(''crm'').';
+drop function if exists api.crm_update_contact(
+  uuid, text, text, text, text, text, text, uuid, uuid, text, text,
+  boolean, boolean, boolean, boolean
+);

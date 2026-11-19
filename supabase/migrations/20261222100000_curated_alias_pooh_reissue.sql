@@ -1,4 +1,5 @@
--- derived-from: 20261221010000
+-- derived-from: none
+-- (Original 20261221010000 is retired and was never applied anywhere, so no ledger can hold it as a base.)
 -- Curated alias reissue (shared-db #6781, popdam3#1037): "Pooh" names the Disney character "Winnie The Pooh".
 -- 20261221010000 abstained in preview because the parent row id differs there; this resolves the parent by
 -- licensor and exact name. Where the parent is absent (preview) it is a no-op; production verification

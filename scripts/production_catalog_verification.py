@@ -4755,13 +4755,8 @@ def render_report(
         )
         add("")
     elif targets.is_empty():
-        # ISSUE #6658. A post-apply run whose lexer derived no catalog object
-        # must report NOT VERIFIABLE, not FAILURE. The apply already succeeded
-        # and the ledger is the delivery record; coloring the run red here
-        # contradicted the ledger and burned refund-eligible attempts. Pre-merge
-        # (#6588) refuses NEW migrations this lexer cannot read; this leg only
-        # classifies what already landed. A false `-- catalog-verification:
-        # no-op` claim remains a failure in its own right.
+        # The ledger records delivery. Enforcing verification still needs
+        # evidence or a checked reason why no durable target is expected (#697).
         if declaration is not None and not declaration["accepted"]:
             failures.append(
                 f"{declaration['version']} declares itself a catalog-verification "
@@ -4774,16 +4769,16 @@ def render_report(
                     f"{version}: {offenders}"
                     for version, offenders in sorted(targets.pure_data["rejected"].items())
                 )
-                detail = f" Content the pure-data scan could not classify as data-only: {named}."
-            add("## Catalog verification")
-            add("")
-            add(
-                "- **Applied, not verifiable by catalog.** The allowlisted "
-                "migrations named no catalog object this lexer can read "
-                "(dynamic SQL, `do` bodies, or statements outside the "
-                "lexer). The migration ledger is the record of what applied."
+                detail = f" It is also NOT pure-data: {named}."
+            failure = (
+                "the allowlisted migrations named NO catalog object this lexer "
+                "can read, so this step proved nothing. The migration ledger "
+                "records delivery. Provide hash-bound verification evidence "
+                "or a reviewed explanation that no durable target is expected."
                 + detail
             )
+            failures.append(failure)
+            add("- **Not verifiable by catalog.** " + failure)
             add("")
 
     if (

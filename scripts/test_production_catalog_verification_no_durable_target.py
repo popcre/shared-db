@@ -87,21 +87,17 @@ class NoDurableTargetTests(unittest.TestCase):
         self.assertEqual(failures, [])
         self.assertIn("no durable target", markdown)
 
-    def test_missing_sidecar_is_not_verifiable(self):
-        # #6658: no sidecar and no readable catalog object → not-verifiable
-        # (the ledger is the delivery record), not a red post-apply failure.
-        _, (markdown, failures) = self.run_batch({DYNAMIC: DYNAMIC_SQL}, {})
-        self.assertEqual(failures, [])
-        self.assertIn("not verifiable", markdown.lower())
+    def test_missing_sidecar_still_fails(self):
+        _, (_, failures) = self.run_batch({DYNAMIC: DYNAMIC_SQL}, {})
+        self.assertTrue(any("NO catalog object" in f for f in failures))
 
-    def test_second_unreviewed_dynamic_file_is_not_verifiable(self):
+    def test_second_unreviewed_dynamic_file_still_fails(self):
         other = "20261201000003"
-        _, (markdown, failures) = self.run_batch(
+        _, (_, failures) = self.run_batch(
             {DYNAMIC: DYNAMIC_SQL, other: DYNAMIC_SQL},
             {DYNAMIC: _sidecar(DYNAMIC_SQL, DYNAMIC)},
         )
-        self.assertEqual(failures, [])
-        self.assertIn("not verifiable", markdown.lower())
+        self.assertTrue(any("NO catalog object" in f for f in failures))
 
     def test_mixed_batch_still_verifies_visible_objects(self):
         targets, (_, failures) = self.run_batch(

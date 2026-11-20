@@ -851,14 +851,13 @@ class RenderReportTests(unittest.TestCase):
         self.assertEqual(len(failures), 1)
         self.assertIn("NO evidence", failures[0])
 
-    def test_nothing_to_check_is_not_verifiable(self):
-        # #6658: an empty target set reports "applied, not verifiable by
-        # catalog" with the ledger as the delivery record — not a hard failure
-        # that contradicts a successful apply.
+    def test_nothing_to_check_is_a_hard_failure(self):
+        # #697 exists because a green tick was mistaken for evidence. A run in
+        # which this step proved NOTHING must not report itself green.
         empty = Targets(set(), set(), set(), set(), set(), set())
-        markdown, failures = self.render(None, targets=empty)
-        self.assertEqual(failures, [])
-        self.assertIn("not verifiable", markdown.lower())
+        _, failures = self.render(None, targets=empty)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("proved nothing", failures[0])
 
     def test_missing_function_is_a_hard_failure(self):
         # The lane knows this expected answer identically to to_regclass: an
@@ -1645,16 +1644,17 @@ class NoopDeclarationTests(unittest.TestCase):
         self.assertEqual(failures, [])
         self.assertIn("Pure-data migration", markdown)
 
-    def test_an_undeclared_migration_the_lexer_cannot_read_is_not_verifiable(self):
-        # #6658: the post-apply leg reports not-verifiable for batches this
-        # lexer cannot read (ledger is the delivery record). Pre-merge #6588
-        # refuses NEW migrations of this shape.
+    def test_an_undeclared_migration_the_lexer_cannot_read_still_fails(self):
+        # The refusal survives for everything that is NOT pure data: catalog
+        # DDL the statement lexer derived nothing from (here, hidden in a `do`
+        # body) still proves nothing.
         targets, (markdown, failures) = self.render(
             "do $$ begin execute 'create table plm.x(id int)'; end $$;"
         )
         self.assertTrue(targets.is_empty())
-        self.assertEqual(failures, [])
-        self.assertIn("not verifiable", markdown.lower())
+        self.assertEqual(len(failures), 1)
+        self.assertIn("proved nothing", failures[0])
+        self.assertIn("NOT pure-data", failures[0])
 
     def test_a_schema_comment_only_batch_checks_the_exact_comment(self):
         targets = targets_for("comment on schema core is 'it''s core';")
@@ -1681,19 +1681,17 @@ class NoopDeclarationTests(unittest.TestCase):
         self.assertEqual(targets.required_relations, ["plm.a", "plm.b"])
         self.assertEqual(targets.functions, ["plm.f"])
 
-    def test_a_comment_on_an_unreadable_object_is_not_verifiable(self):
-        targets, (markdown, failures) = self.render("comment on policy p on plm.a is 'x';")
+    def test_a_comment_on_an_unreadable_object_still_proves_nothing(self):
+        targets, (_, failures) = self.render("comment on policy p on plm.a is 'x';")
         self.assertTrue(targets.is_empty())
-        self.assertEqual(failures, [])
-        self.assertIn("not verifiable", markdown.lower())
+        self.assertIn("proved nothing", failures[0])
 
     def test_a_comment_beside_a_data_statement_adds_no_target(self):
-        targets, (markdown, failures) = self.render(
+        targets, (_, failures) = self.render(
             "comment on schema core is 'x';\nupdate plm.widget set a = 1;"
         )
         self.assertTrue(targets.is_empty())
-        self.assertEqual(failures, [])
-        self.assertIn("not verifiable", markdown.lower())
+        self.assertIn("proved nothing", failures[0])
 
     def test_a_declared_and_checked_no_op_passes_with_its_reason_recorded(self):
         targets, (markdown, failures) = self.render(self.DATA_ONLY)

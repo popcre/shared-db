@@ -1,50 +1,62 @@
-"""#6658: post-apply catalog verification reports NOT VERIFIABLE instead of
-failing correctly applied runs whose lexer read no catalog object.
+"""Post-apply verification distinguishes delivery from catalog evidence.
 
-No database. Pure derivation + reporting on temporary files.
+No database. Derivation, reporting, and enforcement on temporary files.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from production_catalog_verification import (  # noqa: E402
     derive_targets,
     render_report,
+    verify,
 )
 
 VERSION = "20261204000300"
 
 
+def write_migration(root: Path, sql: str) -> Path:
+    migrations = root / "supabase" / "migrations"
+    migrations.mkdir(parents=True)
+    path = migrations / f"{VERSION}_t.sql"
+    path.write_text(sql, encoding="utf-8")
+    return path
+
+
 def render(sql: str, catalog=None):
     with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        migrations = root / "supabase" / "migrations"
-        migrations.mkdir(parents=True)
-        path = migrations / f"{VERSION}_t.sql"
-        path.write_text(sql, encoding="utf-8")
+        path = write_migration(Path(tmp), sql)
         targets = derive_targets({VERSION: path}, [VERSION])
-        if catalog is None:
-            catalog = {"relations": []}
         return targets, render_report([VERSION], targets, catalog, None, [], True)
 
 
-class NotVerifiableInsteadOfFailure(unittest.TestCase):
-    def test_dynamic_do_block_reports_not_verifiable_with_no_failures(self):
-        sql = (
-            "do $$\n"
-            "begin\n"
-            "  execute format('drop table if exists %I.%I', 'tmp', 'scratch');\n"
-            "end $$;\n"
-        )
-        targets, (markdown, failures) = render(sql)
-        self.assertTrue(targets.is_empty())
-        self.assertEqual(failures, [])
-        self.assertIn("Applied, not verifiable by catalog", markdown)
+class NotVerifiableFailsEnforcement(unittest.TestCase):
+    def test_opaque_batch_fails_enforcement_without_catalog_evidence(self):
+        sql = "do $$ begin execute 'create table public.opaque (id int)'; end $$;\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_migration(root, sql)
+            out = root / "out"
+            with (
+                mock.patch("production_catalog_verification.run_query") as query,
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()) as stderr,
+            ):
+                status = verify(root, VERSION, out, "synthetic", "synthetic", enforcing=True)
+            query.assert_not_called()
+            markdown = (out / "production-catalog-verification.md").read_text(encoding="utf-8")
+        self.assertEqual(status, 1)
+        self.assertIn("proved nothing", stderr.getvalue())
+        self.assertIn("Not verifiable by catalog", markdown)
+        self.assertIn("No catalog evidence was produced", markdown)
         self.assertIn("ledger", markdown.lower())
 
     def test_rejected_noop_claim_still_fails(self):
@@ -63,11 +75,8 @@ class NotVerifiableInsteadOfFailure(unittest.TestCase):
 
     def test_absent_catalog_with_real_targets_still_fails(self):
         sql = "create table public.real_target (id int);\n"
-        targets, (_, failures) = render(sql, catalog=None if False else {})
-        # Empty dict is not None; force the NO-evidence path with a true None
-        # via a direct call below.
+        targets, (_, failures) = render(sql, catalog=None)
         self.assertFalse(targets.is_empty())
-        markdown, failures = render_report([VERSION], targets, None, None, [], True)
         self.assertTrue(failures)
         self.assertIn("NO evidence", failures[0])
 

@@ -1,5 +1,5 @@
 ---
-summary: "Nov 20 #5747 Step 3 decision: all six candidates KEEP (live readers found); no safe drops; close-out evaluated"
+summary: "Nov 20 #5747 Step 3 decision: all six candidates KEEP (live readers found); no safe drops; fresh search performance score remains open"
 kind: proof
 status: done
 read-when: closing popcre/shared-db#5747 or reviewing the Nov 20 assets index decision
@@ -144,13 +144,13 @@ health check (`db-bloat-weekly.yml`, #5886) continues to watch heap/live.
 
 ## Step 3 disposition tally (46 indexes)
 
-- **38 KEEP** (including 2 constraint-backed, 1 positive decision #6011, 6 now with reader proof)
+- **44 KEEP** (including 2 constraint-backed, 1 positive decision #6011, 6 residual candidates now with reader proof)
 - **2 out-of-scope** → #5610 shared pair (`idx_assets_tags`, `idx_assets_full_text_search`)
 - **0 drop candidates** — the completed audit proves there are no safe drops
 
-This satisfies the plan's Step 3 completion condition: "every `assets` inventory entry has
-a recorded keep/drop/out-of-scope disposition" and "a completed audit proves there are no
-safe drops." No migration is needed.
+These totals account for all 46 indexes and satisfy the plan's Step 3 completion condition:
+"every `assets` inventory entry has a recorded keep/drop/out-of-scope disposition" and "a
+completed audit proves there are no safe drops." No migration is needed.
 
 ## §13 close-out evaluation
 
@@ -159,13 +159,13 @@ safe drops." No migration is needed.
 | heap ≤ 400 MB | MET | 390 MB; byte-identical Nov 12 → Nov 16 → Nov 18 → now |
 | heap ≤ 2x live bytes for 7 days | MET | 1.82 (limit 2.0) at every reading since Nov 12 |
 | HOT ratio ≥ 70% | RETIRED by recorded evidence | Remaining writes change GIN-indexed `tags`; retired with the daily bloat job (plan Step 6; recorded on #5747) |
-| broad-search total < 3 s; Search test set typical < 3 s, unchanged pass count | MET (last scored run) | u2giants/popdam3 run 43355019011 (Nov 12): PopDAM 119/119, p50 1.0 s, p95 2.2 s |
+| broad-search total < 3 s; Search test set typical < 3 s, unchanged pass count | NOT RE-SCORED Nov 20 | Last score was u2giants/popdam3 run 43355019011 (Nov 12): PopDAM 119/119, p50 1.0 s, p95 2.2 s. No fresh score was run for this decision; indexes grew from 825 MB (Nov 12) to 841 MB (Nov 20), so the Nov 12 result does not establish Nov 20 performance. |
 | all PRs merged | MET | PR #6682 (Nov 18 re-check) merged 2026-11-18; this record's PR merges with it |
 | migrations promoted; popdam3 writers deployed | MET | Recorded in plan STATUS Steps 1–5 |
 | STATUS table updated with artifacts | MET (this PR) | Step 3 row updated with this record |
-| handoff updated | MET (this PR) | Handoff updated in the same PR |
-| Step 3 complete | MET | Completed audit: 38 KEEP + 2 out-of-scope + 0 drops; every entry has a disposition; no removals needed |
+| handoff updated | MET (this PR) | New open-work handoff records that a fresh search score and live close-out are still owed |
+| Step 3 complete | MET | Completed audit: 44 KEEP + 2 out-of-scope + 0 drops; all 46 entries have a disposition; no removals needed |
 
-**Close-out verdict: all §13 checks pass. #5747 may close with live proof.**
+**Close-out verdict: Step 3 is complete; #5747 remains open pending a fresh search performance score and live proof.**
 
 No production object was changed. All reads used `read_only: true`.

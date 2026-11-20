@@ -6,8 +6,8 @@ promotion is automatic once the change merged, the preview rehearsal passed and
 the tests passed, unless a blocking `review-finding` issue references the
 change. "References" means an issue labelled `review-finding` whose body
 contains the source PR URL (the advisory ai-review workflow writes it).
-"Blocking" means open, or closed as not planned within the last 24 hours,
-except a false finding evidenced by a successful trusted fixer target job.
+"Blocking" means open. A closed finding never holds, whatever its close
+reason (owner ruling 2026-10-29; 24-hour not-planned window removed 2026-11-20).
 
 The query runs live, immediately before promotion, never at merge time.
 
@@ -30,11 +30,20 @@ LABEL = "review-finding"
 WINDOW = timedelta(hours=24)
 INVALID_LABEL = "fixer-invalid"
 INVALID_MARKER = re.compile(r"<!-- review-fixer-invalid:v1 (\{[^\n]*\}) -->")
+# #6701: a finding reviewed against a head that is no longer the delivered PR
+# head must not hold production. The advisory review is advice only (owner
+# ruling 2026-10-29); a superseded head is not actionable against the merge.
+HEAD_SHA_RE = re.compile(r"^Head SHA:\s*`([0-9a-f]{40})`", re.M)
 
 
 def references(body: str | None, repository: str, pr: int) -> bool:
     url = re.escape(f"https://github.com/{repository}/pull/{pr}")
     return re.search(url + r"(?![0-9])", body or "") is not None
+
+
+def finding_head_sha(issue: dict[str, Any]) -> str | None:
+    match = HEAD_SHA_RE.search(issue.get("body") or "")
+    return match.group(1).lower() if match else None
 
 
 def _time(text: str | None) -> datetime | None:
@@ -48,16 +57,21 @@ def blocking(issue: dict[str, Any], now: datetime) -> bool:
         return False
     if issue.get("state") == "open":
         return True
-    if issue.get("state_reason") == "not_planned":
-        closed = _time(issue.get("closed_at"))
-        return closed is None or now - closed < WINDOW
+    # Owner ruling 2026-10-29 (docs/owner-rulings.md): hold only while a
+    # finding is open. A closed finding releases promotion whatever its close
+    # reason. Albert 2026-11-20: "nothing should be allowed to hold other work
+    # back for 20 hours" -- the old 24-hour not-planned window held every later
+    # migration behind one closed finding.
     return False
 
 
 def holds(issues: Iterable[dict[str, Any]], repository: str, pr: int, now: datetime,
-          invalid: Callable[[dict[str, Any]], bool] | None = None) -> list[dict[str, Any]]:
+          invalid: Callable[[dict[str, Any]], bool] | None = None,
+          pr_head: str | None = None) -> list[dict[str, Any]]:
+    head = (pr_head or "").lower() or None
     return [i for i in issues if references(i.get("body"), repository, pr) and blocking(i, now)
-            and not (invalid is not None and invalid(i))]
+            and not (invalid is not None and invalid(i))
+            and not (head and finding_head_sha(i) and finding_head_sha(i) != head)]
 
 
 def _gh(endpoint: str) -> list[Any]:
@@ -231,7 +245,8 @@ def gh_issues_many(repository: str, prs: Iterable[int], settle: float = SETTLE_S
 
 
 def blocking_findings(issues: list[dict[str, Any]], repository: str, pr: int, now: datetime | None = None,
-                      verify_invalid: Callable[..., bool] | None = None) -> list[dict[str, Any]]:
+                      verify_invalid: Callable[..., bool] | None = None,
+                      pr_head: str | None = None) -> list[dict[str, Any]]:
     verify_invalid = verify_invalid or invalid_verifier()
     invalid_cache: dict[str, bool] = {}
     def invalid(issue):
@@ -243,11 +258,23 @@ def blocking_findings(issues: list[dict[str, Any]], repository: str, pr: int, no
         if key not in invalid_cache:
             invalid_cache[key] = verify_invalid(issue, repository, pr)
         return invalid_cache[key]
-    return holds(issues, repository, pr, now or datetime.now(timezone.utc), invalid)
+    return holds(issues, repository, pr, now or datetime.now(timezone.utc), invalid, pr_head)
+
+
+def pull_head_sha(repository: str, pr: int, run: Callable[[str], dict[str, Any]] | None = None) -> str | None:
+    """The PR's current head, or None when unreadable (fail toward holding)."""
+    reader = run or _gh_object
+    try:
+        data = reader(f"repos/{repository}/pulls/{pr}")
+    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, TypeError, ValueError, KeyError):
+        return None
+    head = ((data or {}).get("head") or {}).get("sha")
+    return head.lower() if isinstance(head, str) and re.fullmatch(r"[0-9a-f]{40}", head) else None
 
 
 def main(argv: list[str] | None = None, fetch: Callable[[str, int], list[dict[str, Any]]] = gh_issues,
-         now: datetime | None = None, verify_invalid: Callable[..., bool] | None = None) -> int:
+         now: datetime | None = None, verify_invalid: Callable[..., bool] | None = None,
+         head_reader: Callable[[str, int], str | None] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--pr", required=True, type=int)
     parser.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", ""))
@@ -260,10 +287,11 @@ def main(argv: list[str] | None = None, fetch: Callable[[str, int], list[dict[st
     except (subprocess.CalledProcessError, json.JSONDecodeError, OSError) as exc:
         print(f"::error::review-finding hold: could not query issues ({exc}); treating as held", file=sys.stderr)
         return 2
-    found = blocking_findings(issues, args.repo, args.pr, now, verify_invalid)
+    head = (head_reader or (lambda r, n: pull_head_sha(r, n)))(args.repo, args.pr)
+    found = blocking_findings(issues, args.repo, args.pr, now, verify_invalid, head)
     if found:
         for issue in found:
-            why = "open" if issue.get("state") == "open" else "closed as not planned within 24 hours"
+            why = "open"
             print(f"HELD: review-finding #{issue.get('number')} ({why}) references PR #{args.pr}: {issue.get('html_url')}")
         return 3
     print(f"CLEAR: no blocking review-finding issue references PR #{args.pr}")

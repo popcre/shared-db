@@ -301,14 +301,27 @@ class ForeignTargetVersions(unittest.TestCase):
             return m.merged_migration_prs("o/r")
 
     def test_retired_character_originals_never_reenter_the_automatic_queue(self):
-        self.assertEqual(self.prs("20261104214842", "20261105035926"), [])
+        # #6701: a PR whose every migration version is retired is kept as a
+        # never-promote entry (logged, excluded from the idle claim) rather
+        # than silently dropped.
+        [entry] = self.prs("20261104214842", "20261105035926")
+        self.assertEqual(entry["versions"], [])
+        self.assertIn("20261104214842", entry["never_promote"])
         self.assertEqual(self.prs("20261104214842", "20261105074028")[0]["versions"], ["20261105074028"])
 
     def test_sandbox_only_pr_is_never_a_production_candidate(self):
-        self.assertEqual(self.prs("20261102215524"), [])
+        [entry] = self.prs("20261102215524")
+        self.assertEqual(entry["versions"], [])
+        self.assertIn("20261102215524", entry["never_promote"])
 
     def test_mixed_pr_promotes_only_its_shared_versions(self):
         self.assertEqual(self.prs("20261102215524", "20261102224413")[0]["versions"], ["20261102224413"])
+
+    def test_hard_blocked_skip_is_logged(self):
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.prs("20261104214842")
+        self.assertIn("never promote", out.getvalue())
+        self.assertIn("20261104214842", out.getvalue())
 
 
 class SelectorPrCache(unittest.TestCase):
@@ -441,7 +454,9 @@ class OverdueHoldAlert(unittest.TestCase):
         m.gh = lambda *a: {"sha": "abc"}
         m.merged_migration_prs = lambda repo: [pr]
         m.workflow_runs = lambda repo, **_: []
-        m.is_held = lambda repo, n: self.pr["findings"]
+        # A readable finding past HOLD_TIMEOUT stops holding (the hold times
+        # out), so the alert is exercised with an unreadable finding query.
+        m.is_held = lambda repo, n: True
         sys.argv, os.environ["GITHUB_REPOSITORY"] = ["x", "--dry-run"], "o/r"
         try:
             with contextlib.redirect_stdout(io.StringIO()) as out:
@@ -1004,11 +1019,14 @@ class CanonicalDependencyResolution(unittest.TestCase):
 
     def test_retired_original_is_never_dispatched(self):
         # #5932: PR #6451's retired 20261218025935 (reissued as 20261218043336)
-        # was dispatched three times and failed preview each time.
+        # was dispatched three times and failed preview each time. #6701 keeps
+        # it as a never-promote entry so the idle claim cannot call it delivered.
         self.assertIn("20261218025935", m.RETIRED_VERSIONS)
         self.assertNotIn("20261218025935", m.HARD_BLOCKED)
         found = self.discover_real(["20261218025935"])
-        self.assertEqual(found, [])
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["versions"], [])
+        self.assertIn("20261218025935", found[0]["never_promote"])
 
     def test_real_byte_pinned_non_ledger_source_does_not_invent_a_base(self):
         from pathlib import Path
@@ -1094,18 +1112,25 @@ class TriggerReporting(unittest.TestCase):
         self.assertIn("idle:", out)
 
     def test_held_pr_exits_zero_with_reason(self):
-        pr = {"number": 7, "merged_at": "2026-01-01T00:00:00Z", "versions": ["20260101000000"]}
-        code, out = self._run_main(prs=[pr], runs=[], held=lambda repo, n: [{"number": 99}])
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        pr = {"number": 7, "merged_at": now, "versions": ["20260101000000"]}
+        code, out = self._run_main(prs=[pr], runs=[],
+                                   held=lambda repo, n: [{"number": 99, "created_at": now}])
         self.assertEqual(code, 0)
         self.assertIn("held: PR #7", out)
 
     def test_summary_written_on_hold(self):
         import tempfile, os as _os
-        pr = {"number": 7, "merged_at": "2026-01-01T00:00:00Z", "versions": ["20260101000000"]}
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        pr = {"number": 7, "merged_at": now, "versions": ["20260101000000"]}
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             path = f.name
         try:
-            code, _ = self._run_main(prs=[pr], runs=[], held=lambda repo, n: [{"number": 99}], summary_path=path)
+            code, _ = self._run_main(prs=[pr], runs=[],
+                                     held=lambda repo, n: [{"number": 99, "created_at": now}],
+                                     summary_path=path)
             self.assertEqual(code, 0)
             summary = open(path, encoding="utf-8").read()
             self.assertIn("Automatic promotion trigger", summary)
@@ -1654,24 +1679,24 @@ class StrandedLabelReconciler(unittest.TestCase):
     def test_held_threshold_and_unknown_read(self):
         fake = StrandedRepoFake(labels={11: {HELD}})
         finding = _finding(901, "2026-11-17T00:00:00Z")
-        nine_hours = _pr(9, merged="2026-11-17T03:00:00Z", findings=[finding])
-        seven_hours = _pr(10, merged="2026-11-17T05:00:00Z")
-        unknown = _pr(11, merged="2026-11-17T03:00:00Z")
+        nine_hours = _pr(9, merged="2026-11-17T11:00:00Z", findings=[finding])  # held 60 min
+        seven_hours = _pr(10, merged="2026-11-17T11:45:00Z")  # held 15 min
+        unknown = _pr(11, merged="2026-11-17T11:00:00Z")
         held = lambda n: {9: [finding], 10: [finding], 11: True}.get(n, [])
         results, _ = _reconcile(fake, [nine_hours, seven_hours, unknown], held=held)
         self.assertEqual(fake.touched(), [9])
         self.assertEqual(_outcomes(results), {(9, HELD): "posted", (11, HELD): "unknown"})
         self.assertIn(HELD, fake.labels[11])
 
-    def test_alert_and_escalation_thresholds_differ(self):
+    def test_alert_and_escalation_thresholds_are_thirty_minutes(self):
         self.assertEqual(m.ALERT_AFTER, timedelta(minutes=30))
-        self.assertEqual(m.HELD_ESCALATE_AFTER, timedelta(hours=8))
+        self.assertEqual(m.HELD_ESCALATE_AFTER, timedelta(minutes=30))
         finding = _finding(901, "2026-11-17T10:00:00Z")
-        one_hour = _pr(10, merged="2026-11-17T11:00:00Z", findings=[finding])
-        # Held one hour: the operator alert fires, the label does not.
-        self.assertEqual(len(m.overdue_holds([one_hour], NOW)), 1)
+        twenty_min = _pr(10, merged="2026-11-17T11:40:00Z", findings=[finding])
+        # Held 20 minutes: neither the operator alert nor the label fires.
+        self.assertEqual(m.overdue_holds([twenty_min], NOW), [])
         fake = StrandedRepoFake()
-        results, _ = _reconcile(fake, [one_hour], held=lambda n: [finding])
+        results, _ = _reconcile(fake, [twenty_min], held=lambda n: [finding])
         self.assertEqual(results, [])
         self.assertEqual(fake.writes, [])
 
@@ -2533,7 +2558,7 @@ class ClaimRefPaths(unittest.TestCase):
 
 class DispatchClaims(unittest.TestCase):
     """#6493 Step 2: per-PR liveness lease against duplicate dispatch."""
-    now = datetime(2026, 11, 16, 20, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 11, 16, 19, 20, tzinfo=timezone.utc)
     claim = {"pr": 7, "versions": ["20261116100000"], "run_id": "11", "claimed_at": "2026-11-16T19:00:00Z"}
 
     def arun(self, status, conclusion=None, title="DB preview apply PR7 20261116100000", at="2026-11-16T19:01:00Z"):
@@ -2559,7 +2584,7 @@ class DispatchClaims(unittest.TestCase):
     def test_ledger_applied_claim_is_stale(self):
         self.assertTrue(m.claim_is_stale(self.claim, [self.arun("in_progress")], {"20261116100000"}, self.now))
 
-    def test_nothing_moving_for_four_hours_reclaims(self):
+    def test_nothing_moving_past_the_idle_limit_reclaims(self):
         later = self.now + timedelta(hours=5)
         self.assertTrue(m.claim_is_stale(self.claim, [self.arun("completed", "success")], set(), later))
         self.assertFalse(m.claim_is_stale(self.claim, [self.arun("in_progress")], set(), later))
@@ -3268,9 +3293,9 @@ class OrphanedFindingRetry(unittest.TestCase):
             self.assertEqual([(pr, f["number"]) for pr, f in got], [(6650, 6651)])
 
     def test_ignores_young_active_closed_and_non_review_holds(self):
-        self.assertEqual(m.orphaned_findings([self.entry(["fixer-deferred"], merged="2026-11-18T13:00:00Z")], self.now), [])
+        self.assertEqual(m.orphaned_findings([self.entry(["fixer-deferred"], merged="2026-11-18T15:45:00Z")], self.now), [])
         young = self.entry(["fixer-deferred"])
-        young["findings"][0]["created_at"] = "2026-11-18T13:00:00Z"
+        young["findings"][0]["created_at"] = "2026-11-18T15:45:00Z"
         self.assertEqual(m.orphaned_findings([young], self.now), [])
         self.assertEqual(m.orphaned_findings([self.entry([])], self.now), [])
         self.assertEqual(m.orphaned_findings([self.entry(["fixer-done"])], self.now), [])
@@ -3307,7 +3332,7 @@ class OrphanedFindingRetry(unittest.TestCase):
         self.assertIn("label fixer-deferred not removed", lines[0])
         self.assertIn("fixer dispatch refused", lines[0])
         self.assertIn("did not complete", writes[-1][2]["body"])
-        self.assertIn("held 12h", writes[0][2]["body"])
+        self.assertIn("held 750 min", writes[0][2]["body"])
 
     def test_one_malformed_finding_does_not_stop_the_rest(self):
         bad, good = self.entry(["fixer-deferred"]), self.entry(["fixer-deferred"])

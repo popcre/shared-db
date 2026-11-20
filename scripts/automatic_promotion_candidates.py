@@ -294,7 +294,7 @@ def merged_migration_prs(repo: str) -> list[dict[str, Any]]:
         if versions and not all(v in manifest_orphans for v in versions):
             found.append({"number": pr["number"], "merged_at": merged, "versions": versions})
         elif had_migration_files and skip_reasons and not versions:
-            # Every migration version on this PR is retired/foreign/missing:
+            # Every migration version on this PR is retired, foreign, or no longer on main:
             # never promote, but keep it visible so the idle claim cannot say
             # it is in production via this lane.
             found.append({

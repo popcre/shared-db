@@ -103,7 +103,7 @@ test('both exact matrices contain the exact prerequisite and tracking-access rel
  assert.match(source,/GRANT SELECT, INSERT, UPDATE, DELETE ON dflow_prod\.user_roles TO designflow_prod_backend_grants;/);
  assert.match(expected.live_assertion,/thirteen underlying dflow_prod\.itemDetail fields/);
  assert.match(expected.live_assertion,/#6912 additionally permits tracking_grants SELECT on the 164 approved columns of dflow_prod\.itemDetail, inherited by tracking_runtime\./);
- const grantMigration=await readFile(new URL('../../supabase/migrations/20261225070000_dflow_prod_tracking_itemdetail_select.sql',import.meta.url),'utf8');
+ const grantMigration=await readFile(new URL('../../supabase/migrations/20261225100000_dflow_prod_tracking_itemdetail_select.sql',import.meta.url),'utf8');
  const persistentTest=await readFile(new URL('../../supabase/tests/dflow_prod_tracking_itemdetail_select_contracts.sql',import.meta.url),'utf8');
  const grantColumns=grantMigration.match(/GRANT SELECT \(([\s\S]*?)\) ON TABLE dflow_prod\."itemDetail"/)?.[1];
  const testColumns=persistentTest.match(/expected_columns text\[\] := array\[([\s\S]*?)\];/)?.[1];

@@ -1,0 +1,289 @@
+---
+summary: "How to work in shared-db: prerequisites, mandatory worktree rule, task-gate classes, local checks and delivery-check scripts; no package.json or server."
+kind: ops
+status: current
+read-when: setting up a worktree or choosing local checks before opening a shared-db PR
+---
+
+# Development
+
+How to work in this repository on a machine with git, Node.js, and (optionally)
+Python 3. There is no `package.json` and no application server to run.
+
+## Prerequisites
+
+| Tool | Used for |
+|---|---|
+| `git` + `gh` | worktrees, PRs, issues |
+| Node.js (LTS) | `scripts/*.mjs`, `tools/*.mjs`, `node --test` |
+| Python 3.10+ | `scripts/*.py` guards and tests (`python -m unittest` / `pytest` where present) |
+| Supabase CLI | `supabase db push`, `supabase link`, dry-runs (see runbook) |
+| `bash` or PowerShell | `scripts/check-sql.sh` (CI runs it in bash) |
+| 1Password CLI `op` | credentials from vault `vibe_coding` (never commit secrets) |
+
+`psql` is **not** required on Windows dev machines (use Node + `pg` via the
+pooler — see [`docs/agents/runbooks-credentials-cli-and-gotchas.md`](agents/runbooks-credentials-cli-and-gotchas.md)).
+
+## Worktree rule (mandatory)
+
+Every write-capable task uses its **own** `git worktree` cut from `origin/main`
+(AGENTS.md §2.1-W). The shared checkout is for reading and `git fetch` only.
+
+```bash
+git fetch origin main
+git worktree add ../shared-db-wt-<topic> origin/main -b <you>/<topic>
+```
+
+Declare the task class first: `ai-task-gates start --class <class>`
+(`prose`, `code`, `reviewer-safety`, or `shared-db` — see
+`.ai-devops/task-gates.json`).
+
+## What to run locally
+
+Completed administrator performance work is recorded in the
+[scoped acceptance record](verification/rls-initplan/4427/acceptance.md).
+Use that evidence when reconciling dated programme plans; retained historical
+production timing flags are separate from completed synthetic measurements.
+
+### Catch failures before expensive review (#5033)
+
+Run `node scripts/check-delivery-local.mjs --base <full-base-sha>` before paid
+review or a full performance qualification. `--plan` prints its exact existing
+CI guards without executing them. The offline run checks sidecars and pinned
+detector baseline first, then the truth audit, native merge-coordination/workflow tests, the complete throughput guard
+family, all four RLS families and the live-proof parser, and focused Python
+catalogue/proof tests. It stops at the first failure, at 60 seconds per step or
+180 seconds overall; it never retries, fetches, reviews, or accesses a database.
+It requires the installed native source-identity helper and refuses changed
+inputs. This early check does not replace the full CI matrix below.
+
+Before a large physical performance run, use the existing harness's small
+capability/cost smoke first. Prove its dependencies, target custody and first
+measurement before scheduling the full case matrix. Keep real fixture cleanup
+and application acceptance on the original work issue.
+
+Prepare native completion prerequisites early: the actual work issue and PR,
+prospective contract publication, producer workflow/artifact availability,
+required live-proof shape and issue linkage. A genuine prose-only incident or
+acceptance draft may open the actual draft PR before implementation; publish
+no code under a prose exemption. Commit the final ready completion pair before
+the finished candidate's independent review so PR-number bookkeeping does not
+create an avoidable extra source-review cycle.
+
+A detached review request ID alone does not prove a worker started. In the same
+parent shell that launches `ai-review ... --detach`, immediately read its native
+`ai-review outcome <id> --wait 5` and verify a worker acknowledgement/PID or a
+terminal result. An empty log plus no worker acknowledgement is an unstarted
+request: diagnose and use the documented supported fallback immediately instead
+of waiting on it. Never retry a failed/skipped provider during observation week.
+Keep the reviewed worktree, HEAD, branch and files unchanged until the terminal
+result is adopted; do not swap its branch while the paid worker runs.
+
+For delivery, distinguish queue admission from an actual merged PR. Check the
+fresh effective required contexts through the native required-check preflight;
+an optional integration failure does not become a required failure. The queue
+hold monitors the exact group's server-reported required flags with read-only
+credentials only to abort a failed, ejected or replaced group. Missing/pending
+checks retain the healthy 15-minute budget. This monitor never authorizes a
+merge: the existing full required-check preflight, review and owned-lane checks
+remain mandatory. Busy owned-lane acquisition uses the existing bounded waiter;
+all non-occupancy refusals still stop immediately. The guarded job preserves
+its original 20-minute post-acquisition execution margin after that wait.
+
+### Node tool tests (primary)
+
+```bash
+node --test scripts/check-lane-route-sync.test.mjs
+node --test scripts/check-review-parallelism-brief.test.mjs
+node --test scripts/check-handoff-contract.test.mjs
+node --test scripts/check-documents-only-pull-request.test.mjs
+node --test scripts/check-self-service-additive-lane.test.mjs
+# …each scripts/*.test.mjs can run alone; CI also batches them in
+# tools-offline-tests.yml and pr-guards.yml
+```
+
+### SQL shape check (before any migration)
+
+```bash
+scripts/check-sql.sh
+```
+
+### Python guards (when touching migration / promotion logic)
+
+```bash
+python -m unittest scripts/test_production_migration_guard.py
+python -m unittest scripts/test_production_business_risk_gate.py
+# or the repository's pytest suite under scripts/ where configured
+```
+
+### Workflow policy / rulebook consistency
+
+```bash
+node --test scripts/check-current-workflow-policy.test.mjs
+node scripts/check-skill-drift.mjs
+node scripts/check-business-rule-library.mjs
+```
+
+CI is the authority for the full matrix (`tools-offline-tests.yml`,
+`database-contract-tests.yml`, `pr-guards.yml`, `guarded-migration-merge.yml`).
+Do not assume a green laptop equals a green PR.
+
+*Superseded 2026-11-05: `guarded-migration-merge.yml` no longer exists — removed
+from `main` on 2026-10-31 (PR #5234, Stage C2c, popcre/ai-devops#2172). The live
+required checks on `main` are `SQL migration guards`,
+`supabase/tests against an ephemeral database`, and `Destructive SQL outside
+migrations` (lean required checks, owner ruling 2026-10-30); everything else is
+advisory.*
+
+### Generated database types
+
+The ordinary `database-types` download is generated from the configured preview
+project for a reviewed consumer update; it is not production completion evidence.
+Only the optional issue-bound production mode of
+`.github/workflows/generate-database-types.yml` emits `db-generated-types-proof.json`.
+That mode requires an open shared-db issue with `generated_types: required`, binds
+to the exact current `main` commit, verifies the canonical production project
+through the Supabase Management API, and hashes the fresh TypeScript bytes in its
+temporary output. It uses `SUPABASE_ACCESS_TOKEN` from the workflow environment
+and runs only `supabase gen types`; it does not link a project or run a migration.
+
+## Authoring a migration
+
+1. Confirm it is **structure** (or gated curated Master Data), not ordinary rows.
+2. Check in-flight work: [`docs/agents/in-flight-check.md`](agents/in-flight-check.md).
+3. Reserve a version, then file its claim body (do not open the migration file
+   first): `node scripts/check-dispatch-collision.mjs --objects "<every exact
+   object written>" --reserve-version`, then the same command with `--task
+   "<issue and outcome>" --objects "…" --version <reserved> --claim-body-file
+   claim.md`, then `gh issue create --body-file claim.md`.
+4. Write only the new `supabase/migrations/<timestamp>_<name>.sql`.
+5. Run `scripts/check-sql.sh` and the relevant `scripts/*.test.mjs`.
+6. Branch + PR; start CI **and** the governed review in parallel
+   (AGENTS.md §5.0-C). Batch fixes into one head.
+7. Merge via the guarded merge lane when §5 checks pass — the AI merges, not Albert.
+
+Self-service additive path: if every change is a **new** additive migration
+wholly inside `{crm, pim, dam, plm}` (and documents), you may use
+`route: self-service-additive` and the merge-time classifier
+`scripts/check-self-service-additive-lane.mjs`. Anything else stays on the
+conservative path.
+
+### Migrations touching `dflow.*`: production intentionally has no `dflow` (issue #6325)
+
+`dflow` is the **non-production** DesignFlow app schema (ephemeral CI replay,
+preview, and the DesignFlow non-production project build and use it). The
+stale production seed copy was demolished by runbook
+(`docs/dflow-snapshot-demolition-runbook.md`), so production is the one
+target where the schema does not exist. Any migration that creates, alters,
+or drops `dflow.*` objects must therefore tolerate the schema's absence on
+production — wrap the statements in a guard block that is inert where the
+schema is missing and active where it exists:
+
+```sql
+do $$
+begin
+  if exists (select 1 from pg_catalog.pg_namespace where nspname = 'dflow') then
+    -- dflow.* DDL here
+  end if;
+end
+$$;
+```
+
+Shared-table constraints that reference `dflow.*` in the migration set (the
+user/art-piece/workflow-action foreign keys) reference their `dflow_prod.*`
+equivalents on production — match on constraint name and table, not on the
+referenced object, when altering or dropping them.
+
+Never "fix" either divergence by re-creating `dflow` on production; the
+divergence is the design. Never demolish `dflow` on the non-production
+targets — the contract suite asserts it.
+
+## Tests and evidence
+
+- Unit/contract tests live beside the code (`scripts/*.test.mjs`,
+  `scripts/test_*.py`, `supabase/tests/`).
+- `tests/verification/` and `docs/verification/` hold acceptance write-ups and
+  artifacts for specific issues. Add evidence there under the issue name; do not
+  treat old evidence as current proof.
+- Live proof for a change is a checklist item on the **same** issue
+  (`.github/live-proofs/<issue>.sql` when applicable).
+
+## Lint / formatting
+
+There is no single repo-wide formatter. Keep Node scripts as ESM `.mjs`, do not
+hand-edit `types/database.types.ts`, and make new guards fail closed. If you add
+a linter, record the command here and in `AGENTS.md` documentation map.
+
+## Windows traps
+
+- Never route 1Password `op_run` through bare `bash` (it is WSL and drops env).
+- A Node CLI in `tools/` that hand-builds a direct-invocation guard may exit 0
+  without doing work (§10.3) — verify the real operation ran.
+- Prefer `cmd.exe`, PowerShell, or `node` for secret-bearing commands.
+
+## Scratch files
+
+Put session scratch under your session temp or `.ai/` (gitignored). Durable
+knowledge goes in `AGENTS.md`, `docs/`, or the issue — not in root draft files.
+
+## DesignFlow consumer environment tests
+
+These rules concern the four DesignFlow database services, not a new npm runtime
+in shared-db. Run commands in the owning application's isolated worktree and
+follow that app's development guide. The verified rollout and remaining source
+PRs are recorded in [the release guide](designflow-db-release.md#dependency-locks-and-environment-safe-tests).
+
+- Business-behavior tests must work in develop and production. Assert the intended
+  table identity or an environment-appropriate qualified name; retain transaction,
+  audit and parameter assertions.
+- Schema-mapping contract tests must keep independently expected schema values for
+  each supported environment. Do not replace those with table-only assertions or
+  compare a resolver to itself. Explicitly set and restore relevant environment
+  variables so ambient production settings cannot change the test's intended case.
+- Use the committed lock and verified package-manager version. Install all test
+  dependencies before applying production environment variables; never resolve
+  fresh packages, delete the lock, skip an environment or weaken a failing test
+  just to release. Deliberate upgrades change the manifest and lock together.
+- Before promotion, run the complete mocked suite under both settings below. The
+  automatic PR/sandbox matrix does the same; no production credentials or database
+  writes are needed. Existing production readiness checks remain mandatory.
+
+```bash
+NODE_ENV=develop SCHEMA= npm test -- --runInBand
+NODE_ENV=production SCHEMA=dflow_prod npm test -- --runInBand
+```
+
+Do not invoke these app commands in the shared-db repository. Its own Node and
+SQL tool tests remain those documented above.
+
+## Documentation health (advisory)
+
+Every Markdown document outside the exclusions in `.doc-health.json` opens with a four-key header
+(`summary` of at most 160 characters, `kind`, `status`, `read-when`). `docs/INDEX.md` is generated
+from those headers; never edit it by hand.
+
+```bash
+ai-doc-health --repo .              # list faults; exit 0 is clean
+ai-doc-health --repo . --fix-index  # rebuild docs/INDEX.md (stage new files first; it reads tracked files only)
+```
+
+The tool lives in `popcre/ai-devops` (`bin/ai-doc-health`, rules in its `docs/doc-health.md`). If the
+launcher is not on `PATH`, run `python3 <ai-devops checkout>/bin/ai-doc-health --repo .`.
+
+- A new document needs its header, then `--fix-index`, in the same change.
+- Size budgets: `AGENTS.md` 30 KB; any document whose kind is not plan, proof or archive 60 KB. Split a
+  document that outgrows it into `-part-N` files beside it and keep the original path as the entry
+  (as `docs/owner-rulings.md` does) so existing citations still resolve.
+- `.github/workflows/doc-health.yml` comments on pull requests and keeps one rolling
+  `Documentation health` issue. It is advisory and must never become a required check
+  (owner ruling 2026-10-30).
+- `handoff-old` is a review prompt, not a deletion order: apply the successor rule in
+  `docs/agents/worktrees-and-handoffs.md` before retiring any `HANDOFF.d/` file. Files named in the
+  compact `YYYYMMDDTHHMMSSZ` form are reported as "no date in name"; that is a tool limitation, not a
+  fault in the file.
+- Two oversized documents are deliberately excluded and must stay unsplit and header-free, because
+  `scripts/test_production_migration_guard.py` parses their exact text:
+  `docs/agents/section-4-anti-collision-rules.md` and
+  `docs/production-promotion-app-tolerance-contract.md`. `COORDINATOR_INTAKE.md` is excluded for the
+  same reason (`scripts/check-intake-pointer.mjs`). Two multi-megabyte generated captures under
+  `docs/verification/` are excluded as generated output.

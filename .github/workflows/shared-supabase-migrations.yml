@@ -1476,7 +1476,7 @@ jobs:
           if-no-files-found: error
           retention-days: 90
       # plan_skinny-review.md rule 8.6 (popcre/ai-devops #2075): a blocking
-      # review-finding issue (open, or closed as not planned within 24 hours)
+      # review-finding issue (open; any close releases it -- 24-hour window removed 2026-11-20)
       # that names the source PR holds it out of production. Queried live.
       - name: Hold for a blocking review finding
         env:

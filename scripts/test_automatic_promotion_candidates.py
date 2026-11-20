@@ -722,11 +722,13 @@ class ProductionReRunAlert(unittest.TestCase):
 class FreshRecheckBeforeDispatch(unittest.TestCase):
     PR = {"number": 7, "merged_at": "2026-01-01T00:00:00Z", "versions": ["20260101000000"]}
 
-    def _main(self, snapshots):
+    def _main(self, snapshots, findings=None):
         with mock.patch.object(m, "gh", lambda *a: {"sha": "abc"}), \
              mock.patch.object(m, "merged_migration_prs", lambda repo: [self.PR]), \
              mock.patch.object(m, "workflow_runs", mock.Mock(side_effect=snapshots)), \
-             mock.patch.object(m, "is_held", lambda repo, n: []), \
+             mock.patch.object(m, "is_held", lambda repo, n: findings or []), \
+             mock.patch.object(m, "adopt_merged_findings", return_value=[]), \
+             mock.patch.object(m, "backstop_freeze", return_value=False), \
              mock.patch.object(m, "dispatch") as sent, \
              mock.patch.object(m, "prune_claims", lambda *a: None), \
              mock.patch.object(m, "claim_dispatch", lambda *a: True), \
@@ -746,6 +748,12 @@ class FreshRecheckBeforeDispatch(unittest.TestCase):
     def test_an_unchanged_queue_still_dispatches(self):
         sent, _ = self._main([[], []])
         sent.assert_called_once()
+
+    def test_expired_hold_dispatches_after_fresh_recheck(self):
+        finding = {"number": 9, "state": "open", "created_at": self.PR["merged_at"]}
+        sent, output = self._main([[], []], [finding])
+        sent.assert_called_once_with("o/r", self.PR, "abc", [])
+        self.assertNotIn("dispatch withdrawn", output)
 
 
 class SkipDecisionsAreLogged(unittest.TestCase):
@@ -2628,7 +2636,9 @@ class DispatchClaims(unittest.TestCase):
              mock.patch.object(m, "gh", lambda *a: {"sha": "abc"}), \
              mock.patch.object(m, "merged_migration_prs", lambda repo: [first, second]), \
              mock.patch.object(m, "workflow_runs", lambda repo, **_: []), \
-             mock.patch.object(m, "is_held", lambda repo, n: []), \
+             mock.patch.object(m, "is_held", lambda repo, n: [] if n == 7 else [
+                 {"number": 9, "state": "open", "created_at": second["merged_at"]}]), \
+             mock.patch.object(m, "adopt_merged_findings", return_value=[]), \
              mock.patch.object(m, "prune_claims", lambda *a: None), \
              mock.patch.object(m, "claim_dispatch", lambda repo, pr, *a: pr["number"] != 7), \
              mock.patch.object(m, "dispatch", lambda repo, pr, sha, *_: sent.append(pr["number"])), \

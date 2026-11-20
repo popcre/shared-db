@@ -3,7 +3,7 @@ timeout, superseded-head holds, and adopt-on-merged-PR findings.
 
 No network, no database. Discovery and classify/decide are driven with
 mocked gh; review_finding_hold is exercised through main() with injected
-head readers.
+pull request readers.
 """
 from __future__ import annotations
 
@@ -73,7 +73,7 @@ class HoldTimeout(unittest.TestCase):
         self.assertEqual(action, "idle")
         self.assertIn("not held", reason)
         self.assertEqual(skipped[0]["findings"], [self.finding])
-        self.assertFalse(skipped[0].get("hold_timed_out"))
+        self.assertNotIn("timed_out_findings", skipped[0])
 
     def test_hold_times_out_and_no_longer_blocks(self):
         held = lambda n: [self.finding]  # noqa: E731
@@ -81,8 +81,48 @@ class HoldTimeout(unittest.TestCase):
         action, pr, reason = m.decide([self.pr], [], held, now=NOW, skipped=skipped)
         self.assertEqual(action, "dispatch")
         self.assertEqual(pr["number"], 5456)
-        self.assertTrue(skipped[0].get("hold_timed_out"))
-        self.assertEqual(skipped[0]["findings"], [self.finding])
+        self.assertEqual(skipped[0]["timed_out_findings"], [self.finding])
+
+    def test_timeout_preserves_dependency_wait(self):
+        pr = {**self.pr, "production_dependencies": {"20261102160000": 5455}}
+        skipped = []
+        action, _, _ = m.decide([pr], [], lambda n: [self.finding], now=NOW, skipped=skipped)
+        self.assertEqual(action, "idle")
+        self.assertEqual(skipped[0]["pending_dependencies"], pr["production_dependencies"])
+        self.assertEqual(skipped[0]["timed_out_findings"], [self.finding])
+
+    def test_timeout_preserves_attempt_cap(self):
+        failures = [
+            {"display_title": "DB preview apply a PR5456 20261102170000",
+             "status": "completed", "conclusion": "failure", "created_at": "2026-11-02T19:00:00Z"}
+            for _ in range(m.MAX_ATTEMPTS)
+        ]
+        action, _, reason = m.decide([self.pr], failures, lambda n: [self.finding], now=NOW)
+        self.assertEqual(action, "idle")
+        self.assertIn("ENGINEER ACTION REQUIRED", reason)
+
+    def test_timeout_keeps_independent_blocking_findings(self):
+        for blocking in (
+            {**self.finding, "number": 5458, "created_at": "2026-11-20T11:30:00Z"},
+            {**self.finding, "state": "closed", "state_reason": "not_planned"},
+        ):
+            with self.subTest(blocking=blocking):
+                skipped = []
+                action, _, _ = m.decide([self.pr], [], lambda n: [blocking, self.finding],
+                                         now=NOW, skipped=skipped)
+                self.assertEqual(action, "idle")
+                self.assertEqual(skipped[0]["findings"], [blocking])
+                self.assertEqual(skipped[0].get("timed_out_findings", []),
+                                 [self.finding] if blocking["number"] != self.finding["number"] else [])
+
+    def test_orphan_retry_is_reachable_before_timeout(self):
+        finding = {**self.finding, "labels": ["fixer-deferred"]}
+        for hours, expected in ((2, False), (3.5, True), (4.5, False)):
+            with self.subTest(hours=hours):
+                now = m._time(finding["created_at"]) + timedelta(hours=hours)
+                skipped = []
+                m.decide([self.pr], [], lambda n: [finding], now=now, skipped=skipped)
+                self.assertEqual(bool(m.orphaned_findings(skipped, now)), expected)
 
 
 class SupersededHeadHold(unittest.TestCase):
@@ -96,7 +136,7 @@ class SupersededHeadHold(unittest.TestCase):
             fetch=lambda _r, _p: [item],
             now=NOW,
             verify_invalid=lambda *_a: False,
-            head_reader=lambda _r, _n: "b" * 40,
+            pull_reader=lambda _r, _n: {"head": {"sha": "b" * 40}},
         )
         self.assertEqual(code, 0)
 
@@ -110,7 +150,7 @@ class SupersededHeadHold(unittest.TestCase):
             fetch=lambda _r, _p: [item],
             now=NOW,
             verify_invalid=lambda *_a: False,
-            head_reader=lambda _r, _n: "a" * 40,
+            pull_reader=lambda _r, _n: {"head": {"sha": "a" * 40}},
         )
         self.assertEqual(code, 3)
 
@@ -119,8 +159,7 @@ class AdoptMergedFindings(unittest.TestCase):
     def test_adopt_posts_marker_and_closes_timed_out_finding(self):
         entry = {
             "number": 5456, "merged_at": "2026-11-02T17:00:00Z", "versions": ["20261102170000"],
-            "findings": [{"number": 5457, "created_at": "2026-11-02T17:30:00Z", "state": "open"}],
-            "hold_timed_out": True,
+            "timed_out_findings": [{"number": 5457, "created_at": "2026-11-02T17:30:00Z", "state": "open"}],
         }
         writes = []
 
@@ -128,11 +167,9 @@ class AdoptMergedFindings(unittest.TestCase):
             writes.append((method, path, fields))
             return True, ""
 
-        with mock.patch.object(m, "review_finding_hold") as rf, \
+        with mock.patch.object(hold, "pull_head_sha", return_value="a" * 40), \
                 mock.patch.object(m, "gh", return_value=[[]]), \
                 mock.patch.object(m, "gh_write", side_effect=gh_write):
-            rf.pull_head_sha.return_value = "b" * 40
-            rf.finding_head_sha.return_value = "a" * 40
             lines = m.adopt_merged_findings("o/r", [entry], NOW, dry_run=False)
         self.assertEqual(len(lines), 1)
         self.assertIn("adopted and closed", lines[0])
@@ -141,6 +178,7 @@ class AdoptMergedFindings(unittest.TestCase):
         self.assertIn("PATCH", methods)
         comment = next(f for meth, path, f in writes if meth == "POST" and "comments" in path)
         self.assertIn(m.ADOPT_MARKER, comment["body"])
+        self.assertEqual(writes[-1][2], {"state": "closed", "state_reason": "completed"})
 
     def test_adopt_is_skipped_when_finding_still_current_and_fresh(self):
         entry = {
@@ -148,9 +186,7 @@ class AdoptMergedFindings(unittest.TestCase):
             "findings": [{"number": 5457, "created_at": NOW.strftime("%Y-%m-%dT%H:%M:%SZ"),
                           "state": "open", "body": f"Head SHA: `{'a' * 40}`"}],
         }
-        with mock.patch.object(m, "review_finding_hold") as rf:
-            rf.pull_head_sha.return_value = "a" * 40
-            rf.finding_head_sha.return_value = "a" * 40
+        with mock.patch.object(hold, "pull_head_sha", return_value="a" * 40):
             lines = m.adopt_merged_findings("o/r", [entry], NOW, dry_run=False)
         self.assertEqual(lines, [])
 

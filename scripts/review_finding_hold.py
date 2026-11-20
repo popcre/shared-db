@@ -6,7 +6,8 @@ promotion is automatic once the change merged, the preview rehearsal passed and
 the tests passed, unless a blocking `review-finding` issue references the
 change. "References" means an issue labelled `review-finding` whose body
 contains the source PR URL (the advisory ai-review workflow writes it).
-"Blocking" means open, or closed as not planned within the last 24 hours,
+"Blocking" means open for at most four hours after the later of merge and
+finding creation, or closed as not planned within the last 24 hours,
 except a false finding evidenced by a successful trusted fixer target job.
 
 The query runs live, immediately before promotion, never at merge time.
@@ -28,6 +29,7 @@ from typing import Any, Callable, Iterable
 
 LABEL = "review-finding"
 WINDOW = timedelta(hours=24)
+HOLD_TIMEOUT = timedelta(hours=4)
 INVALID_LABEL = "fixer-invalid"
 INVALID_MARKER = re.compile(r"<!-- review-fixer-invalid:v1 (\{[^\n]*\}) -->")
 # #6701: a finding reviewed against a head that is no longer the delivered PR
@@ -61,6 +63,17 @@ def blocking(issue: dict[str, Any], now: datetime) -> bool:
         closed = _time(issue.get("closed_at"))
         return closed is None or now - closed < WINDOW
     return False
+
+
+def finding_timed_out(issue: dict[str, Any], merged_at: str | None, now: datetime) -> bool:
+    if issue.get("state") != "open":
+        return False
+    try:
+        merged = _time(merged_at)
+        opened = _time(issue.get("created_at"))
+    except (TypeError, ValueError):
+        return False
+    return bool(merged and opened and now - max(merged, opened) > HOLD_TIMEOUT)
 
 
 def holds(issues: Iterable[dict[str, Any]], repository: str, pr: int, now: datetime,
@@ -259,20 +272,29 @@ def blocking_findings(issues: list[dict[str, Any]], repository: str, pr: int, no
     return holds(issues, repository, pr, now or datetime.now(timezone.utc), invalid, pr_head)
 
 
-def pull_head_sha(repository: str, pr: int, run: Callable[[str], dict[str, Any]] | None = None) -> str | None:
-    """The PR's current head, or None when unreadable (fail toward holding)."""
+def pull_details(repository: str, pr: int, run: Callable[[str], dict[str, Any]] | None = None) -> dict[str, Any]:
     reader = run or _gh_object
     try:
         data = reader(f"repos/{repository}/pulls/{pr}")
     except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, TypeError, ValueError, KeyError):
-        return None
-    head = ((data or {}).get("head") or {}).get("sha")
-    return head.lower() if isinstance(head, str) and re.fullmatch(r"[0-9a-f]{40}", head) else None
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def head_sha(pull: dict[str, Any]) -> str | None:
+    head = pull.get("head")
+    sha = head.get("sha") if isinstance(head, dict) else None
+    return sha.lower() if isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{40}", sha) else None
+
+
+def pull_head_sha(repository: str, pr: int, run: Callable[[str], dict[str, Any]] | None = None) -> str | None:
+    """The PR's current head, or None when unreadable (fail toward holding)."""
+    return head_sha(pull_details(repository, pr, run))
 
 
 def main(argv: list[str] | None = None, fetch: Callable[[str, int], list[dict[str, Any]]] = gh_issues,
          now: datetime | None = None, verify_invalid: Callable[..., bool] | None = None,
-         head_reader: Callable[[str, int], str | None] | None = None) -> int:
+         pull_reader: Callable[[str, int], dict[str, Any]] = pull_details) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--pr", required=True, type=int)
     parser.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", ""))
@@ -285,8 +307,10 @@ def main(argv: list[str] | None = None, fetch: Callable[[str, int], list[dict[st
     except (subprocess.CalledProcessError, json.JSONDecodeError, OSError) as exc:
         print(f"::error::review-finding hold: could not query issues ({exc}); treating as held", file=sys.stderr)
         return 2
-    head = (head_reader or (lambda r, n: pull_head_sha(r, n)))(args.repo, args.pr)
-    found = blocking_findings(issues, args.repo, args.pr, now, verify_invalid, head)
+    now = now or datetime.now(timezone.utc)
+    pull = pull_reader(args.repo, args.pr)
+    found = blocking_findings(issues, args.repo, args.pr, now, verify_invalid, head_sha(pull))
+    found = [issue for issue in found if not finding_timed_out(issue, pull.get("merged_at"), now)]
     if found:
         for issue in found:
             why = "open" if issue.get("state") == "open" else "closed as not planned within 24 hours"

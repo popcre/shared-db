@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "migration_version": "20261225050100",
-  "migration_sha256": "08eae4a6c90ec4901898d48c9d314c6ff9378b587ab95fa2103742e0900cd69c",
+  "migration_sha256": "7bc6cc00b8c1bb61d2713782d2f0e3cc490d14099dae9f753fc4480bba3b4c5b",
   "checks": [
     {
       "id": "retire_assets_full_text_search",

@@ -8,7 +8,9 @@
 
 begin;
 set local lock_timeout = '5s';
-drop index if exists public.idx_assets_full_text_search;
+-- This observed index must exist before removal. In ephemeral CI its
+-- creating migration needs the adopted baseline and runs in pass two.
+drop index public.idx_assets_full_text_search;
 drop index if exists public.idx_sgf_directory_path_trgm;
 drop index if exists public.idx_style_guide_files_tag_search_trgm;
 commit;

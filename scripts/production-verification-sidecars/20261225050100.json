@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "migration_version": "20261225050100",
+  "migration_sha256": "08eae4a6c90ec4901898d48c9d314c6ff9378b587ab95fa2103742e0900cd69c",
+  "checks": [
+    {
+      "id": "retire_assets_full_text_search",
+      "kind": "catalog_absence",
+      "object": "public.idx_assets_full_text_search",
+      "expected_count": 1
+    },
+    {
+      "id": "retire_sgf_directory_path_trgm",
+      "kind": "catalog_absence",
+      "object": "public.idx_sgf_directory_path_trgm",
+      "expected_count": 1
+    },
+    {
+      "id": "retire_style_guide_files_tag_search_trgm",
+      "kind": "catalog_absence",
+      "object": "public.idx_style_guide_files_tag_search_trgm",
+      "expected_count": 1
+    }
+  ]
+}

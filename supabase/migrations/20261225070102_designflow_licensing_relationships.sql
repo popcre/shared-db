@@ -2,6 +2,8 @@
 -- derived-from: none
 -- The primary identity at this stage is the existing DesignFlow user ID.
 -- A profile is linked only when its identity is established by the consumer.
+-- The app user list uses different schemas in production and sandbox. Enforce
+-- the selected environment’s user mapping before granting the consumer writes.
 
 begin;
 set local lock_timeout = '5s';
@@ -36,7 +38,8 @@ create table plm.licensing_attachment (
   item_id uuid references plm.item(id) on delete cascade,
   licensing_status_id uuid references plm.licensing_status(id) on delete cascade,
   licensing_feedback_id uuid references plm.licensing_feedback(id) on delete cascade,
-  file_object_id uuid not null references app.file_object(id) on delete restrict,
+  file_object_id uuid references app.file_object(id) on delete set null,
+  source_reference text not null check (btrim(source_reference) <> ''),
   position integer not null check (position > 0),
   constraint licensing_attachment_one_parent
     check (num_nonnulls(item_id, licensing_status_id, licensing_feedback_id) = 1)
@@ -67,5 +70,7 @@ comment on table plm.licensing_feedback_mention is
   'Ordered DesignFlow user mentions on a licensing feedback entry.';
 comment on table plm.licensing_attachment is
   'Ordered licensing document reference attached to exactly one item, status or feedback entry.';
+comment on column plm.licensing_attachment.source_reference is
+  'Stable DesignFlow attachment identity retained after the file object is deleted.';
 
 commit;

@@ -767,22 +767,22 @@ def classify_pr(pr: dict[str, Any], runs: list[dict[str, Any]], held: callable,
         print(f"skip: PR #{pr['number']} versions {','.join(pr['versions'])} already in production via another run")
         return "delivered", {}
     findings = held(pr["number"])
+    detail = {}
     if findings:
-        if isinstance(findings, list):
-            # #6701: a review-finding hold times out when `now` is supplied
-            # (production always supplies it). Advisory findings are advice
-            # only (owner ruling 2026-10-29); holding a merged PR for hours
-            # with no disposition was a de-facto production gate.
-            if now is not None:
-                since = hold_since({**pr, "findings": findings})
-                age = now - since
-                if age > HOLD_TIMEOUT:
-                    refs = ", ".join(f"#{f.get('number')}" for f in findings)
-                    print(f"skip: PR #{pr['number']} review-finding hold timed out after "
-                          f"{int(age.total_seconds() // 60)} min ({refs}); no longer holding")
-                    return "held-timed-out", {"findings": findings, "hold_timed_out": True}
-            return "held", {"findings": findings}
-        return "unknown-hold", {"findings": []}
+        if not isinstance(findings, list):
+            return "unknown-hold", {"findings": []}
+        active, timed_out = [], []
+        for finding in findings:
+            if now is not None and review_finding_hold.finding_timed_out(finding, pr["merged_at"], now):
+                timed_out.append(finding)
+            else:
+                active.append(finding)
+        active_numbers = {finding.get("number") for finding in active}
+        expired = [finding for finding in timed_out if finding.get("number") not in active_numbers]
+        if expired:
+            detail["timed_out_findings"] = expired
+        if active:
+            return "held", {**detail, "findings": active}
     dependencies = pr.get("production_dependencies", {})
     proven_bases = set()
     for title, run in zip(titles, runs):
@@ -797,7 +797,7 @@ def classify_pr(pr: dict[str, Any], runs: list[dict[str, Any]], held: callable,
             proven_bases |= already_applied
     missing_bases = {v: owner for v, owner in dependencies.items() if v not in proven_bases}
     if missing_bases:
-        return "waiting-on-dependency", {"pending_dependencies": missing_bases}
+        return "waiting-on-dependency", {**detail, "pending_dependencies": missing_bases}
     # Attempts count per change since its merge, NOT per main commit (#5683/#5686,
     # Nov 5 2026): resetting on every main advance let one stuck change be retried
     # after each unrelated merge and starve every later promotion. A cure for a stuck
@@ -841,8 +841,8 @@ def classify_pr(pr: dict[str, Any], runs: list[dict[str, Any]], held: callable,
             if attempts >= MAX_ATTEMPTS:
                 break
     if attempts >= MAX_ATTEMPTS or refund_parked:
-        return "parked", {"exhausted": attempts, "refunds": refunds, "permanent": permanent_hit}
-    return "dispatchable", {"stale_streak": stale_streak}
+        return "parked", {**detail, "exhausted": attempts, "refunds": refunds, "permanent": permanent_hit}
+    return "dispatchable", {**detail, "stale_streak": stale_streak}
 
 
 def decide(prs: list[dict[str, Any]], runs: list[dict[str, Any]], held: callable,
@@ -894,33 +894,23 @@ def decide(prs: list[dict[str, Any]], runs: list[dict[str, Any]], held: callable
             if skipped is not None:
                 skipped.append({**pr, "findings": [], **detail})
             continue
-        if kind == "held-timed-out":
-            # Timed out: no longer blocks promotion, but the findings stay in
-            # `skipped` so adopt_merged_findings can disposition them (#6701).
-            if skipped is not None:
-                skipped.append({**pr, "findings": detail["findings"], "hold_timed_out": True})
-            # fall through to the dispatch path below
-        elif kind in ("held", "unknown-hold"):
+        if kind in ("held", "unknown-hold", "waiting-on-dependency"):
             passed_over += 1
             if skipped is not None:
-                skipped.append({**pr, "findings": detail["findings"]})
+                skipped.append({**pr, **detail})
             continue
-        elif kind == "waiting-on-dependency":
-            passed_over += 1
-            if skipped is not None:
-                skipped.append({**pr, "pending_dependencies": detail["pending_dependencies"]})
-            continue
-        elif kind == "parked":
+        if kind == "parked":
             # Out of automatic attempts or out of refunds: passed over like a held
             # PR, with a loud alert in main(), so one dead PR cannot park every
             # later promotion while still refusing to retry it (#5532).
             passed_over += 1
-            entry = {**pr, "findings": [], "exhausted": detail["exhausted"], "refunds": detail["refunds"],
-                     "permanent": detail["permanent"]}
+            entry = {**pr, "findings": [], **detail}
             out_of_attempts.append(entry)
             if skipped is not None:
                 skipped.append(entry)
             continue
+        if skipped is not None and detail.get("timed_out_findings"):
+            skipped.append({**pr, "timed_out_findings": detail["timed_out_findings"]})
         if detail.get("stale_streak", 0) >= BACKSTOP_AFTER_STALE:
             pr = {**pr, "stale_streak": detail["stale_streak"]}
         return "dispatch", pr, f"PR #{pr['number']} versions {','.join(pr['versions'])} not yet in production"
@@ -1009,8 +999,8 @@ def overdue_holds(skipped: list[dict[str, Any]], now: datetime) -> list[str]:
     attempts are not review holds for this alert."""
     lines = []
     for pr in skipped:
-        if (pr.get("exhausted") or pr.get("refunds") or pr.get("pending_dependencies")
-                or pr.get("never_promote") or pr.get("hold_timed_out")):
+        if ("findings" not in pr or pr.get("exhausted") or pr.get("refunds")
+                or pr.get("pending_dependencies") or pr.get("never_promote")):
             continue
         since = hold_since(pr)
         if now - since > ALERT_AFTER:
@@ -1027,12 +1017,8 @@ def overdue_holds(skipped: list[dict[str, Any]], now: datetime) -> list[str]:
 # retries the fixer on it exactly once (the blocker -- a claim, a flaky agent
 # run -- has usually cleared after the merge), leaving a marked note on the
 # finding so the retry is visible and never repeats.
-ORPHAN_RETRY_AFTER = timedelta(hours=4)
-# #6701: a review-finding hold older than this no longer blocks promotion.
-# The orphan-retry nudge above still runs so parked findings get one fixer
-# attempt; a still-open finding past the timeout is adopted (disposition note)
-# rather than holding production forever.
-HOLD_TIMEOUT = timedelta(hours=4)
+# Leave one hourly trigger slot for the retry before the hold times out.
+ORPHAN_RETRY_AFTER = review_finding_hold.HOLD_TIMEOUT - timedelta(hours=1)
 FIXER_TERMINAL_LABELS = ("fixer-deferred", "fixer-failed")
 ORPHAN_RETRY_MARKER = "<!-- promotion-orphan-retry:v1 -->"
 ADOPT_MARKER = "<!-- promotion-adopt-merged:v1 -->"
@@ -1050,16 +1036,16 @@ def orphaned_findings(skipped: list[dict[str, Any]], now: datetime) -> list[tupl
     found, seen = [], set()
     for entry in skipped:
         if (entry.get("exhausted") or entry.get("refunds") or entry.get("pending_dependencies")
-                or entry.get("never_promote") or entry.get("hold_timed_out")):
-            continue
-        if now - hold_since(entry) <= ORPHAN_RETRY_AFTER:
+                or entry.get("never_promote")):
             continue
         for finding in entry.get("findings") or []:
             number = finding.get("number")
             if (finding.get("state") == "open" and number not in seen
                     and _label_names(finding) & set(FIXER_TERMINAL_LABELS)):
-                seen.add(number)
-                found.append((entry["number"], {**finding, "_held_since": hold_since(entry)}))
+                since = hold_since({**entry, "findings": [finding]})
+                if now - since > ORPHAN_RETRY_AFTER:
+                    seen.add(number)
+                    found.append((entry["number"], {**finding, "_held_since": since}))
     return found
 
 
@@ -1122,18 +1108,16 @@ def adopt_merged_findings(repo: str, skipped: list[dict[str, Any]], now: datetim
                           dry_run: bool = False) -> list[str]:
     """#6701: the review-fixer only works open PRs. When a finding on a MERGED
     PR names a head that is no longer the delivered one, or the hold has timed
-    out past HOLD_TIMEOUT with no disposition, this trigger adopts it: one
-    marked disposition note, then close as not planned. Never raises."""
+    out with no disposition, this trigger adopts it: one marked disposition
+    note, then close as completed. Never raises."""
     lines: list[str] = []
     seen: set[int] = set()
     for entry in skipped:
-        if entry.get("exhausted") or entry.get("refunds") or entry.get("pending_dependencies"):
-            continue
         if entry.get("never_promote"):
             continue
         pr_number = entry.get("number")
         merged_at = entry.get("merged_at") or ""
-        findings = entry.get("findings") or []
+        findings = (entry.get("findings") or []) + (entry.get("timed_out_findings") or [])
         if not pr_number or not findings or not merged_at:
             continue
         head = review_finding_hold.pull_head_sha(repo, pr_number)
@@ -1141,14 +1125,14 @@ def adopt_merged_findings(repo: str, skipped: list[dict[str, Any]], now: datetim
             n = finding.get("number")
             if not n or n in seen or finding.get("state") != "open":
                 continue
-            seen.add(n)
             finding_head = review_finding_hold.finding_head_sha(finding)
             superseded = bool(head and finding_head and finding_head != head)
-            held_for = now - hold_since({**entry, "findings": [finding]})
-            timed_out = held_for > HOLD_TIMEOUT or bool(entry.get("hold_timed_out"))
+            timed_out = review_finding_hold.finding_timed_out(finding, merged_at, now)
             if not (superseded or timed_out):
                 continue
+            seen.add(n)
             try:
+                held_for = now - hold_since({**entry, "findings": [finding]})
                 lines.append(_adopt_one(repo, pr_number, finding, now, dry_run,
                                         superseded=superseded, timed_out=timed_out,
                                         held_for=held_for))
@@ -1162,8 +1146,7 @@ def _adopt_one(repo: str, pr: int, finding: dict[str, Any], now: datetime, dry_r
                *, superseded: bool, timed_out: bool, held_for) -> str:
     n = finding["number"]
     pages = gh("--paginate", "--slurp", f"repos/{repo}/issues/{n}/comments?per_page=100") or []
-    if any(ADOPT_MARKER in (c.get("body") or "") for page in pages for c in page):
-        return f"finding #{n} (on merged PR #{pr}): already adopted"
+    noted = any(ADOPT_MARKER in (c.get("body") or "") for page in pages for c in page)
     reasons = []
     if superseded:
         reasons.append("its Head SHA is not the delivered PR head")
@@ -1175,15 +1158,15 @@ def _adopt_one(repo: str, pr: int, finding: dict[str, Any], now: datetime, dry_r
     body = (
         f"{ADOPT_MARKER}\nAdopted by the automatic production trigger for merged PR "
         f"#{pr}: {' and '.join(reasons)}. Advisory review findings never gate "
-        "promotion (owner ruling 2026-10-29); this note dispositions the finding "
-        "so it no longer holds the lane. Close as not planned unless a real "
-        "defect still needs a fix-forward under a new version.\n\n" + _footer()
+        "promotion (owner ruling 2026-10-29). This closes the review disposition. "
+        "Any confirmed defect still needs a fix-forward under a new version.\n\n" + _footer()
     )
-    ok, msg = gh_write("POST", f"repos/{repo}/issues/{n}/comments", {"body": body})
-    if not ok:
-        return f"finding #{n} (on merged PR #{pr}): adopt note refused ({msg})"
+    if not noted:
+        ok, msg = gh_write("POST", f"repos/{repo}/issues/{n}/comments", {"body": body})
+        if not ok:
+            return f"finding #{n} (on merged PR #{pr}): adopt note refused ({msg})"
     ok, msg = gh_write("PATCH", f"repos/{repo}/issues/{n}",
-                       {"state": "closed", "state_reason": "not_planned"})
+                       {"state": "closed", "state_reason": "completed"})
     if not ok:
         return f"finding #{n} (on merged PR #{pr}): adopt note posted, close refused ({msg})"
     return f"finding #{n} (on merged PR #{pr}): adopted and closed ({'; '.join(reasons)})"
@@ -1201,8 +1184,9 @@ def is_held(repo: str, pr: int, head: str | None = None) -> list[dict[str, Any]]
     except (subprocess.CalledProcessError, ValueError, OSError) as exc:
         print(f"::warning::review-finding hold query for PR #{pr} failed ({exc}); treating as held")
         return True
-    # The two index reads repeat an issue; report each finding once.
-    return list({f.get("number"): f for f in found}.values())
+    # Keep conflicting states until timeout classification, so an expired open
+    # snapshot cannot hide a blocking not-planned close from another read.
+    return list({(f.get("number"), f.get("state")): f for f in found}.values())
 
 
 def prefetch_holds(repo: str, prs: list[int]) -> callable:
@@ -1236,7 +1220,7 @@ def prefetch_holds(repo: str, prs: list[int]) -> callable:
             except (subprocess.CalledProcessError, ValueError, OSError) as exc:
                 print(f"::warning::review-finding hold check for PR #{number} failed ({exc}); treating as held")
                 return True
-            found[number] = list({f.get("number"): f for f in rows}.values())
+            found[number] = list({(f.get("number"), f.get("state")): f for f in rows}.values())
         return found[number]
     return held
 
@@ -1394,10 +1378,9 @@ def main(now: datetime | None = None) -> int:
                   f"{entry.get('never_promote_reason', 'retired original')}; "
                   "not in production via this lane")
             continue
-        if entry.get("hold_timed_out"):
-            refs = ", ".join(f"#{f.get('number')}" for f in entry.get("findings") or [])
-            print(f"timeout: PR #{entry['number']} review-finding hold timed out ({refs}); promoting")
-            continue
+        if expired := entry.get("timed_out_findings"):
+            refs = ", ".join(f"#{f.get('number')}" for f in expired)
+            print(f"timeout: PR #{entry['number']} review-finding hold expired for {refs}")
         if entry.get("pending_dependencies"):
             refs = ", ".join(f"{v} (PR #{owner})" for v, owner in entry["pending_dependencies"].items())
             print(f"dependency: PR #{entry['number']} waiting on production evidence for {refs}; later independent PRs still promote")
@@ -1407,12 +1390,15 @@ def main(now: datetime | None = None) -> int:
                     else f"out of refunds (cap {MAX_REFUNDS} per change)")
             print(f"exhausted: PR #{entry['number']} {what}; later PRs still promote")
             continue
-        refs = ", ".join(f"#{f.get('number')}" for f in entry["findings"]) or "an unreadable finding query"
-        print(f"held: PR #{entry['number']} by {refs}; later PRs still promote")
+        if "findings" in entry:
+            refs = ", ".join(f"#{f.get('number')}" for f in entry["findings"]) or "an unreadable finding query"
+            print(f"held: PR #{entry['number']} by {refs}; later PRs still promote")
     phase("decision made")
     print(f"{action}: {reason}")
     alerts = overdue_holds(skipped, now)
     claimed_elsewhere: set[int] = set()
+    rechecked: set[int] = set()
+    recheck_skipped: list[dict[str, Any]] = []
     reconcile_runs = runs
     while action == "dispatch":
         # Selecting takes minutes; a run started meanwhile must count (#5558:
@@ -1425,13 +1411,14 @@ def main(now: datetime | None = None) -> int:
                                                if n in merged_at])
         fresh_runs = workflow_runs(repo, fresh_since=fresh_since)
         reconcile_runs = fresh_runs
+        rechecked.add(pr["number"])
         action, pr, reason = decide([pr], fresh_runs, lambda n: is_held(repo, n),
                                     lambda run: applied_in_any_attempt(repo, run), main_sha,
-                                    None, lambda run: refused_as_applied(repo, run),
+                                    recheck_skipped, lambda run: refused_as_applied(repo, run),
                                     stale=lambda run: stale_main_refusal_only(repo, run),
                                     permanent=lambda run: permanent_refusal(repo, run),
                                     refunded=lambda run: refund_eligible_in_any_attempt(repo, run),
-                                    live=live)
+                                    live=live, now=now)
         phase("fresh recheck done")
         if action != "dispatch":
             print(f"dispatch withdrawn on the fresh recheck: {action}: {reason}")
@@ -1472,7 +1459,7 @@ def main(now: datetime | None = None) -> int:
                                     stale=lambda run: stale_main_refusal_only(repo, run),
                                     permanent=lambda run: permanent_refusal(repo, run),
                                     refunded=lambda run: refund_eligible_in_any_attempt(repo, run),
-                                    live=live)
+                                    live=live, now=now)
         print(f"{action}: {reason} (after passing over claimed PR(s) "
               f"{', '.join(f'#{n}' for n in sorted(claimed_elsewhere))})")
     for line in alerts:
@@ -1484,7 +1471,8 @@ def main(now: datetime | None = None) -> int:
     for line in orphan_lines:
         print(f"::warning title=Parked review finding holds production::{line}")
     try:
-        adopt_lines = adopt_merged_findings(repo, skipped, now, dry_run=args.dry_run)
+        adopt_entries = recheck_skipped + [entry for entry in skipped if entry["number"] not in rechecked]
+        adopt_lines = adopt_merged_findings(repo, adopt_entries, now, dry_run=args.dry_run)
     except Exception as exc:  # noqa: BLE001 -- contained like the reconciler
         adopt_lines = [f"adopt defect: {type(exc).__name__}: {exc}"]
     for line in adopt_lines:
@@ -2019,7 +2007,7 @@ def reconcile_stranded_marks(repo: str, candidates: list[dict[str, Any]], runs: 
             continue
         try:
             kind, detail = classify_pr(pr, runs, held, applied_m, refused_m, stale_m, refunded_m,
-                                       live, dependency_evidence, permanent_m)
+                                       live, dependency_evidence, permanent_m, now)
             entry = {**pr, **detail}
             if kind == "held" and now - hold_since(entry) > HELD_ESCALATE_AFTER:
                 desired[HELD_LABEL][number] = entry

@@ -34,9 +34,9 @@ def issue(number, state="open", reason=None, closed=None, pr=5100):
     }
 
 
-def run(issues, pr=5100, head=None):
+def run(issues, pr=5100, head=None, merged_at=None):
     return hold.main(["--pr", str(pr), "--repo", REPO], fetch=lambda _repo, _pr: issues,
-                     now=NOW, head_reader=lambda _r, _n: head)
+                     now=NOW, pull_reader=lambda _r, _n: {"head": {"sha": head}, "merged_at": merged_at})
 
 
 def job_block(text: str, job: str) -> str:
@@ -49,6 +49,19 @@ def job_block(text: str, job: str) -> str:
 class HoldRule(unittest.TestCase):
     def test_open_finding_holds(self):
         self.assertEqual(run([issue(1)]), 3)
+
+    def test_expired_open_finding_clears_without_waiting_for_adoption(self):
+        old = {**issue(1), "created_at": "2026-10-30T06:00:00Z"}
+        self.assertEqual(run([old], merged_at="2026-10-30T07:00:00Z"), 0)
+        self.assertEqual(run([old], merged_at="2026-10-30T09:00:00Z"), 3)
+        self.assertEqual(run([old]), 3)
+
+    def test_new_finding_and_recent_not_planned_close_still_hold(self):
+        old = {**issue(1), "created_at": "2026-10-30T06:00:00Z"}
+        young = {**issue(2), "created_at": "2026-10-30T11:00:00Z"}
+        declined = issue(1, "closed", "not_planned", "2026-10-30T11:00:00Z")
+        self.assertEqual(run([old, young], merged_at="2026-10-30T07:00:00Z"), 3)
+        self.assertEqual(run([declined, old], merged_at="2026-10-30T07:00:00Z"), 3)
 
     def test_closed_not_planned_within_24_hours_holds(self):
         self.assertEqual(run([issue(2, "closed", "not_planned", "2026-10-29T13:00:00Z")]), 3)
@@ -218,7 +231,7 @@ class InvalidEvidence(unittest.TestCase):
             calls.append(1)
             return True
         self.assertEqual(hold.main(["--pr", "5100", "--repo", REPO],
-                                  fetch=lambda _r, _p: [self.item, self.item.copy()], now=NOW, verify_invalid=verify), 0)
+                                  fetch=lambda _r, _p: [self.item, self.item.copy()], now=NOW, verify_invalid=verify, pull_reader=lambda _r, _n: {}), 0)
         self.assertEqual(calls, [1])
 
     def test_referenced_run_and_candidate_comments_are_cached(self):
@@ -245,12 +258,12 @@ class InvalidEvidence(unittest.TestCase):
         self.assertEqual(hold.main(["--pr", "5100", "--repo", REPO],
                                   fetch=lambda _r, _p: [self.item, {**self.item, "state": "open"}],
                                   now=NOW, verify_invalid=lambda *_a: True,
-                                  head_reader=lambda _r, _n: None), 3)
+                                  pull_reader=lambda _r, _n: {}), 3)
 
     def test_no_evidence_calls_for_unlabelled_findings(self):
         self.assertEqual(hold.main(["--pr", "5100", "--repo", REPO], fetch=lambda _r, _p: [issue(1)],
                                   now=NOW, verify_invalid=lambda *_a: self.fail("unexpected evidence read"),
-                                  head_reader=lambda _r, _n: None), 3)
+                                  pull_reader=lambda _r, _n: {}), 3)
 
     def test_superseded_head_does_not_hold(self):
         item = issue(30)
@@ -258,7 +271,7 @@ class InvalidEvidence(unittest.TestCase):
         self.assertEqual(hold.main(["--pr", "5100", "--repo", REPO],
                                   fetch=lambda _r, _p: [item], now=NOW,
                                   verify_invalid=lambda *_a: False,
-                                  head_reader=lambda _r, _n: "b" * 40), 0)
+                                  pull_reader=lambda _r, _n: {"head": {"sha": "b" * 40}}), 0)
 
     def test_matching_head_still_holds(self):
         item = issue(31)
@@ -266,7 +279,7 @@ class InvalidEvidence(unittest.TestCase):
         self.assertEqual(hold.main(["--pr", "5100", "--repo", REPO],
                                   fetch=lambda _r, _p: [item], now=NOW,
                                   verify_invalid=lambda *_a: False,
-                                  head_reader=lambda _r, _n: "a" * 40), 3)
+                                  pull_reader=lambda _r, _n: {"head": {"sha": "a" * 40}}), 3)
 
 
 class WorkflowShape(unittest.TestCase):

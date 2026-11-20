@@ -192,7 +192,7 @@ begin
     raise exception '#6912: tracking grant role has unexpected itemDetail column privileges';
   end if;
 
-  select array_agg(a.attname::text order by a.attname::text)
+  select array_agg(a.attname::text order by a.attname::text collate "C")
     into granted_columns
     from pg_attribute a
     cross join lateral aclexplode(coalesce(a.attacl, acldefault('c', a.attrelid))) acl
@@ -200,17 +200,17 @@ begin
      and a.attnum > 0 and not a.attisdropped
      and acl.grantee = 'designflow_prod_tracking_grants'::regrole
      and acl.privilege_type = 'SELECT';
-  if granted_columns is distinct from (select array_agg(c order by c) from unnest(expected_columns) c) then
+  if granted_columns is distinct from (select array_agg(c order by c collate "C") from unnest(expected_columns) c) then
     raise exception '#6912: tracking grant role itemDetail SELECT columns differ';
   end if;
 
-  select array_agg(a.attname::text order by a.attname::text)
+  select array_agg(a.attname::text order by a.attname::text collate "C")
     into runtime_columns
     from pg_attribute a
    where a.attrelid = 'dflow_prod."itemDetail"'::regclass
      and a.attnum > 0 and not a.attisdropped
      and has_column_privilege('designflow_prod_tracking_runtime', 'dflow_prod."itemDetail"', a.attname, 'SELECT');
-  if runtime_columns is distinct from (select array_agg(c order by c) from unnest(expected_columns) c) then
+  if runtime_columns is distinct from (select array_agg(c order by c collate "C") from unnest(expected_columns) c) then
     raise exception '#6912: tracking runtime effective itemDetail SELECT columns differ';
   end if;
 end

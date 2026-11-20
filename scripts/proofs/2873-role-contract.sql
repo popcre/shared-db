@@ -477,6 +477,8 @@ insert into t2873_expected values
   ('designflow_prod_data_sync_grants','table','dflow_prod.ProdOrderHeader','INSERT'),
   ('designflow_prod_data_sync_grants','table','dflow_prod.ProdOrderHeader','UPDATE'),
   ('designflow_prod_data_sync_grants','table','dflow_prod.UDFTable','SELECT'),
+  ('designflow_prod_data_sync_grants','table','dflow_prod.art_piece','SELECT'),
+  ('designflow_prod_data_sync_grants','column','dflow_prod.artists.art_source_id','SELECT'),
   ('designflow_prod_data_sync_grants','table','dflow_prod.externalApi','SELECT'),
   ('designflow_prod_data_sync_grants','table','dflow_prod.externalCustomer','INSERT'),
   ('designflow_prod_data_sync_grants','table','dflow_prod.externalCustomer','SELECT'),
@@ -526,12 +528,25 @@ begin
            n.nspname||'.'||c.relname name, a.privilege_type priv
     from pg_class c join pg_namespace n on n.oid=c.relnamespace
     cross join lateral aclexplode(c.relacl) a join audited_roles r on r.oid=a.grantee
+    UNION ALL
+    SELECT r.rolname::text,'column','dflow_prod.artists.'||col.attname,a.privilege_type
+    FROM pg_attribute col CROSS JOIN LATERAL aclexplode(col.attacl) a JOIN audited_roles r ON r.oid=a.grantee
+    WHERE col.attrelid='dflow_prod.artists'::regclass AND col.attnum>0 AND NOT col.attisdropped
     union all
     select r.rolname::text, 'function', n.nspname||'.'||p.proname, a.privilege_type
     from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join lateral aclexplode(p.proacl) a join audited_roles r on r.oid=a.grantee
   ), d as ((select * from actual except select * from t2873_expected) union all (select * from t2873_expected except select * from actual))
   select string_agg(format('%s %s %s %s', grantee, kind, name, priv), '; ') into v_diff from d;
   if v_diff is not null then raise exception '#2873: grant matrix drift: %', v_diff; end if;
+  if not (has_column_privilege('designflow_prod_data_sync_runtime', 'dflow_prod.artists', 'art_source_id', 'SELECT')
+ AND NOT EXISTS (
+   SELECT 1 FROM pg_attribute a
+   WHERE a.attrelid='dflow_prod.artists'::regclass AND a.attnum>0 AND NOT a.attisdropped
+     AND ((a.attname<>'art_source_id' AND has_column_privilege('designflow_prod_data_sync_runtime',a.attrelid,a.attnum,'SELECT'))
+          OR has_column_privilege('designflow_prod_data_sync_runtime',a.attrelid,a.attnum,'SELECT WITH GRANT OPTION'))
+ )) then
+    raise exception '#2873: data sync artists column access differs';
+  end if;
   -- Function grants are compared by name above; refuse any overload so a name is one signature.
   select string_agg(distinct n.nspname||'.'||p.proname, ', ') into v_diff
   from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join lateral aclexplode(p.proacl) a join pg_roles r on r.oid=a.grantee

@@ -466,6 +466,8 @@ WITH expected(grantee,kind,name,priv) AS (VALUES
  ('designflow_prod_data_sync_grants','table','dflow_prod.ProdOrderHeader','INSERT'),
  ('designflow_prod_data_sync_grants','table','dflow_prod.ProdOrderHeader','UPDATE'),
  ('designflow_prod_data_sync_grants','table','dflow_prod.UDFTable','SELECT'),
+ ('designflow_prod_data_sync_grants','table','dflow_prod.art_piece','SELECT'),
+ ('designflow_prod_data_sync_grants','column','dflow_prod.artists.art_source_id','SELECT'),
  ('designflow_prod_data_sync_grants','table','dflow_prod.externalApi','SELECT'),
  ('designflow_prod_data_sync_grants','table','dflow_prod.externalCustomer','INSERT'),('designflow_prod_data_sync_grants','table','dflow_prod.externalCustomer','SELECT'),('designflow_prod_data_sync_grants','table','dflow_prod.externalVendor','SELECT'),('designflow_prod_data_sync_grants','table','dflow_prod.SeasonCode','SELECT'),
  ('designflow_prod_data_sync_grants','table','dflow_prod.externalVendor','INSERT'),
@@ -492,6 +494,10 @@ WITH expected(grantee,kind,name,priv) AS (VALUES
  SELECT r.rolname::text grantee,CASE c.relkind WHEN 'S' THEN 'sequence' WHEN 'v' THEN 'view' ELSE 'table' END kind,
  n.nspname||'.'||c.relname name,a.privilege_type priv
  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace CROSS JOIN LATERAL aclexplode(c.relacl) a JOIN roles r ON r.oid=a.grantee
+ UNION ALL
+ SELECT r.rolname::text,'column','dflow_prod.artists.'||col.attname,a.privilege_type
+ FROM pg_attribute col CROSS JOIN LATERAL aclexplode(col.attacl) a JOIN roles r ON r.oid=a.grantee
+ WHERE col.attrelid='dflow_prod.artists'::regclass AND col.attnum>0 AND NOT col.attisdropped
  UNION ALL
  SELECT r.rolname::text,'function',COALESCE(e.name,p.oid::regprocedure::text),a.privilege_type
  FROM pg_proc p CROSS JOIN LATERAL aclexplode(p.proacl) a JOIN roles r ON r.oid=a.grantee
@@ -538,7 +544,14 @@ SELECT jsonb_build_object(
  'inherited_helpers',(SELECT jsonb_agg(jsonb_build_object('signature',p.oid::regprocedure::text,'security_definer',p.prosecdef,'configuration',p.proconfig,'body_sha256',encode(sha256(convert_to(pg_get_functiondef(p.oid),'UTF8')),'hex')) ORDER BY p.oid::regprocedure::text) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='dflow_prod' AND p.proname IN ('get_child_id','get_parent_id','reject_sample_movement_mutation')),
  'effective_function_extras_exact',NOT EXISTS(SELECT 1 FROM roles r CROSS JOIN pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE r.suffix='_runtime' AND n.nspname='dflow_prod' AND has_function_privilege(r.oid,p.oid,'EXECUTE') AND NOT EXISTS(SELECT 1 FROM expected e WHERE e.kind='function' AND e.grantee='designflow_prod_'||r.service||'_grants' AND to_regprocedure(e.name)=p.oid) AND p.proname NOT IN ('get_child_id','get_parent_id','reject_sample_movement_mutation'))
  AND (SELECT count(*) FROM roles r CROSS JOIN pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE r.suffix='_runtime' AND n.nspname='dflow_prod' AND p.proname IN ('get_child_id','get_parent_id','reject_sample_movement_mutation') AND has_function_privilege(r.oid,p.oid,'EXECUTE'))=12,
- 'effective_relations_exact',NOT EXISTS(SELECT 1 FROM roles r CROSS JOIN pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace CROSS JOIN unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) v(priv) WHERE r.suffix='_runtime' AND n.nspname IN ('dflow_prod','plm','coldlion') AND c.relkind IN ('r','v','m','p','f') AND has_table_privilege(r.oid,c.oid,v.priv)<>EXISTS(SELECT 1 FROM expected e WHERE e.kind IN ('table','view') AND e.grantee IN ('designflow_prod_'||r.service||'_grants',r.rolname::text) AND e.name=n.nspname||'.'||c.relname AND e.priv=v.priv OR (r.rolname='designflow_prod_backend_runtime' AND v.priv='SELECT' AND e.grantee='designflow_prod_tracking_grants' AND e.priv='SELECT' AND e.name=n.nspname||'.'||c.relname AND e.name IN ('coldlion.order_history_line','coldlion.prod_history_line','dflow_prod.v_prod_order_sales_order_link')) OR (r.rolname='designflow_prod_backend_runtime' AND v.priv IN ('SELECT','INSERT','UPDATE') AND e.grantee='designflow_prod_tracking_grants' AND e.name='dflow_prod.prod_order_milestone_schedule' AND e.name=n.nspname||'.'||c.relname AND e.priv=v.priv)))
+ 'effective_relations_exact',has_column_privilege('designflow_prod_data_sync_runtime', 'dflow_prod.artists', 'art_source_id', 'SELECT')
+ AND NOT EXISTS (
+   SELECT 1 FROM pg_attribute a
+   WHERE a.attrelid='dflow_prod.artists'::regclass AND a.attnum>0 AND NOT a.attisdropped
+     AND ((a.attname<>'art_source_id' AND has_column_privilege('designflow_prod_data_sync_runtime',a.attrelid,a.attnum,'SELECT'))
+          OR has_column_privilege('designflow_prod_data_sync_runtime',a.attrelid,a.attnum,'SELECT WITH GRANT OPTION'))
+ )
+ AND NOT EXISTS(SELECT 1 FROM roles r CROSS JOIN pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace CROSS JOIN unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) v(priv) WHERE r.suffix='_runtime' AND n.nspname IN ('dflow_prod','plm','coldlion') AND c.relkind IN ('r','v','m','p','f') AND has_table_privilege(r.oid,c.oid,v.priv)<>EXISTS(SELECT 1 FROM expected e WHERE e.kind IN ('table','view') AND e.grantee IN ('designflow_prod_'||r.service||'_grants',r.rolname::text) AND e.name=n.nspname||'.'||c.relname AND e.priv=v.priv OR (r.rolname='designflow_prod_backend_runtime' AND v.priv='SELECT' AND e.grantee='designflow_prod_tracking_grants' AND e.priv='SELECT' AND e.name=n.nspname||'.'||c.relname AND e.name IN ('coldlion.order_history_line','coldlion.prod_history_line','dflow_prod.v_prod_order_sales_order_link')) OR (r.rolname='designflow_prod_backend_runtime' AND v.priv IN ('SELECT','INSERT','UPDATE') AND e.grantee='designflow_prod_tracking_grants' AND e.name='dflow_prod.prod_order_milestone_schedule' AND e.name=n.nspname||'.'||c.relname AND e.priv=v.priv)))
  AND NOT EXISTS(SELECT 1 FROM roles r CROSS JOIN pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace CROSS JOIN unnest(ARRAY['SELECT','USAGE','UPDATE']) v(priv) WHERE r.suffix='_runtime' AND n.nspname='dflow_prod' AND c.relkind='S' AND has_sequence_privilege(r.oid,c.oid,v.priv)<>EXISTS(SELECT 1 FROM expected e WHERE e.kind='sequence' AND e.grantee='designflow_prod_'||r.service||'_grants' AND e.name=n.nspname||'.'||c.relname AND e.priv=v.priv)),
  'global_no_create',NOT EXISTS(SELECT 1 FROM roles r CROSS JOIN pg_namespace n WHERE n.nspname NOT LIKE 'pg\_%' AND n.nspname<>'information_schema' AND has_schema_privilege(r.oid,n.oid,'CREATE')),
  'global_no_truncate',NOT EXISTS(SELECT 1 FROM roles r CROSS JOIN pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p','f') AND n.nspname NOT LIKE 'pg\_%' AND n.nspname<>'information_schema' AND has_table_privilege(r.oid,c.oid,'TRUNCATE') AND NOT (n.nspname='net' AND EXISTS(SELECT 1 FROM aclexplode(c.relacl) pa WHERE pa.grantee=0 AND pa.privilege_type='TRUNCATE') AND NOT EXISTS(SELECT 1 FROM aclexplode(c.relacl) da WHERE da.grantee IN(SELECT oid FROM roles)))),

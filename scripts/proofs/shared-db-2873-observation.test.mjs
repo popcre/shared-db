@@ -48,7 +48,7 @@ test('complete profile fits the original 8192-byte artifact bound and the query 
  const sqlBytes=await readFile(new URL('./2873-catalog.sql',import.meta.url));const contractBytes=await readFile(new URL('./2873-contract.json',import.meta.url));
  assert.ok(buildObservation({rows:rows(),env:env(),sqlBytes,contractBytes,observedAt:'2026-10-06T21:00:00.000Z'}).length<=8192);
  const sql=sqlBytes.toString();assert.match(sql,/WITH expected/);assert.doesNotMatch(sql,/^\s*(?:INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|GRANT|REVOKE)\b/im);
- assert.equal(expected.catalog.role_count,8);assert.equal(expected.catalog.matrix_entries,485);
+ assert.equal(expected.catalog.role_count,8);assert.equal(expected.catalog.matrix_entries,487);
 });
 
 // #2873: Supabase's non-superuser postgres receives PostgreSQL 16+'s implicit creator
@@ -95,6 +95,11 @@ test('both exact matrices contain the exact prerequisite and tracking-access rel
   assert.deepEqual(rows.filter(r=>r[2]==='dflow_prod.item_detail_upc'),[['designflow_prod_item_master_grants','view','dflow_prod.item_detail_upc','SELECT']]);
   assert.deepEqual(rows.filter(r=>r[2]==='dflow_prod.prod_order_milestone_schedule').sort(),['INSERT','SELECT','UPDATE'].map(priv=>['designflow_prod_tracking_grants','table','dflow_prod.prod_order_milestone_schedule',priv]));
   assert.deepEqual(rows.filter(r=>r[2]==='dflow_prod.prod_order_milestone_schedule_id_seq'),[]);
+  assert.deepEqual(rows.filter(([role,,name])=>role==='designflow_prod_data_sync_grants' &&
+    (name==='dflow_prod.art_piece' || name==='dflow_prod.artists' || name.startsWith('dflow_prod.artists.'))), [
+    ['designflow_prod_data_sync_grants','table','dflow_prod.art_piece','SELECT'],
+    ['designflow_prod_data_sync_grants','column','dflow_prod.artists.art_source_id','SELECT'],
+  ]);
  }
  // The observer pins function signatures; the SQL role contract resolves names.
  const normalized=rows=>rows.map(([role,kind,name,priv])=>JSON.stringify([role,kind,kind==='function'?name.replace(/\(.*$/,''):name,priv])).sort();
@@ -123,4 +128,12 @@ test('milestone inherited backend allowance is exactly three rights on one table
  assert.equal(sql.split(clause).length-1,1);
  assert.ok(sql.includes("v.priv='SELECT' AND e.grantee='designflow_prod_tracking_grants' AND e.priv='SELECT'"),'existing history exception stays SELECT only');
  assert.match(expected.live_assertion,/#4646.*No DELETE or direct identity sequence rights/);
+});
+
+test('data sync migration checks row security before granting narrowly scoped reads', async()=>{
+ const migration=await readFile(new URL('../../supabase/migrations/20261225012000_dflow_prod_sync_read_art_piece_artists.sql',import.meta.url),'utf8');
+ assert.match(migration,/where oid in \('dflow_prod\.art_piece'::regclass, 'dflow_prod\.artists'::regclass\)\s+and \(relrowsecurity or relforcerowsecurity\)[\s\S]*?raise exception[\s\S]*?grant select on table dflow_prod\.art_piece/);
+ assert.match(migration,/grant select \(art_source_id\) on table dflow_prod\.artists to designflow_prod_data_sync_grants;/);
+ assert.doesNotMatch(migration,/grant select on table dflow_prod\.artists/i);
+ assert.match(migration,/or has_column_privilege\('designflow_prod_data_sync_runtime', 'dflow_prod\.artists', 'email', 'select'\) then/);
 });

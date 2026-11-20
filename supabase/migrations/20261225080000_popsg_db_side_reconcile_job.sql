@@ -17,6 +17,7 @@
 --   * count_style_guide_crawl_seen counts the active-only side table alone
 --     (contract-checked to hold no inactive file), as preview_stale_sg_files
 --     already does since 20261222090000.
+-- derived-from: 20261111132448
 begin;
 set local lock_timeout = '2s';
 set local statement_timeout = '60s';

@@ -67,8 +67,8 @@ begin
   if v_src ~ 'is distinct from p_run_id' then
     raise exception '2792 contract 2: victims are still selected with IS DISTINCT FROM (full-root walk)';
   end if;
-  if v_src !~ 'least\(coalesce\(p_batch_size, 500\), 500\)' then
-    raise exception '2792 contract 2: per-call write cap is not 500';
+  if v_src !~ 'least\(coalesce\(p_batch_size, 50\), 50\)' then
+    raise exception '2792 contract 2: per-call write cap is not 50 (#3458)';
   end if;
   -- #3458: the preview counts only the active-files side table (no per-row
   -- heap recheck of style_guide_files), and that table must stay active-only.

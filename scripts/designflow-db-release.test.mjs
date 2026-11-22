@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { canonicalJson, sha256 } from './db-flow/evidence-bundle.mjs';
 import { proposeTrain, trainRecordRef } from './db-flow/migration-train.mjs';
 import { manifestDigest } from './lib/designflow-db-release.mjs';
-import { sourceFacts, nonclosingSourceBinding, assessRelease, runObserver, releasePolicy, dispatchTitle, verifyApplyReceipt, verifyAppliedFiles, workflowRuns, artifactContainsSource, assertObserverSource, publishAppStatus, prepareReleaseReady, productionRunMatches, verifyBatchProductionFiles, batchRunCandidate, validatedTrainRefFromLog, currentLiveRecoveryCommandFrom } from './designflow-db-release.mjs';
+import { sourceFacts, nonclosingSourceBinding, authenticateBatchSource, assessRelease, runObserver, releasePolicy, dispatchTitle, verifyApplyReceipt, verifyAppliedFiles, workflowRuns, artifactContainsSource, assertObserverSource, publishAppStatus, prepareReleaseReady, productionRunMatches, verifyBatchProductionFiles, batchRunCandidate, validatedTrainRefFromLog, currentLiveRecoveryCommandFrom } from './designflow-db-release.mjs';
 
 const head = 'a'.repeat(40), repository = 'popcre/designflow-tracking';
 const path = 'supabase/migrations/20261022194647_synthetic.sql', content = '-- synthetic only\n';
@@ -31,7 +31,12 @@ function fixture() {
 const assess = f => assessRelease({ repository, head, manifest: f.manifest, policy: f.policy }, f.io);
 
 test('exact applied source plus current catalog contracts yields readiness, no dispatch', async () => {
-  const f = fixture(), result = await assess(f);
+  const f = fixture(), productionEvidence = f.io.productionEvidence;
+  f.io.productionEvidence = (required, facts, app) => {
+    assert.equal(app, repository);
+    return productionEvidence(required, facts);
+  };
+  const result = await assess(f);
   assert.equal(result.status, 'ready'); assert.equal(result.head_sha, head);
   assert.equal(result.manifest_sha256, manifestDigest(f.manifest));
   assert.deepEqual(f.effects, ['catalog']);
@@ -485,7 +490,8 @@ function nonclosingFixture() {
   f.state.pr.changed_files = 1;
   f.io.pages = () => [{filename: path, status: 'added'}];
   f.io.content = () => body;
-  f.io.githubIo.getIssue = number => ({number, state: f.state.issueState, body: scope});
+  f.state.scopeStatus = 'ready';
+  f.io.githubIo.getIssue = number => ({number, state: f.state.issueState, body: scope.replace('status: ready', `status: ${f.state.scopeStatus}`)});
   const binding = {
     work_issue: f.required.work_issue,
     source_pr: f.required.source_pr,
@@ -506,6 +512,32 @@ test('reviewed non-closing source binding verifies immutable C2 bytes without le
   assert.throws(() => sourceFacts(f.required, f.io), /Work issue/);
   f.policy.repositories[0].nonclosing_sources.push(f.binding);
   assert.throws(() => nonclosingSourceBinding(f.policy, f.repository, f.required), /Ambiguous/);
+});
+
+test('native train source resolves a non-closing PR only from the application policy', () => {
+  const f = nonclosingFixture();
+  const migrations = [{version: f.version, path: f.io.pages()[0].filename, sha256: f.binding.migration_hashes[f.version]}];
+  const authenticate = app => authenticateBatchSource(app, f.policy, f.required.source_pr, migrations, f.io);
+  assert.deepEqual(authenticate(f.repository), {
+    requirement: {...f.required, migrations},
+    facts: sourceFacts(f.required, f.io, f.binding),
+  });
+  assert.throws(() => authenticate(repository), /binding is unavailable/);
+  f.state.linked = [{number: f.required.work_issue}];
+  assert.equal(authenticate(repository).facts.work_issue, f.required.work_issue);
+  f.state.linked.push({number: 17});
+  assert.throws(() => authenticate(f.repository), /binding is ambiguous/);
+  f.state.linked = [];
+  f.binding.migration_hashes[f.version] = '0'.repeat(64);
+  assert.throws(() => authenticate(f.repository), /exact migration bytes/);
+  f.policy.repositories[0].nonclosing_sources.push({...f.binding, work_issue: 17});
+  assert.throws(() => authenticate(f.repository), /Ambiguous non-closing/);
+});
+
+test('non-closing source proof refuses an otherwise valid blocked issue scope', () => {
+  const f = nonclosingFixture();
+  f.state.scopeStatus = 'blocked';
+  assert.throws(() => sourceFacts(f.required, f.io, f.binding), /no admitted structural work issue/);
 });
 
 test('non-closing source binding refuses wrong workflow scope, unreserved or forged source', () => {

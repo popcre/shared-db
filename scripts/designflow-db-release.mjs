@@ -58,7 +58,7 @@ export async function assessRelease({ repository, head, manifest, policy, branch
   for (const requirement of m.requirements) {
     const facts = await io.sourceFacts(requirement, repository);
     verifyRequirementSource(requirement, facts);
-    const evidence = await io.productionEvidence(requirement, facts);
+    const evidence = await io.productionEvidence(requirement, facts, repository);
     if (!evidence) {
       if (branch === 'main') return { ...identity, status: 'waiting', requirement: requirement.work_issue,
         progress: { state: 'develop-database-promotion-required' } };
@@ -161,7 +161,8 @@ export function dispatchTitle(manifest, mode) {
 // application manifest cannot assert its own authority for a non-closing PR.
 export function nonclosingSourceBinding(policy, repository, requirement) {
   const records = policy.repositories.find(app => app.repository === repository)?.nonclosing_sources ?? [];
-  const matches = records.filter(record => record.work_issue === requirement.work_issue && record.source_pr === requirement.source_pr);
+  const matches = records.filter(record => record.source_pr === requirement.source_pr &&
+    (requirement.work_issue === null || record.work_issue === requirement.work_issue));
   if (matches.length > 1) throw Error('Ambiguous non-closing database source binding');
   return matches[0] ?? null;
 }
@@ -177,7 +178,7 @@ function proveNonclosingSource(requirement, binding, pr, changedFiles, files, gi
   const work = githubIo.getIssue(requirement.work_issue);
   const scope = parseQueueScope(work?.body);
   if (work?.number !== requirement.work_issue || !['open', 'closed'].includes(work.state) ||
-      scope?.workType !== 'structural' || scope?.route !== 'claim-first')
+      scope?.status !== 'ready' || scope.workType !== 'structural' || scope.route !== 'claim-first')
     throw Error('Non-closing database source has no admitted structural work issue');
   const hashes = binding.migration_hashes;
   if (!hashes || Array.isArray(hashes) || files.length === 0 || Object.keys(hashes).length !== files.length)
@@ -367,7 +368,19 @@ export function validatedTrainRefFromLog(log) {
   return refs[0];
 }
 
-async function authenticateBatch(requirement, facts, run, files) {
+export function authenticateBatchSource(repository, policy, source_pr, migrations, sourceIo = { api, pages, content, githubIo }) {
+  const linked = sourceIo.githubIo.closingIssuesForPr(source_pr);
+  if (!Array.isArray(linked) || linked.length > 1) throw Error('Batch source issue binding is ambiguous');
+  // The train identifies a source PR but carries no work issue. For sources
+  // without closing links, only this application's reviewed policy can supply it.
+  const work_issue = linked.length === 1 ? Number(linked[0].number) : null;
+  const binding = nonclosingSourceBinding(policy, repository, { source_pr, work_issue });
+  if (work_issue === null && !binding) throw Error('Batch source issue binding is unavailable');
+  const requirement = { work_issue: work_issue ?? binding.work_issue, source_pr, migrations };
+  return { requirement, facts: sourceFacts(requirement, sourceIo, binding) };
+}
+
+async function authenticateBatch(requirement, facts, run, files, repository, policy) {
   const jobs = api(`repos/${CANONICAL}/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs?per_page=100`);
   if (!Array.isArray(jobs.jobs) || jobs.total_count > 100) throw Error('Batch producer jobs incomplete');
   const guards = jobs.jobs.filter(j => j.name === 'SQL migration guards' && j.conclusion === 'success');
@@ -383,8 +396,6 @@ async function authenticateBatch(requirement, facts, run, files) {
   const record = payload.record, sources = [], ledger = {};
   if (!Array.isArray(record.entries) || record.entries.length > 200) throw Error('Batch train entry bound exceeded');
   for (const source_pr of [...new Set(record.entries.map(e => e.source_pr))]) {
-    const linked = githubIo.closingIssuesForPr(source_pr);
-    if (linked.length !== 1) throw Error('Batch source issue binding is ambiguous');
     const entries = record.entries.filter(e => e.source_pr === source_pr);
     const mainFiles = githubIo.treeFiles(run.head_sha);
     const migrations = entries.map(e => {
@@ -392,8 +403,7 @@ async function authenticateBatch(requirement, facts, run, files) {
       if (paths.length !== 1) throw Error('Batch migration source path is ambiguous');
       return { version: e.version, path: paths[0], sha256: e.file_sha256 };
     });
-    const required = { work_issue: Number(linked[0].number), source_pr, migrations };
-    const source = sourceFacts(required);
+    const { requirement: required, facts: source } = authenticateBatchSource(repository, policy, source_pr, migrations);
     const comparison = api(`repos/${CANONICAL}/compare/${source.merge_sha40}...${run.head_sha}`);
     if (!['identical', 'ahead'].includes(comparison.status) || comparison.behind_by !== 0) throw Error('Batch source was absent from producer main');
     for (const migration of migrations) if (hash(content(CANONICAL, migration.path, run.head_sha)) !== migration.sha256)
@@ -432,7 +442,7 @@ async function ledgerFingerprints(requirement, facts) {
   return fingerprints;
 }
 
-async function productionEvidence(requirement, facts) {
+async function productionEvidence(requirement, facts, repository, policy) {
   const ledger = await ledgerFingerprints(requirement, facts);
   const ref = `refs/designflow-db-apply-receipts/${requirement.work_issue}/${requirement.source_pr}/${facts.head_sha40}`;
   const archived = githubIo.readRef(ref);
@@ -445,7 +455,7 @@ async function productionEvidence(requirement, facts) {
     let batchProof = null;
     if (receipt.schema_version === 2) {
       const files = await productionArchive(run, receipt.artifact_id, receipt.artifact_digest);
-      batchProof = await authenticateBatch(requirement, facts, run, files);
+      batchProof = await authenticateBatch(requirement, facts, run, files, repository, policy);
     }
     return verifyApplyReceipt(requirement, facts, receipt, ledger, batchProof);
   }
@@ -481,7 +491,7 @@ async function productionEvidence(requirement, facts) {
       const files = selectArtifactFiles(readZipEntries(bytes), ['production-apply.txt', 'production-ledger-before.txt', 'production-ledger-after.txt',
         'migration-content-manifest.json', 'production-catalog-verification.json']);
       if (!artifactContainsSource(requirement, files) && !batchArtifactCandidate(requirement, files)) continue;
-      const batch = artifactContainsSource(requirement, files) ? null : await authenticateBatch(requirement, facts, run, files);
+      const batch = artifactContainsSource(requirement, files) ? null : await authenticateBatch(requirement, facts, run, files, repository, policy);
       const actualHashes = batch ? Object.fromEntries(requirement.migrations.map(m => [m.version, m.sha256])) : verifyAppliedFiles(requirement, files);
       if (!batch) {
         const verifier = { ...githubIo, readArtifactFiles: () => files };
@@ -981,7 +991,8 @@ export async function main() {
     manifest: (repo, head) => JSON.parse(content(repo, policy.manifest_path, head)),
     sourceFacts: (requirement, repository) => memo(factsCache, `${repository}:${requirement.work_issue}:${requirement.source_pr}`,
       () => sourceFacts(requirement, undefined, nonclosingSourceBinding(policy, repository, requirement))),
-    productionEvidence: (requirement, facts) => memo(evidenceCache, requirement.source_pr, () => productionEvidence(requirement, facts)),
+    productionEvidence: (requirement, facts, repository) => memo(evidenceCache, `${repository}:${requirement.work_issue}:${requirement.source_pr}`,
+      () => productionEvidence(requirement, facts, repository, policy)),
     workIssue: number => api(`repos/${CANONICAL}/issues/${number}`),
     currentLiveRecovery: (requirement, facts) => {
       const result = dispatchCurrentLiveReverification(staleCertificateRecoveryCommand(requirement, facts), api, api);

@@ -42,16 +42,23 @@ begin
            and (select oid from pg_roles where rolname=grants_role)=any(polroles)
            and polcmd not in ('a','r')
        )
-       or has_table_privilege(runtime_role, candidate.relation, 'DELETE,TRUNCATE') then
+       or has_table_privilege(runtime_role, candidate.relation, 'DELETE')
+       or has_table_privilege(runtime_role, candidate.relation, 'TRUNCATE') then
       raise exception 'Unexpected copy privileges for %', candidate.relation;
     end if;
   end loop;
-  if has_table_privilege(runtime_role, 'app.file_object', 'INSERT,SELECT')
-     or has_table_privilege(runtime_role, 'plm.licensing_status', 'INSERT,SELECT')
-     or has_table_privilege(runtime_role, 'plm.licensing_feedback', 'INSERT,SELECT')
-     or has_any_column_privilege(runtime_role, 'plm.item', 'INSERT,UPDATE')
-     or has_any_column_privilege(runtime_role, 'core.merch_group_review_hold', 'INSERT,UPDATE')
-     or has_any_column_privilege(runtime_role, 'core.merch_group', 'INSERT,UPDATE') then
+  if has_table_privilege(runtime_role, 'app.file_object', 'INSERT')
+     or has_table_privilege(runtime_role, 'app.file_object', 'SELECT')
+     or has_table_privilege(runtime_role, 'plm.licensing_status', 'INSERT')
+     or has_table_privilege(runtime_role, 'plm.licensing_status', 'SELECT')
+     or has_table_privilege(runtime_role, 'plm.licensing_feedback', 'INSERT')
+     or has_table_privilege(runtime_role, 'plm.licensing_feedback', 'SELECT')
+     or has_any_column_privilege(runtime_role, 'plm.item', 'INSERT')
+     or has_any_column_privilege(runtime_role, 'plm.item', 'UPDATE')
+     or has_any_column_privilege(runtime_role, 'core.merch_group_review_hold', 'INSERT')
+     or has_any_column_privilege(runtime_role, 'core.merch_group_review_hold', 'UPDATE')
+     or has_any_column_privilege(runtime_role, 'core.merch_group', 'INSERT')
+     or has_any_column_privilege(runtime_role, 'core.merch_group', 'UPDATE') then
     raise exception 'The item copy can affect data outside its owned shadow scope';
   end if;
 end

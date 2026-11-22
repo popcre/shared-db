@@ -123,7 +123,8 @@ test('only Data Syncing can declare the exact shared shadow file read contract',
  const m = manifest();
  m.repository = 'popcre/designflow-data-syncing';
  m.contracts[0] = {
-  schema: 'app', relation: 'file_object', columns: ['id', 'source_id'],
+  schema: 'app', relation: 'file_object',
+  columns: ['id', 'source_system', 'source_table', 'source_id', 'url', 'filename', 'mime_type', 'byte_size'],
   privileges: [{ role: 'designflow_prod_data_sync_runtime', privileges: ['SELECT'] }],
  };
  assert.deepEqual(validateManifest(m), m);
@@ -133,6 +134,8 @@ test('only Data Syncing can declare the exact shared shadow file read contract',
   value => { value.contracts[0].privileges[0].role = 'designflow_prod_backend_runtime'; },
   value => { value.contracts[0].privileges[0].privileges.push('INSERT'); },
   value => { value.contracts[0].privileges = []; },
+  value => { value.contracts[0].columns.pop(); },
+  value => { value.contracts[0].columns[0] = 'metadata'; },
  ]) {
   const refused = structuredClone(m);
   change(refused);

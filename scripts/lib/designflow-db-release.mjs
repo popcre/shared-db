@@ -4,6 +4,9 @@ export const LIMITS = Object.freeze({ manifestBytes: 262144, requirements: 100, 
   contracts: 200, columns: 256, roles: 20, files: 2000, sourceBytes: 16777216, contentBytes: 8388608 });
 const REPOSITORIES = new Set(['backend', 'bff', 'frontend', 'item-master', 'tracking', 'data-syncing'].map(n => `popcre/designflow-${n}`));
 const SCHEMAS = new Set(['dflow_prod', 'hts_rag', 'plm', 'core', 'coldlion']);
+const DESIGNFLOW_SHADOW_FILE_COLUMNS = new Set([
+  'id', 'source_system', 'source_table', 'source_id', 'url', 'filename', 'mime_type', 'byte_size',
+]);
 const PRIVILEGES = new Set(['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'REFERENCES']);
 const FORBIDDEN = new Set(['__proto__', 'prototype', 'constructor']);
 const PROJECT = 'qsllyeztdwjgirsysgai';
@@ -87,6 +90,10 @@ function contractRecord(c, repository) {
   identifier(c.relation, 'relation');
   list(c.columns, LIMITS.columns, 'contract columns', 1);
   c.columns.forEach(column => identifier(column, 'column')); unique(c.columns, 'column');
+  if (designflowShadowFile && (c.columns.length !== DESIGNFLOW_SHADOW_FILE_COLUMNS.size ||
+      c.columns.some(column => !DESIGNFLOW_SHADOW_FILE_COLUMNS.has(column)))) {
+    reject('shared file contract must declare exactly the DesignFlow shadow file columns');
+  }
   list(c.privileges, LIMITS.roles, 'contract privilege roles');
   if (designflowShadowFile && c.privileges.length !== 1) {
     reject('shared file contract requires the DesignFlow Data Syncing reader');

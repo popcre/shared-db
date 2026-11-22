@@ -64,11 +64,18 @@ create policy designflow_item_shadow_read on plm.designflow_item
 
 create policy designflow_item_shadow_insert on plm.designflow_item
   for insert to designflow_prod_data_sync_grants with check (
-    exists (select from dflow_prod."itemHeader" h where h.item_id_pk = legacy_item_id)
-    and (canonical_item_id is null or exists (
-      select from plm.item p where p.id = canonical_item_id
-        and upper(nullif(btrim(p.item_number), '')) = upper(nullif(btrim(legacy_item_number), ''))
-    ))
+    exists (
+      select from dflow_prod."itemHeader" h
+      where h.item_id_pk = legacy_item_id and h.item_num_id is not distinct from legacy_item_number
+        and (canonical_item_id is null or exists (
+          select from plm.item p where p.id = canonical_item_id
+            and p.source_system = 'coldlion'
+            and upper(nullif(btrim(p.item_number), '')) = upper(nullif(btrim(h.item_num_id), ''))
+            and p.raw->>'divisionCode' in ('CW001', 'EH001', 'SP001')
+            and p.raw->>'nonInventoryItem' = 'N'
+            and (p.raw->>'divisionCode' <> 'CW001' or upper(btrim(h.udf_merchgroup05_fk)) is distinct from 'GEN')
+        ))
+    )
   );
 
 create policy item_merch_group_designflow_shadow_read on plm.item_merch_group
@@ -101,7 +108,12 @@ create policy licensing_status_designflow_shadow_insert on plm.licensing_status
   for insert to designflow_prod_data_sync_grants with check (
     (source_system = 'designflow_licensing_status'
       and designflow_status_id is not null and source_id = designflow_status_id::text
-      and exists (select from dflow_prod."licensingStatus" s where s.id = designflow_status_id))
+      and exists (
+        select from dflow_prod."licensingStatus" s
+        where s.id = designflow_status_id and s.itemheader_id_fk is not distinct from designflow_source_item_id
+          and s.assignee_id is not distinct from designflow_source_assignee_id
+          and s.assignee_ids is not distinct from designflow_source_assignee_ids
+      ))
     or (source_system = 'designflow_item_milestone' and (
       (designflow_milestone_id is null and designflow_item_id is not null
         and source_id = designflow_item_id::text || ':' || milestone)
@@ -118,9 +130,12 @@ create policy licensing_feedback_designflow_shadow_insert on plm.licensing_feedb
   for insert to designflow_prod_data_sync_grants with check (
     source_system = 'designflow_licensing_feedback'
     and designflow_feedback_id is not null and source_id = designflow_feedback_id::text
-    and exists (select from plm.licensing_status s where s.id = licensing_status_id
-      and s.source_system = 'designflow_licensing_status')
-    and exists (select from dflow_prod."licensingFeedbackReply" r where r.id = designflow_feedback_id)
+    and exists (
+      select from plm.licensing_status s
+      join dflow_prod."licensingFeedbackReply" r on r.licensing_status_id_fk = s.designflow_status_id
+      where s.id = licensing_status_id and s.source_system = 'designflow_licensing_status'
+        and r.id = designflow_feedback_id
+    )
   );
 
 create policy licensing_status_assignee_designflow_shadow_read on plm.licensing_status_assignee
@@ -164,7 +179,12 @@ create policy licensing_attachment_designflow_shadow_insert on plm.licensing_att
     exists (select from app.file_object f where f.id = file_object_id
       and f.source_system = 'designflow_licensing_attachment' and f.source_id = source_reference)
     and case split_part(source_reference, ':', 1)
-      when 'itemAttachment' then exists (select from plm.designflow_item h where h.canonical_item_id = item_id)
+      when 'itemAttachment' then exists (
+        select from plm.designflow_item h
+        join dflow_prod."itemAttachment" a on a.item_num_id_fk = h.legacy_item_id
+        where h.canonical_item_id = item_id and a.licensing_attachment is true
+          and source_reference = 'itemAttachment:' || a.item_attachment_id::text
+      )
       when 'licensingStatus' then exists (select from plm.licensing_status s where s.id = licensing_status_id
         and s.source_system = 'designflow_licensing_status' and s.source_id = split_part(source_reference, ':', 2))
       when 'licensingFeedbackReply' then exists (select from plm.licensing_feedback f where f.id = licensing_feedback_id

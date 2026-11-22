@@ -249,6 +249,22 @@ sealed as JSON null and its SHA256; it is not unknown or missing evidence. A fre
 complete read must still match that absence immediately before activation.
 
 
+## Non-closing migration sources
+
+An open work issue can require separate database sources, application rollout
+and live acceptance. The canonical release policy can bind an exact
+non-closing source PR and migration hashes to its application and work
+issue. The observer checks the trusted repository, merged PR and complete
+file list, the original issue marker in each immutable migration, its
+reserved version, and unchanged source bytes on main. Existing closing
+links must still agree. Other applications and unlisted sources retain their
+existing source checks.
+
+This source check does not deliver schema or application changes. The
+application gate still verifies the original production workflow, catalog
+artifact, migration hashes and live ledger before marking a requirement
+ready. An authenticated production receipt remains required.
+
 ## Companion sources on one application issue
 
 A requirement identifies one canonical source PR and exactly the migrations it

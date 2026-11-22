@@ -36,10 +36,11 @@ begin
     values (canonical_status_id, 'canonical', 'test_item_identity', 'visible-status');
   insert into plm.licensing_status (
     id, status, source_system, source_id, designflow_status_id, designflow_item_id,
-    designflow_source_item_id, designflow_status_value, designflow_event_date
+    designflow_source_item_id, designflow_status_value, designflow_event_date,
+    designflow_source_assignee_id, designflow_source_assignee_ids
   ) values (
     draft_status_id, 'legacy_unspecified', 'designflow_licensing_status', '4707001', 4707001,
-    4707001, 4707001, null, 'Historical date text'
+    4707001, 4707001, null, 'Historical date text', 42, '[41,41]'::jsonb
   );
 
   insert into plm.licensing_status (
@@ -92,12 +93,21 @@ begin
     null;
   end;
 
+  begin
+    update plm.licensing_status set designflow_source_assignee_id = 42
+      where designflow_milestone_id = 4707001;
+    raise exception 'a dedicated milestone accepted an action assignee';
+  exception when check_violation then
+    null;
+  end;
+
   delete from plm.designflow_item where legacy_item_id = 4707001;
   if not exists (
     select from plm.licensing_status
     where id = draft_status_id and designflow_item_id is null
       and designflow_source_item_id = 4707001 and designflow_status_value is null
       and designflow_event_date = 'Historical date text'
+      and designflow_source_assignee_id = 42 and designflow_source_assignee_ids = '[41,41]'::jsonb
   ) then
     raise exception 'detaching a draft lost historical licensing provenance';
   end if;

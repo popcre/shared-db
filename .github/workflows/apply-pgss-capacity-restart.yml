@@ -23,7 +23,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: shared-db-pg-stat-statements-capacity-restart
+  group: shared-db-pg-stat-statements-capacity-restart-${{ vars.LANE_EPOCH || '0' }}
   cancel-in-progress: false
 jobs:
   preview:
@@ -48,6 +48,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          if [ -z "${PREVIEW_PROJECT_REF// /}" ]; then echo "PREVIEW_PROJECT_REF is unset" >&2; exit 1; fi
           test "$GITHUB_REF" = refs/heads/main
           test "$WORK_ISSUE" = 5609
           test "$MODE" = preview_only -o "$MODE" = preview_and_production
@@ -106,6 +107,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          if [ -z "${PREVIEW_PROJECT_REF// /}" ]; then echo "PREVIEW_PROJECT_REF is unset" >&2; exit 1; fi
           test "$GITHUB_REF" = refs/heads/main
           test "$WORK_ISSUE" = 5609
           test "$MODE" = preview_and_production

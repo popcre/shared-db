@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { canonicalJson, sha256 } from './db-flow/evidence-bundle.mjs';
 import { proposeTrain, trainRecordRef } from './db-flow/migration-train.mjs';
 import { manifestDigest } from './lib/designflow-db-release.mjs';
-import { sourceFacts, nonclosingSourceBinding, assessRelease, runObserver, releasePolicy, dispatchTitle, verifyApplyReceipt, verifyAppliedFiles, workflowRuns, artifactContainsSource, assertObserverSource, publishAppStatus, prepareReleaseReady, productionRunMatches, verifyBatchProductionFiles, batchRunCandidate, validatedTrainRefFromLog, currentLiveRecoveryCommandFrom } from './designflow-db-release.mjs';
+import { sourceFacts, nonclosingSourceBinding, batchSourceIdentity, assessRelease, runObserver, releasePolicy, dispatchTitle, verifyApplyReceipt, verifyAppliedFiles, workflowRuns, artifactContainsSource, assertObserverSource, publishAppStatus, prepareReleaseReady, productionRunMatches, verifyBatchProductionFiles, batchRunCandidate, validatedTrainRefFromLog, currentLiveRecoveryCommandFrom } from './designflow-db-release.mjs';
 
 const head = 'a'.repeat(40), repository = 'popcre/designflow-tracking';
 const path = 'supabase/migrations/20261022194647_synthetic.sql', content = '-- synthetic only\n';
@@ -508,6 +508,18 @@ test('reviewed non-closing source binding verifies immutable C2 bytes without le
   assert.throws(() => nonclosingSourceBinding(f.policy, f.repository, f.required), /Ambiguous/);
 });
 
+test('native train source identity accepts exact reviewed sources and preserves other real closing links', () => {
+  const {binding} = nonclosingFixture();
+  const {source_pr, work_issue} = binding;
+  assert.deepEqual(batchSourceIdentity(source_pr, [], [binding]), {work_issue, binding});
+  assert.deepEqual(batchSourceIdentity(source_pr, [{number: work_issue}], [binding]), {work_issue, binding});
+  assert.deepEqual(batchSourceIdentity(18, [{number: 17}], [binding]), {work_issue: 17, binding: null});
+  assert.throws(() => batchSourceIdentity(18, [], [binding]), /ambiguous/);
+  assert.throws(() => batchSourceIdentity(source_pr, [{number: 17}], [binding]), /conflicts/);
+  assert.throws(() => batchSourceIdentity(source_pr, [], [binding, binding]), /ambiguous/);
+  assert.throws(() => batchSourceIdentity(source_pr, null, [binding]), /ambiguous/);
+});
+
 test('non-closing source binding refuses wrong workflow scope, unreserved or forged source', () => {
   for (const change of [
     f => {f.state.linked = [{number: 17}];},
@@ -518,6 +530,10 @@ test('non-closing source binding refuses wrong workflow scope, unreserved or for
     f => {f.state.reserved = false;},
     f => {f.state.issueState = 'unknown';},
     f => {f.io.githubIo.getIssue = number => ({number, state: 'open', body: ''});},
+    f => {const get = f.io.githubIo.getIssue; f.io.githubIo.getIssue = number => {
+      const work = get(number);
+      return {...work, body: work.body.replace('status: ready', 'status: blocked')};
+    };},
     f => {f.binding.migration_hashes[f.version] = '0'.repeat(64);},
     f => {
       const bad = '-- #17: unrelated migration\nselect 1;\n';

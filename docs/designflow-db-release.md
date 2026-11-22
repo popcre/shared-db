@@ -256,14 +256,18 @@ and live acceptance. The canonical release policy can bind an exact
 non-closing source PR and migration hashes to its application and work
 issue. The observer checks the trusted repository, merged PR and complete
 file list, the original issue marker in each immutable migration, its
-reserved version, and unchanged source bytes on main. Existing closing
-links must still agree. Other applications and unlisted sources retain their
-existing source checks.
+reserved version, and unchanged source bytes on main. Open work must have a
+ready structural scope. A completed source remains readable after issue
+closure. Existing closing links must agree. Other applications and unlisted
+sources retain their existing source checks.
 
-This source check does not deliver schema or application changes. The
-application gate still verifies the original production workflow, catalog
+A registered source remains unavailable until it merges with those exact
+bytes. The observer verifies the original production workflow, catalog
 artifact, migration hashes and live ledger before marking a requirement
-ready. An authenticated production receipt remains required.
+ready. Separately promoted stages each need their own authenticated receipt.
+When native production uses one train, the observer proves all its source
+entries and accepts scoped non-closing bindings from the same application
+policy.
 
 ## Companion sources on one application issue
 

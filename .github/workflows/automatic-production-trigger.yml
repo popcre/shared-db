@@ -200,7 +200,7 @@ jobs:
       # waiting migrations. Maintenance runs whenever the selector did not
       # dispatch (including when a migration PR is held or selector exits
       # non-zero), guarded on checkout succeeding so a failed checkout never
-      # runs maintenance on missing files.
+      # runs maintenance on absent files.
       - name: Select an explicitly enabled exact-index maintenance operation
         id: index_maintenance
         if: always() && steps.lane_guard.outputs.skipped != 'true' && steps.checkout.outcome == 'success' && steps.selector.outputs.dispatched != 'true'

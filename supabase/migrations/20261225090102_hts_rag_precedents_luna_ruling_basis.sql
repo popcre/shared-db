@@ -1,12 +1,12 @@
 -- Migration: 20261225090102_hts_rag_precedents_luna_ruling_basis.sql
 -- Purpose: Allow 'luna_ruling_verified' as a promotion_basis on hts_rag.hts_rag_precedents
--- and public.hts_rag_precedents, with a matching provenance check constraint and
--- per-determination idempotency index (DesignFlow #278, popcre/shared-db#6922, claim #6938).
+-- and public.hts_rag_precedents, with a matching provenance + non-operative check constraint
+-- and per-determination idempotency index (DesignFlow #278, popcre/shared-db#6922, claim #6938).
 --
 -- Settled business rule (November 20, 2026, popcre/shared-db#6922):
 -- Albert authorized saving Luna-only results as accepted internal precedents when
 -- verified rulings support the result. No second model vote is required; accepted
--- entries remain non-operative decision support.
+-- entries remain non-operative decision support (enforced by `not operative_eligible`).
 
 -- =====================================================================================
 -- 1. hts_rag.hts_rag_precedents (shared HTS RAG store)
@@ -29,7 +29,9 @@ alter table hts_rag.hts_rag_precedents
       promotion_source_determination_id is not null
       and promotion_policy_version is not null
       and promotion_gate_result is not null
+      and (promotion_gate_result ->> 'passed') = 'true'
       and promotion_debate_run_id is null
+      and not operative_eligible
     )
   );
 
@@ -58,7 +60,9 @@ alter table public.hts_rag_precedents
       promotion_source_determination_id is not null
       and promotion_policy_version is not null
       and promotion_gate_result is not null
+      and (promotion_gate_result ->> 'passed') = 'true'
       and promotion_debate_run_id is null
+      and not operative_eligible
     )
   );
 

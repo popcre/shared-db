@@ -79,17 +79,26 @@ function requirementRecord(r) {
   r.migrations.forEach(migrationRecord);
   unique(r.migrations.map(m => m.version), 'migration version'); unique(r.migrations.map(m => m.path), 'migration path');
 }
-function contractRecord(c) {
+function contractRecord(c, repository) {
   object(c, ['schema', 'relation', 'columns', 'privileges'], 'contract');
-  if (!SCHEMAS.has(c.schema)) reject('contract schema is not allowed');
+  const designflowShadowFile = repository === 'popcre/designflow-data-syncing'
+    && c.schema === 'app' && c.relation === 'file_object';
+  if (!SCHEMAS.has(c.schema) && !designflowShadowFile) reject('contract schema is not allowed');
   identifier(c.relation, 'relation');
   list(c.columns, LIMITS.columns, 'contract columns', 1);
   c.columns.forEach(column => identifier(column, 'column')); unique(c.columns, 'column');
   list(c.privileges, LIMITS.roles, 'contract privilege roles');
+  if (designflowShadowFile && c.privileges.length !== 1) {
+    reject('shared file contract requires the DesignFlow Data Syncing reader');
+  }
   for (const p of c.privileges) {
     object(p, ['role', 'privileges'], 'privilege'); identifier(p.role, 'role');
     list(p.privileges, PRIVILEGES.size, 'privileges', 1);
     if (p.privileges.some(v => !PRIVILEGES.has(v))) reject('unsupported privilege');
+    if (designflowShadowFile &&
+        (p.role !== 'designflow_prod_data_sync_runtime' || p.privileges.some(value => value !== 'SELECT'))) {
+      reject('shared file contract requires the DesignFlow Data Syncing reader');
+    }
     unique(p.privileges, 'privilege');
   }
   unique(c.privileges.map(p => p.role), 'contract role');
@@ -106,7 +115,7 @@ export function validateManifest(input) {
   const migrations = m.requirements.flatMap(r => r.migrations);
   if (migrations.length > LIMITS.migrations) reject('total migrations limit exceeded');
   unique(migrations.map(r => r.version), 'migration version'); unique(migrations.map(r => r.path), 'migration path');
-  list(m.contracts, LIMITS.contracts, 'contracts'); m.contracts.forEach(contractRecord);
+  list(m.contracts, LIMITS.contracts, 'contracts'); m.contracts.forEach(contract => contractRecord(contract, m.repository));
   unique(m.contracts.map(c => `${c.schema}.${c.relation}`), 'contract relation');
   return freeze(m);
 }

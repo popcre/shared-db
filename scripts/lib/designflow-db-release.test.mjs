@@ -117,3 +117,25 @@ test('same application issue accepts two independently authored unique source PR
  second.migrations=[{version:'20261022194648',path:'supabase/migrations/20261022194648_companion.sql',sha256:'d'.repeat(64)}];
  m.requirements.push(second);assert.equal(validateManifest(m).requirements.length,2);
 });
+
+
+test('only Data Syncing can declare the exact shared shadow file read contract', () => {
+ const m = manifest();
+ m.repository = 'popcre/designflow-data-syncing';
+ m.contracts[0] = {
+  schema: 'app', relation: 'file_object', columns: ['id', 'source_id'],
+  privileges: [{ role: 'designflow_prod_data_sync_runtime', privileges: ['SELECT'] }],
+ };
+ assert.deepEqual(validateManifest(m), m);
+ for (const change of [
+  value => { value.repository = 'popcre/designflow-tracking'; },
+  value => { value.contracts[0].relation = 'profile'; },
+  value => { value.contracts[0].privileges[0].role = 'designflow_prod_backend_runtime'; },
+  value => { value.contracts[0].privileges[0].privileges.push('INSERT'); },
+  value => { value.contracts[0].privileges = []; },
+ ]) {
+  const refused = structuredClone(m);
+  change(refused);
+  assert.throws(() => validateManifest(refused), TypeError);
+ }
+});

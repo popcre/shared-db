@@ -165,8 +165,8 @@ begin
   insert into public.hts_rag_determinations (
     id, product_example_id, method, classification_state, result_hash, comparison_key
   ) values
-    (v_det_id, v_example_id, 'legacy_ai_cross', 'provisional_complete', repeat('8', 64), gen_random_uuid()::text),
-    (v_det_id_2, v_example_id, 'legacy_ai_cross', 'provisional_complete', repeat('9', 64), gen_random_uuid()::text);
+    (v_det_id, v_example_id, 'legacy_ai_cross', 'provisional_complete', repeat('8', 64), gen_random_uuid()),
+    (v_det_id_2, v_example_id, 'legacy_ai_cross', 'provisional_complete', repeat('9', 64), gen_random_uuid());
 
   insert into public.hts_rag_debate_runs (
     id, source_determination_id, session_id, policy_version, case_packet_hash, status

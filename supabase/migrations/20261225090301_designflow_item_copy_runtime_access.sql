@@ -6,7 +6,7 @@ begin;
 set local lock_timeout = '5s';
 set local statement_timeout = '30s';
 
-grant usage on schema plm, app to designflow_prod_data_sync_grants;
+grant usage on schema plm to designflow_prod_data_sync_grants;
 
 grant select (id, date, itemheader_id_fk, status, package, feedback, "from", moduser,
   assignor_id, tagged_group_id, pop_comments, assignee_id, assignee_ids, attachments)
@@ -58,6 +58,20 @@ grant select (item_id, licensing_status_id, licensing_feedback_id, file_object_i
 grant select (id, source_system, source_table, source_id, url, filename, mime_type, byte_size),
   insert (source_system, source_table, source_id, url, filename, mime_type, byte_size)
   on app.file_object to designflow_prod_data_sync_grants;
+
+-- Keep app's schema unavailable. The view uses the caller's exact column
+-- grants and file RLS, so it cannot carry the view owner's access to the caller.
+create view dflow_prod.designflow_item_copy_file_object
+  with (security_invoker = true, security_barrier = true) as
+select id, source_system, source_table, source_id, url, filename, mime_type, byte_size
+from app.file_object
+where source_system = 'designflow_licensing_attachment'
+with local check option;
+
+revoke all on dflow_prod.designflow_item_copy_file_object from public, anon, authenticated;
+grant select on dflow_prod.designflow_item_copy_file_object to designflow_prod_data_sync_grants;
+grant insert (source_system, source_table, source_id, url, filename, mime_type, byte_size)
+  on dflow_prod.designflow_item_copy_file_object to designflow_prod_data_sync_grants;
 
 create policy designflow_item_shadow_read on plm.designflow_item
   for select to designflow_prod_data_sync_grants using (true);

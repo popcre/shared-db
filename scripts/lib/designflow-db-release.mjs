@@ -4,9 +4,6 @@ export const LIMITS = Object.freeze({ manifestBytes: 262144, requirements: 100, 
   contracts: 200, columns: 256, roles: 20, files: 2000, sourceBytes: 16777216, contentBytes: 8388608 });
 const REPOSITORIES = new Set(['backend', 'bff', 'frontend', 'item-master', 'tracking', 'data-syncing'].map(n => `popcre/designflow-${n}`));
 const SCHEMAS = new Set(['dflow_prod', 'hts_rag', 'plm', 'core', 'coldlion']);
-const DESIGNFLOW_SHADOW_FILE_COLUMNS = new Set([
-  'id', 'source_system', 'source_table', 'source_id', 'url', 'filename', 'mime_type', 'byte_size',
-]);
 const PRIVILEGES = new Set(['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'REFERENCES']);
 const FORBIDDEN = new Set(['__proto__', 'prototype', 'constructor']);
 const PROJECT = 'qsllyeztdwjgirsysgai';
@@ -82,30 +79,17 @@ function requirementRecord(r) {
   r.migrations.forEach(migrationRecord);
   unique(r.migrations.map(m => m.version), 'migration version'); unique(r.migrations.map(m => m.path), 'migration path');
 }
-function contractRecord(c, repository) {
+function contractRecord(c) {
   object(c, ['schema', 'relation', 'columns', 'privileges'], 'contract');
-  const designflowShadowFile = repository === 'popcre/designflow-data-syncing'
-    && c.schema === 'app' && c.relation === 'file_object';
-  if (!SCHEMAS.has(c.schema) && !designflowShadowFile) reject('contract schema is not allowed');
+  if (!SCHEMAS.has(c.schema)) reject('contract schema is not allowed');
   identifier(c.relation, 'relation');
   list(c.columns, LIMITS.columns, 'contract columns', 1);
   c.columns.forEach(column => identifier(column, 'column')); unique(c.columns, 'column');
-  if (designflowShadowFile && (c.columns.length !== DESIGNFLOW_SHADOW_FILE_COLUMNS.size ||
-      c.columns.some(column => !DESIGNFLOW_SHADOW_FILE_COLUMNS.has(column)))) {
-    reject('shared file contract must declare exactly the DesignFlow shadow file columns');
-  }
   list(c.privileges, LIMITS.roles, 'contract privilege roles');
-  if (designflowShadowFile && c.privileges.length !== 1) {
-    reject('shared file contract requires the DesignFlow Data Syncing reader');
-  }
   for (const p of c.privileges) {
     object(p, ['role', 'privileges'], 'privilege'); identifier(p.role, 'role');
     list(p.privileges, PRIVILEGES.size, 'privileges', 1);
     if (p.privileges.some(v => !PRIVILEGES.has(v))) reject('unsupported privilege');
-    if (designflowShadowFile &&
-        (p.role !== 'designflow_prod_data_sync_runtime' || p.privileges.some(value => value !== 'SELECT'))) {
-      reject('shared file contract requires the DesignFlow Data Syncing reader');
-    }
     unique(p.privileges, 'privilege');
   }
   unique(c.privileges.map(p => p.role), 'contract role');
@@ -122,7 +106,7 @@ export function validateManifest(input) {
   const migrations = m.requirements.flatMap(r => r.migrations);
   if (migrations.length > LIMITS.migrations) reject('total migrations limit exceeded');
   unique(migrations.map(r => r.version), 'migration version'); unique(migrations.map(r => r.path), 'migration path');
-  list(m.contracts, LIMITS.contracts, 'contracts'); m.contracts.forEach(contract => contractRecord(contract, m.repository));
+  list(m.contracts, LIMITS.contracts, 'contracts'); m.contracts.forEach(contractRecord);
   unique(m.contracts.map(c => `${c.schema}.${c.relation}`), 'contract relation');
   return freeze(m);
 }

@@ -169,7 +169,6 @@
       ],
       "schemas": [
         "dflow_prod",
-        "app",
         "core",
         "plm"
       ],

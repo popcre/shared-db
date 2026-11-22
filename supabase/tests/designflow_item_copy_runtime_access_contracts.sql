@@ -8,8 +8,26 @@ begin
   if not pg_has_role(runtime_role, grants_role, 'USAGE')
      or (select rolbypassrls from pg_roles where rolname=runtime_role)
      or not has_schema_privilege(runtime_role, 'plm', 'USAGE')
-     or not has_schema_privilege(runtime_role, 'app', 'USAGE') then
+     or has_schema_privilege(runtime_role, 'app', 'USAGE')
+     or has_schema_privilege(runtime_role, 'plm', 'CREATE')
+     or exists (
+       select from pg_proc p where p.pronamespace='plm'::regnamespace and p.prosecdef
+         and has_function_privilege(runtime_role, p.oid, 'EXECUTE')
+     ) then
     raise exception 'DesignFlow item copy is not bound to the restricted runtime role';
+  end if;
+
+  if not exists (
+    select from pg_class c where c.oid='dflow_prod.designflow_item_copy_file_object'::regclass
+      and c.relkind='v' and c.reloptions @> array['security_invoker=true','security_barrier=true','check_option=local']
+  ) or not has_table_privilege(runtime_role, 'dflow_prod.designflow_item_copy_file_object', 'SELECT')
+    or not has_column_privilege(runtime_role, 'dflow_prod.designflow_item_copy_file_object', 'source_id', 'INSERT')
+    or has_column_privilege(runtime_role, 'dflow_prod.designflow_item_copy_file_object', 'id', 'INSERT')
+    or has_any_column_privilege(runtime_role, 'dflow_prod.designflow_item_copy_file_object', 'UPDATE')
+    or has_table_privilege(runtime_role, 'dflow_prod.designflow_item_copy_file_object', 'DELETE')
+    or has_table_privilege('authenticated', 'dflow_prod.designflow_item_copy_file_object', 'SELECT')
+    or has_table_privilege('anon', 'dflow_prod.designflow_item_copy_file_object', 'SELECT') then
+    raise exception 'DesignFlow files are not confined to the invoker copy view';
   end if;
 
   if not has_column_privilege(runtime_role, 'dflow_prod.users', 'id', 'SELECT')

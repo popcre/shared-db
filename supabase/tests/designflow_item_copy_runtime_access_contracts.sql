@@ -7,14 +7,23 @@ declare
 begin
   if not pg_has_role(runtime_role, grants_role, 'USAGE')
      or (select rolbypassrls from pg_roles where rolname=runtime_role)
-     or not has_schema_privilege(runtime_role, 'plm', 'USAGE')
-     or has_schema_privilege(runtime_role, 'app', 'USAGE')
-     or has_schema_privilege(runtime_role, 'plm', 'CREATE')
-     or exists (
-       select from pg_proc p where p.pronamespace='plm'::regnamespace and p.prosecdef
-         and has_function_privilege(runtime_role, p.oid, 'EXECUTE')
-     ) then
+     or not has_schema_privilege(runtime_role, 'plm', 'USAGE') then
     raise exception 'DesignFlow item copy is not bound to the restricted runtime role';
+  end if;
+  if has_schema_privilege(runtime_role, 'app', 'USAGE')
+     or has_schema_privilege(runtime_role, 'plm', 'CREATE') then
+    raise exception 'DesignFlow item copy can reach app directly or create PLM objects';
+  end if;
+  -- The disposable baseline includes unrelated legacy routine defaults.
+  -- Assert this migration adds no function grant. Check effective inherited
+  -- definer access separately on each verified hosted catalog.
+  if exists (
+    select from pg_proc p cross join lateral aclexplode(p.proacl) as a
+    where p.pronamespace in ('plm'::regnamespace, 'app'::regnamespace)
+      and a.grantee in (runtime_role::regrole, grants_role::regrole)
+      and a.privilege_type = 'EXECUTE'
+  ) then
+    raise exception 'The item copy grants an unrelated shared function';
   end if;
 
   if not exists (

@@ -82,7 +82,9 @@ user ID column.
 Bind the application release to the exact canonical migration sources. The
 file copy uses a security-invoker view in the existing DesignFlow namespace.
 The view exposes the exact file fields under the original file policies and
-keeps the app namespace closed to the runtime. The release catalog checks
+keeps the app namespace closed to the runtime. Before applying the access
+migration, check on the verified hosted preview and production catalogs that
+the runtime has no inherited executable PLM definer functions. The release catalog checks
 column-level reads and relation-level writes. Database tests and the deployed
 role rehearsal check the narrower writes and the single-column user lookup. Keep the existing
 release digest in force until the replacement application manifest and the

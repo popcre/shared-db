@@ -22,8 +22,15 @@ export function publishAlarm({ result, report, repository, runUrl, event }, io) 
   const marker = `<!-- ledger-drift-fingerprint:${digest} -->`
   const matches = io.listIssues().filter(row => !row.pull_request && row.state === 'open' && row.title === TITLE)
   if (matches.length > 1) throw new Error('multiple open alarms; refusing ambiguous publication')
-  const body = `${marker}\nVerified production drift reported; the ledger is NOT clean.\n\nImmutable report: [workflow run](${runUrl})\n\n${report}\n\nNo production apply was performed. Keep this alarm open until a fresh read-only check proves clearance.\n\nPosted by Codex chat unknown on GitHub Actions\n`
   let issue = matches[0]
+  let history = ''
+  if (!issue) {
+    const previous = io.listClosedAlarms()
+      .filter(row => !row.pull_request && row.state === 'closed' && row.title === TITLE && Number.isSafeInteger(row.number) && row.number > 0)
+      .sort((a, b) => b.number - a.number)[0]
+    if (previous) history = `\n\nPrevious alarm and run history: #${previous.number}`
+  }
+  const body = `${marker}\nVerified production drift reported; the ledger is NOT clean.\n\nImmutable report: [workflow run](${runUrl})${history}\n\n${report}\n\nNo production apply was performed. Keep this alarm open until a fresh read-only check proves clearance.\n\nPosted by Codex chat unknown on GitHub Actions\n`
   if (!issue) issue = io.createIssue(TITLE, body)
   if (!Number.isSafeInteger(issue.number) || issue.number < 1) throw new Error('alarm issue identity unreadable')
   issue = io.readIssue(issue.number)
@@ -43,16 +50,20 @@ export function publishAlarm({ result, report, repository, runUrl, event }, io) 
   return { issue: issue.number, fingerprint: digest, message: 'Verified drift reported; NOT a clean ledger.' }
 }
 
-// Clearance: only a VERIFIED clean production result (detector exit 0, valid
-// result, driftFound false) may close alarms. Exit 2 never reaches this path.
+// The workflow calls --clear after a successful production check. Here the
+// validated result must show neither actionable drift nor orphan ledger rows.
 export function clearAlarms({ result, repository, runUrl }, io) {
   validateDriftResult(result)
-  if (result.target !== 'production' || result.drift.driftFound) throw new Error('clearance requires a verified clean production result')
+  if (result.target !== 'production' || result.drift.driftFound) throw new Error('clearance requires a production result with no actionable drift or orphan ledger rows')
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) || !runUrl.startsWith(`https://github.com/${repository}/actions/runs/`) || !/^\d+$/.test(runUrl.split('/').at(-1))) throw new Error('alarm run identity is invalid')
+  const { intentionallyExcluded, foreignTarget } = result.drift
+  const remaining = intentionallyExcluded.length + foreignTarget.length > 0
+    ? `\n\nThe report still lists ${intentionallyExcluded.length} retired or deliberately held migration(s) and ${foreignTarget.length} migration(s) for other targets.`
+    : ''
   const open = io.listIssues().filter(row => !row.pull_request && row.state === 'open' && row.title === TITLE)
   const closed = []
   for (const issue of open) {
-    const body = `Verified clean: a fresh read-only check of the production ledger found no drift.\n\nRun: ${runUrl}\n\nClosing this alarm automatically.\n\nPosted by GitHub Actions (migration-ledger-drift)\n`
+    const body = `A fresh read-only check of the production ledger found no actionable drift or orphan ledger rows.${remaining}\n\nRun: ${runUrl}\n\nClosing this alarm automatically.\n\nPosted by GitHub Actions (migration-ledger-drift)\n`
     io.comment(issue.number, body)
     io.closeIssue(issue.number)
     const after = io.readIssue(issue.number)
@@ -68,6 +79,7 @@ export function githubIo(repository, run = runGitHubCommand) {
   const pages = endpoint => json(['api', '--paginate', '--slurp', endpoint]).flat()
   return {
     listIssues: () => pages(`${root}/issues?state=open&per_page=100`),
+    listClosedAlarms: () => pages(`${root}/issues?state=closed&labels=db-work&per_page=100`),
     readIssue: n => json(['api', `${root}/issues/${n}`]),
     createIssue: (title,body) => json(['api', '--method', 'POST', `${root}/issues`, '--input', '-'], { title, body, labels: ['db-work'] }),
     listComments: n => pages(`${root}/issues/${n}/comments?per_page=100`),

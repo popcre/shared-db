@@ -343,16 +343,15 @@ jobs:
       # Pull the Supabase images from the public.ecr.aws mirror, not ghcr.io. On
       # 2026-09-23 ghcr.io refused every pull of supabase/postgres with
       # "toomanyrequests ... allowed: 44000/minute", anonymous and authenticated
-      # alike (issue #3451). The CLI publishes the same pinned tags to both.
+      # alike (issue #3451). If ECR denies the pinned Postgres download, the
+      # startup helper verifies the identical GHCR image before retrying.
       - name: Start an empty ephemeral database
         if: needs.classify.outputs.database_contract_tests == 'applicable'
-        env:
-          SUPABASE_INTERNAL_IMAGE_REGISTRY: public.ecr.aws
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/migrations"
           mv supabase/migrations/*.sql "$RUNNER_TEMP/migrations/"
-          supabase db start 2>&1 | tee "$RUNNER_TEMP/db-start.log"
+          bash scripts/start-ephemeral-contract-db.sh
 
       - name: Prove atomic migration DDL and ledger commit or roll back together
         if: needs.classify.outputs.database_contract_tests == 'applicable'

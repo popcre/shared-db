@@ -1,7 +1,10 @@
 ---
+issue: 5609
+related_issues: 5610
+owner: codex/01a1ec01-e793-7af3-9f62-696f0813b4c6
 summary: "Closeout for shared-db #5610 index removal and #5609 capacity proof."
 kind: handoff
-status: open
+status: OPEN
 read-when: "Resuming shared-db #5610 or #5609 after November 21 closeout."
 ---
 # Shared database index and capacity continuation

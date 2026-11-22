@@ -19,6 +19,13 @@ begin
   exception when unique_violation then
     null;
   end;
+  begin
+    insert into plm.designflow_item (legacy_item_id, match_disposition)
+      values (4707004, 'excluded_retired');
+    raise exception 'retired source data entered the app workspace';
+  exception when check_violation then
+    null;
+  end;
 
   delete from plm.item where id = linked_item_id;
   if not exists (select from plm.designflow_item where legacy_item_id = 4707002 and canonical_item_id is null) then
@@ -48,6 +55,13 @@ begin
     null;
   end;
   begin
+    insert into plm.licensing_status (status, source_system, source_id, designflow_status_id)
+      values ('done', 'designflow_item_milestone', '4707001:concept_approved', 4707001);
+    raise exception 'a DesignFlow milestone accepted an action status ID';
+  exception when check_violation then
+    null;
+  end;
+  begin
     update plm.licensing_feedback set source_system = 'canonical' where licensing_status_id = draft_status_id;
     raise exception 'DesignFlow reply fields accepted a non-DesignFlow source';
   exception when check_violation then
@@ -73,19 +87,37 @@ end
 $$;
 
 -- Simulate an authenticated reader who qualifies for the existing permissive policy.
-grant usage on schema plm to authenticated;
-grant select on plm.licensing_status, plm.licensing_feedback to authenticated;
-create policy test_designflow_status_baseline on plm.licensing_status for select to authenticated using (true);
-create policy test_designflow_reply_baseline on plm.licensing_feedback for select to authenticated using (true);
-set local role authenticated;
 do $$
 begin
+  grant usage on schema plm to authenticated;
+  grant select, insert, update on plm.licensing_status, plm.licensing_feedback to authenticated;
+  create policy test_designflow_status_baseline on plm.licensing_status
+    to authenticated using (true) with check (true);
+  create policy test_designflow_reply_baseline on plm.licensing_feedback
+    to authenticated using (true) with check (true);
+  set local role authenticated;
   if not exists (select from plm.licensing_status where source_system = 'test_item_identity' and source_id = 'visible-status')
      or exists (select from plm.licensing_status where source_system = 'designflow_licensing_status' and source_id = '4707001')
      or not exists (select from plm.licensing_feedback where source_system = 'test_item_identity' and source_id = 'visible-reply')
      or exists (select from plm.licensing_feedback where source_system = 'designflow_licensing_feedback' and source_id = '4707001') then
     raise exception 'existing PLM licensing access did not isolate DesignFlow data';
   end if;
+  begin
+    insert into plm.licensing_status (status, source_system, source_id)
+      values ('blocked', 'designflow_licensing_status', 'authenticated-status-test');
+    raise exception 'a generic PLM writer created a DesignFlow status';
+  exception when insufficient_privilege then
+    null;
+  end;
+  begin
+    update plm.licensing_feedback set source_system = 'designflow_licensing_feedback'
+      where source_system = 'test_item_identity' and source_id = 'visible-reply';
+    raise exception 'a generic PLM writer reassigned a reply to DesignFlow';
+  exception when insufficient_privilege then
+    null;
+  end;
+  reset role;
+  drop policy test_designflow_status_baseline on plm.licensing_status;
+  drop policy test_designflow_reply_baseline on plm.licensing_feedback;
 end
 $$;
-reset role;

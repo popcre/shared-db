@@ -107,7 +107,10 @@ revoke all on plm.designflow_item from public, anon, authenticated;
 alter table plm.licensing_status
   add column designflow_item_id integer references plm.designflow_item(legacy_item_id) on delete set null,
   add column designflow_source_item_id integer,
-  add column designflow_status_id integer check (designflow_status_id > 0),
+  add column designflow_status_id integer check (
+    designflow_status_id is null
+    or (designflow_status_id > 0 and source_system is not distinct from 'designflow_licensing_status')
+  ),
   add column designflow_status_value text,
   add column designflow_event_date text,
   add column designflow_milestone_flag text,

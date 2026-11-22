@@ -128,7 +128,10 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           case "$CODE" in
-            0) echo "No drift." ;;
+            0)
+              echo "No drift."
+              if [ "$TARGET" = "production" ]; then echo "clean=true" >> "$GITHUB_OUTPUT"; fi
+              ;;
             1)
               if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "schedule" ]; then
                 echo "::warning::Verified drift; NOT clean. Durable alarm publication is required."
@@ -150,6 +153,18 @@ jobs:
           set -euo pipefail
           node scripts/report-ledger-drift-alarm.mjs /tmp/drift.json /tmp/drift.txt
           echo "Verified drift durably reported; the production ledger is NOT clean." >> "$GITHUB_STEP_SUMMARY"
+
+      # Clearance path (#6966): a VERIFIED clean production result (exit 0, any
+      # event) closes open alarm issues with a link to this run. Exit 2 never
+      # sets clean=true, so "could not check" can never close an alarm.
+      - name: Close open drift alarms on a verified clean ledger
+        if: steps.check.outputs.clean == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          node scripts/report-ledger-drift-alarm.mjs --clear /tmp/drift.json | tee -a "$GITHUB_STEP_SUMMARY"
 
       # ---------------------------------------------------------------------
       # Alarm path for the SCHEDULED leg only, copied deliberately from
@@ -195,7 +210,7 @@ jobs:
 
               SUPABASE_ACCESS_TOKEN=... node scripts/check-migration-ledger-drift.mjs --target production
 
-          **Close this issue by hand once resolved.** It is throttled: while it is open, no
+          It closes automatically on the next verified clean check. It is throttled: while it is open, no
           further alarm issues are filed.
           BODY
 

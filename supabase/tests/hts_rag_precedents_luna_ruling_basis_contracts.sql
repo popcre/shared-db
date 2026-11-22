@@ -23,8 +23,8 @@ begin
   insert into hts_rag.hts_rag_determinations (
     id, product_example_id, method, classification_state, result_hash, comparison_key, source_environment
   ) values
-    (v_det_id, v_example_id, 'legacy_ai_cross', 'provisional_complete', repeat('3', 64), gen_random_uuid()::text, 'alsand'),
-    (v_det_id_2, v_example_id, 'legacy_ai_cross', 'provisional_complete', repeat('4', 64), gen_random_uuid()::text, 'alsand');
+    (v_det_id, v_example_id, 'legacy_ai_cross', 'provisional_complete', repeat('3', 64), gen_random_uuid(), 'alsand'),
+    (v_det_id_2, v_example_id, 'legacy_ai_cross', 'provisional_complete', repeat('4', 64), gen_random_uuid(), 'alsand');
 
   insert into hts_rag.hts_rag_debate_runs (
     id, source_determination_id, session_id, policy_version, case_packet_hash, status, source_environment

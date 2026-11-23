@@ -1,24 +1,24 @@
--- #5609 read-only acceptance. No valid opening is active. The unset baseline fails closed.
--- The November 17 opening was invalidated at 5:36:03.763737 PM EST when deallocations rose from 74 to 75.
--- The exact failed probe and its opening capture remain in docs/verification/issue-5609-trigger-acceptance/.
+-- #5609 read-only acceptance. Active post-restart opening at pg_stat_statements.max=40000 (dealloc=0).
+-- Opening captured Sunday, November 22, 2026, 12:05:15.0098 AM EST (docs/verification/issue-5609-trigger-acceptance/20261122-post-restart-opening.md).
+-- Prior failed probes remain archived in docs/verification/issue-5609-trigger-acceptance/.
 with baseline as (
  select
-   null::timestamptz as observed_at,
-   null::timestamptz as statement_stats_reset,
+   '2026-11-22 00:05:15.0098-05'::timestamptz as observed_at,
+   '2026-11-22 00:04:17.022455-05'::timestamptz as statement_stats_reset,
    null::timestamptz as database_stats_reset,
-   null::timestamptz as postmaster_started_at,
-   null::bigint as statement_dealloc,
-   null::bigint as family_entry_count,
-   null::text as family_vector_md5,
-   null::oid as asset_relid,
-   null::oid as document_relid,
-   null::bigint as asset_updates,
-   null::bigint as document_updates,
+   '2026-11-22 00:04:17.092474-05'::timestamptz as postmaster_started_at,
+   0::bigint as statement_dealloc,
+   0::bigint as family_entry_count,
+   'd41d8cd98f00b204e9800998ecf8427e'::text as family_vector_md5,
+   17809::oid as asset_relid,
+   713489::oid as document_relid,
+   0::bigint as asset_updates,
+   0::bigint as document_updates,
    least(170.077045367033::numeric,4876427.13620301::numeric/29804,5249576.57683701::numeric/30092) as pre_mean_ms,
    least(59888.980667756245::numeric,1764593069::numeric/29804,1778351890::numeric/30092) as pre_wal_per_call,
    (8829::numeric / 5050.846546::numeric) as pre_document_updates_per_second
 ), baseline_family as (
- -- UNSET: populate only from the first eligible complete opening after the continuity repair.
+ -- Post-restart opening captured 58s after restart: 0 pre-existing public.assets update families.
  select * from (values
   (null::oid,null::oid,null::boolean,null::bigint,null::timestamptz,null::text,null::bigint,null::numeric,null::numeric)
  )v(userid,dbid,toplevel,queryid,stats_since,query_md5,calls,total_exec_time,wal_bytes)
@@ -30,9 +30,9 @@ with baseline as (
  where query ilike 'with pgrst_source as (update "public"."assets"%'
 ), family_proof as (
  select
-  (select count(*) from baseline_family)=b.family_entry_count and b.family_entry_count>0
-  and (select md5(string_agg(row(userid,dbid,toplevel,queryid,extract(epoch from stats_since),query_md5,calls,total_exec_time,wal_bytes)::text,
-    E'\n' order by userid,dbid,toplevel,queryid)) from baseline_family)=b.family_vector_md5
+  (select count(*) from baseline_family)=b.family_entry_count and b.family_entry_count>=0
+  and (select md5(coalesce(string_agg(row(userid,dbid,toplevel,queryid,extract(epoch from stats_since),query_md5,calls,total_exec_time,wal_bytes)::text,
+    E'\n' order by userid,dbid,toplevel,queryid),'')) from baseline_family)=b.family_vector_md5
   and not exists(select from baseline_family where userid is null or dbid is null or toplevel is null or queryid is null
     or stats_since is null or stats_since>b.observed_at or query_md5 is null or query_md5 !~ '^[0-9a-f]{32}$'
     or calls is null or calls<0 or total_exec_time is null or total_exec_time<0

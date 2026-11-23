@@ -133,5 +133,14 @@ jobs:
           else
             ARGS=(--windows "$WINDOWS" --forward --prod-open)
             if [ "$DRY_RUN" = "true" ]; then ARGS+=(--dry-run); fi
-            node tools/coldlion-landing/sync-history.mjs "${ARGS[@]}"
+            history_status=0
+            node tools/coldlion-landing/sync-history.mjs "${ARGS[@]}" || history_status=$?
+            CUSTOMER_ARGS=(--customers-only)
+            if [ "$DRY_RUN" = "true" ]; then CUSTOMER_ARGS+=(--dry-run); fi
+            customer_status=0
+            timeout 5m node tools/coldlion-landing/sync-masters.mjs "${CUSTOMER_ARGS[@]}" || customer_status=$?
+            if [ "$history_status" -ne 0 ] || [ "$customer_status" -ne 0 ]; then
+              echo "::error::Sandbox refresh failed (history=$history_status, customers=$customer_status)"
+              exit 1
+            fi
           fi

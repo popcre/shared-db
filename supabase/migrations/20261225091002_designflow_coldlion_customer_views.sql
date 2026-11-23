@@ -243,9 +243,29 @@ begin
       recipient := case when permission.grantee = 0 then 'public' else quote_ident(permission.rolname) end;
       if permission.can_read then
         execute format('grant select on table %s to %s', mapping.reader, recipient);
+        if not exists (
+          select 1
+          from pg_class relation
+          cross join lateral aclexplode(relation.relacl) acl
+          where relation.oid = mapping.reader and acl.grantee = permission.grantee
+            and acl.privilege_type = 'SELECT'
+        ) then
+          raise exception 'D1: customer reader grant was not preserved';
+        end if;
       end if;
       execute format('revoke all on table %s from %s', mapping.archived, recipient);
     end loop;
+
+    if exists (
+      select 1
+      from pg_class relation
+      cross join lateral aclexplode(relation.relacl) acl
+      where acl.grantee <> relation.relowner
+        and (relation.oid = mapping.archived
+          or (relation.oid = mapping.reader and acl.privilege_type <> 'SELECT'))
+    ) then
+      raise exception 'D1: archived or write access remains on a customer relation';
+    end if;
   end loop;
 end;
 $privileges$;

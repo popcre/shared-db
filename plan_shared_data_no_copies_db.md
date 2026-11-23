@@ -12,6 +12,8 @@ Coordinator plan (dependency graph, other repos): `u2giants/popdam3` → `plan_s
 
 ## STATUS (read first)
 
+Child issues (parent u2giants/popdam3#1298): S1 popcre/shared-db#6992 · P1 u2giants/popdam3#1299 · P2 u2giants/popdam3#1300 · T1 popcre/designflow-tracking#239 · S2 popcre/shared-db#6993 · C1 popcre/shared-db#6994 · C2 popcre/shared-db#6995 · C3 u2giants/popdam3#1301 · C4 popcre/shared-db#6996 · N1 popcre/shared-db#6997 · D2 popcre/designflow-data-syncing#192 · D1 popcre/shared-db#6998
+
 | Stage | What | State | Evidence |
 |---|---|---|---|
 | S1 | Read function: DesignFlow production orders for a style SKU | ⬜ open (2026-11-23) | — |

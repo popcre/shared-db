@@ -6,6 +6,17 @@
 --   against a THROWAWAY local Supabase stack inside `begin; ... rollback;`.
 -- Every value here is invented (ZZTEST codes/names).
 
+-- Canonical licensing writes need a single-use, exact-column, transaction-bound
+-- authorization (app.enforce_licensing_write_authority). Synthetic, this
+-- transaction only.
+create function pg_temp.n1_auth(p_table regclass, p_cols text[]) returns void
+language sql as $f$
+  insert into plm.licensing_write_authorization
+    (backend_pid, transaction_id, target_table, write_kind, plan_id, plan_hash, actor, protected_columns, expires_at)
+  values (pg_backend_pid(), txid_current(), p_table, 'canonical_merge', gen_random_uuid(), repeat('c',64),
+          'n1-contract-test', p_cols, clock_timestamp() + interval '5 minutes');
+$f$;
+
 do $$
 declare
   v_lic uuid;
@@ -15,8 +26,11 @@ declare
   v_sg uuid;
   r record;
 begin
+  perform pg_temp.n1_auth('core.licensor', array['name','code','status']);
   insert into core.licensor (name, code) values ('ZZTEST Licensor', 'Z9') returning id into v_lic;
+  perform pg_temp.n1_auth('core.licensor', array['name','code','status']);
   insert into core.licensor (name, code) values ('ZZTEST Other', 'Z8') returning id into v_lic2;
+  perform pg_temp.n1_auth('core.property', array['licensor_id','name','code','status']);
   insert into core.property (licensor_id, name, code) values (v_lic, 'ZZTEST Property', 'ZP') returning id into v_prop;
   insert into core.customer (name, display_name) values ('ZZTEST Cust Inc', 'ZZTEST Cust') returning id into v_cust;
 
@@ -46,16 +60,10 @@ begin
     raise exception 'N1-3: id change did not re-derive: % %', r.licensor_name, r.licensor_code;
   end if;
 
-  -- 4. Upstream renames propagate. Canonical licensing columns need a
-  --    transaction-bound authorization (synthetic, this transaction only).
-  insert into plm.licensing_write_authorization
-    (backend_pid, transaction_id, target_table, write_kind, plan_id, plan_hash, actor, protected_columns, expires_at)
-  values
-    (pg_backend_pid(), txid_current(), 'core.licensor', 'canonical_merge', gen_random_uuid(), repeat('c',64),
-     'n1-contract-test', array['name','code','status'], clock_timestamp() + interval '5 minutes'),
-    (pg_backend_pid(), txid_current(), 'core.property', 'canonical_merge', gen_random_uuid(), repeat('c',64),
-     'n1-contract-test', array['name','code','status'], clock_timestamp() + interval '5 minutes');
+  -- 4. Upstream renames propagate.
+  perform pg_temp.n1_auth('core.licensor', array['name','code']);
   update core.licensor set name = 'ZZTEST Other Renamed', code = 'Z7' where id = v_lic2;
+  perform pg_temp.n1_auth('core.property', array['name']);
   update core.property set name = 'ZZTEST Property Renamed' where id = v_prop;
   update core.customer set display_name = 'ZZTEST Cust Renamed' where id = v_cust;
   select * into r from public.style_groups where id = v_sg;

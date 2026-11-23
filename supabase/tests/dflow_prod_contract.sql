@@ -23,8 +23,17 @@ begin
       'item_product_description', 'item_product_description_history',  -- #5026; proved by its own exact contract
       'merchGroupRepairJournal'  -- #6584; repair undo journal
     );
-  if v_tables <> 103 then
-    raise exception 'expected 103 dflow_prod tables, found %', v_tables;
+  -- #6998 keeps externalCustomer as a read-only view and moves its table
+  -- and identity sequence together into the private archive.
+  if v_tables <> 102 then
+    raise exception 'expected 102 dflow_prod tables, found %', v_tables;
+  end if;
+
+  if not exists (
+    select 1 from pg_class
+    where oid = 'dflow_prod."externalCustomer"'::regclass and relkind = 'v'
+  ) or to_regclass('archive.external_customer_prod_6998') is null then
+    raise exception 'production customer view or its recovery table is missing';
   end if;
 
   select count(*) into v_sequences
@@ -46,8 +55,12 @@ begin
                 'merchGroupRepairJournal')  -- #6584
          )
     );
-  if v_sequences <> 97 then
-    raise exception 'expected 97 dflow_prod sequences, found %', v_sequences;
+  if v_sequences <> 96 then
+    raise exception 'expected 96 dflow_prod sequences, found %', v_sequences;
+  end if;
+
+  if to_regclass('archive.external_customer_prod_6998_id_seq') is null then
+    raise exception 'production customer recovery sequence is missing';
   end if;
 
   if exists (

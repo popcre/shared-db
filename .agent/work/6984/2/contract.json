@@ -1,8 +1,12 @@
 {
   "schema_version": 2,
   "work_issue": 6984,
-  "generation": 1,
-  "evidence_parent": null,
+  "generation": 2,
+  "evidence_parent": {
+    "work_issue": 6984,
+    "generation": 1,
+    "contract_sha256": "496046c775c273918489edbde8a59853904081bae23003320f56830d4615e1fa"
+  },
   "work_type": "structural",
   "route": "claim-first",
   "goal": "Persist canonical staged Product Depth on Licensed and Generic Master Data rows.",
@@ -26,7 +30,7 @@
     "table public.style_tracker_rows",
     "view api.style_tracker_staged_product_depth",
     "function dam.validate_style_tracker_product_depth",
-    "trigger public.style_tracker_rows.style_tracker_product_depth_validate"
+    "trigger style_tracker_product_depth_validate on public.style_tracker_rows"
   ],
   "prohibited_actions": [
     "Do not write to DesignFlow or ColdLion item records.",

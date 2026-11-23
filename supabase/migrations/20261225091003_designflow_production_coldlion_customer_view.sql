@@ -1,5 +1,5 @@
 -- #6998: switch the single-schema DesignFlow production recipient.
--- derived-from: 20261225091002, 20260824011750, 20261008022846, 20261218101500
+-- derived-from: 20261225091002, 20260824011750, 20261008025618, 20261218101500
 begin;
 
 set local lock_timeout = '5s';

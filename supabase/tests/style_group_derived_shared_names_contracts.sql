@@ -46,7 +46,15 @@ begin
     raise exception 'N1-3: id change did not re-derive: % %', r.licensor_name, r.licensor_code;
   end if;
 
-  -- 4. Upstream renames propagate.
+  -- 4. Upstream renames propagate. Canonical licensing columns need a
+  --    transaction-bound authorization (synthetic, this transaction only).
+  insert into plm.licensing_write_authorization
+    (backend_pid, transaction_id, target_table, write_kind, plan_id, plan_hash, actor, protected_columns, expires_at)
+  values
+    (pg_backend_pid(), txid_current(), 'core.licensor', 'canonical_merge', gen_random_uuid(), repeat('c',64),
+     'n1-contract-test', array['name','code','status'], clock_timestamp() + interval '5 minutes'),
+    (pg_backend_pid(), txid_current(), 'core.property', 'canonical_merge', gen_random_uuid(), repeat('c',64),
+     'n1-contract-test', array['name','code','status'], clock_timestamp() + interval '5 minutes');
   update core.licensor set name = 'ZZTEST Other Renamed', code = 'Z7' where id = v_lic2;
   update core.property set name = 'ZZTEST Property Renamed' where id = v_prop;
   update core.customer set display_name = 'ZZTEST Cust Renamed' where id = v_cust;

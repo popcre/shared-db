@@ -91,9 +91,9 @@ select
   customer.factor_code::varchar as "factorCode",
   customer.currency_code::varchar as "currencyCode",
   customer.gl_code::varchar as "glCode",
-  customer.created_time::varchar as "createdTime",
+  to_char(customer.created_time at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS.MS')::varchar as "createdTime",
   customer.created_user::varchar as "createdUser",
-  customer.mod_time::varchar as "modTime",
+  to_char(customer.mod_time at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS.MS')::varchar as "modTime",
   customer.mod_user::varchar as "modUser"
 from coldlion.customer customer
 where customer.company_code = 'EDGEHOME';
@@ -152,6 +152,7 @@ revoke all on core."externalCustomer" from public, anon, authenticated, service_
 do $privileges$
 declare
   archived constant regclass := 'archive.external_customer_core_6998'::regclass;
+  archived_id constant regclass := 'archive.external_customer_core_6998_id_seq'::regclass;
   reader constant regclass := 'core."externalCustomer"'::regclass;
   permission record;
   recipient text;
@@ -198,12 +199,23 @@ begin
     execute format('revoke all on table %s from %s', archived, recipient);
   end loop;
 
+  for permission in
+    select distinct acl.grantee, role.rolname
+    from pg_class relation
+    cross join lateral aclexplode(relation.relacl) acl
+    left join pg_roles role on role.oid = acl.grantee
+    where relation.oid = archived_id and acl.grantee <> relation.relowner
+  loop
+    recipient := case when permission.grantee = 0 then 'public' else quote_ident(permission.rolname) end;
+    execute format('revoke all on sequence %s from %s', archived_id, recipient);
+  end loop;
+
   if exists (
     select 1
     from pg_class relation
     cross join lateral aclexplode(relation.relacl) acl
     where acl.grantee <> relation.relowner
-      and (relation.oid = archived
+      and (relation.oid in (archived, archived_id)
         or (relation.oid = reader and acl.privilege_type <> 'SELECT'))
   ) then
     raise exception 'D1: archived or write access remains on a customer relation';

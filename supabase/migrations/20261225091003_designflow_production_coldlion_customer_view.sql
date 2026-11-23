@@ -93,7 +93,8 @@ left join archive.external_customer_prod_6998 previous using ("customerCode");
 revoke all on dflow_prod."externalCustomer" from public, anon, authenticated, service_role;
 grant select on dflow_prod."externalCustomer" to designflow_prod_tracking_grants, designflow_prod_data_sync_grants;
 revoke all on archive.external_customer_prod_6998 from designflow_prod_tracking_grants, designflow_prod_data_sync_grants;
-revoke all on archive.external_customer_prod_6998_id_seq from designflow_prod_data_sync_grants;
+revoke all on archive.external_customer_prod_6998_id_seq
+  from public, anon, authenticated, service_role, designflow_prod_data_sync_grants;
 
 do $verify$
 begin
@@ -102,7 +103,8 @@ begin
     from pg_class relation
     cross join lateral aclexplode(relation.relacl) acl
     where acl.grantee <> relation.relowner
-      and (relation.oid = 'archive.external_customer_prod_6998'::regclass
+      and (relation.oid in ('archive.external_customer_prod_6998'::regclass,
+        'archive.external_customer_prod_6998_id_seq'::regclass)
         or (relation.oid = 'dflow_prod."externalCustomer"'::regclass
           and (acl.grantee not in ('designflow_prod_tracking_grants'::regrole, 'designflow_prod_data_sync_grants'::regrole)
             or acl.privilege_type <> 'SELECT')))

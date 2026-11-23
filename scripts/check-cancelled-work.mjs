@@ -1,0 +1,318 @@
+#!/usr/bin/env node
+/**
+ * Guard: a pull request must not reintroduce an instruction an owner ruling
+ * has already CANCELLED.
+ *
+ * Plan item C2 of `plan_orchestrator-workflow-gaps.md`, issue #619.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * Item C's finding, proven twice on 2026-08-07: an owner ruling reaches the
+ * NEXT session, never the one already running. Albert ruled the Disney extract
+ * was not sensitive at ~17:00. At 22:26 a live session filed issue #578 asking
+ * for the git-history scrub that ruling had just cancelled.
+ *
+ * Nothing can reach a running session, and this guard does not pretend to. What
+ * it does is make the next thing that session COMMITS fail loudly.
+ *
+ * THE TWO MITIGATIONS THE PLAN REQUIRES -- both present, or do not build it
+ * ------------------------------------------------------------------------
+ *  1. THE TABLE LIVES ONLY HERE, where the check consumes it. There is no
+ *     second copy in prose. A list nothing reads is a list nothing updates.
+ *  2. A ROT VALVE. `validateTable` fails if the table is empty, or if any row
+ *     lacks a reason or a ruling reference. Silently gutting the table is
+ *     therefore not a quiet way to make this check pass.
+ *
+ * Shape follows `scripts/check-skill-drift.mjs`: a committed table, each row
+ * carrying its own reason and the rule it violates, consumed by exactly one
+ * check. That script also demonstrated the trap to budget for -- on its first
+ * run it found three real defects AND produced three false positives, all from
+ * line-scoped patterns where the correction wrapped onto the next line. So the
+ * patterns here are matched against the diff with surrounding context joined,
+ * and every row carries an `unless` escape for the legitimate mention.
+ *
+ * USAGE
+ *   node scripts/check-cancelled-work.mjs [--base origin/main]
+ *
+ * EXIT CODES
+ *   0  no cancelled instruction reintroduced
+ *   1  a cancelled instruction was reintroduced, or the table has rotted
+ */
+
+import { execFileSync } from 'node:child_process'
+import { resolveBaseRef, gitProbe } from './lib/resolve-base-ref.mjs'
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
+
+/**
+ * THE TABLE. This is the only copy. Do not mirror it into a document.
+ *
+ * Each row:
+ *   id       stable handle, used in the failure message
+ *   what     one line: the instruction that is cancelled
+ *   ruling   WHERE the cancellation is recorded. Required by the rot valve.
+ *   reason   WHY it is cancelled. Required by the rot valve. Per-row, never
+ *            a shared blurb -- the plan is explicit that a bare list rots.
+ *   pattern  what a reintroduction looks like in an added diff line
+ *   unless   a legitimate mention that must NOT fail. Every row needs one,
+ *            because this file itself mentions all of them.
+ */
+/**
+ * The git-history signal for the R-SEC-1c row, factored out so it can be read.
+ *
+ * WHY IT IS EXPLICIT (narrowed 2026-08-23).
+ * ----------------------------------------
+ * The first version of this pattern looked for a verb near the bare stem `histor`.
+ * That is ordinary English. It fired on a code comment in
+ * `scripts/lib/work-dependencies.test.mjs` reading "a mistake and an attempt to
+ * rewrite history" -- prose about completion records being immutable, nothing to do
+ * with this repository's commits -- and blocked PR #1388 on a required check.
+ *
+ * A guard that fails honest prose gets worked around, and a worked-around guard
+ * protects nothing. So a match now needs an EXPLICIT git-history signal: history or
+ * log qualified by git/commit/repo, "the history of this repository", or one of the
+ * tools that exists only to do this (filter-repo, filter-branch, BFG), or a
+ * force-push described as rewriting history.
+ *
+ * The ruling itself is UNCHANGED and this row still enforces it: the Disney OPA
+ * extract is not sensitive, and this repository's git history must NOT be rewritten.
+ */
+const HISTORY_VERB =
+  /(?:scrub(?:b(?:ed|ing))?|rewrit(?:e|es|ing|ten)|purg(?:e|ed|es|ing)|expung(?:e|ed|es|ing)|strip(?:p(?:ed|ing))?|eras(?:e|ed|es|ing)|remov(?:e|ed|es|ing)|delet(?:e|ed|es|ing))/
+
+/** A phrase that can only mean THIS repository's commit history. */
+const GIT_HISTORY =
+  /(?:(?:git|commit|repo|repository|shared-db)[- ]?(?:history|histories|log)\b|histor(?:y|ies)\s+of\s+(?:this\s+|the\s+)?(?:repo|repository|shared-db)\b)/
+
+/** Tools whose whole purpose is rewriting git history. Signal enough on their own. */
+const HISTORY_TOOL = /(?:git[- ]?filter[- ]?repo|filter[- ]?branch|bfg(?:[- ]repo[- ]?cleaner)?)\b/
+
+/** A force-push is only a history rewrite when it is described as one. */
+const FORCE_PUSH_REWRITE = /force[- ]?push(?:e[sd]|ing)?\b[^\n]{0,80}\b(?:rewrit|histor)/
+
+const NEAR = `[^\\n]{0,80}`
+const WB = `\\b`
+
+export const HISTORY_REWRITE = new RegExp(
+  [
+    `${WB}${HISTORY_VERB.source}${WB}${NEAR}${WB}${GIT_HISTORY.source}`,
+    `${WB}${GIT_HISTORY.source}${NEAR}${WB}${HISTORY_VERB.source}${WB}`,
+    `${WB}${HISTORY_TOOL.source}`,
+    `${WB}${FORCE_PUSH_REWRITE.source}`,
+  ].join('|'),
+  'i',
+)
+
+export const CANCELLED = [
+  {
+    id: 'R-SEC-1c-history-rewrite',
+    what: "rewrite this repository's git history to scrub the Disney OPA extract",
+    ruling: 'AGENTS.md §6 owner ruling (2), Albert Hazan, 2026-08-07',
+    reason:
+      'The owner ruled the Disney OPA property/character extract is NOT sensitive and may ' +
+      'stay in this public repo. R-SEC-1 part (c) is cancelled outright. Rewriting shared ' +
+      'history breaks every clone and every open branch, for a premise that is overruled.',
+    pattern: HISTORY_REWRITE,
+    unless: /\b(cancelled|overruled|superseded|do not|never|must not|forbidden)\b/i,
+  },
+  {
+    id: 'make-shared-db-private',
+    what: 'make u2giants/shared-db private',
+    ruling: 'AGENTS.md §6 owner ruling (2) and the branch-protection note beneath it',
+    reason:
+      'Going private SILENTLY REMOVED ALL BRANCH PROTECTION on 2026-08-07 -- a private repo ' +
+      'on this account plan cannot have it -- and nobody noticed for about two hours. The ' +
+      'reason for going private (the Disney extract) was overruled the same day. Visibility ' +
+      'and protection are coupled: never change one without checking the other.',
+    pattern:
+      /\b(make|set|turn|switch|flip)\b[^\n]{0,40}\b(repo|repository|shared-db)\b[^\n]{0,40}\bprivate\b/i,
+    unless: /\b(cancelled|overruled|superseded|do not|never|must not|forbidden|was made)\b/i,
+  },
+]
+
+// ---------------------------------------------------------------------------
+// Rot valve
+// ---------------------------------------------------------------------------
+
+/**
+ * The plan: "the check must fail if the table is empty or if a row lacks a
+ * reason, so silently gutting it is not a quiet way to make the check pass."
+ */
+export function validateTable(table = CANCELLED) {
+  const problems = []
+  if (!Array.isArray(table) || table.length === 0) {
+    problems.push(
+      'the cancelled-work table is EMPTY. That is not a pass — it means the guard was ' +
+        'gutted. Restore the rows or delete this check deliberately, with a reason.',
+    )
+    return problems
+  }
+  const seen = new Set()
+  table.forEach((row, i) => {
+    const at = row?.id ? `row \`${row.id}\`` : `row ${i}`
+    if (!row?.id) problems.push(`${at} has no id`)
+    else if (seen.has(row.id)) problems.push(`${at} is a duplicate id`)
+    else seen.add(row.id)
+    if (!row?.what?.trim()) problems.push(`${at} does not say WHAT is cancelled`)
+    if (!row?.ruling?.trim()) problems.push(`${at} does not cite the RULING that cancelled it`)
+    if (!row?.reason?.trim()) problems.push(`${at} has no REASON — a bare list rots; see plan item C2`)
+    if (!(row?.pattern instanceof RegExp)) problems.push(`${at} has no detection pattern`)
+    if (!(row?.unless instanceof RegExp))
+      problems.push(`${at} has no \`unless\` escape, so it will fail on its own documentation`)
+  })
+  return problems
+}
+
+// ---------------------------------------------------------------------------
+// Detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Removed lines only, as a Set of trimmed text, from a unified diff.
+ *
+ * WHY THIS EXISTS (added 2026-08-20, issue #1331).
+ *
+ * The guard scans ADDED lines. A pure RELOCATION — moving a block of text from one file to
+ * another in the same pull request — adds every one of those lines, so a cancelled instruction
+ * that was already sitting in the repository looks brand new and the guard fails a change that
+ * introduced nothing at all.
+ *
+ * That is exactly what happened splitting the 234 KB `AGENTS.md`: §6.14 quotes the cancelled
+ * "make the repo private" instruction in order to explain why it is cancelled, and moving that
+ * ruling to `docs/owner-rulings.md` tripped this check.
+ *
+ * THE TRADE-OFF, STATED PLAINLY. A line is exempt only when the IDENTICAL trimmed text is also
+ * removed somewhere in the same diff. Net presence of the cancelled text in the repository is
+ * therefore unchanged, which is what this guard actually protects. It does NOT exempt reworded
+ * text, and it does NOT exempt a line that is merely similar — the match is exact.
+ */
+export function removedLines(diff) {
+  const out = new Set()
+  for (const line of String(diff).split('\n')) {
+    if (line.startsWith('--- a/')) continue
+    if (line.startsWith('-') && !line.startsWith('---')) out.add(line.slice(1).trim())
+  }
+  return out
+}
+
+/** Added lines only, with their file, from a unified diff. */
+export function addedLines(diff) {
+  const out = []
+  let file = null
+  for (const line of String(diff).split('\n')) {
+    if (line.startsWith('+++ b/')) {
+      file = line.slice(6)
+      continue
+    }
+    if (line.startsWith('+') && !line.startsWith('+++')) {
+      out.push({ file, text: line.slice(1) })
+    }
+  }
+  return out
+}
+
+/**
+ * Scan added lines for a reintroduced instruction.
+ *
+ * Line-scoped matching produced three false positives in check-skill-drift on
+ * its first run, all because the correction wrapped to the next line. So the
+ * `unless` escape is evaluated against the line joined with its neighbours.
+ */
+export function findReintroduced(diff, table = CANCELLED, { skipFiles = [] } = {}) {
+  const lines = addedLines(diff)
+  const relocated = removedLines(diff)
+  const findings = []
+
+  lines.forEach((line, i) => {
+    if (!line.file) return
+    if (skipFiles.some((f) => line.file === f)) return
+    // A pure relocation adds text that the same diff also removes. See removedLines().
+    if (relocated.has(line.text.trim())) return
+
+    const context = [lines[i - 1], line, lines[i + 1]]
+      .filter((l) => l && l.file === line.file)
+      .map((l) => l.text)
+      .join(' ')
+
+    for (const row of table) {
+      if (!row.pattern.test(line.text)) continue
+      if (row.unless.test(context)) continue
+      findings.push({ id: row.id, file: line.file, text: line.text.trim(), row })
+    }
+  })
+
+  return findings
+}
+
+export function formatReport(findings) {
+  const lines = ['FAIL: this pull request reintroduces work an owner ruling CANCELLED.', '']
+  for (const f of findings) {
+    lines.push(`  ${f.file}`)
+    lines.push(`    + ${f.text}`)
+    lines.push(`    cancelled: ${f.row.what}`)
+    lines.push(`    ruling:    ${f.row.ruling}`)
+    lines.push(`    why:       ${f.row.reason}`)
+    lines.push('')
+  }
+  lines.push(
+    'If the ruling has genuinely changed, change the ruling FIRST and remove the row from ' +
+      'scripts/check-cancelled-work.mjs in the same pull request, with the new ruling cited. ' +
+      'Do not work around this check.',
+  )
+  return lines.join('\n')
+}
+
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+
+export const defaultIo = {
+  // Issue #3280 governed review round 2: a merge_group checkout has no
+  // origin/<base> ref, so resolve it (fetching the branch when absent) before
+  // diffing. Resolution throws when it cannot -- the guard never silently passes.
+  diff: (base) =>
+    execFileSync('git', ['diff', '--unified=0', `${resolveBaseRef(base, { git: gitProbe((args) => execFileSync('git', args, { encoding: 'utf8' })) })}...HEAD`], {
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    }),
+}
+
+export function main(argv = [], io = defaultIo) {
+  const baseFlag = argv.indexOf('--base')
+  const base = baseFlag !== -1 ? argv[baseFlag + 1] : 'origin/main'
+
+  const rot = validateTable()
+  if (rot.length > 0) {
+    console.error('FAIL: the cancelled-work table has rotted.')
+    for (const p of rot) console.error(`  - ${p}`)
+    return 1
+  }
+
+  let diff
+  try {
+    diff = io.diff(base)
+  } catch (error) {
+    // Loud. A diff we cannot read is not a clean diff.
+    console.error(`FAIL: could not read the diff against ${base}: ${error.message}`)
+    console.error('This is NOT a pass. Fetch the base ref and run again.')
+    return 1
+  }
+
+  // This file is the table's only home, so it necessarily contains every
+  // pattern it looks for. Exclude it, and nothing else.
+  const findings = findReintroduced(diff, CANCELLED, {
+    skipFiles: ['scripts/check-cancelled-work.mjs', 'scripts/check-cancelled-work.test.mjs'],
+  })
+
+  if (findings.length === 0) {
+    console.log(`OK — no cancelled instruction reintroduced (${CANCELLED.length} row(s) checked).`)
+    return 0
+  }
+
+  console.error(formatReport(findings))
+  return 1
+}
+
+const invokedDirectly =
+  process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+if (invokedDirectly) process.exit(main(process.argv.slice(2)))

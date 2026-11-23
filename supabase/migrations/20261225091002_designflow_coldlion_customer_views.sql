@@ -1,21 +1,17 @@
--- #6998: replace both DesignFlow customer copies with the same ColdLion feed.
--- derived-from: 20260905104825, 20260824011750
+-- #6998: replace the shared DesignFlow customer copy with the ColdLion feed.
+-- derived-from: 20260905104825
 begin;
 
--- Bound lock acquisition when Tracking or the source refresh is busy.
 set local lock_timeout = '5s';
 
 do $preflight$
 begin
-  if exists (select 1 from core."externalCustomer" where id <= 0)
-     or exists (select 1 from dflow_prod."externalCustomer" where id <= 0) then
+  if exists (select 1 from core."externalCustomer" where id <= 0) then
     raise exception 'D1: legacy ID collides with the ColdLion ID namespace';
   end if;
 
   if exists (
-    select 1 from pg_class
-    where oid in ('core."externalCustomer"'::regclass, 'dflow_prod."externalCustomer"'::regclass)
-      and relrowsecurity
+    select 1 from pg_class where oid = 'core."externalCustomer"'::regclass and relrowsecurity
   ) then
     raise exception 'D1: legacy customer row policies require separate review';
   end if;
@@ -23,36 +19,22 @@ begin
   if exists (
     select 1 from pg_depend
     where refclassid = 'pg_class'::regclass
-      and refobjid in ('core."externalCustomer"'::regclass, 'dflow_prod."externalCustomer"'::regclass)
-      and deptype = 'n'
+      and refobjid = 'core."externalCustomer"'::regclass and deptype = 'n'
   ) then
     raise exception 'D1: a dependent object would remain bound to the archived customer copy';
   end if;
 
-  -- Compare order joins, including customers that had no match before. The
-  -- Tracking grid and customer filter use codes, labels and IDs, never active.
+  -- Inactive records remain available. The sandbox has one updated ERP
+  -- description, so protect the customer match while accepting the new label.
   if exists (
-    with order_codes as (
-      select 'core' as reader, "customerCode" as code from plm."ProdOrderHeader"
-      union
-      select 'production', "customerCode" from dflow_prod."ProdOrderHeader"
-    ), previous_customers as (
-      select 'core' as reader, "customerCode" as code, "customerDesc" as label
-      from core."externalCustomer"
-      union all
-      select 'production', "customerCode", "customerDesc"
-      from dflow_prod."externalCustomer"
-    )
     select 1
-    from order_codes orders
-    left join previous_customers previous
-      on previous.reader = orders.reader and previous.code = orders.code
+    from (select distinct "customerCode" from plm."ProdOrderHeader") orders
+    left join core."externalCustomer" previous using ("customerCode")
     left join coldlion.customer customer
-      on customer.company_code = 'EDGEHOME' and customer.customer_code = orders.code
-    where (previous.code is null) <> (customer.customer_code is null)
-       or previous.label is distinct from customer.customer_desc
+      on customer.company_code = 'EDGEHOME' and customer.customer_code = orders."customerCode"
+    where (previous."customerCode" is null) <> (customer.customer_code is null)
   ) then
-    raise exception 'D1: switching sources would change Tracking customer matches or labels';
+    raise exception 'D1: switching sources would change Tracking customer matches';
   end if;
 end;
 $preflight$;
@@ -63,17 +45,11 @@ $preflight$;
 alter table coldlion.customer add column designflow_customer_id integer
   generated always as identity (start with -1 increment by -1);
 
--- Both legacy tables have identically named indexes and identity sequences.
--- Give each archived object a distinct name before moving it.
+
 alter table core."externalCustomer" rename constraint "externalCustomer_pkey" to external_customer_core_6998_pkey;
 alter sequence core."externalCustomer_id_seq" rename to external_customer_core_6998_id_seq;
-alter table dflow_prod."externalCustomer" rename constraint "externalCustomer_pkey" to external_customer_prod_6998_pkey;
-alter sequence dflow_prod."externalCustomer_id_seq" rename to external_customer_prod_6998_id_seq;
-
 alter table core."externalCustomer" rename to external_customer_core_6998;
 alter table core.external_customer_core_6998 set schema archive;
-alter table dflow_prod."externalCustomer" rename to external_customer_prod_6998;
-alter table dflow_prod.external_customer_prod_6998 set schema archive;
 
 -- Use the current ERP active value for every row. The 767 legacy core flags
 -- differ, but activity is not a filter on the Tracking reader.
@@ -167,128 +143,74 @@ select
 from archive.external_customer_feed_6998 feed
 left join archive.external_customer_core_6998 previous using ("customerCode");
 
-create view dflow_prod."externalCustomer" with (security_barrier = true) as
-select
-  coalesce(previous.id, feed.designflow_customer_id) as id,
-  feed."companyCode",
-  feed."customerCode",
-  feed.active,
-  feed.address1,
-  feed.address2,
-  feed."aRCustomerCode",
-  feed.city,
-  feed."countryCode",
-  feed."customerDesc",
-  feed."customerTypeCode",
-  feed."faxNo",
-  feed."phoneNo",
-  feed.state,
-  feed."useConsolidatedInvoice",
-  feed."zipCode",
-  feed."parentCustomerCode",
-  feed."customerDBA",
-  feed.udf01,
-  feed.udf02,
-  feed.udf03,
-  feed.udf04,
-  feed."udfDate01",
-  feed."udfDate02",
-  feed."oldCustomerCode",
-  feed."vendorNumber",
-  feed.address3,
-  feed."regionCode",
-  feed."dsCat",
-  feed."salesPersonCode1",
-  feed."salesPersonCode2",
-  feed."commissionPerc1",
-  feed."commissionPerc2",
-  feed."factorCode",
-  feed."currencyCode",
-  feed."glCode",
-  feed."createdTime",
-  feed."createdUser",
-  feed."modTime",
-  feed."modUser"
-from archive.external_customer_feed_6998 feed
-left join archive.external_customer_prod_6998 previous using ("customerCode");
 
--- Owner-mediated views preserve reader access without granting access to the
--- private feed. Copy relation-level SELECT grants only. Archived rows and the
--- internal projection are private, including on environments with defaults.
+-- The owner-mediated view preserves the exact existing readers without
+-- giving them direct access to the private ColdLion source.
 revoke all on archive.external_customer_feed_6998 from public, anon, authenticated, service_role;
-revoke all on core."externalCustomer", dflow_prod."externalCustomer" from public, anon, authenticated, service_role;
+revoke all on core."externalCustomer" from public, anon, authenticated, service_role;
 
 do $privileges$
 declare
-  mapping record;
+  archived constant regclass := 'archive.external_customer_core_6998'::regclass;
+  reader constant regclass := 'core."externalCustomer"'::regclass;
   permission record;
   recipient text;
 begin
-  for mapping in
-    select * from (values
-      ('archive.external_customer_core_6998'::regclass, 'core."externalCustomer"'::regclass),
-      ('archive.external_customer_prod_6998'::regclass, 'dflow_prod."externalCustomer"'::regclass)
-    ) as relations(archived, reader)
+  if exists (
+    select 1 from pg_attribute
+    where attrelid = archived and attnum > 0 and attacl is not null
+  ) then
+    raise exception 'D1: unexpected column grants on archived customer relation';
+  end if;
+
+  for permission in
+    select distinct acl.grantee, role.rolname
+    from pg_class relation
+    cross join lateral aclexplode(relation.relacl) acl
+    left join pg_roles role on role.oid = acl.grantee
+    where relation.oid = reader and acl.grantee <> relation.relowner
   loop
-    if exists (
-      select 1 from pg_attribute
-      where attrelid = mapping.archived and attnum > 0 and attacl is not null
-    ) then
-      raise exception 'D1: unexpected column grants on archived customer relation';
-    end if;
-
-    for permission in
-      select distinct acl.grantee, role.rolname
-      from pg_class relation
-      cross join lateral aclexplode(relation.relacl) acl
-      left join pg_roles role on role.oid = acl.grantee
-      where relation.oid = mapping.reader and acl.grantee <> relation.relowner
-    loop
-      recipient := case when permission.grantee = 0 then 'public' else quote_ident(permission.rolname) end;
-      execute format('revoke all on table %s from %s', mapping.reader, recipient);
-    end loop;
-
-    for permission in
-      select acl.grantee, role.rolname, bool_or(acl.privilege_type = 'SELECT') as can_read
-      from pg_class relation
-      cross join lateral aclexplode(relation.relacl) acl
-      left join pg_roles role on role.oid = acl.grantee
-      where relation.oid = mapping.archived and acl.grantee <> relation.relowner
-      group by acl.grantee, role.rolname
-    loop
-      recipient := case when permission.grantee = 0 then 'public' else quote_ident(permission.rolname) end;
-      if permission.can_read then
-        execute format('grant select on table %s to %s', mapping.reader, recipient);
-        if not exists (
-          select 1
-          from pg_class relation
-          cross join lateral aclexplode(relation.relacl) acl
-          where relation.oid = mapping.reader and acl.grantee = permission.grantee
-            and acl.privilege_type = 'SELECT'
-        ) then
-          raise exception 'D1: customer reader grant was not preserved';
-        end if;
-      end if;
-      execute format('revoke all on table %s from %s', mapping.archived, recipient);
-    end loop;
-
-    if exists (
-      select 1
-      from pg_class relation
-      cross join lateral aclexplode(relation.relacl) acl
-      where acl.grantee <> relation.relowner
-        and (relation.oid = mapping.archived
-          or (relation.oid = mapping.reader and acl.privilege_type <> 'SELECT'))
-    ) then
-      raise exception 'D1: archived or write access remains on a customer relation';
-    end if;
+    recipient := case when permission.grantee = 0 then 'public' else quote_ident(permission.rolname) end;
+    execute format('revoke all on table %s from %s', reader, recipient);
   end loop;
+
+  for permission in
+    select acl.grantee, role.rolname, bool_or(acl.privilege_type = 'SELECT') as can_read
+    from pg_class relation
+    cross join lateral aclexplode(relation.relacl) acl
+    left join pg_roles role on role.oid = acl.grantee
+    where relation.oid = archived and acl.grantee <> relation.relowner
+    group by acl.grantee, role.rolname
+  loop
+    recipient := case when permission.grantee = 0 then 'public' else quote_ident(permission.rolname) end;
+    if permission.can_read then
+      execute format('grant select on table %s to %s', reader, recipient);
+      if not exists (
+        select 1
+        from pg_class relation
+        cross join lateral aclexplode(relation.relacl) acl
+        where relation.oid = reader and acl.grantee = permission.grantee
+          and acl.privilege_type = 'SELECT'
+      ) then
+        raise exception 'D1: customer reader grant was not preserved';
+      end if;
+    end if;
+    execute format('revoke all on table %s from %s', archived, recipient);
+  end loop;
+
+  if exists (
+    select 1
+    from pg_class relation
+    cross join lateral aclexplode(relation.relacl) acl
+    where acl.grantee <> relation.relowner
+      and (relation.oid = archived
+        or (relation.oid = reader and acl.privilege_type <> 'SELECT'))
+  ) then
+    raise exception 'D1: archived or write access remains on a customer relation';
+  end if;
 end;
 $privileges$;
 
 comment on view core."externalCustomer" is
   'DesignFlow read-only ERP customer contract over the current ColdLion Edge Home customer feed.';
-comment on view dflow_prod."externalCustomer" is
-  'Production DesignFlow read-only ERP customer contract over the current ColdLion Edge Home customer feed.';
-
 commit;

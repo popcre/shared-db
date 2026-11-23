@@ -4,19 +4,29 @@ begin;
 
 -- Bound lock acquisition when Tracking or the source refresh is busy.
 set local lock_timeout = '5s';
-set local timezone = 'UTC';
-
--- The source loader updates rows by (company_code, customer_code) and retains
--- codes absent from subsequent snapshots. Negative IDs cannot collide with
--- archived positive IDs. Read-only views retain the original ID per consumer.
-alter table coldlion.customer add column designflow_customer_id integer
-  generated always as identity (start with -1 increment by -1);
 
 do $preflight$
 begin
   if exists (select 1 from core."externalCustomer" where id <= 0)
      or exists (select 1 from dflow_prod."externalCustomer" where id <= 0) then
     raise exception 'D1: legacy ID collides with the ColdLion ID namespace';
+  end if;
+
+  if exists (
+    select 1 from pg_class
+    where oid in ('core."externalCustomer"'::regclass, 'dflow_prod."externalCustomer"'::regclass)
+      and relrowsecurity
+  ) then
+    raise exception 'D1: legacy customer row policies require separate review';
+  end if;
+
+  if exists (
+    select 1 from pg_depend
+    where refclassid = 'pg_class'::regclass
+      and refobjid in ('core."externalCustomer"'::regclass, 'dflow_prod."externalCustomer"'::regclass)
+      and deptype = 'n'
+  ) then
+    raise exception 'D1: a dependent object would remain bound to the archived customer copy';
   end if;
 
   -- Compare order joins, including customers that had no match before. The
@@ -46,6 +56,12 @@ begin
   end if;
 end;
 $preflight$;
+
+-- The source loader updates rows by (company_code, customer_code) and retains
+-- codes absent from subsequent snapshots. Negative IDs cannot collide with
+-- archived positive IDs. Read-only views retain the original ID per consumer.
+alter table coldlion.customer add column designflow_customer_id integer
+  generated always as identity (start with -1 increment by -1);
 
 -- Both legacy tables have identically named indexes and identity sequences.
 -- Give each archived object a distinct name before moving it.

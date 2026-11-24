@@ -62,8 +62,6 @@ begin
   insert into public.licensors(id,name,external_id) values(leg_lic,'ZQ1037 Legacy Licensor','zq1037-l-'||txid_current());
   insert into public.properties(id,licensor_id,name,external_id) values(leg_prop,leg_lic,'ZQ1037 Legacy Property','zq1037-p-'||txid_current());
   insert into public.characters(id,property_id,name,external_id) values(lc1,leg_prop,'ZQ1037 Legacy Character','zq1037-c-'||txid_current());
-  -- C2 (#6995): public.asset_characters.character_id references core.character.
-  insert into core.character(id,name) values(lc1,'ZQ1037 Legacy Character');
 
   -- The cold-path lookup passes only relevant names and links to the existing matcher.
   insert into core.character (licensor_id, name)
@@ -142,6 +140,9 @@ begin
 
   insert into public.asset_licensor_characters (asset_id, character_id) values
     (a1, ch1), (a3b, ch1), (a4, ch2), (a6, ch1), (a8, ch1);
+  -- C2 (#6995): asset_characters.character_id references core.character; the row is
+  -- added after the name lookup above so it does not count as a canonical match there.
+  insert into core.character(id,name) values(lc1,'ZQ1037 Legacy Character');
   insert into public.asset_characters (asset_id, character_id) values (a7, lc1);
   update public.assets set is_deleted = true where id = a6;
 

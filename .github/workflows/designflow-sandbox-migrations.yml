@@ -183,6 +183,16 @@ jobs:
             echo "REFUSED: the CLI linked a project other than the sandbox." >&2; exit 2
           fi
           supabase migration list --linked | tee "$RUNNER_TEMP/sandbox-ledger-before.txt"
+      - name: Prove the historical customer importer without reinstalling it
+        if: inputs.allowlist == '20261225091206'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          proof="$(python scripts/sandbox_migration_preflight.py customer-derivation \
+            --repo "$GITHUB_WORKSPACE" --allowlist "$SANDBOX_ALLOWLIST" \
+            --project-ref "$SANDBOX_PROJECT_REF")"
+          printf 'CUSTOMER_DERIVATION_PROOF=%s\n' "$proof" >> "$GITHUB_ENV"
       - name: Ledger preflight (shared hard guard, judged against the sandbox ledger)
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -191,7 +201,8 @@ jobs:
             --repo "$GITHUB_WORKSPACE" \
             --allowlist "$SANDBOX_ALLOWLIST" \
             --remote-ledger "$RUNNER_TEMP/sandbox-ledger-before.txt" \
-            --ledger-name sandbox --sandbox-live-dependencies
+            --ledger-name sandbox --sandbox-live-dependencies \
+            ${CUSTOMER_DERIVATION_PROOF:+--derivation-override "$CUSTOMER_DERIVATION_PROOF"}
       - name: Catalog collision preflight (read-only)
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -210,7 +221,8 @@ jobs:
             --commit-sha "$COMMIT_SHA" \
             --allowlist "$SANDBOX_ALLOWLIST" \
             --remote-ledger "$RUNNER_TEMP/sandbox-ledger-before.txt" \
-            --ledger-name sandbox --sandbox-live-dependencies
+            --ledger-name sandbox --sandbox-live-dependencies \
+            ${CUSTOMER_DERIVATION_PROOF:+--derivation-override "$CUSTOMER_DERIVATION_PROOF"}
       - name: Condition absent-schema statements (bounded checkout only, both modes)
         # Issue #2986. The sandbox does not carry every schema production has
         # (dflow_prod is absent until the structural route creates it), so an
@@ -259,6 +271,7 @@ jobs:
         id: apply
         env:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_DESIGNFLOW_SANDBOX }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           cd "$RUNNER_TEMP/bounded-sandbox"
           supabase link --project-ref "$SANDBOX_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
@@ -279,7 +292,8 @@ jobs:
             --dir "$RUNNER_TEMP/bounded-sandbox" \
             --allowlist "$SANDBOX_ALLOWLIST" \
             --remote-ledger "$RUNNER_TEMP/sandbox-ledger-before.txt" \
-            --ledger-name sandbox
+            --ledger-name sandbox \
+            ${CUSTOMER_DERIVATION_PROOF:+--derivation-override "$CUSTOMER_DERIVATION_PROOF"}
           supabase db push --include-all --dry-run 2>&1 | tee "$RUNNER_TEMP/sandbox-dry-run.txt"
           python "$GITHUB_WORKSPACE/scripts/production_migration_guard.py" verify-dry-run \
             --dry-run-output "$RUNNER_TEMP/sandbox-dry-run.txt" \
@@ -291,15 +305,32 @@ jobs:
               --dir "$RUNNER_TEMP/bounded-sandbox" \
               --allowlist "$SANDBOX_ALLOWLIST" \
               --remote-ledger "$RUNNER_TEMP/sandbox-ledger-before.txt" \
-              --ledger-name sandbox
+              --ledger-name sandbox \
+              ${CUSTOMER_DERIVATION_PROOF:+--derivation-override "$CUSTOMER_DERIVATION_PROOF"}
             # Main must still be exactly the dispatched commit at the moment of the write.
             git -C "$GITHUB_WORKSPACE" fetch -q origin main
             if [ "$(git -C "$GITHUB_WORKSPACE" rev-parse origin/main)" != "$COMMIT_SHA" ]; then
               echo "REFUSED: origin/main moved after dispatch; nothing was applied. Dispatch again at the new tip." >&2; exit 2
             fi
+            if [ "$SANDBOX_ALLOWLIST" = "20261225091206" ]; then
+              proof="$(python "$GITHUB_WORKSPACE/scripts/sandbox_migration_preflight.py" customer-derivation \
+                --repo "$GITHUB_WORKSPACE" --allowlist "$SANDBOX_ALLOWLIST" \
+                --project-ref "$SANDBOX_PROJECT_REF")"
+              if [ "$proof" != "${CUSTOMER_DERIVATION_PROOF:-}" ]; then
+                echo "REFUSED: the customer importer proof changed before apply." >&2; exit 2
+              fi
+            fi
             # THE WRITE. Sandbox only.
             supabase db push --include-all 2>&1 | tee "$RUNNER_TEMP/sandbox-apply.txt"
           fi
+      - name: Verify the customer importer and retired vendor absence after apply
+        if: inputs.mode == 'apply' && inputs.allowlist == '20261225091206'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          python scripts/sandbox_migration_preflight.py customer-derivation \
+            --repo "$GITHUB_WORKSPACE" --allowlist "$SANDBOX_ALLOWLIST" \
+            --project-ref "$SANDBOX_PROJECT_REF"
       - name: Capture sandbox migration record (after)
         if: always() && inputs.mode == 'apply'
         env:

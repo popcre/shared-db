@@ -40,31 +40,55 @@ alter role tracking_query_reader set idle_in_transaction_session_timeout = '60s'
 alter role tracking_query_reader set default_transaction_read_only = on;
 
 do $$
-declare
-  rel text;
-  sch text;
 begin
-  foreach rel in array array[
-    'dflow_prod."ProdOrderHeader"',
-    'dflow_prod."ProdOrderDetail"',
-    'dflow_prod."itemHeader"',
-    'dflow_prod.item_prod_order_detail_associations',
-    'dflow_prod."licensingStatus"',
-    'dflow_prod."merchGroup"',
-    'dflow_prod."externalVendor"',
-    'plm.v_prod_order_sales_order_link',
-    'plm.prod_stage_progress',
-    'plm.prod_stage_option',
-    'plm.stage',
-    'plm.stage_duration',
-    'coldlion.order_history_line'
-  ] loop
-    if to_regclass(rel) is not null then
-      sch := split_part(rel, '.', 1);
-      execute format('grant usage on schema %I to tracking_query_reader', sch);
-      execute format('grant select on %s to tracking_query_reader', rel);
-    end if;
-  end loop;
+  if exists (select 1 from pg_namespace where nspname = 'dflow_prod') then
+    grant usage on schema dflow_prod to tracking_query_reader;
+  end if;
+  if exists (select 1 from pg_namespace where nspname = 'plm') then
+    grant usage on schema plm to tracking_query_reader;
+  end if;
+  if exists (select 1 from pg_namespace where nspname = 'coldlion') then
+    grant usage on schema coldlion to tracking_query_reader;
+  end if;
+  if to_regclass('dflow_prod."ProdOrderHeader"') is not null then
+    grant select on dflow_prod."ProdOrderHeader" to tracking_query_reader;
+  end if;
+  if to_regclass('dflow_prod."ProdOrderDetail"') is not null then
+    grant select on dflow_prod."ProdOrderDetail" to tracking_query_reader;
+  end if;
+  if to_regclass('dflow_prod."itemHeader"') is not null then
+    grant select on dflow_prod."itemHeader" to tracking_query_reader;
+  end if;
+  if to_regclass('dflow_prod.item_prod_order_detail_associations') is not null then
+    grant select on dflow_prod.item_prod_order_detail_associations to tracking_query_reader;
+  end if;
+  if to_regclass('dflow_prod."licensingStatus"') is not null then
+    grant select on dflow_prod."licensingStatus" to tracking_query_reader;
+  end if;
+  if to_regclass('dflow_prod."merchGroup"') is not null then
+    grant select on dflow_prod."merchGroup" to tracking_query_reader;
+  end if;
+  if to_regclass('dflow_prod."externalVendor"') is not null then
+    grant select on dflow_prod."externalVendor" to tracking_query_reader;
+  end if;
+  if to_regclass('plm.v_prod_order_sales_order_link') is not null then
+    grant select on plm.v_prod_order_sales_order_link to tracking_query_reader;
+  end if;
+  if to_regclass('plm.prod_stage_progress') is not null then
+    grant select on plm.prod_stage_progress to tracking_query_reader;
+  end if;
+  if to_regclass('plm.prod_stage_option') is not null then
+    grant select on plm.prod_stage_option to tracking_query_reader;
+  end if;
+  if to_regclass('plm.stage') is not null then
+    grant select on plm.stage to tracking_query_reader;
+  end if;
+  if to_regclass('plm.stage_duration') is not null then
+    grant select on plm.stage_duration to tracking_query_reader;
+  end if;
+  if to_regclass('coldlion.order_history_line') is not null then
+    grant select on coldlion.order_history_line to tracking_query_reader;
+  end if;
 end $$;
 
 commit;

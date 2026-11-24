@@ -99,10 +99,10 @@ begin
   select * into r from public.dam_search_named_scope(jsonb_build_object(
     'requiredCharacterIds', jsonb_build_array(v_char),
     'semanticPropertyCharacterIds', jsonb_build_array(v_char)), true);
-  if not (v_group = any(r.character_groups)) or not (v_group = any(r.property_groups))
+  if (not (v_group = any(r.character_groups)) or not (v_group = any(r.property_groups))
      or v_dgroup = any(r.character_groups) or v_dgroup = any(r.property_groups)
      or v_member = any(r.character_assets) or v_member = any(r.property_assets)
-     or not (v_asset = any(r.character_assets)) or not (v_asset = any(r.property_assets)) then
+     or not (v_asset = any(r.character_assets)) or not (v_asset = any(r.property_assets))) is not false then
     raise exception 'grouped asset_characters legs wrong: %', r;
   end if;
   delete from core.character where id = v_char;

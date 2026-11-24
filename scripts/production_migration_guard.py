@@ -474,6 +474,11 @@ HARD_BLOCKED = {
     # never to production. Superseded by the create-only split 20261225010406 +
     # 20261225010407 (its exact executable SQL); never apply this version.
     "20261225010104",
+    # 20261225090902 (PR #7006, popcre/shared-db#6993): declared sandbox-only
+    # derived-from bases, refused at the derivation gate three times (run
+    # 45283352676) and parked. Never applied anywhere. Superseded by the
+    # byte-identical re-issue 20261225091103; never apply this version.
+    "20261225090902",
     # Third hop stranded the same way: 20261225010304 (PR #6845) hard-references
     # the name after 10104's tree-walk drop, forcing a restores-retired-object
     # declaration the production preflight refuses (run 44577050283: "history
@@ -488,6 +493,7 @@ HARD_BLOCKED = {
 # verifier imports these names from here; pending-status policy must not import
 # that application verifier back into the production guard's execution closure.
 RETIRED_VERSION_REASONS = {
+    "20261225090902": "PR #7006 (S2 drop of PopDAM production-order copy tables): its first derived-from bases were sandbox catch-ups no ledger outside sandbox holds, so the preview preflight refused three times (run 45283352676) and the change was parked. Never applied. Superseded by 20261225091103 with identical executable SQL. Never apply this version.",
     "20261225010304": "PR #6845 (third re-issue hop for api.crm_update_contact): its restores-retired-object declaration names 20261225010104, a stranded dropper the production ledger never held, so the production preflight refused the whole batch (run 44577050283) while the local F5 tree walk demands exactly that declaration — no single file satisfies both. Applied to preview only (run 44574563050). Superseded by the create-only split 20261225010406 + 20261225010407 carrying byte-identical executable SQL. Never apply this version.",
     "20261225010104": "PR #6840 (first re-issue of the contact clear-field shape): its declared derived-from bases (20261223010101, 20261225010001, 20261225010003) are retired strands no ledger outside preview holds, so the automatic production apply refused at the issue #1608 derivation gate (run 44564769286) and the lane's single derivation_override input cannot record all three missing bases. Applied to preview only (rehearsal run 44563812884); never applied to production. Superseded by the create-only split 20261225010406 + 20261225010407 (its exact executable SQL; repointed per review finding #6857). Never apply this version.",
     "20261223010101": "PR #6818 (#6820 claim, popcrm-web #39 contact clear flags): applied to preview by local db push before merge, so no dispatched preview run exists for it and the historical-recovery gate's digest proof can never pass (refused rehearsals runs 44532807597, 44533994147, 44535389768); never applied to production. Its approved 18-argument end state is live via the create-only split 20261225010406 + 20261225010407. Never apply this original.",

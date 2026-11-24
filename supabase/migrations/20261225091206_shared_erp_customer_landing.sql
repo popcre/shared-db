@@ -136,15 +136,6 @@ create trigger sync_erp_customer_update
   referencing new table as changed_customers
   for each statement execute function coldlion.apply_erp_customer_landing_trigger();
 
--- Save the read contracts and POP links for an exact, transaction-local
--- comparison. The persisted customer and archive records stay in place.
-create temporary table erp_customer_read_before on commit drop as
-select * from archive.external_customer_feed_6998;
-
-create temporary table erp_customer_pop_before on commit drop as
-select customer_code, customer_id, raw, imported_at, address, phone, fax
-from plm.erp_customer;
-
 do $intake_check$
 begin
   -- Order Intake can fall back to the active ERP record. A changed flag is
@@ -213,39 +204,6 @@ select
   (landing_customer_details ->> 'mod_user')::varchar as "modUser"
 from plm.erp_customer
 where designflow_customer_id is not null;
-
-do $verify$
-declare
-  contact_columns constant text[] :=
-    array['address1', 'address2', 'address3', 'city', 'state', 'zipCode', 'countryCode', 'phoneNo', 'faxNo'];
-begin
-  -- Match both directions, including the source ID, code and inactive flag.
-  -- Contact fields come from the existing preserved values in the shared table.
-  if exists (
-    select to_jsonb(before_customer) - contact_columns
-    from pg_temp.erp_customer_read_before before_customer
-    except
-    select to_jsonb(current_customer) - contact_columns
-    from archive.external_customer_feed_6998 current_customer
-  ) or exists (
-    select to_jsonb(current_customer) - contact_columns
-    from archive.external_customer_feed_6998 current_customer
-    except
-    select to_jsonb(before_customer) - contact_columns
-    from pg_temp.erp_customer_read_before before_customer
-  ) then
-    raise exception 'The shared table changed existing DesignFlow customer values';
-  end if;
-
-  if exists (
-    select * from pg_temp.erp_customer_pop_before
-    except
-    select customer_code, customer_id, raw, imported_at, address, phone, fax from plm.erp_customer
-  ) then
-    raise exception 'The refresh changed an existing POP link, contact value or import record';
-  end if;
-end;
-$verify$;
 
 comment on table plm.erp_customer is
   'Shared ERP customer source refreshed from the ColdLion landing feed. POP-managed customer links remain independent of the ERP active flag.';

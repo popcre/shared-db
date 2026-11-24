@@ -21,7 +21,8 @@
     "supabase/migrations/20261225091506_dflow_assembled_item_description.sql",
     "supabase/migrations/20261225091507_dflow_prod_assembled_item_description.sql",
     "supabase/tests/dflow_assembled_item_description_contracts.sql",
-    "supabase/tests/dflow_prod_assembled_item_description_contracts.sql"
+    "supabase/tests/dflow_prod_assembled_item_description_contracts.sql",
+    "supabase/tests/dflow_prod_contract.sql"
   ],
   "file_writes": [
     ".agent/work/7041/1/completion.json",
@@ -33,7 +34,8 @@
     "supabase/migrations/20261225091506_dflow_assembled_item_description.sql",
     "supabase/migrations/20261225091507_dflow_prod_assembled_item_description.sql",
     "supabase/tests/dflow_assembled_item_description_contracts.sql",
-    "supabase/tests/dflow_prod_assembled_item_description_contracts.sql"
+    "supabase/tests/dflow_prod_assembled_item_description_contracts.sql",
+    "supabase/tests/dflow_prod_contract.sql"
   ],
   "db_reads": [],
   "db_writes": [

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "migration_version": "20261225091205",
+  "migration_sha256": "5043ccf79d4bb3496e16c3ff03a15c727972130fb5389ba8a81d4ed8d9851df2",
+  "marker_schema_version": 1,
+  "marker_reviews": [
+    {
+      "line_start": 31,
+      "line_end": 31,
+      "disposition": "checks",
+      "reason": "Verify that the existing view was updated with the partial index predicate in the installed query.",
+      "check_ids": [
+        "master_data_rfq_lookup_predicate_v1"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "master_data_rfq_lookup_predicate_v1",
+      "kind": "catalog_contract",
+      "contract": "master_data_rfq_lookup_predicate_v1",
+      "expected_count": 1
+    }
+  ]
+}

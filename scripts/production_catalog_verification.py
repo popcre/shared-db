@@ -1414,6 +1414,43 @@ CATALOG_CONTRACTS = {
 and (select count(*) from core.character_alias a
   where a.normalized_alias='pooh')=1
 """,
+    # Issue #7078: verify the actual column grants, including where a role
+    # could otherwise inherit SELECT from a table-level grant.
+    "dflow_prod_licensing_legacy_read_v1": r"""
+not exists (
+  select 1
+  from (values
+    ('designflow_prod_tracking_grants', 'dflow_prod."licensingMilestone"',
+      array['id', 'itemheader_id_fk', 'stage', 'milestone_date']),
+    ('designflow_prod_tracking_grants', 'dflow_prod."licensingFeedbackReply"',
+      array['id', 'licensing_status_id_fk', 'tagged_user_ids', 'attachments']),
+    ('designflow_prod_item_master_grants', 'dflow_prod."licensingMilestone"',
+      array['id', 'itemheader_id_fk']),
+    ('designflow_prod_backend_grants', 'dflow_prod."licensingStatus"',
+      array['id', 'date', 'feedback', 'package', 'status', 'from', 'moduser',
+        'itemheader_id_fk', 'attachments', 'assignor_id', 'assignee_id',
+        'tagged_group_id', 'pop_comments', 'assignee_ids']),
+    ('designflow_prod_backend_grants', 'dflow_prod."licensingFeedbackReply"',
+      array['id', 'licensing_status_id_fk', 'comment', 'created_by', 'created_at',
+        'tagged_user_ids', 'attachments']),
+    ('designflow_prod_backend_grants', 'dflow_prod."licensingMilestone"',
+      array['id', 'itemheader_id_fk', 'stage', 'milestone_date', 'checked_by_user_id',
+        'checked_by_name', 'created_at', 'updated_at'])
+  ) as expected(role_name, relation_name, columns)
+  cross join lateral unnest(expected.columns) as col(column_name)
+  where not exists (
+    select 1
+    from pg_catalog.pg_attribute a
+    cross join lateral pg_catalog.aclexplode(a.attacl) as acl
+    join pg_catalog.pg_roles r on r.oid = acl.grantee
+    where a.attrelid = pg_catalog.to_regclass(expected.relation_name)
+      and a.attnum > 0 and not a.attisdropped
+      and a.attname = col.column_name
+      and r.rolname = expected.role_name
+      and acl.privilege_type = 'SELECT'
+  )
+)
+""",
     # Issue #6735: admin role editor create; exact column INSERT, no DELETE.
     "dflow_prod_role_create_insert_v1": r"""
 to_regclass('dflow_prod."Roles"') is not null

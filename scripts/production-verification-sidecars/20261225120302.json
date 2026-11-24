@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "migration_version": "20261225120302",
+  "migration_sha256": "f579563437d8885fe2199ce7222c04cd792062a327b645629fd3970a9488f8b3",
+  "checks": [
+    {
+      "id": "dflow_prod_licensing_legacy_read",
+      "kind": "catalog_contract",
+      "contract": "dflow_prod_licensing_legacy_read_v1",
+      "expected_count": 1
+    }
+  ]
+}

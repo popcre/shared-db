@@ -18,18 +18,18 @@ create table archive.dam_character_core_map_before_c4_20261124 as table dam.char
 create table archive.style_tracker_item_bridge_public_licensor_before_c4_20261124 as
   select id, public_licensor_id from plm.style_tracker_item_bridge where public_licensor_id is not null;
 
-do $arch$
-declare t text;
-begin
-  foreach t in array array[
-    'characters_before_c4_20261124','properties_before_c4_20261124','licensors_before_c4_20261124',
-    'dam_character_catalog_before_c4_20261124','dam_character_core_map_before_c4_20261124',
-    'style_tracker_item_bridge_public_licensor_before_c4_20261124']
-  loop
-    execute format('alter table archive.%I enable row level security', t);
-    execute format('revoke all on archive.%I from public, anon, authenticated', t);
-  end loop;
-end $arch$;
+alter table archive.characters_before_c4_20261124 enable row level security;
+revoke all on archive.characters_before_c4_20261124 from public, anon, authenticated;
+alter table archive.properties_before_c4_20261124 enable row level security;
+revoke all on archive.properties_before_c4_20261124 from public, anon, authenticated;
+alter table archive.licensors_before_c4_20261124 enable row level security;
+revoke all on archive.licensors_before_c4_20261124 from public, anon, authenticated;
+alter table archive.dam_character_catalog_before_c4_20261124 enable row level security;
+revoke all on archive.dam_character_catalog_before_c4_20261124 from public, anon, authenticated;
+alter table archive.dam_character_core_map_before_c4_20261124 enable row level security;
+revoke all on archive.dam_character_core_map_before_c4_20261124 from public, anon, authenticated;
+alter table archive.style_tracker_item_bridge_public_licensor_before_c4_20261124 enable row level security;
+revoke all on archive.style_tracker_item_bridge_public_licensor_before_c4_20261124 from public, anon, authenticated;
 
 -- 1. Re-point the bridge licensor column to core.licensor.
 create temporary table c4_licensor_map on commit drop as

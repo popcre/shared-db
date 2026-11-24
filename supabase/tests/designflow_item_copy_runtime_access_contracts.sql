@@ -65,7 +65,8 @@ begin
        or not has_column_privilege(runtime_role, candidate.relation, candidate.field, 'INSERT')
        -- #4707 reconciliation: updates on copied rows; deletes only on
        -- replaceable child rows. Copied items, licensing history and files stay.
-       or (candidate.relation = 'app.file_object')
+       or (candidate.relation in ('plm.licensing_status_assignee','plm.licensing_feedback_mention',
+             'plm.licensing_attachment','app.file_object'))
           = has_any_column_privilege(runtime_role, candidate.relation, 'UPDATE')
        or exists (
          select from pg_policy where polrelid=candidate.relation::regclass

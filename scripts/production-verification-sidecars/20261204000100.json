@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "migration_version": "20261204000100",
+  "migration_sha256": "faad4099969bbd9fdd0300890e881d5e4a695d811105072e846be2b215b3d536",
+  "marker_schema_version": 1,
+  "marker_reviews": [
+    {
+      "line_start": 102,
+      "line_end": 102,
+      "disposition": "checks",
+      "reason": "Verify every dropped unique index is absent and a valid unique btree keeper remains on the same ordered key columns wherever its table exists.",
+      "check_ids": [
+        "retired_unique_index_twins_6658_v1"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "retired_unique_index_twins_6658_v1",
+      "kind": "catalog_contract",
+      "contract": "retired_unique_index_twins_6658_v1",
+      "expected_count": 1
+    }
+  ]
+}

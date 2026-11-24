@@ -1,5 +1,5 @@
 -- popcre/shared-db#6995 (stage C2 of u2giants/popdam3#1298; plan_shared_data_no_copies_db.md)
--- derived-from: 20261223000000, 20260825031841, 20261201100000
+-- derived-from: 20261204003429, 20261105074126
 -- PopDAM image character tags (public.asset_characters) stop pointing at
 -- PopDAM's own list (public.characters) and point at the shared core.character,
 -- through the reviewed map dam.character_core_map built in C1 (#6994).

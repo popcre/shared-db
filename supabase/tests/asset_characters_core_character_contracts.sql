@@ -9,6 +9,11 @@ declare
   v_orphans bigint;
   v_asset uuid := gen_random_uuid();
   v_char uuid := gen_random_uuid();
+  v_group uuid;
+  v_member uuid := gen_random_uuid();
+  v_deleted uuid := gen_random_uuid();
+  v_dgroup uuid;
+  r record;
 begin
   if not exists (
     select 1 from pg_constraint
@@ -80,6 +85,25 @@ begin
   if not (select v_asset = any(property_assets)
           from public.dam_search_named_scope(jsonb_build_object('semanticPropertyCharacterIds', jsonb_build_array(v_char)), true)) then
     raise exception 'dam_search_named_scope property leg ignores asset_characters';
+  end if;
+  -- Grouped legs (#7058): a group whose live member is tagged qualifies for both
+  -- rules; a group whose only tagged member is deleted does not; the tagged member
+  -- is not repeated in the ungrouped asset sets.
+  insert into public.style_groups (sku, folder_path) values ('ZZ6995G', '/zz6995/g') returning id into v_group;
+  insert into public.style_groups (sku, folder_path) values ('ZZ6995D', '/zz6995/d') returning id into v_dgroup;
+  insert into public.assets (id, filename, relative_path, file_type, quick_hash, modified_at, file_created_at, style_group_id)
+    values (v_member, 'zz6995m.pdf', 'zz6995/g/m.pdf', 'pdf', 'zz6995m', now(), now(), v_group),
+           (v_deleted, 'zz6995d.pdf', 'zz6995/d/d.pdf', 'pdf', 'zz6995d', now(), now(), v_dgroup);
+  insert into public.asset_characters (asset_id, character_id) values (v_member, v_char), (v_deleted, v_char);
+  update public.assets set is_deleted = true where id = v_deleted;
+  select * into r from public.dam_search_named_scope(jsonb_build_object(
+    'requiredCharacterIds', jsonb_build_array(v_char),
+    'semanticPropertyCharacterIds', jsonb_build_array(v_char)), true);
+  if not (v_group = any(r.character_groups)) or not (v_group = any(r.property_groups))
+     or v_dgroup = any(r.character_groups) or v_dgroup = any(r.property_groups)
+     or v_member = any(r.character_assets) or v_member = any(r.property_assets)
+     or not (v_asset = any(r.character_assets)) or not (v_asset = any(r.property_assets)) then
+    raise exception 'grouped asset_characters legs wrong: %', r;
   end if;
   delete from core.character where id = v_char;
   if exists (select 1 from public.asset_characters where character_id = v_char) then

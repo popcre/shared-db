@@ -1,4 +1,5 @@
 -- popcre/shared-db#6996 (stage C4 of plan_shared_data_no_copies_db.md)
+-- derived-from: 20261116120100, 20261225091306, 20261225120101
 -- Retire PopDAM's copied lists: public.dam_character_catalog, dam.character_core_map,
 -- public.characters, public.properties, public.licensors. Apps read core.* instead.
 -- Recoverable: archive.*_before_c4_20261124 snapshots below, plus a private pg_dump

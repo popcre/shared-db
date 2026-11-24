@@ -4,7 +4,7 @@
   "generation": 2,
   "work_type": "structural",
   "route": "claim-first",
-  "goal": "Split the sandbox half 20261225091506's first self-check DO block so no statement names both the absent dflow_prod schema and live schemas; the DesignFlow sandbox lane refused the mixed statement (run 45470966361). Not applied on any ledger.",
+  "goal": "Split the sandbox half 20261225091506's first self-check DO block so no statement names both the absent dflow_prod schema and live schemas; the DesignFlow sandbox lane refused the mixed statement (run 45470966361). Not applied on any ledger. Also adds the D11 DELETE guard (review of PR 7044): inside the unapplied sandbox half 20261225091506, and as forward migration 20261225120103 for dflow_prod (claim #7061).",
   "base_sha": "81b9d9d65a5acfedffcb6f0228d4e1b5cc31731c",
   "branch": "claude/194-sandbox-split",
   "worktree": "/var/tmp/ai-sessions-1000/shared-db-194-assembled",
@@ -14,18 +14,30 @@
   "allowed_paths": [
     ".agent/work/7041/2/completion.json",
     ".agent/work/7041/2/contract.json",
+    "config/production-verification-sidecar-registry.json",
     "scripts/production-verification-sidecars/20261225091506.json",
-    "supabase/migrations/20261225091506_dflow_assembled_item_description.sql"
+    "scripts/production-verification-sidecars/20261225120103.json",
+    "supabase/migrations/20261225091506_dflow_assembled_item_description.sql",
+    "supabase/migrations/20261225120103_dflow_prod_item_description_parts_no_delete.sql",
+    "supabase/tests/dflow_assembled_item_description_contracts.sql",
+    "supabase/tests/dflow_prod_item_description_parts_no_delete_contracts.sql"
   ],
   "file_writes": [
     ".agent/work/7041/2/completion.json",
     ".agent/work/7041/2/contract.json",
+    "config/production-verification-sidecar-registry.json",
     "scripts/production-verification-sidecars/20261225091506.json",
-    "supabase/migrations/20261225091506_dflow_assembled_item_description.sql"
+    "scripts/production-verification-sidecars/20261225120103.json",
+    "supabase/migrations/20261225091506_dflow_assembled_item_description.sql",
+    "supabase/migrations/20261225120103_dflow_prod_item_description_parts_no_delete.sql",
+    "supabase/tests/dflow_assembled_item_description_contracts.sql",
+    "supabase/tests/dflow_prod_item_description_parts_no_delete_contracts.sql"
   ],
   "db_reads": [],
   "db_writes": [
     "function dflow.item_description_parts_append_only",
+    "function dflow.item_description_parts_no_delete",
+    "function dflow_prod.item_description_parts_no_delete",
     "index dflow.embellishment_phrase_phrase_trgm",
     "index dflow.product_type_name_trgm",
     "index dflow.product_type_search_terms_trgm",
@@ -37,7 +49,8 @@
     "table dflow.product_type_mg",
     "table dflow.product_type_mg03_allowed",
     "table dflow.product_type_request",
-    "table dflow.product_type_search_log"
+    "table dflow.product_type_search_log",
+    "table dflow_prod.item_description_parts"
   ],
   "prohibited_actions": [
     "Do not write application rows in any database",
@@ -50,7 +63,8 @@
     "python3 -m unittest discover -s scripts -p test_*.py",
     "Database Contract Tests on isolated ephemeral database",
     "node scripts/check-throughput-truth-audit.mjs",
-    "python3 -I -B scripts/check_production_verification_sidecars.py --repo . --scan-version 20261225091506"
+    "python3 -I -B scripts/check_production_verification_sidecars.py --repo . --scan-version 20261225091506",
+    "python3 -I -B scripts/check_production_verification_sidecars.py --repo . --scan-version 20261225120103"
   ],
   "assumptions": [
     "None of the nine tables exist on sandbox or production (read live 2026-11-24); vector and pg_trgm are installed in schema extensions on both.",

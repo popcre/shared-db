@@ -15,6 +15,9 @@ only what the sandbox needs and the shared guard does not provide:
   identity       prove the target ref is the sandbox, is not production or
                  preview, and is the project the Management API returns.
   allowlist      refuse versions this route may never apply to the sandbox.
+  customer-derivation
+                 prove the #6998 sandbox prerequisites and verify customer
+                 sync once the correction is recorded.
   collisions     read the sandbox catalog (read-only) and refuse any object the
                  allowlisted migrations would create whose NAME already exists.
                  `create index if not exists` against a same-name index with a
@@ -66,18 +69,63 @@ VERSION_RE = re.compile(r"^\d{14}$")
 # half is retired. Keep the actual ledger and both migration files untouched.
 CUSTOMER_CORRECTION = "20261225091206"
 CUSTOMER_IMPORT_BASE = "20260716140000"
+CUSTOMER_LANDING_BASE = "20261225091002"
 CUSTOMER_MIGRATION_HASHES = {
     CUSTOMER_IMPORT_BASE: "9d7377233dc123326c34d3fdddd33a22d687b04aa75ca476ce7d3600f1bd289f",
     CUSTOMER_CORRECTION: "ae1ac8ecb6ff41bd23e728411329b511a64313fc12ee438a59431ca2a110e42e",
 }
 # SHA-256 of pg_get_functiondef for the customer statement in CUSTOMER_IMPORT_BASE.
 CUSTOMER_IMPORT_DEFINITION = "16493d71961a067f47786eb1fd93569fa96ea734e07df0993fc801fd3714226d"
-CUSTOMER_IMPORT_PROBE = """
+CUSTOMER_IMPORT_PROBE = f"""
 select pg_get_functiondef(to_regprocedure('plm.import_coldlion_customers(jsonb)')) as customer_definition,
        not exists (
            select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
            where n.nspname = 'plm' and p.proname = 'import_coldlion_vendors'
-       ) as vendor_absent
+       ) as vendor_absent,
+       (select encode(sha256(convert_to(to_jsonb(m)::text, 'UTF8')), 'hex')
+        from supabase_migrations.schema_migrations m
+        where version = '{CUSTOMER_IMPORT_BASE}') as historical_ledger_digest,
+       exists (select 1 from supabase_migrations.schema_migrations
+               where version = '{CUSTOMER_LANDING_BASE}') as landing_cutover_recorded,
+       exists (select 1 from supabase_migrations.schema_migrations
+               where version = '{CUSTOMER_CORRECTION}') as correction_recorded
+"""
+CUSTOMER_LANDING_PROBE = """
+select exists (
+    select 1 from coldlion.customer
+    where company_code = 'EDGEHOME' and designflow_customer_id is not null
+) as populated
+"""
+CUSTOMER_SYNC_PROBE = """
+with landing as (
+    select customer_code, designflow_customer_id, active
+    from coldlion.customer where company_code = 'EDGEHOME'
+), erp as (
+    select customer_code, designflow_customer_id, landing_customer_details ->> 'active' as active
+    from plm.erp_customer
+    where designflow_customer_id is not null
+      and company_code = 'EDGEHOME'
+      and active is not distinct from coalesce(landing_customer_details ->> 'active' = 'Y', false)
+), feed as (
+    select "customerCode" as customer_code, designflow_customer_id, active
+    from archive.external_customer_feed_6998 where "companyCode" = 'EDGEHOME'
+), triggers as (
+    select t.tgname, t.tgtype
+    from pg_trigger t
+    where t.tgrelid = 'coldlion.customer'::regclass
+      and t.tgfoid = to_regprocedure('coldlion.apply_erp_customer_landing_trigger()')
+      and t.tgenabled in ('O', 'A') and not t.tgisinternal
+      and t.tgnewtable = 'changed_customers' and t.tgoldtable is null
+      and t.tgqual is null and t.tgnargs = 0
+)
+select exists (select 1 from landing) as populated,
+       exists (select 1 from triggers where tgname = 'sync_erp_customer_insert' and tgtype = 4)
+       and exists (select 1 from triggers where tgname = 'sync_erp_customer_update' and tgtype = 16)
+           as triggers_enabled,
+       not exists ((table landing except all table erp) union all (table erp except all table landing))
+           as erp_matches,
+       not exists ((table landing except all table feed) union all (table feed except all table landing))
+           as feed_matches
 """
 
 # Versions this route refuses outright, with the reason printed on refusal.
@@ -208,20 +256,52 @@ def customer_derivation_override(
         if path is None or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
             raise Refusal(f"customer importer proof requires the exact source bytes for {version}")
     check_returned_project(project_ref, fetch(project_ref, token))
-    rows = query(project_ref, token, CUSTOMER_IMPORT_PROBE)
-    if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
-        raise Refusal("customer importer catalog proof did not return exactly one result")
-    definition = rows[0].get("customer_definition")
+    importer = customer_probe_row(query(project_ref, token, CUSTOMER_IMPORT_PROBE))
+    definition = importer.get("customer_definition")
     if not isinstance(definition, str) or hashlib.sha256(definition.encode()).hexdigest() != CUSTOMER_IMPORT_DEFINITION:
         raise Refusal("installed customer importer does not match the historical definition")
-    if rows[0].get("vendor_absent") is not True:
+    if importer.get("vendor_absent") is not True:
         raise Refusal("retired vendor importer absence was not proved")
+    if importer.get("landing_cutover_recorded") is not True:
+        raise Refusal(f"customer landing cutover {CUSTOMER_LANDING_BASE} is missing from the sandbox ledger")
+    correction_recorded = importer.get("correction_recorded")
+    if not isinstance(correction_recorded, bool) or "historical_ledger_digest" not in importer:
+        raise Refusal("customer migration ledger state was not proved")
+    historical_digest = importer["historical_ledger_digest"]
+    if historical_digest is not None and (
+        not isinstance(historical_digest, str) or not re.fullmatch(r"[a-f0-9]{64}", historical_digest)
+    ):
+        raise Refusal("historical customer ledger digest is invalid")
+    # The same workflow command runs before and after apply. The ledger
+    # selects the probe, and the workflow separately enforces the exact delta.
+    probe = CUSTOMER_SYNC_PROBE if correction_recorded else CUSTOMER_LANDING_PROBE
+    landing = customer_probe_row(query(project_ref, token, probe))
+    if landing.get("populated") is not True:
+        raise Refusal("the ColdLion sandbox landing has no proved EDGEHOME customers")
+    if correction_recorded:
+        for field, failure in (
+            ("triggers_enabled", "customer landing sync triggers are missing, disabled or misconfigured"),
+            ("erp_matches", "shared ERP customer codes, IDs or status differ from the landing"),
+            ("feed_matches", "DesignFlow customer feed codes, IDs or status differ from the landing"),
+        ):
+            if landing.get(field) is not True:
+                raise Refusal(failure)
+        result = "Shared ERP customers and the DesignFlow feed match the landing; sync triggers are enabled."
+    else:
+        result = f"ColdLion landing is populated and cutover {CUSTOMER_LANDING_BASE} is recorded."
     return (
         f"{CUSTOMER_CORRECTION}:{CUSTOMER_IMPORT_BASE}="
-        "Standalone DesignFlow sandbox has the exact historical customer importer "
+        f"DesignFlow sandbox {project_ref} has the exact historical customer importer "
         f"(definition SHA-256 {CUSTOMER_IMPORT_DEFINITION}); "
-        "the retired vendor importer is absent and the historical ledger remains unchanged (#6998)."
+        f"the retired vendor importer is absent; historical ledger entry SHA-256: {historical_digest or 'absent'}. "
+        f"{result} (#6998)"
     )
+
+
+def customer_probe_row(rows: object) -> dict:
+    if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+        raise Refusal("customer proof did not return exactly one result")
+    return rows[0]
 
 
 def parse_sandbox_allowlist(raw: str, migrations: dict[str, Path]) -> list[str]:
@@ -421,6 +501,14 @@ def main(argv: list[str] | None = None) -> int:
             check_returned_project(args.project_ref, fetch_project(args.project_ref, _token()))
             print(f"IDENTITY OK: {args.project_ref} is the DesignFlow sandbox, not production or preview.")
         elif args.command == "customer-derivation":
+            # The workflow runs this from the CLI-linked checkout, including
+            # from the bounded checkout immediately before the write.
+            try:
+                linked_ref = Path("supabase/.temp/project-ref").read_text(encoding="utf-8").strip()
+            except OSError as exc:
+                raise Refusal("customer proof requires a Supabase-linked checkout") from exc
+            if linked_ref != args.project_ref:
+                raise Refusal("customer proof target differs from the linked Supabase project")
             print(customer_derivation_override(
                 args.repo, args.allowlist, args.project_ref,
                 os.environ.get("PREVIEW_PROJECT_REF", ""), _token(),

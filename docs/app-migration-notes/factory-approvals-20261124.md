@@ -1,4 +1,7 @@
-# Factory customer approvals (issue #7070)
+# Factory licensor and retailer approvals (issue #7070)
+
+Licensors: Disney (FAMA form), NBCUniversal (LMS form). Retailers: Dollar
+General, Walmart.
 
 Shared-db objects: `core.factory_approval` (one row per factory × program:
 disney, dollar_general, nbcu, walmart), `core.factory_approval_form` (full
@@ -14,8 +17,16 @@ Application work still needed:
   Show the form history list.
 - **Indra OCR worker (PopDAM agent-api):** service role calls
   `core.claim_factory_approval_form_ocr(limit)`, downloads each PDF, OCRs with
-  Indra, extracts name, number (NBCU usually `L` + 4 digits) and expiry, then
-  calls `core.record_factory_approval_form_ocr(form_id, text, name, number, expires_on, error)`.
+  Indra, extracts the fields below, then calls
+  `core.record_factory_approval_form_ocr(form_id, text, name, number, expires_on, error, 'indra', issued_on, form_reference, aliases)`.
+  - **FAMA** (title "FACILITY AND MERCHANDISE AUTHORIZATION"): name = "FACILITY
+    NAME" without the trailing `(FAC-…)`; number = that `FAC-` code (e.g.
+    `FAC-046111`); aliases = "FACILITY ALIAS NAME(S)"; form_reference = "FAMA
+    ID"; issued_on = the MM/DD/YYYY date. No expiry is printed: pass null and
+    the database sets issued + 1 year.
+  - **NBCU LMS** (e.g. "WAIVER APPROVAL" letter): name = "Manufacturer Name";
+    number = "Manufacturer Code" as printed (e.g. `L-12813`); issued_on =
+    "Issued Date"; expires_on = "Approval Expiration Date".
   The newest processed form updates the approval automatically.
 - **Reminders:** daily cron `factory-approval-renewal-reminders` writes
   `app.notification` rows (app `plm`) to every licensing and production user,

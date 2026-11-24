@@ -1,5 +1,5 @@
 -- derived-from: 20261116120100
--- Issue #7070. core.merge_factory now carries factory customer approvals,
+-- Issue #7070. core.merge_factory now carries factory licensor and retailer approvals,
 -- approval forms and reminder marks from the loser to the survivor.
 -- Body is the 20261116120100 definition plus the #7070 block only.
 
@@ -32,17 +32,18 @@ begin
   perform core.reconcile_merge_extension_row('crm.factory_ext', 'factory_id', p_loser, p_survivor);
   perform core.reconcile_merge_extension_row('pim.factory_ext', 'factory_id', p_loser, p_survivor);
   perform core.reconcile_merge_extension_row('dam.factory_ext', 'factory_id', p_loser, p_survivor);
--- #7070: customer approvals. Survivor keeps its own answer unless the loser was
+-- #7070: licensor and retailer approvals. Survivor keeps its own answer unless the loser was
 -- approved and the survivor was not; all forms and reminder marks move over.
 update core.factory_approval s
    set is_approved = true, approved_name = l.approved_name,
-       facility_number = l.facility_number, expires_on = l.expires_on,
+       facility_number = l.facility_number, issued_on = l.issued_on,
+       expires_on = l.expires_on, form_reference = l.form_reference,
        value_source = l.value_source, current_form_id = l.current_form_id
   from core.factory_approval l
  where s.factory_id = p_survivor and l.factory_id = p_loser
    and s.program = l.program and l.is_approved and not s.is_approved;
-insert into core.factory_approval (factory_id, program, is_approved, approved_name, facility_number, expires_on, value_source, current_form_id)
-select p_survivor, program, is_approved, approved_name, facility_number, expires_on, value_source, current_form_id
+insert into core.factory_approval (factory_id, program, is_approved, approved_name, facility_number, issued_on, expires_on, form_reference, value_source, current_form_id)
+select p_survivor, program, is_approved, approved_name, facility_number, issued_on, expires_on, form_reference, value_source, current_form_id
   from core.factory_approval where factory_id = p_loser
 on conflict (factory_id, program) do nothing;
 delete from core.factory_approval where factory_id = p_loser;

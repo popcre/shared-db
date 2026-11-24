@@ -1,5 +1,6 @@
--- Issue #7070. Customer approvals for every factory (vendor):
--- Disney (FAMA form), Dollar General, NBCUniversal (LMS form), Walmart.
+-- Issue #7070. Approvals for every factory (vendor) from two licensors,
+-- Disney (FAMA form) and NBCUniversal (LMS form), and two retailers,
+-- Dollar General and Walmart.
 -- Disney and NBCU forms keep full upload history; Indra OCR fills the approved
 -- name, facility/LMS number and expiration date. Licensing and production may
 -- manage approvals and enter values by hand. Reminders go to both teams 6 weeks
@@ -16,7 +17,9 @@ create table core.factory_approval (
   is_approved boolean not null default false,
   approved_name text,
   facility_number text,
+  issued_on date,
   expires_on date,
+  form_reference text,
   value_source text not null default 'manual' check (value_source in ('manual','ocr')),
   current_form_id uuid,
   updated_by uuid default app.current_profile_id(),
@@ -26,10 +29,12 @@ create table core.factory_approval (
   constraint factory_approval_number_only_for_forms
     check (facility_number is null or program in ('disney','nbcu')),
   constraint factory_approval_expiry_only_for_forms
-    check (expires_on is null or program in ('disney','nbcu'))
+    check (expires_on is null or program in ('disney','nbcu')),
+  constraint factory_approval_issued_only_for_forms
+    check (issued_on is null and form_reference is null or program in ('disney','nbcu'))
 );
 comment on table core.factory_approval is
-  'One row per factory and customer approval program. disney = FAMA (facility number), nbcu = LMS (LMS number, usually L + 4 digits), dollar_general and walmart carry approved name only. Licensing and production manage it; OCR of the newest uploaded form overwrites name/number/expiry.';
+  'One row per factory and approval program. Licensors: disney = FAMA (facility number as printed, e.g. FAC-046111), nbcu = LMS (manufacturer code as printed, e.g. L-12813). Retailers: dollar_general and walmart carry approved name only. Licensing and production manage it; OCR of the newest uploaded form overwrites name/number/expiry.';
 
 create table core.factory_approval_form (
   id uuid primary key default gen_random_uuid(),
@@ -48,7 +53,10 @@ create table core.factory_approval_form (
   ocr_text text,
   extracted_name text,
   extracted_number text,
+  extracted_issued_on date,
   extracted_expires_on date,
+  extracted_form_reference text,
+  extracted_aliases text[],
   ocr_error text,
   ocr_processed_at timestamptz,
   unique (storage_bucket, storage_path)
@@ -142,7 +150,8 @@ $$;
 -- for a factory and program overwrites the approval's name, number and expiry.
 create function core.record_factory_approval_form_ocr(
   p_form_id uuid, p_ocr_text text, p_name text, p_number text, p_expires_on date,
-  p_error text default null, p_engine text default 'indra')
+  p_error text default null, p_engine text default 'indra',
+  p_issued_on date default null, p_form_reference text default null, p_aliases text[] default null)
 returns void language plpgsql security definer set search_path = pg_catalog, core as $$
 declare f core.factory_approval_form;
 begin
@@ -151,7 +160,13 @@ begin
          ocr_engine = p_engine, ocr_text = p_ocr_text,
          extracted_name = nullif(btrim(p_name), ''),
          extracted_number = nullif(upper(btrim(p_number)), ''),
-         extracted_expires_on = p_expires_on,
+         extracted_issued_on = p_issued_on,
+         -- FAMA prints no expiry: it lapses 1 year after issuance.
+         extracted_expires_on = coalesce(p_expires_on,
+           case when program = 'disney' and p_issued_on is not null
+                then (p_issued_on + interval '1 year')::date end),
+         extracted_form_reference = nullif(btrim(p_form_reference), ''),
+         extracted_aliases = p_aliases,
          ocr_error = p_error, ocr_processed_at = now()
    where id = p_form_id
   returning * into f;
@@ -165,16 +180,18 @@ begin
        set is_approved = true,
            approved_name = coalesce(f.extracted_name, a.approved_name),
            facility_number = coalesce(f.extracted_number, a.facility_number),
+           issued_on = coalesce(f.extracted_issued_on, a.issued_on),
            expires_on = coalesce(f.extracted_expires_on, a.expires_on),
+           form_reference = coalesce(f.extracted_form_reference, a.form_reference),
            value_source = 'ocr', current_form_id = f.id, updated_by = null
      where a.factory_id = f.factory_id and a.program = f.program;
   end if;
 end $$;
 
 revoke all on function core.claim_factory_approval_form_ocr(integer) from public, anon, authenticated;
-revoke all on function core.record_factory_approval_form_ocr(uuid, text, text, text, date, text, text) from public, anon, authenticated;
+revoke all on function core.record_factory_approval_form_ocr(uuid, text, text, text, date, text, text, date, text, text[]) from public, anon, authenticated;
 grant execute on function core.claim_factory_approval_form_ocr(integer) to service_role;
-grant execute on function core.record_factory_approval_form_ocr(uuid, text, text, text, date, text, text) to service_role;
+grant execute on function core.record_factory_approval_form_ocr(uuid, text, text, text, date, text, text, date, text, text[]) to service_role;
 
 -- Approvals expiring within 6 weeks (or already expired).
 create view core.factory_approval_renewal_due with (security_invoker = true) as

@@ -32,6 +32,10 @@ begin
     raise exception '#7041/20261225091506 self-check: schema dflow_prod exists here — this is the production project; the paired version 20261225091507 applies there, never this one'
       using errcode = 'feature_not_supported';
   end if;
+end $$;
+
+do $$
+begin
   if to_regclass('dflow."itemHeader"') is null then
     raise exception '#7041/20261225091506 self-check: dflow."itemHeader" is missing — wrong database for the sandbox half'
       using errcode = 'feature_not_supported';

@@ -80,6 +80,18 @@ grant select (id, item_id, licensing_status_id, licensing_feedback_id, file_obje
   position)
   on plm.licensing_attachment to designflow_prod_backend_grants;
 
+-- Data Syncing reconcile (designflow-data-syncing scripts/reconcile-designflow-item-state.js)
+-- captures whole-row before-images (select t.*, to_jsonb(t)) of the licensing
+-- tables. 20261225091301 granted only DELETE/UPDATE there, and the copy grants
+-- are column-scoped, so these columns were never readable: production reconcile
+-- failed with permission denied. Read-only completion; no new write right.
+grant select (item_id, licensor_id, property_id, due_date, completed_at, metadata, created_at, updated_at)
+  on plm.licensing_status to designflow_prod_data_sync_grants;
+grant select (author_name, reply_to_id) on plm.licensing_feedback to designflow_prod_data_sync_grants;
+grant select (profile_id) on plm.licensing_status_assignee to designflow_prod_data_sync_grants;
+grant select (profile_id) on plm.licensing_feedback_mention to designflow_prod_data_sync_grants;
+grant select (id) on plm.licensing_attachment to designflow_prod_data_sync_grants;
+
 -- Row policies: the same copied-row predicates as the Data Syncing read policies.
 create policy designflow_item_runtime_read on plm.designflow_item for select
   to designflow_prod_item_master_grants, designflow_prod_tracking_grants, designflow_prod_backend_grants

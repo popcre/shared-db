@@ -52,6 +52,25 @@ begin
     raise exception 'per-app column scope drifted';
   end if;
 
+  -- Data Syncing reconcile reads whole licensing rows for its before-images,
+  -- and still has no table-wide write beyond the reconcile migration's.
+  foreach tbl in array array['plm.licensing_status', 'plm.licensing_feedback', 'plm.licensing_status_assignee',
+    'plm.licensing_feedback_mention', 'plm.licensing_attachment'] loop
+    if exists (select from pg_attribute a where a.attrelid = tbl::regclass and a.attnum > 0 and not a.attisdropped
+        and not has_column_privilege('designflow_prod_data_sync_runtime', tbl, a.attname, 'SELECT')) then
+      raise exception 'Data Syncing cannot read whole % rows for its before-image', tbl;
+    end if;
+  end loop;
+  if has_any_column_privilege('designflow_prod_data_sync_runtime', 'plm.licensing_status_assignee', 'UPDATE')
+     or has_any_column_privilege('designflow_prod_data_sync_runtime', 'plm.licensing_feedback_mention', 'UPDATE')
+     or has_any_column_privilege('designflow_prod_data_sync_runtime', 'plm.licensing_attachment', 'UPDATE')
+     or has_table_privilege('designflow_prod_data_sync_runtime', 'plm.licensing_status', 'DELETE')
+     or has_table_privilege('designflow_prod_data_sync_runtime', 'plm.licensing_feedback', 'DELETE')
+     or has_table_privilege('designflow_prod_data_sync_runtime', 'plm.designflow_reconcile_before_image', 'DELETE')
+     or has_any_column_privilege('designflow_prod_data_sync_runtime', 'plm.designflow_reconcile_before_image', 'UPDATE') then
+    raise exception 'Data Syncing gained a write the reconcile must not have';
+  end if;
+
   if (select count(*) from pg_policies where schemaname = 'plm' and cmd = 'SELECT'
       and policyname like '%designflow_runtime_read') <> 7
      or exists (select from pg_policies where schemaname = 'plm' and policyname like '%designflow_runtime_read'

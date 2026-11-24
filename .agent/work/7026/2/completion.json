@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "work_issue": 7026,
+  "pr": 7027,
+  "outcome": "ready-for-merge",
+  "migration_versions": [
+    "20261225091205"
+  ],
+  "contract_ref": "refs/db-contracts/7026/2",
+  "contract_sha256": "88237000a33b38de93b3b4721bfcca61ec05acd9174e4fd3968daf3f3b5098a2",
+  "base_sha": "11c1f230693739f47378a070ca8b0599140fa7c5",
+  "head_sha": "4cb7b1d2a4c41f1b9f4aa0552b9a8c30892b2dc1",
+  "files_changed": [
+    "config/production-verification-sidecar-registry.json",
+    "scripts/production-verification-sidecars/20261225091205.json",
+    "scripts/production_catalog_verification.py",
+    "supabase/migrations/20261225091205_dam_master_data_rfq_lookup_index_predicate.sql",
+    "supabase/tests/style_tracker_rfq_lookup_index_predicate.sql"
+  ],
+  "db_reads": [],
+  "db_writes": [
+    "view public.style_tracker_rows_with_bridge"
+  ],
+  "checks": [
+    {
+      "command": "bash scripts/check-sql.sh",
+      "exit_code": 0,
+      "evidence": "Local SQL guards and PL/pgSQL lint passed; production catalog verification derives a live target."
+    },
+    {
+      "command": "PostgreSQL 17 RFQ parity and grants",
+      "exit_code": 0,
+      "evidence": "Preserved case/whitespace, blank and null, duplicate and missing lookup results and the complete view ACL on the isolated fixture."
+    },
+    {
+      "command": "Shared database verification sidecar and catalog tests",
+      "exit_code": 0,
+      "evidence": "Sidecar linter and Python catalog suite passed; PostgreSQL 17 verified missing and installed predicate detection."
+    }
+  ],
+  "assumptions_resolved": [
+    "Read-only production comparison used the RFQ partial index in 0.54 seconds, compared with 30.1 seconds and 855 sequential RFQ scans."
+  ],
+  "stop_conditions_hit": []
+}

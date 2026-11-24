@@ -71,105 +71,26 @@ create index if not exists style_tracker_item_bridge_public_licensor_id_idx
   on plm.style_tracker_item_bridge (public_licensor_id);
 
 -- 2. View: licensor fallback name now comes from core.licensor (same columns).
-create or replace view public.style_tracker_rows_with_bridge as
- SELECT r.id,
-    r.source_workbook_id,
-    r.source_sheet,
-    r.source_row_number,
-    r.tracker_type,
-    r.sku,
-    r.group_id,
-    r.description,
-    r.customer,
-    r.designer,
-    r.commissioned,
-    r.upc,
-    r.customer_sku,
-    r.licensor,
-    r.license_status,
-    r.royalty,
-    r.concept_status,
-    r.pre_production_status,
-    r.production_status,
-    r.default_vendor,
-    r.discontinued,
-    r.notes,
-    r.row_data,
-    r.imported_at,
-    r.created_at,
-    r.updated_at,
-    r.updated_by,
-    b.id AS bridge_id,
-    b.erp_item_id,
-    b.style_group_id,
-    b.company_id,
-    b.public_licensor_id,
-    b.core_licensor_id,
-    b.factory_id,
-    b.plm_item_id,
-    b.match_status,
-    b.match_confidence,
-    b.match_notes,
-    b.last_matched_at,
-    erp.item_description AS canonical_description,
-    COALESCE(selected_customer.display_name, selected_customer.name, bridge_customer.display_name, bridge_customer.name) AS canonical_customer_name,
-    COALESCE(core_lic.name, public_lic.name) AS canonical_licensor_name,
-    factory.name AS canonical_factory_name,
-    sg.sku AS style_group_sku,
-    erp.style_number AS erp_style_number,
-    b.creative_designer_id,
-    creative.name AS canonical_designer_name,
-    r.customer_id,
-    COALESCE(rfq.rfq_groups, '[]'::jsonb) AS rfq_groups
-   FROM ((((((((((public.style_tracker_rows r
-     LEFT JOIN plm.style_tracker_item_bridge b ON ((b.style_tracker_row_id = r.id)))
-     LEFT JOIN LATERAL ( SELECT i.description AS item_description,
-            i.item_number AS style_number
-           FROM plm.item i
-          WHERE ((i.id = b.erp_item_id) AND (i.source_system = 'coldlion'::text) AND (NOT ((EXISTS ( SELECT 1
-                   FROM plm.legacy_erp_item_identity l
-                  WHERE (l.external_id = i.item_number))) AND (i.id = ( SELECT p.id
-                   FROM (plm.item p
-                     LEFT JOIN plm.legacy_erp_item_identity lp ON ((lp.external_id = p.item_number)))
-                  WHERE ((p.source_system = 'coldlion'::text) AND (upper(TRIM(BOTH FROM p.item_number)) = upper(TRIM(BOTH FROM i.item_number))) AND (p.item_number = i.item_number))
-                  ORDER BY
-                        CASE
-                            WHEN ((lp.division_code IS NOT NULL) AND (lp.division_code = (p.raw ->> 'divisionCode'::text))) THEN 0
-                            ELSE 1
-                        END, p.source_id, p.id
-                 LIMIT 1)))))
-        UNION ALL
-         SELECT r1.description,
-            r1.item_number
-           FROM (plm.legacy_erp_item_identity l2
-             JOIN LATERAL ( SELECT p2.id,
-                    p2.description,
-                    p2.item_number
-                   FROM plm.item p2
-                  WHERE ((p2.source_system = 'coldlion'::text) AND (upper(TRIM(BOTH FROM p2.item_number)) = upper(TRIM(BOTH FROM l2.external_id))) AND (p2.item_number = l2.external_id))
-                  ORDER BY
-                        CASE
-                            WHEN ((l2.division_code IS NOT NULL) AND (l2.division_code = (p2.raw ->> 'divisionCode'::text))) THEN 0
-                            ELSE 1
-                        END, p2.source_id, p2.id
-                 LIMIT 1) r1 ON (true))
-          WHERE (l2.id = b.erp_item_id)
- LIMIT 1) erp ON (true))
-     LEFT JOIN public.style_groups sg ON ((sg.id = b.style_group_id)))
-     LEFT JOIN core.customer bridge_customer ON ((bridge_customer.id = b.company_id)))
-     LEFT JOIN core.customer selected_customer ON ((selected_customer.id = r.customer_id)))
-     LEFT JOIN core.licensor public_lic ON ((public_lic.id = b.public_licensor_id)))
-     LEFT JOIN core.licensor core_lic ON ((core_lic.id = b.core_licensor_id)))
-     LEFT JOIN core.creative_designer creative ON ((creative.id = b.creative_designer_id)))
-     LEFT JOIN core.factory factory ON ((factory.id = b.factory_id)))
-     LEFT JOIN LATERAL ( SELECT jsonb_agg(jsonb_build_object('id', per_group.id, 'name', per_group.name, 'linked_at', to_char(timezone('UTC'::text, per_group.linked_at), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'::text)) ORDER BY per_group.linked_at DESC NULLS LAST, per_group.id DESC) AS rfq_groups
-           FROM ( SELECT g."RFQGroup_id" AS id,
-                    COALESCE(NULLIF(TRIM(BOTH FROM g."RFQGroup_name"), ''::text), ('RFQ Group #'::text || (g."RFQGroup_id")::text)) AS name,
-                    max(COALESCE((i."rfqItem_date_modified")::timestamp with time zone, i."rfqItem_created_date", (g.data_added)::timestamp with time zone)) AS linked_at
-                   FROM (dflow_prod."RFQItem" i
-                     JOIN dflow_prod."RFQGroup" g ON ((g."RFQGroup_id" = i."rfqItem_rfq_group")))
-                  WHERE ((upper(TRIM(BOTH FROM i."rfqItem_style_number")) = upper(TRIM(BOTH FROM (r.row_data ->> 'rfq_code'::text)))) AND (NULLIF(TRIM(BOTH FROM (r.row_data ->> 'rfq_code'::text)), ''::text) IS NOT NULL) AND (i."rfqItem_rfq_group" IS NOT NULL) AND (NULLIF(TRIM(BOTH FROM i."rfqItem_style_number"), ''::text) IS NOT NULL))
-                  GROUP BY g."RFQGroup_id", g."RFQGroup_name") per_group) rfq ON (true));
+-- Rewrite only the licensor join in the installed definition so each database
+-- keeps its own RFQ schema binding.
+do $view$
+declare
+  current_definition text := pg_get_viewdef('public.style_tracker_rows_with_bridge'::regclass);
+  old_join constant text := 'LEFT JOIN licensors public_lic ON';
+  new_join constant text := 'LEFT JOIN core.licensor public_lic ON';
+begin
+  if array_length(string_to_array(current_definition, old_join), 1) is distinct from 2 then
+    raise exception 'C4: unexpected licensor join in public.style_tracker_rows_with_bridge';
+  end if;
+  execute 'CREATE OR REPLACE VIEW public.style_tracker_rows_with_bridge AS '
+    || replace(current_definition, old_join, new_join);
+  if strpos(pg_get_viewdef('public.style_tracker_rows_with_bridge'::regclass), new_join) = 0 then
+    raise exception 'C4: core.licensor join was not installed';
+  end if;
+end;
+$view$;
+
+grant select on public.style_tracker_rows_with_bridge to authenticated, service_role;
 
 -- 3. Bridge refresh matches licensors in core.licensor only.
 CREATE OR REPLACE FUNCTION plm.refresh_style_tracker_item_bridge()
@@ -544,7 +465,7 @@ begin
         from core.character_alias a
         where btrim(regexp_replace(lower(replace(replace(a.alias, U&'\0130', 'i '), U&'\212A', 'k') collate pg_catalog."C"), '[^a-z0-9]+', ' ', 'g')) = any(p_keys)
       ), '[]'::jsonb),
-      -- C4 (#6996): public.characters is retired; the key stays (always empty) for
+      -- C4 (#6996): the legacy character list is retired; the key stays (always empty) for
       -- PopDAM builds that still read it.
       'legacyCharacters', '[]'::jsonb,
       'properties', coalesce((
@@ -574,7 +495,7 @@ declare
   v_property_characters uuid[] := public.dam_search_uuid_list(p_filters->'semanticPropertyCharacterIds');
   v_tag_ids uuid[];
 begin
-  -- C4 (popcre/shared-db#6996): public.characters and dam.character_core_map are
+  -- C4 (popcre/shared-db#6996): the legacy character list and its id map are
   -- retired. requiredLegacyCharacterIds is accepted and ignored; tags hold core ids.
   if v_characters is not null then
     v_tag_ids := v_characters;

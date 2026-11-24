@@ -141,6 +141,9 @@ begin
   -- added after the name lookup above so it does not count as a canonical match there.
   insert into core.character(id,name) values(lc1,'ZQ1037 Legacy Character');
   insert into public.asset_characters (asset_id, character_id) values (a7, lc1);
+  -- C4 (#6996): also carry the core-id tag where every database (incl. the CI baseline,
+  -- which does not replay C2) holds it, so the no-op check below does not depend on C2.
+  insert into public.asset_licensor_characters (asset_id, character_id) values (a7, lc1);
   update public.assets set is_deleted = true where id = a6;
 
   -- g1: keyword + picture, tagged ch1.          g2: keyword + picture, no character.

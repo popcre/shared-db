@@ -62,6 +62,8 @@ begin
   insert into public.licensors(id,name,external_id) values(leg_lic,'ZQ1037 Legacy Licensor','zq1037-l-'||txid_current());
   insert into public.properties(id,licensor_id,name,external_id) values(leg_prop,leg_lic,'ZQ1037 Legacy Property','zq1037-p-'||txid_current());
   insert into public.characters(id,property_id,name,external_id) values(lc1,leg_prop,'ZQ1037 Legacy Character','zq1037-c-'||txid_current());
+  -- C2 (#6995): public.asset_characters.character_id references core.character.
+  insert into core.character(id,name) values(lc1,'ZQ1037 Legacy Character');
 
   -- The cold-path lookup passes only relevant names and links to the existing matcher.
   insert into core.character (licensor_id, name)

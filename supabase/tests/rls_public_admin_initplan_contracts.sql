@@ -178,6 +178,8 @@ INSERT INTO public.licensors (id,name) VALUES ('44273600-0000-4000-8000-00000000
 INSERT INTO public.properties (id,licensor_id,name) VALUES ('44273600-0000-4000-8000-000000000027'::uuid,'44273600-0000-4000-8000-000000000017'::uuid,'zz-rls4427-public-properties-seed');
 INSERT INTO public.characters (id,property_id,name) VALUES ('44273600-0000-4000-8000-000000000012'::uuid,'44273600-0000-4000-8000-000000000027'::uuid,'zz-rls4427-public-characters-seed');
 insert into public.characters(id,property_id,name) values('44273699-0000-4000-8000-000000000001','44273600-0000-4000-8000-000000000027','zz-rls4427-alternate-character');
+-- C2 (#6995): public.asset_characters.character_id references core.character.
+insert into core.character(id,name) values('44273600-0000-4000-8000-000000000012','zz-rls4427-public-characters-seed'),('44273699-0000-4000-8000-000000000001','zz-rls4427-alternate-character');
 INSERT INTO public.product_categories (id,name) VALUES ('44273600-0000-4000-8000-000000000023'::uuid,'zz-rls4427-public-product_categories-seed');
 INSERT INTO public.product_types (id,category_id,name) VALUES ('44273600-0000-4000-8000-000000000026'::uuid,'44273600-0000-4000-8000-000000000023'::uuid,'zz-rls4427-public-product_types-seed');
 INSERT INTO public.product_subtypes (id,type_id,name) VALUES ('44273600-0000-4000-8000-000000000025'::uuid,'44273600-0000-4000-8000-000000000026'::uuid,'zz-rls4427-public-product_subtypes-seed');

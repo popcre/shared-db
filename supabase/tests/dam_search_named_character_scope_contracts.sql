@@ -59,9 +59,6 @@ begin
   insert into core.property (licensor_id, name, code, status) values (lic, 'ZQ1037 Property', 'ZQ1037-P', 'potential') returning id into prop;
   insert into core.character (licensor_id, name) values (lic, 'ZQ1037 Marietta') returning id into ch1;
   insert into core.character (licensor_id, name) values (lic, 'ZQ1037 Other') returning id into ch2;
-  insert into public.licensors(id,name,external_id) values(leg_lic,'ZQ1037 Legacy Licensor','zq1037-l-'||txid_current());
-  insert into public.properties(id,licensor_id,name,external_id) values(leg_prop,leg_lic,'ZQ1037 Legacy Property','zq1037-p-'||txid_current());
-  insert into public.characters(id,property_id,name,external_id) values(lc1,leg_prop,'ZQ1037 Legacy Character','zq1037-c-'||txid_current());
 
   -- The cold-path lookup passes only relevant names and links to the existing matcher.
   insert into core.character (licensor_id, name)
@@ -80,11 +77,11 @@ begin
   if not (lookup @> jsonb_build_object(
     'characters', jsonb_build_array(jsonb_build_object('id', unicode_character)),
     'aliases', jsonb_build_array(jsonb_build_object('characterId', ch1)),
-    'legacyCharacters', jsonb_build_array(jsonb_build_object('id', lc1)),
     'properties', jsonb_build_array(jsonb_build_object('id', prop)),
     'propertyCharacters', jsonb_build_array(jsonb_build_object('propertyId', prop, 'characterId', ch1)),
     'licensorNames', jsonb_build_array('ZQ1037 Studio!', 'ZQ1037 Licensor')
-  )) or jsonb_array_length(lookup->'characters') is distinct from 1 then
+  )) or jsonb_array_length(lookup->'characters') is distinct from 1
+     or lookup->'legacyCharacters' is distinct from '[]'::jsonb then
     raise exception 'PopDAM lookup changed normalization or returned unrelated canonical or alias rows';
   end if;
   if public.get_dam_search_named_rows(array['unmatchablezq1037']) is distinct from
@@ -209,11 +206,13 @@ begin
   from public.search_dam_documents('zq1037token', f, 50, 0, null, e0, 0, 0.5);
   if n <> 0 then raise exception 'popdam3#1037 literal names: total % ids %', n, ids; end if;
 
-  -- Legacy character named.
-  f := jsonb_build_object('requiredLegacyCharacterIds', jsonb_build_array(lc1));
+  -- C4 (#6996): image tags hold core ids; the retired requiredLegacyCharacterIds key is
+  -- accepted and ignored (a stale id must not narrow or break the result).
+  f := jsonb_build_object('requiredCharacterIds', jsonb_build_array(lc1),
+    'requiredLegacyCharacterIds', jsonb_build_array(gen_random_uuid()));
   select array_agg(entity_id), min(total_count) into ids, n
   from public.search_dam_documents('zq1037token', f, 50, 0, null, e0, 0, 0.5);
-  if n <> 1 or ids <> array[g7] then raise exception 'popdam3#1037 legacy character: total % ids %', n, ids; end if;
+  if n <> 1 or ids <> array[g7] then raise exception 'C4 core-id image tag: total % ids %', n, ids; end if;
 
   -- Property accepted set: picture-only matches must carry the property or a linked character;
   -- keyword matches stay.

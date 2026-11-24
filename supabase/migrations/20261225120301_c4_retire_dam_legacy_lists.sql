@@ -36,10 +36,10 @@ revoke all on archive.style_tracker_item_bridge_public_licensor_before_c4_202611
 create temporary table c4_licensor_map on commit drop as
 select l.id as public_id,
   coalesce(
-    (select c.id from core.licensor c
+    (select min(c.id::text)::uuid from core.licensor c
       where lower(c.code) = lower(case l.external_id when 'DS' then 'DY' when 'WWE' then 'WW' else l.external_id end)
       having count(*) = 1),
-    (select c.id from core.licensor c
+    (select min(c.id::text)::uuid from core.licensor c
       where lower(btrim(c.name)) = lower(btrim(l.name))
       having count(*) = 1)
   ) as core_id

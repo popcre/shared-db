@@ -93,7 +93,7 @@ grant select (profile_id) on plm.licensing_feedback_mention to designflow_prod_d
 grant select (id) on plm.licensing_attachment to designflow_prod_data_sync_grants;
 
 -- Row policies: the same copied-row predicates as the Data Syncing read policies.
-create policy designflow_item_runtime_read on plm.designflow_item for select
+create policy designflow_item_designflow_runtime_read on plm.designflow_item for select
   to designflow_prod_item_master_grants, designflow_prod_tracking_grants, designflow_prod_backend_grants
   using (true);
 create policy item_merch_group_designflow_runtime_read on plm.item_merch_group for select

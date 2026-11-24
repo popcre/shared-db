@@ -9,15 +9,26 @@ begin
      or to_regrole('designflow_prod_tracking_runtime') is null then
     return;
   end if;
-  if not has_column_privilege('designflow_prod_tracking_runtime', 'dflow_prod."licensingMilestone"', 'milestone_date', 'SELECT')
-     or not has_column_privilege('designflow_prod_tracking_runtime', 'dflow_prod."licensingFeedbackReply"', 'tagged_user_ids', 'SELECT')
-     or has_column_privilege('designflow_prod_tracking_runtime', 'dflow_prod."licensingFeedbackReply"', 'comment', 'SELECT')
-     or not has_column_privilege('designflow_prod_item_master_runtime', 'dflow_prod."licensingMilestone"', 'itemheader_id_fk', 'SELECT')
-     or not has_column_privilege('designflow_prod_backend_runtime', 'dflow_prod."licensingStatus"', 'assignee_ids', 'SELECT')
-     or not has_column_privilege('designflow_prod_backend_runtime', 'dflow_prod."licensingFeedbackReply"', 'comment', 'SELECT')
-     or not has_column_privilege('designflow_prod_backend_runtime', 'dflow_prod."licensingMilestone"', 'updated_at', 'SELECT') then
-    raise exception 'DesignFlow legacy licensing read scope is wrong';
-  end if;
+  declare
+    c record;
+  begin
+    for c in select * from (values
+      ('designflow_prod_tracking_runtime', 'dflow_prod."licensingMilestone"', 'milestone_date', true),
+      ('designflow_prod_tracking_runtime', 'dflow_prod."licensingFeedbackReply"', 'tagged_user_ids', true),
+      ('designflow_prod_tracking_runtime', 'dflow_prod."licensingFeedbackReply"', 'comment', false),
+      ('designflow_prod_item_master_runtime', 'dflow_prod."licensingMilestone"', 'itemheader_id_fk', true),
+      ('designflow_prod_backend_runtime', 'dflow_prod."licensingStatus"', 'assignee_ids', true),
+      ('designflow_prod_backend_runtime', 'dflow_prod."licensingFeedbackReply"', 'comment', true),
+      ('designflow_prod_backend_runtime', 'dflow_prod."licensingMilestone"', 'updated_at', true)) v(role, tbl, col, want)
+    loop
+      if to_regrole(c.role) is null or to_regclass(c.tbl) is null then
+        raise exception 'missing % or %', c.role, c.tbl;
+      end if;
+      if has_column_privilege(c.role, c.tbl, c.col, 'SELECT') is distinct from c.want then
+        raise exception '% SELECT %.% expected %', c.role, c.tbl, c.col, c.want;
+      end if;
+    end loop;
+  end;
   foreach r in array array['designflow_prod_tracking_runtime', 'designflow_prod_item_master_runtime',
     'designflow_prod_backend_runtime'] loop
     foreach tbl in array array['plm."licensingStatus"', 'plm."licensingMilestone"', 'plm."licensingFeedbackReply"'] loop

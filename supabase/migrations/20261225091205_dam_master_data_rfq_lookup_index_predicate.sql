@@ -1,3 +1,4 @@
+-- derived-from: 20261029162652
 -- Work issue #7026. Make the existing RFQ style-number partial index eligible.
 -- Match the installed view so preview and production retain their RFQ schema
 -- bindings, existing output columns and grants.

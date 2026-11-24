@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "migration_version": "20261225091205",
-  "migration_sha256": "5043ccf79d4bb3496e16c3ff03a15c727972130fb5389ba8a81d4ed8d9851df2",
+  "migration_sha256": "fc1d9845fc5deb66469130750982a18fc483ca362a91fa6abf3e50b78328ca11",
   "marker_schema_version": 1,
   "marker_reviews": [
     {
-      "line_start": 31,
-      "line_end": 31,
+      "line_start": 32,
+      "line_end": 32,
       "disposition": "checks",
       "reason": "Verify that the existing view was updated with the partial index predicate in the installed query.",
       "check_ids": [

@@ -3,7 +3,7 @@
 -- source with the insert rules), replace an item's child rows, and must first
 -- record every prior row in an append-only before-image table for rollback.
 -- Licensing statuses and replies are never deleted: history is preserved.
--- derived-from: 20261225090301_designflow_item_copy_runtime_access.sql
+-- derived-from: none
 
 begin;
 set local lock_timeout = '5s';

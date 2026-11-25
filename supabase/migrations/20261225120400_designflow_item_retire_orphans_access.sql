@@ -35,7 +35,7 @@ create policy designflow_item_retire_orphan_delete on plm.designflow_item
       select from plm.designflow_reconcile_before_image b
       where b.target_table = 'designflow_item' and b.operation = 'delete'
         and b.target_key->>'legacy_item_id' = legacy_item_id::text
-        and b.before_row->>'legacy_item_id' = legacy_item_id::text
+        and b.before_row = to_jsonb(designflow_item)
     )
   );
 
@@ -47,7 +47,20 @@ create policy designflow_item_retire_orphan_restore on plm.designflow_item
       select from plm.designflow_reconcile_before_image b
       where b.target_table = 'designflow_item' and b.operation = 'delete'
         and b.target_key->>'legacy_item_id' = legacy_item_id::text
-        and b.before_row->>'legacy_item_id' = legacy_item_id::text
+        and b.before_row = to_jsonb(designflow_item)
+    )
+  );
+
+-- A delete before-image of a copied item must be the exact current row, so a
+-- restore can only bring back a row that existed. Other before-images keep the
+-- existing append-only rule.
+drop policy designflow_reconcile_before_image_insert on plm.designflow_reconcile_before_image;
+create policy designflow_reconcile_before_image_insert on plm.designflow_reconcile_before_image
+  for insert to designflow_prod_data_sync_grants with check (
+    not (target_table = 'designflow_item' and operation = 'delete')
+    or exists (
+      select from plm.designflow_item d
+      where d.legacy_item_id::text = target_key->>'legacy_item_id' and to_jsonb(d) = before_row
     )
   );
 

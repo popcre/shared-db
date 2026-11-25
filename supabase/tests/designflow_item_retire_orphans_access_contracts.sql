@@ -27,8 +27,12 @@ begin
   end if;
   if not exists (select from pg_policies where schemaname = 'plm' and tablename = 'designflow_item'
       and policyname = 'designflow_item_retire_orphan_restore' and cmd = 'INSERT'
-      and with_check like '%designflow_reconcile_before_image%') then
+      and with_check like '%designflow_reconcile_before_image%' and with_check like '%to_jsonb(designflow_item%') then
     raise exception 'orphan restore policy is missing';
+  end if;
+  if not exists (select from pg_policies where schemaname = 'plm' and tablename = 'designflow_reconcile_before_image'
+      and policyname = 'designflow_reconcile_before_image_insert' and with_check like '%to_jsonb(d)%') then
+    raise exception 'a copied-item delete before-image is not pinned to the current row';
   end if;
   if has_function_privilege('authenticated', 'plm.designflow_item_has_licensing_history(integer)', 'EXECUTE') then
     raise exception 'history helper is callable by authenticated';

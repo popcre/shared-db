@@ -19,7 +19,7 @@ set local statement_timeout = '30s';
 
 create table plm.designflow_relink_log (
   run_id uuid not null,
-  legacy_item_id integer not null references plm.designflow_item(legacy_item_id),
+  legacy_item_id integer not null,
   from_item_id uuid,
   from_disposition text not null,
   to_item_id uuid not null,

@@ -9,7 +9,9 @@
 -- Codes follow the existing DesignFlow placeholder convention: DF<Factory.id>.
 -- Possible duplicates 3/63, 212/145, 204/210, 161/167 and 174/179 are
 -- different factories (owner, 2026-11-25: "all different factories"). Not in this
--- file: DesignFlow test or internal rows 36, 65, 157, 42.
+-- file: DesignFlow test or internal rows 36, 157, 42 (to be set Inactive in
+-- DesignFlow). Row 65 is kept as the one DesignFlow test factory (owner,
+-- 2026-11-25: "we need 1 test factory") and linked to DF65.
 -- Idempotent: every insert is ON CONFLICT DO NOTHING.
 
 with new_factory(dflow_id, name, nickname, country) as (values
@@ -60,7 +62,8 @@ with new_factory(dflow_id, name, nickname, country) as (values
   (210, 'Serena Gracecoaster', 'Serena Gracecoaster', null),
   (161, 'Oriental Weavers Group', 'Oriental Weavers (Egypt)', 'EGY'),
   (167, 'Orientals Group', 'MAC Carpets Egypt', null),
-  (174, 'Cherry Jinhua Dike', 'Cherry Jinhua Dike', null)
+  (174, 'Cherry Jinhua Dike', 'Cherry Jinhua Dike', null),
+  (65,  'DesignFlow Test Factory', 'test', null)
 )
 insert into core.factory (code, name, display_name, country, status, party_type, designflow_vendor_id, metadata)
 select 'DF' || dflow_id, name, nickname, country, 'active'::app.entity_status, 'factory', dflow_id,
@@ -134,7 +137,8 @@ with link(dflow_id, core_code, confidence, basis) as (values
   (210, 'DF210',  'verified', 'new core factory from designflow row'),
   (161, 'DF161',  'verified', 'new core factory from designflow row'),
   (167, 'DF167',  'verified', 'new core factory from designflow row'),
-  (174, 'DF174',  'verified', 'new core factory from designflow row')
+  (174, 'DF174',  'verified', 'new core factory from designflow row'),
+  (65,  'DF65',   'verified', 'designflow test factory kept by owner')
 )
 insert into core.factory_source_ref (factory_id, source_system, source_table, source_id, confidence, raw)
 select f.id, 'designflow', 'Factory', l.dflow_id::text, l.confidence::app.source_confidence,

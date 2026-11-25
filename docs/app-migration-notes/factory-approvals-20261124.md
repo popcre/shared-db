@@ -14,6 +14,9 @@ Application work still needed:
   facility/LMS number and expiry; manual edits write `core.factory_approval`
   (licensing, production, administrator). Upload: put the PDF in the bucket,
   then insert `core.factory_approval_form (factory_id, program, storage_path, file_name)`.
+  The DesignFlow backend also supplies `uploaded_by` from the user's linked
+  app profile, or NULL if the profile lookup yields no ID. The backend inserts
+  a new history row per upload. The OCR worker updates form rows.
   Show the form history list.
 - **Indra OCR worker (PopDAM agent-api):** service role calls
   `core.claim_factory_approval_form_ocr(limit)`, downloads each PDF, OCRs with

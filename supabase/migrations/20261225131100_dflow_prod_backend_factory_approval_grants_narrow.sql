@@ -2,7 +2,13 @@
 -- granted in 20261225131000. Upload history and OCR columns stay owned by the
 -- OCR worker: the backend may only insert an upload row (no update), and every
 -- row policy is command-specific instead of FOR ALL. Notifications: read and
--- mark read (app 'plm') only. Recoverable: re-run 20261225131000's grants.
+-- mark read (app 'plm') only.
+-- Audited backend source: popcre/designflow-backend@539a38bba9c9297c25ef3b3f74fd5e379368929c,
+-- services/factoryApprovals.service.js:99-106 (nullable profile lookup),
+-- 145-159 (approval upsert), 163-174 (plain form insert), 198-203 (mark read).
+-- Keep uploaded_by nullable for users without a linked profile.
+-- If recovery is needed after apply, restore the specific required privileges
+-- and policies in a new forward migration through the normal promotion lane.
 -- derived-from: none
 BEGIN;
 SET LOCAL lock_timeout = '5s';
@@ -35,7 +41,7 @@ BEGIN
     FOR SELECT TO designflow_prod_backend_grants USING (true);
   CREATE POLICY factory_approval_form_dflow_prod_backend_insert ON core.factory_approval_form
     FOR INSERT TO designflow_prod_backend_grants
-    WITH CHECK (storage_bucket = 'factory-approval-forms' AND ocr_status = 'pending' AND uploaded_by IS NOT NULL);
+    WITH CHECK (storage_bucket = 'factory-approval-forms' AND ocr_status = 'pending');
 
   DROP POLICY IF EXISTS notification_dflow_prod_backend ON app.notification;
   CREATE POLICY notification_dflow_prod_backend_select ON app.notification

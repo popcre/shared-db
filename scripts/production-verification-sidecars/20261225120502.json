@@ -10,13 +10,13 @@
       "disposition": "checks",
       "reason": "Verify the installed style-tracker view now joins core.licensor, the bridge FK targets core.licensor, and the retired copies are absent.",
       "check_ids": [
-        "c4_style_tracker_core_licensor_v1"
+        "c4_style_tracker_core_licensor_reissue"
       ]
     }
   ],
   "checks": [
     {
-      "id": "c4_style_tracker_core_licensor_v1",
+      "id": "c4_style_tracker_core_licensor_reissue",
       "kind": "catalog_contract",
       "contract": "c4_style_tracker_core_licensor_v1",
       "expected_count": 1

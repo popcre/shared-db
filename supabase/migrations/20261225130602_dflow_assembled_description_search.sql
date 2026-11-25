@@ -2,7 +2,7 @@
 -- Issue #7041 (claim on #7041 for step 3.1): DesignFlow assembled item
 -- descriptions — search functions, SANDBOX HALF (schema `dflow`, DesignFlow
 -- non-production project). The production half is the paired version
--- 20261225130601 (schema `dflow_prod`). Work issue
+-- 20261225130603 (schema `dflow_prod`). Work issue
 -- popcre/designflow-item-master#194, plan steps 3.1/3.2 (deferred here from
 -- step 1.1).
 --
@@ -20,7 +20,7 @@ set statement_timeout = '2min';
 do $$
 begin
   if to_regnamespace('dflow_prod') is not null then
-    raise exception '#7041/20261225130600 self-check: schema dflow_prod exists here — this is the production project; the paired version 20261225130601 applies there, never this one'
+    raise exception '#7041/20261225130602 self-check: schema dflow_prod exists here — this is the production project; the paired version 20261225130603 applies there, never this one'
       using errcode = 'feature_not_supported';
   end if;
 end $$;
@@ -28,7 +28,7 @@ end $$;
 do $$
 begin
   if to_regclass('dflow.product_type') is null or to_regclass('dflow."merchGroup"') is null then
-    raise exception '#7041/20261225130600 self-check: dflow.product_type or dflow."merchGroup" is missing — 20261225091506 has not been applied here'
+    raise exception '#7041/20261225130602 self-check: dflow.product_type or dflow."merchGroup" is missing — 20261225091506 has not been applied here'
       using errcode = 'feature_not_supported';
   end if;
 end $$;

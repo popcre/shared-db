@@ -1,5 +1,5 @@
 -- =====================================================================================
--- Assembled item description search contracts — migration 20261225130600 (dflow half),
+-- Assembled item description search contracts — migration 20261225130602 (dflow half),
 -- issue #7041 (popcre/designflow-item-master#194 steps 3.1/3.2). Proves resolve_mg_path
 -- (D3), product_type_search (approved only by default, per-division resolution, D2 no
 -- MG03 / pick allow-list, words + search_terms + vector fusion, other-size vectors
@@ -26,8 +26,8 @@ begin
 end
 $roles$;
 \i supabase/migrations/20261225091506_dflow_assembled_item_description.sql
-\i supabase/migrations/20261225130600_dflow_assembled_description_search.sql
-\i supabase/migrations/20261225130600_dflow_assembled_description_search.sql
+\i supabase/migrations/20261225130602_dflow_assembled_description_search.sql
+\i supabase/migrations/20261225130602_dflow_assembled_description_search.sql
 
 do $t$
 declare

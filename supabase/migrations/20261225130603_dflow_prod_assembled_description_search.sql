@@ -1,7 +1,7 @@
 -- derived-from: none
 -- Issue #7041 (claim on #7041 for step 3.1): DesignFlow assembled item
 -- descriptions — search functions, PRODUCTION HALF (schema `dflow_prod`).
--- Paired with the sandbox half 20261225130600 (schema `dflow`). Work issue
+-- Paired with the sandbox half 20261225130602 (schema `dflow`). Work issue
 -- popcre/designflow-item-master#194, plan steps 3.1/3.2.
 --
 -- Objects (this file): functions dflow_prod.resolve_mg_path(text, text[],
@@ -20,11 +20,11 @@ set statement_timeout = '2min';
 do $$
 begin
   if to_regclass('dflow_prod.product_type') is null or to_regclass('dflow_prod."merchGroup"') is null then
-    raise exception '#7041/20261225130601 self-check: dflow_prod.product_type or dflow_prod."merchGroup" is missing — 20261225091507 has not been applied here'
+    raise exception '#7041/20261225130603 self-check: dflow_prod.product_type or dflow_prod."merchGroup" is missing — 20261225091507 has not been applied here'
       using errcode = 'feature_not_supported';
   end if;
   if not exists (select 1 from pg_roles where rolname = 'designflow_prod_item_master_grants') then
-    raise exception '#7041/20261225130601 self-check: role designflow_prod_item_master_grants does not exist'
+    raise exception '#7041/20261225130603 self-check: role designflow_prod_item_master_grants does not exist'
       using errcode = 'feature_not_supported';
   end if;
 end $$;

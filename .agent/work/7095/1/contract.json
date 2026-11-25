@@ -4,7 +4,7 @@
   "generation": 1,
   "work_type": "structural",
   "route": "claim-first",
-  "goal": "Add the search functions deferred from step 1.1 to step 3.1 of popcre/designflow-item-master#194: resolve_mg_path, product_type_search and embellishment_phrase_search, sandbox half 20261225130600 (dflow, DesignFlow non-production only) and production half 20261225130601 (dflow_prod, automatic promotion).",
+  "goal": "Add the search functions deferred from step 1.1 to step 3.1 of popcre/designflow-item-master#194: resolve_mg_path, product_type_search and embellishment_phrase_search, sandbox half 20261225130602 (dflow, DesignFlow non-production only) and production half 20261225130603 (dflow_prod, automatic promotion).",
   "base_sha": "f2dc31c8c2362271f25ed92354afea0b89f9910c",
   "branch": "claude/194-search-functions",
   "worktree": "/var/tmp/ai-sessions-1000/shared-db-194-search",
@@ -15,8 +15,8 @@
     ".agent/work/7095/1/completion.json",
     ".agent/work/7095/1/contract.json",
     "scripts/production_migration_guard.py",
-    "supabase/migrations/20261225130600_dflow_assembled_description_search.sql",
-    "supabase/migrations/20261225130601_dflow_prod_assembled_description_search.sql",
+    "supabase/migrations/20261225130602_dflow_assembled_description_search.sql",
+    "supabase/migrations/20261225130603_dflow_prod_assembled_description_search.sql",
     "supabase/tests/dflow_assembled_description_search_contracts.sql",
     "supabase/tests/dflow_prod_assembled_description_search_contracts.sql"
   ],
@@ -24,8 +24,8 @@
     ".agent/work/7095/1/completion.json",
     ".agent/work/7095/1/contract.json",
     "scripts/production_migration_guard.py",
-    "supabase/migrations/20261225130600_dflow_assembled_description_search.sql",
-    "supabase/migrations/20261225130601_dflow_prod_assembled_description_search.sql",
+    "supabase/migrations/20261225130602_dflow_assembled_description_search.sql",
+    "supabase/migrations/20261225130603_dflow_prod_assembled_description_search.sql",
     "supabase/tests/dflow_assembled_description_search_contracts.sql",
     "supabase/tests/dflow_prod_assembled_description_search_contracts.sql"
   ],
@@ -41,7 +41,7 @@
   "prohibited_actions": [
     "Do not write application rows in any database",
     "Do not write production or dispatch production manually",
-    "Do not apply the sandbox half 20261225130600 to shared preview or shared production"
+    "Do not apply the sandbox half 20261225130602 to shared preview or shared production"
   ],
   "required_checks": [
     "bash scripts/check-sql.sh",
@@ -49,7 +49,7 @@
     "python3 -m unittest discover -s scripts -p test_*.py",
     "Database Contract Tests on isolated ephemeral database",
     "node scripts/check-throughput-truth-audit.mjs",
-    "python3 -I -B scripts/check_production_verification_sidecars.py --repo . --scan-version 20261225130600 --scan-version 20261225130601"
+    "python3 -I -B scripts/check_production_verification_sidecars.py --repo . --scan-version 20261225130602 --scan-version 20261225130603"
   ],
   "assumptions": [
     "dflow_prod.product_type and dflow_prod.\"merchGroup\" exist on production; designflow_prod_item_master_grants has SELECT on merchGroup and no USAGE on schema extensions (read live 2026-11-25), hence SECURITY DEFINER.",

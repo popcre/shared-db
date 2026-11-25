@@ -1,5 +1,5 @@
 -- =====================================================================================
--- Assembled item description search contracts — migration 20261225130601 (dflow_prod
+-- Assembled item description search contracts — migration 20261225130603 (dflow_prod
 -- half), issue #7041. Same behaviour as the dflow half, plus EXECUTE granted to
 -- designflow_prod_item_master_grants only. Runs inside the caller's transaction (CI wraps
 -- it in BEGIN ... ROLLBACK). EVERY VALUE IN THIS FILE IS INVENTED.
@@ -29,8 +29,8 @@ begin
 end
 $roles$;
 \i supabase/migrations/20261225091507_dflow_prod_assembled_item_description.sql
-\i supabase/migrations/20261225130601_dflow_prod_assembled_description_search.sql
-\i supabase/migrations/20261225130601_dflow_prod_assembled_description_search.sql
+\i supabase/migrations/20261225130603_dflow_prod_assembled_description_search.sql
+\i supabase/migrations/20261225130603_dflow_prod_assembled_description_search.sql
 
 do $t$
 declare

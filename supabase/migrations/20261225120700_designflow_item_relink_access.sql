@@ -6,10 +6,11 @@
 -- product type decides the division, so those 39 belong to their SP001 item.
 -- The Data Syncing runtime gets no new table right. It may call one owner
 -- function that, for the exact list its verified plan reported, checks each
--- row still matches the plan and one of the two rules, saves before-images,
--- removes the copied child rows of the old item, and sets the new link. A
--- private log lets a second owner function put the old links back by run id;
--- the runtime's existing rollback then restores the child rows.
+-- row still matches the plan and one of the two rules, records the old row
+-- in a private log, moves the old item's copied child rows to the new item
+-- (nothing is deleted; the next reconcile recomputes them), and sets the new
+-- link. A second owner function moves them back and restores the old link by
+-- run id.
 -- derived-from: none
 
 begin;
@@ -23,6 +24,7 @@ create table plm.designflow_relink_log (
   from_disposition text not null,
   to_item_id uuid not null,
   rule text not null check (rule in ('first_unique_match', 'product_type_division')),
+  before_row jsonb not null,
   relinked_at timestamptz not null default now(),
   rolled_back_at timestamptz,
   primary key (run_id, legacy_item_id)
@@ -111,28 +113,22 @@ begin
       using errcode = 'P0001', hint = 'ITEM_RELINK_REFUSED';
   end if;
 
-  insert into plm.designflow_reconcile_before_image (run_id, target_table, operation, target_key, before_row)
-  select p_run_id, 'designflow_item', 'update', jsonb_build_object('legacy_item_id', t.legacy_item_id), to_jsonb(t)
-  from plm.designflow_item t join pg_temp.relink r using (legacy_item_id);
-  insert into plm.designflow_reconcile_before_image (run_id, target_table, operation, target_key, before_row)
-  select p_run_id, 'item_merch_group', 'delete',
-    jsonb_build_object('item_id', x.item_id, 'slot_number', x.slot_number), to_jsonb(x)
-  from plm.item_merch_group x join pg_temp.relink r on x.item_id = r.from_item_id;
-  insert into plm.designflow_reconcile_before_image (run_id, target_table, operation, target_key, before_row)
-  select p_run_id, 'item_custom_value', 'delete',
-    jsonb_build_object('item_id', x.item_id, 'slot_kind', x.slot_kind, 'slot_number', x.slot_number), to_jsonb(x)
-  from plm.item_custom_value x join pg_temp.relink r on x.item_id = r.from_item_id;
-  insert into plm.designflow_reconcile_before_image (run_id, target_table, operation, target_key, before_row)
-  select p_run_id, 'item_price', 'delete',
-    jsonb_build_object('item_id', x.item_id, 'price_level', x.price_level), to_jsonb(x)
-  from plm.item_price x join pg_temp.relink r on x.item_id = r.from_item_id;
+  if exists (select from pg_temp.relink r where
+      exists (select from plm.item_merch_group x where x.item_id = r.to_item_id)
+      or exists (select from plm.item_custom_value x where x.item_id = r.to_item_id)
+      or exists (select from plm.item_price x where x.item_id = r.to_item_id)
+      or exists (select from plm.licensing_attachment x where x.item_id = r.to_item_id)) then
+    raise exception 'designflow_relink_items: a new item already carries copied child rows'
+      using errcode = 'P0001', hint = 'ITEM_RELINK_REFUSED';
+  end if;
 
-  delete from plm.item_merch_group x using pg_temp.relink r where x.item_id = r.from_item_id;
-  delete from plm.item_custom_value x using pg_temp.relink r where x.item_id = r.from_item_id;
-  delete from plm.item_price x using pg_temp.relink r where x.item_id = r.from_item_id;
+  insert into plm.designflow_relink_log (run_id, legacy_item_id, from_item_id, from_disposition, to_item_id, rule, before_row)
+  select p_run_id, r.legacy_item_id, r.from_item_id, r.from_disposition, r.to_item_id, r.rule, to_jsonb(t)
+  from pg_temp.relink r join plm.designflow_item t using (legacy_item_id);
 
-  insert into plm.designflow_relink_log (run_id, legacy_item_id, from_item_id, from_disposition, to_item_id, rule)
-  select p_run_id, legacy_item_id, from_item_id, from_disposition, to_item_id, rule from pg_temp.relink;
+  update plm.item_merch_group x set item_id = r.to_item_id from pg_temp.relink r where x.item_id = r.from_item_id;
+  update plm.item_custom_value x set item_id = r.to_item_id from pg_temp.relink r where x.item_id = r.from_item_id;
+  update plm.item_price x set item_id = r.to_item_id from pg_temp.relink r where x.item_id = r.from_item_id;
 
   with u as (
     update plm.designflow_item t set canonical_item_id = r.to_item_id, match_disposition = 'eligible'
@@ -144,10 +140,9 @@ $$;
 revoke all on function plm.designflow_relink_items(uuid, jsonb) from public, anon, authenticated;
 grant execute on function plm.designflow_relink_items(uuid, jsonb) to designflow_prod_data_sync_grants;
 
--- Put a relink run's old links back. Refuses unless every item still carries
--- the link this run set and its new item has no copied child rows yet (roll
--- back any later reconcile first). The runtime's rollback then restores the
--- old child rows from this run's before-images.
+-- Put a relink run's old links back and move the copied child rows back to
+-- the old item. Refuses unless every item still carries the link this run set
+-- and the old item has gained no child rows since.
 create function plm.designflow_relink_items_rollback(p_run_id uuid)
 returns integer[]
 language plpgsql
@@ -172,14 +167,26 @@ begin
     left join plm.designflow_item t on t.legacy_item_id = l.legacy_item_id
     where l.run_id = p_run_id and l.rolled_back_at is null
       and (t.canonical_item_id is distinct from l.to_item_id
-        or exists (select from plm.item_merch_group x where x.item_id = l.to_item_id)
-        or exists (select from plm.item_custom_value x where x.item_id = l.to_item_id)
-        or exists (select from plm.item_price x where x.item_id = l.to_item_id)
-        or exists (select from plm.licensing_attachment x where x.item_id = l.to_item_id))
+        or exists (select from plm.item_merch_group x where x.item_id = l.from_item_id)
+        or exists (select from plm.item_custom_value x where x.item_id = l.from_item_id)
+        or exists (select from plm.item_price x where x.item_id = l.from_item_id)
+        or exists (select from plm.licensing_attachment x where x.item_id = l.to_item_id)
+        -- A fill's new item has no old item to return rows to: roll back the
+        -- reconcile that copied them first.
+        or (l.from_item_id is null and (
+          exists (select from plm.item_merch_group x where x.item_id = l.to_item_id)
+          or exists (select from plm.item_custom_value x where x.item_id = l.to_item_id)
+          or exists (select from plm.item_price x where x.item_id = l.to_item_id))))
   ) then
     raise exception 'designflow_relink_items_rollback: a later run changed these items; roll it back first'
       using errcode = 'P0001', hint = 'ITEM_RECONCILE_ROLLBACK_SUPERSEDED';
   end if;
+  update plm.item_merch_group x set item_id = l.from_item_id from plm.designflow_relink_log l
+    where l.run_id = p_run_id and l.rolled_back_at is null and l.from_item_id is not null and x.item_id = l.to_item_id;
+  update plm.item_custom_value x set item_id = l.from_item_id from plm.designflow_relink_log l
+    where l.run_id = p_run_id and l.rolled_back_at is null and l.from_item_id is not null and x.item_id = l.to_item_id;
+  update plm.item_price x set item_id = l.from_item_id from plm.designflow_relink_log l
+    where l.run_id = p_run_id and l.rolled_back_at is null and l.from_item_id is not null and x.item_id = l.to_item_id;
   with u as (
     update plm.designflow_item t set canonical_item_id = l.from_item_id, match_disposition = l.from_disposition
     from plm.designflow_relink_log l

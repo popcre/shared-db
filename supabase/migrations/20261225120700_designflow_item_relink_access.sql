@@ -61,6 +61,9 @@ begin
     raise exception 'designflow_relink_items: must run in a read committed transaction'
       using errcode = 'P0001', hint = 'ITEM_RELINK_ISOLATION';
   end if;
+  -- SHARE on plm.item holds ColdLion item writes until this run ends, so the
+  -- rule checks below cannot be invalidated before the links are set.
+  lock table plm.item in share mode;
   lock table plm.designflow_item in share row exclusive mode;
   lock table plm.item_merch_group, plm.item_custom_value, plm.item_price, plm.licensing_attachment
     in share row exclusive mode;

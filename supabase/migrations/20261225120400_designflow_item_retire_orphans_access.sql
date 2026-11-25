@@ -10,6 +10,19 @@ begin;
 set local lock_timeout = '5s';
 set local statement_timeout = '30s';
 
+-- Copied items were never deletable before this migration, so no copied-item
+-- delete before-image can exist yet. Refuse otherwise: such an image was
+-- written under the old unchecked insert rule and must not authorize a restore.
+do $$
+begin
+  lock table plm.designflow_reconcile_before_image in share row exclusive mode;
+  if exists (select from plm.designflow_reconcile_before_image
+             where target_table = 'designflow_item' and operation = 'delete') then
+    raise exception '#4707: unverified copied-item delete before-images exist; refuse';
+  end if;
+end
+$$;
+
 -- Row security hides non-DesignFlow licensing rows from the runtime, so the
 -- history check runs as the owner and returns only a boolean.
 create function plm.designflow_item_has_licensing_history(p_legacy_item_id integer)

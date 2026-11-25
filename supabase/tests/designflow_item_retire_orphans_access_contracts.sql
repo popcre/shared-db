@@ -21,13 +21,17 @@ begin
     where schemaname = 'plm' and tablename = 'designflow_item'
       and policyname = 'designflow_item_retire_orphan_delete' and cmd = 'DELETE';
   if p is null or p.qual not like '%canonical_item_id IS NULL%'
-     or p.qual not like '%itemHeader%' or p.qual not like '%licensing_status%' then
+     or p.qual not like '%itemHeader%' or p.qual not like '%designflow_item_has_licensing_history%'
+     or p.qual not like '%designflow_reconcile_before_image%' then
     raise exception 'orphan delete policy is missing or broader than the retirement rule';
   end if;
   if not exists (select from pg_policies where schemaname = 'plm' and tablename = 'designflow_item'
       and policyname = 'designflow_item_retire_orphan_restore' and cmd = 'INSERT'
       and with_check like '%designflow_reconcile_before_image%') then
     raise exception 'orphan restore policy is missing';
+  end if;
+  if has_function_privilege('authenticated', 'plm.designflow_item_has_licensing_history(integer)', 'EXECUTE') then
+    raise exception 'history helper is callable by authenticated';
   end if;
 end
 $test$;

@@ -39,6 +39,14 @@ begin
   if p_run_id is null or p_expected is null then
     raise exception 'designflow_retire_orphan_items: run id and expected list are required';
   end if;
+  -- READ COMMITTED only: each statement below takes a fresh snapshot, so the
+  -- check after the locks sees every licensing write that committed while
+  -- this call waited. An older (repeatable read or serializable) snapshot
+  -- could miss one.
+  if current_setting('transaction_isolation') <> 'read committed' then
+    raise exception 'designflow_retire_orphan_items: must run in a read committed transaction'
+      using errcode = 'P0001', hint = 'ITEM_RETIRE_ORPHAN_ISOLATION';
+  end if;
   -- Lock first. SHARE mode on licensing_status blocks every concurrent
   -- licensing write (including one that names the item only by
   -- designflow_source_item_id) until this transaction ends, and waits for any

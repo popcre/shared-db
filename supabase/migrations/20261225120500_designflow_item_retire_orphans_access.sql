@@ -50,11 +50,11 @@ begin
   -- Lock first. SHARE mode on licensing_status blocks every concurrent
   -- licensing write (including one that names the item only by
   -- designflow_source_item_id) until this transaction ends, and waits for any
-  -- in flight, so the history check below sees all of them. FOR UPDATE on the
-  -- items also blocks a new foreign-key reference.
+  -- in flight, so the history check below sees all of them.
+  -- SHARE ROW EXCLUSIVE on designflow_item blocks every concurrent item
+  -- write (copy, reconcile, rollback restore) until this run ends.
   lock table plm.licensing_status in share mode;
-  perform 1 from plm.designflow_item t
-    where t.legacy_item_id = any (p_expected) for update;
+  lock table plm.designflow_item in share row exclusive mode;
   select coalesce(array_agg(t.legacy_item_id order by t.legacy_item_id), '{}') into v_orphans
     from plm.designflow_item t
     where not exists (select from dflow_prod."itemHeader" h where h.item_id_pk = t.legacy_item_id);

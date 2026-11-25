@@ -1,0 +1,29 @@
+name: Migration catalog readable (advisory)
+
+# #6574 Fix C. The post-apply catalog check refuses a migration it cannot read
+# (dynamic SQL such as `execute format(...)` in a DO block). That refusal is
+# correct, but without a sidecar or a no-op line it only surfaces AFTER the
+# production apply has already happened (run 44106460484, 2026-11-17).
+#
+# ADVISORY ON PURPOSE. This check prevents a false red, not production-data
+# damage, so per the 2026-10-30 owner ruling it is NOT a required context and
+# must not be added to branch protection or the merge-queue ruleset.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  catalog-readable:
+    name: Migration catalog readable (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require a sidecar or no-op line for each added migration the catalog check cannot read
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: python3 scripts/check_catalog_readable.py --base "$BASE_REF"

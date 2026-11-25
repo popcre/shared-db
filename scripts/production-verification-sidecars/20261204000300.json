@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "migration_version": "20261204000300",
+  "migration_sha256": "5d738f32c28101a2ebdf508dffdff848f2a85e0e0a44e2af6b0dab4a7baf8ec2",
+  "marker_schema_version": 1,
+  "marker_reviews": [
+    {
+      "line_start": 85,
+      "line_end": 85,
+      "disposition": "checks",
+      "reason": "Verify the migration's nonempty trigger function scope and the absence of effective EXECUTE for both API roles across that scope.",
+      "check_ids": [
+        "trigger_execute_revoke_6658_v1"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "trigger_execute_revoke_6658_v1",
+      "kind": "catalog_contract",
+      "contract": "trigger_execute_revoke_6658_v1",
+      "expected_count": 1
+    }
+  ]
+}

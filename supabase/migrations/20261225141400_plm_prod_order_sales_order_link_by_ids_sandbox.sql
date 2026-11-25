@@ -3,6 +3,7 @@
 -- DesignFlow sandbox route (which has no dflow_prod schema and refuses
 -- statements that name it) can rehearse the function. Identical body; on
 -- databases that already have it, CREATE OR REPLACE is a no-op change.
+-- derived-from: none
 -- ROLLBACK (forward fix): drop function plm.prod_order_sales_order_link(integer[]);
 
 do $guard_plm$

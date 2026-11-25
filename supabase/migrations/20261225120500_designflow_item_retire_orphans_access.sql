@@ -52,7 +52,8 @@ begin
   end if;
   if exists (select from plm.designflow_item t where t.legacy_item_id = any (v_orphans)
              and (t.canonical_item_id is not null
-                  or exists (select from plm.licensing_status s where s.designflow_item_id = t.legacy_item_id))) then
+                  or exists (select from plm.licensing_status s where s.designflow_item_id = t.legacy_item_id
+                    or s.designflow_source_item_id = t.legacy_item_id))) then
     raise exception 'designflow_retire_orphan_items: an orphan is linked or has licensing history'
       using errcode = 'P0001', hint = 'ITEM_RETIRE_ORPHAN_BLOCKED';
   end if;

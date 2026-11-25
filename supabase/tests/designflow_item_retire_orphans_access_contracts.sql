@@ -1,29 +1,24 @@
--- #4707: the Data Syncing runtime may delete a copied DesignFlow item only when
--- it is unlinked, has no licensing history and its source row is gone, and may
--- re-insert one only from a recorded delete before-image. No other runtime
--- gains a delete on plm.designflow_item.
+-- #4707: the Data Syncing runtime retires orphaned copied items only through
+-- the owner function, never by a direct delete, and restores only exact
+-- before-image rows. No other role can call the function.
 do $test$
-declare
-  p record;
 begin
   if to_regclass('plm.designflow_item') is null
      or to_regrole('designflow_prod_data_sync_grants') is null then
     return;
   end if;
-  if not has_table_privilege('designflow_prod_data_sync_grants', 'plm.designflow_item', 'DELETE') then
-    raise exception 'data sync cannot retire orphaned items';
+  if has_table_privilege('designflow_prod_data_sync_grants', 'plm.designflow_item', 'DELETE') then
+    raise exception 'data sync can delete copied items directly';
   end if;
-  if to_regrole('designflow_prod_backend_grants') is not null
-     and has_table_privilege('designflow_prod_backend_grants', 'plm.designflow_item', 'DELETE') then
-    raise exception 'backend gained a delete on plm.designflow_item';
+  if not has_function_privilege('designflow_prod_data_sync_grants',
+       'plm.designflow_retire_orphan_items(uuid, integer[])', 'EXECUTE')
+     or has_function_privilege('authenticated', 'plm.designflow_retire_orphan_items(uuid, integer[])', 'EXECUTE')
+     or has_function_privilege('anon', 'plm.designflow_retire_orphan_items(uuid, integer[])', 'EXECUTE') then
+    raise exception 'orphan retirement function access is wrong';
   end if;
-  select qual into p from pg_policies
-    where schemaname = 'plm' and tablename = 'designflow_item'
-      and policyname = 'designflow_item_retire_orphan_delete' and cmd = 'DELETE';
-  if p is null or p.qual not like '%canonical_item_id IS NULL%'
-     or p.qual not like '%itemHeader%' or p.qual not like '%designflow_item_has_licensing_history%'
-     or p.qual not like '%designflow_reconcile_before_image%' then
-    raise exception 'orphan delete policy is missing or broader than the retirement rule';
+  if not exists (select from pg_proc where oid = 'plm.designflow_retire_orphan_items(uuid, integer[])'::regprocedure
+      and prosecdef and proconfig @> array['search_path=""']) then
+    raise exception 'orphan retirement function is not a pinned owner function';
   end if;
   if not exists (select from pg_policies where schemaname = 'plm' and tablename = 'designflow_item'
       and policyname = 'designflow_item_retire_orphan_restore' and cmd = 'INSERT'
@@ -33,9 +28,6 @@ begin
   if not exists (select from pg_policies where schemaname = 'plm' and tablename = 'designflow_reconcile_before_image'
       and policyname = 'designflow_reconcile_before_image_insert' and with_check like '%to_jsonb(d%') then
     raise exception 'a copied-item delete before-image is not pinned to the current row';
-  end if;
-  if has_function_privilege('authenticated', 'plm.designflow_item_has_licensing_history(integer)', 'EXECUTE') then
-    raise exception 'history helper is callable by authenticated';
   end if;
 end
 $test$;

@@ -22,8 +22,8 @@ begin
     where p.pronamespace in ('plm'::regnamespace, 'app'::regnamespace)
       and a.grantee in (runtime_role::regrole, grants_role::regrole)
       and a.privilege_type = 'EXECUTE'
-      -- #4707 orphan retirement: owner-side licensing history check only.
-      and p.oid <> 'plm.designflow_item_has_licensing_history(integer)'::regprocedure
+      -- #4707 orphan retirement owner function only.
+      and p.oid <> 'plm.designflow_retire_orphan_items(uuid, integer[])'::regprocedure
   ) then
     raise exception 'The item copy grants an unrelated shared function';
   end if;
@@ -75,8 +75,7 @@ begin
            and (select oid from pg_roles where rolname=grants_role)=any(polroles)
            and polcmd not in ('a','r','w','d')
        )
-       -- #4707: copied items are deletable only under the orphan retirement policy.
-       or (candidate.relation in ('plm.licensing_status','plm.licensing_feedback','app.file_object'))
+       or (candidate.relation in ('plm.designflow_item','plm.licensing_status','plm.licensing_feedback','app.file_object'))
           = has_table_privilege(runtime_role, candidate.relation, 'DELETE')
        or has_table_privilege(runtime_role, candidate.relation, 'TRUNCATE') then
       raise exception 'Unexpected copy privileges for %', candidate.relation;

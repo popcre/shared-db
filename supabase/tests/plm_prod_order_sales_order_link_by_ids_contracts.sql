@@ -4,6 +4,9 @@
 -- transaction. Synthetic rows only; the CI runner wraps this file in begin/rollback.
 
 \ir plm_prod_order_sales_order_link_contracts.sql
+-- The CI replay can reach this migration before the view exists (it then
+-- skips by design), so apply it again here, after the view contract.
+\ir ../migrations/20261225140000_prod_order_sales_order_link_by_ids.sql
 
 do $$
 declare

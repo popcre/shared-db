@@ -62,8 +62,8 @@ begin
     end if;
   end loop;
 
-  -- It can read ordinary business tables (existence-guarded).
-  foreach v_rel in array array['dflow_prod."Roles"', 'core.licensor'] loop
+  -- It can read ordinary business tables created by migrations (existence-guarded).
+  foreach v_rel in array array['core.licensor'] loop
     if to_regclass(v_rel) is not null
        and not has_table_privilege('ai_readonly_reader', v_rel, 'SELECT') then
       raise exception 'ai_readonly_reader cannot read %', v_rel;

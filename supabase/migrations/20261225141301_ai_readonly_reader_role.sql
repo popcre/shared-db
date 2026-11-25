@@ -17,8 +17,9 @@
 --     tables use RLS), connection limit 5, statement_timeout 30s,
 --     idle_in_transaction_session_timeout 60s, default_transaction_read_only
 --     on (a convenience; the boundary is that it holds no write privilege).
---   * USAGE + SELECT on every table/view in the business schemas listed below,
---     plus default privileges so future tables created by postgres are readable.
+--   * USAGE + SELECT on every table/view that exists now in the business
+--     schemas listed below. No default privileges (plm's are pinned to
+--     service_role only); a later table needs its own grant.
 --   * NOT granted: Supabase system schemas (auth, storage, vault, realtime,
 --     net, cron, graphql*, extensions), sequences, functions, any write.
 --   * Secret-bearing columns are withheld: tables holding a password or a
@@ -32,7 +33,6 @@
 --
 -- ROLLBACK (forward fix):
 --   reassign/drop privileges: drop owned by ai_readonly_reader;
---   alter default privileges for role postgres in schema <each> revoke select on tables from ai_readonly_reader;
 --   drop role ai_readonly_reader;
 
 begin;
@@ -68,7 +68,6 @@ begin
     continue when to_regnamespace(s) is null;
     execute format('grant usage on schema %I to ai_readonly_reader', s);
     execute format('grant select on all tables in schema %I to ai_readonly_reader', s);
-    execute format('alter default privileges for role postgres in schema %I grant select on tables to ai_readonly_reader', s);
   end loop;
 
   for t in

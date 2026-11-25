@@ -10,6 +10,7 @@
   "worktree": "/var/tmp/ai-sessions-1000/shared-db-194-search",
   "dispatcher": "claim-first (claims #7096 and #7097)",
   "worker": "claude",
+  "evidence_parent": null,
   "allowed_paths": [
     ".agent/work/7095/1/completion.json",
     ".agent/work/7095/1/contract.json",

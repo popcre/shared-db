@@ -7,9 +7,9 @@
 -- Source: read-only production comparison on 2026-11-25 of dflow_prod."Factory"
 -- name, nickname and country against core.factory and its coldlion refs.
 -- Codes follow the existing DesignFlow placeholder convention: DF<Factory.id>.
--- Held back for an owner decision (not in this file): DesignFlow ids 3, 145,
--- 212, 204, 210, 161, 167, 174 (possible duplicates) and 36, 65, 157, 42
--- (test or internal rows).
+-- Possible duplicates 3/63, 212/145, 204/210, 161/167 are kept separate and
+-- 174 is linked to DF179 by default (recoverable; owner asked). Not in this
+-- file: DesignFlow test or internal rows 36, 65, 157, 42.
 -- Idempotent: every insert is ON CONFLICT DO NOTHING.
 
 with new_factory(dflow_id, name, nickname, country) as (values
@@ -52,7 +52,14 @@ with new_factory(dflow_id, name, nickname, country) as (values
   (87,  'YiWu YuFei color printing factory', 'Happy', null),
   (102, 'YiwuJiaodian', 'AriSoft Stg', 'CHN'),
   (200, 'Zhejiang Bestime Trading Co., Ltd', 'ZheJiang Bestime', null),
-  (121, 'Zhejiang Lianbo Digital Technology Co., Ltd', 'LuoStorage', 'CHN')
+  (121, 'Zhejiang Lianbo Digital Technology Co., Ltd', 'LuoStorage', 'CHN'),
+  (3,   'Susan Shengxing', 'Guangdong Shengxing Craft', 'CHN'),
+  (145, 'Jack', 'Jack', null),
+  (212, 'Ningbo Henghui frames Co.,Ltd', 'Jack NBHH', null),
+  (204, 'serena', 'Serena', null),
+  (210, 'Serena Gracecoaster', 'Serena Gracecoaster', null),
+  (161, 'Oriental Weavers Group', 'Oriental Weavers (Egypt)', 'EGY'),
+  (167, 'Orientals Group', 'MAC Carpets Egypt', null)
 )
 insert into core.factory (code, name, display_name, country, status, party_type, designflow_vendor_id, metadata)
 select 'DF' || dflow_id, name, nickname, country, 'active'::app.entity_status, 'factory', dflow_id,
@@ -118,7 +125,15 @@ with link(dflow_id, core_code, confidence, basis) as (values
   (74,  'CNINT',  'probable', 'name match: Shandong Intco'),
   (186, 'CNCHP',  'verified', 'name match: Ningbo Chanfonn Home Products'),
   (202, 'CNCHP',  'probable', 'name match: Ningbo Chanfonn Home'),
-  (207, 'CNCHP',  'probable', 'name and contact match: Sunny NB Chanfonn')
+  (207, 'CNCHP',  'probable', 'name and contact match: Sunny NB Chanfonn'),
+  (3,   'DF3',    'verified', 'new core factory from designflow row'),
+  (145, 'DF145',  'verified', 'new core factory from designflow row'),
+  (212, 'DF212',  'verified', 'new core factory from designflow row'),
+  (204, 'DF204',  'verified', 'new core factory from designflow row'),
+  (210, 'DF210',  'verified', 'new core factory from designflow row'),
+  (161, 'DF161',  'verified', 'new core factory from designflow row'),
+  (167, 'DF167',  'verified', 'new core factory from designflow row'),
+  (174, 'DF179',  'probable', 'name match: Jinhua Di Ke')
 )
 insert into core.factory_source_ref (factory_id, source_system, source_table, source_id, confidence, raw)
 select f.id, 'designflow', 'Factory', l.dflow_id::text, l.confidence::app.source_confidence,

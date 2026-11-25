@@ -1,9 +1,12 @@
+-- derived-from: none
 -- designflow-tracking#138 / shared-db#7121 follow-up: the plm half of
 -- 20261225140000_prod_order_sales_order_link_by_ids.sql, on its own, so the
 -- DesignFlow sandbox route (which has no dflow_prod schema and refuses
 -- statements that name it) can rehearse the function. Identical body; on
 -- databases that already have it, CREATE OR REPLACE is a no-op change.
 -- ROLLBACK (forward fix): drop function plm.prod_order_sales_order_link(integer[]);
+
+set lock_timeout = '5s';
 
 do $guard_plm$
 begin

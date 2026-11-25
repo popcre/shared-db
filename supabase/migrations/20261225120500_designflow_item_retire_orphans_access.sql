@@ -39,8 +39,12 @@ begin
   if p_run_id is null or p_expected is null then
     raise exception 'designflow_retire_orphan_items: run id and expected list are required';
   end if;
-  -- Lock first: a concurrent licensing insert needs a KEY SHARE lock on its
-  -- item, so it waits for (or, already committed, is seen by) the check below.
+  -- Lock first. SHARE mode on licensing_status blocks every concurrent
+  -- licensing write (including one that names the item only by
+  -- designflow_source_item_id) until this transaction ends, and waits for any
+  -- in flight, so the history check below sees all of them. FOR UPDATE on the
+  -- items also blocks a new foreign-key reference.
+  lock table plm.licensing_status in share mode;
   perform 1 from plm.designflow_item t
     where t.legacy_item_id = any (p_expected) for update;
   select coalesce(array_agg(t.legacy_item_id order by t.legacy_item_id), '{}') into v_orphans

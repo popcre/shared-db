@@ -36,10 +36,17 @@ begin
   end if;
   perform 1 from public.style_tracker_rows_with_bridge limit 1;
 
-  v_lookup := public.get_dam_search_named_rows(array['unmatchablec4']);
-  if v_lookup is distinct from
-    '{"characters":[],"aliases":[],"legacyCharacters":[],"properties":[],"propertyCharacters":[],"licensorNames":[]}'::jsonb then
-    raise exception 'C4: named lookup contract changed: %', v_lookup;
+  -- The CI baseline lacks core.licensor_alias (read by the lookup); every real database has it.
+  if to_regclass('core.licensor_alias') is not null then
+    v_lookup := public.get_dam_search_named_rows(array['unmatchablec4']);
+    if v_lookup is distinct from
+      '{"characters":[],"aliases":[],"legacyCharacters":[],"properties":[],"propertyCharacters":[],"licensorNames":[]}'::jsonb then
+      raise exception 'C4: named lookup contract changed: %', v_lookup;
+    end if;
+  end if;
+  if (select prosrc from pg_proc where oid = 'public.get_dam_search_named_rows(text[])'::regprocedure)
+     !~ $q$'legacyCharacters', '\[\]'::jsonb$q$ then
+    raise exception 'C4: legacyCharacters must be an always-empty key';
   end if;
 
   -- The retired legacy key is accepted and ignored.

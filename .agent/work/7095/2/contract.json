@@ -10,7 +10,11 @@
   "worktree": "/var/tmp/ai-sessions-1000/shared-db-194-search",
   "dispatcher": "claim-first (claim on #7095)",
   "worker": "claude",
-  "evidence_parent": "refs/db-contracts/7095/1",
+  "evidence_parent": {
+    "work_issue": 7095,
+    "generation": 1,
+    "contract_sha256": "2cb3a87b43830991b333f19efbc93fc5221a9fc274da52bace915220ef6db9b7"
+  },
   "allowed_paths": [
     ".agent/work/7095/2/completion.json",
     ".agent/work/7095/2/contract.json",

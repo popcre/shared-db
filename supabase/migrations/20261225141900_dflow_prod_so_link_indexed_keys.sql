@@ -1,3 +1,4 @@
+-- derived-from: 20261225140000
 -- popcre/designflow-tracking#138 follow-up: the Tracking grid's sales-order anchor step
 -- (dflow_prod.prod_order_sales_order_link(int[])) read all of coldlion.order_history_line
 -- (~120k lines) on every page because its line filter was one OR of two key expressions,

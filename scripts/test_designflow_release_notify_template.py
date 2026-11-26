@@ -6,6 +6,8 @@ class TemplateTests(unittest.TestCase):
   cls.raw=P.read_text();cls.w=json.loads(cls.raw)
  def test_exact_events(self):
   self.assertEqual(self.w['on'],{'push':{'branches':['develop','main']},'pull_request':{'branches':['main'],'types':['opened','reopened','synchronize','ready_for_review']}})
+ def test_dispatch_uses_github_hosted_runner(self):
+  self.assertEqual(self.w['jobs']['notify-central']['runs-on'], 'ubuntu-latest')
  def test_permission_and_timeout(self):
   self.assertEqual(self.w['permissions'],{'contents':'read'});j=self.w['jobs']['notify-central'];self.assertEqual(j['timeout-minutes'],5);self.assertIs(type(j['timeout-minutes']),int);self.assertNotIn('permissions',j)
  def test_no_checkout_or_application_execution(self):

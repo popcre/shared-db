@@ -1,3 +1,4 @@
+-- derived-from: 20261111114428
 -- popdam3#1430 Step 9: guide rows carry whole-guide file count, size and member
 -- directories, so the PopSG page no longer fetches style_guide_file_groups after search.
 -- Measured read-only 2026-11-26: 18.8 ms p50 / 24.4 ms p95 over 65 sampled 60-guide pages; no new index.

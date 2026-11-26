@@ -1,10 +1,76 @@
 {
   "schema_version": 1,
   "migration_version": "20261225141800",
-  "migration_sha256": "0c9991bdde87a618dbbd600ad8556c0d12e06636062a514e884471a317002f07",
+  "migration_sha256": "b3ce4e5c5849fb3bc516f4fb534c751e66675103e9e8cee3090fc45c8af2810b",
   "checks": [
-    {"id":"stage_list_item_master_read_policy_present","kind":"exact_row_count","relation":"pg_catalog.pg_policies","filters":[{"column":"schemaname","type":"text","equals":"plm"},{"column":"tablename","type":"text","equals":"stage_list"},{"column":"policyname","type":"text","equals":"stage_list_dflow_prod_item_master_read"}],"expected_count":1},
-    {"id":"stage_item_master_read_policy_present","kind":"exact_row_count","relation":"pg_catalog.pg_policies","filters":[{"column":"schemaname","type":"text","equals":"plm"},{"column":"tablename","type":"text","equals":"stage"},{"column":"policyname","type":"text","equals":"stage_dflow_prod_item_master_read"}],"expected_count":1},
-    {"id":"stage_duration_item_master_read_policy_present","kind":"exact_row_count","relation":"pg_catalog.pg_policies","filters":[{"column":"schemaname","type":"text","equals":"plm"},{"column":"tablename","type":"text","equals":"stage_duration"},{"column":"policyname","type":"text","equals":"stage_duration_dflow_prod_item_master_read"}],"expected_count":1}
+    {
+      "id": "stage_list_item_master_read_policy_present",
+      "kind": "exact_row_count",
+      "relation": "pg_catalog.pg_policies",
+      "filters": [
+        {
+          "column": "schemaname",
+          "type": "text",
+          "equals": "plm"
+        },
+        {
+          "column": "tablename",
+          "type": "text",
+          "equals": "stage_list"
+        },
+        {
+          "column": "policyname",
+          "type": "text",
+          "equals": "stage_list_dflow_prod_item_master_read"
+        }
+      ],
+      "expected_count": 1
+    },
+    {
+      "id": "stage_item_master_read_policy_present",
+      "kind": "exact_row_count",
+      "relation": "pg_catalog.pg_policies",
+      "filters": [
+        {
+          "column": "schemaname",
+          "type": "text",
+          "equals": "plm"
+        },
+        {
+          "column": "tablename",
+          "type": "text",
+          "equals": "stage"
+        },
+        {
+          "column": "policyname",
+          "type": "text",
+          "equals": "stage_dflow_prod_item_master_read"
+        }
+      ],
+      "expected_count": 1
+    },
+    {
+      "id": "stage_duration_item_master_read_policy_present",
+      "kind": "exact_row_count",
+      "relation": "pg_catalog.pg_policies",
+      "filters": [
+        {
+          "column": "schemaname",
+          "type": "text",
+          "equals": "plm"
+        },
+        {
+          "column": "tablename",
+          "type": "text",
+          "equals": "stage_duration"
+        },
+        {
+          "column": "policyname",
+          "type": "text",
+          "equals": "stage_duration_dflow_prod_item_master_read"
+        }
+      ],
+      "expected_count": 1
+    }
   ]
 }

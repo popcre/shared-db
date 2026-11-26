@@ -55,10 +55,8 @@ begin
       ('stage_list', 'id'),
       ('stage_list', 'key'),
       ('stage', 'id'),
-      ('stage', 'stage_list_id'),
-      ('stage', 'name'),
+      ('stage', 'list_id'),
       ('stage', 'done_signal'),
-      ('stage', 'sequence'),
       ('stage', 'active'),
       ('stage_duration', 'stage_id'),
       ('stage_duration', 'scope_kind'),
@@ -108,7 +106,7 @@ begin
   select count(*) into v_count
   from plm.stage_duration sd
   join plm.stage s on s.id = sd.stage_id
-  join plm.stage_list sl on sl.id = s.stage_list_id
+  join plm.stage_list sl on sl.id = s.list_id
   where sl.key = 'licensing' and s.active and sd.scope_kind = 'licensor';
   if v_count = 0 then
     raise exception 'B1 designflow_prod_item_master_runtime read 0 licensing duration rows from Stage Catalog';

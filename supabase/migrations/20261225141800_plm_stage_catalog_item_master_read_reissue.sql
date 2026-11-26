@@ -51,7 +51,7 @@ drop policy if exists stage_duration_dflow_prod_item_master_read on plm.stage_du
 grant usage on schema plm to designflow_prod_item_master_runtime;
 
 grant select (id, key) on table plm.stage_list to designflow_prod_item_master_runtime;
-grant select (id, stage_list_id, name, done_signal, sequence, active)
+grant select (id, list_id, done_signal, active)
   on table plm.stage to designflow_prod_item_master_runtime;
 grant select (stage_id, scope_kind, scope_value, duration)
   on table plm.stage_duration to designflow_prod_item_master_runtime;

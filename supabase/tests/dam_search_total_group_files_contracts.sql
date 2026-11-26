@@ -26,6 +26,15 @@ declare
   t jsonb; f jsonb; want bigint; want_lic bigint; lic uuid; q text := 'zq1430token';
   probe_f jsonb := '{"customer":""}'::jsonb; lic_f jsonb;
 begin
+  insert into plm.licensing_write_authorization (
+    backend_pid, transaction_id, target_table, write_kind, plan_id, plan_hash,
+    actor, protected_columns, expires_at
+  ) values (
+    pg_backend_pid(), txid_current(), 'core.licensor', 'licensing_review_create',
+    '14300000-0000-4000-8000-000000000001', repeat('a', 64),
+    'popdam3-1430 synthetic contract', array['name','code','status'],
+    clock_timestamp() + interval '1 minute'
+  );
   insert into core.licensor (name) values ('ZQ1430 Licensor') returning id into lic;
   -- 230 visible groups, the licensor owns groups 1..5 and 221..230 (ranked past 200 when
   -- the title weight below orders them), plus 5 hidden groups that must not count.

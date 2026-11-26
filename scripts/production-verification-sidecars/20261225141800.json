@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "migration_version": "20261225141800",
-  "migration_sha256": "65aba45f515e3261bb18949f22495fea5bd45288b0ebb33bebdc19f98da9256a",
+  "migration_sha256": "ecb82939eff5e13b92cdb97ff5bf68e2ca30b8ce359f0d91cfd609e3ac3a48fd",
   "checks": [
     {
       "id": "stage_list_item_master_read_policy_present",

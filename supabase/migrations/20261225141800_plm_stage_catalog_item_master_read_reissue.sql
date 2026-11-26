@@ -1,10 +1,8 @@
--- Re-issue of 20261225141700 (PR #7155, designflow-tracking#130, claim #7154).
--- 20261225141700 was held by review-finding #7156 and failed on the standalone
--- DesignFlow sandbox (run 45852863298) because designflow_prod_* roles do not
--- exist on the sandbox; 20261225141700 never applied to sandbox, preview, or
--- production.
+-- Follow-up hardening for 20261225141700 (PR #7155, designflow-tracking#130, claim #7154).
+-- 20261225141700 applied to preview and production (run 45861284988) and is
+-- blocked on sandbox (run 45852863298) where designflow_prod_* roles do not exist.
 --
--- Fixes #7156 findings 1 & 2:
+-- Addresses #7156 findings 1 & 2:
 --   1. Grants directly to the LOGIN role designflow_prod_item_master_runtime
 --      (the #4464 option (c) pattern, matching 20261020125826) and revokes any
 --      Stage Catalog table privileges 20261225141700 left on

@@ -12,7 +12,7 @@ declare
   near extensions.vector := (array[0.95::real, 0.31224989::real] || array_fill(0::real, array[766]))::extensions.vector;
   mid extensions.vector := (array[0.6::real, 0.8::real] || array_fill(0::real, array[766]))::extensions.vector;
   far extensions.vector := (array[0.5::real, 0.8660254::real] || array_fill(0::real, array[766]))::extensions.vector;
-  f jsonb; t text[]; admin real; anchor real; floor real; old_rows jsonb; new_rows jsonb; i int;
+  f jsonb; t text; admin real; anchor real; floor real; old_rows jsonb; new_rows jsonb; i int;
 begin
   insert into plm.licensing_write_authorization (
     backend_pid, transaction_id, target_table, write_kind, plan_id, plan_hash,
@@ -35,9 +35,11 @@ begin
   );
   insert into core.licensor (name, code, status) values ('ZQ1430 Licensor Two', 'ZQ1430-2', 'active') returning id into l2;
 
-  -- 2,001 close picture-only groups of licensor one fill the global top-2,000; licensor two's
-  -- only group is a weaker picture plus one keyword group, below every licensor-one picture.
-  for i in 1..2001 loop
+  -- Close picture-only groups of licensor one; licensor two's only pictures are weaker. The anchor
+  -- is the full-scope dam_search_semantic_anchor_named (no candidate LIMIT), so licensor two's best
+  -- is found however many closer pictures exist elsewhere. Few rows: rolled-back HNSW entries stay
+  -- as dead tuples until vacuum and would starve later tests' bounded HNSW scans.
+  for i in 1..5 loop
     insert into public.style_groups (sku, folder_path, licensor_id) values ('ZQ1430N' || i, '/zq1430/n' || i, l1) returning id into g;
     insert into public.dam_search_documents (document_type, entity_id, asset_id, style_group_id, title, path, embedding, embedding_model)
     values ('style_group', g, null, g, 'lampstone ' || i, '/lampstone/n' || i, near, 'google/siglip2-base-patch16-naflex')
@@ -56,14 +58,14 @@ begin
   perform public.search_dam_documents('zq1430token', jsonb_build_object('semanticLicensorIds', jsonb_build_array(l2)),
     50, 0, array['style_group'], q, 0, null, null, null, null, true, true);
   if abs(current_setting('app.dam_search_anchor')::float8 - 0.6) > 1e-4 then
-    raise exception 'popdam3#1430 scoped anchor % (want 0.6, the in-scope best outside the global top 2000)',
+    raise exception 'popdam3#1430 scoped anchor % (want 0.6, the in-scope best, not the global 0.95)',
       current_setting('app.dam_search_anchor');
   end if;
 
   -- Parity with the former two-call path for every scope, document type and admin floor.
   foreach f in array array['{}'::jsonb, jsonb_build_object('semanticLicensorIds', jsonb_build_array(l2)),
                            jsonb_build_object('semanticLicensorIds', jsonb_build_array(l1, l2))] loop
-    foreach t in array array[null::text, 'style_group'] loop
+    foreach t in array array[null::text, 'style_group'::text] loop
       foreach admin in array array[null::real, 0.1::real, 0.7::real] loop
         anchor := public.dam_search_semantic_anchor_named(q, case when t is null then null else array[t] end, f);
         floor := case when anchor > 0 and admin is not null then greatest(admin::float8, greatest(0, anchor::text::float8 - 0.035))

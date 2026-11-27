@@ -112,7 +112,7 @@ AS $function$
       (p_document_types is null or 'style_group' = any(p_document_types)) want_group_files
     from public.dam_search_named_scope(p_filters,
       p_document_types is null or 'asset' = any(p_document_types)) ns
-    cross join lateral (
+    cross join (
       select case when not coalesce(p_compute_anchor, false) then p_min_semantic_score::float8
         when rel.relative is null then p_min_semantic_score::float8
         when p_min_semantic_score is null then rel.relative

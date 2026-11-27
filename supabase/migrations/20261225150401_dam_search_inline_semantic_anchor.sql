@@ -7,7 +7,7 @@
 -- max(admin, anchor - 0.035) when anchor > 0, else admin; when admin is null, the relative floor.
 -- A missing anchor raises (the app answered 503 for that before). false = old behavior exactly.
 -- The anchor RPCs stay for callers still deployed during the overlap.
--- derived-from: 20261225150100
+-- derived-from: 20261225150400
 begin;
 set local lock_timeout = '2s';
 set local statement_timeout = '60s';
@@ -20,7 +20,7 @@ begin
     where p.oid = to_regprocedure('public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real,boolean)')
       and md5(p.prosrc) = 'a12bfb6494629b701b71cb6c39d377dd'
   ) then
-    raise exception 'DAM ranked search source differs from 20261225150100; reconcile rather than overwrite';
+    raise exception 'DAM ranked search source differs from 20261225150400; reconcile rather than overwrite';
   end if;
   if to_regprocedure('public.dam_search_semantic_anchor_named(extensions.vector,text[],jsonb)') is null then
     raise exception 'dam_search_semantic_anchor_named is missing';

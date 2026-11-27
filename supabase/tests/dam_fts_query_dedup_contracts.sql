@@ -4,7 +4,7 @@ set local search_path=pg_catalog,public,extensions;
 do $test$
 declare f pg_proc; n integer; total bigint; facets_present boolean;
 begin
- select * into strict f from pg_proc where oid='public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real,boolean)'::regprocedure;
+ select * into strict f from pg_proc where oid='public.search_dam_documents(text,jsonb,integer,integer,text[],extensions.vector,real,real,extensions.halfvec,real,real,boolean,boolean)'::regprocedure;
  -- #5747 superseded the #5730 body (exact-count fast path); the dedup expression must survive.
  if position('array(select distinct q.tsq from queries q)' in f.prosrc)=0 then
    raise exception '#5730 installed function differs beyond the one FTS expression';

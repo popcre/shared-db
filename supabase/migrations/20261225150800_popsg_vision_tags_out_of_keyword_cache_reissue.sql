@@ -7,6 +7,10 @@
 -- else (popdam3#1430 accuracy regression). Folder, filename, path, manual and
 -- deterministic tags still feed it. Tag rows are not changed or deleted.
 
+-- Drain batches that used the previous trigger function before taking the
+-- rebuild snapshot. Hold new tag writes until the replacement is visible.
+lock table public.style_guide_file_tags in share mode;
+
 create or replace function public.refresh_style_guide_file_tag_cache(p_file_id uuid)
 returns void
 language plpgsql

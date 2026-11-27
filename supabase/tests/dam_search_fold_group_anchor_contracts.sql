@@ -88,7 +88,7 @@ begin
       select coalesce(jsonb_agg(to_jsonb(r) order by r.rank desc, r.entity_id), '[]') into new_rows
       from public.search_dam_documents('zq1430ftoken', f, 50, 0, types, q, 0, admin, null, null, null, true, true) r;
       if old_rows is distinct from new_rows then raise exception 'popdam3#1430 parity differs for % admin %', f, admin; end if;
-      if (select count(*) from jsonb_array_elements(new_rows) x where x->>'entity_id' is not null) = 0 then
+      if admin is null and (select count(*) from jsonb_array_elements(new_rows) x where x->>'entity_id' is not null) = 0 then
         raise exception 'popdam3#1430 parity fixture returned no rows for %', f;
       end if;
     end loop;

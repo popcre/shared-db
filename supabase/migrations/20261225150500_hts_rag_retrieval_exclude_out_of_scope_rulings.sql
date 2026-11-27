@@ -13,6 +13,12 @@
 -- comments, SECURITY and SET options unchanged.
 -- derived-from: 20261102181554
 
+-- Load the vector library in this session so the hnsw.* SET options below are known
+-- parameters (otherwise a non-superuser gets "permission denied to set parameter").
+-- pg_trgm (pg_trgm.word_similarity_threshold) is loaded the same way.
+select extensions.vector_dims('[1]'::extensions.vector);
+select extensions.similarity('a', 'a');
+
 create or replace function hts_rag.hts_rag_nearest_products(p_embedding text, p_embed_version text, p_limit integer DEFAULT 200, p_scope_chapters text[] DEFAULT NULL::text[])
  RETURNS TABLE(product_id uuid, ruling_number text, distance real)
  LANGUAGE sql

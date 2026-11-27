@@ -34,7 +34,7 @@ begin
   insert into public.assets (filename, relative_path, file_type, quick_hash, modified_at, file_created_at,
                              thumbnail_url, style_group_id)
   select 'zq1430-' || i || '-' || j || '.pdf', 'zq1430/' || i || '/' || j || '.pdf',
-         case when i <= 5 or i between 221 and 230 then 'ai' else 'pdf' end,
+         case when i <= 5 or i between 221 and 230 then 'ai' else 'pdf' end::public.file_type,
          'zq1430-' || i || '-' || j,
          case when i > 230 then '1990-01-01'::timestamptz else now() end,
          case when i > 230 then '1990-01-01'::timestamptz else now() end,

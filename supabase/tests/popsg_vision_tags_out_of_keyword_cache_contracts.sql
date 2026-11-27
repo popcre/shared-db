@@ -12,6 +12,7 @@ declare
   v_file uuid := '14300000-0000-4000-8000-000000000001';
   v_tag_ai uuid;
   v_tag_path uuid;
+  v_docs integer;
   v_names text[];
   v_text text;
 begin
@@ -52,21 +53,45 @@ begin
      setweight(to_tsvector('simple', 'zz1430 example hero'), 'C') || setweight(to_tsvector('simple', 'zzkeeptext'), 'D')
     from public.style_guide_files f where f.id = v_file;
   -- The batch rebuild handles this file and reports it.
-  if (select last_id from public.popsg_rebuild_vision_tag_cache_batch(null, 1000) limit 1) is null then
+  if (select last_id from public.popsg_rebuild_vision_tag_cache_batch('14300000-0000-4000-8000-000000000000', 1) limit 1) is null then
     raise exception 'batch rebuild found no vision-tagged file';
   end if;
+  if not exists (
+    select 1 from public.style_guide_search_documents where style_guide_file_id = v_file
+      and not (search_vector @@ to_tsquery('simple', 'hero'))
+      and search_vector @@ to_tsquery('simple', 'folder:C & zzkeeptext:D')
+  ) then
+    raise exception 'batch rebuild failed to rebuild keyword tags and preserve stored text at weight D';
+  end if;
   -- The cron walk does the same for a document left stale (#1430 Step: finish without the worker).
+  update public.style_guide_files set tag_names = array['zz1430 example hero'], tag_search_text = 'zz1430 example hero'
+   where id = v_file;
   update public.style_guide_search_documents
      set tag_names = array['zz1430 example hero'],
          search_vector = setweight(to_tsvector('simple', 'zz1430 example hero'), 'C') || setweight(to_tsvector('simple', 'zzkeeptext'), 'D')
    where style_guide_file_id = v_file;
-  update public.admin_config set value = jsonb_build_object('after', null, 'done', false) where key = 'POPSG_STALE_TAG_REBUILD';
-  perform public.popsg_stale_tag_rebuild_job();
-  if (select search_vector from public.style_guide_search_documents where style_guide_file_id = v_file) @@ to_tsquery('simple', 'hero') then
-    raise exception 'vision tag still in the rebuilt search vector';
+  update public.admin_config set value = jsonb_build_object('after', '14300000-0000-4000-8000-000000000000', 'done', false) where key = 'POPSG_STALE_TAG_REBUILD';
+  v_docs := public.popsg_stale_tag_rebuild_job();
+  if not exists (
+    select 1 from public.style_guide_search_documents where style_guide_file_id = v_file
+      and not (search_vector @@ to_tsquery('simple', 'hero'))
+      and search_vector @@ to_tsquery('simple', 'folder:C & zzkeeptext:D')
+  ) then
+    raise exception 'scheduled rebuild failed to rebuild keyword tags and preserve stored text at weight D';
   end if;
-  if not (select search_vector from public.style_guide_search_documents where style_guide_file_id = v_file) @@ to_tsquery('simple', 'zzkeeptext') then
-    raise exception 'stored document-text lexemes were lost';
+  if not exists (select 1 from public.style_guide_files where id = v_file
+                 and tag_names = array['zz1430 example folder'] and tag_search_text = 'zz1430 example folder') then
+    raise exception 'scheduled rebuild left the file tag cache stale';
+  end if;
+  -- Advance past unrelated files to exercise the final empty window.
+  update public.admin_config set value = value || '{"after":"ffffffff-ffff-ffff-ffff-ffffffffffff"}'::jsonb
+   where key = 'POPSG_STALE_TAG_REBUILD';
+  perform public.popsg_stale_tag_rebuild_job();
+  perform public.popsg_stale_tag_rebuild_job();
+  if not exists (select 1 from public.admin_config where key = 'POPSG_STALE_TAG_REBUILD'
+                 and value @> '{"done":true,"after":null}'::jsonb
+                 and (value->>'documents')::integer = v_docs) then
+    raise exception 'finished rebuild lost its completion state or document count';
   end if;
 end
 $t$;

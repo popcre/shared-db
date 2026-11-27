@@ -32,9 +32,32 @@ begin
   if not exists (select 1 from public.style_guide_file_tags where style_guide_file_id = v_file and tag_id = v_tag_ai and status = 'accepted') then
     raise exception 'vision_ai tag row was not kept';
   end if;
-  -- The batch rebuild handles this file and reports it.
-  if (select last_id from public.popsg_rebuild_vision_tag_cache_batch(null, 1000) limit 1) is null then
-    raise exception 'batch rebuild found no vision-tagged file';
+  begin
+    perform public.popsg_rebuild_vision_tag_cache_batch(null, null);
+    raise exception 'batch rebuild accepted a null limit';
+  exception when null_value_not_allowed then
+    null;
+  end;
+  insert into public.style_guide_search_documents
+    (style_guide_file_id, root_label, licensor_name, property_folder, style_guide_folder,
+     style_guide_name, directory_path, relative_path, filename, size_bytes, modified_at,
+     thumbnail_url, tag_names, source_identity, search_vector, embedding_attempts)
+  select id, root_label, licensor_name, property_folder, style_guide_folder,
+         style_guide_folder, directory_path, relative_path, filename, size_bytes, modified_at,
+         thumbnail_url, array['zz1430 example hero'], 'old', ''::tsvector, 2
+    from public.style_guide_files where id = v_file;
+
+  if (select documents_changed from public.popsg_rebuild_vision_tag_cache_batch(
+        '14300000-0000-4000-8000-000000000000', 1)) <> 1 then
+    raise exception 'batch did not rebuild the fixture document';
+  end if;
+  if not exists (
+    select 1 from public.style_guide_search_documents
+     where style_guide_file_id = v_file and tag_names = v_names
+       and embedding_attempts = 0
+       and content_sha256 = encode(extensions.digest(source_identity || '|' || thumbnail_url, 'sha256'), 'hex')
+  ) then
+    raise exception 'rebuilt document retained stale tags, content hash, or embedding retries';
   end if;
 end
 $t$;

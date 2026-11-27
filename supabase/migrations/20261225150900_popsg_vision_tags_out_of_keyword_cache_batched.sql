@@ -41,6 +41,8 @@ grant execute on function public.refresh_style_guide_file_tag_cache(uuid) to ser
 
 -- Rebuild the keyword cache and, where safe, the search document for up to
 -- p_limit files with accepted vision_ai tags, in id order after p_after.
+-- Pass a non-null limit (clamped to 1..1000). New tag assignments behind
+-- the cursor already use the filtered cache writer above.
 -- A document is rewritten only when its tags differ and every other column
 -- its source identity covers already matches the file; other documents stay
 -- queued for refresh_style_guide_matviews (#7189). Returns the last file id
@@ -57,13 +59,17 @@ declare
   v_files integer := 0;
   v_docs integer := 0;
 begin
+  if p_limit is null then
+    raise exception 'p_limit must be non-null' using errcode = '22004';
+  end if;
+
   select array_agg(id order by id) into v_ids from (
     select distinct ft.style_guide_file_id as id
       from public.style_guide_file_tags ft
      where ft.source = 'vision_ai' and ft.status = 'accepted'
        and (p_after is null or ft.style_guide_file_id > p_after)
      order by 1
-     limit greatest(1, least(coalesce(p_limit, 200), 1000))
+     limit greatest(1, least(p_limit, 1000))
   ) s;
   if v_ids is null then
     return query select null::uuid, 0, 0;
@@ -89,10 +95,19 @@ begin
 
   update public.style_guide_search_documents d
      set tag_names = f.tag_names,
-         source_identity = md5(f.relative_path || '|' || coalesce(f.size_bytes::text, '') || '|' ||
-                   coalesce(f.modified_at::text, '') || '|' || coalesce(f.tag_search_text, '') || '|' ||
-                   coalesce(f.style_guide_folder, '') || '|' || coalesce(f.property_folder, '') || '|' ||
-                   coalesce(f.licensor_name, '') || '|' || f.is_active::text),
+         source_identity = i.source_identity,
+         content_sha256 = h.content_sha256,
+         embedding = case when d.content_sha256 = h.content_sha256 then d.embedding end,
+         embedding_model = case when d.content_sha256 = h.content_sha256 then d.embedding_model end,
+         embedding_updated_at = case when d.content_sha256 = h.content_sha256 then d.embedding_updated_at end,
+         embedding_error = case when d.content_sha256 = h.content_sha256 then d.embedding_error end,
+         embedding_error_category = case when d.content_sha256 = h.content_sha256 then d.embedding_error_category end,
+         embedding_next_retry_at = case when d.content_sha256 = h.content_sha256 then d.embedding_next_retry_at end,
+         embedding_lease_token = case when d.content_sha256 = h.content_sha256 then d.embedding_lease_token end,
+         embedding_lease_owner = case when d.content_sha256 = h.content_sha256 then d.embedding_lease_owner end,
+         embedding_lease_expires_at = case when d.content_sha256 = h.content_sha256 then d.embedding_lease_expires_at end,
+         embedding_attempts = case when d.content_sha256 = h.content_sha256 then d.embedding_attempts else 0 end,
+         embedding_max_attempts = case when d.content_sha256 = h.content_sha256 then d.embedding_max_attempts else 5 end,
          search_vector =
              setweight(to_tsvector('simple', coalesce(d.filename, '')), 'A')
              || setweight(to_tsvector('simple', coalesce(d.style_guide_name, '') || ' ' ||
@@ -103,6 +118,12 @@ begin
              || setweight(to_tsvector('simple', left(coalesce(t.extracted_text, ''), 200000)), 'D'),
          document_updated_at = now()
     from public.style_guide_files f
+    cross join lateral (values (md5(f.relative_path || '|' || coalesce(f.size_bytes::text, '') || '|' ||
+                   coalesce(f.modified_at::text, '') || '|' || coalesce(f.tag_search_text, '') || '|' ||
+                   coalesce(f.style_guide_folder, '') || '|' || coalesce(f.property_folder, '') || '|' ||
+                   coalesce(f.licensor_name, '') || '|' || f.is_active::text))) i(source_identity)
+    cross join lateral (values (encode(extensions.digest(
+      i.source_identity || '|' || coalesce(f.thumbnail_url, ''), 'sha256'), 'hex'))) h(content_sha256)
     left join public.style_guide_pdf_text t on t.style_guide_file_id = f.id
    where f.id = any(v_ids)
      and d.style_guide_file_id = f.id
@@ -110,6 +131,7 @@ begin
      and d.is_active
      and d.tag_names is distinct from f.tag_names
      and d.relative_path is not distinct from f.relative_path
+     and d.thumbnail_url is not distinct from f.thumbnail_url
      and d.filename is not distinct from f.filename
      and d.size_bytes is not distinct from f.size_bytes
      and d.modified_at is not distinct from f.modified_at

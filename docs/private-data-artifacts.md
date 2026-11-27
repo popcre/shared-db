@@ -1,0 +1,26 @@
+---
+summary: Pointer to the private licensor-source-data repo where licensed spreadsheets and evidence moved; rules against adding raw extracts here; 2026-10-23 additions.
+kind: living
+status: current
+read-when: deciding where licensed source data or evidence files may be stored
+---
+
+# Private data artifacts
+
+Licensed and internal spreadsheets, data snapshots, source-derived evidence, and
+screenshots formerly stored in this public repository now live in the private
+[`u2giants/licensor-source-data`](https://github.com/u2giants/licensor-source-data/tree/main/shared-db-relocated/2026-08-30)
+repository. The private directory preserves each artifact's former `shared-db`
+path beneath that root.
+
+Do not add raw extracts, source-derived row data, review workbooks, or internal
+item-master exports to this public repository. Keep public code, schemas,
+sanitized documentation, configuration, and synthetic fixtures here; keep the
+underlying evidence in the private repository.
+
+Historical Git commits still contain the former files. Removing those immutable
+copies requires a separately planned history rewrite and clone/branch recovery.
+
+## 2026-10-23 additions
+
+- DesignFlow legacy column crosswalk (923 rows): [`designflow-legacy-column-crosswalk.csv`](https://github.com/u2giants/licensor-source-data/blob/main/shared-db-relocated/2026-10-23/docs/verification/cloudsql-piecemeal-cutover-20261002/designflow-legacy-column-crosswalk.csv), summarized in `docs/verification/cloudsql-piecemeal-cutover-20261002/designflow-legacy-column-crosswalk.md`.

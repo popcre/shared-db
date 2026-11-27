@@ -11,6 +11,7 @@
 -- only the filter added: nearest_products and the fts (all_hits, most_hits), trgm and vec
 -- CTEs of search_rulings_pass. CREATE OR REPLACE keeps signatures, owner, grants,
 -- comments, SECURITY and SET options unchanged.
+-- derived-from: 20261102181554
 
 create or replace function hts_rag.hts_rag_nearest_products(p_embedding text, p_embed_version text, p_limit integer DEFAULT 200, p_scope_chapters text[] DEFAULT NULL::text[])
  RETURNS TABLE(product_id uuid, ruling_number text, distance real)

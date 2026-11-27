@@ -36,9 +36,8 @@ $$;
 revoke all on function public.refresh_style_guide_file_tag_cache(uuid) from public;
 grant execute on function public.refresh_style_guide_file_tag_cache(uuid) to service_role;
 
--- One-time rebuild for files that have any vision_ai tag: the cache first,
--- then their search documents with the same vector and identity formula as
--- refresh_style_guide_matviews, so queued rows become no-ops.
+-- Rebuild affected file caches. A changed tag_search_text queues the active
+-- file for the regular search refresh, which also applies pending metadata.
 create temporary table popsg_vision_files on commit drop as
   select distinct style_guide_file_id as id
     from public.style_guide_file_tags
@@ -59,24 +58,3 @@ update public.style_guide_files f
   ) c
  where f.id = c.id
    and (f.tag_names is distinct from c.tags or f.tag_search_text is distinct from c.txt);
-
-update public.style_guide_search_documents d
-   set tag_names = f.tag_names,
-       source_identity = md5(f.relative_path || '|' || coalesce(f.size_bytes::text, '') || '|' ||
-                 coalesce(f.modified_at::text, '') || '|' || coalesce(f.tag_search_text, '') || '|' ||
-                 coalesce(f.style_guide_folder, '') || '|' || coalesce(f.property_folder, '') || '|' ||
-                 coalesce(f.licensor_name, '') || '|' || f.is_active::text),
-       search_vector =
-           setweight(to_tsvector('simple', coalesce(d.filename, '')), 'A')
-           || setweight(to_tsvector('simple', coalesce(d.style_guide_name, '') || ' ' ||
-                                              coalesce(d.property_folder, '') || ' ' ||
-                                              coalesce(d.licensor_name, '')), 'B')
-           || setweight(to_tsvector('simple', coalesce(d.relative_path, '') || ' ' ||
-                                              array_to_string(f.tag_names, ' ')), 'C')
-           || setweight(to_tsvector('simple', left(coalesce(t.extracted_text, ''), 200000)), 'D'),
-       document_updated_at = now()
-  from public.style_guide_files f
-  join popsg_vision_files v on v.id = f.id
-  left join public.style_guide_pdf_text t on t.style_guide_file_id = f.id
- where d.style_guide_file_id = f.id
-   and f.is_active;

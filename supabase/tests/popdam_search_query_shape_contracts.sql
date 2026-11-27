@@ -96,13 +96,13 @@ end $$;
 -- 5. Grants: anon denied; authenticated and service_role allowed.
 do $$
 begin
-  if has_function_privilege('anon', 'public.search_dam_documents(text,jsonb,int,int,text[],extensions.vector,real,real,extensions.halfvec,real,real)', 'EXECUTE') then
+  if has_function_privilege('anon', 'public.search_dam_documents(text,jsonb,int,int,text[],extensions.vector,real,real,extensions.halfvec,real,real,boolean)', 'EXECUTE') then
     raise exception 'anon can execute search_dam_documents';
   end if;
-  if not has_function_privilege('authenticated', 'public.search_dam_documents(text,jsonb,int,int,text[],extensions.vector,real,real,extensions.halfvec,real,real)', 'EXECUTE') then
+  if not has_function_privilege('authenticated', 'public.search_dam_documents(text,jsonb,int,int,text[],extensions.vector,real,real,extensions.halfvec,real,real,boolean)', 'EXECUTE') then
     raise exception 'authenticated cannot execute search_dam_documents';
   end if;
-  if not has_function_privilege('service_role', 'public.search_dam_documents(text,jsonb,int,int,text[],extensions.vector,real,real,extensions.halfvec,real,real)', 'EXECUTE') then
+  if not has_function_privilege('service_role', 'public.search_dam_documents(text,jsonb,int,int,text[],extensions.vector,real,real,extensions.halfvec,real,real,boolean)', 'EXECUTE') then
     raise exception 'service_role cannot execute search_dam_documents';
   end if;
 end $$;

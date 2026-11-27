@@ -2,7 +2,7 @@
 -- Style-group-only searches with p_compute_anchor now take the picture-floor anchor from the SAME
 -- exact vector scan that feeds the exact leg: every group vector is scored once, the scoped best
 -- (named character/property/licensor scope, global fallback when empty) is taken over all of them
--- before the 2,000 cutoff, and no separate anchor function runs. Searches that include assets keep
+-- before the 2,000 cutoff, and no separate anchor function runs when group vectors exist. Searches that include assets keep
 -- calling dam_search_required_anchor (HNSW leg; unchanged). Signature, grants and outputs unchanged.
 -- derived-from: 20261225150401
 begin;
@@ -29,12 +29,14 @@ CREATE OR REPLACE FUNCTION public.search_dam_documents(p_query text, p_filters j
  SET search_path TO 'public', 'extensions'
  SET statement_timeout TO '30s'
 AS $function$
-  -- popdam3#1430 Step 6: with p_compute_anchor the picture-floor anchor is computed here, by the
-  -- same function the app called separately before (identical scope, identical score), so one
-  -- call replaces two. Run before the hnsw settings below: the anchor sets its own.
+  -- Asset searches use the original anchor. For a group search, a cheap existence
+  -- probe preserves its missing-score error even if no candidate consumes the floor.
   select set_config('app.dam_search_anchor',
     case when coalesce(p_compute_anchor, false) and p_query_embedding is not null
-      and not (p_document_types is not null and not ('asset' = any(p_document_types)) and 'style_group' = any(p_document_types))
+      and (not (p_document_types is not null and not ('asset' = any(p_document_types)) and 'style_group' = any(p_document_types))
+           or not exists (select 1 from dam.search_group_vectors d
+                          where d.document_type = 'style_group' and d.embedding is not null
+                            and d.embedding_model = 'google/siglip2-base-patch16-naflex'))
       then public.dam_search_required_anchor(p_query_embedding, p_document_types, p_filters)::text
       else '' end, true);
   select set_config('hnsw.ef_search', '100', true);
